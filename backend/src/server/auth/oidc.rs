@@ -16,13 +16,16 @@ use crate::server::{
         },
         middleware::auth::AuthenticatedEntity,
         service::AuthService,
-    }, config::{DeploymentType}, shared::{
+    },
+    config::DeploymentType,
+    shared::{
         events::{
             bus::EventBus,
             types::{AuthEvent, AuthOperation},
         },
         services::traits::CrudService,
-    }, users::{r#impl::base::User, service::UserService}
+    },
+    users::{r#impl::base::User, service::UserService},
 };
 
 pub struct OidcService {
@@ -99,7 +102,7 @@ impl OidcService {
             code,
             billing_enabled,
             terms_accepted_at,
-            deployment_type
+            deployment_type,
         } = oidc_register_params;
 
         let provider = self

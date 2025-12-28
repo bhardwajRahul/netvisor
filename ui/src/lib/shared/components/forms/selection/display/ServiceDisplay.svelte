@@ -44,7 +44,7 @@
 			} else {
 				// No specific interface - show binding count across all interfaces
 				descriptionItems.push(
-					`${bindingsOnInterface.length} binding${bindingsOnInterface.length > 1 ? 's' : ''} on all interfaces`
+					`${bindingsOnInterface.length} binding${bindingsOnInterface.length > 1 ? 's' : ''}`
 				);
 			}
 

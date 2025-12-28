@@ -103,7 +103,7 @@
 		<ModalHeaderIcon Icon={LifeBuoy} color="Blue" />
 	</svelte:fragment>
 
-	<div class="space-y-6">
+	<div class="space-y-6 p-6">
 		<p class="text-secondary text-sm">
 			Need help with Scanopy? Choose one of the options below to get support.
 		</p>

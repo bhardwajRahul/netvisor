@@ -108,6 +108,7 @@ pub fn interface(network_id: &Uuid, subnet_id: &Uuid) -> Interface {
         subnet_id: *subnet_id,
         ip_address: IpAddr::V4(Ipv4Addr::new(192, 168, 1, 100)),
         mac_address: Some(MacAddress::new(random_mac)),
+        position: 0,
         name: Some("eth0".to_string()),
         host_id: Uuid::nil(), // Placeholder - tests will set correct host_id
     })

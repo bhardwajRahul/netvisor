@@ -8,6 +8,7 @@ import { createQuery, createMutation, useQueryClient } from '@tanstack/svelte-qu
 import { queryKeys } from '$lib/api/query-client';
 import { apiClient } from '$lib/api/client';
 import type { Service } from './types/base';
+import { utcTimeZoneSentinel, uuidv4Sentinel } from '$lib/shared/utils/formatting';
 
 // Re-export type for convenience
 export type { Service };
@@ -186,4 +187,40 @@ export function useBulkUpdateServicesMutation() {
 			});
 		}
 	}));
+}
+
+// ============================================================================
+// Utility Functions
+// ============================================================================
+
+/**
+ * Create a default empty service for a host
+ */
+export function createDefaultService(
+	serviceType: string,
+	host_id: string,
+	host_network_id: string
+): Service {
+	return {
+		id: uuidv4Sentinel,
+		created_at: utcTimeZoneSentinel,
+		updated_at: utcTimeZoneSentinel,
+		network_id: host_network_id,
+		host_id,
+		tags: [],
+		service_definition: serviceType,
+		name: serviceType,
+		bindings: [],
+		virtualization: null,
+		source: {
+			type: 'Manual'
+		}
+	};
+}
+
+/**
+ * Get a display name for a service
+ */
+export function getServiceName(service: Service): string {
+	return service.name || service.service_definition;
 }

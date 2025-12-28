@@ -5,6 +5,7 @@
 	import ListManager from '$lib/shared/components/forms/selection/ListManager.svelte';
 	import { serviceDefinitions } from '$lib/shared/stores/metadata';
 	import type { Host } from '$lib/features/hosts/types/base';
+	import { useServicesQuery } from '$lib/features/services/queries';
 
 	interface Props {
 		service: Service;
@@ -15,7 +16,9 @@
 
 	// TanStack Query hook
 	const hostsQuery = useHostsQuery();
+	const servicesQuery = useServicesQuery();
 	let hostsData = $derived(hostsQuery.data ?? []);
+	let servicesData = $derived(servicesQuery.data ?? []);
 
 	let serviceMetadata = $derived(serviceDefinitions.getItem(service.service_definition));
 
@@ -77,6 +80,10 @@
 			onChange(updatedHost);
 		}
 	}
+
+	function getHostServices(host: Host): Service[] {
+		return servicesData.filter((s) => s.host_id == host.id);
+	}
 </script>
 
 <div class="space-y-6">
@@ -92,6 +99,8 @@
 		showSearch={true}
 		allowItemEdit={() => false}
 		options={selectableVms}
+		getItemContext={(item) => ({ services: getHostServices(item) })}
+		getOptionContext={(item) => ({ services: getHostServices(item) })}
 		items={managedVms}
 		optionDisplayComponent={HostDisplay}
 		itemDisplayComponent={HostDisplay}

@@ -16,16 +16,14 @@
 
 <div class:disabled>
 	<FormField {label} {field} {helpText} {id} inline={true} {required}>
-		{#snippet children()}
-			<input
-				type="checkbox"
-				{id}
-				checked={field.state.value}
-				{disabled}
-				onchange={(e) => field.handleChange(e.currentTarget.checked)}
-				class="h-4 w-4 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-1 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
-			/>
-		{/snippet}
+		<input
+			type="checkbox"
+			{id}
+			checked={field.state.value}
+			{disabled}
+			onchange={(e) => field.handleChange(e.currentTarget.checked)}
+			class="h-4 w-4 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-1 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+		/>
 	</FormField>
 </div>
 

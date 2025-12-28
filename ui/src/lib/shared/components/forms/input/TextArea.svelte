@@ -28,17 +28,15 @@
 </script>
 
 <FormField {label} {field} {required} {helpText} {id}>
-	{#snippet children()}
-		<textarea
-			{id}
-			value={field.state.value ?? ''}
-			onblur={() => field.handleBlur()}
-			oninput={(e) => field.handleChange(e.currentTarget.value)}
-			{placeholder}
-			{rows}
-			{disabled}
-			class="input-field"
-			class:input-field-error={hasErrors}
-		></textarea>
-	{/snippet}
+	<textarea
+		{id}
+		value={field.state.value ?? ''}
+		onblur={() => field.handleBlur()}
+		oninput={(e) => field.handleChange(e.currentTarget.value)}
+		{placeholder}
+		{rows}
+		{disabled}
+		class="input-field"
+		class:input-field-error={hasErrors}
+	></textarea>
 </FormField>

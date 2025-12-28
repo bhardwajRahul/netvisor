@@ -12,8 +12,8 @@
 	import { getContext } from 'svelte';
 	import type { Writable } from 'svelte/store';
 	import {
-		selectedEdge,
-		selectedNode,
+		selectedEdge as globalSelectedEdge,
+		selectedNode as globalSelectedNode,
 		topology as globalTopology,
 		topologyOptions
 	} from '../../store';
@@ -21,6 +21,7 @@
 	import { createColorHelper } from '$lib/shared/utils/styling';
 	import type { Topology, TopologyEdge } from '../../types/base';
 	import { getEdgeDisplayState, edgeHoverState, groupHoverState } from '../../interactions';
+	import type { Node, Edge as FlowEdge } from '@xyflow/svelte';
 
 	let {
 		id,
@@ -40,6 +41,16 @@
 	// Use context topology if available (for share views), otherwise fall back to global store
 	const topologyContext = getContext<Writable<Topology> | undefined>('topology');
 	const topology = topologyContext ?? globalTopology;
+
+	// Try to get selection from context (for share/embed pages), fallback to global store
+	const selectedNodeContext = getContext<Writable<Node | null> | undefined>('selectedNode');
+	const selectedEdgeContext = getContext<Writable<FlowEdge | null> | undefined>('selectedEdge');
+	let selectedNode = $derived(
+		selectedNodeContext ? $selectedNodeContext : $globalSelectedNode
+	) as Node | null;
+	let selectedEdge = $derived(
+		selectedEdgeContext ? $selectedEdgeContext : $globalSelectedEdge
+	) as FlowEdge | null;
 
 	const nodes = $derived($topology?.nodes ?? []);
 
@@ -75,11 +86,11 @@
 			data: edgeData
 		} as Edge;
 
-		return getEdgeDisplayState(edge, $selectedNode, $selectedEdge);
+		return getEdgeDisplayState(edge, selectedNode, selectedEdge);
 	});
 
 	let shouldShowFull = $derived(displayState.shouldShowFull);
-	let isSelected = $derived($selectedEdge?.id === id);
+	let isSelected = $derived(selectedEdge?.id === id);
 
 	// Calculate edge color - use group color if available, otherwise use edge type color
 	let edgeColorHelper = $derived.by(() => {

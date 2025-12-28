@@ -14,7 +14,7 @@
 		getLabel: (host) => host.name,
 		getDescription: (host) => host.hostname || 'No Hostname',
 		getIcon: (host, context) => {
-			const services = context?.services ?? [];
+			const services = context?.services?.filter((s) => s.host_id == host.id) ?? [];
 			const firstService = services.length > 0 ? services[0] : null;
 			if (firstService) {
 				return serviceDefinitions.getIconComponent(firstService.service_definition);
@@ -24,7 +24,7 @@
 		},
 		getIconColor: () => entities.getColorHelper('Host').icon,
 		getTags: (host, context) => {
-			const services = context?.services ?? [];
+			const services = context?.services?.filter((s) => s.host_id == host.id) ?? [];
 			return services.map((service) => ({
 				label: serviceDefinitions.getName(service.service_definition),
 				color: entities.getColorHelper('Service').color

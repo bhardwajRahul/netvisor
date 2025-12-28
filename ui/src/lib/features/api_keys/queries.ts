@@ -6,6 +6,7 @@ import { createQuery, createMutation, useQueryClient } from '@tanstack/svelte-qu
 import { queryKeys } from '$lib/api/query-client';
 import { apiClient } from '$lib/api/client';
 import type { ApiKey } from './types/base';
+import { utcTimeZoneSentinel, uuidv4Sentinel } from '$lib/shared/utils/formatting';
 
 /**
  * Query hook for fetching all API keys
@@ -146,4 +147,23 @@ export function useRotateApiKeyMutation() {
 			return data.data as string;
 		}
 	}));
+}
+
+/**
+ * Create empty form data for a new API key
+ * @param defaultNetworkId - The network ID to use for the new key
+ */
+export function createEmptyApiKeyFormData(defaultNetworkId: string): ApiKey {
+	return {
+		id: uuidv4Sentinel,
+		name: '',
+		created_at: utcTimeZoneSentinel,
+		updated_at: utcTimeZoneSentinel,
+		expires_at: null,
+		last_used: null,
+		network_id: defaultNetworkId,
+		key: '',
+		is_enabled: true,
+		tags: []
+	};
 }

@@ -13,17 +13,22 @@ use crate::server::{
     ports::{r#impl::base::Port, service::PortService},
     services::{r#impl::base::Service, service::ServiceService},
     shared::{
-        entities::ChangeTriggersTopologyStaleness, events::{
+        entities::ChangeTriggersTopologyStaleness,
+        events::{
             bus::EventBus,
             types::{EntityEvent, EntityOperation},
-        }, handlers::traits::CrudHandlers, services::traits::{CrudService, EventBusService}, storage::{
+        },
+        handlers::traits::CrudHandlers,
+        services::traits::{CrudService, EventBusService},
+        storage::{
             filter::EntityFilter,
             generic::GenericPostgresStorage,
             traits::{StorableEntity, Storage},
-        }, types::{
+        },
+        types::{
             api::ValidationError,
             entities::{EntitySource, EntitySourceDiscriminants},
-        }
+        },
     },
 };
 use anyhow::{Error, Result, anyhow};
@@ -217,6 +222,44 @@ impl HostService {
         }
     }
 
+    /// Validate that interface positions are sequential (0, 1, 2, ..., n-1) with no gaps or duplicates.
+    /// Returns Ok(()) if valid, or a ValidationError describing the issue.
+    fn validate_interface_positions(positions: &[i32]) -> Result<()> {
+        if positions.is_empty() {
+            return Ok(());
+        }
+
+        let mut sorted_positions = positions.to_vec();
+        sorted_positions.sort();
+
+        // Check for duplicates
+        for i in 1..sorted_positions.len() {
+            if sorted_positions[i] == sorted_positions[i - 1] {
+                return Err(ValidationError::new(format!(
+                    "Duplicate interface position: {}. Each interface must have a unique position.",
+                    sorted_positions[i]
+                ))
+                .into());
+            }
+        }
+
+        // Check that positions are sequential starting from 0
+        for (expected, actual) in sorted_positions.iter().enumerate() {
+            if *actual != expected as i32 {
+                return Err(ValidationError::new(format!(
+                    "Interface positions must be sequential starting from 0. \
+                     Expected position {} but found {}. Positions should be: 0, 1, 2, ..., {}",
+                    expected,
+                    actual,
+                    positions.len() - 1
+                ))
+                .into());
+            }
+        }
+
+        Ok(())
+    }
+
     /// Get ports for a specific host
     pub async fn get_ports_for_host(&self, host_id: &Uuid) -> Result<Vec<Port>> {
         self.port_service.get_for_host(host_id).await
@@ -339,6 +382,10 @@ impl HostService {
             interfaces: interface_inputs,
             ports: port_inputs,
         } = request;
+
+        // Validate that interface positions are sequential (0, 1, 2, ..., n-1)
+        let positions: Vec<i32> = interface_inputs.iter().map(|i| i.position).collect();
+        Self::validate_interface_positions(&positions)?;
 
         // Auto-set source to Manual for API-created entities
         let source = EntitySource::Manual;
@@ -522,7 +569,10 @@ impl HostService {
                 }
             }
 
-            let created = self.port_service.create(port_with_host, authentication.clone()).await?;
+            let created = self
+                .port_service
+                .create(port_with_host, authentication.clone())
+                .await?;
             created_ports.push(created);
         }
 
@@ -664,6 +714,10 @@ impl HostService {
     ) -> Result<()> {
         use std::collections::HashSet;
 
+        // Validate that positions are sequential (0, 1, 2, ..., n-1)
+        let positions: Vec<i32> = inputs.iter().map(|i| i.position).collect();
+        Self::validate_interface_positions(&positions)?;
+
         // Get existing interfaces for this host
         let existing = self.interface_service.get_for_host(host_id).await?;
         let existing_ids: HashSet<Uuid> = existing.iter().map(|i| i.id).collect();
@@ -697,7 +751,7 @@ impl HostService {
                 if let Some(existing_iface) = existing.iter().find(|i| i.id == interface.id) {
                     interface.preserve_immutable_fields(existing_iface);
                 }
-                
+
                 self.interface_service
                     .update(&mut interface, authentication.clone())
                     .await?;
@@ -750,7 +804,7 @@ impl HostService {
                 if let Some(existing_port) = existing.iter().find(|p| p.id == port.id) {
                     port.preserve_immutable_fields(existing_port);
                 }
-                
+
                 self.port_service
                     .update(&mut port, authentication.clone())
                     .await?;

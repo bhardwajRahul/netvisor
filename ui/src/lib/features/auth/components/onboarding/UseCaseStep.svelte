@@ -1,10 +1,14 @@
 <script lang="ts">
 	import { AlertTriangle, Home, Building2, Users } from 'lucide-svelte';
 	import { type UseCase, USE_CASES } from '../../types/base';
-	import { config, isCloud, isCommunity } from '$lib/shared/stores/config';
+	import { useConfigQuery, isCloud, isCommunity } from '$lib/shared/stores/config-query';
 	import { onboardingStore } from '../../stores/onboarding';
 	import { trackEvent } from '$lib/shared/utils/analytics';
 	import GenericModal from '$lib/shared/components/layout/GenericModal.svelte';
+
+	const configQuery = useConfigQuery();
+	// eslint-disable-next-line svelte/no-immutable-reactive-statements -- configQuery.data changes when query resolves
+	$: configData = configQuery.data;
 
 	export let isOpen: boolean;
 	export let onNext: () => void;
@@ -29,7 +33,7 @@
 		selectedUseCase = useCase;
 
 		// For Community self-hosted + Company/MSP: show license warning
-		if ($config && isCommunity($config) && (useCase === 'company' || useCase === 'msp')) {
+		if (configData && isCommunity(configData) && (useCase === 'company' || useCase === 'msp')) {
 			showLicenseWarning = true;
 		} else {
 			showLicenseWarning = false;
@@ -66,7 +70,7 @@
 		onBlockerFlow();
 	}
 
-	$: isCloudDeployment = $config && isCloud($config);
+	$: isCloudDeployment = configData && isCloud(configData);
 	$: canProceed = selectedUseCase !== null && !showLicenseWarning;
 </script>
 
@@ -88,7 +92,7 @@
 		/>
 	</svelte:fragment>
 
-	<div class="space-y-6">
+	<div class="space-y-6 p-6">
 		<p class="text-secondary text-center text-sm">We'll tailor the setup to your needs</p>
 
 		<!-- Use Case Cards -->

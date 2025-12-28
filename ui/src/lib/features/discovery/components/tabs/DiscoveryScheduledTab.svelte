@@ -4,7 +4,7 @@
 	import DataControls from '$lib/shared/components/data/DataControls.svelte';
 	import { initiateDiscovery } from '../../sse';
 	import type { Discovery } from '../../types/base';
-	import { discoveryFields } from '../../store';
+	import { discoveryFields } from '../../queries';
 	import DiscoveryEditModal from '../DiscoveryModal/DiscoveryEditModal.svelte';
 	import Loading from '$lib/shared/components/feedback/Loading.svelte';
 	import DiscoveryRunCard from '../cards/DiscoveryScheduledCard.svelte';

@@ -10,6 +10,7 @@ use crate::server::subnets::r#impl::types::SubnetType;
 use chrono::{DateTime, Utc};
 use cidr::{IpCidr, Ipv4Cidr};
 use pnet::ipnetwork::IpNetwork;
+use serde::de::Error as DeError;
 use serde::{Deserialize, Serialize};
 use std::hash::Hash;
 use utoipa::ToSchema;
@@ -18,9 +19,28 @@ use validator::Validate;
 
 use crate::server::{interfaces::r#impl::base::Interface, services::r#impl::base::Service};
 
+fn deserialize_cidr<'de, D>(deserializer: D) -> Result<IpCidr, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+    s.parse::<IpCidr>().map_err(|e| {
+        let msg = e.to_string();
+        if msg.contains("host part of address was not zero") {
+            DeError::custom(format!(
+                "Invalid CIDR '{}': address doesn't align with the subnet mask. Use a network address (e.g., for /24, the last octet should be 0).",
+                s
+            ))
+        } else {
+            DeError::custom(format!("Invalid CIDR '{}': {}", s, msg))
+        }
+    })
+}
+
 #[derive(Debug, Clone, Validate, Serialize, Deserialize, Eq, PartialEq, Hash, ToSchema)]
 pub struct SubnetBase {
     #[schema(value_type = String)]
+    #[serde(deserialize_with = "deserialize_cidr")]
     pub cidr: IpCidr,
     pub network_id: Uuid,
     #[validate(length(min = 0, max = 100))]

@@ -1,6 +1,10 @@
+use crate::server::shared::storage::traits::StorableEntity;
 use crate::server::{
     auth::middleware::auth::AuthenticatedEntity,
-    bindings::{r#impl::base::{Binding, BindingType}, service::BindingService},
+    bindings::{
+        r#impl::base::{Binding, BindingType},
+        service::BindingService,
+    },
     groups::{r#impl::base::Group, service::GroupService},
     hosts::{r#impl::base::Host, service::HostService},
     interfaces::r#impl::base::Interface,
@@ -13,11 +17,7 @@ use crate::server::{
             types::{EntityEvent, EntityOperation},
         },
         services::traits::{ChildCrudService, CrudService, EventBusService},
-        storage::{
-            filter::EntityFilter,
-            generic::GenericPostgresStorage,
-            traits::Storage,
-        },
+        storage::{filter::EntityFilter, generic::GenericPostgresStorage, traits::Storage},
         types::{
             api::ValidationError,
             entities::{EntitySource, EntitySourceDiscriminants},
@@ -25,7 +25,6 @@ use crate::server::{
     },
 };
 use anyhow::anyhow;
-use crate::server::shared::storage::traits::StorableEntity;
 use anyhow::{Error, Result};
 use async_trait::async_trait;
 use chrono::Utc;
@@ -609,7 +608,6 @@ impl ServiceService {
                 interface_id: None,
             } = &new_service_binding.base.binding_type
             {
-
                 let before_count = existing_service.base.bindings.len();
                 existing_service.base.bindings.retain(|existing| {
                     // Log each comparison for debugging
@@ -710,7 +708,11 @@ impl ServiceService {
 
         let saved_bindings = self
             .binding_service
-            .save_for_parent(&existing_service.id, &bindings_with_ids, authentication.clone())
+            .save_for_parent(
+                &existing_service.id,
+                &bindings_with_ids,
+                authentication.clone(),
+            )
             .await?;
 
         // Update service with the saved bindings (which have actual IDs and preserved created_at)
@@ -756,7 +758,6 @@ impl ServiceService {
         updates: Option<&Service>,
         authenticated: AuthenticatedEntity,
     ) -> Result<(), Error> {
-
         let filter = EntityFilter::unfiltered().network_ids(&[current_service.base.network_id]);
         let groups = self.group_service.get_all(filter).await?;
 
@@ -786,9 +787,7 @@ impl ServiceService {
                 group.base.binding_ids.retain(|sb| {
                     let in_current = current_service_binding_ids.contains(sb);
                     let in_updated = updated_service_binding_ids.contains(sb);
-                    let keep = if in_current { in_updated } else { true };
-
-                    keep
+                    if in_current { in_updated } else { true }
                 });
 
                 if group.base.binding_ids.len() != initial_bindings_length {

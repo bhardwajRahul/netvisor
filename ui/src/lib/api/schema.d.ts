@@ -761,6 +761,12 @@ export interface paths {
 		 * @description Creates a host with optional interfaces, ports, and services.
 		 *     The `source` field is automatically set to `Manual`.
 		 *     IDs for the host and all children are generated server-side.
+		 *
+		 *     ### Tag Validation
+		 *
+		 *     - Tags must exist and belong to your organization
+		 *     - Duplicate tag UUIDs are automatically deduplicated
+		 *     - Invalid or cross-organization tag UUIDs return a 400 error
 		 */
 		post: operations['create_host'];
 		delete?: never;
@@ -866,6 +872,12 @@ export interface paths {
 		 * Update a host
 		 * @description Updates host properties. Children (interfaces, ports, services)
 		 *     are managed via their own endpoints.
+		 *
+		 *     ### Tag Validation
+		 *
+		 *     - Tags must exist and belong to your organization
+		 *     - Duplicate tag UUIDs are automatically deduplicated
+		 *     - Invalid or cross-organization tag UUIDs return a 400 error
 		 */
 		put: operations['update_host'];
 		post?: never;
@@ -889,7 +901,10 @@ export interface paths {
 		/** List all interfaces */
 		get: operations['list_interfaces'];
 		put?: never;
-		/** Create a new interface */
+		/**
+		 * Create a new interface
+		 *     Position is automatically assigned to the end of the host's interface list.
+		 */
 		post: operations['create_interface'];
 		delete?: never;
 		options?: never;
@@ -906,7 +921,10 @@ export interface paths {
 		};
 		get?: never;
 		put?: never;
-		/** Bulk delete interfaces */
+		/**
+		 * Bulk delete interfaces
+		 *     Remaining interfaces for affected hosts are renumbered to maintain sequential positions.
+		 */
 		post: operations['bulk_delete_interfaces'];
 		delete?: never;
 		options?: never;
@@ -923,10 +941,16 @@ export interface paths {
 		};
 		/** Get interface by ID */
 		get: operations['get_interface_by_id'];
-		/** Update an interface */
+		/**
+		 * Update an interface
+		 *     Position must be within valid range and not conflict with other interfaces.
+		 */
 		put: operations['update_interface'];
 		post?: never;
-		/** Delete interface */
+		/**
+		 * Delete an interface
+		 *     Remaining interfaces for the host are renumbered to maintain sequential positions.
+		 */
 		delete: operations['delete_interface'];
 		options?: never;
 		head?: never;
@@ -1421,7 +1445,15 @@ export interface paths {
 		/** List all tags */
 		get: operations['list_tags'];
 		put?: never;
-		/** Create a new tag */
+		/**
+		 * Create a new tag
+		 * @description Creates a tag scoped to your organization. Tag names must be unique within the organization.
+		 *
+		 *     ### Validation
+		 *
+		 *     - Name must be 1-100 characters (empty names are rejected)
+		 *     - Name must be unique within your organization
+		 */
 		post: operations['create_tag'];
 		delete?: never;
 		options?: never;
@@ -1701,14 +1733,14 @@ export interface components {
 			/**
 			 * @description Association between a service and a port / interface that the service is listening on
 			 * @example {
-			 *       "created_at": "2025-12-27T17:37:05.236381Z",
-			 *       "id": "cce42ada-34e3-47a9-9912-cd32591da2db",
+			 *       "created_at": "2025-12-28T03:33:18.094145Z",
+			 *       "id": "8780532e-4eeb-494c-8b1d-dcf7c0a357e9",
 			 *       "interface_id": "550e8400-e29b-41d4-a716-446655440005",
 			 *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
 			 *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
 			 *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
 			 *       "type": "Port",
-			 *       "updated_at": "2025-12-27T17:37:05.236381Z"
+			 *       "updated_at": "2025-12-28T03:33:18.094145Z"
 			 *     }
 			 */
 			data?: components['schemas']['BindingBase'] & {
@@ -1843,6 +1875,7 @@ export interface components {
 			 *           "mac_address": "DE:AD:BE:EF:12:34",
 			 *           "name": "eth0",
 			 *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
+			 *           "position": 0,
 			 *           "subnet_id": "550e8400-e29b-41d4-a716-446655440004",
 			 *           "updated_at": "2026-01-15T10:30:00Z"
 			 *         }
@@ -1903,6 +1936,7 @@ export interface components {
 			 *       "mac_address": "DE:AD:BE:EF:12:34",
 			 *       "name": "eth0",
 			 *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
+			 *       "position": 0,
 			 *       "subnet_id": "550e8400-e29b-41d4-a716-446655440004",
 			 *       "updated_at": "2026-01-15T10:30:00Z"
 			 *     }
@@ -2042,14 +2076,14 @@ export interface components {
 			 * @example {
 			 *       "bindings": [
 			 *         {
-			 *           "created_at": "2025-12-27T17:37:05.233711Z",
-			 *           "id": "33a9180c-8611-481d-a7cf-4cbb9e583585",
+			 *           "created_at": "2025-12-28T03:33:18.089197Z",
+			 *           "id": "26d284d4-54a6-4ec8-a32b-8906ce77dc1c",
 			 *           "interface_id": "550e8400-e29b-41d4-a716-446655440005",
 			 *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
 			 *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
 			 *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
 			 *           "type": "Port",
-			 *           "updated_at": "2025-12-27T17:37:05.233711Z"
+			 *           "updated_at": "2025-12-28T03:33:18.089197Z"
 			 *         }
 			 *       ],
 			 *       "created_at": "2026-01-15T10:30:00Z",
@@ -2057,7 +2091,7 @@ export interface components {
 			 *       "id": "550e8400-e29b-41d4-a716-446655440007",
 			 *       "name": "nginx",
 			 *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
-			 *       "service_definition": "Ghost",
+			 *       "service_definition": "Nagios",
 			 *       "source": {
 			 *         "type": "Manual"
 			 *       },
@@ -2489,14 +2523,14 @@ export interface components {
 		/**
 		 * @description Association between a service and a port / interface that the service is listening on
 		 * @example {
-		 *       "created_at": "2025-12-27T17:37:05.227282Z",
-		 *       "id": "58325029-a362-4fbd-95d3-cc29f3e87e72",
+		 *       "created_at": "2025-12-28T03:33:18.077813Z",
+		 *       "id": "632b76df-6271-4bcf-9fef-2a3dc387386c",
 		 *       "interface_id": "550e8400-e29b-41d4-a716-446655440005",
 		 *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
 		 *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
 		 *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
 		 *       "type": "Port",
-		 *       "updated_at": "2025-12-27T17:37:05.227282Z"
+		 *       "updated_at": "2025-12-28T03:33:18.077813Z"
 		 *     }
 		 */
 		Binding: components['schemas']['BindingBase'] & {
@@ -2604,6 +2638,7 @@ export interface components {
 		 *           "ip_address": "192.168.1.100",
 		 *           "mac_address": "DE:AD:BE:EF:12:34",
 		 *           "name": "eth0",
+		 *           "position": 0,
 		 *           "subnet_id": "550e8400-e29b-41d4-a716-446655440004"
 		 *         }
 		 *       ],
@@ -2639,6 +2674,11 @@ export interface components {
 			ip_address: string;
 			mac_address?: string | null;
 			name?: string | null;
+			/**
+			 * Format: int32
+			 * @description Position of this interface in the host's interface list (for ordering)
+			 */
+			position?: number;
 			/** Format: uuid */
 			subnet_id: string;
 		};
@@ -3038,6 +3078,7 @@ export interface components {
 		 *           "mac_address": "DE:AD:BE:EF:12:34",
 		 *           "name": "eth0",
 		 *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
+		 *           "position": 0,
 		 *           "subnet_id": "550e8400-e29b-41d4-a716-446655440004",
 		 *           "updated_at": "2026-01-15T10:30:00Z"
 		 *         }
@@ -3100,6 +3141,7 @@ export interface components {
 		 *       "mac_address": "DE:AD:BE:EF:12:34",
 		 *       "name": "eth0",
 		 *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
+		 *       "position": 0,
 		 *       "subnet_id": "550e8400-e29b-41d4-a716-446655440004",
 		 *       "updated_at": "2026-01-15T10:30:00Z"
 		 *     }
@@ -3120,6 +3162,11 @@ export interface components {
 			name: string | null;
 			/** Format: uuid */
 			network_id: string;
+			/**
+			 * Format: int32
+			 * @description Position of this interface in the host's interface list (for ordering)
+			 */
+			position?: number;
 			/** Format: uuid */
 			subnet_id: string;
 		};
@@ -3372,14 +3419,14 @@ export interface components {
 		 * @example {
 		 *       "bindings": [
 		 *         {
-		 *           "created_at": "2025-12-27T17:37:05.227232Z",
-		 *           "id": "fb419fba-e0be-49ee-b869-f0cab6ad288d",
+		 *           "created_at": "2025-12-28T03:33:18.077686Z",
+		 *           "id": "652c8e92-7835-48f7-98f1-82bdee636648",
 		 *           "interface_id": "550e8400-e29b-41d4-a716-446655440005",
 		 *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
 		 *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
 		 *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
 		 *           "type": "Port",
-		 *           "updated_at": "2025-12-27T17:37:05.227232Z"
+		 *           "updated_at": "2025-12-28T03:33:18.077686Z"
 		 *         }
 		 *       ],
 		 *       "created_at": "2026-01-15T10:30:00Z",
@@ -3387,7 +3434,7 @@ export interface components {
 		 *       "id": "550e8400-e29b-41d4-a716-446655440007",
 		 *       "name": "nginx",
 		 *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
-		 *       "service_definition": "Ghost",
+		 *       "service_definition": "Nagios",
 		 *       "source": {
 		 *         "type": "Manual"
 		 *       },
@@ -3712,6 +3759,11 @@ export interface components {
 			ip_address: string;
 			mac_address?: string | null;
 			name?: string | null;
+			/**
+			 * Format: int32
+			 * @description Position of this interface in the host's interface list (for ordering)
+			 */
+			position?: number;
 			/** Format: uuid */
 			subnet_id: string;
 		};
@@ -5498,8 +5550,17 @@ export interface operations {
 					'application/json': components['schemas']['ApiResponse_HostResponse'];
 				};
 			};
-			/** @description Invalid request - network not found or subnet mismatch */
+			/** @description Validation error: network not found, subnet mismatch, or invalid tags */
 			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiErrorResponse'];
+				};
+			};
+			/** @description No access to the specified network */
+			401: {
 				headers: {
 					[name: string]: unknown;
 				};
@@ -5676,6 +5737,15 @@ export interface operations {
 					'application/json': components['schemas']['ApiResponse_HostResponse'];
 				};
 			};
+			/** @description Validation error: invalid tags */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiErrorResponse'];
+				};
+			};
 			/** @description Host not found */
 			404: {
 				headers: {
@@ -5795,20 +5865,28 @@ export interface operations {
 			path?: never;
 			cookie?: never;
 		};
-		/** @description Array of interfaces IDs to delete */
 		requestBody: {
 			content: {
 				'application/json': string[];
 			};
 		};
 		responses: {
-			/** @description Interfaces deleted */
+			/** @description Interfaces deleted successfully */
 			200: {
 				headers: {
 					[name: string]: unknown;
 				};
 				content: {
 					'application/json': components['schemas']['ApiResponse_BulkDeleteResponse'];
+				};
+			};
+			/** @description No IDs provided */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiErrorResponse'];
 				};
 			};
 		};
@@ -5902,7 +5980,7 @@ export interface operations {
 		};
 		requestBody?: never;
 		responses: {
-			/** @description Interface deleted */
+			/** @description Interface deleted successfully */
 			200: {
 				headers: {
 					[name: string]: unknown;
@@ -7296,7 +7374,16 @@ export interface operations {
 					'application/json': components['schemas']['ApiResponse_Tag'];
 				};
 			};
-			/** @description Tag name already exists */
+			/** @description Validation error: name empty or too long */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiErrorResponse'];
+				};
+			};
+			/** @description Tag name already exists in this organization */
 			409: {
 				headers: {
 					[name: string]: unknown;

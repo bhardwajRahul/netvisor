@@ -2,8 +2,8 @@
 	import { Handle, Position, type NodeProps } from '@xyflow/svelte';
 	import { concepts, entities, serviceDefinitions } from '$lib/shared/stores/metadata';
 	import {
-		selectedEdge,
-		selectedNode,
+		selectedEdge as globalSelectedEdge,
+		selectedNode as globalSelectedNode,
 		topology as globalTopology,
 		topologyOptions
 	} from '../../store';
@@ -17,12 +17,23 @@
 	import { connectedNodeIds } from '../../interactions';
 	import { getContext } from 'svelte';
 	import type { Port } from '$lib/features/hosts/types/base';
+	import type { Node, Edge } from '@xyflow/svelte';
 
 	let { id, data, width, height }: NodeProps = $props();
 
 	// Try to get topology from context (for share/embed pages), fallback to global store
 	const topologyContext = getContext<Writable<Topology> | undefined>('topology');
 	let topology = $derived(topologyContext ? $topologyContext : $globalTopology);
+
+	// Try to get selection from context (for share/embed pages), fallback to global store
+	const selectedNodeContext = getContext<Writable<Node | null> | undefined>('selectedNode');
+	const selectedEdgeContext = getContext<Writable<Edge | null> | undefined>('selectedEdge');
+	let selectedNode = $derived(
+		selectedNodeContext ? $selectedNodeContext : $globalSelectedNode
+	) as Node | null;
+	let selectedEdge = $derived(
+		selectedEdgeContext ? $selectedEdgeContext : $globalSelectedEdge
+	) as Edge | null;
 
 	let nodeData = data as InterfaceNodeType;
 
@@ -87,11 +98,11 @@
 			: null
 	);
 
-	let isNodeSelected = $derived($selectedNode?.id === nodeRenderData?.interface_id);
+	let isNodeSelected = $derived(selectedNode?.id === nodeRenderData?.interface_id);
 
 	// Calculate if this node should fade out when another node is selected
 	let shouldFadeOut = $derived.by(() => {
-		if (!$selectedNode && !$selectedEdge) return false;
+		if (!selectedNode && !selectedEdge) return false;
 		if (!nodeRenderData) return false;
 
 		// Check if this node is in the connected set
@@ -109,7 +120,7 @@
 
 	let handleStyle = $derived.by(() => {
 		const baseSize = 8;
-		const baseOpacity = $selectedEdge?.source == id || $selectedEdge?.target == id ? 1 : 0;
+		const baseOpacity = selectedEdge?.source == id || selectedEdge?.target == id ? 1 : 0;
 
 		// Use host color or virtualization color
 		const fillColor = nodeRenderData?.isVirtualized

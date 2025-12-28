@@ -22,6 +22,7 @@
 	import type { TopologyEdge, Topology } from '../../types/base';
 	import { updateConnectedNodes, toggleEdgeHover, getEdgeDisplayState } from '../../interactions';
 	import { onMount, tick, setContext } from 'svelte';
+	import { useQueryClient } from '@tanstack/svelte-query';
 	import { writable as svelteWritable } from 'svelte/store';
 
 	// Props
@@ -52,6 +53,7 @@
 	export let onPaneSelect: (() => void) | null = null;
 
 	const { fitView } = useSvelteFlow();
+	const queryClient = useQueryClient();
 	let containerElement: HTMLDivElement;
 
 	export function triggerFitView() {
@@ -111,7 +113,14 @@
 		if (topology && (topology.edges || topology.nodes)) {
 			const currentEdges = get(edges);
 			const currentNodes = get(nodes);
-			updateConnectedNodes(selectedNode, selectedEdge, currentEdges, currentNodes);
+			updateConnectedNodes(
+				selectedNode,
+				selectedEdge,
+				currentEdges,
+				currentNodes,
+				queryClient,
+				topology
+			);
 
 			// Update edge animated state based on selection
 			const updatedEdges = currentEdges.map((edge) => {

@@ -27,7 +27,9 @@
 
 	// Password field errors
 	let passwordErrors = $derived(passwordField.state.meta.errors);
-	let showPasswordErrors = $derived(passwordField.state.meta.isTouched && passwordErrors.length > 0);
+	let showPasswordErrors = $derived(
+		passwordField.state.meta.isTouched && passwordErrors.length > 0
+	);
 
 	// Confirm field errors
 	let confirmErrors = $derived(confirmPasswordField?.state.meta.errors ?? []);

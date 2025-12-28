@@ -15,9 +15,7 @@
 		lockTopology,
 		unlockTopology,
 		autoRebuild,
-
 		hasConflicts
-
 	} from '../store';
 	import type { Topology } from '../types/base';
 	import TopologyModal from './TopologyModal.svelte';

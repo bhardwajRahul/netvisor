@@ -1,13 +1,14 @@
 <script lang="ts">
 	import { createForm } from '@tanstack/svelte-form';
 	import { validateForm } from '$lib/shared/components/forms/form-context';
+	import type { FormValue } from '$lib/shared/components/forms/validators';
 	import CodeContainer from '$lib/shared/components/data/CodeContainer.svelte';
 	import InlineWarning from '$lib/shared/components/feedback/InlineWarning.svelte';
 	import TextInput from '$lib/shared/components/forms/input/TextInput.svelte';
 	import SelectInput from '$lib/shared/components/forms/input/SelectInput.svelte';
 	import Checkbox from '$lib/shared/components/forms/input/Checkbox.svelte';
 	import { ChevronDown, ChevronRight } from 'lucide-svelte';
-	import { config } from '$lib/shared/stores/config';
+	import { useConfigQuery } from '$lib/shared/stores/config-query';
 	import { fieldDefs } from '../config';
 	import type { Daemon } from '../types/base';
 
@@ -28,6 +29,8 @@
 		initialName = '',
 		showModeSelect = true
 	}: Props = $props();
+
+	const configQuery = useConfigQuery();
 
 	// Separate field defs - conditionally exclude mode if showModeSelect is false
 	let basicFieldDefs = $derived(
@@ -77,7 +80,7 @@
 		if (!def?.validators || def.validators.length === 0) return {};
 
 		return {
-			onBlur: ({ value }: { value: unknown }) => {
+			onBlur: ({ value }: { value: FormValue }) => {
 				for (const validator of def.validators!) {
 					const error = validator(value);
 					if (error) return error;
@@ -88,7 +91,7 @@
 	}
 
 	let isNewDaemon = $derived(daemon === null);
-	let serverUrl = $config.public_url;
+	let serverUrl = $derived(configQuery.data?.public_url ?? '');
 
 	const installScript = `bash -c "$(curl -fsSL https://raw.githubusercontent.com/scanopy/scanopy/refs/heads/main/install.sh)"`;
 
@@ -109,7 +112,7 @@
 	);
 
 	// Check if a field value passes all its validators
-	function fieldPassesValidation(def: (typeof fieldDefs)[0], value: unknown): boolean {
+	function fieldPassesValidation(def: (typeof fieldDefs)[0], value: FormValue): boolean {
 		if (!def.validators || def.validators.length === 0) return true;
 		for (const validator of def.validators) {
 			const error = validator(value);
@@ -353,12 +356,7 @@
 									{:else if def.type === 'boolean'}
 										<form.Field name={def.id}>
 											{#snippet children(field)}
-												<Checkbox
-													label={def.label}
-													{field}
-													id={def.id}
-													helpText={def.helpText}
-												/>
+												<Checkbox label={def.label} {field} id={def.id} helpText={def.helpText} />
 											{/snippet}
 										</form.Field>
 									{/if}

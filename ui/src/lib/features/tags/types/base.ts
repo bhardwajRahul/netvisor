@@ -5,7 +5,7 @@ export type Tag = components['schemas']['Tag'];
 
 export function createDefaultTag(organization_id: string): Tag {
 	return {
-		name: 'New Tag',
+		name: '',
 		description: null,
 		color: 'Yellow',
 		id: uuidv4Sentinel,

@@ -5,7 +5,7 @@
 	 * A pure presentation layer for displaying billing plans.
 	 * Uses CSS Grid for consistent sticky header/footer on both desktop and mobile.
 	 */
-	import { Check, X, ChevronDown } from 'lucide-svelte';
+	import { Check, X, ChevronDown, Loader2 } from 'lucide-svelte';
 	import Tag from '$lib/shared/components/data/Tag.svelte';
 	import ToggleGroup from './ToggleGroup.svelte';
 	import ScanProgressIndicator from '$lib/features/discovery/components/ScanProgressIndicator.svelte';
@@ -62,6 +62,7 @@
 	}: Props = $props();
 
 	let collapsedCategories = $state<Record<string, boolean>>({});
+	let loadingPlanType = $state<string | null>(null);
 
 	type PlanFilter = 'all' | 'personal' | 'commercial';
 	let planFilter = $derived<PlanFilter>(initialPlanFilter);
@@ -288,6 +289,15 @@
 
 	function isEnterprise(plan: BillingPlan): boolean {
 		return plan.type === 'Enterprise';
+	}
+
+	async function handlePlanSelect(plan: BillingPlan) {
+		loadingPlanType = plan.type;
+		try {
+			await onPlanSelect(plan);
+		} finally {
+			loadingPlanType = null;
+		}
 	}
 </script>
 
@@ -519,6 +529,7 @@
 								<button
 									type="button"
 									onclick={() => onPlanInquiry(plan)}
+									disabled={loadingPlanType !== null}
 									class="btn-primary w-full whitespace-nowrap px-2 text-xs lg:text-sm"
 								>
 									Request Information
@@ -526,15 +537,21 @@
 							{:else if hosting === 'Cloud'}
 								<button
 									type="button"
-									onclick={() => onPlanSelect(plan)}
+									onclick={() => handlePlanSelect(plan)}
+									disabled={loadingPlanType !== null}
 									class="btn-primary w-full whitespace-nowrap px-2 text-xs lg:text-sm"
 								>
-									{trial ? 'Start Free Trial' : 'Get Started'}
+									{#if loadingPlanType === plan.type}
+										<Loader2 class="mx-auto h-4 w-4 animate-spin" />
+									{:else}
+										{trial ? 'Start Free Trial' : 'Get Started'}
+									{/if}
 								</button>
 								{#if commercial && onPlanInquiry}
 									<button
 										type="button"
 										onclick={() => onPlanInquiry(plan)}
+										disabled={loadingPlanType !== null}
 										class="btn-secondary w-full whitespace-nowrap text-xs lg:text-sm"
 									>
 										Contact Us
@@ -545,6 +562,7 @@
 									<button
 										type="button"
 										onclick={() => onPlanInquiry(plan)}
+										disabled={loadingPlanType !== null}
 										class="btn-primary w-full whitespace-nowrap text-xs lg:text-sm"
 									>
 										Contact Us
@@ -562,6 +580,7 @@
 								<button
 									type="button"
 									onclick={() => onPlanInquiry(plan)}
+									disabled={loadingPlanType !== null}
 									class="btn-primary w-full whitespace-nowrap text-xs lg:text-sm"
 								>
 									Contact Us

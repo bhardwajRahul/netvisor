@@ -8,12 +8,15 @@
 	import type { Topology } from '$lib/features/topology/types/base';
 	import { getContext } from 'svelte';
 	import type { Writable } from 'svelte/store';
+	import { useServicesQuery } from '$lib/features/services/queries';
 
 	let { edge, hostId }: { edge: Edge; hostId: string } = $props();
 
 	// Try to get topology from context (for share/embed pages), fallback to query + selected topology
 	const topologyContext = getContext<Writable<Topology> | undefined>('topology');
 	const topologiesQuery = useTopologiesQuery();
+	const servicesQuery = useServicesQuery();
+	let servicesData = $derived(servicesQuery.data ?? []);
 	let topologiesData = $derived(topologiesQuery.data ?? []);
 	let topology = $derived(
 		topologyContext
@@ -34,7 +37,11 @@
 	{#if host}
 		<span class="text-secondary mb-2 block text-sm font-medium">Host</span>
 		<div class="card">
-			<EntityDisplayWrapper context={{}} item={host} displayComponent={HostDisplay} />
+			<EntityDisplayWrapper
+				context={{ services: servicesData.filter((s) => (host ? s.host_id == host.id : false)) }}
+				item={host}
+				displayComponent={HostDisplay}
+			/>
 		</div>
 	{/if}
 	<span class="text-secondary mb-2 block text-sm font-medium">Interfaces</span>

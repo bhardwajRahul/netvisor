@@ -3,11 +3,13 @@ use std::{collections::HashMap, sync::Arc};
 use uuid::Uuid;
 
 use crate::server::{
-    auth::middleware::auth::AuthenticatedEntity, ports::r#impl::base::Port, shared::{
+    auth::middleware::auth::AuthenticatedEntity,
+    ports::r#impl::base::Port,
+    shared::{
         events::bus::EventBus,
         services::traits::{ChildCrudService, CrudService, EventBusService},
-        storage::{generic::GenericPostgresStorage},
-    }
+        storage::generic::GenericPostgresStorage,
+    },
 };
 
 pub struct PortService {
@@ -53,7 +55,11 @@ impl PortService {
     }
 
     /// Delete all ports for a host (alias for delete_for_parent)
-    pub async fn delete_for_host(&self, host_id: &Uuid, authentication: AuthenticatedEntity) -> Result<usize> {
+    pub async fn delete_for_host(
+        &self,
+        host_id: &Uuid,
+        authentication: AuthenticatedEntity,
+    ) -> Result<usize> {
         self.delete_for_parent(host_id, authentication).await
     }
 }

@@ -119,6 +119,12 @@ export function useBulkDeleteSubnetsMutation() {
 	}));
 }
 
+import { utcTimeZoneSentinel, uuidv4Sentinel } from '$lib/shared/utils/formatting';
+
+// ============================================================================
+// Utility Functions
+// ============================================================================
+
 /**
  * Check if a subnet is a container subnet (CIDR is 0.0.0.0/0 and source is System)
  */
@@ -131,4 +137,35 @@ export function isContainerSubnet(subnet: Subnet): boolean {
  */
 export function getSubnetById(subnets: Subnet[], id: string): Subnet | null {
 	return subnets.find((s) => s.id === id) ?? null;
+}
+
+/**
+ * Get a subnet by ID from the cache
+ */
+export function getSubnetByIdFromCache(
+	queryClient: ReturnType<typeof useQueryClient>,
+	id: string
+): Subnet | null {
+	const subnets = queryClient.getQueryData<Subnet[]>(queryKeys.subnets.all) ?? [];
+	return subnets.find((s) => s.id === id) ?? null;
+}
+
+/**
+ * Create empty form data for a new subnet
+ */
+export function createEmptySubnetFormData(defaultNetworkId?: string): Subnet {
+	return {
+		id: uuidv4Sentinel,
+		created_at: utcTimeZoneSentinel,
+		updated_at: utcTimeZoneSentinel,
+		tags: [],
+		name: '',
+		network_id: defaultNetworkId ?? '',
+		cidr: '',
+		description: '',
+		subnet_type: 'Unknown',
+		source: {
+			type: 'Manual'
+		}
+	};
 }

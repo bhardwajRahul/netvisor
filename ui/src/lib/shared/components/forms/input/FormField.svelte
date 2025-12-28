@@ -20,8 +20,15 @@
 		children: Snippet;
 	}
 
-	let { field, label, id, required = false, helpText = '', inline = false, children }: Props =
-		$props();
+	let {
+		field,
+		label,
+		id,
+		required = false,
+		helpText = '',
+		inline = false,
+		children
+	}: Props = $props();
 
 	let errors = $derived(field.state.meta.errors);
 	let showErrors = $derived(field.state.meta.isTouched && errors.length > 0);
@@ -36,7 +43,8 @@
 			>
 				{@render children()}
 				<div>
-					{label}
+					<!-- eslint-disable-next-line svelte/no-at-html-tags -- label content is sanitized -->
+					{@html label}
 					{#if required}
 						<span class="text-danger">*</span>
 					{/if}

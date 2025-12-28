@@ -1596,7 +1596,7 @@
           "hosts"
         ],
         "summary": "Create a new host",
-        "description": "Creates a host with optional interfaces, ports, and services.\nThe `source` field is automatically set to `Manual`.\nIDs for the host and all children are generated server-side.",
+        "description": "Creates a host with optional interfaces, ports, and services.\nThe `source` field is automatically set to `Manual`.\nIDs for the host and all children are generated server-side.\n\n### Tag Validation\n\n- Tags must exist and belong to your organization\n- Duplicate tag UUIDs are automatically deduplicated\n- Invalid or cross-organization tag UUIDs return a 400 error",
         "operationId": "create_host",
         "requestBody": {
           "content": {
@@ -1620,7 +1620,17 @@
             }
           },
           "400": {
-            "description": "Invalid request - network not found or subnet mismatch",
+            "description": "Validation error: network not found, subnet mismatch, or invalid tags",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No access to the specified network",
             "content": {
               "application/json": {
                 "schema": {
@@ -1811,7 +1821,7 @@
           "hosts"
         ],
         "summary": "Update a host",
-        "description": "Updates host properties. Children (interfaces, ports, services)\nare managed via their own endpoints.",
+        "description": "Updates host properties. Children (interfaces, ports, services)\nare managed via their own endpoints.\n\n### Tag Validation\n\n- Tags must exist and belong to your organization\n- Duplicate tag UUIDs are automatically deduplicated\n- Invalid or cross-organization tag UUIDs return a 400 error",
         "operationId": "update_host",
         "parameters": [
           {
@@ -1842,6 +1852,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ApiResponse_HostResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error: invalid tags",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
                 }
               }
             }
@@ -1991,7 +2011,7 @@
         "tags": [
           "interfaces"
         ],
-        "summary": "Create a new interface",
+        "summary": "Create a new interface\nPosition is automatically assigned to the end of the host's interface list.",
         "operationId": "create_interface",
         "requestBody": {
           "content": {
@@ -2037,10 +2057,9 @@
         "tags": [
           "interfaces"
         ],
-        "summary": "Bulk delete interfaces",
+        "summary": "Bulk delete interfaces\nRemaining interfaces for affected hosts are renumbered to maintain sequential positions.",
         "operationId": "bulk_delete_interfaces",
         "requestBody": {
-          "description": "Array of interfaces IDs to delete",
           "content": {
             "application/json": {
               "schema": {
@@ -2056,11 +2075,21 @@
         },
         "responses": {
           "200": {
-            "description": "Interfaces deleted",
+            "description": "Interfaces deleted successfully",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ApiResponse_BulkDeleteResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "No IDs provided",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
                 }
               }
             }
@@ -2124,7 +2153,7 @@
         "tags": [
           "interfaces"
         ],
-        "summary": "Update an interface",
+        "summary": "Update an interface\nPosition must be within valid range and not conflict with other interfaces.",
         "operationId": "update_interface",
         "parameters": [
           {
@@ -2190,7 +2219,7 @@
         "tags": [
           "interfaces"
         ],
-        "summary": "Delete interface",
+        "summary": "Delete an interface\nRemaining interfaces for the host are renumbered to maintain sequential positions.",
         "operationId": "delete_interface",
         "parameters": [
           {
@@ -2206,7 +2235,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Interface deleted",
+            "description": "Interface deleted successfully",
             "content": {
               "application/json": {
                 "schema": {
@@ -4046,6 +4075,7 @@
           "tags"
         ],
         "summary": "Create a new tag",
+        "description": "Creates a tag scoped to your organization. Tag names must be unique within the organization.\n\n### Validation\n\n- Name must be 1-100 characters (empty names are rejected)\n- Name must be unique within your organization",
         "operationId": "create_tag",
         "requestBody": {
           "content": {
@@ -4068,8 +4098,18 @@
               }
             }
           },
+          "400": {
+            "description": "Validation error: name empty or too long",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
           "409": {
-            "description": "Tag name already exists",
+            "description": "Tag name already exists in this organization",
             "content": {
               "application/json": {
                 "schema": {
@@ -4713,14 +4753,14 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2025-12-27T17:37:05.236351Z",
-              "id": "f4f06fdd-6d8d-46aa-afd6-19c90877bcfa",
+              "created_at": "2025-12-28T03:33:18.094138Z",
+              "id": "db85635e-9ee9-4eaa-a722-17d56c3f7ad3",
               "interface_id": "550e8400-e29b-41d4-a716-446655440005",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2025-12-27T17:37:05.236351Z"
+              "updated_at": "2025-12-28T03:33:18.094138Z"
             }
           },
           "error": {
@@ -5179,6 +5219,7 @@
                   "mac_address": "DE:AD:BE:EF:12:34",
                   "name": "eth0",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
+                  "position": 0,
                   "subnet_id": "550e8400-e29b-41d4-a716-446655440004",
                   "updated_at": "2026-01-15T10:30:00Z"
                 }
@@ -5262,6 +5303,7 @@
               "mac_address": "DE:AD:BE:EF:12:34",
               "name": "eth0",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
+              "position": 0,
               "subnet_id": "550e8400-e29b-41d4-a716-446655440004",
               "updated_at": "2026-01-15T10:30:00Z"
             }
@@ -5756,14 +5798,14 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2025-12-27T17:37:05.233638Z",
-                  "id": "3e0f0db1-43d7-42b7-8498-2305eedc7725",
+                  "created_at": "2025-12-28T03:33:18.089157Z",
+                  "id": "938fd97e-6620-4d39-b00f-df4f59e3f0a2",
                   "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2025-12-27T17:37:05.233638Z"
+                  "updated_at": "2025-12-28T03:33:18.089157Z"
                 }
               ],
               "created_at": "2026-01-15T10:30:00Z",
@@ -5771,7 +5813,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
-              "service_definition": "Ghost",
+              "service_definition": "Nagios",
               "source": {
                 "type": "Manual"
               },
@@ -6397,14 +6439,14 @@
               ],
               "description": "Association between a service and a port / interface that the service is listening on",
               "example": {
-                "created_at": "2025-12-27T17:37:05.236134Z",
-                "id": "3584b548-33bb-40d9-b40e-7953dddf5181",
+                "created_at": "2025-12-28T03:33:18.093726Z",
+                "id": "821a488f-7dac-4a62-bcdc-469ef9ee52d8",
                 "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "port_id": "550e8400-e29b-41d4-a716-446655440006",
                 "service_id": "550e8400-e29b-41d4-a716-446655440007",
                 "type": "Port",
-                "updated_at": "2025-12-27T17:37:05.236134Z"
+                "updated_at": "2025-12-28T03:33:18.093726Z"
               }
             }
           },
@@ -6781,6 +6823,7 @@
                     "mac_address": "DE:AD:BE:EF:12:34",
                     "name": "eth0",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
+                    "position": 0,
                     "subnet_id": "550e8400-e29b-41d4-a716-446655440004",
                     "updated_at": "2026-01-15T10:30:00Z"
                   }
@@ -6867,6 +6910,7 @@
                 "mac_address": "DE:AD:BE:EF:12:34",
                 "name": "eth0",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
+                "position": 0,
                 "subnet_id": "550e8400-e29b-41d4-a716-446655440004",
                 "updated_at": "2026-01-15T10:30:00Z"
               }
@@ -7100,14 +7144,14 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2025-12-27T17:37:05.232859Z",
-                    "id": "2d48df72-6617-4bb6-bad4-4f1bac230469",
+                    "created_at": "2025-12-28T03:33:18.087532Z",
+                    "id": "f967377c-ce6e-461d-8762-ffa4c99b2341",
                     "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2025-12-27T17:37:05.232859Z"
+                    "updated_at": "2025-12-28T03:33:18.087532Z"
                   }
                 ],
                 "created_at": "2026-01-15T10:30:00Z",
@@ -7115,7 +7159,7 @@
                 "id": "550e8400-e29b-41d4-a716-446655440007",
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
-                "service_definition": "Ghost",
+                "service_definition": "Nagios",
                 "source": {
                   "type": "Manual"
                 },
@@ -7673,14 +7717,14 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2025-12-27T17:37:05.227278Z",
-          "id": "89dede42-663e-4e0f-9f2c-a198e43c5224",
+          "created_at": "2025-12-28T03:33:18.077803Z",
+          "id": "9db972cd-cf94-49fa-81c5-6915e352b117",
           "interface_id": "550e8400-e29b-41d4-a716-446655440005",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2025-12-27T17:37:05.227278Z"
+          "updated_at": "2025-12-28T03:33:18.077803Z"
         }
       },
       "BindingBase": {
@@ -7938,6 +7982,7 @@
               "ip_address": "192.168.1.100",
               "mac_address": "DE:AD:BE:EF:12:34",
               "name": "eth0",
+              "position": 0,
               "subnet_id": "550e8400-e29b-41d4-a716-446655440004"
             }
           ],
@@ -7975,6 +8020,11 @@
               "string",
               "null"
             ]
+          },
+          "position": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Position of this interface in the host's interface list (for ordering)"
           },
           "subnet_id": {
             "type": "string",
@@ -9271,6 +9321,7 @@
               "mac_address": "DE:AD:BE:EF:12:34",
               "name": "eth0",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
+              "position": 0,
               "subnet_id": "550e8400-e29b-41d4-a716-446655440004",
               "updated_at": "2026-01-15T10:30:00Z"
             }
@@ -9361,6 +9412,7 @@
           "mac_address": "DE:AD:BE:EF:12:34",
           "name": "eth0",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
+          "position": 0,
           "subnet_id": "550e8400-e29b-41d4-a716-446655440004",
           "updated_at": "2026-01-15T10:30:00Z"
         }
@@ -9398,6 +9450,11 @@
           "network_id": {
             "type": "string",
             "format": "uuid"
+          },
+          "position": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Position of this interface in the host's interface list (for ordering)"
           },
           "subnet_id": {
             "type": "string",
@@ -10329,14 +10386,14 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2025-12-27T17:37:05.227227Z",
-              "id": "f4a7911e-5387-4657-9086-6a5f0c45ad67",
+              "created_at": "2025-12-28T03:33:18.077683Z",
+              "id": "85c6e2fc-ab30-401b-9dbb-7c32efc67c40",
               "interface_id": "550e8400-e29b-41d4-a716-446655440005",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2025-12-27T17:37:05.227227Z"
+              "updated_at": "2025-12-28T03:33:18.077683Z"
             }
           ],
           "created_at": "2026-01-15T10:30:00Z",
@@ -10344,7 +10401,7 @@
           "id": "550e8400-e29b-41d4-a716-446655440007",
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
-          "service_definition": "Ghost",
+          "service_definition": "Nagios",
           "source": {
             "type": "Manual"
           },
@@ -11266,6 +11323,11 @@
               "string",
               "null"
             ]
+          },
+          "position": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Position of this interface in the host's interface list (for ordering)"
           },
           "subnet_id": {
             "type": "string",

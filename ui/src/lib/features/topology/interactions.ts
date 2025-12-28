@@ -1,11 +1,15 @@
 import { writable, get } from 'svelte/store';
 import type { Edge } from '@xyflow/svelte';
 import type { Node } from '@xyflow/svelte';
+import type { QueryClient } from '@tanstack/svelte-query';
 import { edgeTypes, subnetTypes } from '$lib/shared/stores/metadata';
-import type { TopologyEdge, TopologyNode } from './types/base';
-import { getInterfacesOnSubnet, getSubnetFromId } from '../subnets/store';
-import { getHostFromInterfaceId } from '../hosts/store';
-import { getInterfacesForHost } from '../interfaces/store';
+import type { TopologyEdge, TopologyNode, Topology } from './types/base';
+import { getHostFromInterfaceIdFromCache } from '../hosts/queries';
+import {
+	getInterfacesForHostFromCache,
+	getInterfacesForSubnetFromCache
+} from '../interfaces/queries';
+import { getSubnetByIdFromCache } from '../subnets/queries';
 
 // Shared stores for hover state across all component instances
 export const groupHoverState = writable<Map<string, boolean>>(new Map());
@@ -15,23 +19,59 @@ export const connectedNodeIds = writable<Set<string>>(new Set());
 /**
  * Helper function to get all virtualized container interface IDs for a ServiceVirtualization edge
  * Returns the set of interface IDs for all containers on Docker bridge subnets
+ * Uses topology data directly if provided, otherwise falls back to query cache
  */
-function getVirtualizedContainerNodes(dockerHostInterfaceId: string): Set<string> {
+function getVirtualizedContainerNodes(
+	dockerHostInterfaceId: string,
+	queryClient: QueryClient,
+	topology?: Topology
+): Set<string> {
 	const connected = new Set<string>();
 
-	const dockerHost = get(getHostFromInterfaceId(dockerHostInterfaceId));
+	// Try to use topology data directly (for share views where cache is empty)
+	if (topology) {
+		const iface = topology.interfaces.find((i) => i.id === dockerHostInterfaceId);
+		if (!iface) return connected;
+
+		const dockerHost = topology.hosts.find((h) => h.id === iface.host_id);
+		if (!dockerHost) return connected;
+
+		// Get all interfaces for this host
+		const hostInterfaces = topology.interfaces.filter((i) => i.host_id === dockerHost.id);
+		const hostInterfaceSubnetIds = hostInterfaces.map((i) => i.subnet_id);
+
+		// Find container subnets
+		const dockerBridgeSubnets = hostInterfaceSubnetIds
+			.map((subnetId) => topology.subnets.find((s) => s.id === subnetId))
+			.filter((s) => s !== undefined)
+			.filter((s) => subnetTypes.getMetadata(s.subnet_type).is_for_containers);
+
+		// Get all interfaces on those container subnets
+		const interfacesOnDockerSubnets = dockerBridgeSubnets.flatMap((s) =>
+			topology.interfaces.filter((i) => i.subnet_id === s.id)
+		);
+
+		for (const iface of interfacesOnDockerSubnets) {
+			connected.add(iface.id);
+		}
+
+		return connected;
+	}
+
+	// Fall back to query cache
+	const dockerHost = getHostFromInterfaceIdFromCache(queryClient, dockerHostInterfaceId);
 	if (dockerHost) {
-		// Get all interfaces for this host from the interfaces store
-		const hostInterfaces = get(getInterfacesForHost(dockerHost.id));
+		// Get all interfaces for this host from the cache
+		const hostInterfaces = getInterfacesForHostFromCache(queryClient, dockerHost.id);
 		const hostInterfaceSubnetIds = hostInterfaces.map((i) => i.subnet_id);
 
 		const dockerBridgeSubnets = hostInterfaceSubnetIds
-			.map((s) => get(getSubnetFromId(s)))
+			.map((s) => getSubnetByIdFromCache(queryClient, s))
 			.filter((s) => s !== null)
 			.filter((s) => subnetTypes.getMetadata(s.subnet_type).is_for_containers);
 
 		const interfacesOnDockerSubnets = dockerBridgeSubnets.flatMap((s) =>
-			get(getInterfacesOnSubnet(s.id))
+			getInterfacesForSubnetFromCache(queryClient, s.id)
 		);
 
 		for (const iface of interfacesOnDockerSubnets) {
@@ -44,12 +84,15 @@ function getVirtualizedContainerNodes(dockerHostInterfaceId: string): Set<string
 
 /**
  * Update connected nodes when a node or edge is selected
+ * @param topology - Optional topology data for direct lookups (used in share views where cache is empty)
  */
 export function updateConnectedNodes(
 	selectedNode: Node | null,
 	selectedEdge: Edge | null,
 	allEdges: Edge[],
-	allNodes: Node[]
+	allNodes: Node[],
+	queryClient: QueryClient,
+	topology?: Topology
 ) {
 	const connected = new Set<string>();
 
@@ -84,7 +127,11 @@ export function updateConnectedNodes(
 					connected.add(edgeData.source as string);
 
 					// Add all virtualized container nodes
-					const virtualizedNodes = getVirtualizedContainerNodes(edgeData.source as string);
+					const virtualizedNodes = getVirtualizedContainerNodes(
+						edgeData.source as string,
+						queryClient,
+						topology
+					);
 					virtualizedNodes.forEach((nodeId) => connected.add(nodeId));
 				}
 			} else if (edgeData.edge_type === 'HostVirtualization') {
@@ -124,7 +171,11 @@ export function updateConnectedNodes(
 			connected.add(edgeData.target as string);
 
 			// Add all virtualized container nodes
-			const virtualizedNodes = getVirtualizedContainerNodes(edgeData.source as string);
+			const virtualizedNodes = getVirtualizedContainerNodes(
+				edgeData.source as string,
+				queryClient,
+				topology
+			);
 			virtualizedNodes.forEach((nodeId) => connected.add(nodeId));
 		} else if (edgeData.edge_type === 'HostVirtualization') {
 			// For HostVirtualization edges, add source and target

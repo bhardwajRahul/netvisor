@@ -6,7 +6,7 @@
 		verifySharePassword,
 		getStoredSharePassword,
 		storeSharePassword
-	} from '../store';
+	} from '../queries';
 	import type { PublicShareMetadata, ShareWithTopology } from '../types/base';
 	import Loading from '$lib/shared/components/feedback/Loading.svelte';
 	import PasswordGate from './PasswordGate.svelte';

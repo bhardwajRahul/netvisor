@@ -29,16 +29,16 @@
 		host?: HostFormData;
 	}
 
-	let {
-		binding,
-		onUpdate = () => {},
-		service = undefined,
-		host = undefined
-	}: Props = $props();
+	let { binding, onUpdate = () => {}, service = undefined, host = undefined }: Props = $props();
 
 	// Interface binding must have an interface_id - look up from query data
 	let iface = $derived(
 		binding.interface_id ? interfacesData.find((i) => i.id === binding.interface_id) : null
+	);
+
+	// Check if this service has a Port binding on "All Interfaces" (interface_id === null)
+	let hasPortBindingOnAllInterfaces = $derived(
+		service?.bindings.some((b) => b.type === 'Port' && b.interface_id === null) ?? false
 	);
 
 	// Create interface options with disabled state
@@ -53,7 +53,16 @@
 				};
 			}
 
-			// Can't select if THIS service has Port bindings on this interface
+			// Can't add Interface binding if service has Port binding on "All Interfaces"
+			if (hasPortBindingOnAllInterfaces && iface.id !== binding.interface_id) {
+				return {
+					iface,
+					disabled: true,
+					reason: 'Service has Port binding on all interfaces'
+				};
+			}
+
+			// Can't select if THIS service has Port bindings on this specific interface
 			const thisServiceHasPortBindings = service?.bindings.some(
 				(b) => b.type === 'Port' && b.interface_id === iface.id
 			);
@@ -74,12 +83,7 @@
 	);
 
 	// Local state for the select value
-	let selectedValue = $state(binding.interface_id ?? '');
-
-	// Sync local state when binding changes externally
-	$effect(() => {
-		selectedValue = binding.interface_id ?? '';
-	});
+	let selectedValue = $derived(binding.interface_id ?? '');
 
 	// Handle selection change
 	function handleChange(event: Event) {
@@ -93,7 +97,8 @@
 	}
 </script>
 
-<div class="flex-1">
+<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+<div class="flex-1" onclick={(e) => e.stopPropagation()}>
 	<div class="text-secondary mb-1 block text-xs font-medium">Interface Binding</div>
 
 	{#if !service}
@@ -120,12 +125,8 @@
 					</div>
 				{:else if host.interfaces.length > 0}
 					<!-- Multiple interfaces - show as dropdown -->
-					<select
-						class="input-field w-full"
-						value={selectedValue}
-						onchange={handleChange}
-					>
-						{#each interfaceOptions as { iface, disabled, reason }}
+					<select class="input-field w-full" value={selectedValue} onchange={handleChange}>
+						{#each interfaceOptions as { iface, disabled, reason } (iface.id)}
 							<option value={iface.id} {disabled}>
 								{formatInterface(iface, isContainerSubnetFn)}{disabled && reason
 									? ` - ${reason}`

@@ -124,3 +124,23 @@ export function useBulkDeleteNetworksMutation() {
 		}
 	}));
 }
+
+import { utcTimeZoneSentinel, uuidv4Sentinel } from '$lib/shared/utils/formatting';
+
+// ============================================================================
+// Utility Functions
+// ============================================================================
+
+/**
+ * Create empty form data for creating a new network
+ */
+export function createEmptyNetworkFormData(): Network {
+	return {
+		id: uuidv4Sentinel,
+		name: '',
+		created_at: utcTimeZoneSentinel,
+		updated_at: utcTimeZoneSentinel,
+		organization_id: uuidv4Sentinel,
+		tags: []
+	};
+}

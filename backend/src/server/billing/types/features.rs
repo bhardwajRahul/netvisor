@@ -17,6 +17,7 @@ pub enum Feature {
     AuditLogs,
     Webhooks,
     RemoveCreatedWith,
+    ApiAccess,
     CustomSso,
     ManagedDeployment,
     Whitelabeling,
@@ -44,13 +45,17 @@ impl HasId for Feature {
             Feature::EmailSupport => "email_support",
             Feature::CommunitySupport => "community_support",
             Feature::PrioritySupport => "priority_support",
+            Feature::ApiAccess => "api_access",
         }
     }
 }
 
 impl Feature {
     pub fn is_coming_soon(&self) -> bool {
-        matches!(self, Feature::Webhooks | Feature::AuditLogs)
+        matches!(
+            self,
+            Feature::Webhooks | Feature::AuditLogs | Feature::ApiAccess
+        )
     }
 }
 
@@ -80,7 +85,7 @@ impl TypeMetadataProvider for Feature {
             | Feature::Whitelabeling
             | Feature::AuditLogs => "Enterprise",
 
-            Feature::Webhooks => "Integrations",
+            Feature::Webhooks | Feature::ApiAccess => "Integrations",
 
             Feature::Embeds | Feature::ShareViews | Feature::RemoveCreatedWith => "Sharing",
         }
@@ -99,6 +104,7 @@ impl TypeMetadataProvider for Feature {
             Feature::Whitelabeling => "Whitelabeling",
             Feature::LiveChatSupport => "Live Chat Support",
             Feature::Embeds => "Embeds",
+            Feature::ApiAccess => "Api Access",
             Feature::EmailSupport => "Email Support",
             Feature::CommunitySupport => "Community Support",
             Feature::PrioritySupport => "Priority Support",
@@ -121,6 +127,7 @@ impl TypeMetadataProvider for Feature {
             Feature::RemoveCreatedWith => {
                 "Remove 'Created using scanopy.net' in bottom right corner of exported images"
             }
+            Feature::ApiAccess => "Programmatic access to your data in Scanopy via API",
             Feature::PrioritySupport => "Prioritized email support with faster response times",
             Feature::Embeds => "Embed live network diagrams in wikis, dashboards, or documentation",
             Feature::CustomSso => "Configure your own OIDC identity provider for single sign-on",

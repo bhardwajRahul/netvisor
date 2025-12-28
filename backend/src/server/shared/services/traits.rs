@@ -289,7 +289,12 @@ where
     /// new UUIDs for children with nil IDs.
     ///
     /// Returns the saved entities with their actual IDs (including generated ones).
-    async fn save_for_parent(&self, parent_id: &Uuid, children: &[T], authentication: AuthenticatedEntity) -> Result<Vec<T>, Error> {
+    async fn save_for_parent(
+        &self,
+        parent_id: &Uuid,
+        children: &[T],
+        authentication: AuthenticatedEntity,
+    ) -> Result<Vec<T>, Error> {
         // Fetch full existing children to get their created_at timestamps
         let existing_children = self.get_for_parent(parent_id).await?;
         let existing_by_id: std::collections::HashMap<Uuid, T> =
@@ -308,7 +313,8 @@ where
         let ids_to_delete: Vec<Uuid> = current_ids.difference(&new_ids).cloned().collect();
 
         if !ids_to_delete.is_empty() {
-            self.delete_many(&ids_to_delete, authentication.clone()).await?;
+            self.delete_many(&ids_to_delete, authentication.clone())
+                .await?;
         }
 
         // Upsert children (insert or update), collecting the saved entities
@@ -323,7 +329,8 @@ where
             } else if let Some(existing) = existing_by_id.get(&child.id()) {
                 // Existing child - preserve created_at from database
                 child_clone.set_created_at(existing.created_at());
-                self.update(&mut child_clone, authentication.clone()).await?
+                self.update(&mut child_clone, authentication.clone())
+                    .await?
             } else {
                 // New child with explicit ID
                 self.create(child_clone, authentication.clone()).await?
@@ -335,7 +342,11 @@ where
     }
 
     /// Delete all entities for a parent
-    async fn delete_for_parent(&self, parent_id: &Uuid, authentication: AuthenticatedEntity) -> Result<usize, anyhow::Error> {
+    async fn delete_for_parent(
+        &self,
+        parent_id: &Uuid,
+        authentication: AuthenticatedEntity,
+    ) -> Result<usize, anyhow::Error> {
         let filter = EntityFilter::unfiltered().uuid_column(T::parent_column(), parent_id);
 
         let entities = self.storage().get_all(filter.clone()).await?;

@@ -262,7 +262,7 @@
 									size={4}
 									onchange={(e) => handleMultiSelectChange(def, e)}
 								>
-									{#each def.getOptions?.() ?? [] as option}
+									{#each def.getOptions?.() ?? [] as option (option.value)}
 										<option
 											value={option.value}
 											selected={(values[def.id] as string[])?.includes(option.value)}

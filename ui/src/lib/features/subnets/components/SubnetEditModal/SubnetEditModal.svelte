@@ -2,7 +2,7 @@
 	import { createForm } from '@tanstack/svelte-form';
 	import { submitForm } from '$lib/shared/components/forms/form-context';
 	import { required, max, cidrNotation } from '$lib/shared/components/forms/validators';
-	import { createEmptySubnetFormData, isContainerSubnet } from '../../store';
+	import { createEmptySubnetFormData, isContainerSubnet } from '../../queries';
 	import GenericModal from '$lib/shared/components/layout/GenericModal.svelte';
 	import { entities, subnetTypes } from '$lib/shared/stores/metadata';
 	import ModalHeaderIcon from '$lib/shared/components/layout/ModalHeaderIcon.svelte';
@@ -13,7 +13,6 @@
 	import TextInput from '$lib/shared/components/forms/input/TextInput.svelte';
 	import TextArea from '$lib/shared/components/forms/input/TextArea.svelte';
 	import SelectInput from '$lib/shared/components/forms/input/SelectInput.svelte';
-	import { get } from 'svelte/store';
 	import { useNetworksQuery } from '$lib/features/networks/queries';
 
 	// TanStack Query hooks
@@ -82,7 +81,7 @@
 
 	// CIDR disabled state - use a function to avoid reactive dependency on form.state
 	function getIsCidrDisabled(): boolean {
-		return !!get(isContainerSubnet(form.state.values.id)) || isEditing;
+		return isContainerSubnet(form.state.values) || isEditing;
 	}
 
 	async function handleSubmit() {
@@ -111,7 +110,7 @@
 	);
 </script>
 
-<GenericModal {isOpen} {title} size="xl" onClose={onClose} onOpen={handleOpen} showCloseButton={true}>
+<GenericModal {isOpen} {title} size="xl" {onClose} onOpen={handleOpen} showCloseButton={true}>
 	<svelte:fragment slot="header-icon">
 		<ModalHeaderIcon Icon={entities.getIconComponent('Subnet')} color={colorHelper.color} />
 	</svelte:fragment>
@@ -122,7 +121,7 @@
 			e.stopPropagation();
 			handleSubmit();
 		}}
-		class="flex h-full flex-col"
+		class="flex min-h-0 flex-1 flex-col"
 	>
 		<div class="flex-1 overflow-auto p-6">
 			<div class="space-y-8">

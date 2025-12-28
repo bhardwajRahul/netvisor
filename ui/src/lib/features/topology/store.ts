@@ -2,7 +2,6 @@ import { get, writable } from 'svelte/store';
 import { apiClient, type ApiResponse } from '$lib/api/client';
 import { type Edge, type Node } from '@xyflow/svelte';
 import { type Topology, type TopologyOptions } from './types/base';
-import { networks } from '../networks/store';
 import deepmerge from 'deepmerge';
 import { browser } from '$app/environment';
 import { utcTimeZoneSentinel, uuidv4Sentinel } from '$lib/shared/utils/formatting';
@@ -42,13 +41,15 @@ const defaultOptions: TopologyOptions = {
 };
 
 export function hasConflicts(topology: Topology): boolean {
-	return topology.removed_hosts.length > 0 ||
+	return (
+		topology.removed_hosts.length > 0 ||
 		topology.removed_services.length > 0 ||
 		topology.removed_subnets.length > 0 ||
 		topology.removed_bindings.length > 0 ||
 		topology.removed_ports.length > 0 ||
 		topology.removed_interfaces.length > 0 ||
-		topology.removed_groups.length > 0;
+		topology.removed_groups.length > 0
+	);
 }
 
 export const topologyOptions = writable<TopologyOptions>(loadOptionsFromStorage());
@@ -337,7 +338,7 @@ export function createEmptyTopologyFormData(defaultNetworkId?: string): Topology
 		created_at: utcTimeZoneSentinel,
 		updated_at: utcTimeZoneSentinel,
 		name: '',
-		network_id: defaultNetworkId ?? get(networks)[0]?.id ?? '',
+		network_id: defaultNetworkId ?? '',
 		edges: [],
 		nodes: [],
 		options: structuredClone(defaultOptions),

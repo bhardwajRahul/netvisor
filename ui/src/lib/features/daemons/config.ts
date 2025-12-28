@@ -1,4 +1,12 @@
-import { portRangeValidation, required, max, ipAddressFormat, min, url } from '$lib/shared/components/forms/validators';
+import {
+	portRangeValidation,
+	required,
+	max,
+	ipAddressFormat,
+	min,
+	url,
+	type Validator
+} from '$lib/shared/components/forms/validators';
 
 interface FieldDef {
 	id: string;
@@ -12,7 +20,7 @@ interface FieldDef {
 	placeholder?: string | number;
 	options?: { label: string; value: string }[];
 	disabled?: (isNew: boolean) => boolean;
-	validators?: ((value: any) => string | undefined)[];
+	validators?: Validator[];
 	required?: boolean;
 }
 

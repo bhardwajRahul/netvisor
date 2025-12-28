@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Copy, Edit, ExternalLink, Trash2, Check, Link } from 'lucide-svelte';
 	import type { Share } from '../types/base';
-	import { generateShareUrl } from '../store';
+	import { generateShareUrl } from '../queries';
 	import GenericCard from '$lib/shared/components/data/GenericCard.svelte';
 	import { useTopologiesQuery } from '$lib/features/topology/queries';
 	import { useNetworksQuery } from '$lib/features/networks/queries';

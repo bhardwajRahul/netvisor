@@ -2,7 +2,7 @@
  * TanStack Form utilities for Svelte
  */
 import { createFormCreator, createFormCreatorContexts } from '@tanstack/svelte-form';
-import type { FormApi } from '@tanstack/form-core';
+import type { AnyFormApi } from '@tanstack/form-core';
 import { pushError } from '$lib/shared/stores/feedback';
 
 // Create context accessors for child components
@@ -24,14 +24,13 @@ export const { createAppForm } = createFormCreator({
  * if (isValid) { nextStep(); }
  * ```
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function validateForm(form: FormApi<any, any, any, any, any, any, any, any, any, any, any, any>): Promise<boolean> {
+export async function validateForm(form: AnyFormApi): Promise<boolean> {
 	// Validate all fields first
 	await form.validateAllFields('submit');
 
 	// Check for validation errors
 	const errorFields = Object.entries(form.state.fieldMeta)
-		.filter(([_, meta]) => meta?.errors && meta.errors.length > 0)
+		.filter(([, meta]) => meta?.errors && meta.errors.length > 0)
 		.map(([name]) => name);
 
 	if (errorFields.length > 0) {
@@ -52,8 +51,7 @@ export async function validateForm(form: FormApi<any, any, any, any, any, any, a
  * <form onsubmit={(e) => { e.preventDefault(); e.stopPropagation(); submitForm(form); }}>
  * ```
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function submitForm(form: FormApi<any, any, any, any, any, any, any, any, any, any, any, any>): Promise<void> {
+export async function submitForm(form: AnyFormApi): Promise<void> {
 	const isValid = await validateForm(form);
 	if (!isValid) {
 		return;

@@ -10,7 +10,7 @@
 	import { resolve } from '$app/paths';
 	import { resetTopologyOptions } from '$lib/features/topology/store';
 	import { pushError, pushSuccess } from '$lib/shared/stores/feedback';
-	import { config } from '$lib/shared/stores/config';
+	import { useConfigQuery } from '$lib/shared/stores/config-query';
 	import { isBillingPlanActive } from '$lib/features/organizations/types';
 	import { getRoute } from '$lib/shared/utils/navigation';
 	import posthog from 'posthog-js';
@@ -29,6 +29,10 @@
 	// TanStack Query for organization
 	const organizationQuery = useOrganizationQuery();
 	let organization = $derived(organizationQuery.data);
+
+	// TanStack Query for config
+	const configQuery = useConfigQuery();
+	let configData = $derived(configQuery.data);
 
 	// Track if we've done initial setup
 	let hasInitialized = $state(false);
@@ -49,9 +53,9 @@
 	let posthogInitialized = false;
 
 	$effect(() => {
-		if (!$config) return;
+		if (!configData) return;
 
-		const posthogKey = $config.posthog_key;
+		const posthogKey = configData.posthog_key;
 
 		if (browser && posthogKey && !posthogInitialized) {
 			posthog.init(posthogKey, {
@@ -186,6 +190,6 @@
 	{@render children()}
 {/if}
 
-{#if $config && $config.needs_cookie_consent}
+{#if configData && configData.needs_cookie_consent}
 	<CookieConsent />
 {/if}

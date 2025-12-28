@@ -2,9 +2,9 @@
 	import ListConfigEditor from '$lib/shared/components/forms/selection/ListConfigEditor.svelte';
 	import ListManager from '$lib/shared/components/forms/selection/ListManager.svelte';
 	import type { PortBinding, Service } from '$lib/features/services/types/base';
+	import { createDefaultService } from '$lib/features/services/queries';
 	import type { HostFormData } from '$lib/features/hosts/types/base';
 	import { serviceDefinitions } from '$lib/shared/stores/metadata';
-	import { createDefaultService } from '$lib/features/services/store';
 	import { ServiceDisplay } from '$lib/shared/components/forms/selection/display/ServiceDisplay.svelte';
 	import { ServiceTypeDisplay } from '$lib/shared/components/forms/selection/display/ServiceTypeDisplay.svelte';
 	import { pushError } from '$lib/shared/stores/feedback';

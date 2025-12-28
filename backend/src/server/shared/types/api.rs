@@ -1,4 +1,9 @@
-use axum::{Json, http::StatusCode, response::Response};
+use axum::{
+    Json,
+    extract::{FromRequest, Request, rejection::JsonRejection},
+    http::StatusCode,
+    response::Response,
+};
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::DeserializeOwned};
 use std::fmt;
 use utoipa::ToSchema;
@@ -180,6 +185,35 @@ impl From<serde_json::Error> for ApiError {
     fn from(err: serde_json::Error) -> Self {
         tracing::error!("JSON serialization error: {}", err);
         Self::bad_request("Invalid JSON data")
+    }
+}
+
+/// Custom JSON extractor that returns ApiError on rejection.
+/// This ensures deserialization errors are returned in our standard API format.
+pub struct ApiJson<T>(pub T);
+
+impl<S, T> FromRequest<S> for ApiJson<T>
+where
+    Json<T>: FromRequest<S, Rejection = JsonRejection>,
+    S: Send + Sync,
+{
+    type Rejection = ApiError;
+
+    async fn from_request(req: Request, state: &S) -> Result<Self, Self::Rejection> {
+        match Json::<T>::from_request(req, state).await {
+            Ok(Json(value)) => Ok(ApiJson(value)),
+            Err(rejection) => {
+                let message = rejection.body_text();
+                // Extract the useful part of the error message
+                let friendly_message = if message.contains("Failed to deserialize") {
+                    // Extract the actual error after the boilerplate
+                    message.split(": ").skip(1).collect::<Vec<_>>().join(": ")
+                } else {
+                    message
+                };
+                Err(ApiError::bad_request(&friendly_message))
+            }
+        }
     }
 }
 

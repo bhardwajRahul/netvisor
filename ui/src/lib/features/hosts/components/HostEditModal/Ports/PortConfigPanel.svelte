@@ -42,8 +42,10 @@
 		<form.Field
 			name={numberFieldName}
 			validators={{
-				onBlur: ({ value }: { value: number | string }) => required(String(value)) || portValidator(value),
-				onChange: ({ value }: { value: number | string }) => required(String(value)) || portValidator(value)
+				onBlur: ({ value }: { value: number | string }) =>
+					required(String(value)) || portValidator(value),
+				onChange: ({ value }: { value: number | string }) =>
+					required(String(value)) || portValidator(value)
 			}}
 			listeners={{
 				onChange: ({ value }: { value: number }) => handleNumberChange(value)

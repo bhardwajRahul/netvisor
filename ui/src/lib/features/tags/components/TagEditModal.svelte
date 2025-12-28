@@ -101,7 +101,7 @@
 	let colorHelper = $derived(createColorHelper(form.state.values.color));
 </script>
 
-<GenericModal {isOpen} {title} size="xl" onClose={onClose} onOpen={handleOpen} showCloseButton={true}>
+<GenericModal {isOpen} {title} size="xl" {onClose} onOpen={handleOpen} showCloseButton={true}>
 	<svelte:fragment slot="header-icon">
 		<ModalHeaderIcon Icon={TagIcon} color={colorHelper.color} />
 	</svelte:fragment>
@@ -112,7 +112,7 @@
 			e.stopPropagation();
 			handleSubmit();
 		}}
-		class="flex h-full flex-col"
+		class="flex min-h-0 flex-1 flex-col"
 	>
 		<div class="flex-1 overflow-auto p-6">
 			<div class="space-y-8">

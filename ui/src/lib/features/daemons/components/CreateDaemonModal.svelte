@@ -9,8 +9,11 @@
 	import type { Daemon } from '../types/base';
 	import SelectNetwork from '$lib/features/networks/components/SelectNetwork.svelte';
 	import { RotateCcwKey, SatelliteDish } from 'lucide-svelte';
-	import { createEmptyApiKeyFormData, createNewApiKey } from '$lib/features/api_keys/store';
-	import { config } from '$lib/shared/stores/config';
+	import {
+		createEmptyApiKeyFormData,
+		useCreateApiKeyMutation
+	} from '$lib/features/api_keys/queries';
+	import { useConfigQuery } from '$lib/shared/stores/config-query';
 	import InlineInfo from '$lib/shared/components/feedback/InlineInfo.svelte';
 	import CreateDaemonForm from './CreateDaemonForm.svelte';
 
@@ -37,7 +40,11 @@
 	}: Props = $props();
 
 	const networksQuery = useNetworksQuery();
+	const configQuery = useConfigQuery();
+	const createApiKeyMutation = useCreateApiKeyMutation();
+
 	let networksData = $derived(networksQuery.data ?? []);
+	let configData = $derived(configQuery.data);
 
 	let keyState = $state<string | null>(null);
 	// In onboarding mode, use the provisionalApiKey; otherwise use keyState
@@ -55,7 +62,7 @@
 		}
 	});
 
-	let serverUrl = $config.public_url;
+	let serverUrl = $derived(configData?.public_url ?? '');
 
 	// Reference to CreateDaemonForm for getting daemon name
 	let daemonFormRef: CreateDaemonForm;
@@ -76,10 +83,10 @@
 		let newApiKey = createEmptyApiKeyFormData(selectedNetworkId);
 		newApiKey.name = `${daemonName} Api Key`;
 
-		const generatedKey = await createNewApiKey(newApiKey);
-		if (generatedKey) {
-			keyState = generatedKey;
-		} else {
+		try {
+			const result = await createApiKeyMutation.mutateAsync(newApiKey);
+			keyState = result.keyString;
+		} catch {
 			pushError('Failed to generate API key');
 		}
 	}
@@ -109,7 +116,7 @@
 		{/if}
 	</svelte:fragment>
 
-	<div class="flex h-full flex-col">
+	<div class="flex min-h-0 flex-1 flex-col">
 		<div class="flex-1 overflow-auto p-6">
 			<div class="space-y-4">
 				{#if onboardingMode}
@@ -188,7 +195,9 @@
 			{#if onboardingMode}
 				<div class="flex w-full items-center justify-between gap-4">
 					{#if onSkip}
-						<button type="button" class="btn-secondary" onclick={onSkip}> I'll do this later </button>
+						<button type="button" class="btn-secondary" onclick={onSkip}>
+							I'll do this later
+						</button>
 					{/if}
 					<button type="button" class="btn-primary ml-auto" onclick={onContinue ?? handleOnClose}>
 						Continue

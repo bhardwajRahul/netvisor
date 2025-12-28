@@ -59,7 +59,7 @@
 		/>
 	</svelte:fragment>
 
-	<div class="space-y-1">
+	<div class="space-y-1 p-6">
 		<p class="text-secondary mb-3 text-center text-sm">Let us help you get started</p>
 
 		{#each blockerOptions as blockerId (blockerId)}

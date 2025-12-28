@@ -4,7 +4,7 @@
 	import Toast from '$lib/shared/components/feedback/Toast.svelte';
 	import BillingPlanForm from '$lib/features/billing/BillingPlanForm.svelte';
 	import type { BillingPlan } from '$lib/features/billing/types';
-	import { config } from '$lib/shared/stores/config';
+	import { useConfigQuery } from '$lib/shared/stores/config-query';
 	import { getMetadata, billingPlans, features } from '$lib/shared/stores/metadata';
 	import Loading from '$lib/shared/components/feedback/Loading.svelte';
 	import { useBillingPlansQuery, useCheckoutMutation } from '$lib/features/billing/queries';
@@ -16,6 +16,10 @@
 	// TanStack Query for current user
 	const currentUserQuery = useCurrentUserQuery();
 	let currentUser = $derived(currentUserQuery.data);
+
+	// TanStack Query for config
+	const configQuery = useConfigQuery();
+	let configData = $derived(configQuery.data);
 
 	// TanStack Query for billing plans
 	const billingPlansQuery = useBillingPlansQuery();
@@ -69,7 +73,7 @@
 	}
 
 	async function handleInquirySubmit(email: string, message: string) {
-		const plunkKey = $config?.plunk_key;
+		const plunkKey = configData?.plunk_key;
 		if (!plunkKey) {
 			pushError('Unable to send inquiry. Please contact sales@scanopy.net directly.');
 			return;

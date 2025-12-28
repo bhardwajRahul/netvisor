@@ -149,6 +149,7 @@ pub struct BillingPlanFeatures {
     pub remove_created_with: bool,
     pub audit_logs: bool,
     pub webhooks: bool,
+    pub api_access: bool,
     pub onboarding_call: bool,
     pub commercial_license: bool,
     pub custom_sso: bool,
@@ -269,6 +270,7 @@ impl BillingPlan {
                 audit_logs: false,
                 commercial_license: false,
                 remove_created_with: false,
+                api_access: true,
                 custom_sso: false,
                 managed_deployment: false,
                 whitelabeling: false,
@@ -286,6 +288,7 @@ impl BillingPlan {
                 audit_logs: false,
                 remove_created_with: true,
                 custom_sso: false,
+                api_access: false,
                 managed_deployment: false,
                 whitelabeling: false,
                 live_chat_support: false,
@@ -301,6 +304,7 @@ impl BillingPlan {
                 webhooks: false,
                 audit_logs: false,
                 remove_created_with: true,
+                api_access: true,
                 custom_sso: false,
                 managed_deployment: false,
                 whitelabeling: false,
@@ -318,6 +322,7 @@ impl BillingPlan {
                 audit_logs: false,
                 remove_created_with: true,
                 custom_sso: false,
+                api_access: true,
                 managed_deployment: false,
                 whitelabeling: false,
                 live_chat_support: false,
@@ -334,6 +339,7 @@ impl BillingPlan {
                 audit_logs: true,
                 remove_created_with: true,
                 custom_sso: false,
+                api_access: true,
                 managed_deployment: false,
                 whitelabeling: false,
                 live_chat_support: false,
@@ -350,6 +356,7 @@ impl BillingPlan {
                 audit_logs: true,
                 remove_created_with: true,
                 custom_sso: true,
+                api_access: true,
                 managed_deployment: true,
                 whitelabeling: true,
                 live_chat_support: true,
@@ -366,6 +373,7 @@ impl BillingPlan {
                 audit_logs: true,
                 remove_created_with: true,
                 custom_sso: true,
+                api_access: true,
                 managed_deployment: true,
                 whitelabeling: true,
                 live_chat_support: true,
@@ -381,6 +389,7 @@ impl BillingPlan {
                 webhooks: true,
                 audit_logs: true,
                 remove_created_with: true,
+                api_access: true,
                 custom_sso: true,
                 managed_deployment: false,
                 whitelabeling: false,
@@ -409,6 +418,7 @@ impl Into<Vec<Feature>> for BillingPlanFeatures {
             custom_sso,
             managed_deployment,
             whitelabeling,
+            api_access,
             live_chat_support,
             embeds,
             email_support,
@@ -421,6 +431,10 @@ impl Into<Vec<Feature>> for BillingPlanFeatures {
         }
 
         if custom_sso {
+            features.push(Feature::CustomSso)
+        }
+
+        if api_access {
             features.push(Feature::CustomSso)
         }
 

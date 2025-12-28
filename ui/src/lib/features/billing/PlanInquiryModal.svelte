@@ -50,7 +50,7 @@
 <GenericModal
 	title="Request Information - {planName}"
 	{isOpen}
-	onClose={onClose}
+	{onClose}
 	onOpen={handleOpen}
 	size="md"
 	showCloseButton={true}
@@ -61,7 +61,7 @@
 			e.stopPropagation();
 			handleSubmit();
 		}}
-		class="flex h-full flex-col"
+		class="flex min-h-0 flex-1 flex-col"
 	>
 		<div class="flex-1 overflow-auto p-6">
 			<div class="space-y-4">

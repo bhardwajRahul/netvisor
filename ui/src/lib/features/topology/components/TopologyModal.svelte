@@ -96,14 +96,7 @@
 	let Icon = entities.getIconComponent('Topology');
 </script>
 
-<GenericModal
-	{isOpen}
-	{title}
-	size="md"
-	onClose={onClose}
-	onOpen={handleOpen}
-	showCloseButton={true}
->
+<GenericModal {isOpen} {title} size="md" {onClose} onOpen={handleOpen} showCloseButton={true}>
 	<svelte:fragment slot="header-icon">
 		<ModalHeaderIcon {Icon} color={colorHelper.color} />
 	</svelte:fragment>
@@ -114,7 +107,7 @@
 			e.stopPropagation();
 			handleSubmit();
 		}}
-		class="flex h-full flex-col"
+		class="flex min-h-0 flex-1 flex-col"
 	>
 		<div class="flex-1 overflow-auto p-6">
 			<div class="space-y-4">
@@ -151,13 +144,7 @@
 					}}
 				>
 					{#snippet children(field)}
-						<TextInput
-							label="Name"
-							id="name"
-							{field}
-							placeholder="Enter topology name"
-							required
-						/>
+						<TextInput label="Name" id="name" {field} placeholder="Enter topology name" required />
 					{/snippet}
 				</form.Field>
 			</div>

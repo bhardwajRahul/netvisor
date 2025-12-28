@@ -60,20 +60,17 @@
 				}}
 			>
 				{#snippet children(field: AnyFieldApi)}
-					<TextInput
-						label="Name"
-						id="interface_{iface.id}"
-						placeholder="en0"
-						{field}
-					/>
+					<TextInput label="Name" id="interface_{iface.id}" placeholder="en0" {field} />
 				{/snippet}
 			</form.Field>
 
 			<form.Field
 				name={ipFieldName}
 				validators={{
-					onBlur: ({ value }: { value: string }) => required(value) || ipAddressFormat(value) || ipAddressInCidrFormat(subnet.cidr)(value),
-					onChange: ({ value }: { value: string }) => required(value) || ipAddressFormat(value) || ipAddressInCidrFormat(subnet.cidr)(value)
+					onBlur: ({ value }: { value: string }) =>
+						required(value) || ipAddressFormat(value) || ipAddressInCidrFormat(subnet.cidr)(value),
+					onChange: ({ value }: { value: string }) =>
+						required(value) || ipAddressFormat(value) || ipAddressInCidrFormat(subnet.cidr)(value)
 				}}
 				listeners={{
 					onChange: ({ value }: { value: string }) => handleIpChange(value)

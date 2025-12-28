@@ -12,7 +12,7 @@
 	import { useSetupMutation, useRegisterMutation } from '$lib/features/auth/queries';
 	import { fetchOrganization } from '$lib/features/organizations/queries';
 	import { navigate } from '$lib/shared/utils/navigation';
-	import { config, isSelfHosted } from '$lib/shared/stores/config';
+	import { useConfigQuery, isSelfHosted } from '$lib/shared/stores/config-query';
 	import { resolve } from '$app/paths';
 	import { onboardingStore } from '$lib/features/auth/stores/onboarding';
 	import { setPreferredNetwork } from '$lib/features/topology/store';
@@ -21,6 +21,8 @@
 	// TanStack Query mutations
 	const setupMutation = useSetupMutation();
 	const registerMutation = useRegisterMutation();
+	const configQuery = useConfigQuery();
+	let configData = $derived(configQuery.data);
 
 	// URL params for invite flow
 	let orgName = $derived($page.url.searchParams.get('org_name'));
@@ -30,7 +32,7 @@
 	let isInviteFlow = $derived(!!invitedBy);
 
 	// Check if server has integrated daemon (skip daemon setup step)
-	let hasIntegratedDaemon = $derived($config?.has_integrated_daemon ?? false);
+	let hasIntegratedDaemon = $derived(configData?.has_integrated_daemon ?? false);
 
 	// Step tracking
 	type Step = 'use_case' | 'blocker' | 'setup' | 'daemon' | 'register';
@@ -50,7 +52,7 @@
 	// Invite: just register = 1 step
 	let totalSteps = $derived(() => {
 		if (isInviteFlow) return 1;
-		if ($config && isSelfHosted($config)) {
+		if (configData && isSelfHosted(configData)) {
 			return hasIntegratedDaemon ? 3 : 4;
 		}
 		// Cloud

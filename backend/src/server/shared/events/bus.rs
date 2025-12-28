@@ -215,7 +215,6 @@ impl SubscriberState {
         // | Errors correlate with orgs    | Tenant-specific edge cases          |
         //
         // If multiple signals fire, refactor batching to group by org_id upstream.
-        // See: https://github.com/<your-repo>/issues/XXX (or link to design doc)
         // =============================================================================
 
         tracing::debug!(

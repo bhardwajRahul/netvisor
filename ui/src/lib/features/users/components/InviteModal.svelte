@@ -25,7 +25,7 @@
 	import { useNetworksQuery } from '$lib/features/networks/queries';
 	import { NetworkDisplay } from '$lib/shared/components/forms/selection/display/NetworkDisplay.svelte';
 	import TextInput from '$lib/shared/components/forms/input/TextInput.svelte';
-	import { config } from '$lib/shared/stores/config';
+	import { useConfigQuery } from '$lib/shared/stores/config-query';
 	import type { Network } from '$lib/features/networks/types';
 
 	let { isOpen = $bindable(false), onClose }: { isOpen: boolean; onClose: () => void } = $props();
@@ -40,7 +40,10 @@
 	// Mutation for creating invite
 	const createInviteMutation = useCreateInviteMutation();
 
-	let enableEmail = $derived($config?.has_email_service ?? false);
+	const configQuery = useConfigQuery();
+	let configData = $derived(configQuery.data);
+
+	let enableEmail = $derived(configData?.has_email_service ?? false);
 
 	// Force Svelte to track reactivity
 	$effect(() => {
@@ -134,15 +137,19 @@
 
 	async function handleGenerateInvite() {
 		try {
+			// Read values directly from form state to ensure we get current values
+			const currentPermissions = form.state.values.permissions;
+			const currentEmail = form.state.values.email;
+
 			const result = await createInviteMutation.mutateAsync({
-				permissions: permissionsValue,
+				permissions: currentPermissions,
 				network_ids: selectedNetworks.map((n) => n.id),
-				email: emailValue
+				email: currentEmail
 			});
 			invite = result;
-			pushSuccess(`Invite ${usingEmail ? 'sent' : 'generated'} successfully`);
+			pushSuccess(`Invite ${currentEmail ? 'sent' : 'generated'} successfully`);
 		} catch (err) {
-			pushError(`Failed to ${usingEmail ? 'send' : 'generate'} invite: ${err}`);
+			pushError(`Failed to ${form.state.values.email ? 'send' : 'generate'} invite: ${err}`);
 		}
 	}
 
@@ -194,7 +201,7 @@
 		<ModalHeaderIcon Icon={UserPlus} color={entities.getColorHelper('User').color} />
 	</svelte:fragment>
 
-	<div class="flex h-full flex-col">
+	<div class="flex min-h-0 flex-1 flex-col">
 		<div class="flex-1 overflow-auto p-6">
 			<div class="space-y-6">
 				<p class="text-secondary text-sm">
@@ -284,7 +291,12 @@
 
 							<!-- Copy Button -->
 							{#if isSecureContext}
-								<button onclick={handleCopy} type="button" class="btn-primary w-full" disabled={copied}>
+								<button
+									onclick={handleCopy}
+									type="button"
+									class="btn-primary w-full"
+									disabled={copied}
+								>
 									{#if copied}
 										<Check class="mr-2 h-4 w-4" />
 										Copied!

@@ -1,6 +1,11 @@
 <script lang="ts">
 	import type { Interface } from '$lib/features/hosts/types/base';
-	import { ipAddressFormat, ipAddressInCidrFormat, max, required } from '$lib/shared/components/forms/validators';
+	import {
+		ipAddressFormat,
+		ipAddressInCidrFormat,
+		max,
+		required
+	} from '$lib/shared/components/forms/validators';
 	import ConfigHeader from '$lib/shared/components/forms/config/ConfigHeader.svelte';
 	import type { Subnet } from '$lib/features/subnets/types/base';
 

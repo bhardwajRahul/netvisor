@@ -33,6 +33,9 @@
 	/** Callback when modal opens (fires on transition from closed to open) */
 	export let onOpen: (() => void) | null = null;
 
+	/** Key that increments each time modal opens - use to force recreation of stateful content like forms */
+	export let instanceKey: number = 0;
+
 	// Track previous open state to detect open transition
 	let wasOpen = false;
 
@@ -51,6 +54,8 @@
 	// Also reset activeTab to first tab (or keep current if valid)
 	$: {
 		if (isOpen && !wasOpen) {
+			// Increment instanceKey to allow consumers to force recreation of stateful content
+			instanceKey++;
 			// Reset to first tab if current activeTab is not in tabs list
 			if (tabs.length > 0 && !tabs.some((t) => t.id === activeTab)) {
 				activeTab = tabs[0].id;
@@ -155,8 +160,8 @@
 								onclick={() => handleTabClick(tab.id)}
 								class="border-b-2 px-1 pb-3 text-sm font-medium transition-colors
 									{activeTab === tab.id
-									? 'border-blue-500 text-primary'
-									: 'border-transparent text-muted hover:text-secondary'}"
+									? 'text-primary border-blue-500'
+									: 'text-muted hover:text-secondary border-transparent'}"
 								aria-current={activeTab === tab.id ? 'page' : undefined}
 							>
 								<div class="flex items-center gap-2">
@@ -173,7 +178,7 @@
 
 			<!-- Content slot -->
 			<div class="modal-content">
-				<slot />
+				<slot {instanceKey} />
 			</div>
 
 			<!-- Footer slot -->

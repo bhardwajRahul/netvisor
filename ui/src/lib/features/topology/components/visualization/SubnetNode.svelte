@@ -11,16 +11,49 @@
 	import { createColorHelper, twColorToRgba } from '$lib/shared/utils/styling';
 	import { subnetTypes } from '$lib/shared/stores/metadata';
 	import { isContainerSubnet } from '$lib/features/subnets/queries';
-	import { topology as globalTopology, topologyOptions, updateTopology } from '../../store';
+	import {
+		topology as globalTopology,
+		topologyOptions,
+		updateTopology,
+		selectedNode as globalSelectedNode,
+		selectedEdge as globalSelectedEdge
+	} from '../../store';
 	import type { SubnetRenderData, Topology } from '../../types/base';
-	import { type Writable } from 'svelte/store';
+	import { type Writable, get } from 'svelte/store';
 	import { getContext } from 'svelte';
+	import { connectedNodeIds } from '../../interactions';
+	import type { Node, Edge } from '@xyflow/svelte';
+
+	// Subscribe to connectedNodeIds for reactivity
+	let connectedNodes = $state(get(connectedNodeIds));
+	connectedNodeIds.subscribe((value) => {
+		connectedNodes = value;
+	});
 
 	let { id, data, selected, width, height }: NodeProps = $props();
 
 	// Try to get topology from context (for share/embed pages), fallback to global store
 	const topologyContext = getContext<Writable<Topology> | undefined>('topology');
 	let topology = $derived(topologyContext ? $topologyContext : $globalTopology);
+
+	// Try to get selection from context (for share/embed pages), fallback to global store
+	const selectedNodeContext = getContext<Writable<Node | null> | undefined>('selectedNode');
+	const selectedEdgeContext = getContext<Writable<Edge | null> | undefined>('selectedEdge');
+	let selectedNode = $derived(
+		selectedNodeContext ? $selectedNodeContext : $globalSelectedNode
+	) as Node | null;
+	let selectedEdge = $derived(
+		selectedEdgeContext ? $selectedEdgeContext : $globalSelectedEdge
+	) as Edge | null;
+
+	// Calculate if this node should fade out when another node is selected
+	let shouldFadeOut = $derived.by(() => {
+		if (!selectedNode && !selectedEdge) return false;
+		// Check if this node is in the connected set
+		return !connectedNodes.has(id);
+	});
+
+	let nodeOpacity = $derived(shouldFadeOut ? 0.3 : 1);
 
 	let leftZoneTitle = $derived($topologyOptions.local.left_zone_title);
 	let infra_width = $derived((data.infra_width as number) || 0);
@@ -76,7 +109,10 @@
 </script>
 
 {#if subnetRenderData}
-	<div class="relative" style={nodeStyle}>
+	<div
+		class="relative"
+		style="{nodeStyle} opacity: {nodeOpacity}; transition: opacity 0.2s ease-in-out;"
+	>
 		<!-- External label in upper left corner -->
 		{#if subnetRenderData.cidr || subnetRenderData.headerText}
 			<div

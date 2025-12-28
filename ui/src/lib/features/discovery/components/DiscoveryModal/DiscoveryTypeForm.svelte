@@ -7,7 +7,7 @@
 	import InlineWarning from '$lib/shared/components/feedback/InlineWarning.svelte';
 	import { discoveryTypes, subnetTypes } from '$lib/shared/stores/metadata';
 	import type { Daemon } from '$lib/features/daemons/types/base';
-	import { generateCronSchedule, parseCronToHours } from '../../store';
+	import { generateCronSchedule, parseCronToHours } from '../../queries';
 
 	// Props
 	interface Props {
@@ -210,13 +210,8 @@
 				<label for="run_type" class="text-secondary mb-1 block text-sm font-medium">
 					Run Type <span class="text-red-400">*</span>
 				</label>
-				<select
-					id="run_type"
-					class="input-field w-full"
-					bind:value={runType}
-					disabled={readOnly}
-				>
-					{#each runTypeOptions as option}
+				<select id="run_type" class="input-field w-full" bind:value={runType} disabled={readOnly}>
+					{#each runTypeOptions as option (option.value)}
 						<option value={option.value}>{option.label}</option>
 					{/each}
 				</select>
@@ -238,7 +233,7 @@
 					bind:value={discoveryType}
 					disabled={readOnly}
 				>
-					{#each discoveryTypeOptions as option}
+					{#each discoveryTypeOptions as option (option.value)}
 						<option value={option.value} disabled={option.disabled}>{option.label}</option>
 					{/each}
 				</select>
@@ -267,7 +262,7 @@
 						disabled={readOnly}
 						onchange={handleHostNameFallbackChange}
 					>
-						{#each hostNameFallbackOptions as option}
+						{#each hostNameFallbackOptions as option (option.value)}
 							<option value={option.value}>{option.label}</option>
 						{/each}
 					</select>
@@ -328,7 +323,7 @@
 							disabled={readOnly}
 							onchange={handleFrequencyChange}
 						>
-							{#each dayOptions as option}
+							{#each dayOptions as option (option.value)}
 								<option value={parseInt(option.value)}>{option.label}</option>
 							{/each}
 						</select>
@@ -345,7 +340,7 @@
 							disabled={readOnly}
 							onchange={handleFrequencyChange}
 						>
-							{#each hourOptions as option}
+							{#each hourOptions as option (option.value)}
 								<option value={parseInt(option.value)}>{option.label}</option>
 							{/each}
 						</select>

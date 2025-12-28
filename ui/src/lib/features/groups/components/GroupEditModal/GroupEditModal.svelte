@@ -2,7 +2,7 @@
 	import { createForm } from '@tanstack/svelte-form';
 	import { submitForm } from '$lib/shared/components/forms/form-context';
 	import { required, max } from '$lib/shared/components/forms/validators';
-	import { createEmptyGroupFormData } from '../../store';
+	import { createEmptyGroupFormData } from '../../queries';
 	import GenericModal from '$lib/shared/components/layout/GenericModal.svelte';
 	import type { Group, EdgeStyle } from '../../types/base';
 	import type { Color } from '$lib/shared/utils/styling';
@@ -33,8 +33,14 @@
 		onDelete?: ((id: string) => Promise<void> | void) | null;
 	}
 
-	let { group = null, isOpen = false, onCreate, onUpdate, onClose, onDelete = null }: Props =
-		$props();
+	let {
+		group = null,
+		isOpen = false,
+		onCreate,
+		onUpdate,
+		onClose,
+		onDelete = null
+	}: Props = $props();
 
 	// TanStack Query hooks
 	const servicesQuery = useServicesQuery();
@@ -124,9 +130,7 @@
 
 	let selectedServiceBindings = $derived.by(() => {
 		return bindingIds
-			.map((bindingId) =>
-				servicesData.flatMap((s) => s.bindings).find((sb) => sb.id === bindingId)
-			)
+			.map((bindingId) => servicesData.flatMap((s) => s.bindings).find((sb) => sb.id === bindingId))
 			.filter(Boolean);
 	});
 
@@ -193,7 +197,7 @@
 	} as Group);
 </script>
 
-<GenericModal {isOpen} {title} size="xl" onClose={onClose} onOpen={handleOpen} showCloseButton={true}>
+<GenericModal {isOpen} {title} size="xl" {onClose} onOpen={handleOpen} showCloseButton={true}>
 	<svelte:fragment slot="header-icon">
 		<ModalHeaderIcon Icon={entities.getIconComponent('Group')} color={colorHelper.color} />
 	</svelte:fragment>
@@ -204,7 +208,7 @@
 			e.stopPropagation();
 			handleSubmit();
 		}}
-		class="flex h-full flex-col"
+		class="flex min-h-0 flex-1 flex-col"
 	>
 		<div class="flex-1 overflow-auto p-6">
 			<div class="space-y-8">
@@ -243,12 +247,7 @@
 
 					<form.Field name="group_type">
 						{#snippet children(field)}
-							<SelectInput
-								label="Group Type"
-								id="group_type"
-								{field}
-								options={groupTypeOptions}
-							/>
+							<SelectInput label="Group Type" id="group_type" {field} options={groupTypeOptions} />
 							<p class="text-tertiary text-xs">{groupTypes.getDescription(field.state.value)}</p>
 						{/snippet}
 					</form.Field>

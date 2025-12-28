@@ -125,14 +125,14 @@
 	let cancelLabel = $derived(activeSection === 'main' ? 'Close' : 'Back');
 </script>
 
-<GenericModal {isOpen} title={modalTitle} onClose={onClose} onOpen={handleOpen} size="md">
+<GenericModal {isOpen} title={modalTitle} {onClose} onOpen={handleOpen} size="md">
 	<svelte:fragment slot="header-icon">
 		<ModalHeaderIcon Icon={Building2} color="Blue" />
 	</svelte:fragment>
 
 	{#if org}
 		{#if activeSection === 'main'}
-			<div class="space-y-6">
+			<div class="space-y-6 p-6">
 				<!-- Organization Info -->
 				<InfoCard title="Organization Information">
 					<InfoRow label="Name">{org.name}</InfoRow>

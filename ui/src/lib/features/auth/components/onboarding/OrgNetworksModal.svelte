@@ -120,7 +120,7 @@
 	{isOpen}
 	{title}
 	size="lg"
-	onClose={onClose}
+	{onClose}
 	onOpen={handleOpen}
 	showCloseButton={false}
 	showBackdrop={false}
@@ -142,7 +142,7 @@
 			e.stopPropagation();
 			handleSubmit();
 		}}
-		class="flex h-full flex-col"
+		class="flex min-h-0 flex-1 flex-col"
 	>
 		<div class="flex-1 overflow-auto p-6">
 			<div class="space-y-6">
@@ -165,7 +165,7 @@
 				</form.Field>
 
 				<div class="space-y-3">
-					{#each Array(networkCount) as _, index (index)}
+					{#each Array.from({ length: networkCount }, (_, i) => i) as index (index)}
 						<div class="flex items-center gap-2">
 							<div class="flex-1">
 								<form.Field

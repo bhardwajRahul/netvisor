@@ -27,20 +27,18 @@
 </script>
 
 <FormField {label} {field} {helpText} {id}>
-	{#snippet children()}
-		<select
-			{id}
-			value={field.state.value}
-			onchange={(e) => field.handleChange(e.currentTarget.value)}
-			{disabled}
-			class="input-field"
-			onclick={(e) => e.stopPropagation()}
-		>
-			{#each options as option (option.id ?? option.value)}
-				<option disabled={option.disabled} value={option.value}>{option.label}</option>
-			{/each}
-		</select>
-	{/snippet}
+	<select
+		{id}
+		value={field.state.value}
+		onchange={(e) => field.handleChange(e.currentTarget.value)}
+		{disabled}
+		class="input-field"
+		onclick={(e) => e.stopPropagation()}
+	>
+		{#each options as option (option.id ?? option.value)}
+			<option disabled={option.disabled} value={option.value}>{option.label}</option>
+		{/each}
+	</select>
 </FormField>
 {#if selectedOption && description && description.length > 0}
 	<InlineInfo title={label} body={description} />

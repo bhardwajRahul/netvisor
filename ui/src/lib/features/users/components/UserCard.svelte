@@ -3,7 +3,7 @@
 	import type { User } from '../types';
 	import { Edit, Trash2 } from 'lucide-svelte';
 	import { formatTimestamp } from '$lib/shared/utils/formatting';
-	import { toColor, type Color } from '$lib/shared/utils/styling';
+	import type { Color } from '$lib/shared/utils/styling';
 	import { entities, permissions, metadata } from '$lib/shared/stores/metadata';
 	import { useCurrentUserQuery } from '$lib/features/auth/queries';
 	import { useDeleteUserMutation } from '$lib/features/users/queries';

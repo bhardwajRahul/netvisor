@@ -57,21 +57,19 @@
 </script>
 
 <FormField {label} {field} {required} {helpText} {id}>
-	{#snippet children()}
-		<input
-			{id}
-			type="datetime-local"
-			value={localValue}
-			onblur={() => field.handleBlur()}
-			oninput={handleInput}
-			{placeholder}
-			{disabled}
-			{min}
-			{max}
-			class="input-field datetime-picker"
-			class:input-field-error={hasErrors}
-		/>
-	{/snippet}
+	<input
+		{id}
+		type="datetime-local"
+		value={localValue}
+		onblur={() => field.handleBlur()}
+		oninput={handleInput}
+		{placeholder}
+		{disabled}
+		{min}
+		{max}
+		class="input-field datetime-picker"
+		class:input-field-error={hasErrors}
+	/>
 </FormField>
 
 <style>

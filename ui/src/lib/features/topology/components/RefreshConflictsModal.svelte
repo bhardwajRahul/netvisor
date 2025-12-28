@@ -112,7 +112,7 @@
 		<AlertTriangle class="h-6 w-6 text-red-600 dark:text-red-400" />
 	</svelte:fragment>
 
-	<div class="space-y-4">
+	<div class="space-y-4 p-6">
 		<!-- Warning header -->
 		<InlineDanger
 			title={`${totalRemoved} ${totalRemoved === 1 ? 'entity' : 'entities'} will be removed`}

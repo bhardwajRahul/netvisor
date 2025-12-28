@@ -19,7 +19,7 @@
 	import InfoCard from '$lib/shared/components/data/InfoCard.svelte';
 	import TextInput from '$lib/shared/components/forms/input/TextInput.svelte';
 	import Password from '$lib/shared/components/forms/input/Password.svelte';
-	import { config } from '$lib/shared/stores/config';
+	import { useConfigQuery } from '$lib/shared/stores/config-query';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
 	import InfoRow from '$lib/shared/components/data/InfoRow.svelte';
 
@@ -39,7 +39,11 @@
 
 	let user = $derived(currentUserQuery.data);
 	let organization = $derived(organizationQuery.data);
-	let oidcProviders = $derived($config?.oidc_providers ?? []);
+
+	const configQuery = useConfigQuery();
+	let configData = $derived(configQuery.data);
+
+	let oidcProviders = $derived(configData?.oidc_providers ?? []);
 	let hasOidcProviders = $derived(oidcProviders.length > 0);
 
 	let activeSection = $state<'main' | 'credentials'>('main');
@@ -162,7 +166,7 @@
 			e.stopPropagation();
 			if (showSave) handleSubmit();
 		}}
-		class="flex h-full flex-col"
+		class="flex min-h-0 flex-1 flex-col"
 	>
 		<div class="flex-1 overflow-auto p-6">
 			{#if activeSection === 'main'}
@@ -315,11 +319,7 @@
 									}}
 								>
 									{#snippet children(confirmPasswordField)}
-										<Password
-											{passwordField}
-											{confirmPasswordField}
-											required={false}
-										/>
+										<Password {passwordField} {confirmPasswordField} required={false} />
 									{/snippet}
 								</form.Field>
 							{/snippet}

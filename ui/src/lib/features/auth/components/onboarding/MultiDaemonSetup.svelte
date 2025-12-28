@@ -3,7 +3,7 @@
 	import InlineInfo from '$lib/shared/components/feedback/InlineInfo.svelte';
 	import GenericModal from '$lib/shared/components/layout/GenericModal.svelte';
 	import CreateDaemonForm from '$lib/features/daemons/components/CreateDaemonForm.svelte';
-	import { submitDaemonSetup } from '../../store';
+	import { useDaemonSetupMutation } from '../../queries';
 	import { onboardingStore } from '../../stores/onboarding';
 	import { trackEvent } from '$lib/shared/utils/analytics';
 	import type { NetworkSetup } from '../../types/base';
@@ -38,6 +38,9 @@
 	// References to CreateDaemonForm components for getting daemon names
 	let daemonFormRefs = $state<Record<string, CreateDaemonForm>>({});
 
+	// Daemon setup mutation
+	const daemonSetupMutation = useDaemonSetupMutation();
+
 	// Initialize states for new networks
 	$effect(() => {
 		networks.forEach((network) => {
@@ -60,13 +63,13 @@
 
 		cardStates[networkId] = { ...state, isLoading: true };
 
-		const result = await submitDaemonSetup({
-			daemon_name: daemonName,
-			network_id: networkId,
-			install_later: false
-		});
+		try {
+			const result = await daemonSetupMutation.mutateAsync({
+				daemon_name: daemonName,
+				network_id: networkId,
+				install_later: false
+			});
 
-		if (result) {
 			cardStates[networkId] = {
 				...state,
 				choice: 'install_now',
@@ -87,7 +90,7 @@
 				choice: 'install_now',
 				use_case: onboardingStore.getState().useCase
 			});
-		} else {
+		} catch {
 			cardStates[networkId] = { ...state, isLoading: false };
 		}
 	}
@@ -100,13 +103,13 @@
 
 		cardStates[networkId] = { ...state, isLoading: true };
 
-		const result = await submitDaemonSetup({
-			daemon_name: daemonName,
-			network_id: networkId,
-			install_later: true
-		});
+		try {
+			await daemonSetupMutation.mutateAsync({
+				daemon_name: daemonName,
+				network_id: networkId,
+				install_later: true
+			});
 
-		if (result) {
 			cardStates[networkId] = {
 				...state,
 				choice: 'install_later',
@@ -125,7 +128,7 @@
 				choice: 'install_later',
 				use_case: onboardingStore.getState().useCase
 			});
-		} else {
+		} catch {
 			cardStates[networkId] = { ...state, isLoading: false };
 		}
 	}
@@ -138,7 +141,9 @@
 	}
 
 	// Check if all networks have been configured
-	let allConfigured = $derived(networks.every((n) => n.id && cardStates[n.id]?.choice !== 'pending'));
+	let allConfigured = $derived(
+		networks.every((n) => n.id && cardStates[n.id]?.choice !== 'pending')
+	);
 </script>
 
 <GenericModal
@@ -149,7 +154,7 @@
 	showCloseButton={false}
 	preventCloseOnClickOutside={true}
 >
-	<div class="space-y-6">
+	<div class="space-y-6 overflow-y-auto p-6">
 		<p class="text-secondary text-sm">
 			Install a daemon on any device on your network to start discovering hosts and services. We
 			recommend installing at least one now so you can see your network visualized immediately after
@@ -169,7 +174,7 @@
 					{#if state}
 						<div class="card overflow-hidden">
 							<!-- Header -->
-							<div class="flex items-center justify-between mb-2">
+							<div class="mb-2 flex items-center justify-between">
 								<div class="flex items-center gap-3">
 									{#if state.choice == 'install_now'}
 										<div

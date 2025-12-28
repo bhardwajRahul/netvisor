@@ -54,7 +54,7 @@
 	{isOpen}
 	title={resetComplete ? 'Password Reset' : 'Set New Password'}
 	size="md"
-	onClose={onClose}
+	{onClose}
 	onOpen={handleOpen}
 	showCloseButton={false}
 	showBackdrop={false}
@@ -71,7 +71,7 @@
 			e.stopPropagation();
 			handleSubmit();
 		}}
-		class="flex h-full flex-col"
+		class="flex min-h-0 flex-1 flex-col"
 	>
 		<div class="flex-1 overflow-auto p-6">
 			{#if resetComplete}

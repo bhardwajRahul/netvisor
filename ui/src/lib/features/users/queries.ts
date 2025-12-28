@@ -13,9 +13,8 @@ import type { User } from './types';
  */
 export function useUsersQuery(options?: { enabled?: boolean | (() => boolean) }) {
 	return createQuery(() => {
-		const enabled = typeof options?.enabled === 'function'
-			? options.enabled()
-			: (options?.enabled ?? true);
+		const enabled =
+			typeof options?.enabled === 'function' ? options.enabled() : (options?.enabled ?? true);
 		return {
 			queryKey: queryKeys.users.all,
 			queryFn: async () => {

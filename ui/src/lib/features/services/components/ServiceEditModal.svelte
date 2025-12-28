@@ -75,7 +75,7 @@
 	}
 </script>
 
-<GenericModal {isOpen} {title} onClose={onClose} onOpen={handleOpen} size="xl">
+<GenericModal {isOpen} {title} {onClose} onOpen={handleOpen} size="xl">
 	<!-- Header icon -->
 	<svelte:fragment slot="header-icon">
 		<ModalHeaderIcon
@@ -88,11 +88,7 @@
 	<div class="flex h-full flex-col overflow-hidden">
 		<div class="flex-1 overflow-y-auto">
 			<div class="space-y-8 p-6">
-				<ServiceConfigPanel
-					host={hostFormData}
-					service={formData}
-					onChange={handleServiceUpdate}
-				/>
+				<ServiceConfigPanel host={hostFormData} service={formData} onChange={handleServiceUpdate} />
 
 				<EntityMetadataSection entities={[service]} />
 			</div>
@@ -101,15 +97,8 @@
 
 	<svelte:fragment slot="footer">
 		<div class="flex items-center justify-end gap-3">
-			<button type="button" onclick={onClose} class="btn-secondary">
-				Cancel
-			</button>
-			<button
-				type="button"
-				onclick={handleSubmit}
-				disabled={loading}
-				class="btn-primary"
-			>
+			<button type="button" onclick={onClose} class="btn-secondary"> Cancel </button>
+			<button type="button" onclick={handleSubmit} disabled={loading} class="btn-primary">
 				{loading ? 'Updating...' : 'Update Service'}
 			</button>
 		</div>

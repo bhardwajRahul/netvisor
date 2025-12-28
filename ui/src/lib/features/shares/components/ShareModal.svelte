@@ -22,7 +22,7 @@
 	import InlineInfo from '$lib/shared/components/feedback/InlineInfo.svelte';
 	import InlineSuccess from '$lib/shared/components/feedback/InlineSuccess.svelte';
 	import CodeContainer from '$lib/shared/components/data/CodeContainer.svelte';
-	import { generateShareUrl, generateEmbedCode } from '../store';
+	import { generateShareUrl, generateEmbedCode } from '../queries';
 
 	let {
 		isOpen = false,
@@ -187,7 +187,7 @@
 			e.stopPropagation();
 			if (!createdShare) handleSubmit();
 		}}
-		class="flex h-full flex-col"
+		class="flex min-h-0 flex-1 flex-col"
 	>
 		<div class="flex-1 overflow-auto p-6">
 			<div class="space-y-6">

@@ -47,7 +47,13 @@
 
 <div>
 	<label for="network" class="text-secondary mb-2 block text-sm font-medium"> Network</label>
-	<select id="network" {disabled} value={selectedNetworkId} onchange={handleChange} class="input-field">
+	<select
+		id="network"
+		{disabled}
+		value={selectedNetworkId}
+		onchange={handleChange}
+		class="input-field"
+	>
 		{#each networksData as network (network.id)}
 			<option class="select-option" value={network.id}>{network.name}</option>
 		{/each}

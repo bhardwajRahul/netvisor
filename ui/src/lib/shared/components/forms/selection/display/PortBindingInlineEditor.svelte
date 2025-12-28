@@ -41,12 +41,7 @@
 		host?: HostFormData;
 	}
 
-	let {
-		binding,
-		onUpdate = () => {},
-		service = undefined,
-		host = undefined
-	}: Props = $props();
+	let { binding, onUpdate = () => {}, service = undefined, host = undefined }: Props = $props();
 
 	// Type guard for services with Port bindings
 	function isServiceWithPortBindings(svc: Service): svc is Service {
@@ -138,6 +133,18 @@
 	// Check ALL_INTERFACES option
 	let allInterfacesOption = $derived(
 		(() => {
+			// Can't select "All Interfaces" if this service has ANY Interface bindings
+			// (since "All Interfaces" would include those interfaces)
+			const hasInterfaceBindings = service?.bindings.some((b) => b.type === 'Interface');
+			if (hasInterfaceBindings) {
+				return {
+					iface: ALL_INTERFACES,
+					disabled: true,
+					reason: 'Service has Interface bindings',
+					boundService: service
+				};
+			}
+
 			const boundService = binding.port_id ? getConflictingService(binding.port_id, null) : null;
 			return {
 				iface: ALL_INTERFACES,
@@ -173,12 +180,15 @@
 
 	// Local state for select values - use sentinel for ALL_INTERFACES
 	const ALL_INTERFACES_SENTINEL = '__ALL_INTERFACES__';
-	let selectedInterface = $state(binding.interface_id === null ? ALL_INTERFACES_SENTINEL : binding.interface_id);
+	let selectedInterface = $state(
+		binding.interface_id === null ? ALL_INTERFACES_SENTINEL : binding.interface_id
+	);
 	let selectedPort = $state(binding.port_id ?? '');
 
 	// Sync local state when binding changes externally
 	$effect(() => {
-		selectedInterface = binding.interface_id === null ? ALL_INTERFACES_SENTINEL : binding.interface_id;
+		selectedInterface =
+			binding.interface_id === null ? ALL_INTERFACES_SENTINEL : binding.interface_id;
 		selectedPort = binding.port_id ?? '';
 	});
 
@@ -206,7 +216,8 @@
 	}
 </script>
 
-<div class="flex-1">
+<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+<div class="flex-1" onclick={(e) => e.stopPropagation()}>
 	<div class="text-secondary mb-1 block text-xs font-medium">Port Binding</div>
 
 	{#if !service}
@@ -229,24 +240,23 @@
 				</div>
 			{:else if host.interfaces.length > 0}
 				<div class="flex-1">
-					<label for="interface-select-{binding.id}" class="text-tertiary mb-1 block text-xs">Interface</label>
+					<label for="interface-select-{binding.id}" class="text-tertiary mb-1 block text-xs"
+						>Interface</label
+					>
 					<select
 						id="interface-select-{binding.id}"
 						class="input-field w-full"
 						value={selectedInterface}
 						onchange={handleInterfaceChange}
 					>
-						{#each interfaceOptions as { iface, disabled, reason }}
+						{#each interfaceOptions as { iface, disabled, reason } (iface.id)}
 							<option value={iface.id} {disabled}>
 								{formatInterface(iface, isContainerSubnetFn)}{disabled && reason
 									? ` - ${reason}`
 									: ''}
 							</option>
 						{/each}
-						<option
-							value={ALL_INTERFACES_SENTINEL}
-							disabled={allInterfacesOption.disabled}
-						>
+						<option value={ALL_INTERFACES_SENTINEL} disabled={allInterfacesOption.disabled}>
 							{formatInterface(ALL_INTERFACES, isContainerSubnetFn)}{allInterfacesOption.disabled &&
 							allInterfacesOption.reason
 								? ` - ${allInterfacesOption.reason}`
@@ -266,14 +276,15 @@
 				</div>
 			{:else}
 				<div class="flex-1">
-					<label for="port-select-{binding.id}" class="text-tertiary mb-1 block text-xs">Port</label>
+					<label for="port-select-{binding.id}" class="text-tertiary mb-1 block text-xs">Port</label
+					>
 					<select
 						id="port-select-{binding.id}"
 						class="input-field w-full"
 						value={selectedPort}
 						onchange={handlePortChange}
 					>
-						{#each portOptions as { port, disabled, reason }}
+						{#each portOptions as { port, disabled, reason } (port.id)}
 							<option value={port.id} {disabled}>
 								{formatPort(port)}{disabled && reason ? ` - ${reason}` : ''}
 							</option>

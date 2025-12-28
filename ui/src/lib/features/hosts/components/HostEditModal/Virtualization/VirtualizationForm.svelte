@@ -22,8 +22,7 @@
 		onVirtualizedHostChange: (host: Host) => void;
 	}
 
-	let { virtualizationManagerServices, onServiceChange, onVirtualizedHostChange }: Props =
-		$props();
+	let { virtualizationManagerServices, onServiceChange, onVirtualizedHostChange }: Props = $props();
 
 	// TanStack Query hooks for context data
 	const hostsQuery = useHostsQuery();

@@ -37,9 +37,8 @@ export function useOrganizationQuery() {
  */
 export function useInvitesQuery(options?: { enabled?: boolean | (() => boolean) }) {
 	return createQuery(() => {
-		const enabled = typeof options?.enabled === 'function'
-			? options.enabled()
-			: (options?.enabled ?? true);
+		const enabled =
+			typeof options?.enabled === 'function' ? options.enabled() : (options?.enabled ?? true);
 		return {
 			queryKey: queryKeys.invites.all,
 			queryFn: async () => {

@@ -19,7 +19,12 @@
 		onServicesChange?: (services: Service[]) => void;
 	}
 
-	let { formData = $bindable(), form, currentServices = [], onServicesChange = () => {} }: Props = $props();
+	let {
+		formData = $bindable(),
+		form,
+		currentServices = [],
+		onServicesChange = () => {}
+	}: Props = $props();
 
 	// Confirmation dialog state
 	let showDeleteConfirmation = $state(false);
@@ -150,7 +155,7 @@
 			{items}
 			optionDisplayComponent={PortTypeDisplay}
 			itemDisplayComponent={PortDisplay}
-			getItemContext={() => ({ currentServices })}
+			getItemContext={() => ({ currentServices, interfaces: formData.interfaces })}
 			onCreateNew={handleCreateNewPort}
 			onAdd={handleAddPort}
 			onRemove={handleRemovePort}

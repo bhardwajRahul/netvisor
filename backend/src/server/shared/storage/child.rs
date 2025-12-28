@@ -5,10 +5,7 @@ use async_trait::async_trait;
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use super::{
-    generic::GenericPostgresStorage,
-    traits::{StorableEntity},
-};
+use super::{generic::GenericPostgresStorage, traits::StorableEntity};
 
 /// Trait for entities that are children of a parent entity and stored in a separate table.
 /// Extends StorableEntity to reuse all the standard CRUD infrastructure while adding

@@ -118,3 +118,128 @@ export function useBulkDeleteDiscoveriesMutation() {
 		}
 	}));
 }
+
+import { utcTimeZoneSentinel, uuidv4Sentinel } from '$lib/shared/utils/formatting';
+import type { Daemon } from '../daemons/types/base';
+import type { FieldConfig } from '$lib/shared/components/data/types';
+
+// ============================================================================
+// Utility Functions
+// ============================================================================
+
+/**
+ * Create empty form data for a new discovery
+ */
+export function createEmptyDiscoveryFormData(daemon: Daemon | null): Discovery {
+	return {
+		id: uuidv4Sentinel,
+		created_at: utcTimeZoneSentinel,
+		updated_at: utcTimeZoneSentinel,
+		tags: [],
+		discovery_type: {
+			type: 'Network',
+			subnet_ids: daemon ? daemon.capabilities.interfaced_subnet_ids : [],
+			host_naming_fallback: 'Ip'
+		},
+		run_type: {
+			type: 'Scheduled',
+			last_run: null,
+			cron_schedule: '0 0 * * * *',
+			enabled: true
+		},
+		name: '',
+		daemon_id: daemon ? daemon.id : uuidv4Sentinel,
+		network_id: daemon ? daemon.network_id : uuidv4Sentinel
+	};
+}
+
+/**
+ * Parse a simple cron expression back to hours
+ * Only handles the patterns we generate
+ */
+export function parseCronToHours(cron: string): number | null {
+	const parts = cron.split(' ');
+	if (parts.length !== 6) return null;
+
+	const [, , hour, day, ,] = parts;
+
+	// Daily pattern: "0 0 0 * * *"
+	if (hour === '0' && day === '*') {
+		return 24;
+	}
+
+	// Every N days: "0 0 0 */N * *"
+	if (hour === '0' && day.startsWith('*/')) {
+		const days = parseInt(day.slice(2));
+		return days * 24;
+	}
+
+	// Every N hours: "0 0 */N * * *"
+	if (hour.startsWith('*/')) {
+		return parseInt(hour.slice(2));
+	}
+
+	// Every hour: "0 0 * * * *"
+	if (hour === '*') {
+		return 1;
+	}
+
+	return null;
+}
+
+/**
+ * Generate a cron expression for "every N hours"
+ * Format: "0 0 *\/N * * *" (second minute hour day month weekday)
+ */
+export function generateCronSchedule(hours: number): string {
+	if (hours === 0) {
+		return '0 0 * * * *'; // Every hour as fallback
+	}
+	if (hours === 1) {
+		return '0 0 * * * *'; // Every hour
+	}
+	if (hours === 24) {
+		return '0 0 0 * * *'; // Daily at midnight
+	}
+	if (hours % 24 === 0) {
+		// Every N days at midnight
+		const days = hours / 24;
+		return `0 0 0 */${days} * *`;
+	}
+	// Every N hours
+	return `0 0 */${hours} * * *`;
+}
+
+/**
+ * Field configuration for the DataTableControls
+ */
+export const discoveryFields = (daemons: Daemon[]): FieldConfig<Discovery>[] => [
+	{
+		key: 'name',
+		label: 'Name',
+		type: 'string',
+		searchable: true,
+		filterable: false,
+		sortable: true,
+		getValue: (item: Discovery) => item.name
+	},
+	{
+		key: 'daemon_id',
+		label: 'Daemon',
+		type: 'string',
+		searchable: false,
+		filterable: true,
+		sortable: true,
+		getValue: (item: Discovery) =>
+			daemons.find((d) => d.id == item.daemon_id)?.name ?? 'Unknown Daemon'
+	},
+	{
+		key: 'discovery_type',
+		label: 'Type',
+		type: 'string',
+		searchable: false,
+		filterable: true,
+		sortable: true,
+		getValue: (item: Discovery) => item.discovery_type.type
+	}
+];

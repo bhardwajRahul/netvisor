@@ -105,7 +105,9 @@ async fn register(
         ));
     }
 
-    if is_email_unwanted(request.email.as_str()) && get_deployment_type(state.clone()) == DeploymentType::Cloud {
+    if is_email_unwanted(request.email.as_str())
+        && get_deployment_type(state.clone()) == DeploymentType::Cloud
+    {
         return Err(ApiError::conflict(
             "Email address uses a disposable domain. Please register with a non-disposable email address.",
         ));
@@ -1186,7 +1188,7 @@ async fn handle_register_flow(
                 billing_enabled,
                 provider_slug: slug,
                 code,
-                deployment_type: get_deployment_type(state.clone())
+                deployment_type: get_deployment_type(state.clone()),
             },
             pending_setup.clone(),
         )

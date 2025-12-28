@@ -13,7 +13,7 @@
 	import InlineInfo from '$lib/shared/components/feedback/InlineInfo.svelte';
 	import InlineSuccess from '$lib/shared/components/feedback/InlineSuccess.svelte';
 	import Checkbox from '$lib/shared/components/forms/input/Checkbox.svelte';
-	import { config } from '$lib/shared/stores/config';
+	import { useConfigQuery } from '$lib/shared/stores/config-query';
 	import { onboardingStore } from '../stores/onboarding';
 	import type { RegisterRequest } from '../types/base';
 
@@ -33,10 +33,13 @@
 
 	let registering = $state(false);
 
-	let oidcProviders = $derived($config?.oidc_providers ?? []);
+	const configQuery = useConfigQuery();
+	let configData = $derived(configQuery.data);
+
+	let oidcProviders = $derived(configData?.oidc_providers ?? []);
 	let hasOidcProviders = $derived(oidcProviders.length > 0);
-	let enableEmailOptIn = $derived($config?.has_email_opt_in ?? false);
-	let enableTermsCheckbox = $derived($config?.billing_enabled ?? false);
+	let enableEmailOptIn = $derived(configData?.has_email_opt_in ?? false);
+	let enableTermsCheckbox = $derived(configData?.billing_enabled ?? false);
 
 	// Get networks with daemon setups that will scan after registration
 	let networksWithDaemons = $derived.by(() => {
@@ -103,15 +106,13 @@
 	async function handleSubmit() {
 		await submitForm(form);
 	}
-
-	let termsAccepted = $derived(form.state.values.terms_accepted);
 </script>
 
 <GenericModal
 	{isOpen}
 	title="Create your account"
 	size="md"
-	onClose={onClose}
+	{onClose}
 	onOpen={handleOpen}
 	showCloseButton={false}
 	showBackdrop={false}
@@ -132,7 +133,7 @@
 			e.stopPropagation();
 			handleSubmit();
 		}}
-		class="flex h-full flex-col"
+		class="flex min-h-0 flex-1 flex-col"
 	>
 		<div class="flex-1 overflow-auto p-6">
 			{#if orgName && invitedBy}
@@ -147,10 +148,10 @@
 			{#if hasPendingDaemons}
 				<div class="mb-6">
 					<InlineSuccess
-						title="Ready to scan"
+						title="You're all set"
 						body={networksWithDaemons.length === 1
-							? `Once installed, your daemon for "${pendingNetworkNames}" will begin scanning, and your visualization will start building, after you register.`
-							: `Once installed, your daemons for "${pendingNetworkNames}" will begin scanning, and your visualization will start building, after you register.`}
+							? `Register to finish setup. Your daemon will begin scanning "${pendingNetworkNames}" and populating your network map.`
+							: `Register to finish setup. Your daemons will begin scanning "${pendingNetworkNames}" and populating your network map.`}
 					/>
 				</div>
 			{/if}
@@ -193,72 +194,76 @@
 
 		<!-- Footer -->
 		<div class="modal-footer">
-			<div class="flex w-full flex-col gap-4">
-				<div class="flex flex-grow flex-col items-center gap-2">
-					{#if enableTermsCheckbox}
-						<form.Field name="terms_accepted">
-							{#snippet children(field)}
-								<Checkbox
-									label="I agree to the <a class='text-link' target='_blank' href='https://scanopy.net/terms'>terms</a> and <a target='_blank' class='text-link'href='https://scanopy.net/privacy'>privacy policy</a>"
-									helpText=""
-									{field}
-									id="terms"
-								/>
-							{/snippet}
-						</form.Field>
-					{/if}
-				</div>
-
-				<button
-					type="submit"
-					disabled={registering || (enableTermsCheckbox && !termsAccepted)}
-					class="btn-primary w-full"
-				>
-					{registering ? 'Creating account...' : 'Create Account with Email'}
-				</button>
-
-				{#if hasOidcProviders}
-					<div class="relative">
-						<div class="absolute inset-0 flex items-center">
-							<div class="w-full border-t border-gray-600"></div>
+			<form.Subscribe selector={(state) => state.values.terms_accepted}>
+				{#snippet children(termsAccepted)}
+					<div class="flex w-full flex-col gap-4">
+						<div class="flex flex-grow flex-col items-center gap-2">
+							{#if enableTermsCheckbox}
+								<form.Field name="terms_accepted">
+									{#snippet children(field)}
+										<Checkbox
+											label="I agree to the <a class='text-link' target='_blank' href='https://scanopy.net/terms'>terms</a> and <a target='_blank' class='text-link' href='https://scanopy.net/privacy'>privacy policy</a>"
+											helpText=""
+											{field}
+											id="terms"
+										/>
+									{/snippet}
+								</form.Field>
+							{/if}
 						</div>
-						<div class="relative flex justify-center text-sm">
-							<span class="bg-gray-900 px-2 text-gray-400">or</span>
+
+						<button
+							type="submit"
+							disabled={registering || (enableTermsCheckbox && !termsAccepted)}
+							class="btn-primary w-full"
+						>
+							{registering ? 'Creating account...' : 'Create Account with Email'}
+						</button>
+
+						{#if hasOidcProviders}
+							<div class="relative">
+								<div class="absolute inset-0 flex items-center">
+									<div class="w-full border-t border-gray-600"></div>
+								</div>
+								<div class="relative flex justify-center text-sm">
+									<span class="bg-gray-900 px-2 text-gray-400">or</span>
+								</div>
+							</div>
+
+							<div class="space-y-2">
+								{#each oidcProviders as provider (provider.slug)}
+									<button
+										onclick={() => handleOidcRegister(provider.slug)}
+										disabled={enableTermsCheckbox && !termsAccepted}
+										type="button"
+										class="btn-secondary flex w-full items-center justify-center gap-3"
+									>
+										{#if provider.logo}
+											<img src={provider.logo} alt={provider.name} class="h-5 w-5" />
+										{/if}
+										Create Account with {provider.name}
+									</button>
+								{/each}
+							</div>
+						{/if}
+
+						<div class="flex flex-grow flex-col items-center gap-2">
+							{#if enableEmailOptIn}
+								<form.Field name="subscribed">
+									{#snippet children(field)}
+										<Checkbox
+											{field}
+											label="Sign up for product updates via email"
+											id="subscribe"
+											helpText=""
+										/>
+									{/snippet}
+								</form.Field>
+							{/if}
 						</div>
 					</div>
-
-					<div class="space-y-2">
-						{#each oidcProviders as provider (provider.slug)}
-							<button
-								onclick={() => handleOidcRegister(provider.slug)}
-								disabled={enableTermsCheckbox && !termsAccepted}
-								type="button"
-								class="btn-secondary flex w-full items-center justify-center gap-3"
-							>
-								{#if provider.logo}
-									<img src={provider.logo} alt={provider.name} class="h-5 w-5" />
-								{/if}
-								Create Account with {provider.name}
-							</button>
-						{/each}
-					</div>
-				{/if}
-
-				<div class="flex flex-grow flex-col items-center gap-2">
-					{#if enableEmailOptIn}
-						<form.Field name="subscribed">
-							{#snippet children(field)}
-								<Checkbox
-									{field}
-									label="Sign up for product updates via email"
-									id="subscribe"
-									helpText=""
-								/>
-							{/snippet}
-						</form.Field>
-					{/if}
-				</div>
-			</div>
+				{/snippet}
+			</form.Subscribe>
 		</div>
 	</form>
 </GenericModal>

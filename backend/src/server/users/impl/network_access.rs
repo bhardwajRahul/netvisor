@@ -22,7 +22,10 @@ pub struct UserNetworkAccessBase {
 
 impl UserNetworkAccessBase {
     pub fn new(user_id: Uuid, network_id: Uuid) -> Self {
-        Self { user_id, network_id }
+        Self {
+            user_id,
+            network_id,
+        }
     }
 }
 

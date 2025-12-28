@@ -4,7 +4,7 @@
 	import { required, email } from '$lib/shared/components/forms/validators';
 	import GenericModal from '$lib/shared/components/layout/GenericModal.svelte';
 	import type { LoginRequest } from '../types/base';
-	import { config } from '$lib/shared/stores/config';
+	import { useConfigQuery } from '$lib/shared/stores/config-query';
 	import InlineInfo from '$lib/shared/components/feedback/InlineInfo.svelte';
 	import TextInput from '$lib/shared/components/forms/input/TextInput.svelte';
 
@@ -32,10 +32,13 @@
 
 	let signingIn = $state(false);
 
-	let disableRegistration = $derived($config?.disable_registration ?? false);
-	let oidcProviders = $derived($config?.oidc_providers ?? []);
+	const configQuery = useConfigQuery();
+	let configData = $derived(configQuery.data);
+
+	let disableRegistration = $derived(configData?.disable_registration ?? false);
+	let oidcProviders = $derived(configData?.oidc_providers ?? []);
 	let hasOidcProviders = $derived(oidcProviders.length > 0);
-	let enablePasswordReset = $derived($config?.has_email_service ?? false);
+	let enablePasswordReset = $derived(configData?.has_email_service ?? false);
 
 	// Create form
 	const form = createForm(() => ({
@@ -75,7 +78,7 @@
 	{isOpen}
 	title="Sign in to Scanopy"
 	size="md"
-	onClose={onClose}
+	{onClose}
 	onOpen={handleOpen}
 	showCloseButton={false}
 	showBackdrop={false}
@@ -97,7 +100,7 @@
 			e.stopPropagation();
 			handleSubmit();
 		}}
-		class="flex h-full flex-col"
+		class="flex min-h-0 flex-1 flex-col"
 	>
 		<div class="flex-1 overflow-auto p-6">
 			{#if demoMode}
@@ -135,13 +138,7 @@
 						}}
 					>
 						{#snippet children(field)}
-							<TextInput
-								label="Email"
-								id="email"
-								{field}
-								placeholder="Enter your email"
-								required
-							/>
+							<TextInput label="Email" id="email" {field} placeholder="Enter your email" required />
 						{/snippet}
 					</form.Field>
 

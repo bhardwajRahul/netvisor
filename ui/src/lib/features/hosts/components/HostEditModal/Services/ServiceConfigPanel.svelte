@@ -123,6 +123,9 @@
 		new Set(portBindings.map((b) => b.interface_id).filter((id): id is string => id !== null))
 	);
 
+	// Check if this service has a Port binding on "All Interfaces"
+	let hasPortBindingOnAllInterfaces = $derived(portBindings.some((b) => b.interface_id === null));
+
 	// Get interfaces that this service has Interface bindings on
 	let interfacesWithInterfaceBindingsThisService = $derived(
 		new Set(interfaceBindings.map((b) => b.interface_id))
@@ -191,6 +194,9 @@
 		host.interfaces.filter((iface) => {
 			// Skip unsaved interfaces
 			if (isInterfaceUnsaved(iface.id)) return false;
+
+			// Can't add Interface binding if service has Port binding on "All Interfaces"
+			if (hasPortBindingOnAllInterfaces) return false;
 
 			// Can't add Interface binding if this service already has one on this interface
 			if (interfaceBindings.some((b) => b.interface_id === iface.id)) {
@@ -360,7 +366,10 @@
 			<div class="text-primary font-medium">Details</div>
 			<!-- Service Name Field -->
 			<div>
-				<label for="service_name_{service.id}" class="text-secondary mb-1 block text-sm font-medium">
+				<label
+					for="service_name_{service.id}"
+					class="text-secondary mb-1 block text-sm font-medium"
+				>
 					Name <span class="text-red-400">*</span>
 				</label>
 				<input
@@ -438,6 +447,8 @@
 					onCreateNew={handleCreatePortBinding}
 					onRemove={handleRemovePortBinding}
 					onEdit={handleUpdatePortBinding}
+					onItemUpdate={(binding, index, updates) =>
+						handleUpdatePortBinding({ ...binding, ...updates }, index)}
 					bind:selectedItems={selectedPortBindings}
 				/>
 			{/key}
@@ -472,6 +483,8 @@
 					onCreateNew={handleCreateInterfaceBinding}
 					onRemove={handleRemoveInterfaceBinding}
 					onEdit={handleUpdateInterfaceBinding}
+					onItemUpdate={(binding, index, updates) =>
+						handleUpdateInterfaceBinding({ ...binding, ...updates }, index)}
 				/>
 			{/key}
 		</div>

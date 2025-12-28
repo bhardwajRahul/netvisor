@@ -10,7 +10,7 @@
 	import type { Discovery } from '../../types/base';
 	import DiscoveryHistoricalSummary from './DiscoveryHistoricalSummary.svelte';
 	import { uuidv4Sentinel } from '$lib/shared/utils/formatting';
-	import { createEmptyDiscoveryFormData } from '../../store';
+	import { createEmptyDiscoveryFormData } from '../../queries';
 	import InlineWarning from '$lib/shared/components/feedback/InlineWarning.svelte';
 	import { pushError } from '$lib/shared/stores/feedback';
 	import type { Daemon } from '$lib/features/daemons/types/base';
@@ -46,7 +46,7 @@
 
 	let isEditing = $derived(discovery !== null);
 	let isHistoricalRun = $derived(discovery?.run_type.type === 'Historical');
-	let readOnly = $derived(formData.run_type.type == 'Historical')
+	let readOnly = $derived(formData.run_type.type == 'Historical');
 
 	let title = $derived(
 		isEditing
@@ -57,7 +57,9 @@
 	);
 
 	let daemon = $derived(daemons.find((d) => d.id === formData.daemon_id) || null);
-	let daemonHostId = $derived((daemon ? hosts.find((h) => h.id === daemon.host_id)?.id : null) || null);
+	let daemonHostId = $derived(
+		(daemon ? hosts.find((h) => h.id === daemon.host_id)?.id : null) || null
+	);
 
 	function getDefaultFormData(): Discovery {
 		const defaultDaemon = daemons.length > 0 ? daemons[0] : null;
@@ -139,14 +141,7 @@
 	let colorHelper = entities.getColorHelper('Discovery');
 </script>
 
-<GenericModal
-	{isOpen}
-	{title}
-	onClose={onClose}
-	onOpen={handleOpen}
-	size="xl"
-	showCloseButton={true}
->
+<GenericModal {isOpen} {title} {onClose} onOpen={handleOpen} size="xl" showCloseButton={true}>
 	<svelte:fragment slot="header-icon">
 		<ModalHeaderIcon Icon={entities.getIconComponent('Discovery')} color={colorHelper.color} />
 	</svelte:fragment>
@@ -157,7 +152,7 @@
 			e.stopPropagation();
 			if (showSave) handleSubmit();
 		}}
-		class="flex h-full flex-col"
+		class="flex min-h-0 flex-1 flex-col"
 	>
 		<div class="flex-1 overflow-y-auto">
 			<div class="space-y-8 p-6">

@@ -5,7 +5,7 @@
 		CreateHostWithServicesRequest,
 		UpdateHostWithServicesRequest
 	} from '../types/base';
-	import { toHostPrimitive } from '../store';
+	import { toHostPrimitive } from '../queries';
 	import TabHeader from '$lib/shared/components/layout/TabHeader.svelte';
 	import Loading from '$lib/shared/components/feedback/Loading.svelte';
 	import EmptyState from '$lib/shared/components/layout/EmptyState.svelte';

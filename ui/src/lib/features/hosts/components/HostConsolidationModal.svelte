@@ -164,7 +164,13 @@
 			<div>
 				<!-- Source host info -->
 				<div class="card mb-6">
-					<EntityDisplay context={{}} item={otherHost} displayComponent={HostDisplay} />
+					<EntityDisplay
+						context={{
+							services: servicesData.filter((s) => (otherHost ? s.host_id == otherHost.id : false))
+						}}
+						item={otherHost}
+						displayComponent={HostDisplay}
+					/>
 				</div>
 
 				<!-- Target selection -->
@@ -176,6 +182,9 @@
 						options={availableHosts}
 						onSelect={handleHostSelect}
 						showSearch={true}
+						getOptionContext={(option) => ({
+							services: servicesData.filter((s) => s.host_id == option.id)
+						})}
 						displayComponent={HostDisplay}
 					/>
 				</div>

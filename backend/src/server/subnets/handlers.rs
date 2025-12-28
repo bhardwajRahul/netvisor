@@ -2,7 +2,7 @@ use crate::server::auth::middleware::auth::{AuthenticatedEntity, AuthenticatedUs
 use crate::server::auth::middleware::permissions::{MemberOrDaemon, RequireMember};
 use crate::server::shared::handlers::traits::{CrudHandlers, create_handler, update_handler};
 use crate::server::shared::storage::filter::EntityFilter;
-use crate::server::shared::types::api::{ApiError, ApiErrorResponse};
+use crate::server::shared::types::api::{ApiError, ApiErrorResponse, ApiJson};
 use crate::server::{
     config::AppState,
     shared::{
@@ -52,7 +52,7 @@ pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
 async fn create_subnet(
     state: State<Arc<AppState>>,
     MemberOrDaemon { entity, .. }: MemberOrDaemon,
-    Json(request): Json<Subnet>,
+    ApiJson(request): ApiJson<Subnet>,
 ) -> ApiResult<Json<ApiResponse<Subnet>>> {
     tracing::debug!(
         subnet_name = %request.base.name,
@@ -146,7 +146,7 @@ async fn update_subnet(
     State(state): State<Arc<AppState>>,
     user: RequireMember,
     Path(id): Path<Uuid>,
-    Json(subnet): Json<Subnet>,
+    ApiJson(subnet): ApiJson<Subnet>,
 ) -> ApiResult<Json<ApiResponse<Subnet>>> {
     // Check if CIDR is being changed
     let current = state

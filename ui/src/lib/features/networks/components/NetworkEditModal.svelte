@@ -7,7 +7,7 @@
 	import { entities } from '$lib/shared/stores/metadata';
 	import EntityMetadataSection from '$lib/shared/components/forms/EntityMetadataSection.svelte';
 	import type { Network } from '../types';
-	import { createEmptyNetworkFormData } from '../store';
+	import { createEmptyNetworkFormData } from '../queries';
 	import { pushError } from '$lib/shared/stores/feedback';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
 	import Checkbox from '$lib/shared/components/forms/input/Checkbox.svelte';
@@ -100,7 +100,7 @@
 	let colorHelper = entities.getColorHelper('Network');
 </script>
 
-<GenericModal {isOpen} {title} size="xl" onClose={onClose} onOpen={handleOpen} showCloseButton={true}>
+<GenericModal {isOpen} {title} size="xl" {onClose} onOpen={handleOpen} showCloseButton={true}>
 	<svelte:fragment slot="header-icon">
 		<ModalHeaderIcon Icon={entities.getIconComponent('Network')} color={colorHelper.color} />
 	</svelte:fragment>
@@ -111,7 +111,7 @@
 			e.stopPropagation();
 			handleSubmit();
 		}}
-		class="flex h-full flex-col"
+		class="flex min-h-0 flex-1 flex-col"
 	>
 		<div class="flex-1 overflow-auto p-6">
 			<div class="space-y-8">

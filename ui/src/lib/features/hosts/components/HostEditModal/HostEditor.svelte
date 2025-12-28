@@ -8,8 +8,11 @@
 		CreateHostWithServicesRequest,
 		UpdateHostWithServicesRequest
 	} from '$lib/features/hosts/types/base';
-	import { formDataToHostPrimitive, hydrateHostToFormData } from '$lib/features/hosts/queries';
-	import { createEmptyHostFormData } from '$lib/features/hosts/store';
+	import {
+		formDataToHostPrimitive,
+		hydrateHostToFormData,
+		createEmptyHostFormData
+	} from '$lib/features/hosts/queries';
 	import { useQueryClient } from '@tanstack/svelte-query';
 	import DetailsForm from './Details/HostDetailsForm.svelte';
 	import GenericModal from '$lib/shared/components/layout/GenericModal.svelte';
@@ -104,10 +107,8 @@
 	// Perform the actual submission - defined as a separate function so it
 	// has access to latest state (TanStack Form's onSubmit captures state at creation time)
 	async function performSubmission(value: typeof form.state.values) {
-
 		// Sync form values to formData structure
 		syncFormValuesToFormData(value);
-
 
 		loading = true;
 		try {
@@ -153,7 +154,10 @@
 	}
 
 	// TanStack Form - onSubmit delegates to performSubmission for access to latest state
-	const form = createForm(() => ({
+	// Using let so we can recreate the form on modal open to clear stale field registrations
+	// Form state is managed by TanStack Form's internal store, not Svelte reactivity
+	// svelte-ignore non_reactive_update
+	let form = createForm(() => ({
 		defaultValues: {
 			name: formData.name,
 			hostname: formData.hostname || '',
@@ -166,9 +170,26 @@
 		}
 	}));
 
+	// Creates a fresh form instance - called on modal open to clear stale field registrations
+	function recreateForm() {
+		form = createForm(() => ({
+			defaultValues: {
+				name: formData.name,
+				hostname: formData.hostname || '',
+				description: formData.description || '',
+				interfaces: formData.interfaces || [],
+				ports: formData.ports || []
+			},
+			onSubmit: async ({ value }) => {
+				await performSubmission(value);
+			}
+		}));
+	}
+
 	// Initialize form data when host changes or modal opens
 	function handleOpen() {
 		resetForm();
+		recreateForm();
 	}
 
 	// Track host ID to detect when host changes (e.g., after createAndContinue)
@@ -181,6 +202,7 @@
 			if (lastHostId !== null || currentHostId !== null) {
 				const currentTab = activeTab;
 				resetForm();
+				recreateForm();
 				activeTab = currentTab; // Preserve tab position
 			}
 			lastHostId = currentHostId;
@@ -381,7 +403,7 @@
 			e.stopPropagation();
 			handleFormSubmit();
 		}}
-		class="flex h-full min-h-0 flex-col"
+		class="flex min-h-0 flex-1 flex-col"
 	>
 		<!-- Content -->
 		<div class="flex-1 overflow-auto">

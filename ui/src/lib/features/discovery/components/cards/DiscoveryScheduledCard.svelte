@@ -4,7 +4,7 @@
 	import { Edit, Play, Trash2 } from 'lucide-svelte';
 	import type { Discovery } from '../../types/base';
 	import { useDaemonsQuery } from '$lib/features/daemons/queries';
-	import { parseCronToHours } from '../../store';
+	import { parseCronToHours } from '../../queries';
 	import { formatTimestamp } from '$lib/shared/utils/formatting';
 	import { toColor } from '$lib/shared/utils/styling';
 	import { useTagsQuery } from '$lib/features/tags/queries';
@@ -73,7 +73,7 @@
 			}
 		],
 		actions: [
-						{
+			{
 				label: 'Delete',
 				icon: Trash2,
 				class: `btn-icon`,
@@ -90,7 +90,7 @@
 				icon: Edit,
 				class: `btn-icon`,
 				onClick: () => onEdit(discovery)
-			},
+			}
 		]
 	});
 </script>

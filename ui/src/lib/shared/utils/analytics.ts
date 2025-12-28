@@ -1,8 +1,7 @@
 import posthog from 'posthog-js';
-import { get } from 'svelte/store';
-import { config } from '../stores/config';
 import { queryClient, queryKeys } from '$lib/api/query-client';
 import type { Organization } from '$lib/features/organizations/types';
+import type { PublicServerConfig } from '$lib/shared/stores/config-query';
 
 /**
  * Check if the current organization is in demo mode.
@@ -68,7 +67,7 @@ export async function trackPlunkEvent(
 ): Promise<void> {
 	if (isDemo()) return;
 
-	const cfg = get(config);
+	const cfg = queryClient.getQueryData<PublicServerConfig>(queryKeys.config.all);
 	const plunkKey = cfg?.plunk_key;
 
 	if (!plunkKey) {

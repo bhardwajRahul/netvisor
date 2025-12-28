@@ -10,7 +10,11 @@
 	import { entities } from '$lib/shared/stores/metadata';
 	import { RotateCcwKey } from 'lucide-svelte';
 	import type { ApiKey } from '../types/base';
-	import { createEmptyApiKeyFormData, createNewApiKey, rotateKey } from '../store';
+	import {
+		createEmptyApiKeyFormData,
+		useCreateApiKeyMutation,
+		useRotateApiKeyMutation
+	} from '../queries';
 	import EntityMetadataSection from '$lib/shared/components/forms/EntityMetadataSection.svelte';
 	import { useNetworksQuery } from '$lib/features/networks/queries';
 	import TextInput from '$lib/shared/components/forms/input/TextInput.svelte';
@@ -31,6 +35,9 @@
 
 	// TanStack Query hooks
 	const networksQuery = useNetworksQuery();
+	const createApiKeyMutation = useCreateApiKeyMutation();
+	const rotateApiKeyMutation = useRotateApiKeyMutation();
+
 	let networksData = $derived(networksQuery.data ?? []);
 	let defaultNetworkId = $derived(networksData[0]?.id ?? '');
 
@@ -95,12 +102,10 @@
 
 		loading = true;
 		try {
-			const generatedKey = await createNewApiKey(formData);
-			if (generatedKey) {
-				key = generatedKey;
-			} else {
-				pushError('Failed to generate API key');
-			}
+			const result = await createApiKeyMutation.mutateAsync(formData);
+			key = result.keyString;
+		} catch {
+			pushError('Failed to generate API key');
 		} finally {
 			loading = false;
 		}
@@ -108,11 +113,14 @@
 
 	async function handleRotateKey() {
 		const formData = form.state.values as ApiKey;
-		const generatedKey = await rotateKey(formData.id);
-		if (generatedKey) {
+		loading = true;
+		try {
+			const generatedKey = await rotateApiKeyMutation.mutateAsync(formData.id);
 			key = generatedKey;
-		} else {
-			pushError('Failed to generate API key');
+		} catch {
+			pushError('Failed to rotate API key');
+		} finally {
+			loading = false;
 		}
 	}
 
@@ -152,7 +160,7 @@
 			e.stopPropagation();
 			handleSubmit();
 		}}
-		class="flex h-full flex-col"
+		class="flex min-h-0 flex-1 flex-col"
 	>
 		<div class="flex-1 overflow-auto p-6">
 			<div class="space-y-6">

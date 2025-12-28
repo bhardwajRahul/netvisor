@@ -1,7 +1,10 @@
-import { writable } from 'svelte/store';
-import { apiClient } from '$lib/api/client';
+/**
+ * TanStack Query hook for server configuration
+ */
 
-export const config = writable<PublicServerConfig>();
+import { createQuery } from '@tanstack/svelte-query';
+import { queryKeys } from '$lib/api/query-client';
+import { apiClient } from '$lib/api/client';
 
 export interface OidcProviderMetadata {
 	name: string;
@@ -33,9 +36,20 @@ export const isCommunity = (cfg: PublicServerConfig) => cfg.deployment_type === 
 export const isSelfHosted = (cfg: PublicServerConfig) =>
 	cfg.deployment_type === 'commercial' || cfg.deployment_type === 'community';
 
-export async function getConfig() {
-	const { data } = await apiClient.GET('/api/config', {});
-	if (data?.success && data.data) {
-		config.set(data.data as PublicServerConfig);
-	}
+/**
+ * Query hook for fetching server configuration
+ */
+export function useConfigQuery() {
+	return createQuery(() => ({
+		queryKey: queryKeys.config.all,
+		queryFn: async () => {
+			const { data } = await apiClient.GET('/api/config', {});
+			if (!data?.success || !data.data) {
+				throw new Error(data?.error || 'Failed to fetch config');
+			}
+			return data.data as PublicServerConfig;
+		},
+		staleTime: Infinity, // Config rarely changes
+		gcTime: Infinity
+	}));
 }

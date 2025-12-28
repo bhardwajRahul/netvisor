@@ -3,7 +3,7 @@
 	import EmptyState from '$lib/shared/components/layout/EmptyState.svelte';
 	import DataControls from '$lib/shared/components/data/DataControls.svelte';
 	import type { Discovery } from '../../types/base';
-	import { discoveryFields } from '../../store';
+	import { discoveryFields } from '../../queries';
 	import DiscoveryEditModal from '../DiscoveryModal/DiscoveryEditModal.svelte';
 	import Loading from '$lib/shared/components/feedback/Loading.svelte';
 	import DiscoveryHistoryCard from '../cards/DiscoveryHistoryCard.svelte';

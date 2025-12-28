@@ -7,14 +7,19 @@
 	import { useCurrentUserQuery } from '$lib/features/auth/queries';
 	import { getMetadata } from '$lib/shared/stores/metadata';
 	import { topologySSEManager } from '$lib/features/topology/sse';
+	import { useDaemonsQuery } from '$lib/features/daemons/queries';
 
 	// Read hash immediately during script initialization, before onMount
 	const initialHash = typeof window !== 'undefined' ? window.location.hash.substring(1) : '';
+	const hadInitialHash = initialHash !== '';
 
 	// TanStack Query for current user
 	const currentUserQuery = useCurrentUserQuery();
 	let isAuthenticated = $derived(currentUserQuery.data != null);
 	let isCheckingAuth = $derived(currentUserQuery.isPending);
+
+	// TanStack Query for daemons - used to determine default tab
+	const daemonsQuery = useDaemonsQuery();
 
 	let activeTab = $state(initialHash || 'topology');
 	let appInitialized = $state(false);
@@ -27,6 +32,16 @@
 	$effect(() => {
 		if (typeof window !== 'undefined' && activeTab) {
 			window.location.hash = activeTab;
+		}
+	});
+
+	// Set initial tab based on daemons (only if no hash was specified in URL)
+	let initialTabSet = $state(false);
+	$effect(() => {
+		if (!hadInitialHash && !initialTabSet && daemonsQuery.isSuccess) {
+			const hasDaemons = (daemonsQuery.data?.length ?? 0) > 0;
+			activeTab = hasDaemons ? 'topology' : 'daemons';
+			initialTabSet = true;
 		}
 	});
 

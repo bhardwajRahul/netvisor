@@ -80,11 +80,12 @@ function toCreateHostRequest(formData: HostFormData): CreateHostRequest {
 		hidden: formData.hidden,
 		tags: formData.tags,
 		interfaces: formData.interfaces.map(
-			(iface): CreateInterfaceInput => ({
+			(iface, index): CreateInterfaceInput => ({
 				subnet_id: iface.subnet_id,
 				ip_address: iface.ip_address,
 				mac_address: iface.mac_address,
-				name: iface.name
+				name: iface.name,
+				position: index // Use array order as position
 			})
 		),
 		ports: formData.ports.map(
@@ -188,12 +189,13 @@ export function useUpdateHostMutation() {
 				expected_updated_at: data.host.updated_at,
 				interfaces: data.interfaces
 					? data.interfaces.map(
-							(iface): UpdateInterfaceInput => ({
+							(iface, index): UpdateInterfaceInput => ({
 								id: savedInterfaceIds.has(iface.id) ? iface.id : null,
 								subnet_id: iface.subnet_id,
 								ip_address: iface.ip_address,
 								mac_address: iface.mac_address,
-								name: iface.name
+								name: iface.name,
+								position: index // Use array order as position
 							})
 						)
 					: null,
@@ -217,7 +219,7 @@ export function useUpdateHostMutation() {
 			}
 
 			// If services were provided, handle bulk update
-			let updatedServices: Service[] = [];
+			const updatedServices: Service[] = [];
 			if (data.services !== null) {
 				const currentServices = queryClient.getQueryData<Service[]>(queryKeys.services.all) ?? [];
 				const hostServices = currentServices.filter((s) => s.host_id === data.host.id);
@@ -471,4 +473,61 @@ export function hydrateHostToFormData(
 		ports: allPorts.filter((p) => p.host_id === host.id),
 		services: allServices.filter((s) => s.host_id === host.id)
 	};
+}
+
+import { utcTimeZoneSentinel, uuidv4Sentinel } from '$lib/shared/utils/formatting';
+
+// ============================================================================
+// Utility Functions
+// ============================================================================
+
+/**
+ * Create empty form data for creating a new host.
+ * @param defaultNetworkId - Optional network ID to use as default.
+ */
+export function createEmptyHostFormData(defaultNetworkId?: string): HostFormData {
+	return {
+		id: uuidv4Sentinel,
+		created_at: utcTimeZoneSentinel,
+		updated_at: utcTimeZoneSentinel,
+		name: '',
+		description: null,
+		tags: [],
+		hostname: null,
+		services: [],
+		interfaces: [],
+		ports: [],
+		source: {
+			type: 'Manual'
+		},
+		virtualization: null,
+		network_id: defaultNetworkId ?? '',
+		hidden: false
+	};
+}
+
+/**
+ * Get a host by ID from the cache
+ */
+export function getHostByIdFromCache(
+	queryClient: ReturnType<typeof useQueryClient>,
+	id: string
+): Host | null {
+	const hosts = queryClient.getQueryData<Host[]>(queryKeys.hosts.all) ?? [];
+	return hosts.find((h) => h.id === id) ?? null;
+}
+
+/**
+ * Get a host by interface ID from the cache
+ */
+export function getHostFromInterfaceIdFromCache(
+	queryClient: ReturnType<typeof useQueryClient>,
+	interfaceId: string
+): Host | null {
+	const interfaces = queryClient.getQueryData<Interface[]>(queryKeys.interfaces.all) ?? [];
+	const iface = interfaces.find((i) => i.id === interfaceId);
+	if (!iface) return null;
+
+	const hosts = queryClient.getQueryData<Host[]>(queryKeys.hosts.all) ?? [];
+	return hosts.find((h) => h.id === iface.host_id) ?? null;
 }

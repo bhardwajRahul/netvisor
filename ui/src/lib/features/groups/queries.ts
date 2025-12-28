@@ -126,3 +126,33 @@ export function useBulkDeleteGroupsMutation() {
 		}
 	}));
 }
+
+import { utcTimeZoneSentinel, uuidv4Sentinel } from '$lib/shared/utils/formatting';
+import { entities } from '$lib/shared/stores/metadata';
+import type { Color } from '$lib/shared/utils/styling';
+
+// ============================================================================
+// Utility Functions
+// ============================================================================
+
+/**
+ * Create empty form data for creating a new group
+ */
+export function createEmptyGroupFormData(defaultNetworkId?: string): Group {
+	return {
+		id: uuidv4Sentinel,
+		name: '',
+		description: '',
+		binding_ids: [],
+		created_at: utcTimeZoneSentinel,
+		updated_at: utcTimeZoneSentinel,
+		group_type: 'RequestPath',
+		source: {
+			type: 'Manual'
+		},
+		network_id: defaultNetworkId ?? '',
+		color: entities.getColorHelper('Group').color as Color,
+		edge_style: 'Straight',
+		tags: []
+	};
+}
