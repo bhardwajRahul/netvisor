@@ -19,7 +19,7 @@ use crate::server::{
         },
         oidc::OidcService,
     },
-    config::AppState,
+    config::{AppState, DeploymentType, get_deployment_type},
     invites::handlers::process_pending_invite,
     networks::r#impl::{Network, NetworkBase},
     shared::{
@@ -105,7 +105,7 @@ async fn register(
         ));
     }
 
-    if is_email_unwanted(request.email.as_str()) && request.email.domain() != "gmx.net" {
+    if is_email_unwanted(request.email.as_str()) && get_deployment_type(state.clone()) == DeploymentType::Cloud {
         return Err(ApiError::conflict(
             "Email address uses a disposable domain. Please register with a non-disposable email address.",
         ));
@@ -1186,6 +1186,7 @@ async fn handle_register_flow(
                 billing_enabled,
                 provider_slug: slug,
                 code,
+                deployment_type: get_deployment_type(state.clone())
             },
             pending_setup.clone(),
         )

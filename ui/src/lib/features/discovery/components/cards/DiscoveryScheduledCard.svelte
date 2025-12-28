@@ -73,11 +73,11 @@
 			}
 		],
 		actions: [
-			{
-				label: 'Edit',
-				icon: Edit,
+						{
+				label: 'Delete',
+				icon: Trash2,
 				class: `btn-icon`,
-				onClick: () => onEdit(discovery)
+				onClick: () => onDelete(discovery)
 			},
 			{
 				label: 'Run',
@@ -86,11 +86,11 @@
 				onClick: () => onRun(discovery)
 			},
 			{
-				label: 'Delete',
-				icon: Trash2,
+				label: 'Edit',
+				icon: Edit,
 				class: `btn-icon`,
-				onClick: () => onDelete(discovery)
-			}
+				onClick: () => onEdit(discovery)
+			},
 		]
 	});
 </script>

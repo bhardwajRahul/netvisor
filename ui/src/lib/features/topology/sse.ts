@@ -53,7 +53,7 @@ class TopologySSEManager extends BaseSSEManager<Topology> {
 				console.error('Topology SSE error:', error);
 			},
 			onOpen: () => {
-				console.log('Topology SSE connected');
+
 			}
 		};
 	}

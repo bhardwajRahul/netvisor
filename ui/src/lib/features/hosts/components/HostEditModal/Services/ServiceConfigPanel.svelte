@@ -1,13 +1,9 @@
 <script lang="ts">
-	import { field } from 'svelte-forms';
 	import type { InterfaceBinding, PortBinding, Service } from '$lib/features/services/types/base';
 	import { serviceDefinitions } from '$lib/shared/stores/metadata';
 	import ListManager from '$lib/shared/components/forms/selection/ListManager.svelte';
-	import type { FormApi } from '$lib/shared/components/forms/types';
-	import { required } from 'svelte-forms/validators';
 	import { pushWarning } from '$lib/shared/stores/feedback';
-	import TextInput from '$lib/shared/components/forms/input/TextInput.svelte';
-	import { maxLength } from '$lib/shared/components/forms/validators';
+	import { required, max } from '$lib/shared/components/forms/validators';
 	import ConfigHeader from '$lib/shared/components/forms/config/ConfigHeader.svelte';
 	import { v4 as uuidv4 } from 'uuid';
 	import { useServicesQuery } from '$lib/features/services/queries';
@@ -18,16 +14,25 @@
 	import TagPicker from '$lib/features/tags/components/TagPicker.svelte';
 	import { useInterfacesQuery } from '$lib/features/interfaces/queries';
 	import { usePortsQuery } from '$lib/features/ports/queries';
+	import { useSubnetsQuery, isContainerSubnet } from '$lib/features/subnets/queries';
 	import InlineWarning from '$lib/shared/components/feedback/InlineWarning.svelte';
 
 	// TanStack Query hooks
 	const servicesQuery = useServicesQuery();
 	const interfacesQuery = useInterfacesQuery();
 	const portsQuery = usePortsQuery();
+	const subnetsQuery = useSubnetsQuery();
 
 	let servicesData = $derived(servicesQuery.data ?? []);
 	let interfacesData = $derived(interfacesQuery.data ?? []);
 	let portsData = $derived(portsQuery.data ?? []);
+	let subnetsData = $derived(subnetsQuery.data ?? []);
+
+	// Helper to check if subnet is a container subnet
+	let isContainerSubnetFn = $derived((subnetId: string) => {
+		const subnet = subnetsData.find((s) => s.id === subnetId);
+		return subnet ? isContainerSubnet(subnet) : false;
+	});
 
 	// Check if an interface is unsaved (not yet in the global cache)
 	function isInterfaceUnsaved(id: string): boolean {
@@ -52,7 +57,6 @@
 	}
 
 	interface Props {
-		formApi: FormApi;
 		host: HostFormData;
 		service: Service;
 		onChange?: (updatedService: Service) => void;
@@ -61,7 +65,6 @@
 	}
 
 	let {
-		formApi,
 		host,
 		service,
 		onChange = () => {},
@@ -69,28 +72,43 @@
 		index = -1
 	}: Props = $props();
 
+	// Local state for form fields
+	let name = $state(service.name);
+	let nameError = $state<string | undefined>(undefined);
+
 	let currentServiceId = $state(service.id);
 	let currentServiceIndex = $state(index);
-
-	const getNameField = () => {
-		return field(`service_name_${currentServiceId}_${index}`, service.name, [
-			required(),
-			maxLength(100)
-		]);
-	};
-
-	let nameField = $state(getNameField());
 
 	let serviceMetadata = $derived(
 		service ? serviceDefinitions.getItem(service.service_definition) : null
 	);
 
+	// Reset fields when service changes
 	$effect(() => {
-		if (currentServiceIndex !== index) {
+		if (currentServiceIndex !== index || currentServiceId !== service.id) {
 			currentServiceIndex = index;
-			nameField = getNameField();
+			currentServiceId = service.id;
+			name = service.name;
+			nameError = undefined;
 		}
 	});
+
+	// Handle name change with validation
+	function handleNameChange(e: Event) {
+		const value = (e.target as HTMLInputElement).value;
+		name = value;
+		nameError = required(value) || max(100)(value);
+		triggerNameChange();
+	}
+
+	function triggerNameChange() {
+		if (name !== service.name) {
+			onChange({
+				...service,
+				name: name
+			});
+		}
+	}
 
 	// Port Bindings Logic
 	let portBindings = $derived(service.bindings.filter((b) => b.type === 'Port') as PortBinding[]);
@@ -189,22 +207,6 @@
 	);
 
 	let canCreateInterfaceBinding = $derived(availableInterfacesForInterfaceBinding.length > 0);
-
-	// Update service when field values change
-	$effect(() => {
-		// eslint-disable-next-line svelte/require-store-reactive-access -- checking if field exists, not its value
-		if (nameField) {
-			const fieldValue = $nameField;
-			const updatedService: Service = {
-				...service,
-				name: fieldValue.value
-			};
-
-			if (updatedService.name !== service.name) {
-				onChange(updatedService);
-			}
-		}
-	});
 
 	// Port Binding Handlers
 	function handleCreatePortBinding() {
@@ -351,25 +353,34 @@
 
 {#if service && serviceMetadata}
 	<div class="space-y-6">
-		<ConfigHeader title={serviceMetadata.name} subtitle={serviceMetadata.description} />
+		<ConfigHeader title={serviceMetadata.name ?? ''} subtitle={serviceMetadata.description} />
 
 		<!-- Basic Configuration -->
 		<div class="space-y-4">
 			<div class="text-primary font-medium">Details</div>
 			<!-- Service Name Field -->
-			<!-- eslint-disable-next-line svelte/require-store-reactive-access -- checking if field exists -->
-			{#if nameField}
-				<TextInput
-					label="Name"
+			<div>
+				<label for="service_name_{service.id}" class="text-secondary mb-1 block text-sm font-medium">
+					Name <span class="text-red-400">*</span>
+				</label>
+				<input
+					type="text"
 					id="service_name_{service.id}"
-					{formApi}
-					required={true}
+					class="input-field w-full"
 					placeholder="Enter a descriptive name..."
-					field={nameField}
+					value={name}
+					oninput={handleNameChange}
 				/>
-			{/if}
+				{#if nameError}
+					<p class="mt-1 text-xs text-red-400">{nameError}</p>
+				{/if}
+			</div>
 
-			<TagPicker bind:selectedTagIds={service.tags} />
+			<!-- service prop comes via slot, so use callback pattern instead of bind: -->
+			<TagPicker
+				selectedTagIds={service.tags}
+				onChange={(tags) => onChange({ ...service, tags })}
+			/>
 		</div>
 
 		<div>
@@ -408,7 +419,6 @@
 					allowItemRemove={() => true}
 					allowSelection={true}
 					allowReorder={false}
-					{formApi}
 					allowCreateNew={true}
 					itemClickAction="select"
 					allowAddFromOptions={false}
@@ -417,7 +427,14 @@
 					optionDisplayComponent={PortBindingDisplay}
 					itemDisplayComponent={PortBindingDisplay}
 					items={portBindings}
-					getItemContext={() => ({ service, host: host })}
+					getItemContext={() => ({
+						service,
+						host,
+						services: servicesData,
+						interfaces: host.interfaces,
+						ports: host.ports,
+						isContainerSubnet: isContainerSubnetFn
+					})}
 					onCreateNew={handleCreatePortBinding}
 					onRemove={handleRemovePortBinding}
 					onEdit={handleUpdatePortBinding}
@@ -437,7 +454,6 @@
 					allowDuplicates={false}
 					allowItemEdit={() => true}
 					allowItemRemove={() => true}
-					{formApi}
 					allowReorder={false}
 					allowCreateNew={true}
 					allowAddFromOptions={false}
@@ -446,7 +462,13 @@
 					optionDisplayComponent={InterfaceBindingDisplay}
 					itemDisplayComponent={InterfaceBindingDisplay}
 					items={interfaceBindings}
-					getItemContext={() => ({ service, host: host })}
+					getItemContext={() => ({
+						service,
+						host,
+						services: servicesData,
+						interfaces: host.interfaces,
+						isContainerSubnet: isContainerSubnetFn
+					})}
 					onCreateNew={handleCreateInterfaceBinding}
 					onRemove={handleRemoveInterfaceBinding}
 					onEdit={handleUpdateInterfaceBinding}

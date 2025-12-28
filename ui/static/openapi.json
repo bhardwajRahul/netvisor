@@ -6450,14 +6450,14 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2025-12-27T04:06:57.113246Z",
-              "id": "853312ae-886d-4620-b30a-fb4605df7b7d",
+              "created_at": "2025-12-27T17:37:05.236381Z",
+              "id": "cce42ada-34e3-47a9-9912-cd32591da2db",
               "interface_id": "550e8400-e29b-41d4-a716-446655440005",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2025-12-27T04:06:57.113246Z"
+              "updated_at": "2025-12-27T17:37:05.236381Z"
             }
           },
           "error": {
@@ -7493,14 +7493,14 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2025-12-27T04:06:57.109411Z",
-                  "id": "68096bd4-c1d2-45cd-9310-bbf4f87ab826",
+                  "created_at": "2025-12-27T17:37:05.233711Z",
+                  "id": "33a9180c-8611-481d-a7cf-4cbb9e583585",
                   "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2025-12-27T04:06:57.109411Z"
+                  "updated_at": "2025-12-27T17:37:05.233711Z"
                 }
               ],
               "created_at": "2026-01-15T10:30:00Z",
@@ -7508,7 +7508,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
-              "service_definition": "Bitwarden",
+              "service_definition": "Ghost",
               "source": {
                 "type": "Manual"
               },
@@ -8134,14 +8134,14 @@
               ],
               "description": "Association between a service and a port / interface that the service is listening on",
               "example": {
-                "created_at": "2025-12-27T04:06:57.112939Z",
-                "id": "94bf0992-55d2-41d9-8ea8-4ec7124cbf5a",
+                "created_at": "2025-12-27T17:37:05.236149Z",
+                "id": "59bb6004-3293-4a76-a517-47077d8b0c31",
                 "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "port_id": "550e8400-e29b-41d4-a716-446655440006",
                 "service_id": "550e8400-e29b-41d4-a716-446655440007",
                 "type": "Port",
-                "updated_at": "2025-12-27T04:06:57.112939Z"
+                "updated_at": "2025-12-27T17:37:05.236149Z"
               }
             }
           },
@@ -8837,14 +8837,14 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2025-12-27T04:06:57.108132Z",
-                    "id": "e60e0717-d014-4f22-b877-1ca5202f3f3d",
+                    "created_at": "2025-12-27T17:37:05.232903Z",
+                    "id": "f98e3afc-a2ae-45dc-98c6-06e5ed3877c6",
                     "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2025-12-27T04:06:57.108132Z"
+                    "updated_at": "2025-12-27T17:37:05.232903Z"
                   }
                 ],
                 "created_at": "2026-01-15T10:30:00Z",
@@ -8852,7 +8852,7 @@
                 "id": "550e8400-e29b-41d4-a716-446655440007",
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
-                "service_definition": "Bitwarden",
+                "service_definition": "Ghost",
                 "source": {
                   "type": "Manual"
                 },
@@ -9410,14 +9410,14 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2025-12-27T04:06:57.099953Z",
-          "id": "c28cef63-dce4-4a93-bb96-4a5d2a655059",
+          "created_at": "2025-12-27T17:37:05.227282Z",
+          "id": "58325029-a362-4fbd-95d3-cc29f3e87e72",
           "interface_id": "550e8400-e29b-41d4-a716-446655440005",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2025-12-27T04:06:57.099953Z"
+          "updated_at": "2025-12-27T17:37:05.227282Z"
         }
       },
       "BindingBase": {
@@ -12066,14 +12066,14 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2025-12-27T04:06:57.099859Z",
-              "id": "8575863f-6058-4824-a668-4e5f741e7ddf",
+              "created_at": "2025-12-27T17:37:05.227232Z",
+              "id": "fb419fba-e0be-49ee-b869-f0cab6ad288d",
               "interface_id": "550e8400-e29b-41d4-a716-446655440005",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2025-12-27T04:06:57.099859Z"
+              "updated_at": "2025-12-27T17:37:05.227232Z"
             }
           ],
           "created_at": "2026-01-15T10:30:00Z",
@@ -12081,7 +12081,7 @@
           "id": "550e8400-e29b-41d4-a716-446655440007",
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
-          "service_definition": "Bitwarden",
+          "service_definition": "Ghost",
           "source": {
             "type": "Manual"
           },
@@ -12835,7 +12835,12 @@
         "type": "object",
         "required": [
           "id",
-          "color"
+          "name",
+          "description",
+          "category",
+          "icon",
+          "color",
+          "metadata"
         ],
         "properties": {
           "category": {
@@ -12934,7 +12939,7 @@
             "items": {
               "$ref": "#/components/schemas/UpdateInterfaceInput"
             },
-            "description": "Optional: interfaces to sync with this host.\nIf provided, the server will:\n- Create interfaces without an `id` (or with nil UUID)\n- Keep/update interfaces with matching `id`\n- Delete existing interfaces not in this list\nIf not provided (None), interfaces are left unchanged."
+            "description": "Optional: interfaces to sync with this host.\nIf provided, the server will:\n- Create interfaces without an `id` (or with nil UUID)\n- Keep/update interfaces with matching `id`\n- Delete existing interfaces not in this list\n\nIf not provided (None), interfaces are left unchanged."
           },
           "name": {
             "type": "string"
@@ -12947,7 +12952,7 @@
             "items": {
               "$ref": "#/components/schemas/UpdatePortInput"
             },
-            "description": "Optional: ports to sync with this host.\nIf provided, the server will:\n- Create ports without an `id` (or with nil UUID)\n- Keep/update ports with matching `id`\n- Delete existing ports not in this list\nIf not provided (None), ports are left unchanged."
+            "description": "Optional: ports to sync with this host.\nIf provided, the server will:\n- Create ports without an `id` (or with nil UUID)\n- Keep/update ports with matching `id`\n- Delete existing ports not in this list\n\nIf not provided (None), ports are left unchanged."
           },
           "tags": {
             "type": "array",

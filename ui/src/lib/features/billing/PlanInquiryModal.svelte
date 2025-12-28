@@ -1,65 +1,110 @@
 <script lang="ts">
-	import { field } from 'svelte-forms';
-	import { email as emailValidator, required } from 'svelte-forms/validators';
-	import EditModal from '$lib/shared/components/forms/EditModal.svelte';
+	import { createForm } from '@tanstack/svelte-form';
+	import { submitForm } from '$lib/shared/components/forms/form-context';
+	import { email as emailValidatorFn, required } from '$lib/shared/components/forms/validators';
+	import GenericModal from '$lib/shared/components/layout/GenericModal.svelte';
 	import TextInput from '$lib/shared/components/forms/input/TextInput.svelte';
 	import TextArea from '$lib/shared/components/forms/input/TextArea.svelte';
 
-	export let isOpen: boolean = false;
-	export let planName: string = '';
-	export let userEmail: string = '';
-	export let onClose: () => void;
-	export let onSubmit: (email: string, message: string) => void | Promise<void>;
-
-	let loading = false;
-
-	const emailField = field('email', userEmail, [required(), emailValidator()]);
-	const messageField = field('message', '', []);
-
-	// Reset fields when modal opens with new data
-	$: if (isOpen) {
-		emailField.set(userEmail);
-		messageField.set('');
+	interface Props {
+		isOpen?: boolean;
+		planName?: string;
+		userEmail?: string;
+		onClose: () => void;
+		onSubmit: (email: string, message: string) => void | Promise<void>;
 	}
 
-	async function handleSave() {
-		loading = true;
-		try {
-			await onSubmit($emailField.value, $messageField.value);
-			onClose();
-		} finally {
-			loading = false;
+	let { isOpen = false, planName = '', userEmail = '', onClose, onSubmit }: Props = $props();
+
+	let loading = $state(false);
+
+	function getDefaultValues() {
+		return {
+			email: userEmail,
+			message: ''
+		};
+	}
+
+	const form = createForm(() => ({
+		defaultValues: getDefaultValues(),
+		onSubmit: async ({ value }) => {
+			loading = true;
+			try {
+				await onSubmit(value.email, value.message);
+				onClose();
+			} finally {
+				loading = false;
+			}
 		}
+	}));
+
+	function handleOpen() {
+		form.reset(getDefaultValues());
+	}
+
+	async function handleSubmit() {
+		await submitForm(form);
 	}
 </script>
 
-<EditModal
+<GenericModal
 	title="Request Information - {planName}"
 	{isOpen}
-	onCancel={onClose}
-	onSave={handleSave}
-	saveLabel="Send Request"
-	{loading}
+	onClose={onClose}
+	onOpen={handleOpen}
 	size="md"
-	let:formApi
+	showCloseButton={true}
 >
-	<div class="space-y-4">
-		<TextInput
-			label="Email"
-			id="inquiry-email"
-			{formApi}
-			field={emailField}
-			placeholder="your@email.com"
-			required
-		/>
+	<form
+		onsubmit={(e) => {
+			e.preventDefault();
+			e.stopPropagation();
+			handleSubmit();
+		}}
+		class="flex h-full flex-col"
+	>
+		<div class="flex-1 overflow-auto p-6">
+			<div class="space-y-4">
+				<form.Field
+					name="email"
+					validators={{
+						onBlur: ({ value }) => required(value) || emailValidatorFn(value)
+					}}
+				>
+					{#snippet children(field)}
+						<TextInput
+							label="Email"
+							id="inquiry-email"
+							{field}
+							placeholder="your@email.com"
+							required
+						/>
+					{/snippet}
+				</form.Field>
 
-		<TextArea
-			label="What information are you looking for?"
-			id="inquiry-message"
-			{formApi}
-			field={messageField}
-			placeholder="Tell us what you'd like to know about the {planName} plan..."
-			rows={5}
-		/>
-	</div>
-</EditModal>
+				<form.Field name="message">
+					{#snippet children(field)}
+						<TextArea
+							label="What information are you looking for?"
+							id="inquiry-message"
+							{field}
+							placeholder="Tell us what you'd like to know about the {planName} plan..."
+							rows={5}
+						/>
+					{/snippet}
+				</form.Field>
+			</div>
+		</div>
+
+		<div class="modal-footer">
+			<div class="flex items-center justify-end gap-3">
+				<button type="button" disabled={loading} onclick={onClose} class="btn-secondary">
+					Cancel
+				</button>
+				<button type="submit" disabled={loading} class="btn-primary">
+					{loading ? 'Sending...' : 'Send Request'}
+				</button>
+			</div>
+		</div>
+	</form>
+</GenericModal>

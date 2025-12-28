@@ -1,59 +1,61 @@
-<!-- ui/src/lib/shared/components/forms/input/PasswordInput.svelte -->
 <script lang="ts">
-	import { field } from 'svelte-forms';
-	import { required as requiredValidation } from 'svelte-forms/validators';
-	import { minLength, passwordComplexity, passwordMatch } from '../validators';
-	import type { FormApi } from '../types';
-	import TextInput from './TextInput.svelte';
+	import type { AnyFieldApi } from '@tanstack/svelte-form';
+	import { AlertCircle } from 'lucide-svelte';
 
-	export let formApi: FormApi;
-	export let value: string = '';
-	export let showConfirm: boolean = true;
-	export let confirmValue: string = '';
-	export let label: string = 'Password';
-	export let confirmLabel: string = 'Confirm Password';
-	export let required: boolean = true;
+	interface Props {
+		passwordField: AnyFieldApi;
+		confirmPasswordField?: AnyFieldApi;
+		label?: string;
+		confirmLabel?: string;
+		required?: boolean;
+	}
 
-	// Create form fields with validation
-	let passwordValidation = [minLength(10), passwordComplexity()];
-	if (required) passwordValidation.push(requiredValidation());
-	const password = field('password', value, passwordValidation);
+	let {
+		passwordField,
+		confirmPasswordField,
+		label = 'Password',
+		confirmLabel = 'Confirm Password',
+		required = true
+	}: Props = $props();
 
-	let confirmPasswordValidation = [passwordMatch(() => $password.value)];
-	if (required) confirmPasswordValidation.push(requiredValidation());
-	const confirmPassword = field('confirmPassword', confirmValue, confirmPasswordValidation);
+	// Password requirements derived from field value
+	let value = $derived(passwordField.state.value as string);
+	let hasUppercase = $derived(/[A-Z]/.test(value));
+	let hasLowercase = $derived(/[a-z]/.test(value));
+	let hasNumber = $derived(/[0-9]/.test(value));
+	let passwordLongEnough = $derived(value.length >= 10);
 
-	// Update parent values when field values change
-	$: value = $password.value;
-	$: confirmValue = $confirmPassword.value;
+	// Password field errors
+	let passwordErrors = $derived(passwordField.state.meta.errors);
+	let showPasswordErrors = $derived(passwordField.state.meta.isTouched && passwordErrors.length > 0);
 
-	// Show password requirements
-	$: passwordValue = $password.value;
-	$: hasUppercase = /[A-Z]/.test(passwordValue);
-	$: hasLowercase = /[a-z]/.test(passwordValue);
-	$: hasNumber = /[0-9]/.test(passwordValue);
-	$: passwordLongEnough = passwordValue.length >= 10;
-
-	// Expose validation state
-	export let isValid = false;
-	$: isValid = showConfirm ? $password.valid && $confirmPassword.valid : $password.valid;
+	// Confirm field errors
+	let confirmErrors = $derived(confirmPasswordField?.state.meta.errors ?? []);
+	let showConfirmErrors = $derived(
+		confirmPasswordField?.state.meta.isTouched && confirmErrors.length > 0
+	);
 </script>
 
 <div class="space-y-4">
-	<div>
-		<TextInput
+	<div class="space-y-2">
+		<label for="password" class="text-secondary block text-sm font-medium">
 			{label}
+			{#if required}<span class="text-red-400">*</span>{/if}
+		</label>
+		<input
 			id="password"
 			type="password"
-			{formApi}
+			value={passwordField.state.value}
+			onblur={() => passwordField.handleBlur()}
+			oninput={(e) => passwordField.handleChange(e.currentTarget.value)}
 			placeholder="Create a strong password"
-			{required}
-			field={password}
+			class="input-field"
+			class:input-field-error={showPasswordErrors}
 		/>
 
 		<!-- Password Requirements -->
-		{#if passwordValue}
-			<div class="mt-2 space-y-1 rounded-md bg-gray-700 p-3">
+		{#if value}
+			<div class="space-y-1 rounded-md bg-gray-700 p-3">
 				<p class="text-xs font-medium text-gray-300">Password Requirements:</p>
 				<p class="text-xs {passwordLongEnough ? 'text-green-400' : 'text-gray-400'}">
 					{passwordLongEnough ? '✓' : '○'} At least 10 characters
@@ -69,17 +71,37 @@
 				</p>
 			</div>
 		{/if}
+
+		{#if showPasswordErrors}
+			<div class="text-danger flex items-center gap-2">
+				<AlertCircle size={16} />
+				<p class="text-xs">{passwordErrors[0]}</p>
+			</div>
+		{/if}
 	</div>
 
-	{#if showConfirm}
-		<TextInput
-			label={confirmLabel}
-			id="confirmPassword"
-			type="password"
-			{formApi}
-			placeholder="Re-enter your password"
-			{required}
-			field={confirmPassword}
-		/>
+	{#if confirmPasswordField}
+		<div class="space-y-2">
+			<label for="confirmPassword" class="text-secondary block text-sm font-medium">
+				{confirmLabel}
+				{#if required}<span class="text-red-400">*</span>{/if}
+			</label>
+			<input
+				id="confirmPassword"
+				type="password"
+				value={confirmPasswordField.state.value}
+				onblur={() => confirmPasswordField.handleBlur()}
+				oninput={(e) => confirmPasswordField.handleChange(e.currentTarget.value)}
+				placeholder="Re-enter your password"
+				class="input-field"
+				class:input-field-error={showConfirmErrors}
+			/>
+			{#if showConfirmErrors}
+				<div class="text-danger flex items-center gap-2">
+					<AlertCircle size={16} />
+					<p class="text-xs">{confirmErrors[0]}</p>
+				</div>
+			{/if}
+		</div>
 	{/if}
 </div>

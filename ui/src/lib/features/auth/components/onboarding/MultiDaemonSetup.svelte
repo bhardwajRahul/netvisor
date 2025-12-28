@@ -7,7 +7,6 @@
 	import { onboardingStore } from '../../stores/onboarding';
 	import { trackEvent } from '$lib/shared/utils/analytics';
 	import type { NetworkSetup } from '../../types/base';
-	import type { FormApi } from '$lib/shared/components/forms/types';
 
 	// Convert string to kebab-case
 	function toKebabCase(str: string): string {
@@ -17,10 +16,14 @@
 			.replace(/^-+|-+$/g, '');
 	}
 
-	export let isOpen: boolean;
-	export let networks: NetworkSetup[];
-	export let onComplete: () => void;
-	export let onClose: () => void;
+	interface Props {
+		isOpen: boolean;
+		networks: NetworkSetup[];
+		onComplete: () => void;
+		onClose: () => void;
+	}
+
+	let { isOpen, networks, onComplete, onClose }: Props = $props();
 
 	interface NetworkCardState {
 		choice: 'pending' | 'install_now' | 'install_later';
@@ -30,13 +33,13 @@
 	}
 
 	// Initialize card state for each network
-	let cardStates: Record<string, NetworkCardState> = {};
+	let cardStates = $state<Record<string, NetworkCardState>>({});
 
 	// References to CreateDaemonForm components for getting daemon names
-	let daemonFormRefs: Record<string, CreateDaemonForm> = {};
+	let daemonFormRefs = $state<Record<string, CreateDaemonForm>>({});
 
-	$: {
-		// Initialize states for new networks
+	// Initialize states for new networks
+	$effect(() => {
 		networks.forEach((network) => {
 			if (network.id && !cardStates[network.id]) {
 				cardStates[network.id] = {
@@ -47,15 +50,7 @@
 				};
 			}
 		});
-	}
-
-	// Create a simple formApi for each network (fields still work, just not integrated with parent form)
-	function createFormApi(): FormApi {
-		return {
-			registerField: () => {},
-			unregisterField: () => {}
-		};
-	}
+	});
 
 	async function handleInstallNow(networkId: string) {
 		const state = cardStates[networkId];
@@ -143,7 +138,7 @@
 	}
 
 	// Check if all networks have been configured
-	$: allConfigured = networks.every((n) => n.id && cardStates[n.id]?.choice !== 'pending');
+	let allConfigured = $derived(networks.every((n) => n.id && cardStates[n.id]?.choice !== 'pending'));
 </script>
 
 <GenericModal
@@ -174,7 +169,7 @@
 					{#if state}
 						<div class="card overflow-hidden">
 							<!-- Header -->
-							<div class="flex items-center justify-between">
+							<div class="flex items-center justify-between mb-2">
 								<div class="flex items-center gap-3">
 									{#if state.choice == 'install_now'}
 										<div
@@ -188,7 +183,7 @@
 										</div>
 									{/if}
 									<div>
-										<span class="text-secondary">Network: {network.name}</span>
+										<span class="text-secondary">Daemon for Network: {network.name}</span>
 										{#if state.choice === 'install_later'}
 											<div class="text-tertiary text-xs">
 												You can install this daemon later by going to the Daemons tab and selecting
@@ -207,14 +202,14 @@
 										<button
 											type="button"
 											class="btn-secondary"
-											on:click={() => network.id && handleInstallLater(network.id)}
+											onclick={() => network.id && handleInstallLater(network.id)}
 										>
 											Install Later
 										</button>
 										<button
 											type="button"
 											class="text-secondary hover:text-primary p-1"
-											on:click={() => network.id && toggleExpanded(network.id)}
+											onclick={() => network.id && toggleExpanded(network.id)}
 										>
 											{#if state.isExpanded}
 												<ChevronDown class="h-5 w-5" />
@@ -226,7 +221,7 @@
 										<button
 											type="button"
 											class="btn-secondary"
-											on:click={() => network.id && handleInstallNow(network.id)}
+											onclick={() => network.id && handleInstallNow(network.id)}
 										>
 											Install Now
 										</button>
@@ -239,7 +234,6 @@
 								{#if state.choice == 'pending' || (state.choice == 'install_now' && state.isExpanded && state.apiKey && network.id)}
 									<CreateDaemonForm
 										bind:this={daemonFormRefs[network.id]}
-										formApi={createFormApi()}
 										daemon={null}
 										networkId={network.id}
 										apiKey={state.apiKey}
@@ -255,7 +249,7 @@
 											type="button"
 											class="btn-secondary flex-1"
 											disabled={state.isLoading}
-											on:click={() => network.id && handleInstallLater(network.id)}
+											onclick={() => network.id && handleInstallLater(network.id)}
 										>
 											Install Later
 										</button>
@@ -263,7 +257,7 @@
 											type="button"
 											class="btn-primary flex-1"
 											disabled={state.isLoading}
-											on:click={() => network.id && handleInstallNow(network.id)}
+											onclick={() => network.id && handleInstallNow(network.id)}
 										>
 											{state.isLoading ? 'Setting up...' : 'Install Now'}
 										</button>
@@ -279,7 +273,7 @@
 
 	<svelte:fragment slot="footer">
 		<div class="flex justify-end">
-			<button type="button" class="btn-primary" disabled={!allConfigured} on:click={onComplete}>
+			<button type="button" class="btn-primary" disabled={!allConfigured} onclick={onComplete}>
 				{allConfigured ? 'Continue to Registration' : 'Configure remaining daemons to continue'}
 			</button>
 		</div>

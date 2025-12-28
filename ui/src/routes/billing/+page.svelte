@@ -1,9 +1,9 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import posthog from 'posthog-js';
 	import Toast from '$lib/shared/components/feedback/Toast.svelte';
 	import BillingPlanForm from '$lib/features/billing/BillingPlanForm.svelte';
 	import type { BillingPlan } from '$lib/features/billing/types';
-	import { loadData } from '$lib/shared/utils/dataLoader';
 	import { config } from '$lib/shared/stores/config';
 	import { getMetadata, billingPlans, features } from '$lib/shared/stores/metadata';
 	import Loading from '$lib/shared/components/feedback/Loading.svelte';
@@ -22,9 +22,13 @@
 	const checkoutMutation = useCheckoutMutation();
 	let plansData = $derived(billingPlansQuery.data ?? []);
 
-	// Load metadata (billing plans are loaded via TanStack Query)
-	const loading = loadData([getMetadata], { loadingDelay: 0 });
-	let isLoading = $derived($loading || billingPlansQuery.isPending);
+	// Load metadata on mount
+	let metadataLoaded = $state(false);
+	onMount(async () => {
+		await getMetadata();
+		metadataLoaded = true;
+	});
+	let isLoading = $derived(!metadataLoaded || billingPlansQuery.isPending);
 
 	// Determine initial filter based on use case from onboarding
 	// homelab = personal, company/msp = commercial

@@ -94,7 +94,7 @@ class DiscoverySSEManager extends BaseSSEManager<DiscoveryUpdatePayload> {
 				pushError('Lost connection to discovery updates');
 			},
 			onOpen: () => {
-				console.log('Connected to discovery updates');
+
 			}
 		};
 	}

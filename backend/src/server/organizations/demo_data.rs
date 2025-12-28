@@ -442,6 +442,7 @@ fn create_host(
             ip_address: IpAddr::V4(ip),
             mac_address: None,
             name: Some("eth0".to_string()),
+            position: 0,
         },
     };
     let host = Host {

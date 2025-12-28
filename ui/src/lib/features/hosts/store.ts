@@ -1,6 +1,5 @@
 import { derived, get, writable, type Readable } from 'svelte/store';
 import type {
-	AllInterfaces,
 	CreateHostRequest,
 	CreateHostWithServicesRequest,
 	CreateInterfaceInput,
@@ -17,8 +16,7 @@ import type {
 } from './types/base';
 import { apiClient, type ApiResponse } from '$lib/api/client';
 import { pushSuccess } from '$lib/shared/stores/feedback';
-import { utcTimeZoneSentinel, uuidv4Sentinel } from '$lib/shared/utils/formatting'; // uuidv4Sentinel still used in createEmptyHostFormData
-import { isContainerSubnet } from '../subnets/store';
+import { utcTimeZoneSentinel, uuidv4Sentinel } from '$lib/shared/utils/formatting';
 import { networks } from '../networks/store';
 import { bulkUpdateServices, services } from '../services/store';
 import {
@@ -97,6 +95,11 @@ function syncChildrenFromResponses(responses: HostResponse[]) {
 	services.set(allServices);
 }
 
+/**
+ * @deprecated Use useHostsQuery() from queries.ts instead.
+ * This function and other CRUD operations below are deprecated.
+ * They sync to Svelte stores which are being replaced by TanStack Query cache.
+ */
 export async function getHosts() {
 	const { data } = await apiClient.GET('/api/hosts');
 	if (data?.success && data.data) {
@@ -285,8 +288,9 @@ export async function consolidateHosts(destination_host_id: string, other_host_i
 
 /**
  * Create empty form data for creating a new host.
+ * @param defaultNetworkId - Optional network ID to use as default. If not provided, falls back to first network in store.
  */
-export function createEmptyHostFormData(): HostFormData {
+export function createEmptyHostFormData(defaultNetworkId?: string): HostFormData {
 	return {
 		id: uuidv4Sentinel,
 		created_at: utcTimeZoneSentinel,
@@ -302,16 +306,9 @@ export function createEmptyHostFormData(): HostFormData {
 			type: 'Manual'
 		},
 		virtualization: null,
-		network_id: get(networks)[0]?.id || '',
+		network_id: defaultNetworkId ?? get(networks)[0]?.id ?? '',
 		hidden: false
 	};
-}
-
-export function formatInterface(i: Interface | AllInterfaces): string {
-	if (i.id == null) return i.name;
-	return get(isContainerSubnet(i.subnet_id))
-		? (i.name ?? i.ip_address)
-		: (i.name ? i.name + ': ' : '') + i.ip_address;
 }
 
 export function getHostFromId(id: string): Readable<Host | null> {
@@ -331,20 +328,4 @@ export function getHostFromInterfaceId(interface_id: string): Readable<Host | nu
 // Note: getInterfaceFromId and getPortFromId have been moved to their respective stores:
 // - getInterfaceFromId: import from '$lib/features/interfaces/store'
 // - getPortFromId: import from '$lib/features/ports/store'
-
-/**
- * Hydrate a Host primitive to HostFormData by looking up children from stores.
- * Used for form editing where the full form structure is needed.
- */
-export function hydrateHostToFormData(host: Host): HostFormData {
-	const hostInterfaces = get(interfaces).filter((i) => i.host_id === host.id);
-	const hostPorts = get(ports).filter((p) => p.host_id === host.id);
-	const hostServices = get(services).filter((s) => s.host_id === host.id);
-
-	return {
-		...host,
-		interfaces: hostInterfaces,
-		ports: hostPorts,
-		services: hostServices
-	};
-}
+// Note: hydrateHostToFormData has been moved to queries.ts (uses TanStack Query cache)

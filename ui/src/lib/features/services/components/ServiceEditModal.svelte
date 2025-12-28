@@ -1,5 +1,5 @@
 <script lang="ts">
-	import EditModal from '$lib/shared/components/forms/EditModal.svelte';
+	import GenericModal from '$lib/shared/components/layout/GenericModal.svelte';
 	import ModalHeaderIcon from '$lib/shared/components/layout/ModalHeaderIcon.svelte';
 	import { serviceDefinitions } from '$lib/shared/stores/metadata';
 	import EntityMetadataSection from '$lib/shared/components/forms/EntityMetadataSection.svelte';
@@ -43,7 +43,6 @@
 	let { service, host, isOpen = false, onUpdate, onClose }: Props = $props();
 
 	let loading = $state(false);
-	let deleting = $state(false);
 	let formData = $state(service);
 
 	// Hydrate host to form data for ServiceConfigPanel
@@ -51,14 +50,7 @@
 
 	let title = $derived(`Edit ${service.name}`);
 
-	// Initialize form data when group changes or modal opens
-	$effect(() => {
-		if (isOpen) {
-			resetForm();
-		}
-	});
-
-	function resetForm() {
+	function handleOpen() {
 		formData = { ...service };
 	}
 
@@ -72,6 +64,7 @@
 		loading = true;
 		try {
 			await onUpdate(service.id, serviceData);
+			onClose();
 		} finally {
 			loading = false;
 		}
@@ -82,18 +75,7 @@
 	}
 </script>
 
-<EditModal
-	{isOpen}
-	{title}
-	{loading}
-	{deleting}
-	saveLabel="Update Service"
-	cancelLabel="Cancel"
-	onSave={handleSubmit}
-	onCancel={onClose}
-	size="xl"
-	let:formApi
->
+<GenericModal {isOpen} {title} onClose={onClose} onOpen={handleOpen} size="xl">
 	<!-- Header icon -->
 	<svelte:fragment slot="header-icon">
 		<ModalHeaderIcon
@@ -107,7 +89,6 @@
 		<div class="flex-1 overflow-y-auto">
 			<div class="space-y-8 p-6">
 				<ServiceConfigPanel
-					{formApi}
 					host={hostFormData}
 					service={formData}
 					onChange={handleServiceUpdate}
@@ -117,4 +98,20 @@
 			</div>
 		</div>
 	</div>
-</EditModal>
+
+	<svelte:fragment slot="footer">
+		<div class="flex items-center justify-end gap-3">
+			<button type="button" onclick={onClose} class="btn-secondary">
+				Cancel
+			</button>
+			<button
+				type="button"
+				onclick={handleSubmit}
+				disabled={loading}
+				class="btn-primary"
+			>
+				{loading ? 'Updating...' : 'Update Service'}
+			</button>
+		</div>
+	</svelte:fragment>
+</GenericModal>

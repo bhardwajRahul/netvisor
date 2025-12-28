@@ -1,107 +1,132 @@
 <script lang="ts">
-	import EditModal from '$lib/shared/components/forms/EditModal.svelte';
+	import { createForm } from '@tanstack/svelte-form';
+	import { submitForm } from '$lib/shared/components/forms/form-context';
+	import {
+		required,
+		password as passwordValidator,
+		confirmPasswordMatch
+	} from '$lib/shared/components/forms/validators';
+	import GenericModal from '$lib/shared/components/layout/GenericModal.svelte';
 	import InlineInfo from '$lib/shared/components/feedback/InlineInfo.svelte';
 	import { Key } from 'lucide-svelte';
 	import Password from '$lib/shared/components/forms/input/Password.svelte';
 	import ModalHeaderIcon from '$lib/shared/components/layout/ModalHeaderIcon.svelte';
 
-	export let isOpen = false;
-	export let token: string;
-	export let onResetPassword: (token: string, password: string) => Promise<void> | void;
-	export let onClose: () => void;
-	export let onBackToLogin: () => void;
-
-	let resetting = false;
-	let resetComplete = false;
-
-	let formData = {
-		password: '',
-		confirmPassword: ''
-	};
-
-	// Reset state when modal opens
-	$: if (isOpen) {
-		resetForm();
+	interface Props {
+		isOpen?: boolean;
+		token: string;
+		onResetPassword: (token: string, password: string) => Promise<void> | void;
+		onClose: () => void;
+		onBackToLogin: () => void;
 	}
 
-	function resetForm() {
-		formData = { password: '', confirmPassword: '' };
+	let { isOpen = false, token, onResetPassword, onClose, onBackToLogin }: Props = $props();
+
+	let resetting = $state(false);
+	let resetComplete = $state(false);
+
+	// Create form
+	const form = createForm(() => ({
+		defaultValues: { password: '', confirmPassword: '' },
+		onSubmit: async ({ value }) => {
+			resetting = true;
+			try {
+				await onResetPassword(token, value.password);
+				resetComplete = true;
+			} finally {
+				resetting = false;
+			}
+		}
+	}));
+
+	// Reset form when modal opens
+	function handleOpen() {
+		form.reset({ password: '', confirmPassword: '' });
 		resetComplete = false;
 	}
 
 	async function handleSubmit() {
-		resetting = true;
-		try {
-			await onResetPassword(token, formData.password);
-			resetComplete = true;
-		} finally {
-			resetting = false;
-		}
+		await submitForm(form);
 	}
 </script>
 
-<EditModal
+<GenericModal
 	{isOpen}
 	title={resetComplete ? 'Password Reset' : 'Set New Password'}
-	loading={false}
-	centerTitle={true}
-	saveLabel="Reset Password"
-	cancelLabel="Cancel"
-	showBackdrop={false}
-	showCloseButton={false}
-	showCancel={false}
-	showSave={!resetComplete}
-	onSave={handleSubmit}
-	onCancel={onClose}
 	size="md"
+	onClose={onClose}
+	onOpen={handleOpen}
+	showCloseButton={false}
+	showBackdrop={false}
 	preventCloseOnClickOutside={true}
-	let:formApi
+	centerTitle={true}
 >
-	<!-- Header icon -->
 	<svelte:fragment slot="header-icon">
 		<ModalHeaderIcon Icon={Key} color="Blue" />
 	</svelte:fragment>
 
-	{#if resetComplete}
-		<InlineInfo
-			title="Password updated"
-			body="Your password has been successfully reset. You can now sign in with your new password."
-		/>
-	{:else}
-		<Password
-			{formApi}
-			bind:value={formData.password}
-			bind:confirmValue={formData.confirmPassword}
-			showConfirm={true}
-			required={false}
-		/>
-	{/if}
-
-	<!-- Custom footer -->
-	<svelte:fragment slot="footer">
-		<div class="flex w-full flex-col gap-4">
+	<form
+		onsubmit={(e) => {
+			e.preventDefault();
+			e.stopPropagation();
+			handleSubmit();
+		}}
+		class="flex h-full flex-col"
+	>
+		<div class="flex-1 overflow-auto p-6">
 			{#if resetComplete}
-				<!-- Go to Login Button -->
-				<button type="button" on:click={onBackToLogin} class="btn-primary w-full">
-					Go to Login
-				</button>
+				<InlineInfo
+					title="Password updated"
+					body="Your password has been successfully reset. You can now sign in with your new password."
+				/>
 			{:else}
-				<!-- Reset Password Button (type="submit" triggers form validation) -->
-				<button type="submit" disabled={resetting} class="btn-primary w-full">
-					{resetting ? 'Resetting...' : 'Reset Password'}
-				</button>
-
-				<!-- Back to Login Link -->
-				<div class="text-center">
-					<button
-						type="button"
-						on:click={onBackToLogin}
-						class="text-sm font-medium text-blue-400 hover:text-blue-300"
-					>
-						Back to Login
-					</button>
-				</div>
+				<form.Field
+					name="password"
+					validators={{
+						onBlur: ({ value }) => required(value) || passwordValidator(value)
+					}}
+				>
+					{#snippet children(passwordField)}
+						<form.Field
+							name="confirmPassword"
+							validators={{
+								onBlur: ({ value, fieldApi }) =>
+									required(value) ||
+									confirmPasswordMatch(() => fieldApi.form.getFieldValue('password'))(value)
+							}}
+						>
+							{#snippet children(confirmPasswordField)}
+								<Password {passwordField} {confirmPasswordField} required={true} />
+							{/snippet}
+						</form.Field>
+					{/snippet}
+				</form.Field>
 			{/if}
 		</div>
-	</svelte:fragment>
-</EditModal>
+
+		<!-- Footer -->
+		<div class="modal-footer">
+			<div class="flex w-full flex-col gap-4">
+				{#if resetComplete}
+					<button type="button" onclick={onBackToLogin} class="btn-primary w-full">
+						Go to Login
+					</button>
+				{:else}
+					<button type="submit" disabled={resetting} class="btn-primary w-full">
+						{resetting ? 'Resetting...' : 'Reset Password'}
+					</button>
+
+					<div class="text-center">
+						<button
+							type="button"
+							onclick={onBackToLogin}
+							class="text-sm font-medium text-blue-400 hover:text-blue-300"
+						>
+							Back to Login
+						</button>
+					</div>
+				{/if}
+			</div>
+		</div>
+	</form>
+</GenericModal>

@@ -24,7 +24,6 @@ export class SSEClient<T> {
 		this.eventSource = new EventSource(this.config.url);
 
 		this.eventSource.onopen = () => {
-			console.log('SSE connection opened');
 			this.reconnectAttempts = 0;
 			this.reconnectDelay = 1000;
 			this.config.onOpen?.();

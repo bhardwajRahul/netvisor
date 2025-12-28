@@ -4,9 +4,6 @@
 	import { useSubnetsQuery, isContainerSubnet } from '$lib/features/subnets/queries';
 	import type { HostFormData } from '$lib/features/hosts/types/base';
 	import type { InterfaceBinding, Service } from '$lib/features/services/types/base';
-	import type { FormApi } from '$lib/shared/components/forms/types';
-	import { field } from 'svelte-forms';
-	import SelectInput from '$lib/shared/components/forms/input/SelectInput.svelte';
 
 	// TanStack Query hooks
 	const interfacesQuery = useInterfacesQuery();
@@ -28,7 +25,6 @@
 	interface Props {
 		binding: InterfaceBinding;
 		onUpdate?: (updates: Partial<InterfaceBinding>) => void;
-		formApi: FormApi;
 		service?: Service;
 		host?: HostFormData;
 	}
@@ -36,7 +32,6 @@
 	let {
 		binding,
 		onUpdate = () => {},
-		formApi,
 		service = undefined,
 		host = undefined
 	}: Props = $props();
@@ -78,46 +73,24 @@
 		}) || []
 	);
 
-	// Create svelte-forms field - interface_id is required for Interface bindings
-	const getInterfaceField = () => {
-		return field(`interface_binding_${binding.id}`, binding.interface_id ?? '', [], {
-			checkOnInit: false
-		});
-	};
+	// Local state for the select value
+	let selectedValue = $state(binding.interface_id ?? '');
 
-	let currentBindingId = $state(binding.id);
-	let interfaceField = $state(getInterfaceField());
-
-	// Reinitialize field when binding changes
+	// Sync local state when binding changes externally
 	$effect(() => {
-		if (binding.id !== currentBindingId) {
-			currentBindingId = binding.id;
-			interfaceField = getInterfaceField();
-		}
+		selectedValue = binding.interface_id ?? '';
 	});
 
-	// Update binding when field value changes
-	$effect(() => {
-		if ($interfaceField) {
-			const interfaceId: string = $interfaceField.value;
+	// Handle selection change
+	function handleChange(event: Event) {
+		const target = event.target as HTMLSelectElement;
+		const newValue = target.value;
+		selectedValue = newValue;
 
-			// Only trigger onUpdate if value actually changed
-			if (interfaceId !== binding.interface_id) {
-				onUpdate({ interface_id: interfaceId });
-			}
+		if (newValue !== binding.interface_id) {
+			onUpdate({ interface_id: newValue });
 		}
-	});
-
-	// Build select options for interfaces
-	let interfaceSelectOptions = $derived(
-		interfaceOptions.map(({ iface, disabled, reason }) => ({
-			value: iface.id,
-			label:
-				formatInterface(iface, isContainerSubnetFn) + (disabled && reason ? ` - ${reason}` : ''),
-			id: iface.id,
-			disabled
-		}))
-	);
+	}
 </script>
 
 <div class="flex-1">
@@ -145,15 +118,21 @@
 					<div class="text-secondary rounded border border-gray-600 bg-gray-700 px-2 py-1 text-sm">
 						{iface ? formatInterface(iface, isContainerSubnetFn) : 'Unknown Interface'}
 					</div>
-				{:else if host.interfaces.length > 0 && $interfaceField}
-					<!-- Multiple interfaces - show as dropdown with SelectInput -->
-					<SelectInput
-						label=""
-						id="interface_binding_{binding.id}"
-						{formApi}
-						field={interfaceField}
-						options={interfaceSelectOptions}
-					/>
+				{:else if host.interfaces.length > 0}
+					<!-- Multiple interfaces - show as dropdown -->
+					<select
+						class="input-field w-full"
+						value={selectedValue}
+						onchange={handleChange}
+					>
+						{#each interfaceOptions as { iface, disabled, reason }}
+							<option value={iface.id} {disabled}>
+								{formatInterface(iface, isContainerSubnetFn)}{disabled && reason
+									? ` - ${reason}`
+									: ''}
+							</option>
+						{/each}
+					</select>
 				{/if}
 			</div>
 		</div>

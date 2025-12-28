@@ -1,6 +1,6 @@
 use crate::server::{
     auth::middleware::auth::AuthenticatedEntity,
-    bindings::r#impl::base::{Binding, BindingType},
+    bindings::{r#impl::base::{Binding, BindingType}, service::BindingService},
     groups::{r#impl::base::Group, service::GroupService},
     hosts::{r#impl::base::Host, service::HostService},
     interfaces::r#impl::base::Interface,
@@ -14,10 +14,9 @@ use crate::server::{
         },
         services::traits::{ChildCrudService, CrudService, EventBusService},
         storage::{
-            child::GenericChildStorage,
             filter::EntityFilter,
             generic::GenericPostgresStorage,
-            traits::{StorableEntity, Storage},
+            traits::Storage,
         },
         types::{
             api::ValidationError,
@@ -26,6 +25,7 @@ use crate::server::{
     },
 };
 use anyhow::anyhow;
+use crate::server::shared::storage::traits::StorableEntity;
 use anyhow::{Error, Result};
 use async_trait::async_trait;
 use chrono::Utc;
@@ -39,7 +39,7 @@ use uuid::Uuid;
 
 pub struct ServiceService {
     storage: Arc<GenericPostgresStorage<Service>>,
-    binding_storage: Arc<GenericChildStorage<Binding>>,
+    binding_service: Arc<BindingService>,
     host_service: OnceLock<Arc<HostService>>,
     group_service: Arc<GroupService>,
     group_update_lock: Arc<Mutex<()>>,
@@ -70,7 +70,7 @@ impl CrudService<Service> for ServiceService {
         let service = self.storage().get_by_id(id).await?;
         match service {
             Some(mut s) => {
-                s.base.bindings = self.binding_storage.get_for_parent(&s.id).await?;
+                s.base.bindings = self.binding_service.get_for_parent(&s.id).await?;
                 Ok(Some(s))
             }
             None => Ok(None),
@@ -84,7 +84,7 @@ impl CrudService<Service> for ServiceService {
         }
 
         let service_ids: Vec<Uuid> = services.iter().map(|s| s.id).collect();
-        let bindings_map = self.binding_storage.get_for_parents(&service_ids).await?;
+        let bindings_map = self.binding_service.get_for_parents(&service_ids).await?;
 
         for service in &mut services {
             if let Some(bindings) = bindings_map.get(&service.id) {
@@ -99,7 +99,7 @@ impl CrudService<Service> for ServiceService {
         let service = self.storage().get_one(filter).await?;
         match service {
             Some(mut s) => {
-                s.base.bindings = self.binding_storage.get_for_parent(&s.id).await?;
+                s.base.bindings = self.binding_service.get_for_parent(&s.id).await?;
                 Ok(Some(s))
             }
             None => Ok(None),
@@ -168,8 +168,8 @@ impl CrudService<Service> for ServiceService {
                     .map(|b| b.with_service(created.id, created.base.network_id))
                     .collect();
                 let saved_bindings = self
-                    .binding_storage
-                    .save_for_parent(&created.id, &bindings_with_ids)
+                    .binding_service
+                    .save_for_parent(&created.id, &bindings_with_ids, authentication.clone())
                     .await?;
 
                 // Update service with the saved bindings (which have actual IDs)
@@ -240,8 +240,8 @@ impl CrudService<Service> for ServiceService {
             .map(|b| b.with_service(updated.id, updated.base.network_id))
             .collect();
         let saved_bindings = self
-            .binding_storage
-            .save_for_parent(&updated.id, &bindings_with_ids)
+            .binding_service
+            .save_for_parent(&updated.id, &bindings_with_ids, authentication.clone())
             .await?;
 
         // Update service with the saved bindings (which have actual IDs and preserved created_at)
@@ -261,7 +261,7 @@ impl CrudService<Service> for ServiceService {
                 metadata: serde_json::json!({
                     "trigger_stale": trigger_stale
                 }),
-                authentication,
+                authentication: authentication.clone(),
             })
             .await?;
 
@@ -308,13 +308,13 @@ impl ChildCrudService<Service> for ServiceService {}
 impl ServiceService {
     pub fn new(
         storage: Arc<GenericPostgresStorage<Service>>,
-        binding_storage: Arc<GenericChildStorage<Binding>>,
+        binding_service: Arc<BindingService>,
         group_service: Arc<GroupService>,
         event_bus: Arc<EventBus>,
     ) -> Self {
         Self {
             storage,
-            binding_storage,
+            binding_service,
             group_service,
             host_service: OnceLock::new(),
             group_update_lock: Arc::new(Mutex::new(())),
@@ -567,36 +567,6 @@ impl ServiceService {
 
         let service_before_updates = existing_service.clone();
 
-        tracing::info!(
-            service_id = %existing_service.id,
-            service_name = %existing_service.base.name,
-            existing_bindings_count = existing_service.base.bindings.len(),
-            new_bindings_count = new_service_data.base.bindings.len(),
-            ">>> UPSERT_SERVICE START"
-        );
-
-        // Log existing bindings in detail
-        for (i, binding) in existing_service.base.bindings.iter().enumerate() {
-            tracing::debug!(
-                service_id = %existing_service.id,
-                binding_index = i,
-                binding_id = %binding.id,
-                binding_type = ?binding.base.binding_type,
-                "Existing binding before upsert"
-            );
-        }
-
-        // Log new bindings in detail
-        for (i, binding) in new_service_data.base.bindings.iter().enumerate() {
-            tracing::debug!(
-                service_id = %existing_service.id,
-                binding_index = i,
-                binding_id = %binding.id,
-                binding_type = ?binding.base.binding_type,
-                "New binding to process"
-            );
-        }
-
         tracing::trace!(
             "Upserting new service data {:?} into {:?}",
             new_service_data,
@@ -639,11 +609,6 @@ impl ServiceService {
                 interface_id: None,
             } = &new_service_binding.base.binding_type
             {
-                tracing::debug!(
-                    service_id = %existing_service.id,
-                    new_binding_port_id = %port_id,
-                    "Processing all-interfaces port binding - checking for dominated specific bindings"
-                );
 
                 let before_count = existing_service.base.bindings.len();
                 existing_service.base.bindings.retain(|existing| {
@@ -655,37 +620,13 @@ impl ServiceService {
                     {
                         let dominated =
                             existing_interface_id.is_some() && existing_port_id == port_id;
-                        tracing::debug!(
-                            service_id = %existing_service.id,
-                            existing_port_id = %existing_port_id,
-                            new_port_id = %port_id,
-                            existing_interface_id = ?existing_interface_id,
-                            port_ids_match = (existing_port_id == port_id),
-                            is_specific_interface = existing_interface_id.is_some(),
-                            will_remove = dominated,
-                            "Comparing port binding for domination"
-                        );
-                        if dominated {
-                            tracing::info!(
-                                service_id = %existing_service.id,
-                                removed_binding_id = %existing.id,
-                                removed_port_id = %existing_port_id,
-                                removed_interface_id = ?existing_interface_id,
-                                "Removing specific interface binding - superseded by all-interfaces"
-                            );
-                        }
+
                         return !dominated;
                     }
                     true // Keep non-port bindings
                 });
                 let removed = before_count - existing_service.base.bindings.len();
-                tracing::debug!(
-                    service_id = %existing_service.id,
-                    bindings_before = before_count,
-                    bindings_after = existing_service.base.bindings.len(),
-                    removed_count = removed,
-                    "Finished checking for dominated bindings"
-                );
+
                 if removed > 0 {
                     binding_updates += removed;
                 }
@@ -756,26 +697,7 @@ impl ServiceService {
             (existing_source, _) => existing_source,
         };
 
-        // Log final bindings state before save
-        tracing::debug!(
-            service_id = %existing_service.id,
-            final_bindings_count = existing_service.base.bindings.len(),
-            binding_updates = binding_updates,
-            "Final bindings state before save"
-        );
-        for (i, binding) in existing_service.base.bindings.iter().enumerate() {
-            tracing::debug!(
-                service_id = %existing_service.id,
-                binding_index = i,
-                binding_id = %binding.id,
-                binding_type = ?binding.base.binding_type,
-                "Final binding to be saved"
-            );
-        }
-
-        tracing::debug!(service_id = %existing_service.id, "Updating service in storage...");
         self.storage.update(&mut existing_service).await?;
-        tracing::debug!(service_id = %existing_service.id, "Service storage update complete");
 
         // Save bindings to separate table with correct service_id and network_id
         let bindings_with_ids: Vec<Binding> = existing_service
@@ -786,16 +708,10 @@ impl ServiceService {
             .map(|b| b.with_service(existing_service.id, existing_service.base.network_id))
             .collect();
 
-        tracing::debug!(
-            service_id = %existing_service.id,
-            bindings_to_save = bindings_with_ids.len(),
-            "Saving bindings to binding storage..."
-        );
         let saved_bindings = self
-            .binding_storage
-            .save_for_parent(&existing_service.id, &bindings_with_ids)
+            .binding_service
+            .save_for_parent(&existing_service.id, &bindings_with_ids, authentication.clone())
             .await?;
-        tracing::debug!(service_id = %existing_service.id, "Binding storage save complete");
 
         // Update service with the saved bindings (which have actual IDs and preserved created_at)
         existing_service.base.bindings = saved_bindings;
@@ -809,7 +725,6 @@ impl ServiceService {
         if !data.is_empty() {
             let trigger_stale = existing_service.triggers_staleness(Some(service_before_updates));
 
-            tracing::debug!(service_id = %existing_service.id, "Publishing entity event...");
             self.event_bus()
                 .publish_entity(EntityEvent {
                     id: Uuid::new_v4(),
@@ -825,21 +740,12 @@ impl ServiceService {
                     authentication,
                 })
                 .await?;
-            tracing::debug!(service_id = %existing_service.id, "Entity event published");
         } else {
             tracing::debug!(
                 service_id = %existing_service.id,
                 "Service upsert - no binding changes needed"
             );
         }
-
-        tracing::info!(
-            service_id = %existing_service.id,
-            service_name = %existing_service.base.name,
-            binding_updates = binding_updates,
-            final_bindings_count = existing_service.base.bindings.len(),
-            "<<< UPSERT_SERVICE END"
-        );
 
         Ok(existing_service)
     }
@@ -850,12 +756,6 @@ impl ServiceService {
         updates: Option<&Service>,
         authenticated: AuthenticatedEntity,
     ) -> Result<(), Error> {
-        tracing::info!(
-            service_id = %current_service.id,
-            service_name = %current_service.base.name,
-            is_delete = updates.is_none(),
-            ">>> UPDATE_GROUP_SERVICE_BINDINGS START"
-        );
 
         let filter = EntityFilter::unfiltered().network_ids(&[current_service.base.network_id]);
         let groups = self.group_service.get_all(filter).await?;
@@ -878,20 +778,9 @@ impl ServiceService {
             None => Vec::new(),
         };
 
-        tracing::info!(
-            service_id = %current_service.id,
-            current_binding_ids = ?current_service_binding_ids,
-            updated_binding_ids = ?updated_service_binding_ids,
-            current_count = current_service_binding_ids.len(),
-            updated_count = updated_service_binding_ids.len(),
-            groups_found = groups.len(),
-            "UPDATE_GROUP_SERVICE_BINDINGS: Comparing binding IDs"
-        );
-
         let groups_to_update: Vec<Group> = groups
             .into_iter()
             .filter_map(|mut group| {
-                let initial_binding_ids = group.base.binding_ids.clone();
                 let initial_bindings_length = group.base.binding_ids.len();
 
                 group.base.binding_ids.retain(|sb| {
@@ -899,31 +788,10 @@ impl ServiceService {
                     let in_updated = updated_service_binding_ids.contains(sb);
                     let keep = if in_current { in_updated } else { true };
 
-                    if in_current && !keep {
-                        tracing::warn!(
-                            service_id = %current_service.id,
-                            group_id = %group.id,
-                            group_name = %group.base.name,
-                            binding_id = %sb,
-                            in_current = in_current,
-                            in_updated = in_updated,
-                            "UPDATE_GROUP_SERVICE_BINDINGS: REMOVING binding from group"
-                        );
-                    }
-
                     keep
                 });
 
                 if group.base.binding_ids.len() != initial_bindings_length {
-                    tracing::info!(
-                        service_id = %current_service.id,
-                        group_id = %group.id,
-                        group_name = %group.base.name,
-                        before_binding_ids = ?initial_binding_ids,
-                        after_binding_ids = ?group.base.binding_ids,
-                        removed_count = initial_bindings_length - group.base.binding_ids.len(),
-                        "UPDATE_GROUP_SERVICE_BINDINGS: Group will be updated"
-                    );
                     Some(group)
                 } else {
                     None
@@ -937,17 +805,7 @@ impl ServiceService {
                     .update(&mut group, authenticated.clone())
                     .await?;
             }
-            tracing::info!(
-                service_id = %current_service.id,
-                service_name = %current_service.base.name,
-                "UPDATE_GROUP_SERVICE_BINDINGS: Groups updated"
-            );
         }
-
-        tracing::info!(
-            service_id = %current_service.id,
-            "<<< UPDATE_GROUP_SERVICE_BINDINGS END"
-        );
 
         Ok(())
     }
@@ -968,51 +826,6 @@ impl ServiceService {
     ) -> Service {
         let lock = self.get_service_lock(&service.id).await;
         let _guard = lock.lock().await;
-
-        tracing::info!(
-            service_id = %service.id,
-            service_name = %service.base.name,
-            original_host_id = %original_host.id,
-            updated_host_id = %updated_host.id,
-            original_interfaces_count = original_interfaces.len(),
-            updated_interfaces_count = updated_interfaces.len(),
-            original_ports_count = original_ports.len(),
-            updated_ports_count = updated_ports.len(),
-            bindings_count = service.base.bindings.len(),
-            ">>> REASSIGN_BINDINGS START"
-        );
-
-        // Log original ports for debugging
-        for port in original_ports {
-            tracing::debug!(
-                service_id = %service.id,
-                port_id = %port.id,
-                port_number = port.base.port_type.config().number,
-                port_protocol = ?port.base.port_type.config().protocol,
-                "Original port available for remapping"
-            );
-        }
-
-        // Log updated ports for debugging
-        for port in updated_ports {
-            tracing::debug!(
-                service_id = %service.id,
-                port_id = %port.id,
-                port_number = port.base.port_type.config().number,
-                port_protocol = ?port.base.port_type.config().protocol,
-                "Updated port available for remapping"
-            );
-        }
-
-        // Log input bindings
-        for binding in &service.base.bindings {
-            tracing::debug!(
-                service_id = %service.id,
-                binding_id = %binding.id,
-                binding_type = ?binding.base.binding_type,
-                "Input binding to reassign"
-            );
-        }
 
         tracing::trace!(
             "Preparing service {:?} for transfer from host {:?} to host {:?}",
@@ -1128,16 +941,6 @@ impl ServiceService {
         mutable_service.base.host_id = updated_host.id;
 
         mutable_service.base.network_id = updated_host.base.network_id;
-
-        tracing::info!(
-            service_id = %service.id,
-            service_name = %service.base.name,
-            original_bindings_count = service.base.bindings.len(),
-            reassigned_bindings_count = mutable_service.base.bindings.len(),
-            origin_host_id = %original_host.id,
-            destination_host_id = %updated_host.id,
-            "<<< REASSIGN_BINDINGS END"
-        );
 
         tracing::trace!(
             "Reassigned service {:?} bindings for from host {:?} to host {:?}",

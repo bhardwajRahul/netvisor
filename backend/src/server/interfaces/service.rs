@@ -5,7 +5,11 @@ use crate::server::{
     shared::{
         events::bus::EventBus,
         services::traits::{ChildCrudService, CrudService, EventBusService},
-        storage::{filter::EntityFilter, generic::GenericPostgresStorage, traits::Storage},
+        storage::{
+            filter::EntityFilter,
+            generic::GenericPostgresStorage,
+            traits::Storage,
+        },
     },
 };
 use anyhow::Result;
@@ -44,24 +48,32 @@ impl InterfaceService {
         Self { storage, event_bus }
     }
 
-    /// Get all interfaces for a specific host (alias for get_for_parent)
+    /// Get all interfaces for a specific host, ordered by position
     pub async fn get_for_host(&self, host_id: &Uuid) -> Result<Vec<Interface>> {
-        self.get_for_parent(host_id).await
+        let filter = EntityFilter::unfiltered().uuid_column("host_id", host_id);
+        self.storage.get_all_ordered(filter, "position ASC").await
     }
 
-    /// Get interfaces for multiple hosts (alias for get_for_parents)
+    /// Get interfaces for multiple hosts, ordered by position within each host
     pub async fn get_for_hosts(&self, host_ids: &[Uuid]) -> Result<HashMap<Uuid, Vec<Interface>>> {
-        self.get_for_parents(host_ids).await
+        if host_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let filter = EntityFilter::unfiltered().uuid_columns("host_id", host_ids);
+        let interfaces = self.storage.get_all_ordered(filter, "position ASC").await?;
+
+        let mut result: HashMap<Uuid, Vec<Interface>> = HashMap::new();
+        for interface in interfaces {
+            result.entry(interface.base.host_id).or_default().push(interface);
+        }
+
+        Ok(result)
     }
 
     /// Get all interfaces for a specific subnet
     pub async fn get_for_subnet(&self, subnet_id: &Uuid) -> Result<Vec<Interface>> {
         let filter = EntityFilter::unfiltered().subnet_id(subnet_id);
         self.storage.get_all(filter).await
-    }
-
-    /// Delete all interfaces for a host (alias for delete_for_parent)
-    pub async fn delete_for_host(&self, host_id: &Uuid) -> Result<usize> {
-        self.delete_for_parent(host_id).await
     }
 }

@@ -25,6 +25,9 @@ pub struct InterfaceBase {
     pub mac_address: Option<MacAddress>,
     #[schema(required)]
     pub name: Option<String>,
+    /// Position of this interface in the host's interface list (for ordering)
+    #[serde(default)]
+    pub position: i32,
 }
 
 impl Default for InterfaceBase {
@@ -36,6 +39,7 @@ impl Default for InterfaceBase {
             ip_address: IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
             mac_address: None,
             name: None,
+            position: 0,
         }
     }
 }
@@ -53,6 +57,7 @@ impl InterfaceBase {
             ip_address,
             mac_address: None,
             name: Some(subnet.base.name.clone()),
+            position: 0,
         }
     }
 }

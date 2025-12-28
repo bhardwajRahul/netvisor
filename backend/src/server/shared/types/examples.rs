@@ -146,6 +146,7 @@ pub fn interface() -> Interface {
             ip_address: IpAddr::V4(Ipv4Addr::new(192, 168, 1, 100)),
             mac_address: Some(MacAddress::new([0xDE, 0xAD, 0xBE, 0xEF, 0x12, 0x34])),
             name: Some("eth0".to_string()),
+            position: 0,
         },
     }
 }
@@ -343,6 +344,7 @@ pub fn create_host_request() -> CreateHostRequest {
             ip_address: IpAddr::V4(Ipv4Addr::new(192, 168, 1, 100)),
             mac_address: Some(MacAddress::new([0xDE, 0xAD, 0xBE, 0xEF, 0x12, 0x34])),
             name: Some("eth0".to_string()),
+            position: 0,
         }],
         ports: vec![CreatePortInput {
             number: 80,

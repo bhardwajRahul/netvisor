@@ -112,6 +112,7 @@ pub trait DaemonUtils {
                     subnet_id: subnet.id,
                     ip_address: ip_addr,
                     mac_address,
+                    position: interfaces.len() as i32,
                 }));
             }
         }

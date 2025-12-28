@@ -1,43 +1,24 @@
 import { writable, get } from 'svelte/store';
 import { apiClient } from '$lib/api/client';
+import type { components } from '$lib/api/schema';
 import {
 	createColorHelper,
 	createIconComponent,
 	createLogoIconComponent,
 	createStyle,
-	type ColorStyle,
-	type Color
+	type ColorStyle
 } from '../utils/styling';
 
-export interface TypeMetadata<TMetadata = Record<string, unknown>> {
-	id: string;
-	name: string;
-	description: string;
-	category: string;
-	icon: string;
-	color: Color;
+// Base types from OpenAPI schema
+export type TypeMetadata = components['schemas']['TypeMetadata'];
+export type EntityMetadata = components['schemas']['EntityMetadata'];
+export type MetadataRegistry = components['schemas']['MetadataRegistry'];
+export type Color = components['schemas']['Color'];
+
+// Utility type to add proper typing to the metadata field
+export type TypedTypeMetadata<TMetadata> = Omit<TypeMetadata, 'metadata'> & {
 	metadata: TMetadata;
-}
-
-export interface EntityMetadata {
-	id: string;
-	color: Color;
-	icon: string;
-}
-
-export interface MetadataRegistry {
-	service_definitions: TypeMetadata<ServicedDefinitionMetadata>[];
-	subnet_types: TypeMetadata<SubnetTypeMetadata>[];
-	edge_types: TypeMetadata<EdgeTypeMetadata>[];
-	group_types: TypeMetadata<GroupTypeMetadata>[];
-	entities: EntityMetadata[];
-	concepts: EntityMetadata[];
-	ports: TypeMetadata<PortTypeMetadata>[];
-	discovery_types: TypeMetadata<DiscoveryTypeMetadata>[];
-	billing_plans: TypeMetadata<BillingPlanMetadata>[];
-	features: TypeMetadata<FeatureMetadata>[];
-	permissions: TypeMetadata<PermissionsMetadata>[];
-}
+};
 
 export interface BillingPlanMetadata {
 	features: {
@@ -154,8 +135,7 @@ function createSharedHelpers<T extends keyof MetadataRegistry>(category: T) {
 
 // Type helpers to constrain generic types
 type TypeMetadataKeys = {
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	[K in keyof MetadataRegistry]: MetadataRegistry[K][number] extends TypeMetadata<any> ? K : never;
+	[K in keyof MetadataRegistry]: MetadataRegistry[K][number] extends TypeMetadata ? K : never;
 }[keyof MetadataRegistry];
 
 type EntityMetadataKeys = {
@@ -163,86 +143,79 @@ type EntityMetadataKeys = {
 }[keyof MetadataRegistry];
 
 // Full TypeMetadata helpers (includes color methods + other methods)
-function createTypeMetadataHelpers<T extends TypeMetadataKeys>(category: T) {
+function createTypeMetadataHelpers<T extends TypeMetadataKeys, M = unknown>(category: T) {
 	const sharedHelpers = createSharedHelpers(category);
-
-	// Extract metadata type from the registry
-	type MetadataType = MetadataRegistry[T][number] extends TypeMetadata<infer M> ? M : never;
 
 	const helpers = {
 		...sharedHelpers,
 
 		getIconComponent: (id: string | null) => {
 			const $registry = get(metadata);
-			const item = ($registry?.[category] as TypeMetadata<MetadataType>[])?.find(
-				(item) => item.id === id
-			);
+			const item = ($registry?.[category] as TypeMetadata[])?.find((item) => item.id === id);
 			const iconName = item?.icon || null;
 
+			const meta = item?.metadata;
 			if (
-				item?.metadata &&
-				typeof item.metadata === 'object' &&
-				'has_logo' in item.metadata &&
-				item.metadata.has_logo &&
-				'logo_url' in item.metadata
+				meta &&
+				typeof meta === 'object' &&
+				'has_logo' in meta &&
+				meta.has_logo &&
+				'logo_url' in meta
 			) {
-				if ('logo_needs_white_background' in item.metadata) {
+				if ('logo_needs_white_background' in meta) {
 					return createLogoIconComponent(
 						iconName,
-						item.metadata.logo_url as string,
-						!!item.metadata.logo_needs_white_background
+						meta.logo_url as string,
+						!!meta.logo_needs_white_background
 					);
 				}
-				return createLogoIconComponent(iconName, item.metadata.logo_url as string);
+				return createLogoIconComponent(iconName, meta.logo_url as string);
 			}
 
 			return createIconComponent(iconName);
 		},
 
-		getItems: () => {
+		getItems: (): TypedTypeMetadata<M>[] => {
 			const $registry = get(metadata);
-			return $registry?.[category] as TypeMetadata<MetadataType>[];
+			return $registry?.[category] as TypedTypeMetadata<M>[];
 		},
 
-		getItem: (id: string | null) => {
+		getItem: (id: string | null): TypedTypeMetadata<M> | null => {
 			const $registry = get(metadata);
 			return (
-				($registry?.[category] as TypeMetadata<MetadataType>[])?.find((item) => item.id === id) ||
-				null
+				(($registry?.[category] as TypedTypeMetadata<M>[])?.find((item) => item.id === id) as
+					| TypedTypeMetadata<M>
+					| undefined) || null
 			);
 		},
 
 		getName: (id: string | null) => {
 			const $registry = get(metadata);
 			return (
-				($registry?.[category] as TypeMetadata<MetadataType>[])?.find((item) => item.id === id)
-					?.name ||
-				id ||
-				''
+				($registry?.[category] as TypeMetadata[])?.find((item) => item.id === id)?.name || id || ''
 			);
 		},
 
 		getDescription: (id: string | null) => {
 			const $registry = get(metadata);
 			return (
-				($registry?.[category] as TypeMetadata<MetadataType>[])?.find((item) => item.id === id)
-					?.description || ''
+				($registry?.[category] as TypeMetadata[])?.find((item) => item.id === id)?.description || ''
 			);
 		},
 
 		getCategory: (id: string | null) => {
 			const $registry = get(metadata);
 			return (
-				($registry?.[category] as TypeMetadata<MetadataType>[])?.find((item) => item.id === id)
-					?.category || ''
+				($registry?.[category] as TypeMetadata[])?.find((item) => item.id === id)?.category || ''
 			);
 		},
 
-		getMetadata: (id: string | null): MetadataType => {
+		getMetadata: (id: string | null): M => {
 			const $registry = get(metadata);
 			return (
-				($registry?.[category] as TypeMetadata<MetadataType>[])?.find((item) => item.id === id)
-					?.metadata || ({} as MetadataType)
+				(($registry?.[category] as TypeMetadata[])?.find((item) => item.id === id)?.metadata as
+					| M
+					| undefined) || ({} as M)
 			);
 		}
 	};
@@ -272,17 +245,30 @@ function createEntityMetadataHelpers<T extends EntityMetadataKeys>(category: T) 
 	return helpers;
 }
 
-// Create all the helpers
-export const serviceDefinitions = createTypeMetadataHelpers('service_definitions');
-export const subnetTypes = createTypeMetadataHelpers('subnet_types');
-export const edgeTypes = createTypeMetadataHelpers('edge_types');
-export const groupTypes = createTypeMetadataHelpers('group_types');
+// Create all the helpers with typed metadata
+export const serviceDefinitions = createTypeMetadataHelpers<
+	'service_definitions',
+	ServicedDefinitionMetadata
+>('service_definitions');
+export const subnetTypes = createTypeMetadataHelpers<'subnet_types', SubnetTypeMetadata>(
+	'subnet_types'
+);
+export const edgeTypes = createTypeMetadataHelpers<'edge_types', EdgeTypeMetadata>('edge_types');
+export const groupTypes = createTypeMetadataHelpers<'group_types', GroupTypeMetadata>(
+	'group_types'
+);
 export const entities = createEntityMetadataHelpers('entities');
-export const ports = createTypeMetadataHelpers('ports');
-export const discoveryTypes = createTypeMetadataHelpers('discovery_types');
-export const billingPlans = createTypeMetadataHelpers('billing_plans');
-export const features = createTypeMetadataHelpers('features');
-export const permissions = createTypeMetadataHelpers('permissions');
+export const ports = createTypeMetadataHelpers<'ports', PortTypeMetadata>('ports');
+export const discoveryTypes = createTypeMetadataHelpers<'discovery_types', DiscoveryTypeMetadata>(
+	'discovery_types'
+);
+export const billingPlans = createTypeMetadataHelpers<'billing_plans', BillingPlanMetadata>(
+	'billing_plans'
+);
+export const features = createTypeMetadataHelpers<'features', FeatureMetadata>('features');
+export const permissions = createTypeMetadataHelpers<'permissions', PermissionsMetadata>(
+	'permissions'
+);
 export const concepts = createEntityMetadataHelpers('concepts');
 
 export async function getMetadata() {

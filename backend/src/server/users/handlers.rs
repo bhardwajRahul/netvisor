@@ -21,18 +21,48 @@ use std::sync::Arc;
 use utoipa_axum::{router::OpenApiRouter, routes};
 use uuid::Uuid;
 
-// Generated handlers for operations that use generic CRUD logic
-mod generated {
-    use super::*;
-    crate::crud_get_by_id_handler!(User, "users", "user");
-}
-
 pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
     OpenApiRouter::new()
         .routes(routes!(get_all_users))
-        .routes(routes!(generated::get_by_id, update_user, delete_user))
+        .routes(routes!(get_user_by_id, update_user, delete_user))
         .routes(routes!(admin_update_user))
         .routes(routes!(bulk_delete_users))
+}
+
+/// Get user by ID
+#[utoipa::path(
+    get,
+    path = "/{id}",
+    tag = "users",
+    params(("id" = Uuid, Path, description = "User ID")),
+    responses(
+        (status = 200, description = "User found", body = ApiResponse<User>),
+        (status = 404, description = "User not found", body = ApiErrorResponse),
+    ),
+    security(("session" = []))
+)]
+pub async fn get_user_by_id(
+    State(state): State<Arc<AppState>>,
+    _user: AuthenticatedUser,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Json<ApiResponse<User>>> {
+    let service = User::get_service(&state);
+
+    let mut user = service
+        .get_by_id(&id)
+        .await
+        .map_err(|e| ApiError::internal_error(&e.to_string()))?
+        .ok_or_else(|| ApiError::not_found(format!("User '{}' not found", id)))?;
+
+    // Hydrate network_ids from junction table
+    state
+        .services
+        .user_service
+        .hydrate_network_ids(&mut user)
+        .await
+        .map_err(|e| ApiError::internal_error(&e.to_string()))?;
+
+    Ok(Json(ApiResponse::success(user)))
 }
 
 /// List all users
@@ -52,7 +82,7 @@ pub async fn get_all_users(
     let org_filter = EntityFilter::unfiltered().organization_id(&user.organization_id);
 
     let service = User::get_service(&state);
-    let users = service
+    let mut users: Vec<User> = service
         .get_all(org_filter)
         .await
         .map_err(|e| ApiError::internal_error(&e.to_string()))?
@@ -64,6 +94,14 @@ pub async fn get_all_users(
         })
         .cloned()
         .collect();
+
+    // Hydrate network_ids from junction table
+    state
+        .services
+        .user_service
+        .hydrate_network_ids_batch(&mut users)
+        .await
+        .map_err(|e| ApiError::internal_error(&e.to_string()))?;
 
     Ok(Json(ApiResponse::success(users)))
 }
@@ -244,8 +282,19 @@ async fn admin_update_user(
     request.base.oidc_subject = existing.base.oidc_subject.clone();
     request.base.oidc_linked_at = existing.base.oidc_linked_at;
 
+    // Capture network_ids before update (they're stored in junction table, not user record)
+    let network_ids = request.base.network_ids.clone();
+
     let updated = service
         .update(&mut request, admin.into())
+        .await
+        .map_err(|e| ApiError::internal_error(&e.to_string()))?;
+
+    // Persist network_ids to the junction table
+    state
+        .services
+        .user_service
+        .set_network_ids(&id, &network_ids)
         .await
         .map_err(|e| ApiError::internal_error(&e.to_string()))?;
 

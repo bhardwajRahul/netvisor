@@ -9,8 +9,10 @@
 		type Port
 	} from '$lib/features/hosts/types/base';
 	import { Link2 } from 'lucide-svelte';
+	import type { EntityDisplayComponent } from '../types';
+	import PortBindingInlineEditor from './PortBindingInlineEditor.svelte';
 
-	// Context for binding display within form editing (inline editor needs host form data)
+	// Context for binding display within form editing
 	export interface PortBindingDisplayContext {
 		service: Service;
 		host: HostFormData;
@@ -62,31 +64,12 @@
 				return serviceType?.category || null;
 			},
 			supportsInlineEdit: true,
-			renderInlineEdit: (
-				binding: PortBinding,
-				onUpdate: (updates: Partial<PortBinding>) => void,
-				formApi: FormApi,
-				context: PortBindingDisplayContext
-			) => {
-				return {
-					component: Layer4BindingInlineEditor,
-					props: {
-						binding,
-						formApi,
-						onUpdate,
-						service: context?.service,
-						host: context?.host
-					}
-				};
-			}
+			InlineEditorComponent: PortBindingInlineEditor
 		};
 </script>
 
 <script lang="ts">
-	import type { EntityDisplayComponent } from '../types';
 	import ListSelectItem from '../ListSelectItem.svelte';
-	import Layer4BindingInlineEditor from './PortBindingInlineEditor.svelte';
-	import type { FormApi } from '../../types';
 
 	export let item: PortBinding;
 	export let context: PortBindingDisplayContext;

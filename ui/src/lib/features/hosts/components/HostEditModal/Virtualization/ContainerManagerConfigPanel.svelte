@@ -4,15 +4,13 @@
 	import { ServiceDisplay } from '$lib/shared/components/forms/selection/display/ServiceDisplay.svelte';
 	import ListManager from '$lib/shared/components/forms/selection/ListManager.svelte';
 	import { serviceDefinitions } from '$lib/shared/stores/metadata';
-	import type { FormApi } from '$lib/shared/components/forms/types';
 
 	interface Props {
 		service: Service;
 		onChange: (updatedService: Service) => void;
-		formApi: FormApi;
 	}
 
-	let { service, onChange, formApi }: Props = $props();
+	let { service, onChange }: Props = $props();
 
 	// TanStack Query hooks
 	const servicesQuery = useServicesQuery();
@@ -20,14 +18,22 @@
 
 	let serviceMetadata = $derived(serviceDefinitions.getItem(service.service_definition));
 
-	let managedContainers = $derived(
-		servicesData.filter(
-			(s) =>
-				s.virtualization &&
-				s.virtualization?.type == 'Docker' &&
-				s.virtualization.details.service_id == service.id
-		)
-	);
+	// Use local state for managed containers to support immediate UI updates
+	let managedContainers = $state<Service[]>([]);
+	let initialized = $state(false);
+
+	// Initialize managedContainers when servicesData is available (only once at mount)
+	$effect(() => {
+		if (servicesData.length > 0 && !initialized) {
+			initialized = true;
+			managedContainers = servicesData.filter(
+				(s) =>
+					s.virtualization &&
+					s.virtualization?.type == 'Docker' &&
+					s.virtualization.details.service_id == service.id
+			);
+		}
+	});
 
 	let containerIds = $derived(managedContainers.map((s) => s.id));
 
@@ -55,6 +61,7 @@
 				}
 			};
 
+			managedContainers = [...managedContainers, updatedService];
 			onChange(updatedService);
 		}
 	}
@@ -67,6 +74,8 @@
 				...removedContainer,
 				virtualization: null
 			};
+
+			managedContainers = managedContainers.filter((s) => s.id !== removedContainer.id);
 			onChange(updatedService);
 		}
 	}
@@ -82,7 +91,6 @@
 		emptyMessage="No containers managed by this service yet. Add services that run in containers on this host."
 		allowReorder={false}
 		allowDuplicates={false}
-		{formApi}
 		allowItemEdit={() => false}
 		showSearch={true}
 		options={selectableContainers}

@@ -1,11 +1,9 @@
 <script lang="ts">
-	import EditModal from '$lib/shared/components/forms/EditModal.svelte';
+	import GenericModal from '$lib/shared/components/layout/GenericModal.svelte';
 	import ModalHeaderIcon from '$lib/shared/components/layout/ModalHeaderIcon.svelte';
 	import TextInput from '$lib/shared/components/forms/input/TextInput.svelte';
 	import { Building2 } from 'lucide-svelte';
 	import { useCurrentUserQuery } from '$lib/features/auth/queries';
-	import { field } from 'svelte-forms';
-	import { required } from 'svelte-forms/validators';
 	import { pushError, pushSuccess } from '$lib/shared/stores/feedback';
 	import InfoCard from '$lib/shared/components/data/InfoCard.svelte';
 	import InfoRow from '$lib/shared/components/data/InfoRow.svelte';
@@ -16,6 +14,9 @@
 		usePopulateDemoDataMutation
 	} from './queries';
 	import { formatTimestamp } from '$lib/shared/utils/formatting';
+	import { createForm } from '@tanstack/svelte-form';
+	import { required, max } from '$lib/shared/components/forms/validators';
+	import type { AnyFieldApi } from '@tanstack/svelte-form';
 
 	let { isOpen = $bindable(false), onClose }: { isOpen: boolean; onClose: () => void } = $props();
 
@@ -38,32 +39,31 @@
 	let isOwner = $derived(currentUser?.permissions === 'Owner');
 	let isDemoOrg = $derived(org?.plan?.type === 'Demo');
 
-	// Form data
-	let formData = $state({
-		name: ''
-	});
-
-	const name = field('name', '', [required()]);
-
-	$effect(() => {
-		if (isOpen && activeSection === 'edit' && org) {
-			name.set(org.name);
-			formData.name = org.name;
+	// TanStack Form
+	const form = createForm(() => ({
+		defaultValues: {
+			name: org?.name ?? ''
+		},
+		onSubmit: async ({ value }) => {
+			await handleSave(value.name);
 		}
-	});
+	}));
 
-	$effect(() => {
-		formData.name = $name.value;
-	});
+	function handleOpen() {
+		activeSection = 'main';
+		if (org) {
+			form.reset();
+			form.setFieldValue('name', org.name);
+		}
+	}
 
-	async function handleSave() {
+	async function handleSave(name: string) {
 		if (!org) return;
 
 		try {
-			await updateOrganizationMutation.mutateAsync({ id: org.id, name: formData.name });
+			await updateOrganizationMutation.mutateAsync({ id: org.id, name });
 			pushSuccess('Organization updated successfully');
 			activeSection = 'main';
-			formData = { name: '' };
 		} catch {
 			pushError('Failed to update organization');
 		}
@@ -72,8 +72,9 @@
 	function handleCancel() {
 		if (activeSection === 'edit') {
 			activeSection = 'main';
-			formData = { name: '' };
-			name.set(org?.name || '');
+			if (org) {
+				form.setFieldValue('name', org.name);
+			}
 		} else {
 			onClose();
 		}
@@ -124,19 +125,7 @@
 	let cancelLabel = $derived(activeSection === 'main' ? 'Close' : 'Back');
 </script>
 
-<EditModal
-	{isOpen}
-	title={modalTitle}
-	loading={saving}
-	saveLabel="Save Changes"
-	{showSave}
-	showCancel={true}
-	{cancelLabel}
-	onSave={showSave ? handleSave : null}
-	onCancel={handleCancel}
-	size="md"
-	let:formApi
->
+<GenericModal {isOpen} title={modalTitle} onClose={onClose} onOpen={handleOpen} size="md">
 	<svelte:fragment slot="header-icon">
 		<ModalHeaderIcon Icon={Building2} color="Blue" />
 	</svelte:fragment>
@@ -166,7 +155,7 @@
 						<button
 							onclick={() => {
 								activeSection = 'edit';
-								name.set(org.name);
+								form.setFieldValue('name', org.name);
 							}}
 							class="btn-primary"
 						>
@@ -213,13 +202,22 @@
 		{:else if activeSection === 'edit'}
 			<div class="space-y-6">
 				<p class="text-secondary text-sm">Update your organization's display name</p>
-				<TextInput
-					label="Organization Name"
-					id="name"
-					{formApi}
-					placeholder="Enter organization name"
-					field={name}
-				/>
+				<form.Field
+					name="name"
+					validators={{
+						onBlur: ({ value }: { value: string }) => required(value) || max(100)(value)
+					}}
+				>
+					{#snippet children(field: AnyFieldApi)}
+						<TextInput
+							label="Organization Name"
+							id="name"
+							placeholder="Enter organization name"
+							required={true}
+							{field}
+						/>
+					{/snippet}
+				</form.Field>
 			</div>
 		{/if}
 	{:else}
@@ -228,4 +226,22 @@
 			<p class="text-tertiary mt-2 text-sm">Please try again later</p>
 		</div>
 	{/if}
-</EditModal>
+
+	<svelte:fragment slot="footer">
+		<div class="flex items-center justify-end gap-3">
+			<button type="button" onclick={handleCancel} class="btn-secondary">
+				{cancelLabel}
+			</button>
+			{#if showSave}
+				<button
+					type="button"
+					onclick={() => form.handleSubmit()}
+					disabled={saving}
+					class="btn-primary"
+				>
+					{saving ? 'Saving...' : 'Save Changes'}
+				</button>
+			{/if}
+		</div>
+	</svelte:fragment>
+</GenericModal>

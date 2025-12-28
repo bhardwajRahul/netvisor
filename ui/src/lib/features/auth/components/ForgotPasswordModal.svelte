@@ -1,121 +1,128 @@
 <script lang="ts">
-	import EditModal from '$lib/shared/components/forms/EditModal.svelte';
+	import { createForm } from '@tanstack/svelte-form';
+	import { submitForm } from '$lib/shared/components/forms/form-context';
+	import { required, email } from '$lib/shared/components/forms/validators';
+	import GenericModal from '$lib/shared/components/layout/GenericModal.svelte';
 	import InlineInfo from '$lib/shared/components/feedback/InlineInfo.svelte';
 	import { Mail } from 'lucide-svelte';
 	import TextInput from '$lib/shared/components/forms/input/TextInput.svelte';
-	import { field } from 'svelte-forms';
-	import { required } from 'svelte-forms/validators';
 	import ModalHeaderIcon from '$lib/shared/components/layout/ModalHeaderIcon.svelte';
-	import { emailValidator } from '$lib/shared/components/forms/validators';
 
-	export let isOpen = false;
-	export let onRequestReset: (email: string) => Promise<void> | void;
-	export let onClose: () => void;
-	export let onBackToLogin: () => void;
-
-	let requesting = false;
-	let emailSent = false;
-
-	let formData = {
-		email: ''
-	};
-
-	// Create form field with validation
-	const email = field('email', formData.email, [required(), emailValidator()]);
-
-	// Update formData when field value changes
-	$: formData.email = $email.value;
-
-	// Reset state when modal opens
-	$: if (isOpen) {
-		resetForm();
+	interface Props {
+		isOpen?: boolean;
+		onRequestReset: (email: string) => Promise<void> | void;
+		onClose: () => void;
+		onBackToLogin: () => void;
 	}
 
-	function resetForm() {
-		formData = { email: '' };
+	let { isOpen = false, onRequestReset, onClose, onBackToLogin }: Props = $props();
+
+	let requesting = $state(false);
+	let emailSent = $state(false);
+
+	// Create form
+	const form = createForm(() => ({
+		defaultValues: { email: '' },
+		onSubmit: async ({ value }) => {
+			requesting = true;
+			try {
+				await onRequestReset(value.email.trim());
+				emailSent = true;
+			} finally {
+				requesting = false;
+			}
+		}
+	}));
+
+	// Reset form when modal opens
+	function handleOpen() {
+		form.reset({ email: '' });
 		emailSent = false;
 	}
 
 	async function handleSubmit() {
-		requesting = true;
-		try {
-			await onRequestReset(formData.email);
-			emailSent = true;
-		} finally {
-			requesting = false;
-		}
+		await submitForm(form);
 	}
 </script>
 
-<EditModal
+<GenericModal
 	{isOpen}
 	title={emailSent ? 'Check Your Email' : 'Reset Password'}
-	loading={false}
-	centerTitle={true}
-	saveLabel="Send Reset Link"
-	cancelLabel="Cancel"
-	showCloseButton={false}
-	showCancel={false}
-	showBackdrop={false}
-	showSave={!emailSent}
-	onSave={handleSubmit}
-	onCancel={onClose}
 	size="md"
+	onClose={onClose}
+	onOpen={handleOpen}
+	showCloseButton={false}
+	showBackdrop={false}
 	preventCloseOnClickOutside={true}
-	let:formApi
+	centerTitle={true}
 >
-	<!-- Header icon -->
 	<svelte:fragment slot="header-icon">
 		<ModalHeaderIcon Icon={Mail} color="Blue" />
 	</svelte:fragment>
 
-	{#if emailSent}
-		<InlineInfo
-			title="Reset link sent"
-			body="If an account exists with that email, you'll receive a password reset link shortly. Please check your inbox and spam folder."
-		/>
-	{:else}
-		<div class="space-y-6">
-			<p class="text-sm text-gray-400">
-				Enter your email address and we'll send you a link to reset your password.
-			</p>
-
-			<TextInput
-				label="Email"
-				id="email"
-				{formApi}
-				placeholder="Enter your email"
-				required={true}
-				field={email}
-			/>
-		</div>
-	{/if}
-
-	<!-- Custom footer -->
-	<svelte:fragment slot="footer">
-		<div class="flex w-full flex-col gap-4">
+	<form
+		onsubmit={(e) => {
+			e.preventDefault();
+			e.stopPropagation();
+			handleSubmit();
+		}}
+		class="flex h-full flex-col"
+	>
+		<div class="flex-1 overflow-auto p-6">
 			{#if emailSent}
-				<!-- Back to Login Button -->
-				<button type="button" on:click={onBackToLogin} class="btn-primary w-full">
-					Back to Login
-				</button>
+				<InlineInfo
+					title="Reset link sent"
+					body="If an account exists with that email, you'll receive a password reset link shortly. Please check your inbox and spam folder."
+				/>
 			{:else}
-				<!-- Send Reset Link Button (type="submit" triggers form validation) -->
-				<button type="submit" disabled={requesting} class="btn-primary w-full">
-					{requesting ? 'Sending...' : 'Send Reset Link'}
-				</button>
+				<div class="space-y-6">
+					<p class="text-sm text-gray-400">
+						Enter your email address and we'll send you a link to reset your password.
+					</p>
 
-				<!-- Back to Login Link -->
-				<div class="text-center">
-					<button
-						type="button"
-						on:click={onBackToLogin}
-						class="text-sm font-medium text-blue-400 hover:text-blue-300"
+					<form.Field
+						name="email"
+						validators={{
+							onBlur: ({ value }) => required(value) || email(value)
+						}}
 					>
-						Back to Login
-					</button>
+						{#snippet children(field)}
+							<TextInput
+								label="Email"
+								id="email"
+								{field}
+								placeholder="Enter your email"
+								required
+							/>
+						{/snippet}
+					</form.Field>
 				</div>
 			{/if}
 		</div>
-	</svelte:fragment>
-</EditModal>
+
+		<!-- Footer -->
+		<div class="modal-footer">
+			<div class="flex w-full flex-col gap-4">
+				{#if emailSent}
+					<button type="button" onclick={onBackToLogin} class="btn-primary w-full">
+						Back to Login
+					</button>
+				{:else}
+					<button type="submit" disabled={requesting} class="btn-primary w-full">
+						{requesting ? 'Sending...' : 'Send Reset Link'}
+					</button>
+
+					<div class="text-center">
+						<button
+							type="button"
+							onclick={onBackToLogin}
+							class="text-sm font-medium text-blue-400 hover:text-blue-300"
+						>
+							Back to Login
+						</button>
+					</div>
+				{/if}
+			</div>
+		</div>
+	</form>
+</GenericModal>

@@ -1701,14 +1701,14 @@ export interface components {
 			/**
 			 * @description Association between a service and a port / interface that the service is listening on
 			 * @example {
-			 *       "created_at": "2025-12-27T04:06:57.113246Z",
-			 *       "id": "853312ae-886d-4620-b30a-fb4605df7b7d",
+			 *       "created_at": "2025-12-27T17:37:05.236381Z",
+			 *       "id": "cce42ada-34e3-47a9-9912-cd32591da2db",
 			 *       "interface_id": "550e8400-e29b-41d4-a716-446655440005",
 			 *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
 			 *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
 			 *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
 			 *       "type": "Port",
-			 *       "updated_at": "2025-12-27T04:06:57.113246Z"
+			 *       "updated_at": "2025-12-27T17:37:05.236381Z"
 			 *     }
 			 */
 			data?: components['schemas']['BindingBase'] & {
@@ -2042,14 +2042,14 @@ export interface components {
 			 * @example {
 			 *       "bindings": [
 			 *         {
-			 *           "created_at": "2025-12-27T04:06:57.109411Z",
-			 *           "id": "68096bd4-c1d2-45cd-9310-bbf4f87ab826",
+			 *           "created_at": "2025-12-27T17:37:05.233711Z",
+			 *           "id": "33a9180c-8611-481d-a7cf-4cbb9e583585",
 			 *           "interface_id": "550e8400-e29b-41d4-a716-446655440005",
 			 *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
 			 *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
 			 *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
 			 *           "type": "Port",
-			 *           "updated_at": "2025-12-27T04:06:57.109411Z"
+			 *           "updated_at": "2025-12-27T17:37:05.233711Z"
 			 *         }
 			 *       ],
 			 *       "created_at": "2026-01-15T10:30:00Z",
@@ -2057,7 +2057,7 @@ export interface components {
 			 *       "id": "550e8400-e29b-41d4-a716-446655440007",
 			 *       "name": "nginx",
 			 *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
-			 *       "service_definition": "Bitwarden",
+			 *       "service_definition": "Ghost",
 			 *       "source": {
 			 *         "type": "Manual"
 			 *       },
@@ -2489,14 +2489,14 @@ export interface components {
 		/**
 		 * @description Association between a service and a port / interface that the service is listening on
 		 * @example {
-		 *       "created_at": "2025-12-27T04:06:57.099953Z",
-		 *       "id": "c28cef63-dce4-4a93-bb96-4a5d2a655059",
+		 *       "created_at": "2025-12-27T17:37:05.227282Z",
+		 *       "id": "58325029-a362-4fbd-95d3-cc29f3e87e72",
 		 *       "interface_id": "550e8400-e29b-41d4-a716-446655440005",
 		 *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
 		 *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
 		 *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
 		 *       "type": "Port",
-		 *       "updated_at": "2025-12-27T04:06:57.099953Z"
+		 *       "updated_at": "2025-12-27T17:37:05.227282Z"
 		 *     }
 		 */
 		Binding: components['schemas']['BindingBase'] & {
@@ -3372,14 +3372,14 @@ export interface components {
 		 * @example {
 		 *       "bindings": [
 		 *         {
-		 *           "created_at": "2025-12-27T04:06:57.099859Z",
-		 *           "id": "8575863f-6058-4824-a668-4e5f741e7ddf",
+		 *           "created_at": "2025-12-27T17:37:05.227232Z",
+		 *           "id": "fb419fba-e0be-49ee-b869-f0cab6ad288d",
 		 *           "interface_id": "550e8400-e29b-41d4-a716-446655440005",
 		 *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
 		 *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
 		 *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
 		 *           "type": "Port",
-		 *           "updated_at": "2025-12-27T04:06:57.099859Z"
+		 *           "updated_at": "2025-12-27T17:37:05.227232Z"
 		 *         }
 		 *       ],
 		 *       "created_at": "2026-01-15T10:30:00Z",
@@ -3387,7 +3387,7 @@ export interface components {
 		 *       "id": "550e8400-e29b-41d4-a716-446655440007",
 		 *       "name": "nginx",
 		 *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
-		 *       "service_definition": "Bitwarden",
+		 *       "service_definition": "Ghost",
 		 *       "source": {
 		 *         "type": "Manual"
 		 *       },
@@ -3643,13 +3643,13 @@ export interface components {
 		/** @enum {string} */
 		TransportProtocol: 'Udp' | 'Tcp';
 		TypeMetadata: {
-			category?: string | null;
+			category: string | null;
 			color: components['schemas']['Color'];
-			description?: string | null;
-			icon?: string | null;
+			description: string | null;
+			icon: string | null;
 			id: string;
-			metadata?: unknown;
-			name?: string | null;
+			metadata: unknown;
+			name: string | null;
 		};
 		UpdateEmailPasswordRequest: {
 			/** Format: email */
@@ -3680,6 +3680,7 @@ export interface components {
 			 *     - Create interfaces without an `id` (or with nil UUID)
 			 *     - Keep/update interfaces with matching `id`
 			 *     - Delete existing interfaces not in this list
+			 *
 			 *     If not provided (None), interfaces are left unchanged.
 			 */
 			interfaces?: components['schemas']['UpdateInterfaceInput'][] | null;
@@ -3690,6 +3691,7 @@ export interface components {
 			 *     - Create ports without an `id` (or with nil UUID)
 			 *     - Keep/update ports with matching `id`
 			 *     - Delete existing ports not in this list
+			 *
 			 *     If not provided (None), ports are left unchanged.
 			 */
 			ports?: components['schemas']['UpdatePortInput'][] | null;

@@ -13,21 +13,17 @@ use crate::server::{
     ports::{r#impl::base::Port, service::PortService},
     services::{r#impl::base::Service, service::ServiceService},
     shared::{
-        entities::ChangeTriggersTopologyStaleness,
-        events::{
+        entities::ChangeTriggersTopologyStaleness, events::{
             bus::EventBus,
             types::{EntityEvent, EntityOperation},
-        },
-        services::traits::{CrudService, EventBusService},
-        storage::{
+        }, handlers::traits::CrudHandlers, services::traits::{CrudService, EventBusService}, storage::{
             filter::EntityFilter,
             generic::GenericPostgresStorage,
             traits::{StorableEntity, Storage},
-        },
-        types::{
+        }, types::{
             api::ValidationError,
             entities::{EntitySource, EntitySourceDiscriminants},
-        },
+        }
     },
 };
 use anyhow::{Error, Result, anyhow};
@@ -526,7 +522,7 @@ impl HostService {
                 }
             }
 
-            let created = self.port_service.create_direct(&port_with_host).await?;
+            let created = self.port_service.create(port_with_host, authentication.clone()).await?;
             created_ports.push(created);
         }
 
@@ -699,8 +695,9 @@ impl HostService {
             } else if existing_ids.contains(&interface.id) {
                 // Update existing interface - preserve created_at from existing
                 if let Some(existing_iface) = existing.iter().find(|i| i.id == interface.id) {
-                    interface.created_at = existing_iface.created_at;
+                    interface.preserve_immutable_fields(existing_iface);
                 }
+                
                 self.interface_service
                     .update(&mut interface, authentication.clone())
                     .await?;
@@ -711,7 +708,7 @@ impl HostService {
         Ok(())
     }
 
-    /// Sync ports for a host: delete removed, create new (ports are not updated, just kept or replaced).
+    /// Sync ports for a host: delete removed, create new, update existing
     async fn sync_ports(
         &self,
         host_id: &Uuid,
@@ -741,12 +738,24 @@ impl HostService {
 
         // Create new ports (existing ports are kept as-is)
         for input in inputs {
-            if input.is_new() {
-                let port = input.into_port(*host_id, *network_id);
+            let is_new = input.is_new();
+            let mut port = input.into_port(*host_id, *network_id);
+
+            if is_new {
                 self.port_service
                     .create(port, authentication.clone())
                     .await?;
+            } else if existing_ids.contains(&port.id) {
+                // Update existing interface - preserve created_at from existing
+                if let Some(existing_port) = existing.iter().find(|p| p.id == port.id) {
+                    port.preserve_immutable_fields(existing_port);
+                }
+                
+                self.port_service
+                    .update(&mut port, authentication.clone())
+                    .await?;
             }
+            // Note: if ID doesn't exist in existing, it's silently skipped (invalid reference)
         }
 
         Ok(())

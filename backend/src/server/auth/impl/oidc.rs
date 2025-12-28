@@ -9,6 +9,8 @@ use openidconnect::{
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
+use crate::server::config::DeploymentType;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OidcPendingAuth {
     pub pkce_verifier: String,
@@ -20,6 +22,7 @@ pub struct OidcPendingAuth {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OidcRegisterParams<'a> {
     pub terms_accepted_at: Option<DateTime<Utc>>,
+    pub deployment_type: DeploymentType,
     pub billing_enabled: bool,
     pub provider_slug: &'a str,
     pub code: &'a str,

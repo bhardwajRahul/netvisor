@@ -1178,6 +1178,7 @@ impl DiscoveryRunner<DockerScanDiscovery> {
                                                 ip_address,
                                                 mac_address,
                                                 name: Some(network_name.to_owned()),
+                                                position: 0,
                                             }),
                                             subnet.clone(),
                                         ));

@@ -7,9 +7,6 @@
 	import { useSubnetsQuery, isContainerSubnet } from '$lib/features/subnets/queries';
 	import type { PortBinding, Service } from '$lib/features/services/types/base';
 	import { formatPort } from '$lib/shared/utils/formatting';
-	import { field } from 'svelte-forms';
-	import type { FormApi } from '$lib/shared/components/forms/types';
-	import SelectInput from '$lib/shared/components/forms/input/SelectInput.svelte';
 
 	// TanStack Query hooks
 	const servicesQuery = useServicesQuery();
@@ -40,7 +37,6 @@
 	interface Props {
 		binding: PortBinding;
 		onUpdate?: (updates: Partial<PortBinding>) => void;
-		formApi: FormApi;
 		service?: Service;
 		host?: HostFormData;
 	}
@@ -48,7 +44,6 @@
 	let {
 		binding,
 		onUpdate = () => {},
-		formApi,
 		service = undefined,
 		host = undefined
 	}: Props = $props();
@@ -176,87 +171,39 @@
 		}) || []
 	);
 
-	// Convert binding.interface_id to select value (null -> sentinel string)
-	let selectInterfaceValue = $derived(
-		binding.interface_id === null ? ALL_INTERFACES.name : binding.interface_id
-	);
+	// Local state for select values - use sentinel for ALL_INTERFACES
+	const ALL_INTERFACES_SENTINEL = '__ALL_INTERFACES__';
+	let selectedInterface = $state(binding.interface_id === null ? ALL_INTERFACES_SENTINEL : binding.interface_id);
+	let selectedPort = $state(binding.port_id ?? '');
 
-	// Create svelte-forms fields
-	const getInterfaceField = () => {
-		return field(`binding_${binding.id}_interface`, selectInterfaceValue, [], {
-			checkOnInit: false
-		});
-	};
-
-	const getPortField = () => {
-		// Port binding must have a port_id, use empty string as fallback for form state
-		return field(`binding_${binding.id}_port`, binding.port_id ?? '', [], {
-			checkOnInit: false
-		});
-	};
-
-	let currentBindingId = $state(binding.id);
-	let interfaceField = $state(getInterfaceField());
-	let portField = $state(getPortField());
-
-	// Reinitialize fields when binding changes
+	// Sync local state when binding changes externally
 	$effect(() => {
-		if (binding.id !== currentBindingId) {
-			currentBindingId = binding.id;
-			interfaceField = getInterfaceField();
-			portField = getPortField();
-		}
+		selectedInterface = binding.interface_id === null ? ALL_INTERFACES_SENTINEL : binding.interface_id;
+		selectedPort = binding.port_id ?? '';
 	});
 
-	// Update binding when field values change
-	$effect(() => {
-		if ($interfaceField && $portField) {
-			// Convert sentinel string back to null for interface
-			const interfaceId: string | null =
-				$interfaceField.value === ALL_INTERFACES.name ? null : $interfaceField.value;
+	// Handle interface selection change
+	function handleInterfaceChange(event: Event) {
+		const target = event.target as HTMLSelectElement;
+		const newValue = target.value;
+		selectedInterface = newValue;
 
-			const portId = $portField.value;
-
-			// Only trigger onUpdate if values actually changed
-			if (interfaceId !== binding.interface_id || portId !== binding.port_id) {
-				onUpdate({
-					interface_id: interfaceId,
-					port_id: portId
-				});
-			}
+		const interfaceId = newValue === ALL_INTERFACES_SENTINEL ? null : newValue;
+		if (interfaceId !== binding.interface_id) {
+			onUpdate({ interface_id: interfaceId });
 		}
-	});
+	}
 
-	// Build select options for interfaces
-	let interfaceSelectOptions = $derived([
-		...interfaceOptions.map(({ iface, disabled, reason }) => ({
-			value: iface.id,
-			label:
-				formatInterface(iface, isContainerSubnetFn) + (disabled && reason ? ` - ${reason}` : ''),
-			id: iface.id,
-			disabled
-		})),
-		{
-			value: ALL_INTERFACES.name,
-			label:
-				formatInterface(ALL_INTERFACES, isContainerSubnetFn) +
-				(allInterfacesOption.disabled && allInterfacesOption.reason
-					? ` - ${allInterfacesOption.reason}`
-					: ''),
-			id: ALL_INTERFACES.name,
-			disabled: allInterfacesOption.disabled
+	// Handle port selection change
+	function handlePortChange(event: Event) {
+		const target = event.target as HTMLSelectElement;
+		const newValue = target.value;
+		selectedPort = newValue;
+
+		if (newValue !== binding.port_id) {
+			onUpdate({ port_id: newValue });
 		}
-	]);
-
-	// Build select options for ports
-	let portSelectOptions = $derived(
-		portOptions.map(({ port, disabled, reason }) => ({
-			value: port.id,
-			label: formatPort(port) + (disabled && reason ? ` - ${reason}` : ''),
-			id: port.id,
-			disabled
-		}))
-	);
+	}
 </script>
 
 <div class="flex-1">
@@ -280,14 +227,33 @@
 						No interfaces configured on host
 					</div>
 				</div>
-			{:else if host.interfaces.length > 0 && $interfaceField}
-				<SelectInput
-					label="Interface"
-					id="binding_{binding.id}_interface"
-					{formApi}
-					field={interfaceField}
-					options={interfaceSelectOptions}
-				/>
+			{:else if host.interfaces.length > 0}
+				<div class="flex-1">
+					<label for="interface-select-{binding.id}" class="text-tertiary mb-1 block text-xs">Interface</label>
+					<select
+						id="interface-select-{binding.id}"
+						class="input-field w-full"
+						value={selectedInterface}
+						onchange={handleInterfaceChange}
+					>
+						{#each interfaceOptions as { iface, disabled, reason }}
+							<option value={iface.id} {disabled}>
+								{formatInterface(iface, isContainerSubnetFn)}{disabled && reason
+									? ` - ${reason}`
+									: ''}
+							</option>
+						{/each}
+						<option
+							value={ALL_INTERFACES_SENTINEL}
+							disabled={allInterfacesOption.disabled}
+						>
+							{formatInterface(ALL_INTERFACES, isContainerSubnetFn)}{allInterfacesOption.disabled &&
+							allInterfacesOption.reason
+								? ` - ${allInterfacesOption.reason}`
+								: ''}
+						</option>
+					</select>
+				</div>
 			{/if}
 
 			{#if host.ports.length === 0}
@@ -298,14 +264,22 @@
 						No ports configured on host
 					</div>
 				</div>
-			{:else if $portField}
-				<SelectInput
-					label="Port"
-					id="binding_{binding.id}_port"
-					{formApi}
-					field={portField}
-					options={portSelectOptions}
-				/>
+			{:else}
+				<div class="flex-1">
+					<label for="port-select-{binding.id}" class="text-tertiary mb-1 block text-xs">Port</label>
+					<select
+						id="port-select-{binding.id}"
+						class="input-field w-full"
+						value={selectedPort}
+						onchange={handlePortChange}
+					>
+						{#each portOptions as { port, disabled, reason }}
+							<option value={port.id} {disabled}>
+								{formatPort(port)}{disabled && reason ? ` - ${reason}` : ''}
+							</option>
+						{/each}
+					</select>
+				</div>
 			{/if}
 		</div>
 	{/if}

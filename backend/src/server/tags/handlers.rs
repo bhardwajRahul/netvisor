@@ -34,6 +34,13 @@ pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
 }
 
 /// Create a new tag
+///
+/// Creates a tag scoped to your organization. Tag names must be unique within the organization.
+///
+/// ### Validation
+///
+/// - Name must be 1-100 characters (empty names are rejected)
+/// - Name must be unique within your organization
 #[utoipa::path(
     post,
     path = "",
@@ -41,7 +48,8 @@ pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
     request_body = Tag,
     responses(
         (status = 200, description = "Tag created successfully", body = ApiResponse<Tag>),
-        (status = 409, description = "Tag name already exists", body = ApiErrorResponse),
+        (status = 400, description = "Validation error: name empty or too long", body = ApiErrorResponse),
+        (status = 409, description = "Tag name already exists in this organization", body = ApiErrorResponse),
     ),
     security(("session" = []))
 )]

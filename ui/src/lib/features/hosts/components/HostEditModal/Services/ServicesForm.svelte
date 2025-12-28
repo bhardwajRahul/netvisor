@@ -7,7 +7,6 @@
 	import { createDefaultService } from '$lib/features/services/store';
 	import { ServiceDisplay } from '$lib/shared/components/forms/selection/display/ServiceDisplay.svelte';
 	import { ServiceTypeDisplay } from '$lib/shared/components/forms/selection/display/ServiceTypeDisplay.svelte';
-	import type { FormApi } from '$lib/shared/components/forms/types';
 	import { pushError } from '$lib/shared/stores/feedback';
 	import EntityMetadataSection from '$lib/shared/components/forms/EntityMetadataSection.svelte';
 	import ServiceConfigPanel from './ServiceConfigPanel.svelte';
@@ -16,19 +15,24 @@
 	import { ArrowRightLeft } from 'lucide-svelte';
 	import InlineInfo from '$lib/shared/components/feedback/InlineInfo.svelte';
 
-	export let formApi: FormApi;
-	export let formData: HostFormData;
-	export let currentServices: Service[] = [];
-	export let isEditing: boolean;
+	interface Props {
+		formData: HostFormData;
+		currentServices: Service[];
+		onServicesChange: (services: Service[]) => void;
+		isEditing: boolean;
+	}
 
-	let selectedPortBindings: PortBinding[] = [];
+	let { formData = $bindable(), currentServices, onServicesChange, isEditing }: Props = $props();
+
+	let selectedPortBindings = $state<PortBinding[]>([]);
 
 	// Available service types for adding
-	const availableServiceTypes =
+	let availableServiceTypes = $derived(
 		serviceDefinitions
 			.getItems()
 			?.filter((service) => service.metadata?.can_be_added !== false)
-			.sort((a, b) => a.category.localeCompare(b.category, 'en')) || [];
+			.sort((a, b) => (a.category ?? '').localeCompare(b.category ?? '', 'en')) || []
+	);
 
 	function handleItemSelect() {
 		selectedPortBindings = [];
@@ -37,7 +41,7 @@
 	function handleTransferPorts(transferToService: Service, transferFromService: Service) {
 		const bindingIdsToTransfer = new Set(selectedPortBindings.map((b) => b.id));
 
-		currentServices = currentServices.map((s) => {
+		const updatedServices = currentServices.map((s) => {
 			if (s.id === transferToService.id) {
 				return {
 					...s,
@@ -51,6 +55,7 @@
 			}
 			return s;
 		});
+		onServicesChange(updatedServices);
 
 		selectedPortBindings = [];
 	}
@@ -66,20 +71,18 @@
 			formData.network_id
 		);
 
-		console.log(newService);
-
-		currentServices = [...currentServices, newService];
+		onServicesChange([...currentServices, newService]);
 	}
 
 	function handleRemoveService(index: number) {
-		currentServices = currentServices.filter((_, i) => i !== index);
+		onServicesChange(currentServices.filter((_, i) => i !== index));
 	}
 
 	function handleServiceChange(service: Service, index: number) {
 		if (index >= 0 && index < currentServices.length) {
 			const updatedServices = [...currentServices];
 			updatedServices[index] = service;
-			currentServices = updatedServices;
+			onServicesChange(updatedServices);
 		} else {
 			pushError('Invalid service index');
 		}
@@ -92,7 +95,7 @@
 		const [movedService] = updatedServices.splice(fromIndex, 1);
 		updatedServices.splice(toIndex, 0, movedService);
 
-		currentServices = [...updatedServices];
+		onServicesChange(updatedServices);
 	}
 </script>
 
@@ -104,7 +107,7 @@
 		/>
 	{:else}
 		<ListConfigEditor
-			bind:items={currentServices}
+			items={currentServices}
 			onChange={handleServiceChange}
 			onReorder={handleServiceReorder}
 			onItemSelect={handleItemSelect}
@@ -128,7 +131,6 @@
 					options={availableServiceTypes}
 					itemClickAction="edit"
 					showSearch={true}
-					{formApi}
 					{items}
 					allowItemRemove={() => !isTransferringPortBindings}
 					allowReorder={!isTransferringPortBindings}
@@ -175,7 +177,6 @@
 			<svelte:fragment slot="config" let:selectedItem let:onChange let:selectedIndex>
 				{#if selectedItem}
 					<ServiceConfigPanel
-						{formApi}
 						host={formData}
 						index={selectedIndex}
 						service={selectedItem}

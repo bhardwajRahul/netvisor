@@ -19,6 +19,10 @@ impl CrudHandlers for Port {
     fn get_service(state: &AppState) -> &Self::Service {
         &state.services.port_service
     }
+
+    fn preserve_immutable_fields(&mut self, existing: &Self) {
+        self.created_at = existing.created_at
+    }
 }
 
 mod generated {

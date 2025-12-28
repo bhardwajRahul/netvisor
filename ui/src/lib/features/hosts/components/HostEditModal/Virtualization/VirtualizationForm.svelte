@@ -13,7 +13,6 @@
 	import type { Host } from '$lib/features/hosts/types/base';
 	import { uuidv4Sentinel } from '$lib/shared/utils/formatting';
 	import InlineWarning from '$lib/shared/components/feedback/InlineWarning.svelte';
-	import type { FormApi } from '$lib/shared/components/forms/types';
 	import { useHostsQuery } from '$lib/features/hosts/queries';
 	import { useServicesQuery } from '$lib/features/services/queries';
 
@@ -21,10 +20,9 @@
 		virtualizationManagerServices: Service[];
 		onServiceChange: (service: Service) => void;
 		onVirtualizedHostChange: (host: Host) => void;
-		formApi: FormApi;
 	}
 
-	let { virtualizationManagerServices, onServiceChange, onVirtualizedHostChange, formApi }: Props =
+	let { virtualizationManagerServices, onServiceChange, onVirtualizedHostChange }: Props =
 		$props();
 
 	// TanStack Query hooks for context data
@@ -41,14 +39,13 @@
 </script>
 
 <div class="space-y-6">
-	<ListConfigEditor bind:items={virtualizationManagerServices} onChange={onServiceChange}>
+	<ListConfigEditor items={virtualizationManagerServices} onChange={onServiceChange}>
 		<svelte:fragment slot="list" let:items let:onEdit let:highlightedIndex>
 			<ListManager
 				label="Virtualization Services"
 				helpText="Services that manage virtual machines or containers on this host"
 				emptyMessage="No virtualization services on this host."
 				{items}
-				{formApi}
 				itemClickAction="edit"
 				allowItemRemove={() => false}
 				allowReorder={false}
@@ -76,13 +73,11 @@
 					{#if virtualizationType === 'vms'}
 						<VmManagerConfigPanel
 							service={selectedItem}
-							{formApi}
 							onChange={(updatedHost) => onVirtualizedHostChange(updatedHost)}
 						/>
 					{:else if virtualizationType === 'containers'}
 						<ContainerManagerConfigPanel
 							service={selectedItem}
-							{formApi}
 							onChange={(updatedService) => onServiceChange(updatedService)}
 						/>
 					{:else}

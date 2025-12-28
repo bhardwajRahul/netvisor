@@ -1,18 +1,30 @@
 <script lang="ts">
 	import FormField from './FormField.svelte';
-	import type { TextFieldType, FormApi } from '../types';
+	import type { AnyFieldApi } from '@tanstack/svelte-form';
 
-	export let label: string;
-	export let formApi: FormApi;
-	export let field: TextFieldType;
-	export let id: string;
-	export let placeholder: string = '';
-	export let required: boolean = false;
-	export let helpText: string = '';
-	export let disabled: boolean = false;
-	export let showValidation: boolean = true;
-	export let min: string | undefined = undefined;
-	export let max: string | undefined = undefined;
+	interface Props {
+		label: string;
+		field: AnyFieldApi;
+		id: string;
+		placeholder?: string;
+		required?: boolean;
+		helpText?: string;
+		disabled?: boolean;
+		min?: string;
+		max?: string;
+	}
+
+	let {
+		label,
+		field,
+		id,
+		placeholder = '',
+		required = false,
+		helpText = '',
+		disabled = false,
+		min = undefined,
+		max = undefined
+	}: Props = $props();
 
 	// Convert ISO 8601 string to datetime-local format (YYYY-MM-DDTHH:00)
 	function toDateTimeLocal(isoString: string): string {
@@ -33,52 +45,33 @@
 		return date.toISOString();
 	}
 
-	// Local value for the input (datetime-local format)
-	let localValue = toDateTimeLocal($field.value);
+	// Local value for display (datetime-local format)
+	let localValue = $derived(toDateTimeLocal(field.state.value ?? ''));
+	let hasErrors = $derived(field.state.meta.isTouched && field.state.meta.errors.length > 0);
 
 	// Sync changes back to field in ISO format
 	function handleInput(event: Event) {
 		const target = event.target as HTMLInputElement;
-		localValue = target.value;
-		$field.value = toISO8601(localValue);
-		if (showValidation) field.validate();
-	}
-
-	// Update localValue when field value changes externally
-	$: localValue = toDateTimeLocal($field.value);
-
-	// Enable validation on user interaction
-	function enableValidation() {
-		showValidation = true;
-	}
-
-	$: if ($field.errors.length > 0) {
-		showValidation = true;
+		field.handleChange(toISO8601(target.value));
 	}
 </script>
 
-<FormField
-	{label}
-	{formApi}
-	{field}
-	{required}
-	{helpText}
-	errors={showValidation ? $field.errors : []}
-	{showValidation}
-	{id}
->
-	<input
-		{id}
-		type="datetime-local"
-		value={localValue}
-		{placeholder}
-		{disabled}
-		{min}
-		{max}
-		class={`input-field datetime-picker ${showValidation && $field.errors.length > 0 ? 'input-field-error' : ''}`}
-		on:blur={enableValidation}
-		on:input={handleInput}
-	/>
+<FormField {label} {field} {required} {helpText} {id}>
+	{#snippet children()}
+		<input
+			{id}
+			type="datetime-local"
+			value={localValue}
+			onblur={() => field.handleBlur()}
+			oninput={handleInput}
+			{placeholder}
+			{disabled}
+			{min}
+			{max}
+			class="input-field datetime-picker"
+			class:input-field-error={hasErrors}
+		/>
+	{/snippet}
 </FormField>
 
 <style>

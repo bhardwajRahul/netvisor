@@ -7,17 +7,34 @@
 	import { permissions } from '$lib/shared/stores/metadata';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
 
+	/**
+	 * TagPicker supports two usage patterns:
+	 *
+	 * 1. Binding (preferred): Use when parent prop is bindable
+	 *    <TagPicker bind:selectedTagIds={formData.tags} />
+	 *
+	 * 2. Callback: Use when parent prop isn't bindable (e.g., received via slot)
+	 *    <TagPicker selectedTagIds={service.tags} onChange={(tags) => handleTagsChange(tags)} />
+	 */
 	let {
 		selectedTagIds = $bindable([]),
 		label = 'Tags',
 		placeholder = 'Type to add tags...',
-		disabled = false
+		disabled = false,
+		onChange
 	}: {
 		selectedTagIds?: string[];
 		label?: string;
 		placeholder?: string;
 		disabled?: boolean;
+		onChange?: (tagIds: string[]) => void;
 	} = $props();
+
+	// Supports both bind: and onChange patterns
+	function updateTags(newTagIds: string[]) {
+		selectedTagIds = newTagIds;
+		onChange?.(newTagIds);
+	}
 
 	let inputValue = $state('');
 	let isFocused = $state(false);
@@ -80,7 +97,7 @@
 			newTag.color = getRandomColor();
 
 			const result = await createTagMutation.mutateAsync(newTag);
-			selectedTagIds = [...selectedTagIds, result.id];
+			updateTags([...selectedTagIds, result.id]);
 			inputValue = '';
 		} finally {
 			inputElement?.focus();
@@ -89,14 +106,14 @@
 
 	function addTag(tagId: string) {
 		if (!selectedTagIds.includes(tagId)) {
-			selectedTagIds = [...selectedTagIds, tagId];
+			updateTags([...selectedTagIds, tagId]);
 		}
 		inputValue = '';
 		inputElement?.focus();
 	}
 
 	function removeTag(tagId: string) {
-		selectedTagIds = selectedTagIds.filter((id) => id !== tagId);
+		updateTags(selectedTagIds.filter((id) => id !== tagId));
 	}
 
 	function handleKeydown(e: KeyboardEvent) {

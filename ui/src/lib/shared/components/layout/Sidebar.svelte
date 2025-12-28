@@ -254,12 +254,14 @@
 		}
 	];
 
-	// Extract all tabs with components from the nav config and expose to parent
+	// Extract all tabs with components from the filtered nav config and expose to parent
+	// Use navConfig (filtered by permissions) instead of baseNavConfig to prevent
+	// instantiating components the user doesn't have permission to access
 	$effect(() => {
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		const tabs: Array<{ id: string; component: any }> = [];
 
-		for (const configItem of baseNavConfig) {
+		for (const configItem of navConfig) {
 			if (isSection(configItem)) {
 				// Get tabs from section items
 				for (const item of configItem.items) {

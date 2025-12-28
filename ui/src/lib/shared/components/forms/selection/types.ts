@@ -1,7 +1,7 @@
-import type { Component } from 'svelte';
 import type { TagProps } from '../../data/types';
 import type { IconComponent } from '$lib/shared/utils/types';
-import type { FormApi } from '../types';
+import type { Component } from 'svelte';
+
 // @typescript-eslint/no-explicit-any
 export interface EntityDisplayComponent<T, C> {
 	// Required methods
@@ -15,16 +15,8 @@ export interface EntityDisplayComponent<T, C> {
 	getTags?(item: T, context: C): TagProps[];
 	getCategory?(item: T, context: C): string | null;
 
-	// Optional inline editing support
+	// Inline editing support
 	supportsInlineEdit?: boolean;
-	renderInlineEdit?(
-		item: T,
-		onUpdate: (updates: Partial<T>) => void,
-		formApi: FormApi,
-		context?: C
-	): {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		component: Component<any>;
-		props: Record<string, unknown>;
-	};
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	InlineEditorComponent?: Component<any>;
 }

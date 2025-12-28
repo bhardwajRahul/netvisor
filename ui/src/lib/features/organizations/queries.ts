@@ -33,18 +33,25 @@ export function useOrganizationQuery() {
 
 /**
  * Query hook for fetching invites
+ * @param options.enabled - Whether to enable the query (default: true). Can be a boolean or getter function for reactivity.
  */
-export function useInvitesQuery() {
-	return createQuery(() => ({
-		queryKey: queryKeys.invites.all,
-		queryFn: async () => {
-			const { data } = await apiClient.GET('/api/invites');
-			if (!data?.success || !data.data) {
-				throw new Error(data?.error || 'Failed to fetch invites');
-			}
-			return data.data;
-		}
-	}));
+export function useInvitesQuery(options?: { enabled?: boolean | (() => boolean) }) {
+	return createQuery(() => {
+		const enabled = typeof options?.enabled === 'function'
+			? options.enabled()
+			: (options?.enabled ?? true);
+		return {
+			queryKey: queryKeys.invites.all,
+			queryFn: async () => {
+				const { data } = await apiClient.GET('/api/invites');
+				if (!data?.success || !data.data) {
+					throw new Error(data?.error || 'Failed to fetch invites');
+				}
+				return data.data;
+			},
+			enabled
+		};
+	});
 }
 
 /**

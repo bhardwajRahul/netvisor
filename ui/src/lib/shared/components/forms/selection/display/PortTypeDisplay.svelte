@@ -1,23 +1,27 @@
 <script lang="ts" context="module">
-	export const PortTypeDisplay: EntityDisplayComponent<TypeMetadata<PortTypeMetadata>, object> = {
-		getId: (portType: TypeMetadata<PortTypeMetadata>) => portType.id,
-		getLabel: (portType: TypeMetadata<PortTypeMetadata>) =>
+	import type { PortTypeMetadata, TypedTypeMetadata } from '$lib/shared/stores/metadata';
+
+	type PortType = TypedTypeMetadata<PortTypeMetadata>;
+
+	export const PortTypeDisplay: EntityDisplayComponent<PortType, object> = {
+		getId: (portType: PortType) => portType.id,
+		getLabel: (portType: PortType) =>
 			`${portType.metadata.number}/${portType.metadata.protocol.toLowerCase()} - ${portType.name}`,
-		getDescription: (portType: TypeMetadata<PortTypeMetadata>) => portType.description,
-		getIcon: (portType: TypeMetadata<PortTypeMetadata>) => createIconComponent(portType.icon),
+		getDescription: (portType: PortType) => portType.description ?? '',
+		getIcon: (portType: PortType) => createIconComponent(portType.icon ?? null),
 		getIconColor: () => entities.getColorHelper('Port').icon,
 		getTags: () => [],
-		getCategory: (portType: TypeMetadata<PortTypeMetadata>) => portType.category
+		getCategory: (portType: PortType) => portType.category ?? ''
 	};
 </script>
 
 <script lang="ts">
 	import ListSelectItem from '$lib/shared/components/forms/selection/ListSelectItem.svelte';
-	import { entities, type PortTypeMetadata, type TypeMetadata } from '$lib/shared/stores/metadata';
+	import { entities } from '$lib/shared/stores/metadata';
 	import { createIconComponent } from '$lib/shared/utils/styling';
 	import type { EntityDisplayComponent } from '../types';
 
-	export let item: TypeMetadata<PortTypeMetadata>;
+	export let item: PortType;
 	export let context = {};
 </script>
 

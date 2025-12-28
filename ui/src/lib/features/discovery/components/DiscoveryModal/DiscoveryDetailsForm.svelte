@@ -1,8 +1,6 @@
 <script lang="ts">
-	import { field } from 'svelte-forms';
-	import { required } from 'svelte-forms/validators';
-	import { maxLength } from '$lib/shared/components/forms/validators';
-	import type { FormApi } from '$lib/shared/components/forms/types';
+	import type { AnyFieldApi } from '@tanstack/svelte-form';
+	import { required, max } from '$lib/shared/components/forms/validators';
 	import TextInput from '$lib/shared/components/forms/input/TextInput.svelte';
 	import RichSelect from '$lib/shared/components/forms/selection/RichSelect.svelte';
 	import { DaemonDisplay } from '$lib/shared/components/forms/selection/display/DaemonDisplay.svelte';
@@ -10,32 +8,37 @@
 	import type { Daemon } from '$lib/features/daemons/types/base';
 	import TagPicker from '$lib/features/tags/components/TagPicker.svelte';
 
-	export let formApi: FormApi;
-	export let formData: Discovery;
-	export let daemons: Daemon[] = [];
-	export let readOnly: boolean = false;
+	interface Props {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		form: { Field: any; state: { values: { name: string } } };
+		formData: Discovery;
+		daemons?: Daemon[];
+		readOnly?: boolean;
+	}
 
-	// Create form fields with validation
-	const name = field('name', formData.name, [required(), maxLength(100)]);
-
-	// Update formData when field values change
-	$: formData.name = $name.value;
-
-	$: daemon = daemons.find((d) => d.id === formData.daemon_id) || null;
+	let { form, formData = $bindable(), daemons = [], readOnly = false }: Props = $props();
 </script>
 
 <div class="space-y-4">
 	<h3 class="text-primary text-lg font-medium">Discovery Details</h3>
 
-	<TextInput
-		label="Discovery Name"
-		id="name"
-		{formApi}
-		placeholder="e.g., Daily Network Scan, Docker Services Check"
-		required={true}
-		field={name}
-		disabled={readOnly}
-	/>
+	<form.Field
+		name="name"
+		validators={{
+			onBlur: ({ value }: { value: string }) => required(value) || max(100)(value)
+		}}
+	>
+		{#snippet children(field: AnyFieldApi)}
+			<TextInput
+				label="Discovery Name"
+				id="name"
+				placeholder="e.g., Daily Network Scan, Docker Services Check"
+				required={true}
+				{field}
+				disabled={readOnly}
+			/>
+		{/snippet}
+	</form.Field>
 
 	<!-- Daemon Selection -->
 	<div class="space-y-2">
@@ -48,8 +51,9 @@
 			options={daemons}
 			displayComponent={DaemonDisplay}
 			onSelect={(value) => {
-				if (daemon) {
-					formData = { ...formData, daemon_id: value, network_id: daemon.network_id };
+				const selectedDaemon = daemons.find((d) => d.id === value);
+				if (selectedDaemon) {
+					formData = { ...formData, daemon_id: value, network_id: selectedDaemon.network_id };
 				}
 			}}
 		/>

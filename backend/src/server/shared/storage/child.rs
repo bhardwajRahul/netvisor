@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use super::{
     generic::GenericPostgresStorage,
-    traits::{StorableEntity, Storage},
+    traits::{StorableEntity},
 };
 
 /// Trait for entities that are children of a parent entity and stored in a separate table.
@@ -86,76 +86,6 @@ impl<T: ChildStorableEntity + Display> GenericChildStorage<T> {
         }
 
         Ok(result)
-    }
-
-    /// Save children for a parent (syncs children, preserving IDs where possible)
-    ///
-    /// This uses a sync pattern instead of delete-all + insert-all to preserve
-    /// existing entity IDs. This is important for entities with foreign key
-    /// references (like bindings referenced by group_bindings with ON DELETE CASCADE).
-    ///
-    /// Also preserves `created_at` timestamps for existing children and generates
-    /// new UUIDs for children with nil IDs.
-    ///
-    /// Returns the saved entities with their actual IDs (including generated ones).
-    pub async fn save_for_parent(&self, parent_id: &Uuid, children: &[T]) -> Result<Vec<T>> {
-        // Fetch full existing children to get their created_at timestamps
-        let existing_children = self.get_for_parent(parent_id).await?;
-        let existing_by_id: std::collections::HashMap<Uuid, T> =
-            existing_children.into_iter().map(|c| (c.id(), c)).collect();
-
-        let current_ids: std::collections::HashSet<Uuid> = existing_by_id.keys().cloned().collect();
-
-        // Compute which IDs are in the new set (excluding nil UUIDs which will get new IDs)
-        let new_ids: std::collections::HashSet<Uuid> = children
-            .iter()
-            .filter(|c| !c.id().is_nil())
-            .map(|c| c.id())
-            .collect();
-
-        // Delete only children that are no longer present
-        let ids_to_delete: Vec<Uuid> = current_ids.difference(&new_ids).cloned().collect();
-        if !ids_to_delete.is_empty() {
-            Storage::delete_many(&self.inner, &ids_to_delete).await?;
-        }
-
-        // Upsert children (insert or update), collecting the saved entities
-        let mut saved: Vec<T> = Vec::with_capacity(children.len());
-        for child in children {
-            let mut child_clone = child.clone();
-
-            let saved_child = if child.id().is_nil() {
-                // New child with nil UUID - generate a proper ID
-                child_clone.set_id(Uuid::new_v4());
-                Storage::create(&self.inner, &child_clone).await?
-            } else if let Some(existing) = existing_by_id.get(&child.id()) {
-                // Existing child - preserve created_at from database
-                child_clone.set_created_at(existing.created_at());
-                Storage::update(&self.inner, &mut child_clone).await?
-            } else {
-                // New child with explicit ID
-                Storage::create(&self.inner, &child_clone).await?
-            };
-            saved.push(saved_child);
-        }
-
-        Ok(saved)
-    }
-
-    /// Delete all children for a parent
-    pub async fn delete_for_parent(&self, parent_id: &Uuid) -> Result<()> {
-        let query_str = format!(
-            "DELETE FROM {} WHERE {} = $1",
-            T::table_name(),
-            T::parent_column()
-        );
-
-        sqlx::query(&query_str)
-            .bind(parent_id)
-            .execute(&self.pool)
-            .await?;
-
-        Ok(())
     }
 }
 

@@ -596,6 +596,7 @@ impl DiscoveryRunner<NetworkScanDiscovery> {
             subnet_id: subnet.id,
             ip_address: ip,
             mac_address: mac,
+            position: 0,
         });
 
         if let Ok(Some((host, interfaces, ports, services))) = self

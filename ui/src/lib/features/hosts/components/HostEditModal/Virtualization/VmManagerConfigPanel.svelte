@@ -5,15 +5,13 @@
 	import ListManager from '$lib/shared/components/forms/selection/ListManager.svelte';
 	import { serviceDefinitions } from '$lib/shared/stores/metadata';
 	import type { Host } from '$lib/features/hosts/types/base';
-	import type { FormApi } from '$lib/shared/components/forms/types';
 
 	interface Props {
 		service: Service;
 		onChange: (updatedHost: Host) => void;
-		formApi: FormApi;
 	}
 
-	let { service, onChange, formApi }: Props = $props();
+	let { service, onChange }: Props = $props();
 
 	// TanStack Query hook
 	const hostsQuery = useHostsQuery();
@@ -23,10 +21,12 @@
 
 	// Initialize managedVms from current hosts data
 	let managedVms = $state<Host[]>([]);
+	let initialized = $state(false);
 
 	// Initialize managedVms when hostsData is available (only once at mount)
 	$effect(() => {
-		if (hostsData.length > 0 && managedVms.length === 0) {
+		if (hostsData.length > 0 && !initialized) {
+			initialized = true;
 			managedVms = hostsData.filter(
 				(h) =>
 					h.virtualization &&
@@ -89,7 +89,6 @@
 		emptyMessage="No VMs managed by this service yet. Add hosts that are VMs running on this hypervisor."
 		allowReorder={false}
 		allowDuplicates={false}
-		{formApi}
 		showSearch={true}
 		allowItemEdit={() => false}
 		options={selectableVms}

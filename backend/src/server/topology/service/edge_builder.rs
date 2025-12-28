@@ -308,7 +308,12 @@ impl EdgeBuilder {
             .iter()
             .flat_map(|host| {
                 let host_interfaces = ctx.get_interfaces_for_host(host.id);
-                if let Some(origin_interface) = host_interfaces.first() {
+
+                // Use the first non-DockerBridge interface as the origin
+                // This ensures we don't try to create edges FROM a DockerBridge interface
+                if let Some(origin_interface) =
+                    ctx.get_first_non_docker_bridge_interface_for_host(host.id)
+                {
                     host_interfaces
                         .iter()
                         .filter(|interface| {
@@ -441,7 +446,21 @@ impl EdgeBuilder {
 
         if let (Some(Some(source_interface)), Some(Some(target_interface))) =
             (source_interface, target_interface)
-            && ctx.interface_will_have_node(&source_interface)
+        {
+            if !ctx.interface_will_have_node(&source_interface)
+                || !ctx.interface_will_have_node(&target_interface)
+            {
+                return None;
+            }
+        } else {
+            return None;
+        }
+
+        // Re-extract interfaces (we know they exist now)
+        let source_interface = source_interface.unwrap().unwrap();
+        let target_interface = target_interface.unwrap().unwrap();
+
+        if ctx.interface_will_have_node(&source_interface)
             && ctx.interface_will_have_node(&target_interface)
         {
             let is_multi_hop = ctx.edge_is_multi_hop(&source_interface, &target_interface);

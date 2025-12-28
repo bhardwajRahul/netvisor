@@ -12,7 +12,7 @@
 
 	// Load public server config on mount
 	onMount(async () => {
-		console.log('Scanopy v' + VERSION);
+		console.log('🌻 Scanopy v' + VERSION);
 		await getConfig();
 	});
 </script>

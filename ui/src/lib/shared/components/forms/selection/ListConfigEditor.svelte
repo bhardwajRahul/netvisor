@@ -43,9 +43,7 @@
 
 	function handleItemChange(updatedItem: TItem) {
 		if (selectedIndex >= 0 && selectedIndex < items.length) {
-			items[selectedIndex] = updatedItem;
-			items = items; // Trigger reactivity
-
+			// Don't mutate items directly - let the parent handle updates via callback
 			onChange(updatedItem, selectedIndex);
 		}
 	}

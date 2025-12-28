@@ -1,26 +1,31 @@
 <script lang="ts">
-	import type { BooleanFieldType, FormApi } from '../types';
 	import FormField from './FormField.svelte';
+	import type { AnyFieldApi } from '@tanstack/svelte-form';
 
-	export let label: string;
-	export let helpText: string = '';
-	export let formApi: FormApi;
-	export let field: BooleanFieldType;
-	export let id: string;
-	export let required: boolean = false;
-	export let disabled: boolean = false;
+	interface Props {
+		label: string;
+		field: AnyFieldApi;
+		id: string;
+		helpText?: string;
+		required?: boolean;
+		disabled?: boolean;
+	}
+
+	let { label, field, id, helpText = '', required = false, disabled = false }: Props = $props();
 </script>
 
 <div class:disabled>
-	<FormField {label} {formApi} {field} {helpText} {id} inline={true} {required}>
-		<input
-			type="checkbox"
-			{id}
-			checked={$field.value}
-			{disabled}
-			on:change={(e) => field.set(e.currentTarget.checked)}
-			class="h-4 w-4 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-1 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
-		/>
+	<FormField {label} {field} {helpText} {id} inline={true} {required}>
+		{#snippet children()}
+			<input
+				type="checkbox"
+				{id}
+				checked={field.state.value}
+				{disabled}
+				onchange={(e) => field.handleChange(e.currentTarget.checked)}
+				class="h-4 w-4 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-1 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+			/>
+		{/snippet}
 	</FormField>
 </div>
 

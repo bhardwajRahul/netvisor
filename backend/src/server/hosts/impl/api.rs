@@ -94,6 +94,9 @@ pub struct CreateInterfaceInput {
     #[schema(value_type = Option<String>)]
     pub mac_address: Option<MacAddress>,
     pub name: Option<String>,
+    /// Position of this interface in the host's interface list (for ordering)
+    #[serde(default)]
+    pub position: i32,
 }
 
 impl CreateInterfaceInput {
@@ -105,6 +108,7 @@ impl CreateInterfaceInput {
             ip_address,
             mac_address,
             name,
+            position,
         } = self;
 
         // Exhaustive construction ensures we handle all InterfaceBase fields
@@ -115,6 +119,7 @@ impl CreateInterfaceInput {
             ip_address,
             mac_address,
             name,
+            position,
         }
     }
 }
@@ -205,6 +210,9 @@ pub struct UpdateInterfaceInput {
     #[schema(value_type = Option<String>)]
     pub mac_address: Option<MacAddress>,
     pub name: Option<String>,
+    /// Position of this interface in the host's interface list (for ordering)
+    #[serde(default)]
+    pub position: i32,
 }
 
 impl UpdateInterfaceInput {
@@ -233,6 +241,7 @@ impl UpdateInterfaceInput {
                 ip_address: self.ip_address,
                 mac_address: self.mac_address,
                 name: self.name,
+                position: self.position,
             },
         }
     }

@@ -1,5 +1,8 @@
 <script lang="ts">
-	import EditModal from '$lib/shared/components/forms/EditModal.svelte';
+	import { createForm } from '@tanstack/svelte-form';
+	import { submitForm } from '$lib/shared/components/forms/form-context';
+	import { required, max, min } from '$lib/shared/components/forms/validators';
+	import GenericModal from '$lib/shared/components/layout/GenericModal.svelte';
 	import type { Topology } from '../types/base';
 	import {
 		createEmptyTopologyFormData,
@@ -11,7 +14,16 @@
 	} from '../store';
 	import { entities } from '$lib/shared/stores/metadata';
 	import ModalHeaderIcon from '$lib/shared/components/layout/ModalHeaderIcon.svelte';
-	import TopologyDetailsForm from './TopologyDetailsForm.svelte';
+	import { useNetworksQuery } from '$lib/features/networks/queries';
+	import TextInput from '$lib/shared/components/forms/input/TextInput.svelte';
+	import SelectNetwork from '$lib/features/networks/components/SelectNetwork.svelte';
+	import RichSelect from '$lib/shared/components/forms/selection/RichSelect.svelte';
+	import { TopologyDisplay } from '$lib/shared/components/forms/selection/display/TopologyDisplay.svelte';
+
+	// TanStack Query hooks
+	const networksQuery = useNetworksQuery();
+	let networksData = $derived(networksQuery.data ?? []);
+	let defaultNetworkId = $derived(networksData[0]?.id ?? '');
 
 	let {
 		isOpen = $bindable(false),
@@ -29,63 +41,138 @@
 	let title = $derived(isEditing ? `Edit ${topo?.name}` : 'Create Topology');
 
 	let loading = $state(false);
-	let formData: Topology = $derived(topo ? { ...topo } : createEmptyTopologyFormData());
 
 	$effect(() => {
 		void $topology;
 		void $topologies;
 	});
 
-	// Reset form when modal opens
-	$effect(() => {
-		if (isOpen) resetForm();
-	});
+	function getDefaultValues(): Topology {
+		return topo ? { ...topo } : createEmptyTopologyFormData(defaultNetworkId);
+	}
 
-	function resetForm() {
-		formData = topo ? { ...topo } : createEmptyTopologyFormData();
+	// Create form
+	const form = createForm(() => ({
+		defaultValues: createEmptyTopologyFormData(''),
+		onSubmit: async ({ value }) => {
+			const topologyData: Topology = {
+				...(value as Topology),
+				name: value.name.trim(),
+				options: $topologyOptions
+			};
+
+			loading = true;
+			try {
+				if (isEditing) {
+					await updateTopology(topologyData);
+				} else {
+					await createTopology(topologyData);
+				}
+				await onSubmit();
+			} finally {
+				loading = false;
+			}
+		}
+	}));
+
+	// Reset form when modal opens
+	function handleOpen() {
+		const defaults = getDefaultValues();
+		form.reset(defaults);
 	}
 
 	async function handleSubmit() {
-		const topologyData: Topology = {
-			...formData,
-			name: formData.name.trim(),
-			options: $topologyOptions,
-			network_id: formData.network_id
-		};
-
-		loading = true;
-		try {
-			if (isEditing) {
-				await updateTopology(topologyData);
-			} else {
-				await createTopology(topologyData);
-			}
-			await onSubmit();
-		} finally {
-			loading = false;
-		}
+		await submitForm(form);
 	}
 
-	let colorHelper = $state(entities.getColorHelper('Topology'));
-	let Icon = $state(entities.getIconComponent('Topology'));
+	// Available topologies for parent selection (exclude current and filter by network)
+	let availableTopologies = $derived(() => {
+		const networkId = form.state.values.network_id;
+		const currentId = form.state.values.id;
+		return $topologies.filter((t) => t.id !== currentId && t.network_id == networkId);
+	});
+
+	let colorHelper = entities.getColorHelper('Topology');
+	let Icon = entities.getIconComponent('Topology');
 </script>
 
-<EditModal
+<GenericModal
 	{isOpen}
 	{title}
-	{loading}
-	saveLabel="Save"
-	cancelLabel="Cancel"
-	onSave={handleSubmit}
-	onCancel={onClose}
 	size="md"
-	let:formApi
+	onClose={onClose}
+	onOpen={handleOpen}
+	showCloseButton={true}
 >
 	<svelte:fragment slot="header-icon">
 		<ModalHeaderIcon {Icon} color={colorHelper.color} />
 	</svelte:fragment>
 
-	<div class="space-y-6">
-		<TopologyDetailsForm {formApi} bind:formData {isEditing} />
-	</div>
-</EditModal>
+	<form
+		onsubmit={(e) => {
+			e.preventDefault();
+			e.stopPropagation();
+			handleSubmit();
+		}}
+		class="flex h-full flex-col"
+	>
+		<div class="flex-1 overflow-auto p-6">
+			<div class="space-y-4">
+				<form.Field name="network_id">
+					{#snippet children(field)}
+						<SelectNetwork
+							selectedNetworkId={field.state.value}
+							onNetworkChange={(id) => field.handleChange(id)}
+							disabled={isEditing}
+						/>
+					{/snippet}
+				</form.Field>
+
+				<form.Field name="parent_id">
+					{#snippet children(field)}
+						<div>
+							<RichSelect
+								label="(Optional) Select a parent to branch off of"
+								displayComponent={TopologyDisplay}
+								required={false}
+								disabled={isEditing}
+								selectedValue={field.state.value}
+								onSelect={(id) => field.handleChange(id)}
+								options={availableTopologies()}
+							/>
+						</div>
+					{/snippet}
+				</form.Field>
+
+				<form.Field
+					name="name"
+					validators={{
+						onBlur: ({ value }) => required(value) || max(100)(value) || min(3)(value)
+					}}
+				>
+					{#snippet children(field)}
+						<TextInput
+							label="Name"
+							id="name"
+							{field}
+							placeholder="Enter topology name"
+							required
+						/>
+					{/snippet}
+				</form.Field>
+			</div>
+		</div>
+
+		<!-- Footer -->
+		<div class="modal-footer">
+			<div class="flex items-center justify-end gap-3">
+				<button type="button" disabled={loading} onclick={onClose} class="btn-secondary">
+					Cancel
+				</button>
+				<button type="submit" disabled={loading} class="btn-primary">
+					{loading ? 'Saving...' : 'Save'}
+				</button>
+			</div>
+		</div>
+	</form>
+</GenericModal>

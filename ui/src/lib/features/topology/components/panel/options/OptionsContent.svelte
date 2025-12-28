@@ -1,16 +1,6 @@
 <script lang="ts">
 	import { topologyOptions } from '../../../store';
-	import { field } from 'svelte-forms';
-	import Checkbox from '$lib/shared/components/forms/input/Checkbox.svelte';
-	import MultiSelect from '$lib/shared/components/forms/input/MultiSelect.svelte';
-	import TextInput from '$lib/shared/components/forms/input/TextInput.svelte';
 	import { edgeTypes, serviceDefinitions } from '$lib/shared/stores/metadata';
-	import type {
-		TextFieldType,
-		BooleanFieldType,
-		FormApi,
-		MultiSelectFieldType
-	} from '$lib/shared/components/forms/types';
 	import { ChevronDown, ChevronRight } from 'lucide-svelte';
 
 	// Dynamic options loaded on mount
@@ -153,53 +143,51 @@
 	}));
 
 	// Track expanded sections
-	let expandedSections: Record<string, boolean> = Object.fromEntries(
-		sectionNames.map((name) => [name, true])
+	let expandedSections = $state<Record<string, boolean>>(
+		Object.fromEntries(sectionNames.map((name) => [name, true]))
 	);
 
-	// Create form fields initialized from topologyOptions
-	const formFields: Record<string, TextFieldType | BooleanFieldType | MultiSelectFieldType> = {};
+	// Create form values initialized from topologyOptions
+	let values = $state<Record<string, boolean | string | string[]>>({});
 
-	for (const def of fieldDefs) {
+	// Initialize values from topologyOptions
+	$effect(() => {
 		const opts = $topologyOptions;
-		const initialValue =
-			def.path === 'local'
-				? opts.local[def.key as keyof typeof opts.local]
-				: opts.request[def.key as keyof typeof opts.request];
-		// Type assertion needed because TS can't narrow from fieldDefs
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		formFields[def.id] = field(def.id, initialValue as any, [], { checkOnInit: false });
-	}
+		const newValues: Record<string, boolean | string | string[]> = {};
+		for (const def of fieldDefs) {
+			const value =
+				def.path === 'local'
+					? opts.local[def.key as keyof typeof opts.local]
+					: opts.request[def.key as keyof typeof opts.request];
+			newValues[def.id] = value as boolean | string | string[];
+		}
+		values = newValues;
+	});
 
-	// Sync form field changes back to topologyOptions
-	for (const def of fieldDefs) {
-		let isFirst = true;
-		formFields[def.id].subscribe((fieldState) => {
-			if (isFirst) {
-				isFirst = false;
-				return;
+	// Update a field value and sync to topologyOptions
+	function updateValue(def: TopologyFieldDef, newValue: boolean | string | string[]) {
+		values = { ...values, [def.id]: newValue };
+
+		topologyOptions.update((opts) => {
+			if (def.path === 'local') {
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+				(opts.local as any)[def.key] = newValue;
+			} else {
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+				(opts.request as any)[def.key] = newValue;
 			}
-			topologyOptions.update((opts) => {
-				if (def.path === 'local') {
-					// eslint-disable-next-line @typescript-eslint/no-explicit-any
-					(opts.local as any)[def.key] = fieldState.value;
-				} else {
-					// eslint-disable-next-line @typescript-eslint/no-explicit-any
-					(opts.request as any)[def.key] = fieldState.value;
-				}
-				return opts;
-			});
+			return opts;
 		});
 	}
 
-	// Form API (no-op since we're not using form validation here)
-	const formApi: FormApi = {
-		registerField: () => {},
-		unregisterField: () => {}
-	};
-
 	function toggleSection(sectionName: string) {
 		expandedSections[sectionName] = !expandedSections[sectionName];
+	}
+
+	function handleMultiSelectChange(def: TopologyFieldDef, event: Event) {
+		const select = event.target as HTMLSelectElement;
+		const selectedOptions = Array.from(select.selectedOptions).map((o) => o.value);
+		updateValue(def, selectedOptions);
 	}
 </script>
 
@@ -230,31 +218,63 @@
 				<div class="space-y-3 px-3 pb-3">
 					{#each section.fields as def (def.id)}
 						{#if def.type === 'boolean'}
-							<Checkbox
-								{formApi}
-								field={formFields[def.id] as BooleanFieldType}
-								label={def.label}
-								id={def.id}
-								helpText={def.helpText}
-							/>
+							<div>
+								<label class="flex cursor-pointer items-center gap-2">
+									<input
+										type="checkbox"
+										id={def.id}
+										class="checkbox-card h-4 w-4"
+										checked={!!values[def.id]}
+										onchange={(e) => updateValue(def, e.currentTarget.checked)}
+									/>
+									<span class="text-secondary text-sm">{def.label}</span>
+								</label>
+								{#if def.helpText}
+									<p class="text-tertiary ml-6 mt-1 text-xs">{def.helpText}</p>
+								{/if}
+							</div>
 						{:else if def.type === 'string'}
-							<TextInput
-								{formApi}
-								field={formFields[def.id] as TextFieldType}
-								label={def.label}
-								id={def.id}
-								helpText={def.helpText}
-								placeholder={def.placeholder ?? ''}
-							/>
+							<div>
+								<label for={def.id} class="text-secondary mb-1 block text-sm font-medium">
+									{def.label}
+								</label>
+								<input
+									type="text"
+									id={def.id}
+									class="input-field w-full"
+									placeholder={def.placeholder ?? ''}
+									value={values[def.id] ?? ''}
+									oninput={(e) => updateValue(def, e.currentTarget.value)}
+								/>
+								{#if def.helpText}
+									<p class="text-tertiary mt-1 text-xs">{def.helpText}</p>
+								{/if}
+							</div>
 						{:else if def.type === 'multiselect'}
-							<MultiSelect
-								{formApi}
-								field={formFields[def.id] as MultiSelectFieldType}
-								label={def.label}
-								id={def.id}
-								helpText={def.helpText}
-								options={def.getOptions?.() ?? []}
-							/>
+							<div>
+								<label for={def.id} class="text-secondary mb-1 block text-sm font-medium">
+									{def.label}
+								</label>
+								<select
+									id={def.id}
+									class="input-field w-full"
+									multiple
+									size={4}
+									onchange={(e) => handleMultiSelectChange(def, e)}
+								>
+									{#each def.getOptions?.() ?? [] as option}
+										<option
+											value={option.value}
+											selected={(values[def.id] as string[])?.includes(option.value)}
+										>
+											{option.label}
+										</option>
+									{/each}
+								</select>
+								{#if def.helpText}
+									<p class="text-tertiary mt-1 text-xs">{def.helpText}</p>
+								{/if}
+							</div>
 						{/if}
 					{/each}
 				</div>

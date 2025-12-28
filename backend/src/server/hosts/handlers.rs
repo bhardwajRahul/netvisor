@@ -105,6 +105,12 @@ async fn get_host_by_id(
 /// Creates a host with optional interfaces, ports, and services.
 /// The `source` field is automatically set to `Manual`.
 /// IDs for the host and all children are generated server-side.
+///
+/// ### Tag Validation
+///
+/// - Tags must exist and belong to your organization
+/// - Duplicate tag UUIDs are automatically deduplicated
+/// - Invalid or cross-organization tag UUIDs return a 400 error
 #[utoipa::path(
     post,
     path = "",
@@ -112,7 +118,8 @@ async fn get_host_by_id(
     request_body = CreateHostRequest,
     responses(
         (status = 200, description = "Host created successfully", body = ApiResponse<HostResponse>),
-        (status = 400, description = "Invalid request - network not found or subnet mismatch", body = ApiErrorResponse),
+        (status = 400, description = "Validation error: network not found, subnet mismatch, or invalid tags", body = ApiErrorResponse),
+        (status = 401, description = "No access to the specified network", body = ApiErrorResponse),
     ),
     security(("session" = []))
 )]
@@ -180,6 +187,12 @@ async fn create_host(
 ///
 /// Updates host properties. Children (interfaces, ports, services)
 /// are managed via their own endpoints.
+///
+/// ### Tag Validation
+///
+/// - Tags must exist and belong to your organization
+/// - Duplicate tag UUIDs are automatically deduplicated
+/// - Invalid or cross-organization tag UUIDs return a 400 error
 #[utoipa::path(
     put,
     path = "/{id}",
@@ -188,6 +201,7 @@ async fn create_host(
     request_body = UpdateHostRequest,
     responses(
         (status = 200, description = "Host updated", body = ApiResponse<HostResponse>),
+        (status = 400, description = "Validation error: invalid tags", body = ApiErrorResponse),
         (status = 404, description = "Host not found", body = ApiErrorResponse),
     ),
     security(("session" = []))

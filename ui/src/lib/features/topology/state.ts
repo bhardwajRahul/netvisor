@@ -2,6 +2,7 @@ import { Lock, Radio, RefreshCcw } from 'lucide-svelte';
 import type { Topology } from './types/base';
 import type { IconComponent } from '$lib/shared/utils/types';
 import type { Color } from '$lib/shared/utils/styling';
+import { hasConflicts } from './store';
 
 export type TopologyStateType = 'locked' | 'fresh' | 'stale_safe' | 'stale_conflicts';
 
@@ -63,15 +64,8 @@ export function getTopologyStateInfo(topology: Topology, autoRebuild: boolean): 
 		};
 	}
 
-	// Check for conflicts
-	const hasConflicts =
-		topology.removed_hosts.length > 0 ||
-		topology.removed_services.length > 0 ||
-		topology.removed_subnets.length > 0 ||
-		topology.removed_groups.length > 0;
-
 	// Stale with conflicts
-	if (hasConflicts) {
+	if (hasConflicts(topology)) {
 		return {
 			type: 'stale_conflicts',
 			icon: RefreshCcw,

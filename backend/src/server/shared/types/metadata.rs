@@ -37,12 +37,16 @@ pub struct MetadataRegistry {
 #[derive(Serialize, Debug, Clone, ToSchema)]
 pub struct TypeMetadata {
     pub id: &'static str,
+    #[schema(required)]
     pub name: Option<&'static str>,
+    #[schema(required)]
     pub description: Option<&'static str>,
+    #[schema(required)]
     pub category: Option<&'static str>,
-    #[schema(value_type = Option<String>)]
+    #[schema(value_type = Option<String>, required)]
     pub icon: Option<Icon>,
     pub color: Color,
+    #[schema(required)]
     pub metadata: Option<serde_json::Value>,
 }
 

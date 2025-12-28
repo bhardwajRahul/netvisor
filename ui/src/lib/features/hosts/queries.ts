@@ -216,9 +216,49 @@ export function useUpdateHostMutation() {
 				throw new Error(result?.error || 'Failed to update host');
 			}
 
-			return { response: result.data, services: data.services };
+			// If services were provided, handle bulk update
+			let updatedServices: Service[] = [];
+			if (data.services !== null) {
+				const currentServices = queryClient.getQueryData<Service[]>(queryKeys.services.all) ?? [];
+				const hostServices = currentServices.filter((s) => s.host_id === data.host.id);
+
+				const newServiceIds = new Set(data.services.map((s) => s.id));
+				const currentServiceIds = new Set(hostServices.map((s) => s.id));
+
+				// Detect creates, updates, deletes
+				const toCreate = data.services.filter(
+					(s) => !currentServiceIds.has(s.id) || s.id.startsWith('00000000')
+				);
+				const toUpdate = data.services.filter(
+					(s) => currentServiceIds.has(s.id) && !s.id.startsWith('00000000')
+				);
+				const toDelete = hostServices.filter((s) => !newServiceIds.has(s.id));
+
+				// Execute all service operations
+				const serviceResults = await Promise.all([
+					...toCreate.map((s) =>
+						apiClient.POST('/api/services', { body: { ...s, id: undefined } as unknown as Service })
+					),
+					...toUpdate.map((s) =>
+						apiClient.PUT('/api/services/{id}', { params: { path: { id: s.id } }, body: s })
+					),
+					...toDelete.map((s) =>
+						apiClient.DELETE('/api/services/{id}', { params: { path: { id: s.id } } })
+					)
+				]);
+
+				// Collect created/updated services from results
+				for (let i = 0; i < toCreate.length + toUpdate.length; i++) {
+					const serviceResult = serviceResults[i];
+					if (serviceResult.data?.success && serviceResult.data.data) {
+						updatedServices.push(serviceResult.data.data as Service);
+					}
+				}
+			}
+
+			return { response: result.data, updatedServices };
 		},
-		onSuccess: async ({ response, services: newServices }) => {
+		onSuccess: async ({ response, updatedServices }) => {
 			const hostId = response.id;
 
 			// Update host in cache
@@ -239,17 +279,13 @@ export function useUpdateHostMutation() {
 				return [...others, ...response.ports];
 			});
 
-			// Replace services for this host from response
+			// Replace services for this host with updated ones
 			queryClient.setQueryData<Service[]>(queryKeys.services.all, (old) => {
 				const others = old?.filter((s) => s.host_id !== hostId) ?? [];
-				return [...others, ...response.services];
+				// Use updatedServices if available, otherwise use response services
+				const servicesToCache = updatedServices.length > 0 ? updatedServices : response.services;
+				return [...others, ...servicesToCache];
 			});
-
-			// If services were provided separately, handle bulk update
-			if (newServices !== null) {
-				// This would call the services bulk update API
-				// For now, services are synced from response above
-			}
 		}
 	}));
 }
@@ -415,4 +451,24 @@ export function formatInterface(
 	return isContainerSubnetFn(i.subnet_id)
 		? (i.name ?? i.ip_address)
 		: (i.name ? i.name + ': ' : '') + i.ip_address;
+}
+
+/**
+ * Hydrate a Host primitive to HostFormData using TanStack Query cache.
+ * Used for form editing where the full form structure is needed.
+ */
+export function hydrateHostToFormData(
+	host: Host,
+	queryClient: ReturnType<typeof useQueryClient>
+): HostFormData {
+	const allInterfaces = queryClient.getQueryData<Interface[]>(queryKeys.interfaces.all) ?? [];
+	const allPorts = queryClient.getQueryData<Port[]>(queryKeys.ports.all) ?? [];
+	const allServices = queryClient.getQueryData<Service[]>(queryKeys.services.all) ?? [];
+
+	return {
+		...host,
+		interfaces: allInterfaces.filter((i) => i.host_id === host.id),
+		ports: allPorts.filter((p) => p.host_id === host.id),
+		services: allServices.filter((s) => s.host_id === host.id)
+	};
 }

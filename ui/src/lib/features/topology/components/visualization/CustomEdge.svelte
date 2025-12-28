@@ -9,10 +9,17 @@
 		type Edge,
 		EdgeReconnectAnchor
 	} from '@xyflow/svelte';
-	import { selectedEdge, selectedNode, topology, topologyOptions } from '../../store';
+	import { getContext } from 'svelte';
+	import type { Writable } from 'svelte/store';
+	import {
+		selectedEdge,
+		selectedNode,
+		topology as globalTopology,
+		topologyOptions
+	} from '../../store';
 	import { edgeTypes } from '$lib/shared/stores/metadata';
 	import { createColorHelper } from '$lib/shared/utils/styling';
-	import type { TopologyEdge } from '../../types/base';
+	import type { Topology, TopologyEdge } from '../../types/base';
 	import { getEdgeDisplayState, edgeHoverState, groupHoverState } from '../../interactions';
 
 	let {
@@ -30,7 +37,11 @@
 		interactionWidth
 	}: EdgeProps = $props();
 
-	const nodes = $derived($topology.nodes);
+	// Use context topology if available (for share views), otherwise fall back to global store
+	const topologyContext = getContext<Writable<Topology> | undefined>('topology');
+	const topology = topologyContext ?? globalTopology;
+
+	const nodes = $derived($topology?.nodes ?? []);
 
 	const edgeData = data as TopologyEdge;
 	const edgeTypeMetadata = edgeTypes.getMetadata(edgeData.edge_type);

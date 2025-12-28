@@ -67,7 +67,7 @@ export async function createNewApiKey(api_key: ApiKey) {
 	}
 }
 
-export function createEmptyApiKeyFormData(): ApiKey {
+export function createEmptyApiKeyFormData(defaultNetworkId?: string): ApiKey {
 	return {
 		id: uuidv4Sentinel,
 		name: 'My Api Key',
@@ -75,7 +75,7 @@ export function createEmptyApiKeyFormData(): ApiKey {
 		updated_at: utcTimeZoneSentinel,
 		expires_at: null,
 		last_used: null,
-		network_id: get(networks)[0]?.id || '',
+		network_id: defaultNetworkId ?? get(networks)[0]?.id ?? '',
 		key: '',
 		is_enabled: true,
 		tags: []

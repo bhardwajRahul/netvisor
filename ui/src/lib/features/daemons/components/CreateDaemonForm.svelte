@@ -1,31 +1,38 @@
 <script lang="ts">
+	import { createForm } from '@tanstack/svelte-form';
+	import { validateForm } from '$lib/shared/components/forms/form-context';
 	import CodeContainer from '$lib/shared/components/data/CodeContainer.svelte';
-	import { ChevronDown, ChevronRight } from 'lucide-svelte';
-	import SelectInput from '$lib/shared/components/forms/input/SelectInput.svelte';
-	import { field } from 'svelte-forms';
-	import { config } from '$lib/shared/stores/config';
+	import InlineWarning from '$lib/shared/components/feedback/InlineWarning.svelte';
 	import TextInput from '$lib/shared/components/forms/input/TextInput.svelte';
+	import SelectInput from '$lib/shared/components/forms/input/SelectInput.svelte';
 	import Checkbox from '$lib/shared/components/forms/input/Checkbox.svelte';
-	import type {
-		TextFieldType,
-		NumberFieldType,
-		BooleanFieldType,
-		FormApi
-	} from '$lib/shared/components/forms/types';
+	import { ChevronDown, ChevronRight } from 'lucide-svelte';
+	import { config } from '$lib/shared/stores/config';
 	import { fieldDefs } from '../config';
-	import { derived } from 'svelte/store';
 	import type { Daemon } from '../types/base';
 
-	export let formApi: FormApi;
-	export let daemon: Daemon | null = null;
-	export let networkId: string;
-	export let apiKey: string | null = null;
-	export let showAdvanced: boolean = true;
-	export let initialName: string = '';
-	export let showModeSelect: boolean = true;
+	interface Props {
+		daemon?: Daemon | null;
+		networkId: string;
+		apiKey?: string | null;
+		showAdvanced?: boolean;
+		initialName?: string;
+		showModeSelect?: boolean;
+	}
+
+	let {
+		daemon = null,
+		networkId,
+		apiKey = null,
+		showAdvanced = true,
+		initialName = '',
+		showModeSelect = true
+	}: Props = $props();
 
 	// Separate field defs - conditionally exclude mode if showModeSelect is false
-	$: basicFieldDefs = fieldDefs.filter((d) => !d.section && (d.id !== 'mode' || showModeSelect));
+	let basicFieldDefs = $derived(
+		fieldDefs.filter((d) => !d.section && (d.id !== 'mode' || showModeSelect))
+	);
 	const advancedFieldDefs = fieldDefs.filter((d) => d.section);
 
 	// Get unique section names in order of appearance
@@ -38,52 +45,78 @@
 	}));
 
 	// Track which sections are expanded
-	let advancedExpanded = false;
+	let advancedExpanded = $state(false);
 
-	// Create form fields dynamically
-	const formFields: Record<string, TextFieldType | NumberFieldType | BooleanFieldType> = {};
-	for (const def of fieldDefs) {
-		let initial;
-		if (def.id === 'name' && initialName) {
-			initial = initialName;
-		} else if (daemon) {
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			initial = (daemon as any)[def.id] ?? def.defaultValue;
-		} else {
-			initial = def.defaultValue;
+	// Build default values from field definitions
+	function buildDefaultValues(): Record<string, string | number | boolean> {
+		const defaults: Record<string, string | number | boolean> = {};
+		for (const def of fieldDefs) {
+			if (def.id === 'name' && initialName) {
+				defaults[def.id] = initialName;
+			} else if (daemon) {
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+				defaults[def.id] = (daemon as any)[def.id] ?? def.defaultValue ?? '';
+			} else {
+				defaults[def.id] = def.defaultValue ?? '';
+			}
 		}
-		formFields[def.id] = field(def.id, initial, def.validators, { checkOnInit: false });
+		return defaults;
 	}
 
-	// Derive combined values from all form fields
-	const values = derived([...Object.values(formFields)], (stores) => {
-		const result: Record<string, string | number | boolean> = {};
-		fieldDefs.forEach((def, i) => {
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			result[def.id] = (stores[i] as any).value;
-		});
-		return result;
-	});
+	// Create TanStack Form
+	const form = createForm(() => ({
+		defaultValues: buildDefaultValues(),
+		onSubmit: async () => {
+			// Form submission is handled by parent component
+		}
+	}));
 
-	// Derive validity from all form fields
-	const valids = derived([...Object.values(formFields)], (stores) => {
-		const result: Record<string, boolean> = {};
-		fieldDefs.forEach((def, i) => {
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			result[def.id] = (stores[i] as any).valid;
-		});
-		return result;
-	});
+	// Get validators for a field
+	function getValidators(fieldId: string) {
+		const def = fieldDefs.find((d) => d.id === fieldId);
+		if (!def?.validators || def.validators.length === 0) return {};
 
-	let isNewDaemon = daemon === null;
+		return {
+			onBlur: ({ value }: { value: unknown }) => {
+				for (const validator of def.validators!) {
+					const error = validator(value);
+					if (error) return error;
+				}
+				return undefined;
+			}
+		};
+	}
+
+	let isNewDaemon = $derived(daemon === null);
 	let serverUrl = $config.public_url;
 
 	const installScript = `bash -c "$(curl -fsSL https://raw.githubusercontent.com/scanopy/scanopy/refs/heads/main/install.sh)"`;
 
-	$: runCommand = buildRunCommand(serverUrl, networkId, apiKey, $values, daemon);
-	$: dockerCompose = apiKey
-		? buildDockerCompose(serverUrl, networkId, apiKey, $values, $valids)
-		: '';
+	// Local state for form values to enable Svelte 5 reactivity
+	// (form.state.values is NOT tracked by $derived)
+	let formValues = $state<Record<string, string | number | boolean>>(buildDefaultValues());
+
+	// Subscribe to form store changes to keep formValues in sync
+	$effect(() => {
+		return form.store.subscribe(() => {
+			formValues = { ...form.state.values } as Record<string, string | number | boolean>;
+		});
+	});
+
+	let runCommand = $derived(buildRunCommand(serverUrl, networkId, apiKey, formValues, daemon));
+	let dockerCompose = $derived(
+		apiKey ? buildDockerCompose(serverUrl, networkId, apiKey, formValues) : ''
+	);
+
+	// Check if a field value passes all its validators
+	function fieldPassesValidation(def: (typeof fieldDefs)[0], value: unknown): boolean {
+		if (!def.validators || def.validators.length === 0) return true;
+		for (const validator of def.validators) {
+			const error = validator(value);
+			if (error) return false;
+		}
+		return true;
+	}
 
 	function buildRunCommand(
 		serverUrl: string,
@@ -109,6 +142,11 @@
 				continue;
 			}
 
+			// Skip fields that don't pass validation
+			if (!fieldPassesValidation(def, value)) {
+				continue;
+			}
+
 			// Skip advanced fields (those with a section) that match their default value
 			if (def.section && value === def.defaultValue) {
 				continue;
@@ -130,8 +168,7 @@
 		serverUrl: string,
 		networkId: string,
 		key: string,
-		values: Record<string, string | number | boolean>,
-		valids: Record<string, boolean>
+		values: Record<string, string | number | boolean>
 	): string {
 		const envVars: string[] = [`SCANOPY_SERVER_URL=${serverUrl}`, `SCANOPY_DAEMON_API_KEY=${key}`];
 
@@ -141,9 +178,13 @@
 
 		for (const def of fieldDefs) {
 			const value = values[def.id];
-			const valid = valids[def.id];
 
-			if (value === '' || value === null || value === undefined || !valid) {
+			if (value === '' || value === null || value === undefined) {
+				continue;
+			}
+
+			// Skip fields that don't pass validation
+			if (!fieldPassesValidation(def, value)) {
 				continue;
 			}
 
@@ -159,7 +200,11 @@
 			}
 		}
 
-		const hasDockerProxy = values.dockerProxy && values.dockerProxy !== '' && valids.dockerProxy;
+		const dockerProxyDef = fieldDefs.find((d) => d.id === 'dockerProxy');
+		const hasDockerProxy =
+			values.dockerProxy &&
+			values.dockerProxy !== '' &&
+			(!dockerProxyDef || fieldPassesValidation(dockerProxyDef, values.dockerProxy));
 		const volumeMounts = ['daemon-config:/root/.config/daemon'];
 		if (!hasDockerProxy) {
 			volumeMounts.push('/var/run/docker.sock:/var/run/docker.sock:ro');
@@ -185,35 +230,63 @@
 		return lines.join('\n');
 	}
 
+	// Export validate function for parent components - uses shared validateForm
+	export async function validate(): Promise<boolean> {
+		return await validateForm(form);
+	}
+
 	// Export the daemon name value for parent components
 	export function getDaemonName(): string {
-		return $values['name'] as string;
+		return form.state.values['name'] as string;
 	}
+
+	// Export form for parent access
+	export function getForm() {
+		return form;
+	}
+
+	// Check if form has validation errors (after fields have been validated)
+	let hasErrors = $derived.by(() => {
+		const fieldMeta = form.state.fieldMeta;
+		for (const key of Object.keys(fieldMeta)) {
+			const meta = fieldMeta[key];
+			if (meta?.errors && meta.errors.length > 0) {
+				return true;
+			}
+		}
+		return false;
+	});
 </script>
 
 <div class="space-y-4">
 	<!-- Basic Fields -->
 	{#each basicFieldDefs as def (def.id)}
 		{#if def.type === 'string'}
-			<TextInput
-				label={def.label}
-				id={def.id}
-				{formApi}
-				field={formFields[def.id] as TextFieldType}
-				placeholder={(def.placeholder as string) ?? ''}
-				helpText={def.helpText}
-				required={def.required}
-			/>
+			<form.Field name={def.id} validators={getValidators(def.id)}>
+				{#snippet children(field)}
+					<TextInput
+						label={def.label}
+						{field}
+						id={def.id}
+						placeholder={String(def.placeholder ?? '')}
+						required={def.required ?? false}
+						helpText={def.helpText}
+					/>
+				{/snippet}
+			</form.Field>
 		{:else if def.type === 'select'}
-			<SelectInput
-				label={def.label}
-				id={def.id}
-				{formApi}
-				field={formFields[def.id] as TextFieldType}
-				options={def.options ?? []}
-				helpText={def.helpText}
-				disabled={def.disabled?.(isNewDaemon) ?? false}
-			/>
+			<form.Field name={def.id}>
+				{#snippet children(field)}
+					<SelectInput
+						label={def.label}
+						{field}
+						id={def.id}
+						options={def.options ?? []}
+						helpText={def.helpText}
+						disabled={def.disabled?.(isNewDaemon) ?? false}
+					/>
+				{/snippet}
+			</form.Field>
 		{/if}
 	{/each}
 
@@ -223,7 +296,7 @@
 			<button
 				type="button"
 				class="text-secondary hover:text-primary flex w-full items-center gap-2 text-sm font-medium"
-				on:click={() => (advancedExpanded = !advancedExpanded)}
+				onclick={() => (advancedExpanded = !advancedExpanded)}
 			>
 				{#if advancedExpanded}
 					<ChevronDown class="h-4 w-4" />
@@ -241,43 +314,53 @@
 							<div class="grid grid-cols-2 gap-4">
 								{#each section.fields as def (def.id)}
 									{#if def.type === 'string'}
-										<TextInput
-											label={def.label}
-											id={def.id}
-											{formApi}
-											field={formFields[def.id] as TextFieldType}
-											placeholder={(def.placeholder as string) ?? ''}
-											helpText={def.helpText}
-										/>
+										<form.Field name={def.id} validators={getValidators(def.id)}>
+											{#snippet children(field)}
+												<TextInput
+													label={def.label}
+													{field}
+													id={def.id}
+													placeholder={String(def.placeholder ?? '')}
+													helpText={def.helpText}
+												/>
+											{/snippet}
+										</form.Field>
 									{:else if def.type === 'number'}
-										<TextInput
-											label={def.label}
-											id={def.id}
-											{formApi}
-											field={formFields[def.id] as NumberFieldType}
-											type="number"
-											placeholder={(def.placeholder as string) ?? ''}
-											helpText={def.helpText}
-										/>
+										<form.Field name={def.id} validators={getValidators(def.id)}>
+											{#snippet children(field)}
+												<TextInput
+													label={def.label}
+													{field}
+													id={def.id}
+													type="number"
+													placeholder={String(def.placeholder ?? '')}
+													helpText={def.helpText}
+												/>
+											{/snippet}
+										</form.Field>
 									{:else if def.type === 'select'}
-										<SelectInput
-											label={def.label}
-											id={def.id}
-											{formApi}
-											field={formFields[def.id] as TextFieldType}
-											options={def.options ?? []}
-											helpText={def.helpText}
-										/>
+										<form.Field name={def.id}>
+											{#snippet children(field)}
+												<SelectInput
+													label={def.label}
+													{field}
+													id={def.id}
+													options={def.options ?? []}
+													helpText={def.helpText}
+												/>
+											{/snippet}
+										</form.Field>
 									{:else if def.type === 'boolean'}
-										<div class="flex items-center pb-2">
-											<Checkbox
-												field={formFields[def.id] as BooleanFieldType}
-												id={def.id}
-												{formApi}
-												label={def.label}
-												helpText={def.helpText}
-											/>
-										</div>
+										<form.Field name={def.id}>
+											{#snippet children(field)}
+												<Checkbox
+													label={def.label}
+													{field}
+													id={def.id}
+													helpText={def.helpText}
+												/>
+											{/snippet}
+										</form.Field>
 									{/if}
 								{/each}
 							</div>
@@ -290,18 +373,25 @@
 
 	<!-- Installation Instructions (shown when API key is available) -->
 	{#if apiKey}
-		<div class="space-y-4">
-			<div class="text-secondary">
-				<b>Option 1.</b> Run the install script, then start the daemon
-			</div>
-			<CodeContainer language="bash" expandable={false} code={installScript} />
-			<CodeContainer language="bash" expandable={false} code={runCommand} />
+		{#if hasErrors}
+			<InlineWarning
+				title="Please fix validation errors"
+				body="Correct the field validation issues above before using the installation commands."
+			/>
+		{:else}
+			<div class="space-y-4">
+				<div class="text-secondary">
+					<b>Option 1.</b> Run the install script, then start the daemon
+				</div>
+				<CodeContainer language="bash" expandable={false} code={installScript} />
+				<CodeContainer language="bash" expandable={false} code={runCommand} />
 
-			<div class="text-secondary">
-				<b>Option 2.</b> Run with Docker Compose
-				<span class="text-tertiary">(Linux only)</span>
+				<div class="text-secondary">
+					<b>Option 2.</b> Run with Docker Compose
+					<span class="text-tertiary">(Linux only)</span>
+				</div>
+				<CodeContainer language="yaml" expandable={false} code={dockerCompose} />
 			</div>
-			<CodeContainer language="yaml" expandable={false} code={dockerCompose} />
-		</div>
+		{/if}
 	{/if}
 </div>

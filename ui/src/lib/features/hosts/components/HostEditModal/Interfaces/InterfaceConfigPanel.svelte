@@ -1,76 +1,44 @@
 <script lang="ts">
-	import { field } from 'svelte-forms';
 	import type { Interface } from '$lib/features/hosts/types/base';
 	import {
-		ipAddress,
-		ipAddressInCidr,
-		mac,
-		maxLength
+		required,
+		ipAddressFormat,
+		ipAddressInCidrFormat,
+		macFormat,
+		max
 	} from '$lib/shared/components/forms/validators';
-	import { required } from 'svelte-forms/validators';
-	import type { FormApi } from '$lib/shared/components/forms/types';
-	import TextInput from '$lib/shared/components/forms/input/TextInput.svelte';
 	import ConfigHeader from '$lib/shared/components/forms/config/ConfigHeader.svelte';
 	import type { Subnet } from '$lib/features/subnets/types/base';
+	import TextInput from '$lib/shared/components/forms/input/TextInput.svelte';
+	import type { AnyFieldApi } from '@tanstack/svelte-form';
 
-	export let formApi: FormApi;
-	export let iface: Interface;
-	export let subnet: Subnet;
-	export let onChange: (updatedIface: Interface) => void = () => {};
-
-	const getIpField = () => {
-		return field(
-			`interface_ip_${currentInterfaceId}`,
-			iface.ip_address || '',
-			[required(), ipAddress(), ipAddressInCidr(subnet.cidr)],
-			{
-				checkOnInit: false
-			}
-		);
-	};
-
-	const getNameField = () => {
-		return field(`interface_name_${currentInterfaceId}`, iface.name || '', [maxLength(100)], {
-			checkOnInit: false
-		});
-	};
-
-	const getMacField = () => {
-		return field(`interface_mac_${currentInterfaceId}`, iface.mac_address || '', [mac()], {
-			checkOnInit: false,
-			validateOnChange: false
-		});
-	};
-
-	let currentInterfaceId: string = iface.id;
-	let ipAddressField = getIpField();
-	let macAddressField = getMacField();
-	let nameField = getNameField();
-
-	// Only sync field values when interface ID changes (new interface selected)
-	$: if (iface.id !== currentInterfaceId) {
-		currentInterfaceId = iface.id;
-		ipAddressField = getIpField();
-		macAddressField = getMacField();
-		nameField = getNameField();
+	interface Props {
+		iface: Interface;
+		subnet: Subnet;
+		index: number;
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		form: { Field: any };
+		onChange?: (iface: Interface) => void;
 	}
 
-	$: if ($ipAddressField && $macAddressField && $nameField) {
-		const updatedIface: Interface = {
-			...iface,
-			ip_address: $ipAddressField.value,
-			name: $nameField.value || null,
-			mac_address: $macAddressField.value || null
-		};
+	let { iface, subnet, index, form, onChange = () => {} }: Props = $props();
 
-		// Only trigger onChange if values actually changed
-		if (
-			updatedIface.ip_address !== iface.ip_address ||
-			updatedIface.mac_address !== iface.mac_address ||
-			updatedIface.name !== iface.name
-		) {
-			onChange(updatedIface);
-		}
+	// Field names for this interface in the form array
+	let ipFieldName = $derived(`interfaces[${index}].ip_address`);
+	let macFieldName = $derived(`interfaces[${index}].mac_address`);
+	let nameFieldName = $derived(`interfaces[${index}].name`);
+
+	// Notify parent of changes for real-time sync
+	function handleNameChange(value: string) {
+		onChange({ ...iface, name: value || null });
+	}
+
+	function handleIpChange(value: string) {
+		onChange({ ...iface, ip_address: value });
+	}
+
+	function handleMacChange(value: string) {
+		onChange({ ...iface, mac_address: value || null });
 	}
 </script>
 
@@ -82,38 +50,66 @@
 		/>
 
 		<div class="space-y-4">
-			{#if $nameField}
-				<TextInput
-					label="Name"
-					id="interface_{iface.id}"
-					{formApi}
-					placeholder="en0"
-					field={nameField}
-				/>
-			{/if}
+			<form.Field
+				name={nameFieldName}
+				validators={{
+					onBlur: ({ value }: { value: string }) => max(100)(value)
+				}}
+				listeners={{
+					onChange: ({ value }: { value: string }) => handleNameChange(value)
+				}}
+			>
+				{#snippet children(field: AnyFieldApi)}
+					<TextInput
+						label="Name"
+						id="interface_{iface.id}"
+						placeholder="en0"
+						{field}
+					/>
+				{/snippet}
+			</form.Field>
 
-			{#if $ipAddressField}
-				<TextInput
-					label="IP Address"
-					id="interface_ip_{iface.id}"
-					{formApi}
-					required={true}
-					placeholder="192.168.1.100"
-					field={ipAddressField}
-					helpText="Must be within {subnet.cidr}"
-				/>
-			{/if}
+			<form.Field
+				name={ipFieldName}
+				validators={{
+					onBlur: ({ value }: { value: string }) => required(value) || ipAddressFormat(value) || ipAddressInCidrFormat(subnet.cidr)(value),
+					onChange: ({ value }: { value: string }) => required(value) || ipAddressFormat(value) || ipAddressInCidrFormat(subnet.cidr)(value)
+				}}
+				listeners={{
+					onChange: ({ value }: { value: string }) => handleIpChange(value)
+				}}
+			>
+				{#snippet children(field: AnyFieldApi)}
+					<TextInput
+						label="IP Address"
+						id="interface_ip_{iface.id}"
+						placeholder="192.168.1.100"
+						required={true}
+						helpText="Must be within {subnet.cidr}"
+						{field}
+					/>
+				{/snippet}
+			</form.Field>
 
-			{#if $macAddressField}
-				<TextInput
-					label="MAC Address"
-					id="interface_mac_{iface.id}"
-					{formApi}
-					placeholder="00:1B:44:11:3A:B7"
-					field={macAddressField}
-					helpText="Format: XX:XX:XX:XX:XX:XX or XX-XX-XX-XX-XX-XX"
-				/>
-			{/if}
+			<form.Field
+				name={macFieldName}
+				validators={{
+					onBlur: ({ value }: { value: string }) => macFormat(value)
+				}}
+				listeners={{
+					onChange: ({ value }: { value: string }) => handleMacChange(value)
+				}}
+			>
+				{#snippet children(field: AnyFieldApi)}
+					<TextInput
+						label="MAC Address"
+						id="interface_mac_{iface.id}"
+						placeholder="00:1B:44:11:3A:B7"
+						helpText="Format: XX:XX:XX:XX:XX:XX or XX-XX-XX-XX-XX-XX"
+						{field}
+					/>
+				{/snippet}
+			</form.Field>
 		</div>
 	</div>
 {/if}

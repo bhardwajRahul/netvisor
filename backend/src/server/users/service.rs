@@ -13,20 +13,21 @@ use crate::server::{
             traits::{StorableEntity, Storage},
         },
     },
-    users::r#impl::{base::User, permissions::UserOrgPermissions},
+    users::r#impl::{
+        base::User, network_access::UserNetworkAccessStorage, permissions::UserOrgPermissions,
+    },
 };
 use anyhow::Error;
 use anyhow::Result;
 use async_trait::async_trait;
 use chrono::Utc;
-use sqlx::PgPool;
 use std::sync::Arc;
 use uuid::Uuid;
 
 pub struct UserService {
     user_storage: Arc<GenericPostgresStorage<User>>,
+    network_access_storage: Arc<UserNetworkAccessStorage>,
     event_bus: Arc<EventBus>,
-    pool: PgPool,
 }
 
 impl EventBusService<User> for UserService {
@@ -61,7 +62,16 @@ impl CrudService<User> for UserService {
             ));
         }
 
+        // Capture network_ids before creating the user (since they're stored in junction table)
+        let network_ids = user.base.network_ids.clone();
+
         let created = self.user_storage.create(&User::new(user.base)).await?;
+
+        // Persist network_ids to the junction table
+        if !network_ids.is_empty() {
+            self.set_network_ids(&created.id, &network_ids).await?;
+        }
+
         let trigger_stale = created.triggers_staleness(None);
 
         let metadata = serde_json::json!({
@@ -89,13 +99,13 @@ impl CrudService<User> for UserService {
 impl UserService {
     pub fn new(
         user_storage: Arc<GenericPostgresStorage<User>>,
+        network_access_storage: Arc<UserNetworkAccessStorage>,
         event_bus: Arc<EventBus>,
-        pool: PgPool,
     ) -> Self {
         Self {
             user_storage,
+            network_access_storage,
             event_bus,
-            pool,
         }
     }
 
@@ -114,55 +124,48 @@ impl UserService {
 
     /// Get network_ids for a user from the user_network_access junction table
     pub async fn get_network_ids(&self, user_id: &Uuid) -> Result<Vec<Uuid>> {
-        let network_ids: Vec<Uuid> =
-            sqlx::query_scalar("SELECT network_id FROM user_network_access WHERE user_id = $1")
-                .bind(user_id)
-                .fetch_all(&self.pool)
-                .await?;
-
-        Ok(network_ids)
+        self.network_access_storage.get_for_user(user_id).await
     }
 
     /// Set network_ids for a user - replaces all existing entries in user_network_access
     pub async fn set_network_ids(&self, user_id: &Uuid, network_ids: &[Uuid]) -> Result<()> {
-        // Delete existing entries
-        sqlx::query("DELETE FROM user_network_access WHERE user_id = $1")
-            .bind(user_id)
-            .execute(&self.pool)
-            .await?;
-
-        // Insert new entries
-        for network_id in network_ids {
-            sqlx::query("INSERT INTO user_network_access (user_id, network_id) VALUES ($1, $2)")
-                .bind(user_id)
-                .bind(network_id)
-                .execute(&self.pool)
-                .await?;
-        }
-
-        Ok(())
+        self.network_access_storage
+            .save_for_user(user_id, network_ids)
+            .await
     }
 
     /// Add a network_id to a user's access
     pub async fn add_network_access(&self, user_id: &Uuid, network_id: &Uuid) -> Result<()> {
-        sqlx::query(
-            "INSERT INTO user_network_access (user_id, network_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
-        )
-        .bind(user_id)
-        .bind(network_id)
-        .execute(&self.pool)
-        .await?;
-
-        Ok(())
+        self.network_access_storage
+            .add_network(user_id, network_id)
+            .await
     }
 
     /// Remove a network_id from a user's access
     pub async fn remove_network_access(&self, user_id: &Uuid, network_id: &Uuid) -> Result<()> {
-        sqlx::query("DELETE FROM user_network_access WHERE user_id = $1 AND network_id = $2")
-            .bind(user_id)
-            .bind(network_id)
-            .execute(&self.pool)
-            .await?;
+        self.network_access_storage
+            .remove_network(user_id, network_id)
+            .await
+    }
+
+    /// Hydrate network_ids for a single user
+    pub async fn hydrate_network_ids(&self, user: &mut User) -> Result<()> {
+        user.base.network_ids = self.network_access_storage.get_for_user(&user.id).await?;
+        Ok(())
+    }
+
+    /// Hydrate network_ids for multiple users (batch operation)
+    pub async fn hydrate_network_ids_batch(&self, users: &mut [User]) -> Result<()> {
+        if users.is_empty() {
+            return Ok(());
+        }
+
+        let user_ids: Vec<Uuid> = users.iter().map(|u| u.id).collect();
+        let mut network_map = self.network_access_storage.get_for_users(&user_ids).await?;
+
+        for user in users.iter_mut() {
+            user.base.network_ids = network_map.remove(&user.id).unwrap_or_default();
+        }
 
         Ok(())
     }

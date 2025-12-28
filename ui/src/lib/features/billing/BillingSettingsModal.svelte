@@ -1,5 +1,5 @@
 <script lang="ts">
-	import EditModal from '$lib/shared/components/forms/EditModal.svelte';
+	import GenericModal from '$lib/shared/components/layout/GenericModal.svelte';
 	import ModalHeaderIcon from '$lib/shared/components/layout/ModalHeaderIcon.svelte';
 	import { CreditCard, CheckCircle, AlertCircle } from 'lucide-svelte';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
@@ -12,8 +12,8 @@
 
 	let { isOpen = $bindable(false), onClose }: { isOpen: boolean; onClose: () => void } = $props();
 
-	// TanStack Query for users
-	const usersQuery = useUsersQuery();
+	// TanStack Query for users - only fetch when modal is open (Owner only)
+	const usersQuery = useUsersQuery({ enabled: () => isOpen });
 	let usersData = $derived(usersQuery.data ?? []);
 
 	// TanStack Query for networks
@@ -71,20 +71,13 @@
 	}
 </script>
 
-<EditModal
-	{isOpen}
-	title="Billing"
-	showSave={false}
-	showCancel={true}
-	cancelLabel="Close"
-	onCancel={onClose}
-	size="md"
->
+<GenericModal {isOpen} title="Billing" onClose={onClose} size="md" showCloseButton={true}>
 	<svelte:fragment slot="header-icon">
 		<ModalHeaderIcon Icon={CreditCard} color="Blue" />
 	</svelte:fragment>
 
-	{#if org}
+	<div class="p-6">
+		{#if org}
 		<div class="space-y-6">
 			<!-- Current Plan -->
 			<InfoCard>
@@ -223,10 +216,17 @@
 				</p>
 			</InfoCard>
 		</div>
-	{:else}
-		<div class="text-secondary py-8 text-center">
-			<p>Unable to load billing information</p>
-			<p class="text-tertiary mt-2 text-sm">Please try again later</p>
+		{:else}
+			<div class="text-secondary py-8 text-center">
+				<p>Unable to load billing information</p>
+				<p class="text-tertiary mt-2 text-sm">Please try again later</p>
+			</div>
+		{/if}
+	</div>
+
+	<svelte:fragment slot="footer">
+		<div class="flex justify-end">
+			<button type="button" onclick={onClose} class="btn-secondary">Close</button>
 		</div>
-	{/if}
-</EditModal>
+	</svelte:fragment>
+</GenericModal>

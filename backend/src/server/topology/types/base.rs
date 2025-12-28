@@ -46,6 +46,30 @@ pub struct Topology {
 }
 
 impl Topology {
+    pub fn lock(&mut self, locked_by: Uuid) {
+        self.base.is_locked = true;
+        self.base.locked_at = Some(Utc::now());
+        self.base.locked_by = Some(locked_by)
+    }
+
+    pub fn unlock(&mut self) {
+        self.base.is_locked = false;
+        self.base.locked_at = None;
+        self.base.locked_by = None;
+    }
+
+    pub fn clear_stale(&mut self) {
+        self.base.removed_groups = vec![];
+        self.base.removed_hosts = vec![];
+        self.base.removed_interfaces = vec![];
+        self.base.removed_services = vec![];
+        self.base.removed_subnets = vec![];
+        self.base.removed_bindings = vec![];
+        self.base.removed_ports = vec![];
+        self.base.is_stale = false;
+        self.base.last_refreshed = Utc::now()
+    }
+
     pub fn set_entities(&mut self, params: SetEntitiesParams) {
         self.base.hosts = params.hosts;
         self.base.services = params.services;
@@ -144,30 +168,6 @@ impl ChangeTriggersTopologyStaleness<Topology> for Topology {
         } else {
             false
         }
-    }
-}
-
-impl Topology {
-    pub fn lock(&mut self, locked_by: Uuid) {
-        self.base.is_locked = true;
-        self.base.locked_at = Some(Utc::now());
-        self.base.locked_by = Some(locked_by)
-    }
-
-    pub fn unlock(&mut self) {
-        self.base.is_locked = false;
-        self.base.locked_at = None;
-        self.base.locked_by = None;
-    }
-
-    pub fn clear_stale(&mut self) {
-        self.base.removed_groups = vec![];
-        self.base.removed_hosts = vec![];
-        self.base.removed_interfaces = vec![];
-        self.base.removed_services = vec![];
-        self.base.removed_subnets = vec![];
-        self.base.is_stale = false;
-        self.base.last_refreshed = Utc::now()
     }
 }
 

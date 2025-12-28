@@ -55,14 +55,14 @@ export async function deleteSubnet(subnetId: string) {
 	return result;
 }
 
-export function createEmptySubnetFormData(): Subnet {
+export function createEmptySubnetFormData(defaultNetworkId?: string): Subnet {
 	return {
 		id: uuidv4Sentinel,
 		created_at: utcTimeZoneSentinel,
 		updated_at: utcTimeZoneSentinel,
 		tags: [],
 		name: '',
-		network_id: get(networks)[0]?.id || '',
+		network_id: defaultNetworkId ?? get(networks)[0]?.id ?? '',
 		cidr: '',
 		description: '',
 		subnet_type: 'Unknown',

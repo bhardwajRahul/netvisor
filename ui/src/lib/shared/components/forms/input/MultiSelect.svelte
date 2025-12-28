@@ -1,34 +1,48 @@
 <script lang="ts">
-	import type { FormApi, MultiSelectFieldType } from '../types';
 	import FormField from './FormField.svelte';
+	import type { AnyFieldApi } from '@tanstack/svelte-form';
 
-	export let label: string;
-	export let formApi: FormApi;
-	export let field: MultiSelectFieldType;
-	export let helpText: string;
-	export let id: string;
-	export let options: {
+	interface SelectOption {
 		value: string;
 		label: string;
 		id?: string;
 		disabled?: boolean;
 		description?: string;
-	}[];
+	}
+
+	interface Props {
+		label: string;
+		field: AnyFieldApi;
+		id: string;
+		options: SelectOption[];
+		helpText?: string;
+	}
+
+	let { label, field, id, options, helpText = '' }: Props = $props();
+
+	function handleChange(event: Event) {
+		const select = event.target as HTMLSelectElement;
+		const selectedValues = Array.from(select.selectedOptions).map((opt) => opt.value);
+		field.handleChange(selectedValues);
+	}
 </script>
 
-<FormField {label} {formApi} {field} {helpText} {id}>
-	<select
-		{id}
-		multiple
-		bind:value={$field.value}
-		class="text-primary w-full rounded-md border border-gray-600 bg-gray-700 px-2 py-1.5 text-xs focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-	>
-		{#each options as option (option?.id ? option.id : option.value)}
-			<option value={option.value} selected={$field.value.includes(option.value)}>
-				{option.label}
-			</option>
-		{/each}
-	</select>
+<FormField {label} {field} {helpText} {id}>
+	{#snippet children()}
+		<select
+			{id}
+			multiple
+			value={field.state.value ?? []}
+			onchange={handleChange}
+			class="text-primary w-full rounded-md border border-gray-600 bg-gray-700 px-2 py-1.5 text-xs focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+		>
+			{#each options as option (option?.id ?? option.value)}
+				<option value={option.value} selected={(field.state.value ?? []).includes(option.value)}>
+					{option.label}
+				</option>
+			{/each}
+		</select>
+	{/snippet}
 </FormField>
 
 <style>

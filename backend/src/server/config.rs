@@ -130,7 +130,7 @@ pub struct ServerConfig {
     pub enforce_billing_for_testing: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum DeploymentType {
     Cloud,
@@ -292,6 +292,21 @@ impl AppState {
     }
 }
 
+pub fn get_deployment_type(state: Arc<AppState>) -> DeploymentType {
+    if state.config.stripe_secret.is_some() {
+        DeploymentType::Cloud
+    } else {
+        #[cfg(feature = "commercial")]
+        {
+            DeploymentType::Commercial
+        }
+        #[cfg(not(feature = "commercial"))]
+        {
+            DeploymentType::Community
+        }
+    }
+}
+
 /// Get public server configuration
 ///
 /// Returns public configuration settings like OIDC providers, billing status, etc.
@@ -311,18 +326,7 @@ pub async fn get_public_config(State(state): State<Arc<AppState>>) -> impl IntoR
         .map(|o| o.as_ref().list_providers())
         .unwrap_or_default();
 
-    let deployment_type = if state.config.stripe_secret.is_some() {
-        DeploymentType::Cloud
-    } else {
-        #[cfg(feature = "commercial")]
-        {
-            DeploymentType::Commercial
-        }
-        #[cfg(not(feature = "commercial"))]
-        {
-            DeploymentType::Community
-        }
-    };
+    let deployment_type = get_deployment_type(state.clone());
 
     (
         [(CACHE_CONTROL, "no-store, no-cache, must-revalidate")],

@@ -82,6 +82,7 @@ impl StorableEntity for Interface {
                     ip_address,
                     mac_address,
                     name,
+                    position,
                 },
         } = self.clone();
 
@@ -94,6 +95,7 @@ impl StorableEntity for Interface {
                 "ip_address",
                 "mac_address",
                 "name",
+                "position",
                 "created_at",
                 "updated_at",
             ],
@@ -105,6 +107,7 @@ impl StorableEntity for Interface {
                 SqlValue::IpAddr(ip_address),
                 SqlValue::OptionalMacAddress(mac_address),
                 SqlValue::OptionalString(name),
+                SqlValue::I32(position),
                 SqlValue::Timestamp(created_at),
                 SqlValue::Timestamp(updated_at),
             ],
@@ -134,6 +137,7 @@ impl StorableEntity for Interface {
                 ip_address,
                 mac_address,
                 name: row.get("name"),
+                position: row.get("position"),
             },
         })
     }

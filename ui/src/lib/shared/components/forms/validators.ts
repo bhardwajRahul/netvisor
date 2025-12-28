@@ -1,172 +1,148 @@
-import type { Validator } from 'svelte-forms';
 import pkg from 'ipaddr.js';
 import { validate } from 'email-validator';
 
 const { isValid, isValidCIDR, parse, parseCIDR } = pkg;
 
-// IP Address validator
-export const emailValidator = (): Validator => (value: string) => {
-	if (!value) return { valid: true, name: 'Valid email' }; // Allow empty if not required
+// ============================================================================
+// TanStack Form Validators
+// These return `string | undefined` - undefined means valid, string is error
+// ============================================================================
 
-	if (!validate(value)) {
-		return { name: 'Invalid email', message: 'Invalid email address format', valid: false };
-	}
+/** Required field validator */
+export function required(value: string | null | undefined): string | undefined {
+	return !value?.trim() ? 'This field is required' : undefined;
+}
 
-	return {
-		valid: true,
-		name: 'Valid email'
+/** Email format validator */
+export function email(value: string): string | undefined {
+	if (!value) return undefined;
+	return !validate(value) ? 'Please enter a valid email address' : undefined;
+}
+
+/** Maximum length validator */
+export function max(length: number): (value: string) => string | undefined {
+	return (value: string) => {
+		if (!value) return undefined;
+		return value.length > length ? `Must be less than ${length} characters` : undefined;
 	};
-};
+}
 
-// IP Address validator
-export const ipAddress = (): Validator => (value: string) => {
-	if (!value) return { valid: true, name: 'Valid IP' }; // Allow empty if not required
-
-	if (!isValid(value)) {
-		return { name: 'Invalid IP', message: 'Invalid IP address format', valid: false };
-	}
-
-	return {
-		valid: true,
-		name: 'Valid IP'
+/** Minimum length validator */
+export function min(length: number): (value: string) => string | undefined {
+	return (value: string) => {
+		if (!value) return undefined;
+		return value.length < length ? `Must be at least ${length} characters` : undefined;
 	};
-};
+}
 
-// CIDR validator
-export const cidr = (): Validator => (value: string) => {
-	if (!value) return { valid: true, name: 'Valid CIDR' }; // Allow empty if not required
+/** CIDR notation validator */
+export function cidrNotation(value: string): string | undefined {
+	if (!value) return undefined;
+	return !isValidCIDR(value) ? 'Invalid CIDR notation (e.g., 192.168.1.0/24)' : undefined;
+}
 
-	if (!isValidCIDR(value))
-		return { valid: false, name: 'Invalid CIDR', message: `${cidr} is not valid CIDR notation` };
+/** IP address validator */
+export function ipAddressFormat(value: string): string | undefined {
+	if (!value) return undefined;
+	return !isValid(value) ? 'Invalid IP address format' : undefined;
+}
 
-	return {
-		valid: true,
-		name: 'Valid CIDR'
+/** IP address within CIDR range validator */
+export function ipAddressInCidrFormat(cidr: string): (value: string) => string | undefined {
+	return (value: string) => {
+		if (!value) return undefined;
+		if (!isValidCIDR(cidr)) return `${cidr} is not valid CIDR notation`;
+		if (!isValid(value)) return 'Invalid IP address format';
+		if (!parse(value).match(parseCIDR(cidr))) {
+			return `IP must be within ${cidr}`;
+		}
+		return undefined;
 	};
-};
+}
 
-// IP in CIDR validator
-export const ipAddressInCidr =
-	(cidr: string): Validator =>
-	(value: string) => {
-		if (!isValidCIDR(cidr)) return { valid: false, name: `${cidr} is not valid CIDR notation` };
-		if (!isValid(value))
-			return { valid: true, name: `IP invalid, ipAddress validator will handle` };
-		if (!parse(value).match(parseCIDR(cidr)))
-			return { valid: false, name: `IP not in range of ${cidr}` };
-
-		return {
-			valid: true,
-			name: 'IP in CIDR range'
-		};
-	};
-
-// MAC address validator
-export const mac = (): Validator => (value: string) => {
-	if (!value) return { name: 'validMac', valid: true }; // Optional field
-
+/** MAC address validator */
+export function macAddress(value: string): string | undefined {
+	if (!value) return undefined;
 	const macRegex = /^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/;
-	if (!macRegex.test(value)) {
-		return { name: 'Invalid MAC', message: 'Invalid MAC address format', valid: false };
-	}
+	return !macRegex.test(value) ? 'Invalid MAC address format' : undefined;
+}
 
-	return { name: 'Valid MAC', valid: true };
-};
+/** MAC address format validator (alias for macAddress) */
+export const macFormat = macAddress;
 
-// Hostname validator
-export const hostname = (): Validator => (value: string) => {
-	if (!value) return { valid: true, name: 'hostname' }; // Allow empty if not required
-
+/** Hostname validator */
+export function hostnameFormat(value: string): string | undefined {
+	if (!value) return undefined;
 	const hostnameRegex =
 		/^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)*[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$/;
-	return {
-		valid: hostnameRegex.test(value.trim()),
-		name: 'Please enter a valid hostname',
-		message: 'Please enter a valid hostname'
-	};
-};
+	return !hostnameRegex.test(value.trim()) ? 'Please enter a valid hostname' : undefined;
+}
 
-// Max length validator with custom message
-export const maxLength =
-	(max: number): Validator =>
-	(value: string) => {
-		if (!value) return { valid: true, name: 'maxLength' };
+/** Port range validator (1-65535) */
+export function port(value: number | string): string | undefined {
+	if (!value && value !== 0) return undefined;
+	const portNum = typeof value === 'string' ? parseInt(value) : value;
+	return !Number.isInteger(portNum) || portNum < 1 || portNum > 65535
+		? 'Port must be between 1 and 65535'
+		: undefined;
+}
 
-		return {
-			valid: value.length <= max,
-			name: `Must be less than ${max} characters`,
-			message: `Must be less than ${max} characters`
-		};
-	};
+/** Port range validation (alias for port) */
+export const portRangeValidation = port;
 
-// Port range validator
-export const portRange = (): Validator => (value: number | string) => {
-	if (!value && value !== 0) return { valid: true, name: 'portRange' };
+/** URL format validator */
+export function url(value: string): string | undefined {
+	if (!value) return undefined;
+	try {
+		const parsed = new URL(value);
+		// Require hostname to have at least one dot (e.g., example.com) or be localhost
+		const hostname = parsed.hostname;
+		if (hostname !== 'localhost' && !hostname.includes('.')) {
+			return 'Please enter a valid URL with a domain (e.g., https://example.com)';
+		}
+		return undefined;
+	} catch {
+		return 'Please enter a valid URL';
+	}
+}
 
-	const port = typeof value === 'string' ? parseInt(value) : value;
-	return {
-		valid: Number.isInteger(port) && port >= 1 && port <= 65535,
-		name: 'Port must be between 1 and 65535',
-		message: 'Port must be between 1 and 65535'
-	};
-};
+/** Numeric value validator */
+export function numeric(value: string): string | undefined {
+	if (!value) return undefined;
+	return isNaN(Number(value)) ? 'Must be a number' : undefined;
+}
 
-// Minimum length validator
-export const minLength =
-	(min: number): Validator =>
-	(value: string) => {
-		if (!value) return { valid: true, name: 'minLength' };
-
-		return {
-			valid: value.length >= min,
-			name: `Must be at least ${min} characters`,
-			message: `Must be at least ${min} characters`
-		};
-	};
-
-export const passwordComplexity = (): Validator => (value: string) => {
-	// Don't return invalid for empty values - let required() handle that
-	if (!value) return { valid: true, name: 'passwordComplexity' };
-
+/** Password complexity validator */
+export function password(value: string): string | undefined {
+	if (!value) return undefined;
 	const hasUppercase = /[A-Z]/.test(value);
 	const hasLowercase = /[a-z]/.test(value);
 	const hasNumber = /[0-9]/.test(value);
-
+	const longEnough = value.length >= 10;
+	if (!longEnough) return 'Password must be at least 10 characters';
 	if (!hasUppercase || !hasLowercase || !hasNumber) {
-		return {
-			valid: false,
-			name: 'Password must contain uppercase, lowercase, and number',
-			message: 'Password must contain uppercase, lowercase, and number'
-		};
+		return 'Password must contain uppercase, lowercase, and number';
 	}
+	return undefined;
+}
 
-	return { valid: true, name: 'passwordComplexity' };
-};
-
-// Password match validator (for confirm password)
-export const passwordMatch =
-	(getPasswordValue: () => string): Validator =>
-	(value: string) => {
-		const passwordValue = getPasswordValue();
-
-		// If password is empty, confirm can be empty
-		if (!passwordValue || passwordValue.trim() === '') {
-			return { valid: true, name: 'passwordMatch' };
-		}
-
-		// If password has value but confirm is empty, that's invalid
-		if (!value || value.trim() === '') {
-			return {
-				valid: false,
-				name: 'Passwords do not match',
-				message: 'Passwords do not match'
-			};
-		}
-
-		// Both have values - check if they match
-		return {
-			valid: value === passwordValue,
-			name: 'Passwords do not match',
-			message: 'Passwords do not match'
-		};
+/** Confirm password match validator */
+export function confirmPasswordMatch(
+	getPassword: () => string
+): (value: string) => string | undefined {
+	return (value: string) => {
+		const passwordValue = getPassword();
+		if (!passwordValue && !value) return undefined;
+		if (passwordValue && !value) return 'Please confirm your password';
+		if (value !== passwordValue) return 'Passwords do not match';
+		return undefined;
 	};
+}
+
+/** Pattern matcher validator */
+export function pattern(regex: RegExp, message: string): (value: string) => string | undefined {
+	return (value: string) => {
+		if (!value) return undefined;
+		return !regex.test(value) ? message : undefined;
+	};
+}

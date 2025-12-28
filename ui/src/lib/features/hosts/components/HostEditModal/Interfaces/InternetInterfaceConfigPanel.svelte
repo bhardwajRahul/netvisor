@@ -1,64 +1,63 @@
 <script lang="ts">
-	import { field } from 'svelte-forms';
 	import type { Interface } from '$lib/features/hosts/types/base';
-	import { ipAddress, ipAddressInCidr, maxLength } from '$lib/shared/components/forms/validators';
-	import { required } from 'svelte-forms/validators';
-	import type { FormApi } from '$lib/shared/components/forms/types';
-	import TextInput from '$lib/shared/components/forms/input/TextInput.svelte';
+	import { ipAddressFormat, ipAddressInCidrFormat, max, required } from '$lib/shared/components/forms/validators';
 	import ConfigHeader from '$lib/shared/components/forms/config/ConfigHeader.svelte';
 	import type { Subnet } from '$lib/features/subnets/types/base';
 
-	export let formApi: FormApi;
-	export let iface: Interface;
-	export let subnet: Subnet;
-	export let onChange: (updatedIface: Interface) => void = () => {};
-
-	const getIpField = () => {
-		return field(
-			`interface_ip_${currentInterfaceId}`,
-			iface.ip_address || '',
-			[required(), ipAddress(), ipAddressInCidr(subnet.cidr)],
-			{
-				checkOnInit: false
-			}
-		);
-	};
-
-	const getNameField = () => {
-		return field(
-			`interface_name_${currentInterfaceId}`,
-			iface.name || '',
-			[required(), maxLength(100)],
-			{
-				checkOnInit: false
-			}
-		);
-	};
-
-	let currentInterfaceId: string = iface.id;
-	let ipAddressField = getIpField();
-	let nameField = getNameField();
-
-	// Only sync field values when interface ID changes (new interface selected)
-	$: if (iface.id !== currentInterfaceId) {
-		currentInterfaceId = iface.id;
-		ipAddressField = getIpField();
-		nameField = getNameField();
+	interface Props {
+		iface: Interface;
+		subnet: Subnet;
+		onChange?: (updatedIface: Interface) => void;
 	}
 
-	$: if ($ipAddressField && $nameField) {
+	let { iface, subnet, onChange = () => {} }: Props = $props();
+
+	// Local state for form fields
+	let ipAddress = $state(iface.ip_address || '');
+	let name = $state(iface.name || '');
+
+	// Error states
+	let ipError = $state<string | undefined>(undefined);
+	let nameError = $state<string | undefined>(undefined);
+
+	// Track current interface ID to reset when interface changes
+	let currentInterfaceId = $state(iface.id);
+
+	// Reset fields when interface changes
+	$effect(() => {
+		if (iface.id !== currentInterfaceId) {
+			currentInterfaceId = iface.id;
+			ipAddress = iface.ip_address || '';
+			name = iface.name || '';
+			ipError = undefined;
+			nameError = undefined;
+		}
+	});
+
+	// Validate and update on change
+	function handleIpChange(e: Event) {
+		const value = (e.target as HTMLInputElement).value;
+		ipAddress = value;
+		ipError = ipAddressFormat(value) || ipAddressInCidrFormat(subnet.cidr)(value);
+		triggerOnChange();
+	}
+
+	function handleNameChange(e: Event) {
+		const value = (e.target as HTMLInputElement).value;
+		name = value;
+		nameError = required(value) || max(100)(value);
+		triggerOnChange();
+	}
+
+	function triggerOnChange() {
 		const updatedIface: Interface = {
 			...iface,
-			ip_address: $ipAddressField.value,
-			name: $nameField.value
+			ip_address: ipAddress,
+			name: name
 		};
 
 		// Only trigger onChange if values actually changed
-		if (
-			updatedIface.ip_address !== iface.ip_address ||
-			updatedIface.mac_address !== iface.mac_address ||
-			updatedIface.name !== iface.name
-		) {
+		if (updatedIface.ip_address !== iface.ip_address || updatedIface.name !== iface.name) {
 			onChange(updatedIface);
 		}
 	}
@@ -72,27 +71,41 @@
 		/>
 
 		<div class="space-y-4">
-			{#if $nameField}
-				<TextInput
-					label="Name"
+			<div>
+				<label for="interface_{iface.id}" class="text-secondary mb-1 block text-sm font-medium">
+					Name <span class="text-red-400">*</span>
+				</label>
+				<input
+					type="text"
 					id="interface_{iface.id}"
-					{formApi}
+					class="input-field w-full"
 					placeholder="en0"
-					field={nameField}
+					value={name}
+					oninput={handleNameChange}
 				/>
-			{/if}
+				{#if nameError}
+					<p class="mt-1 text-xs text-red-400">{nameError}</p>
+				{/if}
+			</div>
 
-			{#if $ipAddressField}
-				<TextInput
-					label="IP Address"
+			<div>
+				<label for="interface_ip_{iface.id}" class="text-secondary mb-1 block text-sm font-medium">
+					IP Address <span class="text-red-400">*</span>
+				</label>
+				<input
+					type="text"
 					id="interface_ip_{iface.id}"
-					{formApi}
-					required={true}
+					class="input-field w-full"
 					placeholder="192.168.1.100"
-					field={ipAddressField}
-					helpText="Must be within {subnet.cidr}"
+					value={ipAddress}
+					oninput={handleIpChange}
 				/>
-			{/if}
+				{#if ipError}
+					<p class="mt-1 text-xs text-red-400">{ipError}</p>
+				{:else}
+					<p class="text-tertiary mt-1 text-xs">Must be within {subnet.cidr}</p>
+				{/if}
+			</div>
 		</div>
 	</div>
 {/if}

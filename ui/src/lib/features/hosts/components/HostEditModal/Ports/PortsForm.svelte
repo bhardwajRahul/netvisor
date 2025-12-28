@@ -1,35 +1,40 @@
 <script lang="ts">
-	import { type HostFormData } from '$lib/features/hosts/types/base';
+	import { type HostFormData, type Port } from '$lib/features/hosts/types/base';
 	import { ports } from '$lib/shared/stores/metadata';
-	import type { Port } from '$lib/features/hosts/types/base';
 	import { PortTypeDisplay } from '$lib/shared/components/forms/selection/display/PortTypeDisplay.svelte';
 	import { v4 as uuidv4 } from 'uuid';
 	import ListManager from '$lib/shared/components/forms/selection/ListManager.svelte';
 	import { PortDisplay } from '$lib/shared/components/forms/selection/display/PortDisplay.svelte';
 	import type { Service } from '$lib/features/services/types/base';
-	import type { FormApi } from '$lib/shared/components/forms/types';
 	import ListConfigEditor from '$lib/shared/components/forms/selection/ListConfigEditor.svelte';
 	import PortConfigPanel from './PortConfigPanel.svelte';
 	import EntityConfigEmpty from '$lib/shared/components/forms/EntityConfigEmpty.svelte';
 	import ConfirmationDialog from '$lib/shared/components/feedback/ConfirmationDialog.svelte';
 
-	export let formData: HostFormData;
-	export let formApi: FormApi;
-	export let currentServices: Service[];
-	export let onServicesChange: (services: Service[]) => void = () => {};
+	interface Props {
+		formData: HostFormData;
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		form: { Field: any; setFieldValue: any };
+		currentServices?: Service[];
+		onServicesChange?: (services: Service[]) => void;
+	}
+
+	let { formData = $bindable(), form, currentServices = [], onServicesChange = () => {} }: Props = $props();
 
 	// Confirmation dialog state
-	let showDeleteConfirmation = false;
-	let pendingDeleteIndex: number | null = null;
-	let affectedServiceNames: string[] = [];
+	let showDeleteConfirmation = $state(false);
+	let pendingDeleteIndex: number | null = $state(null);
+	let affectedServiceNames: string[] = $state([]);
 
-	$: selectablePorts = ports
-		.getItems()
-		.filter(
-			(p_type) =>
-				p_type.metadata.can_be_added && !formData.ports.some((port) => port.type == p_type.id)
-		)
-		.sort((a, b) => a.metadata.number - b.metadata.number);
+	let selectablePorts = $derived(
+		ports
+			.getItems()
+			.filter(
+				(p_type) =>
+					p_type.metadata.can_be_added && !formData.ports.some((port) => port.type == p_type.id)
+			)
+			.sort((a, b) => a.metadata.number - b.metadata.number)
+	);
 
 	// Find services that have bindings to a specific port
 	function getServicesWithBindingsToPort(portId: string): Service[] {
@@ -60,6 +65,7 @@
 		};
 
 		formData.ports = [...formData.ports, newPort];
+		form.setFieldValue('ports', formData.ports);
 	}
 
 	function handleAddPort(portId: string) {
@@ -77,6 +83,7 @@
 				updated_at: new Date().toISOString()
 			};
 			formData.ports = [...formData.ports, newPort];
+			form.setFieldValue('ports', formData.ports);
 		}
 	}
 
@@ -92,6 +99,7 @@
 		} else {
 			// No bindings, delete immediately
 			formData.ports = formData.ports.filter((_, i) => i !== index);
+			form.setFieldValue('ports', formData.ports);
 		}
 	}
 
@@ -102,6 +110,7 @@
 			removeBindingsToPort(port.id);
 			// Then remove the port
 			formData.ports = formData.ports.filter((_, i) => i !== pendingDeleteIndex);
+			form.setFieldValue('ports', formData.ports);
 		}
 		// Reset dialog state
 		showDeleteConfirmation = false;
@@ -113,6 +122,15 @@
 		showDeleteConfirmation = false;
 		pendingDeleteIndex = null;
 		affectedServiceNames = [];
+	}
+
+	function handlePortChange(updatedPort: Port, index: number) {
+		// Update formData.ports for real-time sync with list display and bindings
+		// Note: Don't call form.setFieldValue here - the form field already updated
+		// form state via field.handleChange. We only need to sync formData for display.
+		const updatedPorts = [...formData.ports];
+		updatedPorts[index] = updatedPort;
+		formData.ports = updatedPorts;
 	}
 </script>
 
@@ -128,7 +146,6 @@
 			itemClickAction="edit"
 			createNewLabel="Custom Port"
 			allowDuplicates={false}
-			{formApi}
 			options={selectablePorts}
 			{items}
 			optionDisplayComponent={PortTypeDisplay}
@@ -142,13 +159,16 @@
 		/>
 	</svelte:fragment>
 
-	<svelte:fragment slot="config" let:selectedItem let:onChange>
+	<svelte:fragment slot="config" let:selectedItem let:selectedIndex>
 		{#if selectedItem && selectedItem.type == 'Custom'}
-			<PortConfigPanel
-				{formApi}
-				port={selectedItem}
-				onChange={(updatedPort) => onChange(updatedPort)}
-			/>
+			{#key selectedItem.id}
+				<PortConfigPanel
+					port={selectedItem}
+					index={selectedIndex}
+					{form}
+					onChange={(updatedPort) => handlePortChange(updatedPort, selectedIndex)}
+				/>
+			{/key}
 		{:else if selectedItem && selectedItem.type != 'Custom'}
 			<EntityConfigEmpty
 				title="Well-known or registered Port"

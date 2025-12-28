@@ -3,12 +3,11 @@ use std::{collections::HashMap, sync::Arc};
 use uuid::Uuid;
 
 use crate::server::{
-    ports::r#impl::base::Port,
-    shared::{
+    auth::middleware::auth::AuthenticatedEntity, ports::r#impl::base::Port, shared::{
         events::bus::EventBus,
         services::traits::{ChildCrudService, CrudService, EventBusService},
-        storage::{generic::GenericPostgresStorage, traits::Storage},
-    },
+        storage::{generic::GenericPostgresStorage},
+    }
 };
 
 pub struct PortService {
@@ -53,13 +52,8 @@ impl PortService {
         self.get_for_parents(host_ids).await
     }
 
-    /// Create a port directly (bypasses event publishing for batch operations)
-    pub async fn create_direct(&self, port: &Port) -> Result<Port> {
-        self.storage.create(port).await
-    }
-
     /// Delete all ports for a host (alias for delete_for_parent)
-    pub async fn delete_for_host(&self, host_id: &Uuid) -> Result<usize> {
-        self.delete_for_parent(host_id).await
+    pub async fn delete_for_host(&self, host_id: &Uuid, authentication: AuthenticatedEntity) -> Result<usize> {
+        self.delete_for_parent(host_id, authentication).await
     }
 }

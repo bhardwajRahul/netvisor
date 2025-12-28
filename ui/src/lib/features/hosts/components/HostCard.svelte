@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Edit, Eye, Replace, Trash2 } from 'lucide-svelte';
-	import { formatInterface } from '../store';
+	import { formatInterface } from '../queries';
 	import type { Host } from '../types/base';
 	import GenericCard from '$lib/shared/components/data/GenericCard.svelte';
 	import { concepts, entities, serviceDefinitions } from '$lib/shared/stores/metadata';
@@ -11,6 +11,7 @@
 	import { useServicesQuery } from '$lib/features/services/queries';
 	import { useInterfacesQuery } from '$lib/features/interfaces/queries';
 	import { useDaemonsQuery } from '$lib/features/daemons/queries';
+	import { useSubnetsQuery, isContainerSubnet } from '$lib/features/subnets/queries';
 
 	// Queries
 	const tagsQuery = useTagsQuery();
@@ -18,6 +19,7 @@
 	const servicesQuery = useServicesQuery();
 	const interfacesQuery = useInterfacesQuery();
 	const daemonsQuery = useDaemonsQuery();
+	const subnetsQuery = useSubnetsQuery();
 
 	// Derived data
 	let tagsData = $derived(tagsQuery.data ?? []);
@@ -25,6 +27,13 @@
 	let servicesData = $derived(servicesQuery.data ?? []);
 	let interfacesData = $derived(interfacesQuery.data ?? []);
 	let daemonsData = $derived(daemonsQuery.data ?? []);
+	let subnetsData = $derived(subnetsQuery.data ?? []);
+
+	// Helper to check if subnet is a container subnet
+	let isContainerSubnetFn = $derived((subnetId: string) => {
+		const subnet = subnetsData.find((s) => s.id === subnetId);
+		return subnet ? isContainerSubnet(subnet) : false;
+	});
 
 	let {
 		host,
@@ -162,7 +171,7 @@
 					value: hostInterfaces.map((i) => {
 						return {
 							id: i.id,
-							label: formatInterface(i),
+							label: formatInterface(i, isContainerSubnetFn),
 							color: entities.getColorHelper('Interface').color
 						};
 					}),

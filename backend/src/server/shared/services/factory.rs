@@ -2,7 +2,7 @@ use crate::server::{
     api_keys::service::ApiKeyService,
     auth::{oidc::OidcService, service::AuthService},
     billing::service::{BillingService, BillingServiceParams},
-    bindings::{r#impl::base::Binding, service::BindingService},
+    bindings::{service::BindingService},
     config::ServerConfig,
     daemons::service::DaemonService,
     discovery::service::DiscoveryService,
@@ -19,13 +19,13 @@ use crate::server::{
     services::service::ServiceService,
     shared::{
         events::bus::EventBus,
-        storage::{child::GenericChildStorage, factory::StorageFactory},
+        storage::{factory::StorageFactory},
     },
     shares::service::ShareService,
     subnets::service::SubnetService,
     tags::service::TagService,
     topology::service::main::TopologyService,
-    users::service::UserService,
+    users::{UserNetworkAccessStorage, service::UserService},
 };
 use anyhow::Result;
 use std::sync::Arc;
@@ -70,6 +70,7 @@ impl ServiceFactory {
             storage.daemons.clone(),
             event_bus.clone(),
         ));
+
         let group_binding_storage = Arc::new(GroupBindingStorage::new(storage.pool.clone()));
         let group_service = Arc::new(GroupService::new(
             storage.groups.clone(),
@@ -90,6 +91,7 @@ impl ServiceFactory {
         let tag_service = Arc::new(TagService::new(storage.tags.clone(), event_bus.clone()));
 
         let port_service = Arc::new(PortService::new(storage.ports.clone(), event_bus.clone()));
+
         let binding_service = Arc::new(BindingService::new(
             storage.bindings.clone(),
             event_bus.clone(),
@@ -103,11 +105,9 @@ impl ServiceFactory {
         )
         .await?;
 
-        let binding_storage = Arc::new(GenericChildStorage::<Binding>::new(storage.pool.clone()));
-
         let service_service = Arc::new(ServiceService::new(
             storage.services.clone(),
-            binding_storage,
+            binding_service.clone(),
             group_service.clone(),
             event_bus.clone(),
         ));
@@ -153,10 +153,12 @@ impl ServiceFactory {
             event_bus.clone(),
         ));
 
+        let user_network_access_storage =
+            Arc::new(UserNetworkAccessStorage::new(storage.pool.clone()));
         let user_service = Arc::new(UserService::new(
             storage.users.clone(),
+            user_network_access_storage,
             event_bus.clone(),
-            storage.pool.clone(),
         ));
 
         let email_service = config.clone().and_then(|c| {

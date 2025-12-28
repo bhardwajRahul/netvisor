@@ -59,7 +59,7 @@ export async function bulkDeleteGroups(ids: string[]) {
 	return result;
 }
 
-export function createEmptyGroupFormData(): Group {
+export function createEmptyGroupFormData(defaultNetworkId?: string): Group {
 	return {
 		id: uuidv4Sentinel,
 		name: '',
@@ -71,7 +71,7 @@ export function createEmptyGroupFormData(): Group {
 		source: {
 			type: 'Manual'
 		},
-		network_id: get(networks)[0]?.id || '',
+		network_id: defaultNetworkId ?? get(networks)[0]?.id ?? '',
 		color: entities.getColorHelper('Group').color as Color,
 		edge_style: 'Straight',
 		tags: []

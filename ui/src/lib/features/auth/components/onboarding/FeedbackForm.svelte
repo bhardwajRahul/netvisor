@@ -1,105 +1,121 @@
 <script lang="ts">
+	import { createForm } from '@tanstack/svelte-form';
 	import { config } from '$lib/shared/stores/config';
 	import { trackEvent } from '$lib/shared/utils/analytics';
 	import { pushSuccess, pushError } from '$lib/shared/stores/feedback';
-	import { field } from 'svelte-forms';
-	import { email as emailValidator } from 'svelte-forms/validators';
+	import { email as emailValidator } from '$lib/shared/components/forms/validators';
 	import TextInput from '$lib/shared/components/forms/input/TextInput.svelte';
 	import TextArea from '$lib/shared/components/forms/input/TextArea.svelte';
 	import Checkbox from '$lib/shared/components/forms/input/Checkbox.svelte';
-	import type { FormApi } from '$lib/shared/components/forms/types';
 
-	export let blocker: string;
-	export let showActions: boolean = true;
-	export let onOtherIssue: (() => void) | null = null;
-
-	const feedbackField = field('feedback', '', []);
-	const emailField = field('email', '', [emailValidator()]);
-	const subscribeField = field('subscribe', true, []);
-
-	let isSubmitting = false;
-	let hasSubmitted = false;
-
-	// Simple formApi stub for standalone use
-	const formApi: FormApi = {
-		registerField: () => {},
-		unregisterField: () => {}
-	};
-
-	export async function handleSubmit() {
-		const feedbackText = $feedbackField.value;
-		const email = $emailField.value;
-
-		if (!feedbackText.trim()) return;
-
-		isSubmitting = true;
-
-		try {
-			// Submit to Plunk if configured
-			if ($config?.plunk_key && email.trim()) {
-				await fetch('https://api.useplunk.com/v1/track', {
-					method: 'POST',
-					headers: {
-						'Content-Type': 'application/json',
-						Authorization: `Bearer ${$config.plunk_key}`
-					},
-					body: JSON.stringify({
-						event: 'onboarding_feedback',
-						email: email.trim(),
-						subscribed: $subscribeField.value,
-						data: {
-							blocker,
-							message: feedbackText.trim()
-						}
-					})
-				});
-			}
-
-			// Track analytics
-			trackEvent('onboarding_feedback_submitted', {
-				email_provided: !!email.trim(),
-				blocker,
-				message: feedbackText.trim()
-			});
-
-			pushSuccess('Thank you for your feedback!');
-			hasSubmitted = true;
-		} catch (error) {
-			console.error('Failed to submit feedback:', error);
-			pushError('Failed to submit feedback. Please try again.');
-		} finally {
-			isSubmitting = false;
-		}
+	interface Props {
+		blocker: string;
+		showActions?: boolean;
+		onOtherIssue?: (() => void) | null;
 	}
 
-	$: canSubmit = $feedbackField.value.trim() !== '' && !isSubmitting && !hasSubmitted;
+	let { blocker, showActions = true, onOtherIssue = null }: Props = $props();
+
+	let isSubmitting = $state(false);
+	let hasSubmitted = $state(false);
+
+	const form = createForm(() => ({
+		defaultValues: {
+			feedback: '',
+			email: '',
+			subscribe: true
+		},
+		onSubmit: async ({ value }) => {
+			const feedbackText = value.feedback;
+			const email = value.email;
+
+			if (!feedbackText.trim()) return;
+
+			isSubmitting = true;
+
+			try {
+				// Submit to Plunk if configured
+				if ($config?.plunk_key && email.trim()) {
+					await fetch('https://api.useplunk.com/v1/track', {
+						method: 'POST',
+						headers: {
+							'Content-Type': 'application/json',
+							Authorization: `Bearer ${$config.plunk_key}`
+						},
+						body: JSON.stringify({
+							event: 'onboarding_feedback',
+							email: email.trim(),
+							subscribed: value.subscribe,
+							data: {
+								blocker,
+								message: feedbackText.trim()
+							}
+						})
+					});
+				}
+
+				// Track analytics
+				trackEvent('onboarding_feedback_submitted', {
+					email_provided: !!email.trim(),
+					blocker,
+					message: feedbackText.trim()
+				});
+
+				pushSuccess('Thank you for your feedback!');
+				hasSubmitted = true;
+			} catch (error) {
+				console.error('Failed to submit feedback:', error);
+				pushError('Failed to submit feedback. Please try again.');
+			} finally {
+				isSubmitting = false;
+			}
+		}
+	}));
+
+	export async function handleSubmit() {
+		await form.handleSubmit();
+	}
+
+	let canSubmit = $derived(
+		form.state.values.feedback.trim() !== '' && !isSubmitting && !hasSubmitted
+	);
 </script>
 
 <div class="space-y-3">
-	<TextArea
-		label="What's blocking you from getting started?"
-		id="feedback"
-		{formApi}
-		field={feedbackField}
-		placeholder="Tell us what you need help with..."
-		rows={3}
-	/>
+	<form.Field name="feedback">
+		{#snippet children(field)}
+			<TextArea
+				label="What's blocking you from getting started?"
+				id="feedback"
+				{field}
+				placeholder="Tell us what you need help with..."
+				rows={3}
+			/>
+		{/snippet}
+	</form.Field>
 
-	<TextInput
-		label="Email"
-		id="email"
-		{formApi}
-		field={emailField}
-		placeholder="your@email.com"
-		helpText="Optional - we'll follow up if we can help"
-	/>
+	<form.Field
+		name="email"
+		validators={{
+			onBlur: ({ value }) => emailValidator(value)
+		}}
+	>
+		{#snippet children(field)}
+			<TextInput
+				label="Email"
+				id="email"
+				{field}
+				placeholder="your@email.com"
+				helpText="Optional - we'll follow up if we can help"
+			/>
+		{/snippet}
+	</form.Field>
 
-	<Checkbox
-		field={subscribeField}
-		id="subscribe"
-		{formApi}
-		label="Also email me about product news and updates"
-	/>
+	<form.Field name="subscribe">
+		{#snippet children(field)}
+			<Checkbox {field} id="subscribe" label="Also email me about product news and updates" />
+		{/snippet}
+	</form.Field>
 
 	{#if showActions}
 		<div class="flex items-center justify-between pt-2">
@@ -107,14 +123,14 @@
 				<button
 					type="button"
 					class="text-secondary hover:text-primary text-sm"
-					on:click={onOtherIssue}
+					onclick={onOtherIssue}
 				>
 					I have another issue
 				</button>
 			{:else}
 				<div></div>
 			{/if}
-			<button type="button" class="btn-primary" disabled={!canSubmit} on:click={handleSubmit}>
+			<button type="button" class="btn-primary" disabled={!canSubmit} onclick={handleSubmit}>
 				{#if hasSubmitted}
 					Submitted
 				{:else if isSubmitting}

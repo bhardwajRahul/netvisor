@@ -1,11 +1,11 @@
-import { writable, derived, type Readable, readable, get } from 'svelte/store';
+import { writable, derived, type Readable, get } from 'svelte/store';
 import { apiClient, type ApiResponse } from '$lib/api/client';
 import type { Binding, Service } from './types/base';
-import { formatPort, utcTimeZoneSentinel, uuidv4Sentinel } from '$lib/shared/utils/formatting';
-import { formatInterface, hosts } from '../hosts/store';
-import { interfaces, getInterfaceFromId } from '../interfaces/store';
-import { ports, getPortFromId } from '../ports/store';
-import { ALL_INTERFACES, type Host } from '../hosts/types/base';
+import { utcTimeZoneSentinel, uuidv4Sentinel } from '$lib/shared/utils/formatting';
+import { hosts } from '../hosts/store';
+import { interfaces } from '../interfaces/store';
+import { ports } from '../ports/store';
+import type { Host } from '../hosts/types/base';
 import { groups } from '../groups/store';
 import type { Subnet } from '../subnets/types/base';
 
@@ -260,36 +260,4 @@ export function getBindingFromId(id: string): Readable<Binding | null> {
 	return derived([services], ([$services]) => {
 		return $services.flatMap((s) => s.bindings).find((b) => b.id == id) || null;
 	});
-}
-
-export function getBindingDisplayName(binding: Binding): Readable<string> {
-	return derived(
-		[
-			getServiceForBinding(binding.id),
-			getInterfaceFromId(binding.interface_id || ''),
-			binding.type == 'Port' ? getPortFromId(binding.port_id || '') : readable(null),
-			hosts
-		],
-		([$service, $iface, $port, $hosts]) => {
-			if ($service) {
-				const interfaceToUse = $iface || ALL_INTERFACES;
-				const host = $hosts.find((h) => h.id === $service.host_id);
-
-				if (host) {
-					switch (binding.type) {
-						case 'Interface':
-							if (interfaceToUse) return formatInterface(interfaceToUse);
-							break;
-						case 'Port': {
-							if ($port && interfaceToUse) {
-								return formatInterface(interfaceToUse) + ' · ' + formatPort($port);
-							}
-							break;
-						}
-					}
-				}
-			}
-			return 'Unknown Binding';
-		}
-	);
 }

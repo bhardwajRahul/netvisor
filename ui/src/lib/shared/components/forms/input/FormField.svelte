@@ -1,44 +1,42 @@
 <script lang="ts">
 	import { AlertCircle } from 'lucide-svelte';
-	import type {
-		TextFieldType,
-		FormApi,
-		NumberFieldType,
-		BooleanFieldType,
-		MultiSelectFieldType
-	} from '../types';
-	import { onMount, onDestroy } from 'svelte';
+	import type { Snippet } from 'svelte';
+	import type { AnyFieldApi } from '@tanstack/svelte-form';
 
-	export let label: string;
-	export let formApi: FormApi;
-	export let field: TextFieldType | NumberFieldType | BooleanFieldType | MultiSelectFieldType;
-	export let required: boolean = false;
-	export let helpText: string = '';
-	export let errors: string[] = [];
-	export let showValidation: boolean = true;
-	export let id: string = '';
-	export let inline: boolean = false;
+	interface Props {
+		/** Field from TanStack Form snippet */
+		field: AnyFieldApi;
+		/** Field label text */
+		label: string;
+		/** Unique ID for the input */
+		id: string;
+		/** Show required indicator */
+		required?: boolean;
+		/** Help text below the input */
+		helpText?: string;
+		/** Render label inline with input (for checkboxes) */
+		inline?: boolean;
+		/** Slot content */
+		children: Snippet;
+	}
 
-	onMount(() => {
-		formApi.registerField(id, field);
-	});
+	let { field, label, id, required = false, helpText = '', inline = false, children }: Props =
+		$props();
 
-	onDestroy(() => {
-		formApi.unregisterField(id);
-	});
+	let errors = $derived(field.state.meta.errors);
+	let showErrors = $derived(field.state.meta.isTouched && errors.length > 0);
 </script>
 
 {#if inline}
-	<div class="space-y-2">
+	<div class="flex flex-col gap-2">
 		{#if label.length > 0}
 			<label
 				for={id}
-				class="text-secondary flex flex-grow cursor-pointer items-center gap-2 text-sm font-medium"
+				class="text-secondary flex cursor-pointer items-center gap-2 text-sm font-medium"
 			>
-				<slot />
+				{@render children()}
 				<div>
-					<!-- eslint-disable-next-line svelte/no-at-html-tags -->
-					{@html label}
+					{label}
 					{#if required}
 						<span class="text-danger">*</span>
 					{/if}
@@ -46,7 +44,7 @@
 			</label>
 		{/if}
 
-		{#if showValidation && errors.length > 0}
+		{#if showErrors}
 			<div class="text-danger flex items-center gap-2">
 				<AlertCircle size={16} />
 				<p class="text-xs">{errors[0]}</p>
@@ -54,25 +52,23 @@
 		{/if}
 
 		{#if helpText}
-			<!-- eslint-disable-next-line svelte/no-at-html-tags -->
-			<p class="text-tertiary text-xs">{@html helpText}</p>
+			<p class="text-tertiary text-xs">{helpText}</p>
 		{/if}
 	</div>
 {:else}
 	<div class="space-y-2">
 		{#if label.length > 0}
 			<label for={id} class="text-secondary block text-sm font-medium">
-				<!-- eslint-disable-next-line svelte/no-at-html-tags -->
-				{@html label}
+				{label}
 				{#if required}
 					<span class="text-danger ml-1">*</span>
 				{/if}
 			</label>
 		{/if}
 
-		<slot />
+		{@render children()}
 
-		{#if showValidation && errors.length > 0}
+		{#if showErrors}
 			<div class="text-danger flex items-center gap-2">
 				<AlertCircle size={16} />
 				<p class="text-xs">{errors[0]}</p>
@@ -80,8 +76,7 @@
 		{/if}
 
 		{#if helpText}
-			<!-- eslint-disable-next-line svelte/no-at-html-tags -->
-			<p class="text-tertiary text-xs">{@html helpText}</p>
+			<p class="text-tertiary text-xs">{helpText}</p>
 		{/if}
 	</div>
 {/if}

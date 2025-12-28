@@ -8,6 +8,7 @@ CREATE TABLE interfaces (
     ip_address INET NOT NULL,
     mac_address MACADDR,
     name TEXT,
+    position INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE(host_id, subnet_id, ip_address)
@@ -16,7 +17,8 @@ CREATE TABLE interfaces (
 -- Migrate existing data from hosts.interfaces JSONB
 -- Interface uses #[serde(flatten)] so the base fields are at the top level
 -- network_id is derived from the host's network_id
-INSERT INTO interfaces (id, network_id, host_id, subnet_id, ip_address, mac_address, name, created_at, updated_at)
+-- position is derived from the array index (ordinality - 1 for 0-based indexing)
+INSERT INTO interfaces (id, network_id, host_id, subnet_id, ip_address, mac_address, name, position, created_at, updated_at)
 SELECT
     (i->>'id')::UUID,
     h.network_id,
@@ -25,9 +27,10 @@ SELECT
     (i->>'ip_address')::INET,
     (i->>'mac_address')::MACADDR,
     i->>'name',
+    (ordinality - 1)::INTEGER,
     h.created_at,
     h.updated_at
-FROM hosts h, jsonb_array_elements(h.interfaces) AS i
+FROM hosts h, jsonb_array_elements(h.interfaces) WITH ORDINALITY AS arr(i, ordinality)
 WHERE h.interfaces IS NOT NULL AND jsonb_array_length(h.interfaces) > 0;
 
 CREATE INDEX idx_interfaces_network ON interfaces(network_id);

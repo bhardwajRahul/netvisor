@@ -9,18 +9,25 @@ import type { User } from './types';
 
 /**
  * Query hook for fetching all users
+ * @param options.enabled - Whether to enable the query (default: true). Can be a boolean or getter function for reactivity.
  */
-export function useUsersQuery() {
-	return createQuery(() => ({
-		queryKey: queryKeys.users.all,
-		queryFn: async () => {
-			const { data } = await apiClient.GET('/api/users');
-			if (!data?.success || !data.data) {
-				throw new Error(data?.error || 'Failed to fetch users');
-			}
-			return data.data;
-		}
-	}));
+export function useUsersQuery(options?: { enabled?: boolean | (() => boolean) }) {
+	return createQuery(() => {
+		const enabled = typeof options?.enabled === 'function'
+			? options.enabled()
+			: (options?.enabled ?? true);
+		return {
+			queryKey: queryKeys.users.all,
+			queryFn: async () => {
+				const { data } = await apiClient.GET('/api/users');
+				if (!data?.success || !data.data) {
+					throw new Error(data?.error || 'Failed to fetch users');
+				}
+				return data.data;
+			},
+			enabled
+		};
+	});
 }
 
 /**

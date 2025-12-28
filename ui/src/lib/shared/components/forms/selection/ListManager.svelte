@@ -3,7 +3,6 @@
 	import RichSelect from './RichSelect.svelte';
 	import ListSelectItem from './ListSelectItem.svelte';
 	import type { EntityDisplayComponent } from './types';
-	import type { FormApi } from '../types';
 	import type { Snippet } from 'svelte';
 
 	interface Props {
@@ -25,13 +24,13 @@
 		// Options (dropdown)
 		options?: V[];
 		optionDisplayComponent: EntityDisplayComponent<V, C>;
+		getOptionContext?: (option: V, index: number) => C;
 		showSearch?: boolean;
 
 		// Items
 		items?: T[];
 		itemDisplayComponent: EntityDisplayComponent<T, C>;
 		getItemContext?: (item: T, index: number) => C;
-		formApi: FormApi;
 
 		// Item interaction
 		allowDuplicates?: boolean;
@@ -48,6 +47,7 @@
 		onMoveDown?: (fromIndex: number, toIndex: number) => void;
 		onRemove?: (index: number) => void;
 		onClick?: (item: T, index: number) => void;
+		onItemUpdate?: (item: T, index: number, updates: Partial<T>) => void;
 
 		// Snippets (slots)
 		itemSnippet?: Snippet<[{ item: T; index: number }]>;
@@ -72,13 +72,13 @@
 		// Options (dropdown)
 		options = [] as V[],
 		optionDisplayComponent,
+		getOptionContext = () => ({}) as C,
 		showSearch = false,
 
 		// Items
 		items = [] as T[],
 		itemDisplayComponent,
 		getItemContext = () => ({}) as C,
-		formApi,
 		selectedItems = $bindable([]),
 
 		// Item interaction
@@ -95,13 +95,14 @@
 		onMoveDown = () => {},
 		onRemove = () => {},
 		onClick = () => {},
+		onItemUpdate = () => {},
 
 		itemSnippet
 	}: Props = $props();
 
 	// Internal state
 	let selectedOptionId = $state('');
-	let editingIndex: number = $state(-1);
+	let editingIndex = $state<number | null>(null);
 
 	let computedEmptyMessage = $derived(emptyMessage || `No ${label.toLowerCase()} added yet`);
 
@@ -126,6 +127,13 @@
 	}
 
 	function removeItem(index: number) {
+		// Reset editing index if we're removing the item being edited
+		if (editingIndex === index) {
+			editingIndex = null;
+		} else if (editingIndex !== null && editingIndex > index) {
+			// Adjust editing index if it's after the removed item
+			editingIndex = editingIndex - 1;
+		}
 		onRemove(index);
 	}
 
@@ -236,6 +244,7 @@
 						{placeholder}
 						onSelect={handleDropdownSelectChange}
 						displayComponent={optionDisplayComponent}
+						{getOptionContext}
 					/>
 				</div>
 			</div>
@@ -258,8 +267,13 @@
 						onClick(item, index);
 						if (allowSelection && itemClickAction == 'select') {
 							toggleItemSelection(item);
-						} else if (allowItemEdit(item) && !itemDisplayComponent.supportsInlineEdit) {
-							onEdit(item, index);
+						} else if (allowItemEdit(item)) {
+							if (itemDisplayComponent.supportsInlineEdit) {
+								// Toggle inline editing for this item
+								editingIndex = editingIndex === index ? null : index;
+							} else {
+								onEdit(item, index);
+							}
 						}
 					}}
 					tabindex={allowItemEdit(item) || allowSelection ? 0 : -1}
@@ -282,52 +296,41 @@
 					<div class="min-w-0 flex-1 overflow-hidden">
 						{#if itemSnippet}
 							{@render itemSnippet({ item, index })}
-						{:else if editingIndex === index && itemDisplayComponent.supportsInlineEdit && itemDisplayComponent.renderInlineEdit}
-							{@const context = getItemContext(item, index)}
-							{@const inlineEditConfig = itemDisplayComponent.renderInlineEdit(
-								item,
-								(updates) => {
-									const updatedItem = { ...item, ...updates };
-									onEdit(updatedItem, index);
-								},
-								formApi,
-								context
-							)}
-							<inlineEditConfig.component {...inlineEditConfig.props} />
 						{:else}
 							{@const context = getItemContext(item, index)}
-							<ListSelectItem {item} {context} displayComponent={itemDisplayComponent} />
+							{#if editingIndex === index && itemDisplayComponent.supportsInlineEdit && itemDisplayComponent.InlineEditorComponent}
+								{@const InlineEditor = itemDisplayComponent.InlineEditorComponent}
+								{@const ctx = context as Record<string, unknown>}
+								<InlineEditor
+									binding={item}
+									onUpdate={(updates: Partial<T>) => onItemUpdate(item, index, updates)}
+									service={ctx.service}
+									host={ctx.host}
+								/>
+							{:else}
+								<ListSelectItem {item} {context} displayComponent={itemDisplayComponent} />
+							{/if}
 						{/if}
 					</div>
 
 					<!-- Action Buttons -->
 					<div class="flex items-center gap-1">
 						{#if allowItemEdit(item) && itemClickAction != 'edit'}
-							{#if itemDisplayComponent.supportsInlineEdit}
-								<button
-									type="button"
-									onclick={(e) => {
-										e.stopPropagation();
-										editingIndex = editingIndex === index ? -1 : index;
-									}}
-									class="btn-icon"
-									title={editingIndex === index ? 'Done editing' : 'Edit'}
-								>
-									<Edit size={16} />
-								</button>
-							{:else}
-								<button
-									type="button"
-									onclick={(e) => {
-										e.stopPropagation();
+							<button
+								type="button"
+								onclick={(e) => {
+									e.stopPropagation();
+									if (itemDisplayComponent.supportsInlineEdit) {
+										editingIndex = editingIndex === index ? null : index;
+									} else {
 										onEdit(item, index);
-									}}
-									class="btn-icon"
-									title="Edit"
-								>
-									<Edit size={16} />
-								</button>
-							{/if}
+									}
+								}}
+								class="btn-icon"
+								title="Edit"
+							>
+								<Edit size={16} />
+							</button>
 						{/if}
 
 						{#if allowReorder}

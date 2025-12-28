@@ -1,11 +1,12 @@
 <script lang="ts">
-	import EditModal from '$lib/shared/components/forms/EditModal.svelte';
+	import { createForm } from '@tanstack/svelte-form';
+	import { submitForm } from '$lib/shared/components/forms/form-context';
+	import { required } from '$lib/shared/components/forms/validators';
+	import GenericModal from '$lib/shared/components/layout/GenericModal.svelte';
 	import ModalHeaderIcon from '$lib/shared/components/layout/ModalHeaderIcon.svelte';
 	import SelectInput from '$lib/shared/components/forms/input/SelectInput.svelte';
 	import ListManager from '$lib/shared/components/forms/selection/ListManager.svelte';
 	import { NetworkDisplay } from '$lib/shared/components/forms/selection/display/NetworkDisplay.svelte';
-	import { field } from 'svelte-forms';
-	import { required } from 'svelte-forms/validators';
 	import { entities, permissions, metadata } from '$lib/shared/stores/metadata';
 	import { useCurrentUserQuery } from '$lib/features/auth/queries';
 	import { useNetworksQuery } from '$lib/features/networks/queries';
@@ -48,9 +49,6 @@
 		.filter((p) => p.metadata.manage_org_entities)
 		.map((p) => p.id);
 
-	// Create form field for permissions
-	const permissionsField = field('permissions', '', [required()]);
-
 	// Selected networks state
 	let selectedNetworks: Network[] = $state([]);
 
@@ -65,7 +63,7 @@
 					.can_manage_user_permissions.includes(p.id);
 				return canManage;
 			})
-			.map((p) => ({ value: p.id, label: p.name, description: p.description }))
+			.map((p) => ({ value: p.id, label: p.name ?? '', description: p.description ?? '' }))
 	);
 
 	// Available networks for selection
@@ -73,15 +71,49 @@
 		networksData.filter((n) => !selectedNetworks.some((sn) => sn.id === n.id))
 	);
 
-	// Reset form when modal opens or user changes
-	$effect(() => {
-		if (isOpen && user) {
-			permissionsField.set(user.permissions);
+	function getDefaultValues() {
+		return {
+			permissions: user?.permissions || ('Viewer' as UserOrgPermissions)
+		};
+	}
+
+	// Create form
+	const form = createForm(() => ({
+		defaultValues: getDefaultValues(),
+		onSubmit: async ({ value }) => {
+			if (!user) return;
+
+			try {
+				const updatedUser: User = {
+					...user,
+					permissions: value.permissions as UserOrgPermissions,
+					network_ids: networksNotNeeded.includes(value.permissions as UserOrgPermissions)
+						? []
+						: selectedNetworks.map((n) => n.id)
+				};
+
+				await updateUserMutation.mutateAsync(updatedUser);
+				pushSuccess(`User ${user.email} updated successfully`);
+				onClose();
+			} catch (err) {
+				pushError(`Failed to update user: ${err}`);
+			}
+		}
+	}));
+
+	let permissionsValue = $derived(form.state.values.permissions);
+
+	// Reset form when modal opens
+	function handleOpen() {
+		form.reset(getDefaultValues());
+		if (user) {
 			selectedNetworks = user.network_ids
 				.map((id) => networksData.find((n) => n.id === id))
 				.filter((n): n is Network => n !== undefined);
+		} else {
+			selectedNetworks = [];
 		}
-	});
+	}
 
 	function handleAddNetwork(id: string) {
 		const network = networksData.find((n) => n.id === id);
@@ -95,23 +127,7 @@
 	}
 
 	async function handleSubmit() {
-		if (!user) return;
-
-		try {
-			const updatedUser: User = {
-				...user,
-				permissions: $permissionsField.value as UserOrgPermissions,
-				network_ids: networksNotNeeded.includes($permissionsField.value as UserOrgPermissions)
-					? []
-					: selectedNetworks.map((n) => n.id)
-			};
-
-			await updateUserMutation.mutateAsync(updatedUser);
-			pushSuccess(`User ${user.email} updated successfully`);
-			onClose();
-		} catch (err) {
-			pushError(`Failed to update user: ${err}`);
-		}
+		await submitForm(form);
 	}
 
 	function handleClose() {
@@ -123,16 +139,13 @@
 	let title = $derived(user ? `Edit ${user.email}` : 'Edit User');
 </script>
 
-<EditModal
+<GenericModal
 	{isOpen}
 	{title}
-	{loading}
-	saveLabel="Save Changes"
-	cancelLabel="Cancel"
-	onSave={handleSubmit}
-	onCancel={handleClose}
 	size="xl"
-	let:formApi
+	onClose={handleClose}
+	onOpen={handleOpen}
+	showCloseButton={true}
 >
 	<svelte:fragment slot="header-icon">
 		<ModalHeaderIcon
@@ -141,58 +154,88 @@
 		/>
 	</svelte:fragment>
 
-	{#if user}
-		<div class="space-y-6">
-			<!-- User Info (read-only) -->
-			<div class="card card-static">
-				<div class="space-y-2">
-					<div class="flex items-center justify-between">
-						<span class="text-secondary text-sm">Email</span>
-						<span class="text-primary text-sm font-medium">{user.email}</span>
+	<form
+		onsubmit={(e) => {
+			e.preventDefault();
+			e.stopPropagation();
+			handleSubmit();
+		}}
+		class="flex h-full flex-col"
+	>
+		<div class="flex-1 overflow-auto p-6">
+			{#if user}
+				<div class="space-y-6">
+					<!-- User Info (read-only) -->
+					<div class="card card-static">
+						<div class="space-y-2">
+							<div class="flex items-center justify-between">
+								<span class="text-secondary text-sm">Email</span>
+								<span class="text-primary text-sm font-medium">{user.email}</span>
+							</div>
+							<div class="flex items-center justify-between">
+								<span class="text-secondary text-sm">Authentication</span>
+								<span class="text-primary text-sm">{user.oidc_provider || 'Email & Password'}</span>
+							</div>
+						</div>
 					</div>
-					<div class="flex items-center justify-between">
-						<span class="text-secondary text-sm">Authentication</span>
-						<span class="text-primary text-sm">{user.oidc_provider || 'Email & Password'}</span>
-					</div>
-				</div>
-			</div>
 
-			<!-- Permissions Selection -->
-			<SelectInput
-				label="Permissions Level"
-				id="permissions"
-				{formApi}
-				field={permissionsField}
-				options={permissionOptions}
-				helpText="Choose the access level for this user"
-			/>
+					<!-- Permissions Selection -->
+					<form.Field
+						name="permissions"
+						validators={{
+							onBlur: ({ value }) => required(value)
+						}}
+					>
+						{#snippet children(field)}
+							<SelectInput
+								label="Permissions Level"
+								id="permissions"
+								{field}
+								options={permissionOptions}
+								helpText="Choose the access level for this user"
+							/>
+						{/snippet}
+					</form.Field>
 
-			<!-- Network Assignment (only for Member/Viewer) -->
-			{#if !networksNotNeeded.includes($permissionsField.value as UserOrgPermissions)}
-				<ListManager
-					label="Networks"
-					helpText="Select networks this user will have access to"
-					required={true}
-					allowReorder={false}
-					allowAddFromOptions={true}
-					allowCreateNew={false}
-					allowItemEdit={() => false}
-					disableCreateNewButton={false}
-					onAdd={handleAddNetwork}
-					onRemove={handleRemoveNetwork}
-					options={networkOptions}
-					optionDisplayComponent={NetworkDisplay}
-					items={selectedNetworks}
-					itemDisplayComponent={NetworkDisplay}
-					{formApi}
-				/>
-			{:else}
-				<div class="card card-static">
-					<p class="text-secondary text-sm">
-						Users with {$permissionsField.value} permissions have access to all networks.
-					</p>
+					<!-- Network Assignment (only for Member/Viewer) -->
+					{#if !networksNotNeeded.includes(permissionsValue as UserOrgPermissions)}
+						<ListManager
+							label="Networks"
+							helpText="Select networks this user will have access to"
+							required={true}
+							allowReorder={false}
+							allowAddFromOptions={true}
+							allowCreateNew={false}
+							allowItemEdit={() => false}
+							disableCreateNewButton={false}
+							onAdd={handleAddNetwork}
+							onRemove={handleRemoveNetwork}
+							options={networkOptions}
+							optionDisplayComponent={NetworkDisplay}
+							items={selectedNetworks}
+							itemDisplayComponent={NetworkDisplay}
+						/>
+					{:else}
+						<div class="card card-static">
+							<p class="text-secondary text-sm">
+								Users with {permissionsValue} permissions have access to all networks.
+							</p>
+						</div>
+					{/if}
 				</div>
 			{/if}
 		</div>
-	{/if}
-</EditModal>
+
+		<!-- Footer -->
+		<div class="modal-footer">
+			<div class="flex items-center justify-end gap-3">
+				<button type="button" disabled={loading} onclick={handleClose} class="btn-secondary">
+					Cancel
+				</button>
+				<button type="submit" disabled={loading} class="btn-primary">
+					{loading ? 'Saving...' : 'Save Changes'}
+				</button>
+			</div>
+		</div>
+	</form>
+</GenericModal>

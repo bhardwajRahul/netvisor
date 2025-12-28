@@ -3,8 +3,10 @@
 	import type { InterfaceBinding, Service } from '$lib/features/services/types/base';
 	import type { HostFormData, Interface } from '$lib/features/hosts/types/base';
 	import { Link2 } from 'lucide-svelte';
+	import type { EntityDisplayComponent } from '../types';
+	import InterfaceBindingInlineEditor from './InterfaceBindingInlineEditor.svelte';
 
-	// Context for binding display within form editing (inline editor needs host form data)
+	// Context for binding display within form editing
 	export interface InterfaceBindingDisplayContext {
 		service: Service;
 		host: HostFormData;
@@ -50,31 +52,12 @@
 			return serviceType?.category || null;
 		},
 		supportsInlineEdit: true,
-		renderInlineEdit: (
-			binding: InterfaceBinding,
-			onUpdate: (updates: Partial<InterfaceBinding>) => void,
-			formApi: FormApi,
-			context: InterfaceBindingDisplayContext
-		) => {
-			return {
-				component: InterfaceBindingInlineEditor,
-				props: {
-					binding,
-					onUpdate,
-					formApi,
-					service: context?.service,
-					host: context?.host
-				}
-			};
-		}
+		InlineEditorComponent: InterfaceBindingInlineEditor
 	};
 </script>
 
 <script lang="ts">
-	import type { EntityDisplayComponent } from '../types';
 	import ListSelectItem from '../ListSelectItem.svelte';
-	import InterfaceBindingInlineEditor from './InterfaceBindingInlineEditor.svelte';
-	import type { FormApi } from '../../types';
 
 	export let item: InterfaceBinding;
 	export let context: InterfaceBindingDisplayContext;

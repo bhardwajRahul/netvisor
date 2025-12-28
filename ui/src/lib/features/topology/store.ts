@@ -11,6 +11,10 @@ let initialized = false;
 let topologyInitialized = false;
 let lastTopologyId = '';
 
+const OPTIONS_STORAGE_KEY = 'scanopy_topology_options';
+const EXPANDED_STORAGE_KEY = 'scanopy_topology_options_expanded_state';
+const AUTO_REBUILD_STORAGE_KEY = 'scanopy_topology_auto_rebuild';
+
 export const topologies = writable<Topology[]>([]);
 export const topology = writable<Topology>();
 export const selectedNetwork = writable<string>('');
@@ -18,10 +22,6 @@ export const autoRebuild = writable<boolean>(loadAutoRebuildFromStorage());
 
 export const selectedNode = writable<Node | null>(null);
 export const selectedEdge = writable<Edge | null>(null);
-
-const OPTIONS_STORAGE_KEY = 'scanopy_topology_options';
-const EXPANDED_STORAGE_KEY = 'scanopy_topology_options_expanded_state';
-const AUTO_REBUILD_STORAGE_KEY = 'scanopy_topology_auto_rebuild';
 
 // Default options
 const defaultOptions: TopologyOptions = {
@@ -40,6 +40,16 @@ const defaultOptions: TopologyOptions = {
 		hide_service_categories: []
 	}
 };
+
+export function hasConflicts(topology: Topology): boolean {
+	return topology.removed_hosts.length > 0 ||
+		topology.removed_services.length > 0 ||
+		topology.removed_subnets.length > 0 ||
+		topology.removed_bindings.length > 0 ||
+		topology.removed_ports.length > 0 ||
+		topology.removed_interfaces.length > 0 ||
+		topology.removed_groups.length > 0;
+}
 
 export const topologyOptions = writable<TopologyOptions>(loadOptionsFromStorage());
 export const optionsPanelExpanded = writable<boolean>(loadExpandedFromStorage());
@@ -321,13 +331,13 @@ export async function deleteTopology(id: string) {
 	}
 }
 
-export function createEmptyTopologyFormData(): Topology {
+export function createEmptyTopologyFormData(defaultNetworkId?: string): Topology {
 	return {
 		id: uuidv4Sentinel,
 		created_at: utcTimeZoneSentinel,
 		updated_at: utcTimeZoneSentinel,
 		name: '',
-		network_id: get(networks)[0]?.id || '',
+		network_id: defaultNetworkId ?? get(networks)[0]?.id ?? '',
 		edges: [],
 		nodes: [],
 		options: structuredClone(defaultOptions),

@@ -6,7 +6,6 @@
 	import { type HostFormData, type Interface } from '$lib/features/hosts/types/base';
 	import { SubnetDisplay } from '$lib/shared/components/forms/selection/display/SubnetDisplay.svelte';
 	import { InterfaceDisplay } from '$lib/shared/components/forms/selection/display/InterfaceDisplay.svelte';
-	import type { FormApi } from '$lib/shared/components/forms/types';
 	import EntityConfigEmpty from '$lib/shared/components/forms/EntityConfigEmpty.svelte';
 	import InternetInterfaceConfigPanel from './InternetInterfaceConfigPanel.svelte';
 	import { v4 as uuidv4 } from 'uuid';
@@ -14,15 +13,16 @@
 	import ConfirmationDialog from '$lib/shared/components/feedback/ConfirmationDialog.svelte';
 
 	interface Props {
-		formApi: FormApi;
 		formData: HostFormData;
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		form: { Field: any; setFieldValue: any };
 		currentServices?: Service[];
 		onServicesChange?: (services: Service[]) => void;
 	}
 
 	let {
-		formApi,
 		formData = $bindable(),
+		form,
 		currentServices = [],
 		onServicesChange = () => {}
 	}: Props = $props();
@@ -89,6 +89,7 @@
 			};
 
 			formData.interfaces = [...interfaces, newInterface];
+			form.setFieldValue('interfaces', formData.interfaces);
 		} else {
 			const newInterface: Interface = {
 				id: uuidv4(), // Temp ID for form - store will detect as new since it's not in interfaces store
@@ -103,6 +104,7 @@
 			};
 
 			formData.interfaces = [...interfaces, newInterface];
+			form.setFieldValue('interfaces', formData.interfaces);
 		}
 	}
 
@@ -118,6 +120,7 @@
 		} else {
 			// No bindings, delete immediately
 			formData.interfaces = interfaces.filter((_, i) => i !== index);
+			form.setFieldValue('interfaces', formData.interfaces);
 		}
 	}
 
@@ -128,6 +131,7 @@
 			removeBindingsToInterface(iface.id);
 			// Then remove the interface
 			formData.interfaces = interfaces.filter((_, i) => i !== pendingDeleteIndex);
+			form.setFieldValue('interfaces', formData.interfaces);
 		}
 		// Reset dialog state
 		showDeleteConfirmation = false;
@@ -140,6 +144,15 @@
 		pendingDeleteIndex = null;
 		affectedServiceNames = [];
 	}
+
+	function handleInterfaceChange(updatedInterface: Interface, index: number) {
+		// Update formData.interfaces for real-time sync with list display and bindings
+		// Note: Don't call form.setFieldValue here - the form field already updated
+		// form state via field.handleChange. We only need to sync formData for display.
+		const updatedInterfaces = [...formData.interfaces];
+		updatedInterfaces[index] = updatedInterface;
+		formData.interfaces = updatedInterfaces;
+	}
 </script>
 
 <ListConfigEditor bind:items={formData.interfaces}>
@@ -151,7 +164,6 @@
 			emptyMessage="No interfaces configured. Add one to get started."
 			allowReorder={false}
 			itemClickAction="edit"
-			{formApi}
 			options={availableSubnets}
 			{items}
 			optionDisplayComponent={SubnetDisplay}
@@ -164,22 +176,24 @@
 		/>
 	</svelte:fragment>
 
-	<svelte:fragment slot="config" let:selectedItem let:onChange>
+	<svelte:fragment slot="config" let:selectedItem let:selectedIndex let:onChange>
 		{@const subnet = selectedItem ? findSubnetById(selectedItem.subnet_id) : null}
 		{#if selectedItem && subnet && subnet.cidr == '0.0.0.0/0'}
 			<InternetInterfaceConfigPanel
-				{formApi}
 				iface={selectedItem}
 				{subnet}
 				onChange={(updatedInterface) => onChange(updatedInterface)}
 			/>
 		{:else if selectedItem && subnet && subnet.cidr != '0.0.0.0/0'}
-			<InterfaceConfigPanel
-				{formApi}
-				iface={selectedItem}
-				{subnet}
-				onChange={(updatedInterface) => onChange(updatedInterface)}
-			/>
+			{#key selectedItem.id}
+				<InterfaceConfigPanel
+					iface={selectedItem}
+					{subnet}
+					index={selectedIndex}
+					{form}
+					onChange={(updatedInterface) => handleInterfaceChange(updatedInterface, selectedIndex)}
+				/>
+			{/key}
 		{:else}
 			<EntityConfigEmpty
 				title="No interface selected"

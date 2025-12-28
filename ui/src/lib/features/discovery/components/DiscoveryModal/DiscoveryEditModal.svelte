@@ -1,5 +1,7 @@
 <script lang="ts">
-	import EditModal from '$lib/shared/components/forms/EditModal.svelte';
+	import { createForm } from '@tanstack/svelte-form';
+	import { submitForm } from '$lib/shared/components/forms/form-context';
+	import GenericModal from '$lib/shared/components/layout/GenericModal.svelte';
 	import ModalHeaderIcon from '$lib/shared/components/layout/ModalHeaderIcon.svelte';
 	import { entities } from '$lib/shared/stores/metadata';
 	import EntityMetadataSection from '$lib/shared/components/forms/EntityMetadataSection.svelte';
@@ -14,67 +16,99 @@
 	import type { Daemon } from '$lib/features/daemons/types/base';
 	import type { Host } from '$lib/features/hosts/types/base';
 
-	export let discovery: Discovery | null = null;
-	export let isOpen = false;
-	export let daemons: Daemon[] = [];
-	export let hosts: Host[] = [];
-	export let onCreate: (data: Discovery) => Promise<void> | void;
-	export let onUpdate: (id: string, data: Discovery) => Promise<void> | void;
-	export let onClose: () => void;
-	export let onDelete: ((id: string) => Promise<void> | void) | null = null;
-
-	let loading = false;
-	let deleting = false;
-
-	$: isEditing = discovery !== null;
-	$: isHistoricalRun = discovery?.run_type.type === 'Historical';
-
-	$: title = isEditing
-		? isHistoricalRun
-			? `View Discovery Run: ${discovery?.name}`
-			: `Edit Discovery: ${discovery?.name}`
-		: 'Create Scheduled Discovery';
-
-	$: daemon = daemons.find((d) => d.id === formData.daemon_id) || null;
-	$: daemonHostId = (daemon ? hosts.find((h) => h.id === daemon.host_id)?.id : null) || null;
-
-	let formData: Discovery = createEmptyDiscoveryFormData(daemon);
-
-	// Reset form when modal opens
-	$: if (isOpen) {
-		resetForm();
+	interface Props {
+		discovery?: Discovery | null;
+		isOpen?: boolean;
+		daemons?: Daemon[];
+		hosts?: Host[];
+		onCreate: (data: Discovery) => Promise<void> | void;
+		onUpdate: (id: string, data: Discovery) => Promise<void> | void;
+		onClose: () => void;
+		onDelete?: ((id: string) => Promise<void> | void) | null;
 	}
 
-	// Set default daemon when available
-	$: if (formData.daemon_id === uuidv4Sentinel && daemons.length > 0) {
-		formData.daemon_id = daemons[0].id;
-		formData.network_id = daemons[0].network_id;
+	let {
+		discovery = null,
+		isOpen = false,
+		daemons = [],
+		hosts = [],
+		onCreate,
+		onUpdate,
+		onClose,
+		onDelete = null
+	}: Props = $props();
+
+	let loading = $state(false);
+	let deleting = $state(false);
+
+	// Mutable form data that sub-components can update
+	let formData = $state<Discovery>(createEmptyDiscoveryFormData(null));
+
+	let isEditing = $derived(discovery !== null);
+	let isHistoricalRun = $derived(discovery?.run_type.type === 'Historical');
+	let readOnly = $derived(formData.run_type.type == 'Historical')
+
+	let title = $derived(
+		isEditing
+			? isHistoricalRun
+				? `View Discovery Run: ${discovery?.name}`
+				: `Edit Discovery: ${discovery?.name}`
+			: 'Create Scheduled Discovery'
+	);
+
+	let daemon = $derived(daemons.find((d) => d.id === formData.daemon_id) || null);
+	let daemonHostId = $derived((daemon ? hosts.find((h) => h.id === daemon.host_id)?.id : null) || null);
+
+	function getDefaultFormData(): Discovery {
+		const defaultDaemon = daemons.length > 0 ? daemons[0] : null;
+		if (discovery) {
+			return { ...discovery };
+		}
+		const empty = createEmptyDiscoveryFormData(defaultDaemon);
+		if (defaultDaemon) {
+			empty.daemon_id = defaultDaemon.id;
+			empty.network_id = defaultDaemon.network_id;
+		}
+		return empty;
 	}
 
-	function resetForm() {
-		formData = discovery ? { ...discovery } : createEmptyDiscoveryFormData(daemon);
+	// TanStack Form for validation (name field)
+	// NOTE: defaultValues must NOT read from $state to avoid reactivity loops
+	const form = createForm(() => ({
+		defaultValues: {
+			name: ''
+		},
+		onSubmit: async ({ value }) => {
+			// Update formData with form values
+			formData.name = value.name.trim();
+
+			if (daemon) {
+				loading = true;
+				try {
+					if (isEditing && discovery) {
+						await onUpdate(discovery.id, formData);
+					} else {
+						await onCreate(formData);
+					}
+					onClose();
+				} catch (error) {
+					pushError(error instanceof Error ? error.message : 'Failed to save discovery');
+				} finally {
+					loading = false;
+				}
+			} else {
+				pushError('Could not get network ID from selected daemon. Please try a different daemon.');
+			}
+		}
+	}));
+
+	function handleOpen() {
+		formData = getDefaultFormData();
+		form.reset({ name: formData.name });
 	}
 
 	async function handleSubmit() {
-		if (daemon) {
-			const discoveryData: Discovery = {
-				...formData,
-				name: formData.name.trim()
-			};
-
-			loading = true;
-			try {
-				if (isEditing && discovery) {
-					await onUpdate(discovery.id, discoveryData);
-				} else {
-					await onCreate(discoveryData);
-				}
-			} finally {
-				loading = false;
-			}
-		} else {
-			pushError('Could not get network ID from selected daemon. Please try a different daemon.');
-		}
+		await submitForm(form);
 	}
 
 	async function handleDelete() {
@@ -82,45 +116,57 @@
 			deleting = true;
 			try {
 				await onDelete(discovery.id);
+				onClose();
+			} catch (error) {
+				pushError(error instanceof Error ? error.message : 'Failed to delete discovery');
 			} finally {
 				deleting = false;
 			}
 		}
 	}
 
-	$: saveLabel = isEditing ? 'Update Discovery' : 'Create Discovery';
-	$: showSave = !isHistoricalRun;
+	// Set default daemon when available and formData has sentinel
+	$effect(() => {
+		if (formData.daemon_id === uuidv4Sentinel && daemons.length > 0) {
+			formData.daemon_id = daemons[0].id;
+			formData.network_id = daemons[0].network_id;
+		}
+	});
+
+	let saveLabel = $derived(isEditing ? 'Update Discovery' : 'Create Discovery');
+	let showSave = $derived(!isHistoricalRun);
 
 	let colorHelper = entities.getColorHelper('Discovery');
 </script>
 
-<EditModal
+<GenericModal
 	{isOpen}
 	{title}
-	{loading}
-	{deleting}
-	{saveLabel}
-	{showSave}
-	cancelLabel={isHistoricalRun ? 'Close' : 'Cancel'}
-	onSave={showSave ? handleSubmit : null}
-	onCancel={onClose}
-	onDelete={isEditing && !isHistoricalRun ? handleDelete : null}
+	onClose={onClose}
+	onOpen={handleOpen}
 	size="xl"
-	let:formApi
+	showCloseButton={true}
 >
 	<svelte:fragment slot="header-icon">
 		<ModalHeaderIcon Icon={entities.getIconComponent('Discovery')} color={colorHelper.color} />
 	</svelte:fragment>
 
-	<div class="flex h-full flex-col overflow-hidden">
+	<form
+		onsubmit={(e) => {
+			e.preventDefault();
+			e.stopPropagation();
+			if (showSave) handleSubmit();
+		}}
+		class="flex h-full flex-col"
+	>
 		<div class="flex-1 overflow-y-auto">
 			<div class="space-y-8 p-6">
-				<DiscoveryDetailsForm {formApi} {daemons} bind:formData readOnly={isEditing} />
+				<DiscoveryDetailsForm {form} {daemons} bind:formData {readOnly} />
 
 				{#if isHistoricalRun && discovery?.run_type.type === 'Historical'}
 					<DiscoveryHistoricalSummary payload={discovery.run_type.results} />
 				{:else if daemon}
-					<DiscoveryTypeForm {formApi} bind:formData readOnly={isEditing} {daemonHostId} {daemon} />
+					<DiscoveryTypeForm bind:formData {readOnly} {daemonHostId} {daemon} />
 				{:else}
 					<InlineWarning body="No daemon selected; can't set up discovery" />
 				{/if}
@@ -130,5 +176,37 @@
 				{/if}
 			</div>
 		</div>
-	</div>
-</EditModal>
+
+		<div class="modal-footer">
+			<div class="flex items-center justify-between">
+				<div>
+					{#if isEditing && !isHistoricalRun && onDelete}
+						<button
+							type="button"
+							disabled={deleting || loading}
+							onclick={handleDelete}
+							class="btn-danger"
+						>
+							{deleting ? 'Deleting...' : 'Delete'}
+						</button>
+					{/if}
+				</div>
+				<div class="flex items-center gap-3">
+					<button
+						type="button"
+						disabled={loading || deleting}
+						onclick={onClose}
+						class="btn-secondary"
+					>
+						{isHistoricalRun ? 'Close' : 'Cancel'}
+					</button>
+					{#if showSave}
+						<button type="submit" disabled={loading || deleting} class="btn-primary">
+							{loading ? 'Saving...' : saveLabel}
+						</button>
+					{/if}
+				</div>
+			</div>
+		</div>
+	</form>
+</GenericModal>
