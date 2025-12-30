@@ -573,3 +573,531 @@ async fn test_binding_interface_from_different_host_rejected() {
         err
     );
 }
+
+// =============================================================================
+// CROSS-SERVICE BINDING CONFLICT TESTS
+// =============================================================================
+
+/// Test that manual service creation is blocked when port is already bound to another service
+#[tokio::test]
+#[serial]
+async fn test_cross_service_manual_create_blocked() {
+    let (_, services, _container) = test_services().await;
+
+    let organization = services
+        .organization_service
+        .create(organization(), AuthenticatedEntity::System)
+        .await
+        .unwrap();
+    let network = services
+        .network_service
+        .create(network(&organization.id), AuthenticatedEntity::System)
+        .await
+        .unwrap();
+
+    let subnet_obj = subnet(&network.id);
+    services
+        .subnet_service
+        .create(subnet_obj.clone(), AuthenticatedEntity::System)
+        .await
+        .unwrap();
+
+    // Create host with interface and port
+    let host_obj = host(&network.id);
+    let iface = interface(&network.id, &subnet_obj.id);
+    let port_obj = port(&network.id, &host_obj.id);
+
+    let created_host = services
+        .host_service
+        .discover_host(
+            host_obj.clone(),
+            vec![iface],
+            vec![port_obj],
+            vec![],
+            AuthenticatedEntity::System,
+        )
+        .await
+        .unwrap();
+
+    let created_iface = &created_host.interfaces[0];
+    let created_port = &created_host.ports[0];
+
+    // Create first service with port binding (manual source)
+    let mut svc1 = service(&network.id, &created_host.id);
+    svc1.base.name = "Jellyfin".to_string();
+    svc1.base.source = EntitySource::Manual;
+    svc1.base.bindings = vec![Binding::new_port_serviceless(
+        created_port.id,
+        Some(created_iface.id),
+    )];
+
+    let created_svc1 = services
+        .service_service
+        .create(svc1, AuthenticatedEntity::System)
+        .await
+        .unwrap();
+
+    assert_eq!(created_svc1.base.name, "Jellyfin");
+
+    // Try to create second service with same port binding (should be rejected)
+    let mut svc2 = service(&network.id, &created_host.id);
+    svc2.base.name = "Plex".to_string();
+    svc2.base.source = EntitySource::Manual;
+    svc2.base.bindings = vec![Binding::new_port_serviceless(
+        created_port.id,
+        Some(created_iface.id),
+    )];
+
+    let result = services
+        .service_service
+        .create(svc2, AuthenticatedEntity::System)
+        .await;
+
+    assert!(
+        result.is_err(),
+        "Should reject creating service with port already bound to another service"
+    );
+    let err = result.unwrap_err().to_string();
+    assert!(
+        err.contains("Jellyfin") && err.contains("already bound"),
+        "Error should mention the conflicting service name: {}",
+        err
+    );
+}
+
+/// Test that service update is blocked when trying to add a port binding already claimed
+#[tokio::test]
+#[serial]
+async fn test_cross_service_update_blocked() {
+    let (_, services, _container) = test_services().await;
+
+    let organization = services
+        .organization_service
+        .create(organization(), AuthenticatedEntity::System)
+        .await
+        .unwrap();
+    let network = services
+        .network_service
+        .create(network(&organization.id), AuthenticatedEntity::System)
+        .await
+        .unwrap();
+
+    let subnet_obj = subnet(&network.id);
+    services
+        .subnet_service
+        .create(subnet_obj.clone(), AuthenticatedEntity::System)
+        .await
+        .unwrap();
+
+    // Create host with interface and two ports
+    let host_obj = host(&network.id);
+    let iface = interface(&network.id, &subnet_obj.id);
+    let port1 = port(&network.id, &host_obj.id);
+    let mut port2 = port(&network.id, &host_obj.id);
+    port2.base.port_type = crate::server::ports::r#impl::base::PortType::new_tcp(9090);
+
+    let created_host = services
+        .host_service
+        .discover_host(
+            host_obj.clone(),
+            vec![iface],
+            vec![port1, port2],
+            vec![],
+            AuthenticatedEntity::System,
+        )
+        .await
+        .unwrap();
+
+    let created_iface = &created_host.interfaces[0];
+    let created_port1 = &created_host.ports[0];
+    let created_port2 = &created_host.ports[1];
+
+    // Create first service with port1 binding
+    let mut svc1 = service(&network.id, &created_host.id);
+    svc1.base.name = "Service1".to_string();
+    svc1.base.source = EntitySource::Manual;
+    svc1.base.bindings = vec![Binding::new_port_serviceless(
+        created_port1.id,
+        Some(created_iface.id),
+    )];
+
+    services
+        .service_service
+        .create(svc1, AuthenticatedEntity::System)
+        .await
+        .unwrap();
+
+    // Create second service with port2 binding
+    let mut svc2 = service(&network.id, &created_host.id);
+    svc2.base.name = "Service2".to_string();
+    svc2.base.source = EntitySource::Manual;
+    svc2.base.bindings = vec![Binding::new_port_serviceless(
+        created_port2.id,
+        Some(created_iface.id),
+    )];
+
+    let mut created_svc2 = services
+        .service_service
+        .create(svc2, AuthenticatedEntity::System)
+        .await
+        .unwrap();
+
+    // Try to update svc2 to also claim port1 (should be rejected)
+    created_svc2
+        .base
+        .bindings
+        .push(Binding::new_port_serviceless(
+            created_port1.id,
+            Some(created_iface.id),
+        ));
+
+    let result = services
+        .service_service
+        .update(&mut created_svc2, AuthenticatedEntity::System)
+        .await;
+
+    assert!(
+        result.is_err(),
+        "Should reject update that claims port already bound to another service"
+    );
+    let err = result.unwrap_err().to_string();
+    assert!(
+        err.contains("Service1") && err.contains("already bound"),
+        "Error should mention the conflicting service name: {}",
+        err
+    );
+}
+
+/// Test that "all interfaces" port binding conflicts with specific interface binding
+#[tokio::test]
+#[serial]
+async fn test_cross_service_all_interfaces_conflict() {
+    let (_, services, _container) = test_services().await;
+
+    let organization = services
+        .organization_service
+        .create(organization(), AuthenticatedEntity::System)
+        .await
+        .unwrap();
+    let network = services
+        .network_service
+        .create(network(&organization.id), AuthenticatedEntity::System)
+        .await
+        .unwrap();
+
+    let subnet_obj = subnet(&network.id);
+    services
+        .subnet_service
+        .create(subnet_obj.clone(), AuthenticatedEntity::System)
+        .await
+        .unwrap();
+
+    // Create host with interface and port
+    let host_obj = host(&network.id);
+    let iface = interface(&network.id, &subnet_obj.id);
+    let port_obj = port(&network.id, &host_obj.id);
+
+    let created_host = services
+        .host_service
+        .discover_host(
+            host_obj.clone(),
+            vec![iface],
+            vec![port_obj],
+            vec![],
+            AuthenticatedEntity::System,
+        )
+        .await
+        .unwrap();
+
+    let created_iface = &created_host.interfaces[0];
+    let created_port = &created_host.ports[0];
+
+    // Create first service with port binding on "all interfaces" (None)
+    let mut svc1 = service(&network.id, &created_host.id);
+    svc1.base.name = "AllInterfacesService".to_string();
+    svc1.base.source = EntitySource::Manual;
+    svc1.base.bindings = vec![Binding::new_port_serviceless(created_port.id, None)];
+
+    services
+        .service_service
+        .create(svc1, AuthenticatedEntity::System)
+        .await
+        .unwrap();
+
+    // Try to create second service with same port but specific interface (should conflict)
+    let mut svc2 = service(&network.id, &created_host.id);
+    svc2.base.name = "SpecificInterfaceService".to_string();
+    svc2.base.source = EntitySource::Manual;
+    svc2.base.bindings = vec![Binding::new_port_serviceless(
+        created_port.id,
+        Some(created_iface.id),
+    )];
+
+    let result = services
+        .service_service
+        .create(svc2, AuthenticatedEntity::System)
+        .await;
+
+    assert!(
+        result.is_err(),
+        "Should reject when 'all interfaces' binding exists for same port"
+    );
+}
+
+/// Test that discovery drops conflicting service and orphans valid bindings to OpenPorts
+#[tokio::test]
+#[serial]
+async fn test_discovery_conflict_drops_service_orphans_to_open_ports() {
+    use crate::server::services::r#impl::definitions::ServiceDefinitionExt;
+    use crate::server::services::r#impl::patterns::MatchDetails;
+
+    let (_, services, _container) = test_services().await;
+
+    let organization = services
+        .organization_service
+        .create(organization(), AuthenticatedEntity::System)
+        .await
+        .unwrap();
+    let network = services
+        .network_service
+        .create(network(&organization.id), AuthenticatedEntity::System)
+        .await
+        .unwrap();
+
+    let subnet_obj = subnet(&network.id);
+    services
+        .subnet_service
+        .create(subnet_obj.clone(), AuthenticatedEntity::System)
+        .await
+        .unwrap();
+
+    // Create host with interface and two ports
+    let host_obj = host(&network.id);
+    let iface = interface(&network.id, &subnet_obj.id);
+    let port1 = port(&network.id, &host_obj.id);
+    let mut port2 = port(&network.id, &host_obj.id);
+    port2.base.port_type = crate::server::ports::r#impl::base::PortType::new_tcp(9090);
+
+    // First discovery - create host with a service bound to port1
+    let mut existing_svc = service(&network.id, &host_obj.id);
+    existing_svc.base.name = "ExistingService".to_string();
+    existing_svc.base.source = EntitySource::DiscoveryWithMatch {
+        metadata: vec![],
+        details: MatchDetails::new_certain("Test"),
+    };
+    existing_svc.base.bindings = vec![Binding::new_port_serviceless(port1.id, Some(iface.id))];
+
+    let created_host = services
+        .host_service
+        .discover_host(
+            host_obj.clone(),
+            vec![iface.clone()],
+            vec![port1.clone(), port2.clone()],
+            vec![existing_svc],
+            AuthenticatedEntity::System,
+        )
+        .await
+        .unwrap();
+
+    let created_port1 = &created_host.ports[0];
+    let created_port2 = &created_host.ports[1];
+    let created_iface = &created_host.interfaces[0];
+
+    // Verify first service was created
+    assert_eq!(created_host.services.len(), 1);
+    assert_eq!(created_host.services[0].base.name, "ExistingService");
+
+    // Second discovery - create new service that conflicts on port1 but has port2
+    let mut conflicting_svc = service(&network.id, &created_host.id);
+    conflicting_svc.base.name = "ConflictingService".to_string();
+    conflicting_svc.base.source = EntitySource::DiscoveryWithMatch {
+        metadata: vec![],
+        details: MatchDetails::new_certain("Test"),
+    };
+    conflicting_svc.base.bindings = vec![
+        Binding::new_port_serviceless(created_port1.id, Some(created_iface.id)), // conflicts
+        Binding::new_port_serviceless(created_port2.id, Some(created_iface.id)), // valid
+    ];
+
+    services
+        .host_service
+        .discover_host(
+            host_obj.clone(),
+            vec![iface],
+            vec![port1, port2],
+            vec![conflicting_svc],
+            AuthenticatedEntity::System,
+        )
+        .await
+        .unwrap();
+
+    // The conflicting service should have been dropped, but an OpenPorts service
+    // should have been created with the valid port2 binding
+    let filter = EntityFilter::unfiltered().host_id(&created_host.id);
+    let all_services = services.service_service.get_all(filter).await.unwrap();
+
+    // Should have: ExistingService + OpenPorts (with orphaned port2 binding)
+    assert!(
+        all_services.len() >= 2,
+        "Should have at least ExistingService and OpenPorts, got {}",
+        all_services.len()
+    );
+
+    // Find the OpenPorts service
+    let open_ports_svc = all_services
+        .iter()
+        .find(|s| s.base.service_definition.is_open_ports());
+
+    assert!(
+        open_ports_svc.is_some(),
+        "OpenPorts service should exist with orphaned bindings"
+    );
+
+    let open_ports_svc = open_ports_svc.unwrap();
+
+    // OpenPorts should have the port2 binding (the valid one from the dropped service)
+    let has_port2_binding = open_ports_svc.base.bindings.iter().any(|b| {
+        if let crate::server::bindings::r#impl::base::BindingType::Port { port_id, .. } =
+            &b.base.binding_type
+        {
+            *port_id == created_port2.id
+        } else {
+            false
+        }
+    });
+
+    assert!(
+        has_port2_binding,
+        "OpenPorts should have the orphaned port2 binding"
+    );
+
+    // ConflictingService should NOT exist
+    let conflicting_exists = all_services
+        .iter()
+        .any(|s| s.base.name == "ConflictingService");
+    assert!(
+        !conflicting_exists,
+        "ConflictingService should have been dropped"
+    );
+}
+
+/// Test that OpenPorts services are singletons per host (merged via upsert)
+#[tokio::test]
+#[serial]
+async fn test_open_ports_singleton_per_host() {
+    use crate::server::services::definitions::open_ports::OpenPorts as OpenPortsDef;
+    use crate::server::services::r#impl::base::ServiceBase;
+    use crate::server::services::r#impl::definitions::ServiceDefinitionExt;
+    use crate::server::shared::storage::traits::StorableEntity;
+
+    let (_, services, _container) = test_services().await;
+
+    let organization = services
+        .organization_service
+        .create(organization(), AuthenticatedEntity::System)
+        .await
+        .unwrap();
+    let network = services
+        .network_service
+        .create(network(&organization.id), AuthenticatedEntity::System)
+        .await
+        .unwrap();
+
+    let subnet_obj = subnet(&network.id);
+    services
+        .subnet_service
+        .create(subnet_obj.clone(), AuthenticatedEntity::System)
+        .await
+        .unwrap();
+
+    // Create host with interface and two ports
+    let host_obj = host(&network.id);
+    let iface = interface(&network.id, &subnet_obj.id);
+    let port1 = port(&network.id, &host_obj.id);
+    let mut port2 = port(&network.id, &host_obj.id);
+    port2.base.port_type = crate::server::ports::r#impl::base::PortType::new_tcp(9090);
+
+    let created_host = services
+        .host_service
+        .discover_host(
+            host_obj.clone(),
+            vec![iface],
+            vec![port1, port2],
+            vec![],
+            AuthenticatedEntity::System,
+        )
+        .await
+        .unwrap();
+
+    let created_port1 = &created_host.ports[0];
+    let created_port2 = &created_host.ports[1];
+    let created_iface = &created_host.interfaces[0];
+
+    // Create first OpenPorts service with port1
+    let open_ports1 = crate::server::services::r#impl::base::Service::new(ServiceBase {
+        host_id: created_host.id,
+        network_id: network.id,
+        service_definition: Box::new(OpenPortsDef),
+        name: "Unclaimed Open Ports".to_string(),
+        bindings: vec![Binding::new_port_serviceless(
+            created_port1.id,
+            Some(created_iface.id),
+        )],
+        virtualization: None,
+        source: EntitySource::Discovery { metadata: vec![] },
+        tags: Vec::new(),
+    });
+
+    let created_op1 = services
+        .service_service
+        .create(open_ports1, AuthenticatedEntity::System)
+        .await
+        .unwrap();
+
+    // Create second OpenPorts service with port2 - should be merged into first
+    let open_ports2 = crate::server::services::r#impl::base::Service::new(ServiceBase {
+        host_id: created_host.id,
+        network_id: network.id,
+        service_definition: Box::new(OpenPortsDef),
+        name: "Unclaimed Open Ports".to_string(),
+        bindings: vec![Binding::new_port_serviceless(
+            created_port2.id,
+            Some(created_iface.id),
+        )],
+        virtualization: None,
+        source: EntitySource::Discovery { metadata: vec![] },
+        tags: Vec::new(),
+    });
+
+    let created_op2 = services
+        .service_service
+        .create(open_ports2, AuthenticatedEntity::System)
+        .await
+        .unwrap();
+
+    // Should be the same service (singleton behavior)
+    assert_eq!(
+        created_op1.id, created_op2.id,
+        "OpenPorts services should be merged (same ID)"
+    );
+
+    // Should have both bindings now
+    let filter = EntityFilter::unfiltered().host_id(&created_host.id);
+    let all_services = services.service_service.get_all(filter).await.unwrap();
+
+    let open_ports_services: Vec<_> = all_services
+        .iter()
+        .filter(|s| s.base.service_definition.is_open_ports())
+        .collect();
+
+    assert_eq!(
+        open_ports_services.len(),
+        1,
+        "Should have exactly one OpenPorts service"
+    );
+
+    assert!(
+        open_ports_services[0].base.bindings.len() >= 2,
+        "OpenPorts should have both port bindings merged"
+    );
+}

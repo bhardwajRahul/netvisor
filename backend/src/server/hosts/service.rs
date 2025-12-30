@@ -1,6 +1,6 @@
 use crate::server::{
     auth::middleware::auth::AuthenticatedEntity,
-    bindings::r#impl::base::BindingType,
+    bindings::r#impl::base::{Binding, BindingType},
     daemons::service::DaemonService,
     hosts::r#impl::{
         api::{
@@ -577,7 +577,12 @@ impl HostService {
         }
 
         // Create services with bindings reassigned (for discovery where IDs may change)
+        // Track claimed bindings in this batch to detect in-batch conflicts
+        let mut batch_claimed: Vec<(Uuid, Option<Uuid>)> = Vec::new();
+        // Collect orphaned bindings from dropped services to assign to OpenPorts
+        let mut orphaned_bindings: Vec<Binding> = Vec::new();
         let mut created_services = Vec::new();
+
         for service in services {
             let reassigned = self
                 .service_service
@@ -592,9 +597,92 @@ impl HostService {
                 )
                 .await;
 
+            // Check for binding conflicts with other services (DB + batch)
+            let (valid_bindings, conflicting_bindings) = self
+                .service_service
+                .partition_conflicting_bindings(
+                    &created_host.id,
+                    &reassigned.id,
+                    reassigned.base.bindings.clone(),
+                    &batch_claimed,
+                )
+                .await?;
+
+            if !conflicting_bindings.is_empty() {
+                // Log details about the conflict
+                let conflicting_ports: Vec<_> = conflicting_bindings
+                    .iter()
+                    .filter_map(|b| {
+                        if let BindingType::Port { port_id, .. } = &b.base.binding_type {
+                            created_ports
+                                .iter()
+                                .find(|p| p.id == *port_id)
+                                .map(|p| p.to_string())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+
+                tracing::warn!(
+                    service_name = %reassigned.base.name,
+                    service_definition = %reassigned.base.service_definition.name(),
+                    host_id = %created_host.id,
+                    conflicting_ports = ?conflicting_ports,
+                    valid_binding_count = valid_bindings.len(),
+                    "Discovery found service with conflicting port bindings - dropping service"
+                );
+
+                // Orphan the valid bindings for OpenPorts
+                orphaned_bindings.extend(valid_bindings);
+                continue;
+            }
+
+            // Track this service's port bindings for in-batch conflict detection
+            for binding in &reassigned.base.bindings {
+                if let BindingType::Port {
+                    port_id,
+                    interface_id,
+                } = &binding.base.binding_type
+                {
+                    batch_claimed.push((*port_id, *interface_id));
+                }
+            }
+
             let created = self
                 .service_service
                 .create(reassigned, authentication.clone())
+                .await?;
+            created_services.push(created);
+        }
+
+        // If we have orphaned bindings, assign them to OpenPorts service
+        if !orphaned_bindings.is_empty() {
+            use crate::server::services::definitions::open_ports::OpenPorts as OpenPortsDef;
+            use crate::server::services::r#impl::base::ServiceBase;
+
+            tracing::info!(
+                host_id = %created_host.id,
+                orphaned_binding_count = orphaned_bindings.len(),
+                "Assigning orphaned bindings to OpenPorts service"
+            );
+
+            let open_ports_service = Service::new(ServiceBase {
+                host_id: created_host.id,
+                network_id: created_host.base.network_id,
+                service_definition: Box::new(OpenPortsDef),
+                name: "Unclaimed Open Ports".to_string(),
+                bindings: orphaned_bindings,
+                virtualization: None,
+                source: EntitySource::Discovery { metadata: vec![] },
+                tags: Vec::new(),
+            });
+
+            // The singleton upsert in service.create() will merge bindings
+            // if an OpenPorts service already exists on this host
+            let created = self
+                .service_service
+                .create(open_ports_service, authentication.clone())
                 .await?;
             created_services.push(created);
         }

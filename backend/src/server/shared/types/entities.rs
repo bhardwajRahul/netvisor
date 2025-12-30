@@ -30,6 +30,16 @@ pub enum EntitySource {
     Unknown,
 }
 
+impl EntitySource {
+    /// Returns true if this entity was created via discovery (network, Docker, etc.)
+    pub fn is_from_discovery(&self) -> bool {
+        matches!(
+            self,
+            EntitySource::Discovery { .. } | EntitySource::DiscoveryWithMatch { .. }
+        )
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Hash, ToSchema)]
 pub struct DiscoveryMetadata {
     #[serde(flatten)]

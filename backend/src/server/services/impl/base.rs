@@ -136,10 +136,14 @@ impl PartialEq for Service {
             return true;
         }
 
-        // Gateway services are singletons per host - only one gateway per host
-        // They typically only have interface bindings (no ports)
+        // Gateway and OpenPorts services are singletons per host - only one per host
+        // Gateway typically only has interface bindings (no ports)
+        // OpenPorts collects unclaimed ports and should merge rather than create duplicates
         // Handles: Gateway discovered on eth0, eth1, wlan0 -> should be same service
-        if ServiceDefinitionExt::is_gateway(&self.base.service_definition) {
+        // Handles: OpenPorts from multiple discovery runs -> should merge bindings
+        if ServiceDefinitionExt::is_gateway(&self.base.service_definition)
+            || ServiceDefinitionExt::is_open_ports(&self.base.service_definition)
+        {
             return true;
         }
 

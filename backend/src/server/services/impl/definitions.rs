@@ -97,6 +97,7 @@ pub trait ServiceDefinitionExt {
     fn is_scanopy(&self) -> bool;
     fn is_generic(&self) -> bool;
     fn is_gateway(&self) -> bool;
+    fn is_open_ports(&self) -> bool;
     fn has_logo(&self) -> bool;
 }
 
@@ -118,6 +119,13 @@ impl ServiceDefinitionExt for Box<dyn ServiceDefinition> {
 
     fn is_gateway(&self) -> bool {
         self.discovery_pattern().contains_gateway_ip_pattern()
+    }
+
+    fn is_open_ports(&self) -> bool {
+        matches!(
+            ServiceDefinition::category(self),
+            ServiceCategory::OpenPorts
+        )
     }
 
     fn has_logo(&self) -> bool {

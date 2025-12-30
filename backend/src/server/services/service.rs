@@ -18,10 +18,7 @@ use crate::server::{
         },
         services::traits::{ChildCrudService, CrudService, EventBusService},
         storage::{filter::EntityFilter, generic::GenericPostgresStorage, traits::Storage},
-        types::{
-            api::ValidationError,
-            entities::{EntitySource, EntitySourceDiscriminants},
-        },
+        types::{api::ValidationError, entities::EntitySource},
     },
 };
 use anyhow::anyhow;
@@ -33,7 +30,6 @@ use std::{
     collections::HashMap,
     sync::{Arc, OnceLock},
 };
-use strum::IntoDiscriminant;
 use uuid::Uuid;
 
 pub struct ServiceService {
@@ -131,10 +127,8 @@ impl CrudService<Service> for ServiceService {
         {
             // If both are from discovery, or if they have the same ID but for some reason the create route is being used, upsert data
             Some(existing_service)
-                if (service.base.source.discriminant()
-                    == EntitySourceDiscriminants::DiscoveryWithMatch
-                    && existing_service.base.source.discriminant()
-                        == EntitySourceDiscriminants::DiscoveryWithMatch)
+                if (service.base.source.is_from_discovery()
+                    && existing_service.base.source.is_from_discovery())
                     || service.id == existing_service.id =>
             {
                 tracing::warn!(
@@ -155,6 +149,17 @@ impl CrudService<Service> for ServiceService {
                     &service.base.bindings,
                 )
                 .await?;
+
+                // For non-discovery sources, validate bindings aren't already claimed by other services
+                // Discovery sources handle conflicts via partition_conflicting_bindings in create_with_children
+                if !service.base.source.is_from_discovery() {
+                    self.validate_bindings_available(
+                        &service.base.host_id,
+                        &service.id,
+                        &service.base.bindings,
+                    )
+                    .await?;
+                }
 
                 let mut created = self.storage.create(&service).await?;
 
@@ -224,6 +229,14 @@ impl CrudService<Service> for ServiceService {
         // Validate bindings reference ports/interfaces on the service's host
         self.validate_bindings_belong_to_host(&service.base.host_id, &service.base.bindings)
             .await?;
+
+        // Validate bindings aren't already claimed by other services on this host
+        self.validate_bindings_available(
+            &service.base.host_id,
+            &service.id,
+            &service.base.bindings,
+        )
+        .await?;
 
         self.update_group_service_bindings(&current_service, Some(service), authentication.clone())
             .await?;
@@ -551,6 +564,167 @@ impl ServiceService {
                 return Err(ValidationError::new(error_msg).into());
             }
         }
+        Ok(())
+    }
+
+    /// Partition bindings into non-conflicting and conflicting sets.
+    ///
+    /// A binding conflicts if another service on the same host already has a port binding
+    /// to the same port on the same interface (or either is "all interfaces").
+    ///
+    /// Also checks against `batch_claimed` for in-batch conflict detection during discovery.
+    ///
+    /// Returns: (valid_bindings, conflicting_bindings)
+    pub async fn partition_conflicting_bindings(
+        &self,
+        host_id: &Uuid,
+        service_id: &Uuid,
+        bindings: Vec<Binding>,
+        batch_claimed: &[(Uuid, Option<Uuid>)],
+    ) -> Result<(Vec<Binding>, Vec<Binding>)> {
+        if bindings.is_empty() {
+            return Ok((vec![], vec![]));
+        }
+
+        // Get existing claimed bindings from database
+        let filter = EntityFilter::unfiltered().host_id(host_id);
+        let db_claimed: Vec<(Uuid, Option<Uuid>)> = self
+            .get_all(filter)
+            .await?
+            .into_iter()
+            .filter(|s| s.id != *service_id)
+            .flat_map(|s| {
+                s.base.bindings.into_iter().filter_map(|b| {
+                    if let BindingType::Port {
+                        port_id,
+                        interface_id,
+                    } = b.base.binding_type
+                    {
+                        Some((port_id, interface_id))
+                    } else {
+                        None
+                    }
+                })
+            })
+            .collect();
+
+        // Combine DB claims with batch claims
+        let all_claimed: Vec<_> = db_claimed
+            .iter()
+            .chain(batch_claimed.iter())
+            .cloned()
+            .collect();
+
+        if all_claimed.is_empty() {
+            return Ok((bindings, vec![]));
+        }
+
+        let mut valid = Vec::new();
+        let mut conflicting = Vec::new();
+
+        for binding in bindings {
+            if let BindingType::Port {
+                port_id,
+                interface_id,
+            } = &binding.base.binding_type
+            {
+                let has_conflict = all_claimed.iter().any(|(claimed_port, claimed_iface)| {
+                    if claimed_port != port_id {
+                        return false;
+                    }
+                    // Conflict if same port AND interfaces overlap:
+                    // - Either is "all interfaces" (None) -> conflict
+                    // - Both specific and same interface -> conflict
+                    match (interface_id, claimed_iface) {
+                        (None, _) | (_, None) => true,
+                        (Some(a), Some(b)) => a == b,
+                    }
+                });
+
+                if has_conflict {
+                    conflicting.push(binding);
+                } else {
+                    valid.push(binding);
+                }
+            } else {
+                // Interface bindings don't conflict cross-service
+                valid.push(binding);
+            }
+        }
+
+        Ok((valid, conflicting))
+    }
+
+    /// Validate that proposed bindings don't conflict with other services on the same host.
+    /// Returns error with helpful message identifying the conflicting service.
+    /// Used for manual service creation/update validation.
+    async fn validate_bindings_available(
+        &self,
+        host_id: &Uuid,
+        service_id: &Uuid,
+        bindings: &[Binding],
+    ) -> Result<()> {
+        if bindings.is_empty() {
+            return Ok(());
+        }
+
+        let filter = EntityFilter::unfiltered().host_id(host_id);
+        let other_services: Vec<_> = self
+            .get_all(filter)
+            .await?
+            .into_iter()
+            .filter(|s| s.id != *service_id)
+            .collect();
+
+        for binding in bindings {
+            if let BindingType::Port {
+                port_id,
+                interface_id,
+            } = &binding.base.binding_type
+            {
+                let conflicting_service = other_services.iter().find(|s| {
+                    s.base.bindings.iter().any(|b| {
+                        if let BindingType::Port {
+                            port_id: existing_port,
+                            interface_id: existing_iface,
+                        } = &b.base.binding_type
+                        {
+                            if existing_port != port_id {
+                                return false;
+                            }
+                            match (interface_id, existing_iface) {
+                                (None, _) | (_, None) => true,
+                                (Some(a), Some(b)) => a == b,
+                            }
+                        } else {
+                            false
+                        }
+                    })
+                });
+
+                if let Some(owner) = conflicting_service {
+                    let host_service = self
+                        .host_service
+                        .get()
+                        .expect("host_service not initialized");
+
+                    let ports = host_service.get_ports_for_host(host_id).await?;
+                    let port_display = ports
+                        .iter()
+                        .find(|p| p.id == *port_id)
+                        .map(|p| p.to_string())
+                        .unwrap_or_else(|| port_id.to_string());
+
+                    return Err(ValidationError::new(format!(
+                        "Port {} is already bound to '{}' on this host. \
+                         Use 'Transfer Ports' to reassign it, or remove the binding from '{}' first.",
+                        port_display, owner.base.name, owner.base.name,
+                    ))
+                    .into());
+                }
+            }
+        }
+
         Ok(())
     }
 
