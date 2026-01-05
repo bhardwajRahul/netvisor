@@ -14,6 +14,28 @@ use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
 
+/// Number of heartbeats between health summary logs (at 30s interval = ~5 minutes)
+const HEALTH_LOG_INTERVAL: u64 = 10;
+
+/// Log target for consistent daemon logging output
+const LOG_TARGET: &str = "daemon";
+
+/// Format a duration as human-readable uptime (e.g., "1h 23m", "45m", "2d 5h")
+fn format_uptime(duration: Duration) -> String {
+    let secs = duration.as_secs();
+    let days = secs / 86400;
+    let hours = (secs % 86400) / 3600;
+    let mins = (secs % 3600) / 60;
+
+    if days > 0 {
+        format!("{}d {}h", days, hours)
+    } else if hours > 0 {
+        format!("{}h {}m", hours, mins)
+    } else {
+        format!("{}m", mins.max(1)) // Show at least 1m
+    }
+}
+
 pub struct DaemonRuntimeService {
     pub config: Arc<ConfigStore>,
     pub api_client: Arc<DaemonApiClient>,
@@ -31,6 +53,57 @@ impl DaemonRuntimeService {
             api_client: Arc::new(DaemonApiClient::new(config_store)),
             utils: create_system_utils(),
             discovery_manager,
+        }
+    }
+
+    /// Check Docker availability and return a detailed description of the connection method.
+    /// Returns (is_available, description) where description explains how Docker is being accessed.
+    pub async fn check_docker_availability(&self) -> (bool, String) {
+        let docker_proxy = self.config.get_docker_proxy().await;
+        let docker_proxy_ssl_info = self.config.get_docker_proxy_ssl_info().await;
+
+        // Determine connection method description
+        let connection_method = match &docker_proxy {
+            Ok(Some(proxy_url)) => {
+                if proxy_url.starts_with("https://") {
+                    format!("via SSL proxy at {}", proxy_url)
+                } else {
+                    format!("via HTTP proxy at {}", proxy_url)
+                }
+            }
+            _ => {
+                #[cfg(target_family = "unix")]
+                {
+                    "via local socket (/var/run/docker.sock)".to_string()
+                }
+                #[cfg(target_family = "windows")]
+                {
+                    "via named pipe (//./pipe/docker_engine)".to_string()
+                }
+            }
+        };
+
+        match self
+            .utils
+            .new_local_docker_client(docker_proxy, docker_proxy_ssl_info)
+            .await
+        {
+            Ok(_) => (true, format!("Available {}", connection_method)),
+            Err(e) => {
+                let error_hint = if e.to_string().contains("No such file") {
+                    " (socket not found - is Docker running?)"
+                } else if e.to_string().contains("permission denied") {
+                    " (permission denied - check user is in docker group)"
+                } else if e.to_string().contains("connection refused") {
+                    " (connection refused - is Docker daemon running?)"
+                } else {
+                    ""
+                };
+                (
+                    false,
+                    format!("Not available{} - container discovery disabled", error_hint),
+                )
+            }
         }
     }
 
@@ -61,7 +134,8 @@ impl DaemonRuntimeService {
     }
 
     pub async fn request_work(&self) -> Result<()> {
-        let interval = Duration::from_secs(self.config.get_heartbeat_interval().await?);
+        let interval_secs = self.config.get_heartbeat_interval().await?;
+        let interval = Duration::from_secs(interval_secs);
         let daemon_id = self.config.get_id().await?;
         let name = self.config.get_name().await?;
         let mode = self.config.get_mode().await?;
@@ -70,18 +144,20 @@ impl DaemonRuntimeService {
         let mut interval_timer = tokio::time::interval(interval);
         interval_timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
+        let mut poll_count: u64 = 0;
+        let mut consecutive_failures: u64 = 0;
+        let start_time = std::time::Instant::now();
+
         loop {
             interval_timer.tick().await;
 
             if self.config.get_network_id().await?.is_none() {
-                tracing::warn!(
-                    daemon_id = %daemon_id,
-                    "Work request skipped - network_id not configured"
-                );
+                tracing::warn!(target: LOG_TARGET, "Work request skipped - network_id not configured");
                 continue;
             }
 
-            tracing::info!(daemon_id = %daemon_id, "Checking for work...");
+            poll_count += 1;
+            tracing::debug!(target: LOG_TARGET, daemon_id = %daemon_id, "Polling server for work");
 
             let path = format!("/api/daemons/{}/request-work", daemon_id);
             let result: Result<(Option<DiscoveryUpdatePayload>, bool), _> = self
@@ -99,12 +175,10 @@ impl DaemonRuntimeService {
 
             match result {
                 Ok((payload, cancel_current_session)) => {
-                    if !cancel_current_session && payload.is_none() {
-                        tracing::info!(daemon_id = %daemon_id, "No work available at this time");
-                    }
+                    consecutive_failures = 0;
 
                     if cancel_current_session {
-                        tracing::info!(daemon_id = %daemon_id, "Received cancellation request from server");
+                        tracing::info!(target: LOG_TARGET, "Received cancellation request from server");
                         self.discovery_manager.cancel_current_session().await;
                     }
 
@@ -112,9 +186,10 @@ impl DaemonRuntimeService {
                         && !self.discovery_manager.is_discovery_running().await
                     {
                         tracing::info!(
-                            daemon_id = %daemon_id,
-                            session_id = %payload.session_id,
-                            "Received discovery session from server"
+                            target: LOG_TARGET,
+                            "Discovery session received: {} ({:?})",
+                            payload.session_id,
+                            payload.discovery_type
                         );
                         self.discovery_manager
                             .initiate_session(payload.into())
@@ -125,8 +200,34 @@ impl DaemonRuntimeService {
                     if let Some(auth_error) = Self::check_authorization_error(&e, &daemon_id) {
                         return Err(auth_error);
                     }
-                    tracing::error!(daemon_id = %daemon_id, error = %e, "Failed to request work");
+                    consecutive_failures += 1;
+                    tracing::warn!(
+                        target: LOG_TARGET,
+                        "Failed to poll for work: {} (failure #{})",
+                        e,
+                        consecutive_failures
+                    );
                 }
+            }
+
+            // Periodic health summary
+            if poll_count.is_multiple_of(HEALTH_LOG_INTERVAL) {
+                let uptime = start_time.elapsed();
+                let uptime_str = format_uptime(uptime);
+                let discovery_active = self.discovery_manager.is_discovery_running().await;
+
+                tracing::info!(
+                    target: LOG_TARGET,
+                    "Health: {} | Uptime: {} | Polls: {} | Discovery: {}",
+                    if consecutive_failures == 0 {
+                        "OK"
+                    } else {
+                        "DEGRADED"
+                    },
+                    uptime_str,
+                    poll_count,
+                    if discovery_active { "active" } else { "idle" }
+                );
             }
         }
     }
@@ -141,13 +242,20 @@ impl DaemonRuntimeService {
         let mut interval_timer = tokio::time::interval(interval);
         interval_timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
+        let mut heartbeat_count: u64 = 0;
+        let mut consecutive_failures: u64 = 0;
+        let start_time = std::time::Instant::now();
+
         loop {
             interval_timer.tick().await;
 
             if self.config.get_network_id().await?.is_none() {
-                tracing::warn!(daemon_id = %daemon_id, "Heartbeat skipped - network_id not configured");
+                tracing::warn!(target: LOG_TARGET, "Heartbeat skipped - network_id not configured");
                 continue;
             }
+
+            heartbeat_count += 1;
+            tracing::debug!(target: LOG_TARGET, daemon_id = %daemon_id, "Sending heartbeat");
 
             let path = format!("/api/daemons/{}/heartbeat", daemon_id);
             match self
@@ -164,17 +272,43 @@ impl DaemonRuntimeService {
                 .await
             {
                 Ok(_) => {
-                    tracing::info!(daemon_id = %daemon_id, "Heartbeat sent");
+                    consecutive_failures = 0;
                     if let Err(e) = self.config.update_heartbeat().await {
-                        tracing::warn!("Failed to update heartbeat timestamp: {}", e);
+                        tracing::warn!(target: LOG_TARGET, "Failed to update heartbeat timestamp: {}", e);
                     }
                 }
                 Err(e) => {
                     if let Some(auth_error) = Self::check_authorization_error(&e, &daemon_id) {
                         return Err(auth_error);
                     }
-                    tracing::error!(daemon_id = %daemon_id, error = %e, "Heartbeat failed");
+                    consecutive_failures += 1;
+                    tracing::warn!(
+                        target: LOG_TARGET,
+                        "Heartbeat failed: {} (failure #{})",
+                        e,
+                        consecutive_failures
+                    );
                 }
+            }
+
+            // Periodic health summary
+            if heartbeat_count.is_multiple_of(HEALTH_LOG_INTERVAL) {
+                let uptime = start_time.elapsed();
+                let uptime_str = format_uptime(uptime);
+                let discovery_active = self.discovery_manager.is_discovery_running().await;
+
+                tracing::info!(
+                    target: LOG_TARGET,
+                    "Health: {} | Uptime: {} | Heartbeats: {} | Discovery: {}",
+                    if consecutive_failures == 0 {
+                        "OK"
+                    } else {
+                        "DEGRADED"
+                    },
+                    uptime_str,
+                    heartbeat_count,
+                    if discovery_active { "active" } else { "idle" }
+                );
             }
         }
     }
@@ -183,63 +317,30 @@ impl DaemonRuntimeService {
         self.config.set_network_id(network_id).await?;
         self.config.set_api_key(api_key).await?;
 
-        let docker_proxy = self.config.get_docker_proxy().await;
-        let docker_proxy_ssl_info = self.config.get_docker_proxy_ssl_info().await;
         let daemon_id = self.config.get_id().await?;
 
-        let has_docker_client = self
-            .utils
-            .new_local_docker_client(docker_proxy, docker_proxy_ssl_info)
-            .await
-            .is_ok();
+        // Check Docker availability with detailed description
+        let (has_docker_client, docker_description) = self.check_docker_availability().await;
+        tracing::info!(target: LOG_TARGET, "  Docker:          {}", docker_description);
 
-        // Always check with server using daemon_id - this is the source of truth
-        // for whether we're registered
-        tracing::info!(
-            daemon_id = %daemon_id,
-            network_id = %network_id,
-            has_docker = %has_docker_client,
-            "Checking registration status with server"
-        );
+        tracing::info!(target: LOG_TARGET, "Connecting to server...");
 
         match self.announce_startup(daemon_id).await {
             Ok(_) => {
-                tracing::info!(
-                    daemon_id = %daemon_id,
-                    "Server recognized daemon, startup announced"
-                );
+                tracing::info!(target: LOG_TARGET, "  Status:          Daemon recognized, startup announced");
                 return Ok(());
             }
             Err(e) if Self::is_daemon_not_found_error(&e) => {
-                // Daemon not found on server - need to register
-                tracing::info!(
-                    daemon_id = %daemon_id,
-                    "Daemon not registered on server, registering..."
-                );
-                // Fall through to registration below
+                tracing::info!(target: LOG_TARGET, "  Status:          Daemon not registered, registering now");
             }
             Err(e) => {
-                // Other errors (network issues, etc.) - can't proceed without server
+                tracing::error!(target: LOG_TARGET, "  Status:          Failed to connect: {}", e);
                 return Err(e);
             }
         }
 
-        tracing::info!(
-            daemon_id = %daemon_id,
-            network_id = %network_id,
-            has_docker = %has_docker_client,
-            "Registering with server"
-        );
-
         self.register_with_server(daemon_id, network_id, has_docker_client)
             .await?;
-
-        tracing::info!(
-            daemon_id = %daemon_id,
-            network_id = %network_id,
-            has_docker = %has_docker_client,
-            "Daemon fully initialized"
-        );
 
         Ok(())
     }
@@ -269,6 +370,7 @@ impl DaemonRuntimeService {
         let config = self.api_client.config();
         let mode = config.get_mode().await?;
         let name = config.get_name().await?;
+        let version = env!("CARGO_PKG_VERSION");
 
         let url = self.get_daemon_url().await?;
 
@@ -285,10 +387,18 @@ impl DaemonRuntimeService {
                 interfaced_subnet_ids: Vec::new(),
             },
             user_id,
-            version: Some(env!("CARGO_PKG_VERSION").to_string()),
+            version: Some(version.to_string()),
         };
 
-        tracing::info!(daemon_id = %daemon_id, "Sending register request");
+        tracing::info!(target: LOG_TARGET, "Registering with server:");
+        tracing::info!(target: LOG_TARGET, "  Daemon ID:       {}", daemon_id);
+        tracing::info!(target: LOG_TARGET, "  Network ID:      {}", network_id);
+        tracing::info!(target: LOG_TARGET, "  Version:         {}", version);
+        tracing::info!(
+            target: LOG_TARGET,
+            "  Capabilities:    docker={}, subnets=0 (updated after self-discovery)",
+            if has_docker_socket { "yes" } else { "no" }
+        );
 
         // Retry loop for handling pending API keys (pre-registration setup flow)
         // First attempt immediately, then wait 10s (user fills form), then exponential backoff: 1, 2, 4, 8...
@@ -312,10 +422,11 @@ impl DaemonRuntimeService {
                 Ok(response) => {
                     // Note: host_id is not cached locally - the server provides it
                     // in discovery requests via DiscoveryType
-                    tracing::info!(
-                        "Successfully registered with server, assigned ID: {}",
-                        response.daemon.id
-                    );
+                    tracing::info!(target: LOG_TARGET, "Registration successful");
+                    if let Some(caps) = response.server_capabilities {
+                        tracing::info!(target: LOG_TARGET, "  Server version:  {}", caps.server_version);
+                        tracing::info!(target: LOG_TARGET, "  Min daemon ver:  {}", caps.minimum_daemon_version);
+                    }
                     return Ok(());
                 }
                 Err(e) => {
@@ -324,6 +435,7 @@ impl DaemonRuntimeService {
                     // Check if this is a demo mode error - provide friendly message
                     if error_str.contains("demo mode") || error_str.contains("HTTP 403") {
                         tracing::error!(
+                            target: LOG_TARGET,
                             daemon_id = %daemon_id,
                             "This Scanopy instance is running in demo mode. \
                              Daemon registration is disabled. \
@@ -351,6 +463,7 @@ impl DaemonRuntimeService {
                         };
 
                         tracing::warn!(
+                            target: LOG_TARGET,
                             daemon_id = %daemon_id,
                             attempt = %attempt,
                             "API key not yet active. This daemon was likely installed before account \
@@ -370,6 +483,7 @@ impl DaemonRuntimeService {
                     // Connection refused - server not running or wrong address
                     if error_lower.contains("connection refused") {
                         tracing::error!(
+                            target: LOG_TARGET,
                             daemon_id = %daemon_id,
                             server_url = %server_url,
                             "Connection refused by server at {}. \
@@ -387,6 +501,7 @@ impl DaemonRuntimeService {
                         // Connect timeout - couldn't establish connection at all
                         if error_lower.contains("connect") {
                             tracing::error!(
+                                target: LOG_TARGET,
                                 daemon_id = %daemon_id,
                                 server_url = %server_url,
                                 "Connection timed out trying to reach server at {}. \
@@ -400,6 +515,7 @@ impl DaemonRuntimeService {
                         }
                         // Response timeout - connected but server didn't respond
                         tracing::error!(
+                            target: LOG_TARGET,
                             daemon_id = %daemon_id,
                             server_url = %server_url,
                             "Server at {} did not respond in time. \
@@ -419,6 +535,7 @@ impl DaemonRuntimeService {
                         || error_lower.contains("error sending request")
                     {
                         tracing::error!(
+                            target: LOG_TARGET,
                             daemon_id = %daemon_id,
                             server_url = %server_url,
                             "Failed to connect to server at {}: {}",
@@ -458,11 +575,8 @@ impl DaemonRuntimeService {
 
         match result {
             Ok(capabilities) => {
-                tracing::info!(
-                    daemon_id = %daemon_id,
-                    server_version = %capabilities.server_version,
-                    "Startup announced to server"
-                );
+                tracing::info!(target: LOG_TARGET, "  Server version:  {}", capabilities.server_version);
+                tracing::info!(target: LOG_TARGET, "  Min daemon ver:  {}", capabilities.minimum_daemon_version);
 
                 // Log any deprecation warnings from the server
                 self.log_deprecation_warnings(&capabilities);
@@ -470,10 +584,11 @@ impl DaemonRuntimeService {
                 Ok(())
             }
             Err(e) => {
-                tracing::warn!(
+                tracing::debug!(
+                    target: LOG_TARGET,
                     daemon_id = %daemon_id,
                     error = %e,
-                    "Failed to announce startup to server"
+                    "Startup announcement failed"
                 );
                 Err(e)
             }
@@ -483,31 +598,24 @@ impl DaemonRuntimeService {
     /// Log deprecation warnings received from the server.
     fn log_deprecation_warnings(&self, capabilities: &ServerCapabilities) {
         for warning in &capabilities.deprecation_warnings {
+            let msg = format!(
+                "{}{}",
+                warning.message,
+                warning
+                    .sunset_date
+                    .as_ref()
+                    .map(|d| format!(" (sunset: {})", d))
+                    .unwrap_or_default()
+            );
             match warning.severity {
                 DeprecationSeverity::Critical => {
-                    tracing::error!(
-                        "{}{}",
-                        warning.message,
-                        warning
-                            .sunset_date
-                            .as_ref()
-                            .map(|d| format!(" (sunset: {})", d))
-                            .unwrap_or_default()
-                    );
+                    tracing::error!(target: LOG_TARGET, "{}", msg);
                 }
                 DeprecationSeverity::Warning => {
-                    tracing::warn!(
-                        "{}{}",
-                        warning.message,
-                        warning
-                            .sunset_date
-                            .as_ref()
-                            .map(|d| format!(" (sunset: {})", d))
-                            .unwrap_or_default()
-                    );
+                    tracing::warn!(target: LOG_TARGET, "{}", msg);
                 }
                 DeprecationSeverity::Info => {
-                    tracing::info!("{}", warning.message);
+                    tracing::info!(target: LOG_TARGET, "{}", msg);
                 }
             }
         }

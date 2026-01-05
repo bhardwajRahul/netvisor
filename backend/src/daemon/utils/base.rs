@@ -127,8 +127,6 @@ pub trait DaemonUtils {
         docker_proxy: Result<Option<String>, Error>,
         docker_proxy_ssl_info: Result<Option<(String, String, String)>, Error>,
     ) -> Result<Docker, Error> {
-        tracing::debug!("Connecting to Docker");
-
         let client = if let Ok(Some(docker_proxy)) = docker_proxy {
             if docker_proxy.contains("https://")
                 && let Ok(Some((key, cert, chain))) = docker_proxy_ssl_info
