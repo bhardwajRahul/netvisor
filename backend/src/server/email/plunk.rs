@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use email_address::EmailAddress;
 // use plunk::{PlunkClient, PlunkClientTrait, PlunkPayloads};
 use reqwest::Client;
-use serde_json::json;
+use serde_json::{Value, json};
 
 /// Plunk-based email provider
 pub struct PlunkEmailProvider {
@@ -93,11 +93,21 @@ impl EmailProvider for PlunkEmailProvider {
         .map(|_| ())
     }
 
-    async fn track_event(&self, event: String, email: EmailAddress) -> Result<(), Error> {
-        let body = serde_json::json!({
+    async fn track_event(
+        &self,
+        event: String,
+        email: EmailAddress,
+        data: Option<Value>,
+    ) -> Result<(), Error> {
+        let mut body = json!({
             "event": event,
             "email": email.to_string(),
         });
+
+        // Add data field if provided (for contact metadata/segmentation)
+        if let Some(data_value) = data {
+            body["data"] = data_value;
+        }
 
         let response = self
             .client

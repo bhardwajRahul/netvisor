@@ -3,6 +3,7 @@ use std::sync::Arc;
 use anyhow::{Error, Result};
 use async_trait::async_trait;
 use email_address::EmailAddress;
+use serde_json::Value;
 
 use crate::server::{
     email::templates::{EMAIL_FOOTER, EMAIL_HEADER, INVITE_LINK_BODY, PASSWORD_RESET_BODY},
@@ -52,10 +53,15 @@ pub trait EmailProvider: Send + Sync {
         url: String,
     ) -> Result<(), Error>;
 
-    /// Track an event (optional, only for providers that support it)
-    async fn track_event(&self, event: String, email: EmailAddress) -> Result<()> {
+    /// Track an event with optional metadata (only for providers that support it)
+    async fn track_event(
+        &self,
+        event: String,
+        email: EmailAddress,
+        data: Option<Value>,
+    ) -> Result<()> {
         // Default implementation does nothing
-        let _ = (event, email);
+        let _ = (event, email, data);
         Ok(())
     }
 }
@@ -93,9 +99,14 @@ impl EmailService {
         self.provider.send_invite(to, from, url).await
     }
 
-    /// Track an event (delegates to provider)
-    pub async fn track_event(&self, event: String, email: EmailAddress) -> Result<()> {
-        self.provider.track_event(event, email).await
+    /// Track an event with optional metadata (delegates to provider)
+    pub async fn track_event(
+        &self,
+        event: String,
+        email: EmailAddress,
+        data: Option<Value>,
+    ) -> Result<()> {
+        self.provider.track_event(event, email, data).await
     }
 }
 

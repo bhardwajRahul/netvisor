@@ -424,6 +424,13 @@ pub enum TelemetryOperation {
     // FirstDiscoveryStarted,
     // FirstDiscoveryCompleted,
     // FirstHostDiscovered,
+
+    // Billing lifecycle (for email automation)
+    CheckoutStarted,
+    CheckoutCompleted,
+    TrialStarted,
+    TrialEnded,
+    SubscriptionCancelled,
 }
 
 impl TelemetryOperation {

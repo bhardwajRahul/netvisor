@@ -18,6 +18,7 @@ use crate::server::users::service::UserService;
 use anyhow::Error;
 use anyhow::anyhow;
 use chrono::Utc;
+use serde_json::json;
 use std::sync::Arc;
 use std::sync::OnceLock;
 use stripe::Client;
@@ -323,7 +324,10 @@ impl BillingService {
         cancel_url: String,
         authentication: AuthenticatedEntity,
     ) -> Result<CheckoutSession, Error> {
-        // Check if this is a returning customer (has had a subscription)
+        // Clone authentication for event publishing later
+        let auth_for_event = authentication.clone();
+
+        // Check if this is a returning customer (already has a Stripe customer ID)
         let is_returning_customer = if let Some(organization) = self
             .organization_service
             .get_by_id(&organization_id)
@@ -404,6 +408,24 @@ impl BillingService {
             session_id = %session.id,
             "Checkout session created successfully"
         );
+
+        // Publish checkout_started event for email automation
+        self.event_bus
+            .publish_telemetry(TelemetryEvent::new(
+                Uuid::new_v4(),
+                organization_id,
+                TelemetryOperation::CheckoutStarted,
+                Utc::now(),
+                auth_for_event,
+                json!({
+                    "checkout_status": "pending",
+                    "plan_name": plan.name(),
+                    "is_commercial": plan.is_commercial(),
+                    "has_trial": plan.config().trial_days > 0,
+                    "org_id": organization_id.to_string(),
+                }),
+            ))
+            .await?;
 
         Ok(session)
     }
@@ -719,6 +741,76 @@ impl BillingService {
                 .await?;
         }
 
+        // Publish billing lifecycle events for email automation
+        if let Some(owner) = owners.first() {
+            let authentication: AuthenticatedEntity = owner.clone().into();
+            let is_trialing = sub.status == SubscriptionStatus::Trialing;
+            let trial_end_date = sub.trial_end.map(|t| t.to_string());
+
+            // Checkout completed (first subscription creation)
+            if organization.base.plan.is_none() {
+                self.event_bus
+                    .publish_telemetry(TelemetryEvent::new(
+                        Uuid::new_v4(),
+                        organization.id,
+                        TelemetryOperation::CheckoutCompleted,
+                        Utc::now(),
+                        authentication.clone(),
+                        json!({
+                            "checkout_status": "completed",
+                            "plan_name": plan.name(),
+                            "is_commercial": plan.is_commercial(),
+                            "has_trial": is_trialing,
+                            "org_id": organization.id.to_string(),
+                        }),
+                    ))
+                    .await?;
+
+                // Trial started (if subscription is in trialing state)
+                if is_trialing {
+                    self.event_bus
+                        .publish_telemetry(TelemetryEvent::new(
+                            Uuid::new_v4(),
+                            organization.id,
+                            TelemetryOperation::TrialStarted,
+                            Utc::now(),
+                            authentication.clone(),
+                            json!({
+                                "trial_status": "active",
+                                "plan_name": plan.name(),
+                                "is_commercial": plan.is_commercial(),
+                                "trial_end_date": trial_end_date,
+                                "org_id": organization.id.to_string(),
+                            }),
+                        ))
+                        .await?;
+                }
+            }
+
+            // Trial ended (transition from trialing to active or canceled)
+            if let Some(old_status) = &organization.base.plan_status {
+                let was_trialing = old_status == "trialing";
+                let now_active = sub.status == SubscriptionStatus::Active;
+                if was_trialing && now_active {
+                    self.event_bus
+                        .publish_telemetry(TelemetryEvent::new(
+                            Uuid::new_v4(),
+                            organization.id,
+                            TelemetryOperation::TrialEnded,
+                            Utc::now(),
+                            authentication,
+                            json!({
+                                "trial_status": "ended",
+                                "converted": true,
+                                "plan_name": plan.name(),
+                                "org_id": organization.id.to_string(),
+                            }),
+                        ))
+                        .await?;
+                }
+            }
+        }
+
         let org_filter = EntityFilter::unfiltered().organization_id(&org_id);
 
         // If they can't pay for networks, remove them
@@ -777,6 +869,62 @@ impl BillingService {
             .get_by_id(&org_id)
             .await?
             .ok_or_else(|| anyhow!("Could not find organization to update subscriptions status"))?;
+
+        // Publish subscription_cancelled event for email automation (before clearing plan)
+        let owners = self
+            .user_service
+            .get_organization_owners(&organization.id)
+            .await?;
+
+        if let Some(owner) = owners.first() {
+            let authentication: AuthenticatedEntity = owner.clone().into();
+            let plan_name = organization
+                .base
+                .plan
+                .as_ref()
+                .map(|p| p.name().to_string())
+                .unwrap_or_default();
+            let was_trialing = organization
+                .base
+                .plan_status
+                .as_ref()
+                .map(|s| s == "trialing")
+                .unwrap_or(false);
+
+            self.event_bus
+                .publish_telemetry(TelemetryEvent::new(
+                    Uuid::new_v4(),
+                    organization.id,
+                    TelemetryOperation::SubscriptionCancelled,
+                    Utc::now(),
+                    authentication.clone(),
+                    json!({
+                        "subscription_status": "cancelled",
+                        "plan_name": plan_name,
+                        "org_id": organization.id.to_string(),
+                    }),
+                ))
+                .await?;
+
+            // If trial was cancelled (not converted), send trial_ended event
+            if was_trialing {
+                self.event_bus
+                    .publish_telemetry(TelemetryEvent::new(
+                        Uuid::new_v4(),
+                        organization.id,
+                        TelemetryOperation::TrialEnded,
+                        Utc::now(),
+                        authentication,
+                        json!({
+                            "trial_status": "ended",
+                            "converted": false,
+                            "plan_name": plan_name,
+                            "org_id": organization.id.to_string(),
+                        }),
+                    ))
+                    .await?;
+            }
+        }
 
         self.invite_service
             .revoke_org_invites(&organization.id)

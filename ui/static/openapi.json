@@ -6875,14 +6875,14 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-01-04T19:28:16.420911Z",
-              "id": "b7fbc28b-ef96-498f-a0e2-e4fef1fa3e57",
+              "created_at": "2026-01-05T01:17:30.848057Z",
+              "id": "cc38c712-8556-474a-85d7-8b503e9f2078",
               "interface_id": "550e8400-e29b-41d4-a716-446655440005",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-01-04T19:28:16.420911Z"
+              "updated_at": "2026-01-05T01:17:30.848057Z"
             }
           },
           "error": {
@@ -8042,14 +8042,14 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-01-04T19:28:16.416832Z",
-                  "id": "4edb950c-1b30-44fb-9f7e-f1d4a0c04d50",
+                  "created_at": "2026-01-05T01:17:30.845289Z",
+                  "id": "c814879f-cf8a-4333-af8e-4aa65b47f0ef",
                   "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-01-04T19:28:16.416832Z"
+                  "updated_at": "2026-01-05T01:17:30.845289Z"
                 }
               ],
               "created_at": "2026-01-15T10:30:00Z",
@@ -8058,7 +8058,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Lubelogger",
+              "service_definition": "APC",
               "source": {
                 "type": "Manual"
               },
@@ -8759,14 +8759,14 @@
               ],
               "description": "Association between a service and a port / interface that the service is listening on",
               "example": {
-                "created_at": "2026-01-04T19:28:16.420581Z",
-                "id": "f5f9b73a-680d-41b3-b0f0-f58ae16b955d",
+                "created_at": "2026-01-05T01:17:30.847816Z",
+                "id": "d3a48f1f-c08c-425e-b385-d998cb09ba9e",
                 "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "port_id": "550e8400-e29b-41d4-a716-446655440006",
                 "service_id": "550e8400-e29b-41d4-a716-446655440007",
                 "type": "Port",
-                "updated_at": "2026-01-04T19:28:16.420581Z"
+                "updated_at": "2026-01-05T01:17:30.847816Z"
               }
             }
           },
@@ -9563,14 +9563,14 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-01-04T19:28:16.415518Z",
-                    "id": "c64435a5-76fb-4025-8ddd-f55f489df0c6",
+                    "created_at": "2026-01-05T01:17:30.844405Z",
+                    "id": "481384f5-68e2-47de-9aad-c5eab73026e3",
                     "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-01-04T19:28:16.415518Z"
+                    "updated_at": "2026-01-05T01:17:30.844405Z"
                   }
                 ],
                 "created_at": "2026-01-15T10:30:00Z",
@@ -9579,7 +9579,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Lubelogger",
+                "service_definition": "APC",
                 "source": {
                   "type": "Manual"
                 },
@@ -10273,14 +10273,14 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-01-04T19:28:16.407427Z",
-          "id": "01038e27-0437-41b6-9d48-3253b0a5851a",
+          "created_at": "2026-01-05T01:17:30.838506Z",
+          "id": "c149e388-3cc8-4970-9baf-e4c81dc8d64e",
           "interface_id": "550e8400-e29b-41d4-a716-446655440005",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-01-04T19:28:16.407427Z"
+          "updated_at": "2026-01-05T01:17:30.838506Z"
         }
       },
       "BindingBase": {
@@ -10641,7 +10641,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Lubelogger",
+              "service_definition": "APC",
               "tags": [],
               "virtualization": null
             }
@@ -13157,14 +13157,14 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-01-04T19:28:16.407332Z",
-              "id": "6842f35e-b835-44cc-a2c1-e2c4cc27c422",
+              "created_at": "2026-01-05T01:17:30.838415Z",
+              "id": "a9bd2ab5-4007-4206-bfd5-f7b5b2c141a8",
               "interface_id": "550e8400-e29b-41d4-a716-446655440005",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-01-04T19:28:16.407332Z"
+              "updated_at": "2026-01-05T01:17:30.838415Z"
             }
           ],
           "created_at": "2026-01-15T10:30:00Z",
@@ -13173,7 +13173,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Lubelogger",
+          "service_definition": "APC",
           "source": {
             "type": "Manual"
           },
@@ -13687,7 +13687,12 @@
           "CommercialPlanSelected",
           "FirstApiKeyCreated",
           "FirstDaemonRegistered",
-          "FirstTopologyRebuild"
+          "FirstTopologyRebuild",
+          "CheckoutStarted",
+          "CheckoutCompleted",
+          "TrialStarted",
+          "TrialEnded",
+          "SubscriptionCancelled"
         ]
       },
       "Topology": {
