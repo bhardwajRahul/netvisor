@@ -29,6 +29,22 @@
               ],
               "format": "uuid"
             }
+          },
+          {
+            "name": "pagination",
+            "in": "query",
+            "description": "Pagination parameters",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/PaginationParams"
+                }
+              ]
+            }
           }
         ],
         "responses": {
@@ -381,6 +397,24 @@
         ],
         "summary": "Get all user API keys for the current user",
         "operationId": "get_all_user_api_keys",
+        "parameters": [
+          {
+            "name": "pagination",
+            "in": "query",
+            "description": "Pagination parameters",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/PaginationParams"
+                }
+              ]
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "List of user API keys",
@@ -802,6 +836,22 @@
               ],
               "format": "uuid"
             }
+          },
+          {
+            "name": "pagination",
+            "in": "query",
+            "description": "Pagination parameters",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/PaginationParams"
+                }
+              ]
+            }
           }
         ],
         "responses": {
@@ -1106,6 +1156,37 @@
         "summary": "Get all daemons",
         "description": "Returns all daemons accessible to the user with computed version status.",
         "operationId": "get_daemons",
+        "parameters": [
+          {
+            "name": "network_id",
+            "in": "query",
+            "description": "Filter by network ID",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "pagination",
+            "in": "query",
+            "description": "Pagination parameters",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/PaginationParams"
+                }
+              ]
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "List of daemons",
@@ -1315,6 +1396,22 @@
                 "null"
               ],
               "format": "uuid"
+            }
+          },
+          {
+            "name": "pagination",
+            "in": "query",
+            "description": "Pagination parameters",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/PaginationParams"
+                }
+              ]
             }
           }
         ],
@@ -1730,6 +1827,22 @@
               ],
               "format": "uuid"
             }
+          },
+          {
+            "name": "pagination",
+            "in": "query",
+            "description": "Pagination parameters",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/PaginationParams"
+                }
+              ]
+            }
           }
         ],
         "responses": {
@@ -2020,8 +2133,39 @@
           "hosts"
         ],
         "summary": "List all hosts",
-        "description": "Returns all hosts the authenticated user has access to, with their\ninterfaces, ports, and services included.",
+        "description": "Returns all hosts the authenticated user has access to, with their\ninterfaces, ports, and services included. Supports pagination via\n`limit` and `offset` query parameters.",
         "operationId": "get_all_hosts",
+        "parameters": [
+          {
+            "name": "network_id",
+            "in": "query",
+            "description": "Filter by network ID",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "pagination",
+            "in": "query",
+            "description": "Pagination parameters",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/PaginationParams"
+                }
+              ]
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "List of hosts with their children",
@@ -2459,6 +2603,22 @@
                 "null"
               ],
               "format": "uuid"
+            }
+          },
+          {
+            "name": "pagination",
+            "in": "query",
+            "description": "Pagination parameters",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/PaginationParams"
+                }
+              ]
             }
           }
         ],
@@ -2958,7 +3118,24 @@
         ],
         "summary": "List all networks",
         "operationId": "list_networks",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "pagination",
+            "in": "query",
+            "description": "Pagination parameters",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/PaginationParams"
+                }
+              ]
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "List of networks",
@@ -3391,6 +3568,22 @@
               ],
               "format": "uuid"
             }
+          },
+          {
+            "name": "pagination",
+            "in": "query",
+            "description": "Pagination parameters",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/PaginationParams"
+                }
+              ]
+            }
           }
         ],
         "responses": {
@@ -3707,6 +3900,22 @@
                 "null"
               ],
               "format": "uuid"
+            }
+          },
+          {
+            "name": "pagination",
+            "in": "query",
+            "description": "Pagination parameters",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/PaginationParams"
+                }
+              ]
             }
           }
         ],
@@ -4026,6 +4235,22 @@
                 "null"
               ],
               "format": "uuid"
+            }
+          },
+          {
+            "name": "pagination",
+            "in": "query",
+            "description": "Pagination parameters",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/PaginationParams"
+                }
+              ]
             }
           }
         ],
@@ -4366,6 +4591,22 @@
               ],
               "format": "uuid"
             }
+          },
+          {
+            "name": "pagination",
+            "in": "query",
+            "description": "Pagination parameters",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/PaginationParams"
+                }
+              ]
+            }
           }
         ],
         "responses": {
@@ -4664,7 +4905,24 @@
         ],
         "summary": "List all tags",
         "operationId": "list_tags",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "pagination",
+            "in": "query",
+            "description": "Pagination parameters",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/PaginationParams"
+                }
+              ]
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "List of tags",
@@ -5077,6 +5335,24 @@
         ],
         "summary": "List all users",
         "operationId": "get_all_users",
+        "parameters": [
+          {
+            "name": "pagination",
+            "in": "query",
+            "description": "Pagination parameters",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/PaginationParams"
+                }
+              ]
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "List of users",
@@ -5209,6 +5485,17 @@
             "description": "API version (integer, increments on breaking changes)",
             "minimum": 0
           },
+          "pagination": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PaginationMeta",
+                "description": "Pagination info (only present for paginated list responses)"
+              }
+            ]
+          },
           "server_version": {
             "type": "string",
             "description": "Server version (semver)",
@@ -5287,14 +5574,14 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-01-06T00:51:30.801440Z",
-              "id": "aeaedce7-b953-4d37-a812-1fd2b3c2b6b3",
+              "created_at": "2026-01-06T20:35:46.470840Z",
+              "id": "618f7060-66df-497b-a335-e68c76f2d288",
               "interface_id": "550e8400-e29b-41d4-a716-446655440005",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-01-06T00:51:30.801440Z"
+              "updated_at": "2026-01-06T20:35:46.470840Z"
             }
           },
           "error": {
@@ -6549,14 +6836,14 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-01-06T00:51:30.798211Z",
-                  "id": "c2935eba-30ab-472a-b813-6f18bac6cd07",
+                  "created_at": "2026-01-06T20:35:46.466697Z",
+                  "id": "4bb8834b-bf57-43b0-9581-fd59d132f6d5",
                   "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-01-06T00:51:30.798211Z"
+                  "updated_at": "2026-01-06T20:35:46.466697Z"
                 }
               ],
               "created_at": "2026-01-15T10:30:00Z",
@@ -6565,7 +6852,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "NUT",
+              "service_definition": "Confluence",
               "source": {
                 "type": "Manual"
               },
@@ -7266,14 +7553,14 @@
               ],
               "description": "Association between a service and a port / interface that the service is listening on",
               "example": {
-                "created_at": "2026-01-06T00:51:30.801219Z",
-                "id": "c82b9009-0bbc-49b8-9eef-e8236bb2c8e7",
+                "created_at": "2026-01-06T20:35:46.470592Z",
+                "id": "34b50230-3da3-458e-a8a5-462a504fb9cd",
                 "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "port_id": "550e8400-e29b-41d4-a716-446655440006",
                 "service_id": "550e8400-e29b-41d4-a716-446655440007",
                 "type": "Port",
-                "updated_at": "2026-01-06T00:51:30.801219Z"
+                "updated_at": "2026-01-06T20:35:46.470592Z"
               }
             }
           },
@@ -8070,14 +8357,14 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-01-06T00:51:30.797277Z",
-                    "id": "54d25ad8-2005-420e-90c7-21829f70921b",
+                    "created_at": "2026-01-06T20:35:46.465607Z",
+                    "id": "67bc286e-c75b-4c98-8dad-9953f2acfd30",
                     "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-01-06T00:51:30.797277Z"
+                    "updated_at": "2026-01-06T20:35:46.465607Z"
                   }
                 ],
                 "created_at": "2026-01-15T10:30:00Z",
@@ -8086,7 +8373,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "NUT",
+                "service_definition": "Confluence",
                 "source": {
                   "type": "Manual"
                 },
@@ -8780,14 +9067,14 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-01-06T00:51:30.792440Z",
-          "id": "a01f2621-7c51-47b0-bfe0-377ba2d525f6",
+          "created_at": "2026-01-06T20:35:46.456074Z",
+          "id": "ac774f68-89a5-4c5f-8336-d2e8aadf048b",
           "interface_id": "550e8400-e29b-41d4-a716-446655440005",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-01-06T00:51:30.792440Z"
+          "updated_at": "2026-01-06T20:35:46.456074Z"
         }
       },
       "BindingBase": {
@@ -9148,7 +9435,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "NUT",
+              "service_definition": "Confluence",
               "tags": [],
               "virtualization": null
             }
@@ -11371,6 +11658,64 @@
           }
         }
       },
+      "PaginationMeta": {
+        "type": "object",
+        "description": "Pagination metadata returned with paginated responses.",
+        "required": [
+          "total_count",
+          "limit",
+          "offset",
+          "has_more"
+        ],
+        "properties": {
+          "has_more": {
+            "type": "boolean",
+            "description": "Whether there are more items after this page"
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Maximum items per page (as requested)",
+            "minimum": 0
+          },
+          "offset": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Number of items skipped",
+            "minimum": 0
+          },
+          "total_count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Total number of items matching the filter (ignoring pagination)",
+            "minimum": 0
+          }
+        }
+      },
+      "PaginationParams": {
+        "type": "object",
+        "description": "Pagination parameters that can be composed into filter queries.\n\nDefault behavior:\n- `limit`: 50 (returns up to 50 results)\n- `offset`: 0 (starts from the beginning)\n- `limit=0`: Returns all results (unlimited)\n- Maximum `limit`: 1000 (to prevent abuse)",
+        "properties": {
+          "limit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Maximum number of results to return. Default: 50. Use 0 for unlimited.",
+            "minimum": 0
+          },
+          "offset": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Number of results to skip. Default: 0.",
+            "minimum": 0
+          }
+        }
+      },
       "PlanConfig": {
         "type": "object",
         "required": [
@@ -11827,14 +12172,14 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-01-06T00:51:30.792378Z",
-              "id": "5d396bcf-ea41-4b46-9344-5393daf9fe59",
+              "created_at": "2026-01-06T20:35:46.456023Z",
+              "id": "9b02f49d-7fca-4239-8d0e-8a343d64135b",
               "interface_id": "550e8400-e29b-41d4-a716-446655440005",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-01-06T00:51:30.792378Z"
+              "updated_at": "2026-01-06T20:35:46.456023Z"
             }
           ],
           "created_at": "2026-01-15T10:30:00Z",
@@ -11843,7 +12188,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "NUT",
+          "service_definition": "Confluence",
           "source": {
             "type": "Manual"
           },

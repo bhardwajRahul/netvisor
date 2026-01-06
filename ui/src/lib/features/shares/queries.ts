@@ -14,7 +14,9 @@ export function useSharesQuery() {
 	return createQuery(() => ({
 		queryKey: queryKeys.shares.all,
 		queryFn: async () => {
-			const { data } = await apiClient.GET('/api/v1/shares');
+			const { data } = await apiClient.GET('/api/v1/shares', {
+				params: { query: { pagination: { limit: 0 } } }
+			});
 			if (!data?.success || !data.data) {
 				throw new Error(data?.error || 'Failed to fetch shares');
 			}

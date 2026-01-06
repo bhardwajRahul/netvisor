@@ -1,7 +1,7 @@
 use crate::server::shared::{
     storage::{
         filter::EntityFilter,
-        traits::{SqlValue, StorableEntity, Storage},
+        traits::{PaginatedResult, SqlValue, StorableEntity, Storage},
     },
     types::api::ValidationError,
 };
@@ -216,11 +216,13 @@ where
         filter: EntityFilter,
         order_by: &str,
     ) -> Result<Vec<T>, anyhow::Error> {
+        let pagination_clause = filter.to_pagination_clause();
         let query_str = format!(
-            "SELECT * FROM {} {} ORDER BY {}",
+            "SELECT * FROM {} {} ORDER BY {} {}",
             T::table_name(),
             filter.to_where_clause(),
-            order_by
+            order_by,
+            pagination_clause
         );
 
         let mut query = sqlx::query(&query_str);
@@ -230,6 +232,52 @@ where
 
         let rows = query.fetch_all(&self.pool).await?;
         rows.into_iter().map(|r| T::from_row(&r)).collect()
+    }
+
+    async fn get_paginated(
+        &self,
+        filter: EntityFilter,
+        order_by: &str,
+    ) -> Result<PaginatedResult<T>, anyhow::Error> {
+        // First, get the total count (without limit/offset)
+        // We use a subquery approach to reuse bind_value
+        let count_query_str = format!(
+            "SELECT COUNT(*) FROM {} {}",
+            T::table_name(),
+            filter.to_where_clause()
+        );
+
+        let mut count_query = sqlx::query(&count_query_str);
+        for value in filter.values() {
+            count_query = Self::bind_value(count_query, value)?;
+        }
+
+        let count_row = count_query.fetch_one(&self.pool).await?;
+        let total_count: i64 = sqlx::Row::get(&count_row, 0);
+        let total_count = total_count as u64;
+
+        // Then get the paginated results
+        let pagination_clause = filter.to_pagination_clause();
+        let query_str = format!(
+            "SELECT * FROM {} {} ORDER BY {} {}",
+            T::table_name(),
+            filter.to_where_clause(),
+            order_by,
+            pagination_clause
+        );
+
+        let mut query = sqlx::query(&query_str);
+        for value in filter.values() {
+            query = Self::bind_value(query, value)?;
+        }
+
+        let rows = query.fetch_all(&self.pool).await?;
+        let items: Vec<T> = rows
+            .into_iter()
+            .map(|r| T::from_row(&r))
+            .collect::<Result<_, _>>()?;
+
+        Ok(PaginatedResult { items, total_count })
     }
 
     async fn update(&self, entity: &mut T) -> Result<T, anyhow::Error> {

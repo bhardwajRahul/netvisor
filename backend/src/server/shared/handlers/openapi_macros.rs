@@ -225,7 +225,7 @@ macro_rules! crud_get_all_handler {
         pub async fn get_all(
             state: axum::extract::State<std::sync::Arc<$crate::server::config::AppState>>,
             auth: $crate::server::auth::middleware::permissions::Authorized<$crate::server::auth::middleware::permissions::Viewer>,
-            query: axum::extract::Query<__GetAllFilterQuery>,
+            query: $crate::server::shared::extractors::Query<__GetAllFilterQuery>,
         ) -> $crate::server::shared::types::api::ApiResult<
             axum::response::Json<$crate::server::shared::types::api::ApiResponse<Vec<$response>>>,
         > {

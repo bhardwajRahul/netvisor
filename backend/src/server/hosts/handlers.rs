@@ -1,8 +1,9 @@
 use crate::server::auth::middleware::auth::AuthenticatedEntity;
 use crate::server::auth::middleware::permissions::{Authorized, IsDaemon, Member, Or, Viewer};
+use crate::server::shared::extractors::Query;
 use crate::server::shared::handlers::query::FilterQueryExtractor;
 use crate::server::shared::handlers::traits::{
-    BulkDeleteResponse, CrudHandlers, bulk_delete_handler, delete_handler,
+    BulkDeleteResponse, bulk_delete_handler, delete_handler,
 };
 use crate::server::shared::services::traits::CrudService;
 use crate::server::shared::storage::filter::EntityFilter;
@@ -19,7 +20,7 @@ use crate::server::{
     },
     shared::types::api::{ApiError, ApiResponse, ApiResult},
 };
-use axum::extract::{Path, Query, State};
+use axum::extract::{Path, State};
 use axum::response::Json;
 use std::sync::Arc;
 use utoipa_axum::{router::OpenApiRouter, routes};
@@ -38,11 +39,13 @@ pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
 /// List all hosts
 ///
 /// Returns all hosts the authenticated user has access to, with their
-/// interfaces, ports, and services included.
+/// interfaces, ports, and services included. Supports pagination via
+/// `limit` and `offset` query parameters.
 #[utoipa::path(
     get,
     path = "",
     tag = "hosts",
+    params(crate::server::shared::handlers::query::NetworkFilterQuery),
     responses(
         (status = 200, description = "List of hosts with their children", body = ApiResponse<Vec<HostResponse>>),
     ),
@@ -51,7 +54,7 @@ pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
 async fn get_all_hosts(
     State(state): State<Arc<AppState>>,
     auth: Authorized<Viewer>,
-    Query(query): Query<<Host as CrudHandlers>::FilterQuery>,
+    Query(query): Query<crate::server::shared::handlers::query::NetworkFilterQuery>,
 ) -> ApiResult<Json<ApiResponse<Vec<HostResponse>>>> {
     let network_ids = auth.network_ids();
     let organization_id = auth
@@ -61,12 +64,26 @@ async fn get_all_hosts(
     let base_filter = EntityFilter::unfiltered().network_ids(&network_ids);
     let filter = query.apply_to_filter(base_filter, &network_ids, organization_id);
 
-    let hosts = state
+    // Apply pagination
+    let pagination = query.pagination();
+    let filter = pagination.apply_to_filter(filter);
+
+    let result = state
         .services
         .host_service
-        .get_all_host_responses(filter)
+        .get_all_host_responses_paginated(filter)
         .await?;
-    Ok(Json(ApiResponse::success(hosts)))
+
+    // Get effective pagination values for response metadata
+    let limit = pagination.effective_limit().unwrap_or(0);
+    let offset = pagination.effective_offset();
+
+    Ok(Json(ApiResponse::success_paginated(
+        result.items,
+        result.total_count,
+        limit,
+        offset,
+    )))
 }
 
 /// Get a host by ID

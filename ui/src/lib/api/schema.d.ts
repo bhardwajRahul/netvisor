@@ -870,7 +870,8 @@ export interface paths {
         /**
          * List all hosts
          * @description Returns all hosts the authenticated user has access to, with their
-         *     interfaces, ports, and services included.
+         *     interfaces, ports, and services included. Supports pagination via
+         *     `limit` and `offset` query parameters.
          */
         get: operations["get_all_hosts"];
         put?: never;
@@ -1805,6 +1806,7 @@ export interface components {
              * @description API version (integer, increments on breaking changes)
              */
             api_version: number;
+            pagination?: null | components["schemas"]["PaginationMeta"];
             /**
              * @description Server version (semver)
              * @example 0.12.10
@@ -1821,14 +1823,14 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-01-06T00:51:30.801477Z",
-             *       "id": "ab9bfc57-e3c0-48a0-9b55-9162b90f906f",
+             *       "created_at": "2026-01-06T20:32:01.966436Z",
+             *       "id": "78cedba0-7c25-49b5-97b3-f666286f84ee",
              *       "interface_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-01-06T00:51:30.801477Z"
+             *       "updated_at": "2026-01-06T20:32:01.966436Z"
              *     }
              */
             data?: components["schemas"]["BindingBase"] & {
@@ -2221,14 +2223,14 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-01-06T00:51:30.798808Z",
-             *           "id": "0dda69be-bcff-4c61-89e0-5dc304213d7b",
+             *           "created_at": "2026-01-06T20:32:01.962789Z",
+             *           "id": "defdef0b-2208-44f8-9a34-bb89f8f88a0a",
              *           "interface_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-01-06T00:51:30.798808Z"
+             *           "updated_at": "2026-01-06T20:32:01.962789Z"
              *         }
              *       ],
              *       "created_at": "2026-01-15T10:30:00Z",
@@ -2237,7 +2239,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "NUT",
+             *       "service_definition": "Confluence",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -2742,14 +2744,14 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-01-06T00:51:30.792122Z",
-         *       "id": "48e00ccb-9182-4fe9-b3a0-575c09ccf096",
+         *       "created_at": "2026-01-06T20:32:01.954230Z",
+         *       "id": "3986e7c8-aec1-4ab6-b8cf-dc9cf857ee7e",
          *       "interface_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-01-06T00:51:30.792122Z"
+         *       "updated_at": "2026-01-06T20:32:01.954230Z"
          *     }
          */
         Binding: components["schemas"]["BindingBase"] & {
@@ -2896,7 +2898,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "NUT",
+         *           "service_definition": "Confluence",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -3599,6 +3601,47 @@ export interface components {
             readonly plan_status: string | null;
             readonly stripe_customer_id: string | null;
         };
+        /** @description Pagination metadata returned with paginated responses. */
+        PaginationMeta: {
+            /** @description Whether there are more items after this page */
+            has_more: boolean;
+            /**
+             * Format: int32
+             * @description Maximum items per page (as requested)
+             */
+            limit: number;
+            /**
+             * Format: int32
+             * @description Number of items skipped
+             */
+            offset: number;
+            /**
+             * Format: int64
+             * @description Total number of items matching the filter (ignoring pagination)
+             */
+            total_count: number;
+        };
+        /**
+         * @description Pagination parameters that can be composed into filter queries.
+         *
+         *     Default behavior:
+         *     - `limit`: 50 (returns up to 50 results)
+         *     - `offset`: 0 (starts from the beginning)
+         *     - `limit=0`: Returns all results (unlimited)
+         *     - Maximum `limit`: 1000 (to prevent abuse)
+         */
+        PaginationParams: {
+            /**
+             * Format: int32
+             * @description Maximum number of results to return. Default: 50. Use 0 for unlimited.
+             */
+            limit?: number | null;
+            /**
+             * Format: int32
+             * @description Number of results to skip. Default: 0.
+             */
+            offset?: number | null;
+        };
         PlanConfig: {
             /** Format: int64 */
             base_cents: number;
@@ -3739,14 +3782,14 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-01-06T00:51:30.792075Z",
-         *           "id": "be404975-3e17-49fb-a9dc-6b8b1ed44909",
+         *           "created_at": "2026-01-06T20:32:01.954147Z",
+         *           "id": "bb514eca-521b-4020-89bd-2087680b2fcc",
          *           "interface_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-01-06T00:51:30.792075Z"
+         *           "updated_at": "2026-01-06T20:32:01.954147Z"
          *         }
          *       ],
          *       "created_at": "2026-01-15T10:30:00Z",
@@ -3755,7 +3798,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "NUT",
+         *       "service_definition": "Confluence",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -4850,6 +4893,8 @@ export interface operations {
             query?: {
                 /** @description Filter by network ID */
                 network_id?: string | null;
+                /** @description Pagination parameters */
+                pagination?: null | components["schemas"]["PaginationParams"];
             };
             header?: never;
             path?: never;
@@ -5078,7 +5123,10 @@ export interface operations {
     };
     get_all_user_api_keys: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Pagination parameters */
+                pagination?: null | components["schemas"]["PaginationParams"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -5351,6 +5399,8 @@ export interface operations {
                 port_id?: string | null;
                 /** @description Filter by interface ID */
                 interface_id?: string | null;
+                /** @description Pagination parameters */
+                pagination?: null | components["schemas"]["PaginationParams"];
             };
             header?: never;
             path?: never;
@@ -5547,7 +5597,12 @@ export interface operations {
     };
     get_daemons: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Filter by network ID */
+                network_id?: string | null;
+                /** @description Pagination parameters */
+                pagination?: null | components["schemas"]["PaginationParams"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -5670,6 +5725,8 @@ export interface operations {
                 network_id?: string | null;
                 /** @description Filter by daemon ID */
                 daemon_id?: string | null;
+                /** @description Pagination parameters */
+                pagination?: null | components["schemas"]["PaginationParams"];
             };
             header?: never;
             path?: never;
@@ -5954,6 +6011,8 @@ export interface operations {
             query?: {
                 /** @description Filter by network ID */
                 network_id?: string | null;
+                /** @description Pagination parameters */
+                pagination?: null | components["schemas"]["PaginationParams"];
             };
             header?: never;
             path?: never;
@@ -6141,7 +6200,12 @@ export interface operations {
     };
     get_all_hosts: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Filter by network ID */
+                network_id?: string | null;
+                /** @description Pagination parameters */
+                pagination?: null | components["schemas"]["PaginationParams"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -6438,6 +6502,8 @@ export interface operations {
                 subnet_id?: string | null;
                 /** @description Filter by network ID */
                 network_id?: string | null;
+                /** @description Pagination parameters */
+                pagination?: null | components["schemas"]["PaginationParams"];
             };
             header?: never;
             path?: never;
@@ -6768,7 +6834,10 @@ export interface operations {
     };
     list_networks: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Pagination parameters */
+                pagination?: null | components["schemas"]["PaginationParams"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -7125,6 +7194,8 @@ export interface operations {
                 host_id?: string | null;
                 /** @description Filter by network ID */
                 network_id?: string | null;
+                /** @description Pagination parameters */
+                pagination?: null | components["schemas"]["PaginationParams"];
             };
             header?: never;
             path?: never;
@@ -7317,6 +7388,8 @@ export interface operations {
                 host_id?: string | null;
                 /** @description Filter by network ID */
                 network_id?: string | null;
+                /** @description Pagination parameters */
+                pagination?: null | components["schemas"]["PaginationParams"];
             };
             header?: never;
             path?: never;
@@ -7509,6 +7582,8 @@ export interface operations {
                 network_id?: string | null;
                 /** @description Filter by topology ID */
                 topology_id?: string | null;
+                /** @description Pagination parameters */
+                pagination?: null | components["schemas"]["PaginationParams"];
             };
             header?: never;
             path?: never;
@@ -7767,6 +7842,8 @@ export interface operations {
             query?: {
                 /** @description Filter by network ID */
                 network_id?: string | null;
+                /** @description Pagination parameters */
+                pagination?: null | components["schemas"]["PaginationParams"];
             };
             header?: never;
             path?: never;
@@ -7954,7 +8031,10 @@ export interface operations {
     };
     list_tags: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Pagination parameters */
+                pagination?: null | components["schemas"]["PaginationParams"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -8141,7 +8221,12 @@ export interface operations {
     };
     get_all_topologies: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Filter by network ID */
+                network_id?: string | null;
+                /** @description Pagination parameters */
+                pagination?: null | components["schemas"]["PaginationParams"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -8448,7 +8533,10 @@ export interface operations {
     };
     get_all_users: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Pagination parameters */
+                pagination?: null | components["schemas"]["PaginationParams"];
+            };
             header?: never;
             path?: never;
             cookie?: never;

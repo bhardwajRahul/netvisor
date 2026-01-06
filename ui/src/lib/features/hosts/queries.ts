@@ -132,35 +132,82 @@ function toCreateHostRequest(formData: HostFormData): CreateHostRequest {
 }
 
 /**
- * Query hook for fetching all hosts
- * Populates interfaces, ports, and services caches from the response
+ * Pagination options for list queries
  */
-export function useHostsQuery() {
+export interface PaginationOptions {
+	limit?: number;
+	offset?: number;
+}
+
+/**
+ * Pagination metadata from API response
+ */
+export interface PaginationMeta {
+	total_count: number;
+	limit: number;
+	offset: number;
+	has_more: boolean;
+}
+
+/**
+ * Result of a paginated query
+ */
+export interface PaginatedResult<T> {
+	items: T[];
+	pagination: PaginationMeta | null;
+}
+
+/**
+ * Query hook for fetching hosts with optional pagination
+ * Populates interfaces, ports, and services caches from the response
+ *
+ * @param optionsOrGetter - Pagination options or getter function returning options.
+ *                          Use getter function for reactive options (e.g., when offset changes).
+ *                          Omit or pass {} for default (limit=50).
+ *                          Pass { limit: 0 } for unlimited (all hosts).
+ */
+export function useHostsQuery(optionsOrGetter: PaginationOptions | (() => PaginationOptions) = {}) {
 	const queryClient = useQueryClient();
 
-	return createQuery(() => ({
-		queryKey: queryKeys.hosts.all,
-		queryFn: async () => {
-			const { data } = await apiClient.GET('/api/v1/hosts');
-			if (!data?.success || !data.data) {
-				throw new Error(data?.error || 'Failed to fetch hosts');
+	return createQuery(() => {
+		const options = typeof optionsOrGetter === 'function' ? optionsOrGetter() : optionsOrGetter;
+
+		return {
+			queryKey: queryKeys.hosts.list(options as Record<string, unknown>),
+			queryFn: async (): Promise<PaginatedResult<Host>> => {
+				const { data } = await apiClient.GET('/api/v1/hosts', {
+					params: {
+						query: {
+							pagination: {
+								limit: options.limit,
+								offset: options.offset
+							}
+						}
+					}
+				});
+				if (!data?.success || !data.data) {
+					throw new Error(data?.error || 'Failed to fetch hosts');
+				}
+
+				const responses = data.data;
+
+				// Extract and populate child caches
+				const allInterfaces = responses.flatMap((r) => r.interfaces);
+				const allPorts = responses.flatMap((r) => r.ports);
+				const allServices = responses.flatMap((r) => r.services);
+
+				queryClient.setQueryData(queryKeys.interfaces.all, allInterfaces);
+				queryClient.setQueryData(queryKeys.ports.all, allPorts);
+				queryClient.setQueryData(queryKeys.services.all, allServices);
+
+				// Return host primitives with pagination metadata
+				return {
+					items: responses.map(toHostPrimitive),
+					pagination: data.meta?.pagination ?? null
+				};
 			}
-
-			const responses = data.data;
-
-			// Extract and populate child caches
-			const allInterfaces = responses.flatMap((r) => r.interfaces);
-			const allPorts = responses.flatMap((r) => r.ports);
-			const allServices = responses.flatMap((r) => r.services);
-
-			queryClient.setQueryData(queryKeys.interfaces.all, allInterfaces);
-			queryClient.setQueryData(queryKeys.ports.all, allPorts);
-			queryClient.setQueryData(queryKeys.services.all, allServices);
-
-			// Return host primitives
-			return responses.map(toHostPrimitive);
-		}
-	}));
+		};
+	});
 }
 
 /**
@@ -179,10 +226,8 @@ export function useCreateHostMutation() {
 			return result.data;
 		},
 		onSuccess: (response: HostResponse) => {
-			// Add host to cache
-			queryClient.setQueryData<Host[]>(queryKeys.hosts.all, (old) =>
-				old ? [...old, toHostPrimitive(response)] : [toHostPrimitive(response)]
-			);
+			// Invalidate all host list queries to refetch with updated data
+			queryClient.invalidateQueries({ queryKey: queryKeys.hosts.lists() });
 
 			// Add children to their caches
 			queryClient.setQueryData<Interface[]>(queryKeys.interfaces.all, (old) =>
@@ -261,11 +306,8 @@ export function useUpdateHostMutation() {
 		onSuccess: ({ response }) => {
 			const hostId = response.id;
 
-			// Update host in cache
-			queryClient.setQueryData<Host[]>(
-				queryKeys.hosts.all,
-				(old) => old?.map((h) => (h.id === hostId ? toHostPrimitive(response) : h)) ?? []
-			);
+			// Invalidate all host list queries to refetch with updated data
+			queryClient.invalidateQueries({ queryKey: queryKeys.hosts.lists() });
 
 			// Replace interfaces for this host
 			queryClient.setQueryData<Interface[]>(queryKeys.interfaces.all, (old) => {
@@ -305,11 +347,8 @@ export function useDeleteHostMutation() {
 			return id;
 		},
 		onSuccess: (id: string) => {
-			// Remove host from cache
-			queryClient.setQueryData<Host[]>(
-				queryKeys.hosts.all,
-				(old) => old?.filter((h) => h.id !== id) ?? []
-			);
+			// Invalidate all host list queries to refetch with updated data
+			queryClient.invalidateQueries({ queryKey: queryKeys.hosts.lists() });
 
 			// Remove children from their caches
 			queryClient.setQueryData<Interface[]>(
@@ -345,11 +384,8 @@ export function useBulkDeleteHostsMutation() {
 		onSuccess: (ids: string[]) => {
 			const idSet = new Set(ids);
 
-			// Remove hosts from cache
-			queryClient.setQueryData<Host[]>(
-				queryKeys.hosts.all,
-				(old) => old?.filter((h) => !idSet.has(h.id)) ?? []
-			);
+			// Invalidate all host list queries to refetch with updated data
+			queryClient.invalidateQueries({ queryKey: queryKeys.hosts.lists() });
 
 			// Remove children from their caches
 			queryClient.setQueryData<Interface[]>(
@@ -377,14 +413,13 @@ export function useConsolidateHostsMutation() {
 	return createMutation(() => ({
 		mutationFn: async ({
 			destinationHostId,
-			otherHostId
+			otherHostId,
+			otherHostName
 		}: {
 			destinationHostId: string;
 			otherHostId: string;
+			otherHostName?: string;
 		}) => {
-			const hosts = queryClient.getQueryData<Host[]>(queryKeys.hosts.all) ?? [];
-			const otherHostName = hosts.find((h) => h.id === otherHostId)?.name;
-
 			const { data } = await apiClient.PUT(
 				'/api/v1/hosts/{destination_host}/consolidate/{other_host}',
 				{
@@ -397,37 +432,23 @@ export function useConsolidateHostsMutation() {
 			return { response: data.data, otherHostId, otherHostName };
 		},
 		onSuccess: ({ response, otherHostId, otherHostName }) => {
-			// Remove consolidated host, update destination host
-			queryClient.setQueryData<Host[]>(queryKeys.hosts.all, (old) => {
-				const filtered = old?.filter((h) => h.id !== otherHostId) ?? [];
-				return filtered.map((h) => (h.id === response.id ? toHostPrimitive(response) : h));
-			});
+			// Invalidate all host list queries to refetch with updated data
+			queryClient.invalidateQueries({ queryKey: queryKeys.hosts.lists() });
 
-			// Remove children of consolidated host
-			queryClient.setQueryData<Interface[]>(
-				queryKeys.interfaces.all,
-				(old) => old?.filter((i) => i.host_id !== otherHostId) ?? []
-			);
-			queryClient.setQueryData<Port[]>(
-				queryKeys.ports.all,
-				(old) => old?.filter((p) => p.host_id !== otherHostId) ?? []
-			);
-			queryClient.setQueryData<Service[]>(
-				queryKeys.services.all,
-				(old) => old?.filter((s) => s.host_id !== otherHostId) ?? []
-			);
-
-			// Add updated destination host children
+			// Remove children of consolidated host and update destination host children
 			queryClient.setQueryData<Interface[]>(queryKeys.interfaces.all, (old) => {
-				const others = old?.filter((i) => i.host_id !== response.id) ?? [];
+				const others =
+					old?.filter((i) => i.host_id !== otherHostId && i.host_id !== response.id) ?? [];
 				return [...others, ...response.interfaces];
 			});
 			queryClient.setQueryData<Port[]>(queryKeys.ports.all, (old) => {
-				const others = old?.filter((p) => p.host_id !== response.id) ?? [];
+				const others =
+					old?.filter((p) => p.host_id !== otherHostId && p.host_id !== response.id) ?? [];
 				return [...others, ...response.ports];
 			});
 			queryClient.setQueryData<Service[]>(queryKeys.services.all, (old) => {
-				const others = old?.filter((s) => s.host_id !== response.id) ?? [];
+				const others =
+					old?.filter((s) => s.host_id !== otherHostId && s.host_id !== response.id) ?? [];
 				return [...others, ...response.services];
 			});
 
@@ -503,18 +524,31 @@ export function createEmptyHostFormData(defaultNetworkId?: string): HostFormData
 }
 
 /**
- * Get a host by ID from the cache
+ * Get a host by ID from the cache.
+ * Searches through all paginated host query caches.
  */
 export function getHostByIdFromCache(
 	queryClient: ReturnType<typeof useQueryClient>,
 	id: string
 ): Host | null {
-	const hosts = queryClient.getQueryData<Host[]>(queryKeys.hosts.all) ?? [];
-	return hosts.find((h) => h.id === id) ?? null;
+	// Get all data from paginated host list queries
+	const queriesData = queryClient.getQueriesData<PaginatedResult<Host>>({
+		queryKey: queryKeys.hosts.lists()
+	});
+
+	for (const [, data] of queriesData) {
+		if (data?.items) {
+			const found = data.items.find((h) => h.id === id);
+			if (found) return found;
+		}
+	}
+
+	return null;
 }
 
 /**
- * Get a host by interface ID from the cache
+ * Get a host by interface ID from the cache.
+ * Searches through all paginated host query caches.
  */
 export function getHostFromInterfaceIdFromCache(
 	queryClient: ReturnType<typeof useQueryClient>,
@@ -524,6 +558,5 @@ export function getHostFromInterfaceIdFromCache(
 	const iface = interfaces.find((i) => i.id === interfaceId);
 	if (!iface) return null;
 
-	const hosts = queryClient.getQueryData<Host[]>(queryKeys.hosts.all) ?? [];
-	return hosts.find((h) => h.id === iface.host_id) ?? null;
+	return getHostByIdFromCache(queryClient, iface.host_id);
 }

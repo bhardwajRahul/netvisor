@@ -45,6 +45,32 @@ macro_rules! bail_validation {
     };
 }
 
+/// Pagination metadata returned with paginated responses.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct PaginationMeta {
+    /// Total number of items matching the filter (ignoring pagination)
+    pub total_count: u64,
+    /// Maximum items per page (as requested)
+    pub limit: u32,
+    /// Number of items skipped
+    pub offset: u32,
+    /// Whether there are more items after this page
+    pub has_more: bool,
+}
+
+impl PaginationMeta {
+    /// Create pagination metadata from query results.
+    pub fn new(total_count: u64, limit: u32, offset: u32) -> Self {
+        let has_more = (offset as u64 + limit as u64) < total_count;
+        Self {
+            total_count,
+            limit,
+            offset,
+            has_more,
+        }
+    }
+}
+
 /// API version metadata included in all responses
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ApiMeta {
@@ -53,6 +79,9 @@ pub struct ApiMeta {
     /// Server version (semver)
     #[schema(value_type = String, example = "0.12.10")]
     pub server_version: Version,
+    /// Pagination info (only present for paginated list responses)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pagination: Option<PaginationMeta>,
 }
 
 impl Default for ApiMeta {
@@ -60,6 +89,17 @@ impl Default for ApiMeta {
         Self {
             api_version: 1,
             server_version: Version::parse(env!("CARGO_PKG_VERSION")).unwrap(),
+            pagination: None,
+        }
+    }
+}
+
+impl ApiMeta {
+    /// Create metadata with pagination info.
+    pub fn with_pagination(total_count: u64, limit: u32, offset: u32) -> Self {
+        Self {
+            pagination: Some(PaginationMeta::new(total_count, limit, offset)),
+            ..Default::default()
         }
     }
 }
@@ -90,6 +130,16 @@ impl<T> ApiResponse<T> {
             data: Some(data),
             error: None,
             meta: ApiMeta::default(),
+        }
+    }
+
+    /// Create a successful paginated response.
+    pub fn success_paginated(data: T, total_count: u64, limit: u32, offset: u32) -> Self {
+        Self {
+            success: true,
+            data: Some(data),
+            error: None,
+            meta: ApiMeta::with_pagination(total_count, limit, offset),
         }
     }
 

@@ -15,7 +15,8 @@
 
 	// Queries
 	const tagsQuery = useTagsQuery();
-	const hostsQuery = useHostsQuery();
+	// Use limit: 0 to get all hosts for virtualization lookups
+	const hostsQuery = useHostsQuery({ limit: 0 });
 	const servicesQuery = useServicesQuery();
 	const interfacesQuery = useInterfacesQuery();
 	const daemonsQuery = useDaemonsQuery();
@@ -23,7 +24,7 @@
 
 	// Derived data
 	let tagsData = $derived(tagsQuery.data ?? []);
-	let hostsData = $derived(hostsQuery.data ?? []);
+	let hostsData = $derived(hostsQuery.data?.items ?? []);
 	let servicesData = $derived(servicesQuery.data ?? []);
 	let interfacesData = $derived(interfacesQuery.data ?? []);
 	let daemonsData = $derived(daemonsQuery.data ?? []);

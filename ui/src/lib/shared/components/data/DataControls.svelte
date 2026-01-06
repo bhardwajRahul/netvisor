@@ -5,6 +5,8 @@
 		X,
 		ChevronDown,
 		ChevronUp,
+		ChevronLeft,
+		ChevronRight,
 		LayoutGrid,
 		List,
 		Trash2,
@@ -15,6 +17,9 @@
 	import { onMount, type Snippet } from 'svelte';
 	import Tag from './Tag.svelte';
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
+
+	// Client-side pagination: 20 items per page
+	const PAGE_SIZE = 20;
 
 	let {
 		items = $bindable([]),
@@ -67,6 +72,9 @@
 	// View mode state
 	let viewMode = $state<'card' | 'list'>('card');
 
+	// Pagination state (client-side)
+	let currentPage = $state(1);
+
 	// Bulk selection state (always enabled when onBulkDelete is provided)
 	let selectedIds = new SvelteSet<string>();
 
@@ -85,6 +93,7 @@
 		selectedGroupField: string | null;
 		showFilters: boolean;
 		viewMode: 'card' | 'list';
+		currentPage: number;
 	}
 
 	// Load state from localStorage
@@ -132,6 +141,11 @@
 			if (state.viewMode) {
 				viewMode = state.viewMode;
 			}
+
+			// Restore current page
+			if (state.currentPage) {
+				currentPage = state.currentPage;
+			}
 		} catch (e) {
 			console.warn('Failed to load DataControls state from localStorage:', e);
 		}
@@ -157,7 +171,8 @@
 				sortState,
 				selectedGroupField,
 				showFilters,
-				viewMode
+				viewMode,
+				currentPage
 			};
 
 			localStorage.setItem(storageKey, JSON.stringify(state));
@@ -210,6 +225,7 @@
 					void selectedGroupField;
 					void showFilters;
 					void viewMode;
+					void currentPage;
 
 					// Debounce saves
 					clearTimeout(saveTimeout);
@@ -526,6 +542,38 @@
 
 	let hasActiveSearch = $derived(searchQuery.trim().length > 0);
 	let hasActiveGrouping = $derived(selectedGroupField !== null);
+
+	// Client-side pagination derived values
+	let totalPages = $derived(Math.ceil(processedItems.length / PAGE_SIZE));
+	let canGoPrev = $derived(currentPage > 1);
+	let canGoNext = $derived(currentPage < totalPages);
+	let showingStart = $derived(Math.min((currentPage - 1) * PAGE_SIZE + 1, processedItems.length));
+	let showingEnd = $derived(Math.min(currentPage * PAGE_SIZE, processedItems.length));
+
+	// Paginated items for display (slice of processedItems)
+	let paginatedItems = $derived(
+		processedItems.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
+	);
+
+	// Reset to page 1 when filters/search change and current page would be out of bounds
+	$effect(() => {
+		if (currentPage > totalPages && totalPages > 0) {
+			currentPage = 1;
+		}
+	});
+
+	// Pagination handlers
+	function goToPrevPage() {
+		if (canGoPrev) {
+			currentPage = currentPage - 1;
+		}
+	}
+
+	function goToNextPage() {
+		if (canGoNext) {
+			currentPage = currentPage + 1;
+		}
+	}
 </script>
 
 <div class="space-y-4">
@@ -738,18 +786,50 @@
 		</div>
 	{/if}
 
-	<!-- Results Count -->
+	<!-- Results Count and Pagination -->
 	<div class="text-tertiary flex items-center justify-between text-sm">
 		<span>
-			Showing {processedItems.length} of {items.length}
-			{items.length === 1 ? 'item' : 'items'}
+			{#if processedItems.length === 0}
+				No items
+			{:else if totalPages > 1}
+				Showing {showingStart}-{showingEnd} of {processedItems.length}
+				{processedItems.length === 1 ? 'item' : 'items'}
+			{:else}
+				Showing {processedItems.length} of {items.length}
+				{items.length === 1 ? 'item' : 'items'}
+			{/if}
 		</span>
-		{#if hasActiveGrouping}
-			<span>
-				{groupedItems.size}
-				{groupedItems.size === 1 ? 'group' : 'groups'}
-			</span>
-		{/if}
+		<div class="flex items-center gap-4">
+			{#if hasActiveGrouping}
+				<span>
+					{groupedItems.size}
+					{groupedItems.size === 1 ? 'group' : 'groups'}
+				</span>
+			{/if}
+			{#if totalPages > 1}
+				<div class="flex items-center gap-2">
+					<button
+						onclick={goToPrevPage}
+						disabled={!canGoPrev}
+						class="btn-secondary p-1 disabled:cursor-not-allowed disabled:opacity-50"
+						title="Previous page"
+					>
+						<ChevronLeft class="h-4 w-4" />
+					</button>
+					<span class="text-secondary min-w-[80px] text-center">
+						Page {currentPage} of {totalPages}
+					</span>
+					<button
+						onclick={goToNextPage}
+						disabled={!canGoNext}
+						class="btn-secondary p-1 disabled:cursor-not-allowed disabled:opacity-50"
+						title="Next page"
+					>
+						<ChevronRight class="h-4 w-4" />
+					</button>
+				</div>
+			{/if}
+		</div>
 	</div>
 
 	<!-- Content -->
@@ -787,13 +867,13 @@
 			{/each}
 		</div>
 	{:else}
-		<!-- Ungrouped view -->
+		<!-- Ungrouped view (paginated) -->
 		<div
 			class={viewMode === 'list'
 				? 'space-y-2'
 				: 'grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3'}
 		>
-			{#each processedItems as item (getItemId(item))}
+			{#each paginatedItems as item (getItemId(item))}
 				{@const itemId = getItemId(item)}
 				{@const isSelected = selectedIds.has(itemId)}
 				{@render children(item, viewMode, isSelected, (selected) => {

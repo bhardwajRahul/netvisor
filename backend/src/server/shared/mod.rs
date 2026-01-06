@@ -2,6 +2,7 @@ pub mod api_key_common;
 pub mod concepts;
 pub mod entities;
 pub mod events;
+pub mod extractors;
 pub mod handlers;
 pub mod position;
 pub mod services;

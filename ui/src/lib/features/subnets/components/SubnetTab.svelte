@@ -27,7 +27,8 @@
 	const tagsQuery = useTagsQuery();
 	const subnetsQuery = useSubnetsQuery();
 	const networksQuery = useNetworksQuery();
-	useHostsQuery();
+	// Load related data (limit: 0 to get all hosts for subnet cards)
+	useHostsQuery({ limit: 0 });
 	useServicesQuery();
 
 	// Mutations

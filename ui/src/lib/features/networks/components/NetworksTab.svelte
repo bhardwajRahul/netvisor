@@ -32,8 +32,8 @@
 
 	const tagsQuery = useTagsQuery();
 	const networksQuery = useNetworksQuery();
-	// Load related data
-	useHostsQuery();
+	// Load related data (limit: 0 to get all hosts for network cards)
+	useHostsQuery({ limit: 0 });
 	useDaemonsQuery();
 	useSubnetsQuery();
 	useGroupsQuery();

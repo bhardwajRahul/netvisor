@@ -25,7 +25,7 @@
 	const daemonsQuery = useDaemonsQuery();
 	const networksQuery = useNetworksQuery();
 	// Hosts query to ensure data is loaded (needed for daemon display)
-	useHostsQuery();
+	useHostsQuery({ limit: 0 });
 
 	// Mutations
 	const deleteDaemonMutation = useDeleteDaemonMutation();

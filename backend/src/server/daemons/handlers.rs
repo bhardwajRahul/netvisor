@@ -2,6 +2,8 @@ use crate::server::auth::middleware::permissions::{Authorized, IsDaemon, Viewer}
 use crate::server::billing::types::base::BillingPlan;
 use crate::server::daemons::r#impl::api::DaemonHeartbeatPayload;
 use crate::server::shared::events::types::TelemetryOperation;
+use crate::server::shared::extractors::Query;
+use crate::server::shared::handlers::query::{FilterQueryExtractor, NetworkFilterQuery};
 use crate::server::shared::services::traits::CrudService;
 use crate::server::shared::storage::filter::EntityFilter;
 use crate::server::shared::storage::traits::StorableEntity;
@@ -75,6 +77,7 @@ pub fn create_internal_router() -> OpenApiRouter<Arc<AppState>> {
     tag = "daemons",
     operation_id = "get_daemons",
     summary = "Get all daemons",
+    params(NetworkFilterQuery),
     responses(
         (status = 200, description = "List of daemons", body = ApiResponse<Vec<DaemonResponse>>),
     ),
@@ -83,13 +86,24 @@ pub fn create_internal_router() -> OpenApiRouter<Arc<AppState>> {
 async fn get_all(
     State(state): State<Arc<AppState>>,
     auth: Authorized<Viewer>,
+    query: Query<NetworkFilterQuery>,
 ) -> ApiResult<Json<ApiResponse<Vec<DaemonResponse>>>> {
     let network_ids = auth.network_ids();
-    let filter = EntityFilter::unfiltered().network_ids(&network_ids);
-    let daemons = state.services.daemon_service.get_all(filter).await?;
+    let organization_id = auth
+        .organization_id()
+        .ok_or_else(|| ApiError::forbidden("Organization context required"))?;
+
+    // Apply network filter and pagination
+    let base_filter = EntityFilter::unfiltered().network_ids(&network_ids);
+    let filter = query.apply_to_filter(base_filter, &network_ids, organization_id);
+    let pagination = query.pagination();
+    let filter = pagination.apply_to_filter(filter);
+
+    let result = state.services.daemon_service.get_paginated(filter).await?;
 
     let policy = DaemonVersionPolicy::default();
-    let responses: Vec<DaemonResponse> = daemons
+    let responses: Vec<DaemonResponse> = result
+        .items
         .into_iter()
         .map(|d| {
             let version_status = policy.evaluate(d.base.version.as_ref());
@@ -103,7 +117,15 @@ async fn get_all(
         })
         .collect();
 
-    Ok(Json(ApiResponse::success(responses)))
+    let limit = pagination.effective_limit().unwrap_or(0);
+    let offset = pagination.effective_offset();
+
+    Ok(Json(ApiResponse::success_paginated(
+        responses,
+        result.total_count,
+        limit,
+        offset,
+    )))
 }
 
 /// Get daemon by ID

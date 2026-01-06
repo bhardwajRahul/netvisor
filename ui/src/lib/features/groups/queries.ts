@@ -14,7 +14,9 @@ export function useGroupsQuery() {
 	return createQuery(() => ({
 		queryKey: queryKeys.groups.all,
 		queryFn: async () => {
-			const { data } = await apiClient.GET('/api/v1/groups');
+			const { data } = await apiClient.GET('/api/v1/groups', {
+				params: { query: { pagination: { limit: 0 } } }
+			});
 			if (!data?.success || !data.data) {
 				throw new Error(data?.error || 'Failed to fetch groups');
 			}

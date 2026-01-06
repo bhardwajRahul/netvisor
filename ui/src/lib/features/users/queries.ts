@@ -18,7 +18,9 @@ export function useUsersQuery(options?: { enabled?: boolean | (() => boolean) })
 		return {
 			queryKey: queryKeys.users.all,
 			queryFn: async () => {
-				const { data } = await apiClient.GET('/api/v1/users');
+				const { data } = await apiClient.GET('/api/v1/users', {
+					params: { query: { pagination: { limit: 0 } } }
+				});
 				if (!data?.success || !data.data) {
 					throw new Error(data?.error || 'Failed to fetch users');
 				}

@@ -24,7 +24,7 @@ use crate::server::{
         storage::{
             filter::EntityFilter,
             generic::GenericPostgresStorage,
-            traits::{StorableEntity, Storage},
+            traits::{PaginatedResult, StorableEntity, Storage},
         },
         types::{
             api::ValidationError,
@@ -274,6 +274,41 @@ impl HostService {
             .collect();
 
         Ok(responses)
+    }
+
+    /// Get paginated hosts with all children hydrated for API response
+    pub async fn get_all_host_responses_paginated(
+        &self,
+        filter: EntityFilter,
+    ) -> Result<PaginatedResult<HostResponse>> {
+        let result = self.get_paginated(filter).await?;
+
+        if result.items.is_empty() {
+            return Ok(PaginatedResult {
+                items: vec![],
+                total_count: result.total_count,
+            });
+        }
+
+        let host_ids: Vec<Uuid> = result.items.iter().map(|h| h.id).collect();
+        let (interfaces_map, ports_map, services_map) =
+            self.load_children_for_hosts(&host_ids).await?;
+
+        let responses = result
+            .items
+            .into_iter()
+            .map(|host| {
+                let interfaces = interfaces_map.get(&host.id).cloned().unwrap_or_default();
+                let ports = ports_map.get(&host.id).cloned().unwrap_or_default();
+                let services = services_map.get(&host.id).cloned().unwrap_or_default();
+                HostResponse::from_host_with_children(host, interfaces, ports, services)
+            })
+            .collect();
+
+        Ok(PaginatedResult {
+            items: responses,
+            total_count: result.total_count,
+        })
     }
 
     /// Load all children for a single host

@@ -1,5 +1,6 @@
 use crate::server::auth::middleware::auth::AuthenticatedEntity;
 use crate::server::auth::middleware::permissions::{Authorized, IsDaemon, Member, Or, Viewer};
+use crate::server::shared::extractors::Query;
 use crate::server::shared::handlers::query::{FilterQueryExtractor, NetworkFilterQuery};
 use crate::server::shared::handlers::traits::{CrudHandlers, update_handler};
 use crate::server::shared::services::traits::CrudService;
@@ -8,7 +9,7 @@ use crate::server::shared::types::api::{
     ApiError, ApiErrorResponse, ApiJson, ApiResponse, ApiResult,
 };
 use crate::server::{config::AppState, subnets::r#impl::base::Subnet};
-use axum::extract::{Path, Query, State};
+use axum::extract::{Path, State};
 use axum::response::Json;
 use std::sync::Arc;
 use utoipa_axum::{router::OpenApiRouter, routes};
@@ -61,9 +62,12 @@ async fn get_all_subnets(
     match entity {
         AuthenticatedEntity::Daemon { network_id, .. } => {
             // Daemons can only access subnets in their network
-            let filter = EntityFilter::unfiltered().network_ids(&[network_id]);
+            // Apply pagination for daemon requests
+            let base_filter = EntityFilter::unfiltered().network_ids(&[network_id]);
+            let pagination = query.pagination();
+            let filter = pagination.apply_to_filter(base_filter);
             let service = Subnet::get_service(&state);
-            let subnets = service.get_all(filter).await.map_err(|e| {
+            let result = service.get_paginated(filter).await.map_err(|e| {
                 tracing::error!(
                     error = %e,
                     network_id = %network_id,
@@ -71,7 +75,14 @@ async fn get_all_subnets(
                 );
                 ApiError::internal_error(&e.to_string())
             })?;
-            Ok(Json(ApiResponse::success(subnets)))
+            let limit = pagination.effective_limit().unwrap_or(0);
+            let offset = pagination.effective_offset();
+            Ok(Json(ApiResponse::success_paginated(
+                result.items,
+                result.total_count,
+                limit,
+                offset,
+            )))
         }
         _ => {
             // Users/API keys - use standard filter with query params
@@ -79,12 +90,22 @@ async fn get_all_subnets(
                 .ok_or_else(|| ApiError::forbidden("Organization context required"))?;
             let base_filter = EntityFilter::unfiltered().network_ids(&network_ids);
             let filter = query.apply_to_filter(base_filter, &network_ids, org_id);
+            // Apply pagination
+            let pagination = query.pagination();
+            let filter = pagination.apply_to_filter(filter);
             let service = Subnet::get_service(&state);
-            let subnets = service.get_all(filter).await.map_err(|e| {
+            let result = service.get_paginated(filter).await.map_err(|e| {
                 tracing::error!(error = %e, "Failed to fetch subnets");
                 ApiError::internal_error(&e.to_string())
             })?;
-            Ok(Json(ApiResponse::success(subnets)))
+            let limit = pagination.effective_limit().unwrap_or(0);
+            let offset = pagination.effective_offset();
+            Ok(Json(ApiResponse::success_paginated(
+                result.items,
+                result.total_count,
+                limit,
+                offset,
+            )))
         }
     }
 }

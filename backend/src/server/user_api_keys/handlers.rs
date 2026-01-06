@@ -1,3 +1,4 @@
+use crate::server::shared::extractors::Query;
 use crate::server::{
     auth::middleware::{
         features::{ApiKeyFeature, BlockedInDemoMode, RequireFeature},
@@ -6,9 +7,12 @@ use crate::server::{
     config::AppState,
     shared::{
         api_key_common::{ApiKeyService, ApiKeyType, generate_api_key_for_storage},
-        handlers::traits::{
-            BulkDeleteResponse, CrudHandlers, bulk_delete_handler, delete_handler,
-            get_by_id_handler,
+        handlers::{
+            query::{FilterQueryExtractor, NoFilterQuery},
+            traits::{
+                BulkDeleteResponse, CrudHandlers, bulk_delete_handler, delete_handler,
+                get_by_id_handler,
+            },
         },
         services::traits::CrudService,
         types::api::{ApiError, ApiErrorResponse, ApiResponse, ApiResult, EmptyApiResponse},
@@ -43,6 +47,7 @@ pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
     path = "",
     tag = "user_api_keys",
     operation_id = "get_all_user_api_keys",
+    params(NoFilterQuery),
     responses(
         (status = 200, description = "List of user API keys", body = ApiResponse<Vec<UserApiKey>>),
         (status = 401, description = "Not authenticated", body = ApiErrorResponse),
@@ -54,11 +59,12 @@ pub async fn get_all(
     State(state): State<Arc<AppState>>,
     _feature: RequireFeature<ApiKeyFeature>,
     auth: Authorized<IsUser>,
+    query: Query<NoFilterQuery>,
 ) -> ApiResult<Json<ApiResponse<Vec<UserApiKey>>>> {
     let user_id = auth.require_user_id()?;
     let service = &state.services.user_api_key_service;
 
-    let keys = service.get_for_user(&user_id).await.map_err(|e| {
+    let all_keys = service.get_for_user(&user_id).await.map_err(|e| {
         tracing::error!(
             user_id = %user_id,
             error = %e,
@@ -67,7 +73,26 @@ pub async fn get_all(
         ApiError::internal_error(&e.to_string())
     })?;
 
-    Ok(Json(ApiResponse::success(keys)))
+    // Apply pagination in-memory
+    let pagination = query.pagination();
+    let total_count = all_keys.len() as u64;
+    let offset = pagination.effective_offset() as usize;
+    let limit = pagination.effective_limit();
+
+    let keys: Vec<UserApiKey> = match limit {
+        Some(l) => all_keys.into_iter().skip(offset).take(l as usize).collect(),
+        None => all_keys.into_iter().skip(offset).collect(),
+    };
+
+    let limit = limit.unwrap_or(0);
+    let offset = pagination.effective_offset();
+
+    Ok(Json(ApiResponse::success_paginated(
+        keys,
+        total_count,
+        limit,
+        offset,
+    )))
 }
 
 /// Create a new user API key

@@ -33,7 +33,8 @@
 
 	// Queries
 	const tagsQuery = useTagsQuery();
-	const hostsQuery = useHostsQuery();
+	// Load all hosts (client-side pagination handled by DataControls)
+	const hostsQuery = useHostsQuery({ limit: 0 });
 	const groupsQuery = useGroupsQuery();
 	const servicesQuery = useServicesQuery();
 	const networksQuery = useNetworksQuery();
@@ -48,7 +49,7 @@
 
 	// Derived data
 	let tagsData = $derived(tagsQuery.data ?? []);
-	let hostsData = $derived(hostsQuery.data ?? []);
+	let hostsData = $derived(hostsQuery.data?.items ?? []);
 	let groupsData = $derived(groupsQuery.data ?? []);
 	let servicesData = $derived(servicesQuery.data ?? []);
 	let networksData = $derived(networksQuery.data ?? []);
@@ -220,7 +221,11 @@
 
 	async function handleConsolidateHosts(destinationHostId: string, otherHostId: string) {
 		try {
-			await consolidateHostsMutation.mutateAsync({ destinationHostId, otherHostId });
+			await consolidateHostsMutation.mutateAsync({
+				destinationHostId,
+				otherHostId,
+				otherHostName: otherHost?.name
+			});
 			showHostConsolidationModal = false;
 			otherHost = null;
 		} catch {

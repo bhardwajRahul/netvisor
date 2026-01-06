@@ -14,6 +14,7 @@ use utoipa::openapi::{Components, OpenApi, PathItem};
 use utoipa_scalar::{Scalar, Servable};
 
 use crate::server::config::AppState;
+use crate::server::shared::handlers::query::PaginationParams;
 
 /// Tag used to mark endpoints that should be hidden from public documentation
 /// but included in the full OpenAPI spec for client generation.
@@ -25,6 +26,7 @@ const INTERNAL_TAG: &str = "internal";
 /// Only API metadata and security schemes need to be defined here.
 #[derive(OpenApiDerive)]
 #[openapi(
+    components(schemas(PaginationParams)),
     info(
         title = "Scanopy API",
         version = "1",

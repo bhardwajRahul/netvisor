@@ -30,6 +30,15 @@ use sqlx::postgres::PgRow;
 use stripe_billing::SubscriptionStatus;
 use uuid::Uuid;
 
+/// Result of a paginated query, containing items and total count.
+#[derive(Debug, Clone)]
+pub struct PaginatedResult<T> {
+    /// The items for the current page
+    pub items: Vec<T>,
+    /// Total count of items matching the filter (ignoring limit/offset)
+    pub total_count: u64,
+}
+
 #[async_trait]
 pub trait Storage<T: StorableEntity>: Send + Sync {
     async fn create(&self, entity: &T) -> Result<T, anyhow::Error>;
@@ -40,6 +49,13 @@ pub trait Storage<T: StorableEntity>: Send + Sync {
         filter: EntityFilter,
         order_by: &str,
     ) -> Result<Vec<T>, anyhow::Error>;
+    /// Get entities with pagination, returning items and total count.
+    /// The filter's limit/offset are applied to the query.
+    async fn get_paginated(
+        &self,
+        filter: EntityFilter,
+        order_by: &str,
+    ) -> Result<PaginatedResult<T>, anyhow::Error>;
     async fn get_one(&self, filter: EntityFilter) -> Result<Option<T>, anyhow::Error>;
     async fn update(&self, entity: &mut T) -> Result<T, anyhow::Error>;
     async fn delete(&self, id: &Uuid) -> Result<(), anyhow::Error>;

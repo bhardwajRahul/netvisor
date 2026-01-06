@@ -25,9 +25,10 @@
 	let { virtualizationManagerServices, onServiceChange, onVirtualizedHostChange }: Props = $props();
 
 	// TanStack Query hooks for context data
-	const hostsQuery = useHostsQuery();
+	// Use limit: 0 to get all hosts for virtualization form
+	const hostsQuery = useHostsQuery({ limit: 0 });
 	const servicesQuery = useServicesQuery();
-	let hostsData = $derived(hostsQuery.data ?? []);
+	let hostsData = $derived(hostsQuery.data?.items ?? []);
 	let servicesData = $derived(servicesQuery.data ?? []);
 
 	// Context for VirtualizationManagerServiceDisplay

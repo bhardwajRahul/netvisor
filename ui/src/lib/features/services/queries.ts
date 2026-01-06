@@ -22,7 +22,9 @@ export function useServicesQuery() {
 	return createQuery(() => ({
 		queryKey: queryKeys.services.all,
 		queryFn: async () => {
-			const { data } = await apiClient.GET('/api/v1/services');
+			const { data } = await apiClient.GET('/api/v1/services', {
+				params: { query: { pagination: { limit: 0 } } }
+			});
 			if (!data?.success || !data.data) {
 				throw new Error(data?.error || 'Failed to fetch services');
 			}

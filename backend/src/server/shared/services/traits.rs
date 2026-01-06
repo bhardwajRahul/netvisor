@@ -18,7 +18,7 @@ use crate::server::{
             child::ChildStorableEntity,
             filter::EntityFilter,
             generic::GenericPostgresStorage,
-            traits::{StorableEntity, Storage},
+            traits::{PaginatedResult, StorableEntity, Storage},
         },
     },
 };
@@ -60,6 +60,14 @@ where
     /// Get all entities with filter
     async fn get_all(&self, filter: EntityFilter) -> Result<Vec<T>, anyhow::Error> {
         self.storage().get_all(filter).await
+    }
+
+    /// Get entities with pagination, returning items and total count.
+    async fn get_paginated(
+        &self,
+        filter: EntityFilter,
+    ) -> Result<PaginatedResult<T>, anyhow::Error> {
+        self.storage().get_paginated(filter, "created_at ASC").await
     }
 
     /// Get one entities with filter

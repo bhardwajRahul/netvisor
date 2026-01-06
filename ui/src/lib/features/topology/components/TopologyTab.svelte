@@ -49,7 +49,8 @@
 	);
 
 	// Queries - TanStack Query handles deduplication
-	const hostsQuery = useHostsQuery();
+	// Use limit: 0 to get all hosts for topology visualization
+	const hostsQuery = useHostsQuery({ limit: 0 });
 	const subnetsQuery = useSubnetsQuery();
 	const groupsQuery = useGroupsQuery();
 	const usersQuery = useUsersQuery({ enabled: () => canViewUsers });

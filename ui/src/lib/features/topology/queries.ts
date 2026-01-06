@@ -39,7 +39,9 @@ export function useTopologiesQuery() {
 	return createQuery(() => ({
 		queryKey: queryKeys.topology.all,
 		queryFn: async () => {
-			const { data } = await apiClient.GET('/api/v1/topology');
+			const { data } = await apiClient.GET('/api/v1/topology', {
+				params: { query: { pagination: { limit: 0 } } }
+			});
 			if (!data?.success || !data.data) {
 				throw new Error(data?.error || 'Failed to fetch topologies');
 			}

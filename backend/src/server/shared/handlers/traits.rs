@@ -1,3 +1,4 @@
+use crate::server::shared::extractors::Query;
 use crate::server::{
     auth::middleware::permissions::{Authorized, Member, Viewer},
     config::AppState,
@@ -17,7 +18,7 @@ use crate::server::{
 use async_trait::async_trait;
 use axum::{
     Router,
-    extract::{Path, Query, State},
+    extract::{Path, State},
     response::Json,
     routing::{delete, get, post, put},
 };
@@ -178,11 +179,17 @@ where
         EntityFilter::unfiltered().organization_id(&organization_id)
     };
 
+    // Apply entity-specific filters
     let filter = query.apply_to_filter(base_filter, &network_ids, organization_id);
+
+    // Apply pagination
+    let pagination = query.pagination();
+    let filter = pagination.apply_to_filter(filter);
 
     let service = T::get_service(&state);
 
-    let entities = service.get_all(filter).await.map_err(|e| {
+    // Use paginated query to get items and total count
+    let result = service.get_paginated(filter).await.map_err(|e| {
         tracing::error!(
             entity_type = T::table_name(),
             user_id = ?user_id,
@@ -192,7 +199,17 @@ where
         ApiError::internal_error(&e.to_string())
     })?;
 
-    Ok(Json(ApiResponse::success(entities)))
+    // Get effective pagination values for response metadata
+    let limit = pagination.effective_limit().unwrap_or(0);
+    let offset = pagination.effective_offset();
+
+    // Return paginated response with metadata
+    Ok(Json(ApiResponse::success_paginated(
+        result.items,
+        result.total_count,
+        limit,
+        offset,
+    )))
 }
 
 pub async fn get_by_id_handler<T>(

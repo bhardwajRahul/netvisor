@@ -20,14 +20,15 @@
 	// Queries
 	const tagsQuery = useTagsQuery();
 	const networksQuery = useNetworksQuery();
-	const hostsQuery = useHostsQuery();
+	// Use limit: 0 to get all hosts for daemon card lookups
+	const hostsQuery = useHostsQuery({ limit: 0 });
 	const subnetsQuery = useSubnetsQuery();
 	const sessionsQuery = useActiveSessionsQuery();
 
 	// Derived data
 	let tagsData = $derived(tagsQuery.data ?? []);
 	let networksData = $derived(networksQuery.data ?? []);
-	let hostsData = $derived(hostsQuery.data ?? []);
+	let hostsData = $derived(hostsQuery.data?.items ?? []);
 	let subnetsData = $derived(subnetsQuery.data ?? []);
 	let sessionsData = $derived(sessionsQuery.data ?? []);
 

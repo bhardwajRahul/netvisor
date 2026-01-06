@@ -23,12 +23,13 @@
 	let { otherHost = null, isOpen = false, onConsolidate, onClose }: Props = $props();
 
 	// TanStack Query hooks
-	const hostsQuery = useHostsQuery();
+	// Use limit: 0 to get all hosts for consolidation modal dropdown
+	const hostsQuery = useHostsQuery({ limit: 0 });
 	const servicesQuery = useServicesQuery();
 	const interfacesQuery = useInterfacesQuery();
 	const portsQuery = usePortsQuery();
 
-	let hostsData = $derived(hostsQuery.data ?? []);
+	let hostsData = $derived(hostsQuery.data?.items ?? []);
 	let servicesData = $derived(servicesQuery.data ?? []);
 	let interfacesData = $derived(interfacesQuery.data ?? []);
 	let portsData = $derived(portsQuery.data ?? []);

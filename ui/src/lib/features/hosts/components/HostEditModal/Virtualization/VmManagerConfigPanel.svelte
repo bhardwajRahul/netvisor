@@ -15,9 +15,10 @@
 	let { service, onChange }: Props = $props();
 
 	// TanStack Query hook
-	const hostsQuery = useHostsQuery();
+	// Use limit: 0 to get all hosts for VM manager panel
+	const hostsQuery = useHostsQuery({ limit: 0 });
 	const servicesQuery = useServicesQuery();
-	let hostsData = $derived(hostsQuery.data ?? []);
+	let hostsData = $derived(hostsQuery.data?.items ?? []);
 	let servicesData = $derived(servicesQuery.data ?? []);
 
 	let serviceMetadata = $derived(serviceDefinitions.getItem(service.service_definition));

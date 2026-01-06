@@ -1,5 +1,7 @@
 use crate::server::auth::middleware::features::{BlockedInDemoMode, RequireFeature};
 use crate::server::auth::middleware::permissions::{Admin, Authorized, IsUser, Member};
+use crate::server::shared::extractors::Query;
+use crate::server::shared::handlers::query::{FilterQueryExtractor, NoFilterQuery};
 use crate::server::shared::handlers::traits::{BulkDeleteResponse, CrudHandlers, delete_handler};
 use crate::server::shared::storage::filter::EntityFilter;
 use crate::server::shared::types::api::{ApiError, ApiErrorResponse, EmptyApiResponse};
@@ -13,8 +15,7 @@ use crate::server::{
     },
 };
 use anyhow::anyhow;
-use axum::extract::Path;
-use axum::extract::State;
+use axum::extract::{Path, State};
 use axum::response::Json;
 use std::sync::Arc;
 use utoipa_axum::{router::OpenApiRouter, routes};
@@ -78,6 +79,7 @@ pub async fn get_user_by_id(
     get,
     path = "",
     tag = "users",
+    params(NoFilterQuery),
     responses(
         (status = 200, description = "List of users", body = ApiResponse<Vec<User>>),
     ),
@@ -86,6 +88,7 @@ pub async fn get_user_by_id(
 pub async fn get_all_users(
     State(state): State<Arc<AppState>>,
     auth: Authorized<Admin>,
+    query: Query<NoFilterQuery>,
 ) -> ApiResult<Json<ApiResponse<Vec<User>>>> {
     let organization_id = auth
         .organization_id()
@@ -108,18 +111,33 @@ pub async fn get_all_users(
     let org_filter = EntityFilter::unfiltered().organization_id(&organization_id);
 
     let service = User::get_service(&state);
-    let mut users: Vec<User> = service
+    // Fetch all users first (permission filtering happens in-memory)
+    let all_users: Vec<User> = service
         .get_all(org_filter)
         .await
         .map_err(|e| ApiError::internal_error(&e.to_string()))?
-        .iter()
+        .into_iter()
         .filter(|u| {
             permissions == UserOrgPermissions::Owner
                 || u.base.permissions < permissions
                 || u.id == user_id
         })
-        .cloned()
         .collect();
+
+    // Apply pagination in-memory after filtering
+    let pagination = query.pagination();
+    let total_count = all_users.len() as u64;
+    let offset = pagination.effective_offset() as usize;
+    let limit = pagination.effective_limit();
+
+    let mut users: Vec<User> = match limit {
+        Some(l) => all_users
+            .into_iter()
+            .skip(offset)
+            .take(l as usize)
+            .collect(),
+        None => all_users.into_iter().skip(offset).collect(),
+    };
 
     // Hydrate network_ids from junction table
     state
@@ -129,7 +147,15 @@ pub async fn get_all_users(
         .await
         .map_err(|e| ApiError::internal_error(&e.to_string()))?;
 
-    Ok(Json(ApiResponse::success(users)))
+    let limit = limit.unwrap_or(0);
+    let offset = pagination.effective_offset();
+
+    Ok(Json(ApiResponse::success_paginated(
+        users,
+        total_count,
+        limit,
+        offset,
+    )))
 }
 
 /// Delete a user

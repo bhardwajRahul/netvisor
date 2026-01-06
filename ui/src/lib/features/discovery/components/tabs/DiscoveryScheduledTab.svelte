@@ -28,7 +28,8 @@
 	const tagsQuery = useTagsQuery();
 	const discoveriesQuery = useDiscoveriesQuery();
 	const daemonsQuery = useDaemonsQuery();
-	const hostsQuery = useHostsQuery();
+	// Use limit: 0 to get all hosts for modal dropdown
+	const hostsQuery = useHostsQuery({ limit: 0 });
 
 	// Mutations
 	const createDiscoveryMutation = useCreateDiscoveryMutation();
@@ -41,7 +42,7 @@
 	let tagsData = $derived(tagsQuery.data ?? []);
 	let discoveriesData = $derived(discoveriesQuery.data ?? []);
 	let daemonsData = $derived(daemonsQuery.data ?? []);
-	let hostsData = $derived(hostsQuery.data ?? []);
+	let hostsData = $derived(hostsQuery.data?.items ?? []);
 	let isLoading = $derived(
 		discoveriesQuery.isPending || daemonsQuery.isPending || hostsQuery.isPending
 	);

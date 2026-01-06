@@ -45,14 +45,15 @@
 	// TanStack Query hooks
 	const servicesQuery = useServicesQuery();
 	const networksQuery = useNetworksQuery();
-	const hostsQuery = useHostsQuery();
+	// Use limit: 0 to get all hosts for group edit modal
+	const hostsQuery = useHostsQuery({ limit: 0 });
 	const interfacesQuery = useInterfacesQuery();
 	const portsQuery = usePortsQuery();
 	const subnetsQuery = useSubnetsQuery();
 
 	let servicesData = $derived(servicesQuery.data ?? []);
 	let networksData = $derived(networksQuery.data ?? []);
-	let hostsData = $derived(hostsQuery.data ?? []);
+	let hostsData = $derived(hostsQuery.data?.items ?? []);
 	let interfacesData = $derived(interfacesQuery.data ?? []);
 	let portsData = $derived(portsQuery.data ?? []);
 	let subnetsData = $derived(subnetsQuery.data ?? []);

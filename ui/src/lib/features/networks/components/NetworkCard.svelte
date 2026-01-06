@@ -33,14 +33,15 @@
 	const currentUserQuery = useCurrentUserQuery();
 	let currentUser = $derived(currentUserQuery.data);
 
-	const hostsQuery = useHostsQuery();
+	// Use limit: 0 to get all hosts for network filtering
+	const hostsQuery = useHostsQuery({ limit: 0 });
 	const daemonsQuery = useDaemonsQuery();
 	const subnetsQuery = useSubnetsQuery();
 	const groupsQuery = useGroupsQuery();
 	const tagsQuery = useTagsQuery();
 
 	// Derived data from queries
-	let hostsData = $derived(hostsQuery.data ?? []);
+	let hostsData = $derived(hostsQuery.data?.items ?? []);
 	let daemonsData = $derived(daemonsQuery.data ?? []);
 	let subnetsData = $derived(subnetsQuery.data ?? []);
 	let groupsData = $derived(groupsQuery.data ?? []);

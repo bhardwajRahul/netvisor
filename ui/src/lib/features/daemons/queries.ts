@@ -16,7 +16,9 @@ export function useDaemonsQuery() {
 	return createQuery(() => ({
 		queryKey: queryKeys.daemons.all,
 		queryFn: async () => {
-			const { data } = await apiClient.GET('/api/v1/daemons');
+			const { data } = await apiClient.GET('/api/v1/daemons', {
+				params: { query: { pagination: { limit: 0 } } }
+			});
 			if (!data?.success || !data.data) {
 				throw new Error(data?.error || 'Failed to fetch daemons');
 			}

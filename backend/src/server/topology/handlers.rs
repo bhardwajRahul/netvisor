@@ -1,9 +1,13 @@
+use crate::server::shared::extractors::Query;
 use crate::server::{
     auth::middleware::permissions::{Authorized, IsUser, Member, Viewer},
     config::AppState,
     shared::{
         events::types::{TelemetryEvent, TelemetryOperation},
-        handlers::traits::{CrudHandlers, update_handler},
+        handlers::{
+            query::{FilterQueryExtractor, NetworkFilterQuery},
+            traits::{CrudHandlers, update_handler},
+        },
         services::traits::CrudService,
         storage::{filter::EntityFilter, traits::StorableEntity},
         types::api::{ApiError, ApiErrorResponse, ApiResponse, ApiResult, EmptyApiResponse},
@@ -76,6 +80,7 @@ async fn update_topology(
     get,
     path = "",
     tags = ["topology", "internal"],
+    params(NetworkFilterQuery),
     responses(
         (status = 200, description = "List of topologies", body = ApiResponse<Vec<Topology>>),
     ),
@@ -84,14 +89,34 @@ async fn update_topology(
 async fn get_all_topologies(
     State(state): State<Arc<AppState>>,
     auth: Authorized<Viewer>,
+    query: Query<NetworkFilterQuery>,
 ) -> ApiResult<Json<ApiResponse<Vec<Topology>>>> {
+    let network_ids = auth.network_ids();
+    let organization_id = auth
+        .organization_id()
+        .ok_or_else(|| ApiError::forbidden("Organization context required"))?;
+
+    // Apply network filter and pagination
+    let base_filter = EntityFilter::unfiltered().network_ids(&network_ids);
+    let filter = query.apply_to_filter(base_filter, &network_ids, organization_id);
+    let pagination = query.pagination();
+    let filter = pagination.apply_to_filter(filter);
+
     let service = Topology::get_service(&state);
-    let filter = EntityFilter::unfiltered().network_ids(&auth.network_ids());
-    let entities = service.get_all(filter).await.map_err(|e| {
+    let result = service.get_paginated(filter).await.map_err(|e| {
         tracing::error!(error = %e, "Failed to fetch topologies");
         ApiError::internal_error(&e.to_string())
     })?;
-    Ok(Json(ApiResponse::success(entities)))
+
+    let limit = pagination.effective_limit().unwrap_or(0);
+    let offset = pagination.effective_offset();
+
+    Ok(Json(ApiResponse::success_paginated(
+        result.items,
+        result.total_count,
+        limit,
+        offset,
+    )))
 }
 
 /// Create topology

@@ -14,7 +14,9 @@ export function useSubnetsQuery() {
 	return createQuery(() => ({
 		queryKey: queryKeys.subnets.all,
 		queryFn: async () => {
-			const { data } = await apiClient.GET('/api/v1/subnets');
+			const { data } = await apiClient.GET('/api/v1/subnets', {
+				params: { query: { pagination: { limit: 0 } } }
+			});
 			if (!data?.success || !data.data) {
 				throw new Error(data?.error || 'Failed to fetch subnets');
 			}
