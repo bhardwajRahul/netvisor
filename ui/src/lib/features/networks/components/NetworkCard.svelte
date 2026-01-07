@@ -8,8 +8,7 @@
 	import { useSubnetsQuery } from '$lib/features/subnets/queries';
 	import { useGroupsQuery } from '$lib/features/groups/queries';
 	import { useCurrentUserQuery } from '$lib/features/auth/queries';
-	import { useTagsQuery } from '$lib/features/tags/queries';
-	import { toColor } from '$lib/shared/utils/styling';
+	import TagPickerInline from '$lib/features/tags/components/TagPickerInline.svelte';
 
 	interface Props {
 		network: Network;
@@ -38,14 +37,12 @@
 	const daemonsQuery = useDaemonsQuery();
 	const subnetsQuery = useSubnetsQuery();
 	const groupsQuery = useGroupsQuery();
-	const tagsQuery = useTagsQuery();
 
 	// Derived data from queries
 	let hostsData = $derived(hostsQuery.data?.items ?? []);
 	let daemonsData = $derived(daemonsQuery.data ?? []);
 	let subnetsData = $derived(subnetsQuery.data ?? []);
 	let groupsData = $derived(groupsQuery.data ?? []);
-	let tagsData = $derived(tagsQuery.data ?? []);
 
 	let networkHosts = $derived(hostsData.filter((h) => h.network_id == network.id));
 	let networkDaemons = $derived(daemonsData.filter((d) => d.network_id == network.id));
@@ -102,15 +99,7 @@
 					};
 				})
 			},
-			{
-				label: 'Tags',
-				value: network.tags.map((t) => {
-					const tag = tagsData.find((tag) => tag.id == t);
-					return tag
-						? { id: tag.id, color: tag.color, label: tag.name }
-						: { id: t, color: toColor('gray'), label: 'Unknown Tag' };
-				})
-			}
+			{ label: 'Tags', snippet: tagsSnippet }
 		],
 
 		actions: [
@@ -132,6 +121,13 @@
 		]
 	});
 </script>
+
+{#snippet tagsSnippet()}
+	<div class="flex items-center gap-2">
+		<span class="text-secondary text-sm">Tags:</span>
+		<TagPickerInline selectedTagIds={network.tags} entityId={network.id} entityType="Network" />
+	</div>
+{/snippet}
 
 <GenericCard
 	{...cardData}

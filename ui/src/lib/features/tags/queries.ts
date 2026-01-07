@@ -8,6 +8,12 @@ import { createQuery, createMutation, useQueryClient } from '@tanstack/svelte-qu
 import { queryKeys } from '$lib/api/query-client';
 import { apiClient } from '$lib/api/client';
 import type { Tag } from './types/base';
+import type { components } from '$lib/api/schema';
+
+// Types for tag assignment operations
+export type EntityDiscriminants = components['schemas']['EntityDiscriminants'];
+export type BulkTagRequest = components['schemas']['BulkTagRequest'];
+export type SetTagsRequest = components['schemas']['SetTagsRequest'];
 
 /**
  * Query hook for fetching all tags
@@ -119,6 +125,125 @@ export function useBulkDeleteTagsMutation() {
 				queryKeys.tags.all,
 				(old) => old?.filter((t) => !ids.includes(t.id)) ?? []
 			);
+		}
+	}));
+}
+
+// ============================================================================
+// Entity Tag Assignment Mutations
+// ============================================================================
+
+/**
+ * Map entity types to their query key names for cache invalidation.
+ * Using full Record ensures TypeScript errors if a new EntityDiscriminants is added
+ * without updating this mapping.
+ */
+const entityTypeToQueryKeyName: Record<EntityDiscriminants, keyof typeof queryKeys | null> = {
+	// Taggable entities
+	Host: 'hosts',
+	Service: 'services',
+	Subnet: 'subnets',
+	Group: 'groups',
+	Network: 'networks',
+	Discovery: 'discovery',
+	Daemon: 'daemons',
+	DaemonApiKey: 'apiKeys',
+	UserApiKey: 'userApiKeys',
+	// Non-taggable entities (null = no cache invalidation needed)
+	Organization: null,
+	Invite: null,
+	Share: null,
+	User: null,
+	Tag: null,
+	Port: null,
+	Binding: null,
+	Interface: null,
+	Topology: null
+};
+
+/**
+ * Get the query key for an entity type, or undefined if not taggable.
+ */
+function getQueryKeyForEntityType(entityType: EntityDiscriminants): readonly string[] | undefined {
+	const keyName = entityTypeToQueryKeyName[entityType];
+	if (keyName) {
+		return queryKeys[keyName].all;
+	}
+	return undefined;
+}
+
+/**
+ * List of taggable entity types (derived from the mapping above)
+ */
+export const TAGGABLE_ENTITY_TYPES = (
+	Object.keys(entityTypeToQueryKeyName) as EntityDiscriminants[]
+).filter((key) => entityTypeToQueryKeyName[key] !== null);
+
+/**
+ * Mutation hook for bulk adding a tag to multiple entities
+ */
+export function useBulkAddTagMutation() {
+	const queryClient = useQueryClient();
+
+	return createMutation(() => ({
+		mutationFn: async (request: BulkTagRequest) => {
+			const { data } = await apiClient.POST('/api/v1/tags/assign/bulk-add', { body: request });
+			if (!data?.success || !data.data) {
+				throw new Error(data?.error || 'Failed to add tag to entities');
+			}
+			return { ...data.data, entityType: request.entity_type };
+		},
+		onSuccess: ({ entityType }) => {
+			const queryKey = getQueryKeyForEntityType(entityType);
+			if (queryKey) {
+				queryClient.invalidateQueries({ queryKey });
+			}
+		}
+	}));
+}
+
+/**
+ * Mutation hook for bulk removing a tag from multiple entities
+ */
+export function useBulkRemoveTagMutation() {
+	const queryClient = useQueryClient();
+
+	return createMutation(() => ({
+		mutationFn: async (request: BulkTagRequest) => {
+			const { data } = await apiClient.POST('/api/v1/tags/assign/bulk-remove', { body: request });
+			if (!data?.success || !data.data) {
+				throw new Error(data?.error || 'Failed to remove tag from entities');
+			}
+			return { ...data.data, entityType: request.entity_type };
+		},
+		onSuccess: ({ entityType }) => {
+			const queryKey = getQueryKeyForEntityType(entityType);
+			if (queryKey) {
+				queryClient.invalidateQueries({ queryKey });
+			}
+		}
+	}));
+}
+
+/**
+ * Mutation hook for setting all tags on an entity
+ */
+export function useSetEntityTagsMutation() {
+	const queryClient = useQueryClient();
+
+	return createMutation(() => ({
+		mutationFn: async (request: SetTagsRequest) => {
+			const { data } = await apiClient.PUT('/api/v1/tags/assign', { body: request });
+			if (!data?.success) {
+				throw new Error(data?.error || 'Failed to set entity tags');
+			}
+			return { entityType: request.entity_type };
+		},
+		onSuccess: ({ entityType }) => {
+			const queryKey = getQueryKeyForEntityType(entityType);
+			if (queryKey) {
+				queryClient.invalidateQueries({ queryKey });
+			}
 		}
 	}));
 }

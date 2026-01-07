@@ -3,6 +3,7 @@ use std::net::IpAddr;
 use crate::server::bindings::r#impl::base::Binding;
 use crate::server::groups::r#impl::base::Group;
 use crate::server::services::r#impl::base::Service;
+use crate::server::shared::entities::EntityDiscriminants;
 use crate::server::shared::events::types::TelemetryOperation;
 use crate::server::subnets::r#impl::base::Subnet;
 use crate::server::{
@@ -73,6 +74,8 @@ pub trait StorableEntity: Sized + Clone + Send + Sync + 'static + Default {
     /// Entity metadata
     fn table_name() -> &'static str;
 
+    fn entity_type() -> EntityDiscriminants;
+
     /// Primary key
     fn id(&self) -> Uuid;
     fn network_id(&self) -> Option<Uuid>;
@@ -95,6 +98,34 @@ pub trait StorableEntity: Sized + Clone + Send + Sync + 'static + Default {
 
     /// Deserialization from database
     fn from_row(row: &PgRow) -> Result<Self, anyhow::Error>;
+
+    /// Optional: Get the tags field from the entity for validation.
+    /// Override for entities with a tags field.
+    /// Returns None for entities without tags.
+    fn get_tags(&self) -> Option<&Vec<Uuid>> {
+        None
+    }
+
+    /// Optional: Set the tags field on the entity.
+    /// Override for entities with a tags field.
+    fn set_tags(&mut self, _tags: Vec<Uuid>) {
+        // Default: no-op
+    }
+
+    /// Optional: Set the source field on the entity.
+    /// Override for entities with a source field to set it appropriately.
+    /// Default is a no-op for entities without a source field.
+    fn set_source(&mut self, _source: EntitySource) {
+        // Default: no-op
+    }
+
+    /// Optional: Preserve entity-specific immutable fields from the existing entity.
+    /// Override for entities that have additional read-only fields beyond id/created_at.
+    /// For example, ApiKey should preserve `key` and `last_used`.
+    /// Default is a no-op for entities without extra immutable fields.
+    fn preserve_immutable_fields(&mut self, _existing: &Self) {
+        // Default: no-op
+    }
 }
 
 /// Helper type for SQL values
@@ -114,6 +145,7 @@ pub enum SqlValue {
     IpCidr(IpCidr),
     IpAddr(IpAddr),
     EntitySource(EntitySource),
+    EntityDiscriminant(EntityDiscriminants),
     ServiceDefinition(Box<dyn ServiceDefinition>),
     OptionalServiceVirtualization(Option<ServiceVirtualization>),
     OptionalHostVirtualization(Option<HostVirtualization>),

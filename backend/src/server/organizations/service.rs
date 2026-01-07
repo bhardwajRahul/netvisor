@@ -1,4 +1,5 @@
 use crate::server::shared::events::bus::EventBus;
+use crate::server::shared::services::entity_tags::EntityTagService;
 use crate::server::shared::services::traits::EventBusService;
 use crate::server::{
     organizations::r#impl::base::Organization,
@@ -30,6 +31,10 @@ impl EventBusService<Organization> for OrganizationService {
 impl CrudService<Organization> for OrganizationService {
     fn storage(&self) -> &Arc<GenericPostgresStorage<Organization>> {
         &self.storage
+    }
+
+    fn entity_tag_service(&self) -> Option<&Arc<EntityTagService>> {
+        None
     }
 }
 

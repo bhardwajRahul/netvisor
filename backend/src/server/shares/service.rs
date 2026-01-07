@@ -35,6 +35,12 @@ impl CrudService<Share> for ShareService {
     fn storage(&self) -> &Arc<GenericPostgresStorage<Share>> {
         &self.storage
     }
+
+    fn entity_tag_service(
+        &self,
+    ) -> Option<&Arc<crate::server::shared::services::entity_tags::EntityTagService>> {
+        None
+    }
 }
 
 impl ShareService {

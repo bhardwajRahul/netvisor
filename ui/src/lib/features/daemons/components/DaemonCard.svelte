@@ -7,18 +7,17 @@
 	import { formatTimestamp } from '$lib/shared/utils/formatting';
 	import { toColor } from '$lib/shared/utils/styling';
 	import { ArrowBigUp, Trash2 } from 'lucide-svelte';
-	import { useTagsQuery } from '$lib/features/tags/queries';
 	import { useNetworksQuery } from '$lib/features/networks/queries';
 	import { useHostsQuery } from '$lib/features/hosts/queries';
 	import { useSubnetsQuery } from '$lib/features/subnets/queries';
 	import type { TagProps } from '$lib/shared/components/data/types';
 	import DaemonUpgradeModal from './DaemonUpgradeModal.svelte';
+	import TagPickerInline from '$lib/features/tags/components/TagPickerInline.svelte';
 
 	// Modal state
 	let upgradeModalOpen = $state(false);
 
 	// Queries
-	const tagsQuery = useTagsQuery();
 	const networksQuery = useNetworksQuery();
 	// Use limit: 0 to get all hosts for daemon card lookups
 	const hostsQuery = useHostsQuery({ limit: 0 });
@@ -26,7 +25,6 @@
 	const sessionsQuery = useActiveSessionsQuery();
 
 	// Derived data
-	let tagsData = $derived(tagsQuery.data ?? []);
 	let networksData = $derived(networksQuery.data ?? []);
 	let hostsData = $derived(hostsQuery.data?.items ?? []);
 	let subnetsData = $derived(subnetsQuery.data ?? []);
@@ -149,15 +147,7 @@
 							],
 				emptyText: 'No subnet interfaces'
 			},
-			{
-				label: 'Tags',
-				value: daemon.tags.map((t) => {
-					const tag = tagsData.find((tag) => tag.id == t);
-					return tag
-						? { id: tag.id, color: tag.color, label: tag.name }
-						: { id: t, color: toColor('gray'), label: 'Unknown Tag' };
-				})
-			}
+			{ label: 'Tags', snippet: tagsSnippet }
 		],
 		actions: [
 			...(onDelete
@@ -186,6 +176,13 @@
 		]
 	});
 </script>
+
+{#snippet tagsSnippet()}
+	<div class="flex items-center gap-2">
+		<span class="text-secondary text-sm">Tags:</span>
+		<TagPickerInline selectedTagIds={daemon.tags} entityId={daemon.id} entityType="Daemon" />
+	</div>
+{/snippet}
 
 <GenericCard {...cardData} {viewMode} {selected} {onSelectionChange} />
 

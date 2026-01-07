@@ -1,3 +1,5 @@
+use crate::server::shared::entities::EntityDiscriminants;
+use crate::server::shared::services::entity_tags::EntityTagService;
 use crate::server::shared::storage::traits::StorableEntity;
 use crate::server::{
     auth::middleware::auth::AuthenticatedEntity,
@@ -41,6 +43,7 @@ pub struct ServiceService {
     group_update_lock: Arc<Mutex<()>>,
     service_locks: Arc<Mutex<HashMap<Uuid, Arc<Mutex<()>>>>>,
     event_bus: Arc<EventBus>,
+    entity_tag_service: Arc<EntityTagService>,
 }
 
 impl EventBusService<Service> for ServiceService {
@@ -62,11 +65,16 @@ impl CrudService<Service> for ServiceService {
         &self.storage
     }
 
+    fn entity_tag_service(&self) -> Option<&Arc<EntityTagService>> {
+        Some(&self.entity_tag_service)
+    }
+
     async fn get_by_id(&self, id: &Uuid) -> Result<Option<Service>, anyhow::Error> {
         let service = self.storage().get_by_id(id).await?;
         match service {
             Some(mut s) => {
                 s.base.bindings = self.binding_service.get_for_parent(&s.id).await?;
+                self.hydrate_tags(&mut s).await?;
                 Ok(Some(s))
             }
             None => Ok(None),
@@ -88,6 +96,8 @@ impl CrudService<Service> for ServiceService {
             }
         }
 
+        self.bulk_hydrate_tags(&mut services).await?;
+
         Ok(services)
     }
 
@@ -96,6 +106,7 @@ impl CrudService<Service> for ServiceService {
         match service {
             Some(mut s) => {
                 s.base.bindings = self.binding_service.get_for_parent(&s.id).await?;
+                self.hydrate_tags(&mut s).await?;
                 Ok(Some(s))
             }
             None => Ok(None),
@@ -186,6 +197,21 @@ impl CrudService<Service> for ServiceService {
                 // Update service with the saved bindings (which have actual IDs)
                 created.base.bindings = saved_bindings;
 
+                // Save tags to junction table
+                if let Some(tag_service) = self.entity_tag_service()
+                    && let Some(org_id) = authentication.organization_id()
+                {
+                    tag_service
+                        .set_tags(
+                            created.id,
+                            EntityDiscriminants::Service,
+                            service.base.tags.clone(),
+                            org_id,
+                        )
+                        .await?;
+                    created.base.tags = service.base.tags;
+                }
+
                 let trigger_stale = created.triggers_staleness(None);
 
                 self.event_bus()
@@ -266,6 +292,21 @@ impl CrudService<Service> for ServiceService {
         // Update service with the saved bindings (which have actual IDs and preserved created_at)
         updated.base.bindings = saved_bindings;
 
+        // Update tags in junction table
+        if let Some(tag_service) = self.entity_tag_service()
+            && let Some(org_id) = authentication.organization_id()
+        {
+            tag_service
+                .set_tags(
+                    updated.id,
+                    EntityDiscriminants::Service,
+                    updated.base.tags,
+                    org_id,
+                )
+                .await?;
+            updated.base.tags = service.base.tags.clone();
+        }
+
         let trigger_stale = updated.triggers_staleness(Some(current_service));
 
         self.event_bus()
@@ -299,6 +340,13 @@ impl CrudService<Service> for ServiceService {
         self.update_group_service_bindings(&service, None, authentication.clone())
             .await?;
 
+        // Remove tags from junction table
+        if let Some(tag_service) = self.entity_tag_service() {
+            tag_service
+                .remove_all_for_entity(*id, EntityDiscriminants::Service)
+                .await?;
+        }
+
         self.storage.delete(id).await?;
 
         let trigger_stale = service.triggers_staleness(None);
@@ -330,6 +378,7 @@ impl ServiceService {
         binding_service: Arc<BindingService>,
         group_service: Arc<GroupService>,
         event_bus: Arc<EventBus>,
+        entity_tag_service: Arc<EntityTagService>,
     ) -> Self {
         Self {
             storage,
@@ -339,11 +388,12 @@ impl ServiceService {
             group_update_lock: Arc::new(Mutex::new(())),
             service_locks: Arc::new(Mutex::new(HashMap::new())),
             event_bus,
+            entity_tag_service,
         }
     }
 
     /// Get all services matching filter, ordered by the specified column.
-    /// Also loads bindings for each service.
+    /// Also loads bindings and tags for each service.
     pub async fn get_all_ordered(
         &self,
         filter: EntityFilter,
@@ -362,6 +412,8 @@ impl ServiceService {
                 service.base.bindings = bindings.clone();
             }
         }
+
+        self.bulk_hydrate_tags(&mut services).await?;
 
         Ok(services)
     }

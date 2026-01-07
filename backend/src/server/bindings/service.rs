@@ -5,7 +5,10 @@ use crate::server::{
     bindings::r#impl::base::Binding,
     shared::{
         events::bus::EventBus,
-        services::traits::{ChildCrudService, CrudService, EventBusService},
+        services::{
+            entity_tags::EntityTagService,
+            traits::{ChildCrudService, CrudService, EventBusService},
+        },
         storage::generic::GenericPostgresStorage,
     },
 };
@@ -32,6 +35,10 @@ impl EventBusService<Binding> for BindingService {
 impl CrudService<Binding> for BindingService {
     fn storage(&self) -> &Arc<GenericPostgresStorage<Binding>> {
         &self.storage
+    }
+
+    fn entity_tag_service(&self) -> Option<&Arc<EntityTagService>> {
+        None
     }
 }
 

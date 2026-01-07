@@ -3,7 +3,7 @@ use std::str::FromStr;
 
 use crate::server::{
     shared::{
-        entities::ChangeTriggersTopologyStaleness,
+        entities::{ChangeTriggersTopologyStaleness, EntityDiscriminants},
         storage::traits::{SqlValue, StorableEntity},
     },
     users::r#impl::permissions::UserOrgPermissions,
@@ -191,6 +191,14 @@ impl StorableEntity for User {
 
     fn set_updated_at(&mut self, time: DateTime<Utc>) {
         self.updated_at = time;
+    }
+
+    fn preserve_immutable_fields(&mut self, existing: &Self) {
+        self.base.terms_accepted_at = existing.base.terms_accepted_at;
+    }
+
+    fn entity_type() -> EntityDiscriminants {
+        EntityDiscriminants::User
     }
 
     fn to_params(&self) -> Result<(Vec<&'static str>, Vec<SqlValue>), anyhow::Error> {

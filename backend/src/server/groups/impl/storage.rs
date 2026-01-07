@@ -9,6 +9,7 @@ use crate::server::{
         types::GroupType,
     },
     shared::{
+        entities::EntityDiscriminants,
         storage::traits::{SqlValue, StorableEntity},
         types::entities::EntitySource,
     },
@@ -69,6 +70,29 @@ impl StorableEntity for Group {
         self.updated_at = time;
     }
 
+    fn set_source(&mut self, source: EntitySource) {
+        self.base.source = source;
+    }
+
+    fn preserve_immutable_fields(&mut self, existing: &Self) {
+        // source is set at creation time (Manual or Discovery), cannot be changed
+        self.base.source = existing.base.source.clone();
+        self.created_at = existing.created_at;
+        self.updated_at = existing.updated_at;
+    }
+
+    fn get_tags(&self) -> Option<&Vec<Uuid>> {
+        Some(&self.base.tags)
+    }
+
+    fn set_tags(&mut self, tags: Vec<Uuid>) {
+        self.base.tags = tags;
+    }
+
+    fn entity_type() -> EntityDiscriminants {
+        EntityDiscriminants::Group
+    }
+
     fn to_params(&self) -> Result<(Vec<&'static str>, Vec<SqlValue>), anyhow::Error> {
         let Self {
             id,
@@ -84,7 +108,7 @@ impl StorableEntity for Group {
                     source,
                     color,
                     edge_style,
-                    tags,
+                    tags: _, // Stored in entity_tags junction table
                 },
         } = self.clone();
 
@@ -103,7 +127,6 @@ impl StorableEntity for Group {
                 "group_type",
                 "color",
                 "edge_style",
-                "tags",
             ],
             vec![
                 SqlValue::Uuid(id),
@@ -116,7 +139,6 @@ impl StorableEntity for Group {
                 SqlValue::String(group_type_str.to_string()),
                 SqlValue::String(color.to_string()),
                 SqlValue::String(serde_json::to_string(&edge_style)?),
-                SqlValue::UuidArray(tags),
             ],
         ))
     }
@@ -150,7 +172,7 @@ impl StorableEntity for Group {
                 group_type,
                 binding_ids: Vec::new(), // Hydrated by GroupService via GroupBindingStorage
                 color: row.get::<String, _>("color").parse().unwrap_or_default(),
-                tags: row.get("tags"),
+                tags: Vec::new(), // Hydrated from entity_tags junction table
             },
         })
     }

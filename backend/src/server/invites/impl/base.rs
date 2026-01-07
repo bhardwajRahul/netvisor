@@ -13,7 +13,7 @@ use validator::Validate;
 
 use crate::server::{
     shared::{
-        entities::ChangeTriggersTopologyStaleness,
+        entities::{ChangeTriggersTopologyStaleness, EntityDiscriminants},
         storage::traits::{SqlValue, StorableEntity},
     },
     users::r#impl::permissions::UserOrgPermissions,
@@ -148,6 +148,10 @@ impl StorableEntity for Invite {
 
     fn set_updated_at(&mut self, time: DateTime<Utc>) {
         self.updated_at = time;
+    }
+
+    fn entity_type() -> EntityDiscriminants {
+        EntityDiscriminants::Invite
     }
 
     fn to_params(&self) -> Result<(Vec<&'static str>, Vec<SqlValue>), anyhow::Error> {

@@ -7,14 +7,17 @@ use sqlx::{PgPool, Row, postgres::PgRow};
 use std::fmt::Display;
 use uuid::Uuid;
 
-use crate::server::shared::storage::{
-    filter::EntityFilter,
-    generic::GenericPostgresStorage,
-    traits::{SqlValue, StorableEntity, Storage},
+use crate::server::shared::{
+    entities::EntityDiscriminants,
+    storage::{
+        filter::EntityFilter,
+        generic::GenericPostgresStorage,
+        traits::{SqlValue, StorableEntity, Storage},
+    },
 };
 
 /// The base data for a UserNetworkAccess junction record
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq, Hash)]
 pub struct UserNetworkAccessBase {
     pub user_id: Uuid,
     pub network_id: Uuid,
@@ -30,7 +33,7 @@ impl UserNetworkAccessBase {
 }
 
 /// A junction record linking a user to a network they have access to
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq, Hash)]
 pub struct UserNetworkAccess {
     pub id: Uuid,
     pub created_at: DateTime<Utc>,
@@ -110,6 +113,10 @@ impl StorableEntity for UserNetworkAccess {
 
     fn set_updated_at(&mut self, _time: DateTime<Utc>) {
         // No-op for junction table
+    }
+
+    fn entity_type() -> EntityDiscriminants {
+        EntityDiscriminants::UserNetworkAccess
     }
 
     fn to_params(&self) -> Result<(Vec<&'static str>, Vec<SqlValue>)> {

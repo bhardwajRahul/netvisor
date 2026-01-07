@@ -1,10 +1,4 @@
-use anyhow::Result;
-use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
-use sqlx::{Row, postgres::PgRow};
-use std::fmt::Display;
-use uuid::Uuid;
-
+use crate::server::shared::entities::EntityDiscriminants;
 use crate::server::shared::{
     position::Positioned,
     storage::{
@@ -12,9 +6,15 @@ use crate::server::shared::{
         traits::{SqlValue, StorableEntity},
     },
 };
+use anyhow::Result;
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use sqlx::{Row, postgres::PgRow};
+use std::fmt::Display;
+use uuid::Uuid;
 
 /// The base data for a GroupBinding junction record
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq, Hash)]
 pub struct GroupBindingBase {
     pub group_id: Uuid,
     pub binding_id: Uuid,
@@ -32,7 +32,7 @@ impl GroupBindingBase {
 }
 
 /// A junction record linking a group to a binding with a position
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq, Hash)]
 pub struct GroupBinding {
     pub id: Uuid,
     pub created_at: DateTime<Utc>,
@@ -116,6 +116,10 @@ impl StorableEntity for GroupBinding {
 
     fn set_updated_at(&mut self, _time: DateTime<Utc>) {
         // No-op for junction table
+    }
+
+    fn entity_type() -> EntityDiscriminants {
+        EntityDiscriminants::GroupBinding
     }
 
     fn to_params(&self) -> Result<(Vec<&'static str>, Vec<SqlValue>)> {

@@ -62,6 +62,10 @@
 		}
 	}
 
+	function getDaemonTags(daemon: Daemon): string[] {
+		return daemon.tags;
+	}
+
 	const daemonFields: FieldConfig<Daemon>[] = [
 		{
 			key: 'name',
@@ -128,6 +132,8 @@
 			fields={daemonFields}
 			storageKey="scanopy-daemons-table-state"
 			onBulkDelete={isReadOnly ? undefined : handleBulkDelete}
+			entityType={isReadOnly ? undefined : 'Daemon'}
+			getItemTags={getDaemonTags}
 			getItemId={(item) => item.id}
 		>
 			{#snippet children(

@@ -3,6 +3,7 @@ use crate::server::groups::r#impl::base::Group;
 use crate::server::interfaces::r#impl::base::Interface;
 use crate::server::ports::r#impl::base::Port;
 use crate::server::services::r#impl::base::Service;
+use crate::server::shared::entities::EntityDiscriminants;
 use crate::server::subnets::r#impl::base::Subnet;
 use crate::server::{
     hosts::r#impl::base::Host,
@@ -70,6 +71,25 @@ impl StorableEntity for Topology {
 
     fn set_updated_at(&mut self, time: DateTime<Utc>) {
         self.updated_at = time;
+    }
+
+    fn preserve_immutable_fields(&mut self, existing: &Self) {
+        self.id = existing.id;
+        self.base.parent_id = existing.base.parent_id;
+        self.created_at = existing.created_at;
+        self.updated_at = existing.updated_at;
+    }
+
+    fn get_tags(&self) -> Option<&Vec<Uuid>> {
+        Some(&self.base.tags)
+    }
+
+    fn set_tags(&mut self, tags: Vec<Uuid>) {
+        self.base.tags = tags;
+    }
+
+    fn entity_type() -> EntityDiscriminants {
+        EntityDiscriminants::Topology
     }
 
     fn to_params(&self) -> Result<(Vec<&'static str>, Vec<SqlValue>), anyhow::Error> {

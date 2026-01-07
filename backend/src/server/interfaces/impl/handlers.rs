@@ -11,8 +11,4 @@ impl CrudHandlers for Interface {
     fn get_service(state: &AppState) -> &Self::Service {
         &state.services.interface_service
     }
-
-    fn preserve_immutable_fields(&mut self, existing: &Self) {
-        self.created_at = existing.created_at
-    }
 }

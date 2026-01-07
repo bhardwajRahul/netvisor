@@ -16,6 +16,12 @@
 	import type { FieldConfig } from './types';
 	import { onMount, type Snippet } from 'svelte';
 	import Tag from './Tag.svelte';
+	import TagPickerInline from '$lib/features/tags/components/TagPickerInline.svelte';
+	import {
+		useBulkAddTagMutation,
+		useBulkRemoveTagMutation,
+		type EntityDiscriminants
+	} from '$lib/features/tags/queries';
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 
 	// Client-side pagination: 20 items per page
@@ -27,6 +33,8 @@
 		storageKey = null,
 		onBulkDelete = null,
 		allowBulkDelete = true,
+		entityType = null,
+		getItemTags = null,
 		children,
 		getItemId
 	}: {
@@ -35,9 +43,15 @@
 		storageKey?: string | null;
 		onBulkDelete?: ((ids: string[]) => Promise<void>) | null;
 		allowBulkDelete?: boolean;
+		entityType?: EntityDiscriminants | null;
+		getItemTags?: ((item: T) => string[]) | null;
 		children: Snippet<[T, 'card' | 'list', boolean, (selected: boolean) => void]>;
 		getItemId: (item: T) => string;
 	} = $props();
+
+	// Bulk tag mutations
+	const bulkAddTagMutation = useBulkAddTagMutation();
+	const bulkRemoveTagMutation = useBulkRemoveTagMutation();
 
 	// Search state
 	let searchQuery = $state('');
@@ -520,6 +534,56 @@
 		}
 	}
 
+	// Handle bulk tag add
+	async function handleBulkTagAdd(tagId: string) {
+		if (!entityType || selectedIds.size === 0) return;
+
+		try {
+			await bulkAddTagMutation.mutateAsync({
+				entity_ids: Array.from(selectedIds),
+				entity_type: entityType,
+				tag_id: tagId
+			});
+		} catch (error) {
+			console.error('Bulk tag add failed:', error);
+		}
+	}
+
+	// Handle bulk tag remove
+	async function handleBulkTagRemove(tagId: string) {
+		if (!entityType || selectedIds.size === 0) return;
+
+		try {
+			await bulkRemoveTagMutation.mutateAsync({
+				entity_ids: Array.from(selectedIds),
+				entity_type: entityType,
+				tag_id: tagId
+			});
+		} catch (error) {
+			console.error('Bulk tag remove failed:', error);
+		}
+	}
+
+	// Compute common tags across selected items (intersection)
+	let commonTags = $derived.by(() => {
+		if (!getItemTags || selectedIds.size === 0) return [];
+
+		const selectedItems = items.filter((item) => selectedIds.has(getItemId(item)));
+		if (selectedItems.length === 0) return [];
+
+		// Start with first item's tags, then intersect with others
+		let common = new Set(getItemTags(selectedItems[0]));
+		for (let i = 1; i < selectedItems.length; i++) {
+			const itemTags = new Set(getItemTags(selectedItems[i]));
+			common = new Set([...common].filter((tag) => itemTags.has(tag)));
+		}
+
+		return Array.from(common);
+	});
+
+	// Check if bulk tagging is enabled
+	let hasBulkTagging = $derived(entityType !== null && getItemTags !== null);
+
 	// Derived states
 	let allSelected = $derived(
 		processedItems.length > 0 && selectedIds.size === processedItems.length
@@ -612,8 +676,8 @@
 			</button>
 		{/if}
 
-		<!-- Select All/None Buttons (only show if onBulkDelete is provided) -->
-		{#if onBulkDelete}
+		<!-- Select All/None Buttons (show if bulk operations are available) -->
+		{#if onBulkDelete || hasBulkTagging}
 			<button
 				onclick={allSelected ? selectNone : selectAll}
 				class="btn-secondary flex items-center gap-2"
@@ -692,25 +756,42 @@
 	</div>
 
 	<!-- Bulk Action Bar (shown when items are selected) -->
-	{#if onBulkDelete && selectedIds.size > 0}
-		<div class="card flex items-center justify-between p-4">
-			<div class="flex items-center gap-4">
-				<span class="text-primary text-sm font-medium">
-					{selectedIds.size}
-					{selectedIds.size === 1 ? 'item' : 'items'} selected
-				</span>
-				<button
-					onclick={selectNone}
-					class="text-tertiary hover:text-secondary text-sm transition-colors"
-				>
-					Clear selection
-				</button>
+	{#if (onBulkDelete || hasBulkTagging) && selectedIds.size > 0}
+		<div class="card space-y-3 p-4">
+			<div class="flex items-center justify-between">
+				<div class="flex items-center gap-4">
+					<span class="text-primary text-sm font-medium">
+						{selectedIds.size}
+						{selectedIds.size === 1 ? 'item' : 'items'} selected
+					</span>
+					<button
+						onclick={selectNone}
+						class="text-tertiary hover:text-secondary text-sm transition-colors"
+					>
+						Clear selection
+					</button>
+				</div>
+				{#if allowBulkDelete && onBulkDelete}
+					<button onclick={handleBulkDelete} class="btn-danger flex items-center gap-2">
+						<Trash2 class="h-4 w-4" />
+						Delete Selected
+					</button>
+				{/if}
 			</div>
-			{#if allowBulkDelete}
-				<button onclick={handleBulkDelete} class="btn-danger flex items-center gap-2">
-					<Trash2 class="h-4 w-4" />
-					Delete Selected
-				</button>
+
+			<!-- Bulk Tagging -->
+			{#if hasBulkTagging}
+				<div class="flex items-center gap-3 border-t border-gray-700 pt-3">
+					<span class="text-secondary text-sm">Tags:</span>
+					<TagPickerInline
+						selectedTagIds={commonTags}
+						onAdd={handleBulkTagAdd}
+						onRemove={handleBulkTagRemove}
+					/>
+					{#if commonTags.length === 0 && selectedIds.size > 1}
+						<span class="text-tertiary text-xs">No common tags</span>
+					{/if}
+				</div>
 			{/if}
 		</div>
 	{/if}

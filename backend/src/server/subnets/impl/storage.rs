@@ -7,9 +7,9 @@ use uuid::Uuid;
 
 use crate::server::{
     shared::{
+        entities::EntityDiscriminants,
         storage::traits::{SqlValue, StorableEntity},
-        types::entities::EntitySource,
-        types::metadata::HasId,
+        types::{entities::EntitySource, metadata::HasId},
     },
     subnets::r#impl::{
         base::{Subnet, SubnetBase},
@@ -71,6 +71,27 @@ impl StorableEntity for Subnet {
         self.updated_at = time;
     }
 
+    fn set_source(&mut self, source: EntitySource) {
+        self.base.source = source;
+    }
+
+    fn preserve_immutable_fields(&mut self, existing: &Self) {
+        // source is set at creation time (Manual or Discovery), cannot be changed
+        self.base.source = existing.base.source.clone();
+    }
+
+    fn get_tags(&self) -> Option<&Vec<Uuid>> {
+        Some(&self.base.tags)
+    }
+
+    fn set_tags(&mut self, tags: Vec<Uuid>) {
+        self.base.tags = tags;
+    }
+
+    fn entity_type() -> EntityDiscriminants {
+        EntityDiscriminants::Subnet
+    }
+
     fn to_params(&self) -> Result<(Vec<&'static str>, Vec<SqlValue>), anyhow::Error> {
         let Self {
             id,
@@ -84,7 +105,7 @@ impl StorableEntity for Subnet {
                     cidr,
                     subnet_type,
                     description,
-                    tags,
+                    tags: _, // Stored in entity_tags junction table
                 },
         } = self.clone();
 
@@ -99,7 +120,6 @@ impl StorableEntity for Subnet {
                 "network_id",
                 "created_at",
                 "updated_at",
-                "tags",
             ],
             vec![
                 SqlValue::Uuid(id),
@@ -111,7 +131,6 @@ impl StorableEntity for Subnet {
                 SqlValue::Uuid(network_id),
                 SqlValue::Timestamp(created_at),
                 SqlValue::Timestamp(updated_at),
-                SqlValue::UuidArray(tags),
             ],
         ))
     }
@@ -137,7 +156,7 @@ impl StorableEntity for Subnet {
                 source,
                 cidr,
                 subnet_type,
-                tags: row.get("tags"),
+                tags: Vec::new(), // Hydrated from entity_tags junction table
             },
         })
     }

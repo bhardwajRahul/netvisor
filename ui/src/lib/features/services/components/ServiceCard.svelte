@@ -11,17 +11,14 @@
 	import { usePortsQuery } from '$lib/features/ports/queries';
 	import { matchConfidenceColor, matchConfidenceLabel } from '$lib/shared/types';
 	import { SvelteMap } from 'svelte/reactivity';
-	import { useTagsQuery } from '$lib/features/tags/queries';
-	import { toColor } from '$lib/shared/utils/styling';
+	import TagPickerInline from '$lib/features/tags/components/TagPickerInline.svelte';
 
 	// TanStack Query hooks
-	const tagsQuery = useTagsQuery();
 	const subnetsQuery = useSubnetsQuery();
 	const interfacesQuery = useInterfacesQuery();
 	const portsQuery = usePortsQuery();
 
 	// Derived data from queries
-	let tagsData = $derived(tagsQuery.data ?? []);
 	let subnetsData = $derived(subnetsQuery.data ?? []);
 	let interfacesData = $derived(interfacesQuery.data ?? []);
 	let portsData = $derived(portsQuery.data ?? []);
@@ -136,15 +133,7 @@
 				],
 				emptyText: 'Confidence value unavailable'
 			},
-			{
-				label: 'Tags',
-				value: service.tags.map((t) => {
-					const tag = tagsData.find((tag) => tag.id == t);
-					return tag
-						? { id: tag.id, color: tag.color, label: tag.name }
-						: { id: t, color: toColor('gray'), label: 'Unknown Tag' };
-				})
-			}
+			{ label: 'Tags', snippet: tagsSnippet }
 		],
 		actions: [
 			...(onDelete
@@ -163,5 +152,12 @@
 		]
 	});
 </script>
+
+{#snippet tagsSnippet()}
+	<div class="flex items-center gap-2">
+		<span class="text-secondary text-sm">Tags:</span>
+		<TagPickerInline selectedTagIds={service.tags} entityId={service.id} entityType="Service" />
+	</div>
+{/snippet}
 
 <GenericCard {...cardData} {viewMode} {selected} {onSelectionChange} />

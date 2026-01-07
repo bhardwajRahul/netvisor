@@ -153,6 +153,10 @@ where
                 // sqlx mac_address feature supports MacAddress directly
                 query.bind(*v)
             }
+            SqlValue::EntityDiscriminant(v) => {
+                // Serialize to JSON string to match how it's stored/deserialized
+                query.bind(serde_json::to_string(v)?)
+            }
         };
 
         Ok(value)

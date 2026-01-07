@@ -10,6 +10,7 @@ use crate::server::{
         virtualization::ServiceVirtualization,
     },
     shared::{
+        entities::EntityDiscriminants,
         storage::{
             child::ChildStorableEntity,
             traits::{SqlValue, StorableEntity},
@@ -72,6 +73,27 @@ impl StorableEntity for Service {
         self.updated_at = time;
     }
 
+    fn set_source(&mut self, source: EntitySource) {
+        self.base.source = source;
+    }
+
+    fn preserve_immutable_fields(&mut self, existing: &Self) {
+        // source is set at creation time (Manual or Discovery), cannot be changed
+        self.base.source = existing.base.source.clone();
+    }
+
+    fn get_tags(&self) -> Option<&Vec<Uuid>> {
+        Some(&self.base.tags)
+    }
+
+    fn set_tags(&mut self, tags: Vec<Uuid>) {
+        self.base.tags = tags;
+    }
+
+    fn entity_type() -> EntityDiscriminants {
+        EntityDiscriminants::Service
+    }
+
     fn to_params(&self) -> Result<(Vec<&'static str>, Vec<SqlValue>), anyhow::Error> {
         let Self {
             id,
@@ -86,7 +108,7 @@ impl StorableEntity for Service {
                     virtualization,
                     bindings: _, // Bindings stored in separate table, managed by BindingStorage
                     source,
-                    tags,
+                    tags: _, // Stored in entity_tags junction table
                     position,
                 },
         } = self.clone();
@@ -102,7 +124,6 @@ impl StorableEntity for Service {
                 "service_definition",
                 "virtualization",
                 "source",
-                "tags",
                 "position",
             ],
             vec![
@@ -115,7 +136,6 @@ impl StorableEntity for Service {
                 SqlValue::ServiceDefinition(service_definition),
                 SqlValue::OptionalServiceVirtualization(virtualization),
                 SqlValue::EntitySource(source),
-                SqlValue::UuidArray(tags),
                 SqlValue::I32(position),
             ],
         ))
@@ -143,7 +163,7 @@ impl StorableEntity for Service {
                 service_definition,
                 virtualization,
                 bindings: Vec::new(), // Bindings loaded separately by ServiceService via BindingStorage
-                tags: row.get("tags"),
+                tags: Vec::new(),     // Hydrated from entity_tags junction table
                 source,
                 position: row.get("position"),
             },

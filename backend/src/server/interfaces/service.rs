@@ -5,7 +5,10 @@ use crate::server::{
     interfaces::r#impl::base::Interface,
     shared::{
         events::bus::EventBus,
-        services::traits::{ChildCrudService, CrudService, EventBusService},
+        services::{
+            entity_tags::EntityTagService,
+            traits::{ChildCrudService, CrudService, EventBusService},
+        },
         storage::{filter::EntityFilter, generic::GenericPostgresStorage, traits::Storage},
         types::api::ValidationError,
     },
@@ -36,6 +39,10 @@ impl EventBusService<Interface> for InterfaceService {
 impl CrudService<Interface> for InterfaceService {
     fn storage(&self) -> &Arc<GenericPostgresStorage<Interface>> {
         &self.storage
+    }
+
+    fn entity_tag_service(&self) -> Option<&Arc<EntityTagService>> {
+        None
     }
 }
 

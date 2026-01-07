@@ -8,7 +8,10 @@ use crate::server::{
     shared::{
         api_key_common::ApiKeyService,
         events::bus::EventBus,
-        services::traits::{CrudService, EventBusService},
+        services::{
+            entity_tags::EntityTagService,
+            traits::{CrudService, EventBusService},
+        },
         storage::generic::GenericPostgresStorage,
     },
     user_api_keys::r#impl::{base::UserApiKey, network_access::UserApiKeyNetworkAccessStorage},
@@ -19,6 +22,7 @@ pub struct UserApiKeyService {
     storage: Arc<GenericPostgresStorage<UserApiKey>>,
     network_access_storage: Arc<UserApiKeyNetworkAccessStorage>,
     event_bus: Arc<EventBus>,
+    entity_tag_service: Arc<EntityTagService>,
 }
 
 impl EventBusService<UserApiKey> for UserApiKeyService {
@@ -48,6 +52,10 @@ impl CrudService<UserApiKey> for UserApiKeyService {
     fn storage(&self) -> &Arc<GenericPostgresStorage<UserApiKey>> {
         &self.storage
     }
+
+    fn entity_tag_service(&self) -> Option<&Arc<EntityTagService>> {
+        Some(&self.entity_tag_service)
+    }
 }
 
 impl UserApiKeyService {
@@ -55,11 +63,13 @@ impl UserApiKeyService {
         storage: Arc<GenericPostgresStorage<UserApiKey>>,
         network_access_storage: Arc<UserApiKeyNetworkAccessStorage>,
         event_bus: Arc<EventBus>,
+        entity_tag_service: Arc<EntityTagService>,
     ) -> Self {
         Self {
             storage,
             network_access_storage,
             event_bus,
+            entity_tag_service,
         }
     }
 
@@ -76,6 +86,7 @@ impl UserApiKeyService {
         if let Some(mut key) = self.storage.get_one(filter).await? {
             // Hydrate network_ids from junction table
             key.base.network_ids = self.network_access_storage.get_for_key(&key.id).await?;
+            self.hydrate_tags(&mut key).await?;
             return Ok(Some(key));
         }
         Ok(None)
@@ -95,6 +106,8 @@ impl UserApiKeyService {
         for key in &mut keys {
             key.base.network_ids = network_map.get(&key.id).cloned().unwrap_or_default();
         }
+
+        self.bulk_hydrate_tags(&mut keys).await?;
 
         Ok(keys)
     }

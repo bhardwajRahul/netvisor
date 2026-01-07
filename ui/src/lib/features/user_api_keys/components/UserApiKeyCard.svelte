@@ -2,15 +2,12 @@
 	import GenericCard from '$lib/shared/components/data/GenericCard.svelte';
 	import { entities } from '$lib/shared/stores/metadata';
 	import { formatTimestamp } from '$lib/shared/utils/formatting';
-	import { toColor } from '$lib/shared/utils/styling';
 	import { Edit, Trash2 } from 'lucide-svelte';
 	import type { UserApiKey } from '../queries';
-	import { useTagsQuery } from '$lib/features/tags/queries';
 	import { useNetworksQuery } from '$lib/features/networks/queries';
+	import TagPickerInline from '$lib/features/tags/components/TagPickerInline.svelte';
 
 	// Queries
-	const tagsQuery = useTagsQuery();
-	let tagsData = $derived(tagsQuery.data ?? []);
 
 	const networksQuery = useNetworksQuery();
 	let networksData = $derived(networksQuery.data ?? []);
@@ -72,15 +69,7 @@
 				label: 'Enabled',
 				value: apiKey.is_enabled ? 'Yes' : 'No'
 			},
-			{
-				label: 'Tags',
-				value: (apiKey.tags ?? []).map((t) => {
-					const tag = tagsData.find((tag) => tag.id == t);
-					return tag
-						? { id: tag.id, color: tag.color, label: tag.name }
-						: { id: t, color: toColor('gray'), label: 'Unknown Tag' };
-				})
-			}
+			{ label: 'Tags', snippet: tagsSnippet }
 		],
 		actions: [
 			{
@@ -98,5 +87,16 @@
 		]
 	});
 </script>
+
+{#snippet tagsSnippet()}
+	<div class="flex items-center gap-2">
+		<span class="text-secondary text-sm">Tags:</span>
+		<TagPickerInline
+			selectedTagIds={apiKey.tags ?? []}
+			entityId={apiKey.id}
+			entityType="UserApiKey"
+		/>
+	</div>
+{/snippet}
 
 <GenericCard {...cardData} {viewMode} {selected} {onSelectionChange} />

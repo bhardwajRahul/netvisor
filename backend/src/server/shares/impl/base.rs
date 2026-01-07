@@ -1,7 +1,7 @@
 use std::fmt::Display;
 
 use crate::server::shared::{
-    entities::ChangeTriggersTopologyStaleness,
+    entities::{ChangeTriggersTopologyStaleness, EntityDiscriminants},
     storage::traits::{SqlValue, StorableEntity},
 };
 use chrono::{DateTime, Utc};
@@ -161,6 +161,10 @@ impl StorableEntity for Share {
 
     fn set_updated_at(&mut self, time: DateTime<Utc>) {
         self.updated_at = time;
+    }
+
+    fn entity_type() -> EntityDiscriminants {
+        EntityDiscriminants::Share
     }
 
     fn to_params(&self) -> Result<(Vec<&'static str>, Vec<SqlValue>), anyhow::Error> {

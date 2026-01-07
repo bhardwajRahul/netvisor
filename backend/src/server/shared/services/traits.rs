@@ -14,6 +14,7 @@ use crate::server::{
             bus::EventBus,
             types::{EntityEvent, EntityOperation},
         },
+        services::entity_tags::EntityTagService,
         storage::{
             child::ChildStorableEntity,
             filter::EntityFilter,
@@ -52,14 +53,50 @@ where
     /// Get reference to the storage
     fn storage(&self) -> &Arc<GenericPostgresStorage<T>>;
 
+    /// Get entity tag service, if it supports tags
+    fn entity_tag_service(&self) -> Option<&Arc<EntityTagService>>;
+
     /// Get entity by ID
     async fn get_by_id(&self, id: &Uuid) -> Result<Option<T>, anyhow::Error> {
-        self.storage().get_by_id(id).await
+        if let Some(mut entity) = self.storage().get_by_id(id).await? {
+            self.hydrate_tags(&mut entity).await?;
+            Ok(Some(entity))
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn hydrate_tags(&self, entity: &mut T) -> Result<(), Error> {
+        if let Some(entity_tag_service) = self.entity_tag_service() {
+            let tags = entity_tag_service
+                .get_tags(&entity.id(), &T::entity_type())
+                .await?;
+            entity.set_tags(tags);
+        }
+        Ok(())
+    }
+
+    /// Hydrate tags from junction table for multiple entities, if they support it
+    async fn bulk_hydrate_tags(&self, entities: &mut [T]) -> Result<(), Error> {
+        if let Some(entity_tag_service) = self.entity_tag_service() {
+            let ids: Vec<Uuid> = entities.iter().map(|e| e.id()).collect();
+            let tags_map = entity_tag_service
+                .get_tags_map(&ids, T::entity_type())
+                .await?;
+            for entity in entities {
+                if let Some(tags) = tags_map.get(&entity.id()) {
+                    entity.set_tags(tags.clone());
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Get all entities with filter
     async fn get_all(&self, filter: EntityFilter) -> Result<Vec<T>, anyhow::Error> {
-        self.storage().get_all(filter).await
+        let mut all = self.storage().get_all(filter).await?;
+        self.bulk_hydrate_tags(&mut all).await?;
+        Ok(all)
     }
 
     /// Get entities with pagination, returning items and total count.
@@ -67,12 +104,24 @@ where
         &self,
         filter: EntityFilter,
     ) -> Result<PaginatedResult<T>, anyhow::Error> {
-        self.storage().get_paginated(filter, "created_at ASC").await
+        let mut paginated = self
+            .storage()
+            .get_paginated(filter, "created_at ASC")
+            .await?;
+        let mut entities = paginated.items;
+        self.bulk_hydrate_tags(&mut entities).await?;
+        paginated.items = entities;
+        Ok(paginated)
     }
 
-    /// Get one entities with filter
+    /// Get one entity with filter
     async fn get_one(&self, filter: EntityFilter) -> Result<Option<T>, anyhow::Error> {
-        self.storage().get_one(filter).await
+        if let Some(mut entity) = self.storage().get_one(filter).await? {
+            self.hydrate_tags(&mut entity).await?;
+            Ok(Some(entity))
+        } else {
+            Ok(None)
+        }
     }
 
     /// Delete entity by ID
@@ -86,6 +135,12 @@ where
 
             let trigger_stale = entity.triggers_staleness(None);
             let suppress_logs = self.suppress_logs(Some(&entity), None);
+
+            if let Some(entity_tag_service) = self.entity_tag_service() {
+                entity_tag_service
+                    .remove_all_for_entity(entity.id(), T::entity_type())
+                    .await?;
+            }
 
             self.event_bus()
                 .publish_entity(EntityEvent {
@@ -130,6 +185,15 @@ where
         let trigger_stale = created.triggers_staleness(None);
         let suppress_logs = self.suppress_logs(None, Some(&created));
 
+        if let Some(entity_tag_service) = self.entity_tag_service()
+            && let Some(org_id) = authentication.organization_id()
+            && let Some(tags) = created.get_tags()
+        {
+            entity_tag_service
+                .set_tags(created.id(), T::entity_type(), tags.clone(), org_id)
+                .await?;
+        }
+
         self.event_bus()
             .publish_entity(EntityEvent {
                 id: Uuid::new_v4(),
@@ -165,6 +229,15 @@ where
         let trigger_stale = updated.triggers_staleness(Some(current.clone()));
         let suppress_logs = self.suppress_logs(Some(&current), Some(&updated));
 
+        if let Some(entity_tag_service) = self.entity_tag_service()
+            && let Some(org_id) = authentication.organization_id()
+            && let Some(tags) = updated.get_tags()
+        {
+            entity_tag_service
+                .set_tags(updated.id(), T::entity_type(), tags.clone(), org_id)
+                .await?;
+        }
+
         self.event_bus()
             .publish_entity(EntityEvent {
                 id: Uuid::new_v4(),
@@ -199,6 +272,12 @@ where
             if let Some(entity) = self.get_by_id(id).await? {
                 let trigger_stale = entity.triggers_staleness(None);
                 let suppress_logs = self.suppress_logs(Some(&entity), None);
+
+                if let Some(entity_tag_service) = self.entity_tag_service() {
+                    entity_tag_service
+                        .remove_all_for_entity(entity.id(), T::entity_type())
+                        .await?;
+                }
 
                 self.event_bus()
                     .publish_entity(EntityEvent {
@@ -244,6 +323,12 @@ where
         for entity in &entities {
             let trigger_stale = entity.triggers_staleness(None);
             let suppress_logs = self.suppress_logs(Some(entity), None);
+
+            if let Some(entity_tag_service) = self.entity_tag_service() {
+                entity_tag_service
+                    .remove_all_for_entity(entity.id(), T::entity_type())
+                    .await?;
+            }
 
             self.event_bus()
                 .publish_entity(EntityEvent {
@@ -297,6 +382,7 @@ where
 
         let filter = EntityFilter::unfiltered().uuid_columns(T::parent_column(), parent_ids);
         let entities = self.get_all(filter).await?;
+        // Note: get_all already hydrates tags, no need to call bulk_hydrate_tags again
 
         let mut result: HashMap<Uuid, Vec<T>> = HashMap::new();
         for entity in entities {
@@ -362,6 +448,7 @@ where
                 // New child with explicit ID
                 self.create(child_clone, authentication.clone()).await?
             };
+
             saved.push(saved_child);
         }
 
@@ -381,6 +468,13 @@ where
         for entity in entities {
             let trigger_stale = entity.triggers_staleness(None);
             let suppress_logs = self.suppress_logs(Some(&entity), None);
+
+            if let Some(entity_tag_service) = self.entity_tag_service() {
+                entity_tag_service
+                    .remove_all_for_entity(entity.id(), T::entity_type())
+                    .await?;
+            }
+
             self.event_bus()
                 .publish_entity(EntityEvent {
                     id: Uuid::new_v4(),

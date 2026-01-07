@@ -5,7 +5,10 @@ use uuid::Uuid;
 
 use crate::server::{
     daemon_api_keys::r#impl::base::{DaemonApiKey, DaemonApiKeyBase},
-    shared::storage::traits::{SqlValue, StorableEntity},
+    shared::{
+        entities::EntityDiscriminants,
+        storage::traits::{SqlValue, StorableEntity},
+    },
 };
 
 impl StorableEntity for DaemonApiKey {
@@ -62,6 +65,25 @@ impl StorableEntity for DaemonApiKey {
         self.updated_at = time;
     }
 
+    fn preserve_immutable_fields(&mut self, existing: &Self) {
+        // key hash cannot be changed via update (use rotate endpoint instead)
+        self.base.key = existing.base.key.clone();
+        // last_used is server-set only
+        self.base.last_used = existing.base.last_used;
+    }
+
+    fn get_tags(&self) -> Option<&Vec<Uuid>> {
+        Some(&self.base.tags)
+    }
+
+    fn set_tags(&mut self, tags: Vec<Uuid>) {
+        self.base.tags = tags;
+    }
+
+    fn entity_type() -> EntityDiscriminants {
+        EntityDiscriminants::DaemonApiKey
+    }
+
     fn to_params(&self) -> Result<(Vec<&'static str>, Vec<SqlValue>), anyhow::Error> {
         let Self {
             id,
@@ -75,7 +97,7 @@ impl StorableEntity for DaemonApiKey {
                     expires_at,
                     network_id,
                     is_enabled,
-                    tags,
+                    tags: _, // Stored in entity_tags junction table
                 },
         } = self.clone();
 
@@ -90,7 +112,6 @@ impl StorableEntity for DaemonApiKey {
                 "name",
                 "is_enabled",
                 "key",
-                "tags",
             ],
             vec![
                 SqlValue::Uuid(id),
@@ -102,7 +123,6 @@ impl StorableEntity for DaemonApiKey {
                 SqlValue::String(name),
                 SqlValue::Bool(is_enabled),
                 SqlValue::String(key),
-                SqlValue::UuidArray(tags),
             ],
         ))
     }
@@ -119,7 +139,7 @@ impl StorableEntity for DaemonApiKey {
                 key: row.get("key"),
                 is_enabled: row.get("is_enabled"),
                 network_id: row.get("network_id"),
-                tags: row.get("tags"),
+                tags: Vec::new(), // Hydrated from entity_tags junction table
             },
         })
     }

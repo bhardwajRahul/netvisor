@@ -4,7 +4,10 @@ use sqlx::postgres::PgRow;
 use uuid::Uuid;
 
 use crate::server::{
-    shared::storage::traits::{SqlValue, StorableEntity},
+    shared::{
+        entities::EntityDiscriminants,
+        storage::traits::{SqlValue, StorableEntity},
+    },
     user_api_keys::r#impl::base::{UserApiKey, UserApiKeyBase},
     users::r#impl::permissions::UserOrgPermissions,
 };
@@ -64,6 +67,30 @@ impl StorableEntity for UserApiKey {
         self.updated_at = time;
     }
 
+    fn preserve_immutable_fields(&mut self, existing: &Self) {
+        // key hash cannot be changed via update (use rotate endpoint instead)
+        self.base.key = existing.base.key.clone();
+        // last_used is server-set only
+        self.base.last_used = existing.base.last_used;
+        // user_id and organization_id cannot be changed
+        self.base.user_id = existing.base.user_id;
+        self.base.organization_id = existing.base.organization_id;
+        self.created_at = existing.created_at;
+        self.id = existing.id;
+    }
+
+    fn get_tags(&self) -> Option<&Vec<Uuid>> {
+        Some(&self.base.tags)
+    }
+
+    fn set_tags(&mut self, tags: Vec<Uuid>) {
+        self.base.tags = tags;
+    }
+
+    fn entity_type() -> EntityDiscriminants {
+        EntityDiscriminants::UserApiKey
+    }
+
     fn to_params(&self) -> Result<(Vec<&'static str>, Vec<SqlValue>), anyhow::Error> {
         let Self {
             id,
@@ -79,7 +106,7 @@ impl StorableEntity for UserApiKey {
                     last_used,
                     expires_at,
                     is_enabled,
-                    tags,
+                    tags: _,        // Stored in entity_tags junction table
                     network_ids: _, // Stored in junction table, not here
                 },
         } = self.clone();
@@ -97,7 +124,6 @@ impl StorableEntity for UserApiKey {
                 "last_used",
                 "expires_at",
                 "is_enabled",
-                "tags",
             ],
             vec![
                 SqlValue::Uuid(id),
@@ -111,7 +137,6 @@ impl StorableEntity for UserApiKey {
                 SqlValue::OptionTimestamp(last_used),
                 SqlValue::OptionTimestamp(expires_at),
                 SqlValue::Bool(is_enabled),
-                SqlValue::UuidArray(tags),
             ],
         ))
     }
@@ -135,7 +160,7 @@ impl StorableEntity for UserApiKey {
                 last_used: row.get("last_used"),
                 expires_at: row.get("expires_at"),
                 is_enabled: row.get("is_enabled"),
-                tags: row.get("tags"),
+                tags: Vec::new(),        // Hydrated from entity_tags junction table
                 network_ids: Vec::new(), // Hydrated separately from junction table
             },
         })

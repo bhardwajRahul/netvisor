@@ -8,6 +8,7 @@ use sqlx::postgres::PgRow;
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
+use crate::server::shared::entities::EntityDiscriminants;
 use crate::server::shared::storage::{
     filter::EntityFilter,
     generic::GenericPostgresStorage,
@@ -15,7 +16,7 @@ use crate::server::shared::storage::{
 };
 
 /// The base data for a UserApiKeyNetworkAccess junction record
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq, Hash)]
 pub struct UserApiKeyNetworkAccessBase {
     pub api_key_id: Uuid,
     pub network_id: Uuid,
@@ -31,7 +32,7 @@ impl UserApiKeyNetworkAccessBase {
 }
 
 /// A junction record linking a user API key to a network it has access to
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq, Hash)]
 pub struct UserApiKeyNetworkAccess {
     pub id: Uuid,
     pub created_at: DateTime<Utc>,
@@ -111,6 +112,10 @@ impl StorableEntity for UserApiKeyNetworkAccess {
 
     fn set_updated_at(&mut self, _time: DateTime<Utc>) {
         // No-op for junction table
+    }
+
+    fn entity_type() -> EntityDiscriminants {
+        EntityDiscriminants::UserApiKeyNetworkAccess
     }
 
     fn to_params(&self) -> Result<(Vec<&'static str>, Vec<SqlValue>)> {

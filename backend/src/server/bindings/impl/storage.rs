@@ -5,7 +5,10 @@ use uuid::Uuid;
 
 use crate::server::{
     bindings::r#impl::base::{Binding, BindingBase, BindingType},
-    shared::storage::traits::{SqlValue, StorableEntity},
+    shared::{
+        entities::EntityDiscriminants,
+        storage::traits::{SqlValue, StorableEntity},
+    },
 };
 
 impl StorableEntity for Binding {
@@ -53,6 +56,10 @@ impl StorableEntity for Binding {
 
     fn set_updated_at(&mut self, time: DateTime<Utc>) {
         self.updated_at = time;
+    }
+
+    fn entity_type() -> EntityDiscriminants {
+        EntityDiscriminants::Binding
     }
 
     fn to_params(&self) -> Result<(Vec<&'static str>, Vec<SqlValue>)> {

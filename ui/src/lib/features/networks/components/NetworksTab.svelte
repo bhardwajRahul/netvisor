@@ -90,6 +90,10 @@
 		}
 	}
 
+	function getNetworkTags(network: Network): string[] {
+		return network.tags;
+	}
+
 	async function handleNetworkCreate(data: Network) {
 		try {
 			await createNetworkMutation.mutateAsync(data);
@@ -170,6 +174,8 @@
 			items={networksData}
 			fields={networkFields}
 			onBulkDelete={handleBulkDelete}
+			entityType={allowBulkDelete ? 'Network' : undefined}
+			getItemTags={getNetworkTags}
 			{allowBulkDelete}
 			storageKey="scanopy-networks-table-state"
 			getItemId={(item) => item.id}

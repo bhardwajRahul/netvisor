@@ -5,7 +5,10 @@ use uuid::Uuid;
 
 use crate::server::{
     ports::r#impl::base::{Port, PortBase, PortConfig, PortType, TransportProtocol},
-    shared::storage::traits::{SqlValue, StorableEntity},
+    shared::{
+        entities::EntityDiscriminants,
+        storage::traits::{SqlValue, StorableEntity},
+    },
 };
 
 impl StorableEntity for Port {
@@ -59,6 +62,10 @@ impl StorableEntity for Port {
 
     fn set_updated_at(&mut self, time: DateTime<Utc>) {
         self.updated_at = time;
+    }
+
+    fn entity_type() -> EntityDiscriminants {
+        EntityDiscriminants::Port
     }
 
     fn to_params(&self) -> Result<(Vec<&'static str>, Vec<SqlValue>)> {

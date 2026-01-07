@@ -90,6 +90,10 @@
 		}
 	}
 
+	function getGroupTags(group: Group): string[] {
+		return group.tags;
+	}
+
 	// Define field configuration for the DataTableControls
 	const groupFields: FieldConfig<Group>[] = [
 		{
@@ -179,6 +183,8 @@
 			fields={groupFields}
 			storageKey="scanopy-groups-table-state"
 			onBulkDelete={isReadOnly ? undefined : handleBulkDelete}
+			entityType={isReadOnly ? undefined : 'Group'}
+			getItemTags={getGroupTags}
 			getItemId={(item) => item.id}
 		>
 			{#snippet children(

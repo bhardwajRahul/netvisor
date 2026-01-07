@@ -4,18 +4,15 @@
 	import { entities, subnetTypes, serviceDefinitions } from '$lib/shared/stores/metadata';
 	import { isContainerSubnet } from '../queries';
 	import type { Subnet } from '../types/base';
-	import { useTagsQuery } from '$lib/features/tags/queries';
 	import { useServicesQuery } from '$lib/features/services/queries';
 	import { useInterfacesQuery } from '$lib/features/interfaces/queries';
-	import { toColor } from '$lib/shared/utils/styling';
+	import TagPickerInline from '$lib/features/tags/components/TagPickerInline.svelte';
 
 	// Queries
-	const tagsQuery = useTagsQuery();
 	const servicesQuery = useServicesQuery();
 	const interfacesQuery = useInterfacesQuery();
 
 	// Derived data
-	let tagsData = $derived(tagsQuery.data ?? []);
 	let servicesData = $derived(servicesQuery.data ?? []);
 	let interfacesData = $derived(interfacesQuery.data ?? []);
 
@@ -94,15 +91,7 @@
 				})),
 				emptyText: 'No services'
 			},
-			{
-				label: 'Tags',
-				value: subnet.tags.map((t) => {
-					const tag = tagsData.find((tag) => tag.id == t);
-					return tag
-						? { id: tag.id, color: tag.color, label: tag.name }
-						: { id: t, color: toColor('gray'), label: 'Unknown Tag' };
-				})
-			}
+			{ label: 'Tags', snippet: tagsSnippet }
 		],
 
 		actions: [
@@ -128,5 +117,12 @@
 		]
 	});
 </script>
+
+{#snippet tagsSnippet()}
+	<div class="flex items-center gap-2">
+		<span class="text-secondary text-sm">Tags:</span>
+		<TagPickerInline selectedTagIds={subnet.tags} entityId={subnet.id} entityType="Subnet" />
+	</div>
+{/snippet}
 
 <GenericCard {...cardData} {viewMode} {selected} {onSelectionChange} />

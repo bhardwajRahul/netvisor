@@ -72,6 +72,10 @@
 		}
 	}
 
+	function getUserApiKeyTags(apiKey: UserApiKey): string[] {
+		return apiKey.tags ?? [];
+	}
+
 	const apiKeyFields: FieldConfig<UserApiKey>[] = [
 		{
 			key: 'name',
@@ -144,6 +148,8 @@
 			items={userApiKeysData}
 			fields={apiKeyFields}
 			onBulkDelete={isReadOnly ? undefined : handleBulkDelete}
+			entityType={isReadOnly ? undefined : 'UserApiKey'}
+			getItemTags={getUserApiKeyTags}
 			storageKey="scanopy-user-api-keys-table-state"
 			getItemId={(item) => item.id}
 		>

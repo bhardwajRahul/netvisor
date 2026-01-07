@@ -20,7 +20,10 @@ use crate::server::{
             bus::EventBus,
             types::{EntityEvent, EntityOperation},
         },
-        services::traits::{CrudService, EventBusService},
+        services::{
+            entity_tags::EntityTagService,
+            traits::{CrudService, EventBusService},
+        },
         storage::{
             filter::EntityFilter,
             generic::GenericPostgresStorage,
@@ -72,6 +75,10 @@ impl EventBusService<Topology> for TopologyService {
 impl CrudService<Topology> for TopologyService {
     fn storage(&self) -> &Arc<GenericPostgresStorage<Topology>> {
         &self.storage
+    }
+
+    fn entity_tag_service(&self) -> Option<&Arc<EntityTagService>> {
+        None
     }
 
     /// Create entity

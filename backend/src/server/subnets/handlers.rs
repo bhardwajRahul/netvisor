@@ -62,12 +62,10 @@ async fn get_all_subnets(
     match entity {
         AuthenticatedEntity::Daemon { network_id, .. } => {
             // Daemons can only access subnets in their network
-            // Apply pagination for daemon requests
-            let base_filter = EntityFilter::unfiltered().network_ids(&[network_id]);
-            let pagination = query.pagination();
-            let filter = pagination.apply_to_filter(base_filter);
+            // Don't apply pagination for daemon requests
+            let filter = EntityFilter::unfiltered().network_ids(&[network_id]);
             let service = Subnet::get_service(&state);
-            let result = service.get_paginated(filter).await.map_err(|e| {
+            let result = service.get_all(filter).await.map_err(|e| {
                 tracing::error!(
                     error = %e,
                     network_id = %network_id,
@@ -75,14 +73,7 @@ async fn get_all_subnets(
                 );
                 ApiError::internal_error(&e.to_string())
             })?;
-            let limit = pagination.effective_limit().unwrap_or(0);
-            let offset = pagination.effective_offset();
-            Ok(Json(ApiResponse::success_paginated(
-                result.items,
-                result.total_count,
-                limit,
-                offset,
-            )))
+            Ok(Json(ApiResponse::success(result)))
         }
         _ => {
             // Users/API keys - use standard filter with query params

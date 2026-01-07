@@ -1,5 +1,6 @@
 use crate::server::auth::middleware::auth::AuthenticatedEntity;
 use crate::server::auth::middleware::permissions::{Authorized, IsDaemon, Member, Or, Viewer};
+use crate::server::shared::entities::EntityDiscriminants;
 use crate::server::shared::extractors::Query;
 use crate::server::shared::handlers::query::FilterQueryExtractor;
 use crate::server::shared::handlers::traits::{
@@ -8,9 +9,7 @@ use crate::server::shared::handlers::traits::{
 use crate::server::shared::services::traits::CrudService;
 use crate::server::shared::storage::filter::EntityFilter;
 use crate::server::shared::types::api::{ApiErrorResponse, EmptyApiResponse};
-use crate::server::shared::validation::{
-    validate_and_dedupe_tags, validate_network_access, validate_read_access,
-};
+use crate::server::shared::validation::{validate_network_access, validate_read_access};
 use crate::server::{
     config::AppState,
     hosts::r#impl::{
@@ -110,7 +109,7 @@ async fn get_host_by_id(
         .organization_id()
         .ok_or_else(|| ApiError::forbidden("Organization context required"))?;
 
-    let host = state
+    let mut host = state
         .services
         .host_service
         .get_host_response(&id)
@@ -118,6 +117,16 @@ async fn get_host_by_id(
         .ok_or_else(|| ApiError::not_found(format!("Host {} not found", id)))?;
 
     validate_read_access(Some(host.network_id), None, &network_ids, organization_id)?;
+
+    // Hydrate tags from junction table
+    let tags_map = state
+        .services
+        .entity_tag_service
+        .get_tags_map(&[host.id], EntityDiscriminants::Host)
+        .await?;
+    if let Some(tags) = tags_map.get(&host.id) {
+        host.tags = tags.clone();
+    }
 
     Ok(Json(ApiResponse::success(host)))
 }
@@ -156,7 +165,7 @@ async fn create_host(
 
     match (request, &entity) {
         // New format - standard flow
-        (HostCreateRequestBody::New(mut request), _) => {
+        (HostCreateRequestBody::New(request), _) => {
             // Validate request (name length, etc.)
             request
                 .validate()
@@ -189,19 +198,6 @@ async fn create_host(
                         request.network_id, subnet.base.name, subnet.base.network_id
                     )));
                 }
-            }
-
-            // Validate and dedupe tags (only for users, daemons don't use tags)
-            if let AuthenticatedEntity::User {
-                organization_id, ..
-            } = &entity
-            {
-                request.tags = validate_and_dedupe_tags(
-                    request.tags,
-                    *organization_id,
-                    &state.services.tag_service,
-                )
-                .await?;
             }
 
             let host_response = host_service.create_from_request(request, entity).await?;
@@ -312,14 +308,19 @@ async fn update_host(
         organization_id,
     )?;
 
-    // Validate and dedupe tags
-    request.tags =
-        validate_and_dedupe_tags(request.tags, organization_id, &state.services.tag_service)
-            .await?;
-
-    let host_response = host_service
+    let mut host_response = host_service
         .update_from_request(request, auth.into_entity())
         .await?;
+
+    // Hydrate tags from junction table
+    let tags_map = state
+        .services
+        .entity_tag_service
+        .get_tags_map(&[host_response.id], EntityDiscriminants::Host)
+        .await?;
+    if let Some(tags) = tags_map.get(&host_response.id) {
+        host_response.tags = tags.clone();
+    }
 
     Ok(Json(ApiResponse::success(host_response)))
 }
@@ -463,9 +464,19 @@ async fn consolidate_hosts(
         )));
     }
 
-    let host_response = host_service
+    let mut host_response = host_service
         .consolidate_hosts(destination_host, other_host, auth.into_entity())
         .await?;
+
+    // Hydrate tags from junction table
+    let tags_map = state
+        .services
+        .entity_tag_service
+        .get_tags_map(&[host_response.id], EntityDiscriminants::Host)
+        .await?;
+    if let Some(tags) = tags_map.get(&host_response.id) {
+        host_response.tags = tags.clone();
+    }
 
     Ok(Json(ApiResponse::success(host_response)))
 }

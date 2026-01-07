@@ -6,15 +6,12 @@
 	import { useDaemonsQuery } from '$lib/features/daemons/queries';
 	import { parseCronToHours } from '../../queries';
 	import { formatTimestamp } from '$lib/shared/utils/formatting';
-	import { toColor } from '$lib/shared/utils/styling';
-	import { useTagsQuery } from '$lib/features/tags/queries';
+	import TagPickerInline from '$lib/features/tags/components/TagPickerInline.svelte';
 
 	// Queries
-	const tagsQuery = useTagsQuery();
 	const daemonsQuery = useDaemonsQuery();
 
 	// Derived data
-	let tagsData = $derived(tagsQuery.data ?? []);
 	let daemonsData = $derived(daemonsQuery.data ?? []);
 
 	let {
@@ -62,15 +59,7 @@
 						? formatTimestamp(discovery.run_type.last_run)
 						: 'Never'
 			},
-			{
-				label: 'Tags',
-				value: discovery.tags.map((t) => {
-					const tag = tagsData.find((tag) => tag.id == t);
-					return tag
-						? { id: tag.id, color: tag.color, label: tag.name }
-						: { id: t, color: toColor('gray'), label: 'Unknown Tag' };
-				})
-			}
+			{ label: 'Tags', snippet: tagsSnippet }
 		],
 		actions: [
 			...(onDelete
@@ -85,5 +74,16 @@
 		]
 	});
 </script>
+
+{#snippet tagsSnippet()}
+	<div class="flex items-center gap-2">
+		<span class="text-secondary text-sm">Tags:</span>
+		<TagPickerInline
+			selectedTagIds={discovery.tags}
+			entityId={discovery.id}
+			entityType="Discovery"
+		/>
+	</div>
+{/snippet}
 
 <GenericCard {...cardData} {viewMode} {selected} {onSelectionChange} />

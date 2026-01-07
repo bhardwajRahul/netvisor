@@ -7,7 +7,10 @@ use crate::server::{
     ports::r#impl::base::Port,
     shared::{
         events::bus::EventBus,
-        services::traits::{ChildCrudService, CrudService, EventBusService},
+        services::{
+            entity_tags::EntityTagService,
+            traits::{ChildCrudService, CrudService, EventBusService},
+        },
         storage::generic::GenericPostgresStorage,
     },
 };
@@ -34,6 +37,10 @@ impl EventBusService<Port> for PortService {
 impl CrudService<Port> for PortService {
     fn storage(&self) -> &Arc<GenericPostgresStorage<Port>> {
         &self.storage
+    }
+
+    fn entity_tag_service(&self) -> Option<&Arc<EntityTagService>> {
+        None
     }
 }
 

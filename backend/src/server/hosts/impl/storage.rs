@@ -9,6 +9,7 @@ use crate::server::{
         virtualization::HostVirtualization,
     },
     shared::{
+        entities::EntityDiscriminants,
         storage::traits::{SqlValue, StorableEntity},
         types::entities::EntitySource,
     },
@@ -68,6 +69,29 @@ impl StorableEntity for Host {
         self.updated_at = time;
     }
 
+    fn set_source(&mut self, source: EntitySource) {
+        self.base.source = source;
+    }
+
+    fn preserve_immutable_fields(&mut self, existing: &Self) {
+        // source is set at creation time (Manual or Discovery), cannot be changed
+        self.base.source = existing.base.source.clone();
+        self.created_at = existing.created_at;
+        self.updated_at = existing.updated_at;
+    }
+
+    fn get_tags(&self) -> Option<&Vec<Uuid>> {
+        Some(&self.base.tags)
+    }
+
+    fn set_tags(&mut self, tags: Vec<Uuid>) {
+        self.base.tags = tags;
+    }
+
+    fn entity_type() -> EntityDiscriminants {
+        EntityDiscriminants::Host
+    }
+
     fn to_params(&self) -> Result<(Vec<&'static str>, Vec<SqlValue>), anyhow::Error> {
         // Exhaustive destructuring ensures compile error if HostBase changes
         let Self {
@@ -83,7 +107,7 @@ impl StorableEntity for Host {
                     hidden,
                     source,
                     virtualization,
-                    tags,
+                    tags: _, // Stored in entity_tags junction table
                 },
         } = self.clone();
 
@@ -99,7 +123,6 @@ impl StorableEntity for Host {
                 "hostname",
                 "hidden",
                 "virtualization",
-                "tags",
             ],
             vec![
                 SqlValue::Uuid(id),
@@ -112,7 +135,6 @@ impl StorableEntity for Host {
                 SqlValue::OptionalString(hostname),
                 SqlValue::Bool(hidden),
                 SqlValue::OptionalHostVirtualization(virtualization),
-                SqlValue::UuidArray(tags),
             ],
         ))
     }
@@ -138,7 +160,7 @@ impl StorableEntity for Host {
                 hostname: row.get("hostname"),
                 hidden: row.get("hidden"),
                 virtualization,
-                tags: row.get("tags"),
+                tags: Vec::new(), // Hydrated from entity_tags junction table
             },
         })
     }

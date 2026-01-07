@@ -2,12 +2,15 @@ use crate::server::{
     auth::middleware::auth::AuthenticatedEntity,
     discovery::r#impl::types::DiscoveryType,
     shared::{
-        entities::ChangeTriggersTopologyStaleness,
+        entities::{ChangeTriggersTopologyStaleness, EntityDiscriminants},
         events::{
             bus::EventBus,
             types::{EntityEvent, EntityOperation},
         },
-        services::traits::{CrudService, EventBusService},
+        services::{
+            entity_tags::EntityTagService,
+            traits::{CrudService, EventBusService},
+        },
         storage::{
             filter::EntityFilter,
             generic::GenericPostgresStorage,
@@ -26,6 +29,7 @@ use uuid::Uuid;
 pub struct SubnetService {
     storage: Arc<GenericPostgresStorage<Subnet>>,
     event_bus: Arc<EventBus>,
+    entity_tag_service: Arc<EntityTagService>,
 }
 
 impl EventBusService<Subnet> for SubnetService {
@@ -45,6 +49,10 @@ impl EventBusService<Subnet> for SubnetService {
 impl CrudService<Subnet> for SubnetService {
     fn storage(&self) -> &Arc<GenericPostgresStorage<Subnet>> {
         &self.storage
+    }
+
+    fn entity_tag_service(&self) -> Option<&Arc<EntityTagService>> {
+        Some(&self.entity_tag_service)
     }
 
     async fn create(
@@ -126,7 +134,22 @@ impl CrudService<Subnet> for SubnetService {
             }
             // If there's no existing subnet, create a new one
             _ => {
-                let created = self.storage.create(&subnet).await?;
+                let mut created = self.storage.create(&subnet).await?;
+
+                // Save tags to junction table
+                if let Some(tag_service) = self.entity_tag_service()
+                    && let Some(org_id) = authentication.organization_id()
+                {
+                    tag_service
+                        .set_tags(
+                            created.id,
+                            EntityDiscriminants::Subnet,
+                            created.base.tags.clone(),
+                            org_id,
+                        )
+                        .await?;
+                    created.base.tags = subnet.base.tags.clone();
+                }
 
                 let trigger_stale = created.triggers_staleness(None);
 
@@ -155,7 +178,15 @@ impl CrudService<Subnet> for SubnetService {
 }
 
 impl SubnetService {
-    pub fn new(storage: Arc<GenericPostgresStorage<Subnet>>, event_bus: Arc<EventBus>) -> Self {
-        Self { storage, event_bus }
+    pub fn new(
+        storage: Arc<GenericPostgresStorage<Subnet>>,
+        event_bus: Arc<EventBus>,
+        entity_tag_service: Arc<EntityTagService>,
+    ) -> Self {
+        Self {
+            storage,
+            event_bus,
+            entity_tag_service,
+        }
     }
 }

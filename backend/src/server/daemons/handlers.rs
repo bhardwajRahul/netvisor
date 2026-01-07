@@ -1,6 +1,7 @@
 use crate::server::auth::middleware::permissions::{Authorized, IsDaemon, Viewer};
 use crate::server::billing::types::base::BillingPlan;
 use crate::server::daemons::r#impl::api::DaemonHeartbeatPayload;
+use crate::server::shared::entities::EntityDiscriminants;
 use crate::server::shared::events::types::TelemetryOperation;
 use crate::server::shared::extractors::Query;
 use crate::server::shared::handlers::query::{FilterQueryExtractor, NetworkFilterQuery};
@@ -152,7 +153,7 @@ async fn get_by_id(
 ) -> ApiResult<Json<ApiResponse<DaemonResponse>>> {
     let network_ids = auth.network_ids();
 
-    let daemon = state
+    let mut daemon = state
         .services
         .daemon_service
         .get_by_id(&id)
@@ -162,6 +163,16 @@ async fn get_by_id(
     // Validate user has access to this daemon's network
     if !network_ids.contains(&daemon.base.network_id) {
         return Err(ApiError::forbidden("You don't have access to this daemon"));
+    }
+
+    // Hydrate tags from junction table
+    let tags_map = state
+        .services
+        .entity_tag_service
+        .get_tags_map(&[daemon.id], EntityDiscriminants::Daemon)
+        .await?;
+    if let Some(tags) = tags_map.get(&daemon.id) {
+        daemon.base.tags = tags.clone();
     }
 
     let policy = DaemonVersionPolicy::default();

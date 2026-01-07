@@ -1,9 +1,10 @@
 use crate::server::auth::middleware::auth::AuthenticatedEntity;
 use crate::server::daemons::r#impl::base::DaemonMode;
 use crate::server::discovery::r#impl::types::RunType;
-use crate::server::shared::entities::ChangeTriggersTopologyStaleness;
+use crate::server::shared::entities::{ChangeTriggersTopologyStaleness, EntityDiscriminants};
 use crate::server::shared::events::bus::EventBus;
 use crate::server::shared::events::types::{EntityEvent, EntityOperation};
+use crate::server::shared::services::entity_tags::EntityTagService;
 use crate::server::shared::services::traits::{CrudService, EventBusService};
 use crate::server::shared::storage::filter::EntityFilter;
 use crate::server::shared::storage::generic::GenericPostgresStorage;
@@ -37,6 +38,7 @@ pub struct DiscoveryService {
     update_tx: broadcast::Sender<DiscoveryUpdatePayload>,
     scheduler: Option<Arc<RwLock<JobScheduler>>>,
     event_bus: Arc<EventBus>,
+    entity_tag_service: Arc<EntityTagService>,
 }
 
 impl EventBusService<Discovery> for DiscoveryService {
@@ -57,6 +59,10 @@ impl CrudService<Discovery> for DiscoveryService {
     fn storage(&self) -> &Arc<GenericPostgresStorage<Discovery>> {
         &self.discovery_storage
     }
+
+    fn entity_tag_service(&self) -> Option<&Arc<EntityTagService>> {
+        Some(&self.entity_tag_service)
+    }
 }
 
 impl DiscoveryService {
@@ -64,6 +70,7 @@ impl DiscoveryService {
         discovery_storage: Arc<GenericPostgresStorage<Discovery>>,
         daemon_service: Arc<DaemonService>,
         event_bus: Arc<EventBus>,
+        entity_tag_service: Arc<EntityTagService>,
     ) -> Result<Arc<Self>> {
         let (tx, _rx) = broadcast::channel(100); // Buffer 100 messages
         let scheduler = JobScheduler::new().await?;
@@ -78,6 +85,7 @@ impl DiscoveryService {
             update_tx: tx,
             scheduler: Some(Arc::new(RwLock::new(scheduler))),
             event_bus,
+            entity_tag_service,
         }))
     }
 
@@ -137,6 +145,20 @@ impl DiscoveryService {
         } else {
             self.discovery_storage.create(&discovery).await?
         };
+
+        // Save tags to junction table
+        if let Some(entity_tag_service) = self.entity_tag_service()
+            && let Some(org_id) = authentication.organization_id()
+        {
+            entity_tag_service
+                .set_tags(
+                    created_discovery.id,
+                    EntityDiscriminants::Discovery,
+                    created_discovery.base.tags.clone(),
+                    org_id,
+                )
+                .await?;
+        }
 
         // If it's a scheduled discovery, add it to the scheduler
         if matches!(created_discovery.base.run_type, RunType::Scheduled { .. })
@@ -229,6 +251,20 @@ impl DiscoveryService {
             self.discovery_storage.update(&mut discovery).await?
         };
 
+        // Update tags in junction table
+        if let Some(entity_tag_service) = self.entity_tag_service()
+            && let Some(org_id) = authentication.organization_id()
+        {
+            entity_tag_service
+                .set_tags(
+                    updated.id,
+                    EntityDiscriminants::Discovery,
+                    discovery.base.tags,
+                    org_id,
+                )
+                .await?;
+        }
+
         let trigger_stale = updated.triggers_staleness(Some(current));
 
         self.event_bus()
@@ -268,6 +304,13 @@ impl DiscoveryService {
         {
             let _ = scheduler.write().await.remove(id).await;
             tracing::debug!("Removed scheduled job for discovery {}", id);
+        }
+
+        // Remove tags from junction table
+        if let Some(tag_service) = self.entity_tag_service() {
+            tag_service
+                .remove_all_for_entity(*id, EntityDiscriminants::Discovery)
+                .await?;
         }
 
         self.discovery_storage.delete(id).await?;

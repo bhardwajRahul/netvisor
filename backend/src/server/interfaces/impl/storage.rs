@@ -9,9 +9,12 @@ use uuid::Uuid;
 
 use crate::server::{
     interfaces::r#impl::base::{Interface, InterfaceBase},
-    shared::storage::{
-        child::ChildStorableEntity,
-        traits::{SqlValue, StorableEntity},
+    shared::{
+        entities::EntityDiscriminants,
+        storage::{
+            child::ChildStorableEntity,
+            traits::{SqlValue, StorableEntity},
+        },
     },
 };
 
@@ -67,6 +70,14 @@ impl StorableEntity for Interface {
 
     fn set_updated_at(&mut self, time: DateTime<Utc>) {
         self.updated_at = time;
+    }
+
+    fn preserve_immutable_fields(&mut self, existing: &Self) {
+        self.created_at = existing.created_at
+    }
+
+    fn entity_type() -> EntityDiscriminants {
+        EntityDiscriminants::Interface
     }
 
     fn to_params(&self) -> Result<(Vec<&'static str>, Vec<SqlValue>), anyhow::Error> {

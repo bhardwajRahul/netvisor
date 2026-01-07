@@ -17,7 +17,11 @@ use crate::server::{
     organizations::service::OrganizationService,
     ports::service::PortService,
     services::service::ServiceService,
-    shared::{events::bus::EventBus, storage::factory::StorageFactory},
+    shared::{
+        events::bus::EventBus,
+        services::entity_tags::EntityTagService,
+        storage::{entity_tags::EntityTagStorage, factory::StorageFactory},
+    },
     shares::service::ShareService,
     subnets::service::SubnetService,
     tags::service::TagService,
@@ -53,6 +57,7 @@ pub struct ServiceFactory {
     pub event_bus: Arc<EventBus>,
     pub logging_service: Arc<LoggingService>,
     pub tag_service: Arc<TagService>,
+    pub entity_tag_service: Arc<EntityTagService>,
     pub port_service: Arc<PortService>,
     pub binding_service: Arc<BindingService>,
 }
@@ -62,10 +67,17 @@ impl ServiceFactory {
         let event_bus = Arc::new(EventBus::new());
 
         let logging_service = Arc::new(LoggingService::new());
+        let tag_service = Arc::new(TagService::new(storage.tags.clone(), event_bus.clone()));
+        let entity_tag_storage = Arc::new(EntityTagStorage::new(storage.pool.clone()));
+        let entity_tag_service = Arc::new(EntityTagService::new(
+            entity_tag_storage,
+            tag_service.clone(),
+        ));
 
         let daemon_api_key_service = Arc::new(DaemonApiKeyService::new(
             storage.daemon_api_keys.clone(),
             event_bus.clone(),
+            entity_tag_service.clone(),
         ));
 
         let user_api_key_network_access_storage =
@@ -74,11 +86,13 @@ impl ServiceFactory {
             storage.user_api_keys.clone(),
             user_api_key_network_access_storage,
             event_bus.clone(),
+            entity_tag_service.clone(),
         ));
 
         let daemon_service = Arc::new(DaemonService::new(
             storage.daemons.clone(),
             event_bus.clone(),
+            entity_tag_service.clone(),
         ));
 
         let group_binding_storage = Arc::new(GroupBindingStorage::new(storage.pool.clone()));
@@ -86,6 +100,7 @@ impl ServiceFactory {
             storage.groups.clone(),
             group_binding_storage,
             event_bus.clone(),
+            entity_tag_service.clone(),
         ));
         let organization_service = Arc::new(OrganizationService::new(
             storage.organizations.clone(),
@@ -97,8 +112,6 @@ impl ServiceFactory {
         ));
 
         let share_service = Arc::new(ShareService::new(storage.shares.clone(), event_bus.clone()));
-
-        let tag_service = Arc::new(TagService::new(storage.tags.clone(), event_bus.clone()));
 
         let port_service = Arc::new(PortService::new(storage.ports.clone(), event_bus.clone()));
 
@@ -112,6 +125,7 @@ impl ServiceFactory {
             storage.discovery.clone(),
             daemon_service.clone(),
             event_bus.clone(),
+            entity_tag_service.clone(),
         )
         .await?;
 
@@ -120,6 +134,7 @@ impl ServiceFactory {
             binding_service.clone(),
             group_service.clone(),
             event_bus.clone(),
+            entity_tag_service.clone(),
         ));
 
         // InterfaceService must be created before HostService
@@ -135,11 +150,13 @@ impl ServiceFactory {
             service_service.clone(),
             daemon_service.clone(),
             event_bus.clone(),
+            entity_tag_service.clone(),
         ));
 
         let subnet_service = Arc::new(SubnetService::new(
             storage.subnets.clone(),
             event_bus.clone(),
+            entity_tag_service.clone(),
         ));
 
         // ServiceService needs HostService for circular reference
@@ -161,6 +178,7 @@ impl ServiceFactory {
             storage.networks.clone(),
             subnet_service.clone(),
             event_bus.clone(),
+            entity_tag_service.clone(),
         ));
 
         let user_network_access_storage =
@@ -275,6 +293,7 @@ impl ServiceFactory {
             event_bus,
             logging_service,
             tag_service,
+            entity_tag_service,
             port_service,
             binding_service,
         })

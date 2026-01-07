@@ -9,7 +9,10 @@ use crate::server::{
     shared::{
         api_key_common::ApiKeyService,
         events::bus::EventBus,
-        services::traits::{CrudService, EventBusService},
+        services::{
+            entity_tags::EntityTagService,
+            traits::{CrudService, EventBusService},
+        },
         storage::generic::GenericPostgresStorage,
     },
 };
@@ -17,6 +20,7 @@ use crate::server::{
 pub struct DaemonApiKeyService {
     storage: Arc<GenericPostgresStorage<DaemonApiKey>>,
     event_bus: Arc<EventBus>,
+    entity_tag_service: Arc<EntityTagService>,
 }
 
 impl EventBusService<DaemonApiKey> for DaemonApiKeyService {
@@ -49,14 +53,23 @@ impl CrudService<DaemonApiKey> for DaemonApiKeyService {
     fn storage(&self) -> &Arc<GenericPostgresStorage<DaemonApiKey>> {
         &self.storage
     }
+
+    fn entity_tag_service(&self) -> Option<&Arc<EntityTagService>> {
+        Some(&self.entity_tag_service)
+    }
 }
 
 impl DaemonApiKeyService {
     pub fn new(
         storage: Arc<GenericPostgresStorage<DaemonApiKey>>,
         event_bus: Arc<EventBus>,
+        entity_tag_service: Arc<EntityTagService>,
     ) -> Self {
-        Self { storage, event_bus }
+        Self {
+            storage,
+            event_bus,
+            entity_tag_service,
+        }
     }
 }
 

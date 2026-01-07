@@ -1,5 +1,3 @@
-use uuid::Uuid;
-
 use crate::server::{
     shared::{
         events::bus::EventBus,
@@ -9,6 +7,7 @@ use crate::server::{
     tags::r#impl::base::Tag,
 };
 use std::sync::Arc;
+use uuid::Uuid;
 
 pub struct TagService {
     storage: Arc<GenericPostgresStorage<Tag>>,
@@ -31,6 +30,12 @@ impl EventBusService<Tag> for TagService {
 impl CrudService<Tag> for TagService {
     fn storage(&self) -> &Arc<GenericPostgresStorage<Tag>> {
         &self.storage
+    }
+
+    fn entity_tag_service(
+        &self,
+    ) -> Option<&Arc<crate::server::shared::services::entity_tags::EntityTagService>> {
+        None
     }
 }
 

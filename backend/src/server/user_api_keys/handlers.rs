@@ -1,4 +1,5 @@
 use crate::server::shared::extractors::Query;
+use crate::server::shared::storage::traits::StorableEntity;
 use crate::server::{
     auth::middleware::{
         features::{ApiKeyFeature, BlockedInDemoMode, RequireFeature},
@@ -9,10 +10,7 @@ use crate::server::{
         api_key_common::{ApiKeyService, ApiKeyType, generate_api_key_for_storage},
         handlers::{
             query::{FilterQueryExtractor, NoFilterQuery},
-            traits::{
-                BulkDeleteResponse, CrudHandlers, bulk_delete_handler, delete_handler,
-                get_by_id_handler,
-            },
+            traits::{BulkDeleteResponse, bulk_delete_handler, delete_handler, get_by_id_handler},
         },
         services::traits::CrudService,
         types::api::{ApiError, ApiErrorResponse, ApiResponse, ApiResult, EmptyApiResponse},

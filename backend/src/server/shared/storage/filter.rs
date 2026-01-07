@@ -5,7 +5,8 @@ use uuid::Uuid;
 use mac_address::MacAddress;
 
 use crate::server::{
-    shared::storage::traits::SqlValue, users::r#impl::permissions::UserOrgPermissions,
+    shared::{entities::EntityDiscriminants, storage::traits::SqlValue},
+    users::r#impl::permissions::UserOrgPermissions,
 };
 
 /// Builder pattern for common WHERE clauses with optional pagination.
@@ -329,6 +330,22 @@ impl EntityFilter {
     pub fn service_id(mut self, id: &Uuid) -> Self {
         self.conditions
             .push(format!("service_id = ${}", self.values.len() + 1));
+        self.values.push(SqlValue::Uuid(*id));
+        self
+    }
+
+    /// Filter by entity_type (for entity_tags junction table)
+    pub fn entity_type(mut self, entity_type: &EntityDiscriminants) -> Self {
+        self.conditions
+            .push(format!("entity_type = ${}", self.values.len() + 1));
+        self.values.push(SqlValue::String(entity_type.to_string()));
+        self
+    }
+
+    /// Filter by tag_id (for entity_tags junction table)
+    pub fn tag_id(mut self, id: &Uuid) -> Self {
+        self.conditions
+            .push(format!("tag_id = ${}", self.values.len() + 1));
         self.values.push(SqlValue::Uuid(*id));
         self
     }

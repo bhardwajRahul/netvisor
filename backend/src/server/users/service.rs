@@ -6,7 +6,10 @@ use crate::server::{
             bus::EventBus,
             types::{EntityEvent, EntityOperation},
         },
-        services::traits::{CrudService, EventBusService},
+        services::{
+            entity_tags::EntityTagService,
+            traits::{CrudService, EventBusService},
+        },
         storage::{
             filter::EntityFilter,
             generic::GenericPostgresStorage,
@@ -47,6 +50,10 @@ impl EventBusService<User> for UserService {
 impl CrudService<User> for UserService {
     fn storage(&self) -> &Arc<GenericPostgresStorage<User>> {
         &self.user_storage
+    }
+
+    fn entity_tag_service(&self) -> Option<&Arc<EntityTagService>> {
+        None // Users are not taggable entities
     }
 
     /// Create a new user

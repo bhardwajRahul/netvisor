@@ -4,7 +4,10 @@ use sqlx::postgres::PgRow;
 use uuid::Uuid;
 
 use crate::server::{
-    shared::storage::traits::{SqlValue, StorableEntity},
+    shared::{
+        entities::EntityDiscriminants,
+        storage::traits::{SqlValue, StorableEntity},
+    },
     tags::r#impl::base::{Tag, TagBase},
 };
 
@@ -60,6 +63,10 @@ impl StorableEntity for Tag {
 
     fn set_updated_at(&mut self, time: DateTime<Utc>) {
         self.updated_at = time;
+    }
+
+    fn entity_type() -> EntityDiscriminants {
+        EntityDiscriminants::Tag
     }
 
     fn to_params(&self) -> Result<(Vec<&'static str>, Vec<SqlValue>), anyhow::Error> {

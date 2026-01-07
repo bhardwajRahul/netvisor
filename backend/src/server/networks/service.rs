@@ -3,7 +3,10 @@ use crate::server::{
     networks::r#impl::Network,
     shared::{
         events::bus::EventBus,
-        services::traits::{CrudService, EventBusService},
+        services::{
+            entity_tags::EntityTagService,
+            traits::{CrudService, EventBusService},
+        },
         storage::{
             generic::GenericPostgresStorage,
             seed_data::{create_remote_subnet, create_wan_subnet},
@@ -20,6 +23,7 @@ pub struct NetworkService {
     network_storage: Arc<GenericPostgresStorage<Network>>,
     subnet_service: Arc<SubnetService>,
     event_bus: Arc<EventBus>,
+    entity_tag_service: Arc<EntityTagService>,
 }
 
 impl EventBusService<Network> for NetworkService {
@@ -40,6 +44,10 @@ impl CrudService<Network> for NetworkService {
     fn storage(&self) -> &Arc<GenericPostgresStorage<Network>> {
         &self.network_storage
     }
+
+    fn entity_tag_service(&self) -> Option<&Arc<EntityTagService>> {
+        Some(&self.entity_tag_service)
+    }
 }
 
 impl NetworkService {
@@ -47,11 +55,13 @@ impl NetworkService {
         network_storage: Arc<GenericPostgresStorage<Network>>,
         subnet_service: Arc<SubnetService>,
         event_bus: Arc<EventBus>,
+        entity_tag_service: Arc<EntityTagService>,
     ) -> Self {
         Self {
             network_storage,
             subnet_service,
             event_bus,
+            entity_tag_service,
         }
     }
 

@@ -7,6 +7,7 @@ use crate::server::{
     billing::types::base::BillingPlan,
     organizations::r#impl::base::{Organization, OrganizationBase},
     shared::{
+        entities::EntityDiscriminants,
         events::types::TelemetryOperation,
         storage::traits::{SqlValue, StorableEntity},
     },
@@ -64,6 +65,19 @@ impl StorableEntity for Organization {
 
     fn set_updated_at(&mut self, time: DateTime<Utc>) {
         self.updated_at = time;
+    }
+
+    fn entity_type() -> EntityDiscriminants {
+        EntityDiscriminants::Organization
+    }
+
+    fn preserve_immutable_fields(&mut self, existing: &Self) {
+        // Billing fields are managed by Stripe integration, not user-editable
+        self.base.stripe_customer_id = existing.base.stripe_customer_id.clone();
+        self.base.plan = existing.base.plan;
+        self.base.plan_status = existing.base.plan_status.clone();
+        // Onboarding state is server-managed
+        self.base.onboarding = existing.base.onboarding.clone();
     }
 
     fn to_params(&self) -> Result<(Vec<&'static str>, Vec<SqlValue>), anyhow::Error> {

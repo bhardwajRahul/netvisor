@@ -8,7 +8,10 @@ use crate::server::{
         base::{Discovery, DiscoveryBase},
         types::{DiscoveryType, RunType},
     },
-    shared::storage::traits::{SqlValue, StorableEntity},
+    shared::{
+        entities::EntityDiscriminants,
+        storage::traits::{SqlValue, StorableEntity},
+    },
 };
 
 impl StorableEntity for Discovery {
@@ -65,6 +68,18 @@ impl StorableEntity for Discovery {
         self.updated_at = time;
     }
 
+    fn get_tags(&self) -> Option<&Vec<Uuid>> {
+        Some(&self.base.tags)
+    }
+
+    fn set_tags(&mut self, tags: Vec<Uuid>) {
+        self.base.tags = tags;
+    }
+
+    fn entity_type() -> EntityDiscriminants {
+        EntityDiscriminants::Discovery
+    }
+
     fn to_params(&self) -> Result<(Vec<&'static str>, Vec<SqlValue>), anyhow::Error> {
         let Self {
             id,
@@ -77,7 +92,7 @@ impl StorableEntity for Discovery {
                     name,
                     daemon_id,
                     network_id,
-                    tags,
+                    tags: _, // Stored in entity_tags junction table
                 },
         } = self.clone();
 
@@ -91,7 +106,6 @@ impl StorableEntity for Discovery {
                 "daemon_id",
                 "run_type",
                 "discovery_type",
-                "tags",
             ],
             vec![
                 SqlValue::Uuid(id),
@@ -102,7 +116,6 @@ impl StorableEntity for Discovery {
                 SqlValue::Uuid(daemon_id),
                 SqlValue::RunType(run_type),
                 SqlValue::DiscoveryType(discovery_type),
-                SqlValue::UuidArray(tags),
             ],
         ))
     }
@@ -125,7 +138,7 @@ impl StorableEntity for Discovery {
                 network_id: row.get("network_id"),
                 run_type,
                 discovery_type,
-                tags: row.get("tags"),
+                tags: Vec::new(), // Hydrated from entity_tags junction table
             },
         })
     }

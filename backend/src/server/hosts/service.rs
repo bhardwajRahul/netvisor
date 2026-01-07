@@ -13,14 +13,16 @@ use crate::server::{
     ports::{r#impl::base::Port, service::PortService},
     services::{r#impl::base::Service, service::ServiceService},
     shared::{
-        entities::ChangeTriggersTopologyStaleness,
+        entities::{ChangeTriggersTopologyStaleness, EntityDiscriminants},
         events::{
             bus::EventBus,
             types::{EntityEvent, EntityOperation},
         },
-        handlers::traits::CrudHandlers,
         position::resolve_and_validate_input_positions,
-        services::traits::{ChildCrudService, CrudService, EventBusService},
+        services::{
+            entity_tags::EntityTagService,
+            traits::{ChildCrudService, CrudService, EventBusService},
+        },
         storage::{
             filter::EntityFilter,
             generic::GenericPostgresStorage,
@@ -48,6 +50,7 @@ pub struct HostService {
     daemon_service: Arc<DaemonService>,
     host_locks: Arc<Mutex<HashMap<Uuid, Arc<Mutex<()>>>>>,
     event_bus: Arc<EventBus>,
+    entity_tag_service: Arc<EntityTagService>,
 }
 
 impl EventBusService<Host> for HostService {
@@ -67,6 +70,10 @@ impl EventBusService<Host> for HostService {
 impl CrudService<Host> for HostService {
     fn storage(&self) -> &Arc<GenericPostgresStorage<Host>> {
         &self.storage
+    }
+
+    fn entity_tag_service(&self) -> Option<&Arc<EntityTagService>> {
+        Some(&self.entity_tag_service)
     }
 
     /// Create a new host, or upsert if a matching host exists.
@@ -213,6 +220,7 @@ impl HostService {
         service_service: Arc<ServiceService>,
         daemon_service: Arc<DaemonService>,
         event_bus: Arc<EventBus>,
+        entity_tag_service: Arc<EntityTagService>,
     ) -> Self {
         Self {
             storage,
@@ -222,6 +230,7 @@ impl HostService {
             daemon_service,
             host_locks: Arc::new(Mutex::new(HashMap::new())),
             event_bus,
+            entity_tag_service,
         }
     }
 
@@ -393,8 +402,6 @@ impl HostService {
             .map_err(|e| ValidationError::new(e.message))?;
         resolve_and_validate_input_positions(&mut service_inputs, &empty_services, "service")
             .map_err(|e| ValidationError::new(e.message))?;
-
-        // TODO: Add ID collision validation (Phase 2)
 
         // Auto-set source to Manual for API-created entities
         let source = EntitySource::Manual;
@@ -732,6 +739,17 @@ impl HostService {
             "Created host with children"
         );
 
+        if let Some(org_id) = authentication.organization_id() {
+            self.entity_tag_service
+                .set_tags(
+                    created_host.id,
+                    EntityDiscriminants::Host,
+                    created_host.base.tags.clone(),
+                    org_id,
+                )
+                .await?;
+        }
+
         Ok(HostResponse::from_host_with_children(
             created_host,
             created_interfaces,
@@ -754,8 +772,6 @@ impl HostService {
             .ok_or_else(|| anyhow!("Host '{}' not found", request.id))?;
 
         let network_id = existing.base.network_id;
-
-        // Destructure request for exhaustive field handling
         let UpdateHostRequest {
             id,
             name,
@@ -764,15 +780,15 @@ impl HostService {
             virtualization,
             hidden,
             tags,
-            expected_updated_at,
-            interfaces: interface_inputs,
-            ports: port_inputs,
-            services: service_inputs,
+            expected_updated_at: _,
+            interfaces,
+            ports,
+            services,
         } = request;
 
         // Optimistic locking: check if host was modified since user loaded it
         // Compare at microsecond precision since PostgreSQL TIMESTAMPTZ truncates nanoseconds
-        if let Some(expected) = expected_updated_at
+        if let Some(expected) = request.expected_updated_at
             && existing.updated_at.timestamp_micros() != expected.timestamp_micros()
         {
             tracing::warn!(
@@ -789,55 +805,43 @@ impl HostService {
             .into());
         }
 
-        // Build updated host preserving non-updatable fields
         let mut updated_host = Host {
             id,
             created_at: existing.created_at,
-            updated_at: existing.updated_at,
+            updated_at: Utc::now(),
             base: HostBase {
                 name,
-                network_id, // Not updatable
+                network_id,
+                source: existing.base.source,
                 hostname,
                 description,
-                source: existing.base.source, // Not updatable via API
                 virtualization,
                 hidden,
-                tags,
+                tags: tags.clone(),
             },
         };
+
+        if let Some(org_id) = authentication.organization_id() {
+            self.entity_tag_service
+                .set_tags(id, EntityDiscriminants::Host, tags, org_id)
+                .await?;
+        }
 
         let updated = self
             .update(&mut updated_host, authentication.clone())
             .await?;
 
-        // TODO: Add ID validation (Phase 2) - check IDs belong to this host or don't exist
-
         // Sync interfaces
-        self.sync_interfaces(
-            &updated.id,
-            &network_id,
-            interface_inputs,
-            authentication.clone(),
-        )
-        .await?;
+        self.sync_interfaces(&updated.id, &network_id, interfaces, authentication.clone())
+            .await?;
 
         // Sync ports
-        self.sync_ports(
-            &updated.id,
-            &network_id,
-            port_inputs,
-            authentication.clone(),
-        )
-        .await?;
+        self.sync_ports(&updated.id, &network_id, ports, authentication.clone())
+            .await?;
 
         // Sync services
-        self.sync_services(
-            &updated.id,
-            &network_id,
-            service_inputs,
-            authentication.clone(),
-        )
-        .await?;
+        self.sync_services(&updated.id, &network_id, services, authentication.clone())
+            .await?;
 
         // Load fresh children after sync
         let (interfaces, ports, services) = self.load_children_for_host(&updated.id).await?;
@@ -1483,6 +1487,13 @@ impl HostService {
 
         let lock = self.get_host_lock(id).await;
         let _guard = lock.lock().await;
+
+        // Remove tags from junction table
+        if let Some(tag_service) = self.entity_tag_service() {
+            tag_service
+                .remove_all_for_entity(*id, EntityDiscriminants::Host)
+                .await?;
+        }
 
         // Delete host - children cascade via ON DELETE CASCADE
         self.storage().delete(id).await?;

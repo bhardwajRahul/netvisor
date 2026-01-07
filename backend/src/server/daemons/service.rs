@@ -11,7 +11,10 @@ use crate::{
                 bus::EventBus,
                 types::{EntityEvent, EntityOperation},
             },
-            services::traits::{CrudService, EventBusService},
+            services::{
+                entity_tags::EntityTagService,
+                traits::{CrudService, EventBusService},
+            },
             storage::generic::GenericPostgresStorage,
             types::api::ApiResponse,
         },
@@ -27,6 +30,7 @@ pub struct DaemonService {
     daemon_storage: Arc<GenericPostgresStorage<Daemon>>,
     client: reqwest::Client,
     event_bus: Arc<EventBus>,
+    entity_tag_service: Arc<EntityTagService>,
 }
 
 impl EventBusService<Daemon> for DaemonService {
@@ -55,17 +59,23 @@ impl CrudService<Daemon> for DaemonService {
     fn storage(&self) -> &Arc<GenericPostgresStorage<Daemon>> {
         &self.daemon_storage
     }
+
+    fn entity_tag_service(&self) -> Option<&Arc<EntityTagService>> {
+        Some(&self.entity_tag_service)
+    }
 }
 
 impl DaemonService {
     pub fn new(
         daemon_storage: Arc<GenericPostgresStorage<Daemon>>,
         event_bus: Arc<EventBus>,
+        entity_tag_service: Arc<EntityTagService>,
     ) -> Self {
         Self {
             daemon_storage,
             client: reqwest::Client::new(),
             event_bus,
+            entity_tag_service,
         }
     }
 

@@ -10,6 +10,7 @@ use crate::server::{
         events::types::{TelemetryEvent, TelemetryOperation},
         handlers::traits::{CrudHandlers, update_handler},
         services::traits::{CrudService, EventBusService},
+        storage::traits::StorableEntity,
         types::api::{ApiError, ApiErrorResponse, ApiResponse, ApiResult},
         validation::validate_network_access,
     },

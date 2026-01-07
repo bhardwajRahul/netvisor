@@ -3,17 +3,15 @@
 	import GenericCard from '$lib/shared/components/data/GenericCard.svelte';
 	import type { Group } from '../types/base';
 	import { entities, groupTypes } from '$lib/shared/stores/metadata';
-	import { useTagsQuery } from '$lib/features/tags/queries';
 	import { useServicesQuery } from '$lib/features/services/queries';
 	import { toColor } from '$lib/shared/utils/styling';
 	import { serviceDefinitions } from '$lib/shared/stores/metadata';
+	import TagPickerInline from '$lib/features/tags/components/TagPickerInline.svelte';
 
 	// Queries
-	const tagsQuery = useTagsQuery();
 	const servicesQuery = useServicesQuery();
 
 	// Derived data
-	let tagsData = $derived(tagsQuery.data ?? []);
 	let servicesData = $derived(servicesQuery.data ?? []);
 
 	let {
@@ -109,15 +107,7 @@
 				}),
 				emptyText: 'No services in group'
 			},
-			{
-				label: 'Tags',
-				value: group.tags.map((t) => {
-					const tag = tagsData.find((tag) => tag.id == t);
-					return tag
-						? { id: tag.id, color: tag.color, label: tag.name }
-						: { id: t, color: toColor('gray'), label: 'Unknown Tag' };
-				})
-			}
+			{ label: 'Tags', snippet: tagsSnippet }
 		],
 
 		actions: [
@@ -135,5 +125,12 @@
 		]
 	});
 </script>
+
+{#snippet tagsSnippet()}
+	<div class="flex items-center gap-2">
+		<span class="text-secondary text-sm">Tags:</span>
+		<TagPickerInline selectedTagIds={group.tags} entityId={group.id} entityType="Group" />
+	</div>
+{/snippet}
 
 <GenericCard {...cardData} {viewMode} {selected} {onSelectionChange} />

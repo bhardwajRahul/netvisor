@@ -93,6 +93,10 @@
 		}
 	}
 
+	function getSubnetTags(subnet: Subnet): string[] {
+		return subnet.tags;
+	}
+
 	// Define field configuration for the DataTableControls
 	const subnetFields: FieldConfig<Subnet>[] = [
 		{
@@ -184,6 +188,8 @@
 			fields={subnetFields}
 			storageKey="scanopy-subnets-table-state"
 			onBulkDelete={isReadOnly ? undefined : handleBulkDelete}
+			entityType={isReadOnly ? undefined : 'Subnet'}
+			getItemTags={getSubnetTags}
 			getItemId={(item) => item.id}
 		>
 			{#snippet children(

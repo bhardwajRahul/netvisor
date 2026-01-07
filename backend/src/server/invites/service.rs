@@ -12,7 +12,10 @@ use crate::server::{
             bus::EventBus,
             types::{EntityEvent, EntityOperation},
         },
-        services::traits::{CrudService, EventBusService},
+        services::{
+            entity_tags::EntityTagService,
+            traits::{CrudService, EventBusService},
+        },
         storage::{filter::EntityFilter, generic::GenericPostgresStorage, traits::Storage},
     },
 };
@@ -39,6 +42,10 @@ impl EventBusService<Invite> for InviteService {
 impl CrudService<Invite> for InviteService {
     fn storage(&self) -> &Arc<GenericPostgresStorage<Invite>> {
         &self.storage
+    }
+
+    fn entity_tag_service(&self) -> Option<&Arc<EntityTagService>> {
+        None
     }
 }
 
