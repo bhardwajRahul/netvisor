@@ -14,7 +14,7 @@ use validator::Validate;
 use crate::server::{
     shared::{
         entities::{ChangeTriggersTopologyStaleness, EntityDiscriminants},
-        storage::traits::{SqlValue, StorableEntity},
+        storage::traits::{Entity, SqlValue, Storable},
     },
     users::r#impl::permissions::UserOrgPermissions,
 };
@@ -97,23 +97,11 @@ impl ChangeTriggersTopologyStaleness<Invite> for Invite {
     }
 }
 
-impl StorableEntity for Invite {
+impl Storable for Invite {
     type BaseData = InviteBase;
 
     fn table_name() -> &'static str {
         "invites"
-    }
-
-    fn get_base(&self) -> Self::BaseData {
-        self.base.clone()
-    }
-
-    fn network_id(&self) -> Option<Uuid> {
-        None
-    }
-
-    fn organization_id(&self) -> Option<Uuid> {
-        Some(self.base.organization_id)
     }
 
     fn new(base: Self::BaseData) -> Self {
@@ -126,6 +114,10 @@ impl StorableEntity for Invite {
         }
     }
 
+    fn get_base(&self) -> Self::BaseData {
+        self.base.clone()
+    }
+
     fn id(&self) -> Uuid {
         self.id
     }
@@ -134,24 +126,12 @@ impl StorableEntity for Invite {
         self.created_at
     }
 
-    fn updated_at(&self) -> DateTime<Utc> {
-        self.updated_at
-    }
-
     fn set_id(&mut self, id: Uuid) {
         self.id = id;
     }
 
     fn set_created_at(&mut self, time: DateTime<Utc>) {
         self.created_at = time;
-    }
-
-    fn set_updated_at(&mut self, time: DateTime<Utc>) {
-        self.updated_at = time;
-    }
-
-    fn entity_type() -> EntityDiscriminants {
-        EntityDiscriminants::Invite
     }
 
     fn to_params(&self) -> Result<(Vec<&'static str>, Vec<SqlValue>), anyhow::Error> {
@@ -209,5 +189,35 @@ impl StorableEntity for Invite {
                 send_to,
             },
         })
+    }
+}
+
+impl Entity for Invite {
+    fn entity_type() -> EntityDiscriminants {
+        EntityDiscriminants::Invite
+    }
+
+    fn entity_name_singular() -> &'static str {
+        "invite"
+    }
+
+    fn entity_name_plural() -> &'static str {
+        "invites"
+    }
+
+    fn network_id(&self) -> Option<Uuid> {
+        None
+    }
+
+    fn organization_id(&self) -> Option<Uuid> {
+        Some(self.base.organization_id)
+    }
+
+    fn updated_at(&self) -> DateTime<Utc> {
+        self.updated_at
+    }
+
+    fn set_updated_at(&mut self, time: DateTime<Utc>) {
+        self.updated_at = time;
     }
 }

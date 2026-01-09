@@ -16,7 +16,7 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::Validate;
 
-use crate::server::shared::storage::traits::{SqlValue, StorableEntity};
+use crate::server::shared::storage::traits::{Entity, SqlValue, Storable};
 
 #[derive(
     Debug, Clone, Serialize, Deserialize, Validate, PartialEq, Eq, Hash, Default, ToSchema,
@@ -80,45 +80,33 @@ impl ChangeTriggersTopologyStaleness<Network> for Network {
     }
 }
 
-impl StorableEntity for Network {
+impl Storable for Network {
     type BaseData = NetworkBase;
 
     fn table_name() -> &'static str {
         "networks"
     }
 
-    fn get_base(&self) -> Self::BaseData {
-        self.base.clone()
-    }
-
     fn new(base: Self::BaseData) -> Self {
         let now = chrono::Utc::now();
         Self {
-            base,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
+            base,
         }
+    }
+
+    fn get_base(&self) -> Self::BaseData {
+        self.base.clone()
     }
 
     fn id(&self) -> Uuid {
         self.id
     }
 
-    fn network_id(&self) -> Option<Uuid> {
-        None
-    }
-
-    fn organization_id(&self) -> Option<Uuid> {
-        Some(self.base.organization_id)
-    }
-
     fn created_at(&self) -> DateTime<Utc> {
         self.created_at
-    }
-
-    fn updated_at(&self) -> DateTime<Utc> {
-        self.updated_at
     }
 
     fn set_id(&mut self, id: Uuid) {
@@ -127,22 +115,6 @@ impl StorableEntity for Network {
 
     fn set_created_at(&mut self, time: DateTime<Utc>) {
         self.created_at = time;
-    }
-
-    fn set_updated_at(&mut self, time: DateTime<Utc>) {
-        self.updated_at = time;
-    }
-
-    fn get_tags(&self) -> Option<&Vec<uuid::Uuid>> {
-        Some(&self.base.tags)
-    }
-
-    fn set_tags(&mut self, tags: Vec<uuid::Uuid>) {
-        self.base.tags = tags;
-    }
-
-    fn entity_type() -> EntityDiscriminants {
-        EntityDiscriminants::Network
     }
 
     fn to_params(&self) -> Result<(Vec<&'static str>, Vec<SqlValue>), anyhow::Error> {
@@ -181,5 +153,43 @@ impl StorableEntity for Network {
                 tags: Vec::new(), // Hydrated from entity_tags junction table
             },
         })
+    }
+}
+
+impl Entity for Network {
+    fn entity_type() -> EntityDiscriminants {
+        EntityDiscriminants::Network
+    }
+
+    fn entity_name_singular() -> &'static str {
+        "network"
+    }
+
+    fn entity_name_plural() -> &'static str {
+        "networks"
+    }
+
+    fn network_id(&self) -> Option<Uuid> {
+        None
+    }
+
+    fn organization_id(&self) -> Option<Uuid> {
+        Some(self.base.organization_id)
+    }
+
+    fn updated_at(&self) -> DateTime<Utc> {
+        self.updated_at
+    }
+
+    fn set_updated_at(&mut self, time: DateTime<Utc>) {
+        self.updated_at = time;
+    }
+
+    fn get_tags(&self) -> Option<&Vec<Uuid>> {
+        Some(&self.base.tags)
+    }
+
+    fn set_tags(&mut self, tags: Vec<Uuid>) {
+        self.base.tags = tags;
     }
 }

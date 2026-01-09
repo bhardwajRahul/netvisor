@@ -20,17 +20,15 @@ use crate::server::{
             bus::EventBus,
             types::{EntityEvent, EntityOperation},
         },
-        services::{
-            entity_tags::EntityTagService,
-            traits::{CrudService, EventBusService},
-        },
+        services::traits::{CrudService, EventBusService},
         storage::{
             filter::EntityFilter,
             generic::GenericPostgresStorage,
-            traits::{StorableEntity, Storage},
+            traits::{Storable, Storage},
         },
     },
     subnets::{r#impl::base::Subnet, service::SubnetService},
+    tags::entity_tags::EntityTagService,
     topology::{
         service::{
             context::TopologyContext, edge_builder::EdgeBuilder,

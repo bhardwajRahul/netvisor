@@ -5,15 +5,15 @@ use async_trait::async_trait;
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use super::{generic::GenericPostgresStorage, traits::StorableEntity};
+use super::{generic::GenericPostgresStorage, traits::Storable};
 
 /// Trait for entities that are children of a parent entity and stored in a separate table.
-/// Extends StorableEntity to reuse all the standard CRUD infrastructure while adding
+/// Extends Storable to reuse all the standard CRUD infrastructure while adding
 /// parent-scoped batch operations.
 ///
 /// The key addition is the "replace all" pattern: when saving via `save_for_parent`,
 /// all existing children for that parent are deleted and the new set is inserted.
-pub trait ChildStorableEntity: StorableEntity {
+pub trait ChildStorableEntity: Storable {
     /// The column name for the parent foreign key (e.g., "host_id", "service_id")
     fn parent_column() -> &'static str;
 

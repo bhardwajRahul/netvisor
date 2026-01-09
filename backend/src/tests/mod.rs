@@ -19,7 +19,7 @@ use crate::server::{
     },
     shared::{
         services::factory::ServiceFactory,
-        storage::{factory::StorageFactory, traits::StorableEntity},
+        storage::{factory::StorageFactory, traits::Storable},
         types::{Color, entities::EntitySource},
     },
     subnets::r#impl::{

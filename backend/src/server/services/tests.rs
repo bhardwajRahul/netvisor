@@ -6,7 +6,8 @@ use crate::{
         bindings::r#impl::base::Binding,
         services::r#impl::patterns::MatchDetails,
         shared::{
-            services::traits::CrudService, storage::filter::EntityFilter,
+            services::traits::CrudService,
+            storage::{filter::EntityFilter, traits::Storable},
             types::entities::EntitySource,
         },
     },
@@ -988,7 +989,7 @@ async fn test_open_ports_singleton_per_host() {
     use crate::server::services::definitions::open_ports::OpenPorts as OpenPortsDef;
     use crate::server::services::r#impl::base::ServiceBase;
     use crate::server::services::r#impl::definitions::ServiceDefinitionExt;
-    use crate::server::shared::storage::traits::StorableEntity;
+    use crate::server::shared::storage::traits::Storable;
 
     let (_, services, _container) = test_services().await;
 

@@ -3,7 +3,7 @@ use std::net::Ipv4Addr;
 
 use crate::server::discovery::r#impl::types::DiscoveryType;
 use crate::server::shared::entities::ChangeTriggersTopologyStaleness;
-use crate::server::shared::storage::traits::StorableEntity;
+use crate::server::shared::storage::traits::Storable;
 use crate::server::shared::types::api::deserialize_empty_string_as_none;
 use crate::server::shared::types::entities::{DiscoveryMetadata, EntitySource};
 use crate::server::subnets::r#impl::types::SubnetType;

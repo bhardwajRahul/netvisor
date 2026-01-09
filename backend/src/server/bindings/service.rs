@@ -5,12 +5,10 @@ use crate::server::{
     bindings::r#impl::base::Binding,
     shared::{
         events::bus::EventBus,
-        services::{
-            entity_tags::EntityTagService,
-            traits::{ChildCrudService, CrudService, EventBusService},
-        },
+        services::traits::{ChildCrudService, CrudService, EventBusService},
         storage::generic::GenericPostgresStorage,
     },
+    tags::entity_tags::EntityTagService,
 };
 
 pub struct BindingService {

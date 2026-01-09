@@ -1,6 +1,6 @@
 use crate::server::discovery::r#impl::types::DiscoveryType;
 use crate::server::interfaces::r#impl::base::{Interface, InterfaceBase};
-use crate::server::shared::storage::traits::StorableEntity;
+use crate::server::shared::storage::traits::Storable;
 use crate::server::shared::types::entities::{DiscoveryMetadata, EntitySource};
 use crate::server::subnets::r#impl::base::{Subnet, SubnetBase};
 use crate::server::subnets::r#impl::types::SubnetType;

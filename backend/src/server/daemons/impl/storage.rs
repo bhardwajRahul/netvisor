@@ -11,27 +11,15 @@ use crate::server::{
     },
     shared::{
         entities::EntityDiscriminants,
-        storage::traits::{SqlValue, StorableEntity},
+        storage::traits::{Entity, SqlValue, Storable},
     },
 };
 
-impl StorableEntity for Daemon {
+impl Storable for Daemon {
     type BaseData = DaemonBase;
 
     fn table_name() -> &'static str {
         "daemons"
-    }
-
-    fn network_id(&self) -> Option<Uuid> {
-        Some(self.base.network_id)
-    }
-
-    fn organization_id(&self) -> Option<Uuid> {
-        None
-    }
-
-    fn get_base(&self) -> Self::BaseData {
-        self.base.clone()
     }
 
     fn new(base: Self::BaseData) -> Self {
@@ -45,6 +33,10 @@ impl StorableEntity for Daemon {
         }
     }
 
+    fn get_base(&self) -> Self::BaseData {
+        self.base.clone()
+    }
+
     fn id(&self) -> Uuid {
         self.id
     }
@@ -53,41 +45,12 @@ impl StorableEntity for Daemon {
         self.created_at
     }
 
-    fn updated_at(&self) -> DateTime<Utc> {
-        self.updated_at
-    }
-
     fn set_id(&mut self, id: Uuid) {
         self.id = id;
     }
 
     fn set_created_at(&mut self, time: DateTime<Utc>) {
         self.created_at = time;
-    }
-
-    fn set_updated_at(&mut self, time: DateTime<Utc>) {
-        self.updated_at = time;
-    }
-
-    fn preserve_immutable_fields(&mut self, existing: &Self) {
-        // url is set at registration time, cannot be changed via update
-        self.base.url = existing.base.url.clone();
-        // last_seen is server-set only
-        self.base.last_seen = existing.base.last_seen;
-        // capabilities are reported by the daemon, not user-editable
-        self.base.capabilities = existing.base.capabilities.clone();
-    }
-
-    fn get_tags(&self) -> Option<&Vec<Uuid>> {
-        Some(&self.base.tags)
-    }
-
-    fn set_tags(&mut self, tags: Vec<Uuid>) {
-        self.base.tags = tags;
-    }
-
-    fn entity_type() -> EntityDiscriminants {
-        EntityDiscriminants::Daemon
     }
 
     fn to_params(&self) -> Result<(Vec<&'static str>, Vec<SqlValue>), anyhow::Error> {
@@ -172,5 +135,52 @@ impl StorableEntity for Daemon {
                 user_id: row.get("user_id"),
             },
         })
+    }
+}
+
+impl Entity for Daemon {
+    fn entity_type() -> EntityDiscriminants {
+        EntityDiscriminants::Daemon
+    }
+
+    fn entity_name_singular() -> &'static str {
+        "daemon"
+    }
+
+    fn entity_name_plural() -> &'static str {
+        "daemons"
+    }
+
+    fn network_id(&self) -> Option<Uuid> {
+        Some(self.base.network_id)
+    }
+
+    fn organization_id(&self) -> Option<Uuid> {
+        None
+    }
+
+    fn updated_at(&self) -> DateTime<Utc> {
+        self.updated_at
+    }
+
+    fn set_updated_at(&mut self, time: DateTime<Utc>) {
+        self.updated_at = time;
+    }
+
+    fn get_tags(&self) -> Option<&Vec<Uuid>> {
+        Some(&self.base.tags)
+    }
+
+    fn set_tags(&mut self, tags: Vec<Uuid>) {
+        self.base.tags = tags;
+    }
+
+    fn preserve_immutable_fields(&mut self, existing: &Self) {
+        // url is set at registration time, cannot be changed via update
+        self.base.url = existing.base.url.clone();
+        // last_seen is server-set only
+        self.base.last_seen = existing.base.last_seen;
+        // capabilities are reported by the daemon, not user-editable
+        self.base.capabilities = existing.base.capabilities.clone();
     }
 }

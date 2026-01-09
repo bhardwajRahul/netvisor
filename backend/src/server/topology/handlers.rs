@@ -9,7 +9,7 @@ use crate::server::{
             traits::{CrudHandlers, update_handler},
         },
         services::traits::CrudService,
-        storage::{filter::EntityFilter, traits::StorableEntity},
+        storage::{filter::EntityFilter, traits::Storable},
         types::api::{
             ApiError, ApiErrorResponse, ApiResponse, ApiResult, EmptyApiResponse,
             PaginatedApiResponse,
@@ -37,8 +37,8 @@ use uuid::Uuid;
 // Generated handlers for generic CRUD operations
 mod generated {
     use super::*;
-    crate::crud_get_by_id_handler!(Topology, "topology", "topology");
-    crate::crud_delete_handler!(Topology, "topology", "topology");
+    crate::crud_get_by_id_handler!(Topology, "topologies", "topology");
+    crate::crud_delete_handler!(Topology, "topologies", "topology");
 }
 
 /// Topology endpoints are internal-only (hidden from public docs)

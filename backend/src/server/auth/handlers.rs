@@ -24,7 +24,7 @@ use crate::server::{
     shared::{
         events::types::{TelemetryEvent, TelemetryOperation},
         services::traits::CrudService,
-        storage::traits::StorableEntity,
+        storage::traits::Storable,
         types::api::{ApiError, ApiErrorResponse, ApiResponse, ApiResult, EmptyApiResponse},
     },
     topology::types::base::{Topology, TopologyBase},

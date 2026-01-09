@@ -8,7 +8,7 @@ use scanopy::server::groups::r#impl::types::GroupType;
 use scanopy::server::hosts::r#impl::api::{CreateHostRequest, HostResponse, UpdateHostRequest};
 use scanopy::server::services::definitions::ServiceDefinitionRegistry;
 use scanopy::server::services::r#impl::base::{Service, ServiceBase};
-use scanopy::server::shared::storage::traits::StorableEntity;
+use scanopy::server::shared::storage::traits::Storable;
 use scanopy::server::shared::types::Color;
 use scanopy::server::shared::types::entities::EntitySource;
 use scanopy::server::subnets::r#impl::base::{Subnet, SubnetBase};

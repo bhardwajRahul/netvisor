@@ -6,7 +6,7 @@ use scanopy::server::discovery::r#impl::types::DiscoveryType;
 use scanopy::server::groups::r#impl::base::{Group, GroupBase};
 use scanopy::server::services::definitions::home_assistant::HomeAssistant;
 use scanopy::server::services::r#impl::base::Service;
-use scanopy::server::shared::storage::traits::StorableEntity;
+use scanopy::server::shared::storage::traits::Storable;
 use scanopy::server::shared::types::metadata::HasId;
 use scanopy::server::tags::r#impl::base::{Tag, TagBase};
 use uuid::Uuid;

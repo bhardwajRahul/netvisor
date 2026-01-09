@@ -13,13 +13,13 @@ use std::fmt::Display;
 use crate::server::{
     auth::middleware::auth::AuthenticatedEntity,
     shared::{
-        entities::{ChangeTriggersTopologyStaleness, Entity},
+        entities::{ChangeTriggersTopologyStaleness, Entity as EntityEnum},
         events::{
             bus::EventBus,
             types::{AuthEvent, AuthOperation},
         },
         services::traits::{CrudService, EventBusService},
-        storage::traits::StorableEntity,
+        storage::traits::Entity,
         types::api::ApiError,
     },
 };
@@ -150,13 +150,13 @@ pub fn check_key_validity<K: ApiKeyCommon>(key: &K) -> Result<(), ApiError> {
 pub trait ApiKeyService: CrudService<Self::Key> + EventBusService<Self::Key> {
     /// The API key type this service manages
     type Key: ApiKeyCommon
-        + StorableEntity
+        + Entity
         + Clone
         + Send
         + Sync
         + Default
         + Display
-        + Into<Entity>
+        + Into<EntityEnum>
         + ChangeTriggersTopologyStaleness<Self::Key>;
 
     /// Get a reference to the event bus

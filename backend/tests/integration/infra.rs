@@ -9,7 +9,7 @@ use scanopy::server::daemons::r#impl::base::Daemon;
 use scanopy::server::networks::r#impl::Network;
 use scanopy::server::organizations::r#impl::base::Organization;
 use scanopy::server::shared::storage::generic::GenericPostgresStorage;
-use scanopy::server::shared::storage::traits::{StorableEntity, Storage};
+use scanopy::server::shared::storage::traits::{Storable, Storage};
 use scanopy::server::shared::types::api::ApiResponse;
 use scanopy::server::users::r#impl::base::User;
 use serde::Serialize;
@@ -341,10 +341,7 @@ pub struct TestContext {
 impl TestContext {
     /// Insert an entity directly into the database, bypassing API authorization.
     /// Useful for creating test fixtures that the current user shouldn't have access to.
-    pub async fn insert_entity<T: StorableEntity + Display>(
-        &self,
-        entity: &T,
-    ) -> Result<T, String> {
+    pub async fn insert_entity<T: Storable + Display>(&self, entity: &T) -> Result<T, String> {
         let storage: GenericPostgresStorage<T> = GenericPostgresStorage::new(self.db_pool.clone());
         storage
             .create(entity)
@@ -353,10 +350,7 @@ impl TestContext {
     }
 
     /// Delete an entity directly from the database by ID.
-    pub async fn delete_entity<T: StorableEntity + Display>(
-        &self,
-        id: &Uuid,
-    ) -> Result<(), String> {
+    pub async fn delete_entity<T: Storable + Display>(&self, id: &Uuid) -> Result<(), String> {
         let storage: GenericPostgresStorage<T> = GenericPostgresStorage::new(self.db_pool.clone());
         storage
             .delete(id)

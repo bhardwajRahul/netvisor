@@ -1,15 +1,11 @@
 use crate::server::bindings::r#impl::base::Binding;
-use crate::server::group_bindings::GroupBinding;
 use crate::server::interfaces::r#impl::base::Interface;
 use crate::server::invites::r#impl::base::Invite;
 use crate::server::ports::r#impl::base::Port;
 use crate::server::services::r#impl::base::Service;
-use crate::server::shared::storage::entity_tags::EntityTag;
 use crate::server::shares::r#impl::base::Share;
 use crate::server::subnets::r#impl::base::Subnet;
 use crate::server::topology::types::base::Topology;
-use crate::server::user_api_keys::r#impl::network_access::UserApiKeyNetworkAccess;
-use crate::server::users::r#impl::network_access::UserNetworkAccess;
 use crate::server::{groups::r#impl::base::Group, tags::r#impl::base::Tag};
 use serde::{Deserialize, Serialize};
 use strum_macros::{Display, EnumDiscriminants, EnumIter, IntoStaticStr};
@@ -33,6 +29,23 @@ use crate::server::{
 // Trait use to determine whether a given property change on an entity should trigger a rebuild of topology
 pub trait ChangeTriggersTopologyStaleness<T> {
     fn triggers_staleness(&self, _other: Option<T>) -> bool;
+}
+
+/// Single source of truth for which entity types support tagging.
+/// Used by the Entity trait's default is_taggable() implementation and tag handlers.
+pub fn is_entity_taggable(entity_type: EntityDiscriminants) -> bool {
+    matches!(
+        entity_type,
+        EntityDiscriminants::Host
+            | EntityDiscriminants::Service
+            | EntityDiscriminants::Subnet
+            | EntityDiscriminants::Group
+            | EntityDiscriminants::Network
+            | EntityDiscriminants::Discovery
+            | EntityDiscriminants::Daemon
+            | EntityDiscriminants::DaemonApiKey
+            | EntityDiscriminants::UserApiKey
+    )
 }
 
 #[derive(
@@ -81,11 +94,6 @@ pub enum Entity {
     Group(Group),
     Topology(Box<Topology>),
 
-    // Junction table entities, not used outside of making sure entity_type() method for StorableEntity has a return value
-    GroupBinding(GroupBinding),
-    EntityTag(EntityTag),
-    UserApiKeyNetworkAccess(UserApiKeyNetworkAccess),
-    UserNetworkAccess(UserNetworkAccess),
     #[default]
     #[strum_discriminants(default)]
     Unknown,
@@ -121,13 +129,6 @@ impl EntityMetadataProvider for EntityDiscriminants {
             EntityDiscriminants::Group => Color::Rose,
             EntityDiscriminants::Topology => Color::Pink,
 
-            // Junction
-            EntityDiscriminants::EntityTag => Color::Gray,
-            EntityDiscriminants::GroupBinding => Color::Gray,
-            EntityDiscriminants::UserApiKeyNetworkAccess => Color::Gray,
-            EntityDiscriminants::UserNetworkAccess => Color::Gray,
-
-            // Misc
             EntityDiscriminants::Unknown => Color::Gray,
         }
     }
@@ -152,11 +153,6 @@ impl EntityMetadataProvider for EntityDiscriminants {
             EntityDiscriminants::Subnet => Icon::Network,
             EntityDiscriminants::Group => Icon::Group,
             EntityDiscriminants::Topology => Icon::ChartBarStacked,
-
-            EntityDiscriminants::EntityTag => Icon::Tag,
-            EntityDiscriminants::GroupBinding => Icon::Link,
-            EntityDiscriminants::UserApiKeyNetworkAccess => Icon::User,
-            EntityDiscriminants::UserNetworkAccess => Icon::User,
 
             EntityDiscriminants::Unknown => Icon::CircleQuestionMark,
         }
@@ -268,17 +264,5 @@ impl From<Topology> for Entity {
 impl From<Tag> for Entity {
     fn from(value: Tag) -> Self {
         Self::Tag(value)
-    }
-}
-
-impl From<EntityTag> for Entity {
-    fn from(value: EntityTag) -> Self {
-        Self::EntityTag(value)
-    }
-}
-
-impl From<GroupBinding> for Entity {
-    fn from(value: GroupBinding) -> Self {
-        Self::GroupBinding(value)
     }
 }

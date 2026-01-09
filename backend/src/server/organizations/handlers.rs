@@ -8,7 +8,7 @@ use crate::server::organizations::r#impl::base::Organization;
 use crate::server::shared::handlers::traits::{CrudHandlers, update_handler};
 use crate::server::shared::services::traits::CrudService;
 use crate::server::shared::storage::filter::EntityFilter;
-use crate::server::shared::storage::traits::StorableEntity;
+use crate::server::shared::storage::traits::Storable;
 use crate::server::shared::types::api::ApiResponse;
 use crate::server::shared::types::api::ApiResult;
 use crate::server::shared::types::api::{ApiError, ApiErrorResponse, EmptyApiResponse};

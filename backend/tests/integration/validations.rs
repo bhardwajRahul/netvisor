@@ -7,7 +7,7 @@ use scanopy::server::hosts::r#impl::api::{CreateHostRequest, HostResponse};
 use scanopy::server::networks::r#impl::{Network, NetworkBase};
 use scanopy::server::services::definitions::ServiceDefinitionRegistry;
 use scanopy::server::services::r#impl::base::{Service, ServiceBase};
-use scanopy::server::shared::storage::traits::StorableEntity;
+use scanopy::server::shared::storage::traits::Storable;
 use scanopy::server::shared::types::entities::EntitySource;
 use scanopy::server::tags::r#impl::base::{Tag, TagBase};
 

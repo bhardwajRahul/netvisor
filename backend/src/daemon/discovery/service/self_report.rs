@@ -16,7 +16,7 @@ use crate::{
             r#impl::{base::ServiceBase, definitions::ServiceDefinition, patterns::MatchDetails},
         },
         shared::{
-            storage::traits::StorableEntity,
+            storage::traits::Storable,
             types::entities::{DiscoveryMetadata, EntitySource},
         },
         subnets::r#impl::{base::Subnet, types::SubnetTypeDiscriminants},

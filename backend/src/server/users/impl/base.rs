@@ -4,7 +4,7 @@ use std::str::FromStr;
 use crate::server::{
     shared::{
         entities::{ChangeTriggersTopologyStaleness, EntityDiscriminants},
-        storage::traits::{SqlValue, StorableEntity},
+        storage::traits::{Entity, SqlValue, Storable},
     },
     users::r#impl::permissions::UserOrgPermissions,
 };
@@ -139,11 +139,11 @@ impl ChangeTriggersTopologyStaleness<User> for User {
     }
 }
 
-impl StorableEntity for User {
+impl Storable for User {
     type BaseData = UserBase;
 
-    fn get_base(&self) -> Self::BaseData {
-        self.base.clone()
+    fn table_name() -> &'static str {
+        "users"
     }
 
     fn new(base: Self::BaseData) -> Self {
@@ -157,16 +157,8 @@ impl StorableEntity for User {
         }
     }
 
-    fn network_id(&self) -> Option<Uuid> {
-        None
-    }
-
-    fn organization_id(&self) -> Option<Uuid> {
-        Some(self.base.organization_id)
-    }
-
-    fn table_name() -> &'static str {
-        "users"
+    fn get_base(&self) -> Self::BaseData {
+        self.base.clone()
     }
 
     fn id(&self) -> Uuid {
@@ -177,28 +169,12 @@ impl StorableEntity for User {
         self.created_at
     }
 
-    fn updated_at(&self) -> DateTime<Utc> {
-        self.updated_at
-    }
-
     fn set_id(&mut self, id: Uuid) {
         self.id = id;
     }
 
     fn set_created_at(&mut self, time: DateTime<Utc>) {
         self.created_at = time;
-    }
-
-    fn set_updated_at(&mut self, time: DateTime<Utc>) {
-        self.updated_at = time;
-    }
-
-    fn preserve_immutable_fields(&mut self, existing: &Self) {
-        self.base.terms_accepted_at = existing.base.terms_accepted_at;
-    }
-
-    fn entity_type() -> EntityDiscriminants {
-        EntityDiscriminants::User
     }
 
     fn to_params(&self) -> Result<(Vec<&'static str>, Vec<SqlValue>), anyhow::Error> {
@@ -277,5 +253,39 @@ impl StorableEntity for User {
                 terms_accepted_at: row.get("terms_accepted_at"),
             },
         })
+    }
+}
+
+impl Entity for User {
+    fn entity_type() -> EntityDiscriminants {
+        EntityDiscriminants::User
+    }
+
+    fn entity_name_singular() -> &'static str {
+        "user"
+    }
+
+    fn entity_name_plural() -> &'static str {
+        "users"
+    }
+
+    fn network_id(&self) -> Option<Uuid> {
+        None
+    }
+
+    fn organization_id(&self) -> Option<Uuid> {
+        Some(self.base.organization_id)
+    }
+
+    fn updated_at(&self) -> DateTime<Utc> {
+        self.updated_at
+    }
+
+    fn set_updated_at(&mut self, time: DateTime<Utc>) {
+        self.updated_at = time;
+    }
+
+    fn preserve_immutable_fields(&mut self, existing: &Self) {
+        self.base.terms_accepted_at = existing.base.terms_accepted_at;
     }
 }

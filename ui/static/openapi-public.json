@@ -2397,6 +2397,7 @@
           },
           {
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
             "name": "group_by",
             "in": "query",
@@ -2447,6 +2448,8 @@
           },
           {
 >>>>>>> fix/450-grouped-pagination
+=======
+>>>>>>> trait-refactor
             "name": "limit",
             "in": "query",
             "description": "Maximum number of results to return (1-1000, default: 50). Use 0 for no limit.",
@@ -4408,6 +4411,22 @@
                   "$ref": "#/components/schemas/OrderDirection"
                 }
               ]
+            }
+          },
+          {
+            "name": "ids",
+            "in": "query",
+            "description": "Filter by specific entity IDs (for selective loading)",
+            "required": false,
+            "schema": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "string",
+                "format": "uuid"
+              }
             }
           },
           {
@@ -6395,22 +6414,31 @@
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
 <<<<<<< HEAD
+<<<<<<< HEAD
               "created_at": "2026-01-09T00:15:11.741923Z",
               "id": "2c30d4c0-80c1-4723-8634-256e6011cd40",
 =======
               "created_at": "2026-01-09T06:20:23.535802Z",
               "id": "88bda359-f616-4e3f-b3bb-2cfe0379b293",
 >>>>>>> fix/450-grouped-pagination
+=======
+              "created_at": "2026-01-09T06:22:45.088293Z",
+              "id": "76ba24bb-3b59-4b48-9cdf-34af9c9673d4",
+>>>>>>> trait-refactor
               "interface_id": "550e8400-e29b-41d4-a716-446655440005",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
 <<<<<<< HEAD
+<<<<<<< HEAD
               "updated_at": "2026-01-09T00:15:11.741923Z"
 =======
               "updated_at": "2026-01-09T06:20:23.535802Z"
 >>>>>>> fix/450-grouped-pagination
+=======
+              "updated_at": "2026-01-09T06:22:45.088293Z"
+>>>>>>> trait-refactor
             }
           },
           "error": {
@@ -7701,22 +7729,31 @@
               "bindings": [
                 {
 <<<<<<< HEAD
+<<<<<<< HEAD
                   "created_at": "2026-01-09T00:15:11.735112Z",
                   "id": "0088dc2e-28ba-4409-a0af-612bf7fa0779",
 =======
                   "created_at": "2026-01-09T06:20:23.532138Z",
                   "id": "37d4772e-1eb4-424a-9caa-326ffad9d03e",
 >>>>>>> fix/450-grouped-pagination
+=======
+                  "created_at": "2026-01-09T06:22:45.082625Z",
+                  "id": "71ab6164-095f-416b-9559-91e108d3595f",
+>>>>>>> trait-refactor
                   "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
 <<<<<<< HEAD
+<<<<<<< HEAD
                   "updated_at": "2026-01-09T00:15:11.735112Z"
 =======
                   "updated_at": "2026-01-09T06:20:23.532138Z"
 >>>>>>> fix/450-grouped-pagination
+=======
+                  "updated_at": "2026-01-09T06:22:45.082625Z"
+>>>>>>> trait-refactor
                 }
               ],
               "created_at": "2026-01-15T10:30:00Z",
@@ -7726,10 +7763,14 @@
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
 <<<<<<< HEAD
+<<<<<<< HEAD
               "service_definition": "Sensu",
 =======
               "service_definition": "Grocy",
 >>>>>>> fix/450-grouped-pagination
+=======
+              "service_definition": "Oracle Database",
+>>>>>>> trait-refactor
               "source": {
                 "type": "Manual"
               },
@@ -8837,22 +8878,31 @@
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
 <<<<<<< HEAD
+<<<<<<< HEAD
           "created_at": "2026-01-09T00:15:11.717345Z",
           "id": "0c7e75d9-0c51-4ddf-8dc5-44287dd250df",
 =======
           "created_at": "2026-01-09T06:20:23.521940Z",
           "id": "437225ad-876b-4985-854d-734d5d2f5a90",
 >>>>>>> fix/450-grouped-pagination
+=======
+          "created_at": "2026-01-09T06:22:45.072897Z",
+          "id": "76edcfad-1322-4614-8291-26186c823d5e",
+>>>>>>> trait-refactor
           "interface_id": "550e8400-e29b-41d4-a716-446655440005",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
 <<<<<<< HEAD
+<<<<<<< HEAD
           "updated_at": "2026-01-09T00:15:11.717345Z"
 =======
           "updated_at": "2026-01-09T06:20:23.521940Z"
 >>>>>>> fix/450-grouped-pagination
+=======
+          "updated_at": "2026-01-09T06:22:45.072897Z"
+>>>>>>> trait-refactor
         }
       },
       "BindingBase": {
@@ -9256,10 +9306,14 @@
               "name": "nginx",
               "position": 0,
 <<<<<<< HEAD
+<<<<<<< HEAD
               "service_definition": "Sensu",
 =======
               "service_definition": "Grocy",
 >>>>>>> fix/450-grouped-pagination
+=======
+              "service_definition": "Oracle Database",
+>>>>>>> trait-refactor
               "tags": [],
               "virtualization": null
             }
@@ -10337,10 +10391,6 @@
           "Subnet",
           "Group",
           "Topology",
-          "GroupBinding",
-          "EntityTag",
-          "UserApiKeyNetworkAccess",
-          "UserNetworkAccess",
           "Unknown"
         ]
       },
@@ -12638,22 +12688,31 @@
           "bindings": [
             {
 <<<<<<< HEAD
+<<<<<<< HEAD
               "created_at": "2026-01-09T00:15:11.717260Z",
               "id": "4e6f037c-a5eb-419c-b48d-980968e2d015",
 =======
               "created_at": "2026-01-09T06:20:23.521882Z",
               "id": "cf2fa975-5207-437b-9c7d-2dcaa6838318",
 >>>>>>> fix/450-grouped-pagination
+=======
+              "created_at": "2026-01-09T06:22:45.072749Z",
+              "id": "f79bd9cc-4ccb-4214-8cad-021a069dcb3a",
+>>>>>>> trait-refactor
               "interface_id": "550e8400-e29b-41d4-a716-446655440005",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
 <<<<<<< HEAD
+<<<<<<< HEAD
               "updated_at": "2026-01-09T00:15:11.717260Z"
 =======
               "updated_at": "2026-01-09T06:20:23.521882Z"
 >>>>>>> fix/450-grouped-pagination
+=======
+              "updated_at": "2026-01-09T06:22:45.072749Z"
+>>>>>>> trait-refactor
             }
           ],
           "created_at": "2026-01-15T10:30:00Z",
@@ -12663,10 +12722,14 @@
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
 <<<<<<< HEAD
+<<<<<<< HEAD
           "service_definition": "Sensu",
 =======
           "service_definition": "Grocy",
 >>>>>>> fix/450-grouped-pagination
+=======
+          "service_definition": "Oracle Database",
+>>>>>>> trait-refactor
           "source": {
             "type": "Manual"
           },

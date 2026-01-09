@@ -32,7 +32,7 @@ use crate::server::services::r#impl::patterns::MatchDetails;
 use crate::server::services::r#impl::virtualization::{
     DockerVirtualization, ServiceVirtualization,
 };
-use crate::server::shared::storage::traits::StorableEntity;
+use crate::server::shared::storage::traits::Storable;
 use crate::server::shared::types::entities::{DiscoveryMetadata, EntitySource};
 use crate::server::subnets::r#impl::base::Subnet;
 use crate::server::subnets::r#impl::types::SubnetTypeDiscriminants;

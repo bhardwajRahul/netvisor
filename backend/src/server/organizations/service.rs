@@ -1,6 +1,6 @@
 use crate::server::shared::events::bus::EventBus;
-use crate::server::shared::services::entity_tags::EntityTagService;
 use crate::server::shared::services::traits::EventBusService;
+use crate::server::tags::entity_tags::EntityTagService;
 use crate::server::{
     organizations::r#impl::base::Organization,
     shared::{services::traits::CrudService, storage::generic::GenericPostgresStorage},

@@ -13,29 +13,17 @@ use crate::server::{
         entities::EntityDiscriminants,
         storage::{
             child::ChildStorableEntity,
-            traits::{SqlValue, StorableEntity},
+            traits::{Entity, SqlValue, Storable},
         },
         types::entities::EntitySource,
     },
 };
 
-impl StorableEntity for Service {
+impl Storable for Service {
     type BaseData = ServiceBase;
 
     fn table_name() -> &'static str {
         "services"
-    }
-
-    fn get_base(&self) -> Self::BaseData {
-        self.base.clone()
-    }
-
-    fn network_id(&self) -> Option<Uuid> {
-        Some(self.base.network_id)
-    }
-
-    fn organization_id(&self) -> Option<Uuid> {
-        None
     }
 
     fn new(base: Self::BaseData) -> Self {
@@ -49,6 +37,10 @@ impl StorableEntity for Service {
         }
     }
 
+    fn get_base(&self) -> Self::BaseData {
+        self.base.clone()
+    }
+
     fn id(&self) -> Uuid {
         self.id
     }
@@ -57,45 +49,12 @@ impl StorableEntity for Service {
         self.created_at
     }
 
-    fn updated_at(&self) -> DateTime<Utc> {
-        self.updated_at
-    }
-
     fn set_id(&mut self, id: Uuid) {
         self.id = id;
     }
 
     fn set_created_at(&mut self, time: DateTime<Utc>) {
         self.created_at = time;
-    }
-
-    fn set_updated_at(&mut self, time: DateTime<Utc>) {
-        self.updated_at = time;
-    }
-
-    fn set_source(&mut self, source: EntitySource) {
-        self.base.source = source;
-    }
-
-    fn preserve_immutable_fields(&mut self, existing: &Self) {
-        // source is set at creation time (Manual or Discovery), cannot be changed
-        self.base.source = existing.base.source.clone();
-        // Preserve virtualization if not explicitly set (discovery-managed field)
-        if self.base.virtualization.is_none() {
-            self.base.virtualization = existing.base.virtualization.clone();
-        }
-    }
-
-    fn get_tags(&self) -> Option<&Vec<Uuid>> {
-        Some(&self.base.tags)
-    }
-
-    fn set_tags(&mut self, tags: Vec<Uuid>) {
-        self.base.tags = tags;
-    }
-
-    fn entity_type() -> EntityDiscriminants {
-        EntityDiscriminants::Service
     }
 
     fn to_params(&self) -> Result<(Vec<&'static str>, Vec<SqlValue>), anyhow::Error> {
@@ -172,6 +131,57 @@ impl StorableEntity for Service {
                 position: row.get("position"),
             },
         })
+    }
+}
+
+impl Entity for Service {
+    fn entity_type() -> EntityDiscriminants {
+        EntityDiscriminants::Service
+    }
+
+    fn entity_name_singular() -> &'static str {
+        "service"
+    }
+
+    fn entity_name_plural() -> &'static str {
+        "services"
+    }
+
+    fn network_id(&self) -> Option<Uuid> {
+        Some(self.base.network_id)
+    }
+
+    fn organization_id(&self) -> Option<Uuid> {
+        None
+    }
+
+    fn updated_at(&self) -> DateTime<Utc> {
+        self.updated_at
+    }
+
+    fn set_updated_at(&mut self, time: DateTime<Utc>) {
+        self.updated_at = time;
+    }
+
+    fn get_tags(&self) -> Option<&Vec<Uuid>> {
+        Some(&self.base.tags)
+    }
+
+    fn set_tags(&mut self, tags: Vec<Uuid>) {
+        self.base.tags = tags;
+    }
+
+    fn set_source(&mut self, source: EntitySource) {
+        self.base.source = source;
+    }
+
+    fn preserve_immutable_fields(&mut self, existing: &Self) {
+        // source is set at creation time (Manual or Discovery), cannot be changed
+        self.base.source = existing.base.source.clone();
+        // Preserve virtualization if not explicitly set (discovery-managed field)
+        if self.base.virtualization.is_none() {
+            self.base.virtualization = existing.base.virtualization.clone();
+        }
     }
 }
 

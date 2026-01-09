@@ -11,13 +11,11 @@ use crate::{
                 bus::EventBus,
                 types::{EntityEvent, EntityOperation},
             },
-            services::{
-                entity_tags::EntityTagService,
-                traits::{CrudService, EventBusService},
-            },
+            services::traits::{CrudService, EventBusService},
             storage::generic::GenericPostgresStorage,
             types::api::ApiResponse,
         },
+        tags::entity_tags::EntityTagService,
     },
 };
 use anyhow::{Error, Result};

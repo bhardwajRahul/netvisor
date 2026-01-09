@@ -7,18 +7,16 @@ use crate::server::{
             bus::EventBus,
             types::{EntityEvent, EntityOperation},
         },
-        services::{
-            entity_tags::EntityTagService,
-            traits::{CrudService, EventBusService},
-        },
+        services::traits::{CrudService, EventBusService},
         storage::{
             filter::EntityFilter,
             generic::GenericPostgresStorage,
-            traits::{StorableEntity, Storage},
+            traits::{Storable, Storage},
         },
         types::entities::EntitySource,
     },
     subnets::r#impl::base::Subnet,
+    tags::entity_tags::EntityTagService,
 };
 use anyhow::Result;
 use async_trait::async_trait;

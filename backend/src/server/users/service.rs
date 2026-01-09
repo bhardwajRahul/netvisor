@@ -6,16 +6,14 @@ use crate::server::{
             bus::EventBus,
             types::{EntityEvent, EntityOperation},
         },
-        services::{
-            entity_tags::EntityTagService,
-            traits::{CrudService, EventBusService},
-        },
+        services::traits::{CrudService, EventBusService},
         storage::{
             filter::EntityFilter,
             generic::GenericPostgresStorage,
-            traits::{StorableEntity, Storage},
+            traits::{Storable, Storage},
         },
     },
+    tags::entity_tags::EntityTagService,
     users::r#impl::{
         base::User, network_access::UserNetworkAccessStorage, permissions::UserOrgPermissions,
     },

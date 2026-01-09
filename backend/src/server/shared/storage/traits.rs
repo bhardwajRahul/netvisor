@@ -41,7 +41,7 @@ pub struct PaginatedResult<T> {
 }
 
 #[async_trait]
-pub trait Storage<T: StorableEntity>: Send + Sync {
+pub trait Storage<T: Storable>: Send + Sync {
     async fn create(&self, entity: &T) -> Result<T, anyhow::Error>;
     async fn get_by_id(&self, id: &Uuid) -> Result<Option<T>, anyhow::Error>;
     async fn get_all(&self, filter: EntityFilter) -> Result<Vec<T>, anyhow::Error>;
@@ -64,33 +64,22 @@ pub trait Storage<T: StorableEntity>: Send + Sync {
     async fn delete_by_filter(&self, filter: EntityFilter) -> Result<usize, anyhow::Error>;
 }
 
-pub trait StorableEntity: Sized + Clone + Send + Sync + 'static + Default {
+/// Base trait for anything stored in the database, including junction tables.
+/// Provides the minimal interface needed for storage operations.
+pub trait Storable: Sized + Clone + Send + Sync + 'static + Default {
     type BaseData;
 
     fn new(base: Self::BaseData) -> Self;
-
     fn get_base(&self) -> Self::BaseData;
 
-    /// Entity metadata
+    /// Database table name
     fn table_name() -> &'static str;
-
-    fn entity_type() -> EntityDiscriminants;
 
     /// Primary key
     fn id(&self) -> Uuid;
-    fn network_id(&self) -> Option<Uuid>;
-    fn organization_id(&self) -> Option<Uuid>;
-    fn is_network_keyed() -> bool {
-        Self::default().network_id().is_some()
-    }
-    fn is_organization_keyed() -> bool {
-        Self::default().organization_id().is_some()
-    }
     fn created_at(&self) -> DateTime<Utc>;
-    fn updated_at(&self) -> DateTime<Utc>;
     fn set_id(&mut self, id: Uuid);
     fn set_created_at(&mut self, time: DateTime<Utc>);
-    fn set_updated_at(&mut self, time: DateTime<Utc>);
 
     /// Serialization for database storage
     /// Returns (column_names, bind_values)
@@ -98,31 +87,66 @@ pub trait StorableEntity: Sized + Clone + Send + Sync + 'static + Default {
 
     /// Deserialization from database
     fn from_row(row: &PgRow) -> Result<Self, anyhow::Error>;
+}
 
-    /// Optional: Get the tags field from the entity for validation.
+/// Extended trait for user-facing domain entities (excludes junction tables).
+/// Provides entity metadata, tenant scoping, timestamps, and tagging support.
+pub trait Entity: Storable {
+    /// Entity type discriminant for the entity enum
+    fn entity_type() -> EntityDiscriminants;
+
+    /// Singular name for error messages (e.g., "host")
+    fn entity_name_singular() -> &'static str;
+
+    /// Plural name for API paths and collections (e.g., "hosts")
+    fn entity_name_plural() -> &'static str;
+
+    /// Tenant scoping - network context
+    fn network_id(&self) -> Option<Uuid>;
+
+    /// Tenant scoping - organization context
+    fn organization_id(&self) -> Option<Uuid>;
+
+    /// Whether entities of this type are scoped to a network
+    fn is_network_keyed() -> bool {
+        Self::default().network_id().is_some()
+    }
+
+    /// Whether entities of this type are scoped to an organization
+    fn is_organization_keyed() -> bool {
+        Self::default().organization_id().is_some()
+    }
+
+    /// Last modification timestamp
+    fn updated_at(&self) -> DateTime<Utc>;
+    fn set_updated_at(&mut self, time: DateTime<Utc>);
+
+    /// Whether this entity type supports tagging.
+    /// Default implementation delegates to is_entity_taggable().
+    fn is_taggable() -> bool {
+        crate::server::shared::entities::is_entity_taggable(Self::entity_type())
+    }
+
+    /// Get the tags field from the entity for validation.
     /// Override for entities with a tags field.
-    /// Returns None for entities without tags.
     fn get_tags(&self) -> Option<&Vec<Uuid>> {
         None
     }
 
-    /// Optional: Set the tags field on the entity.
+    /// Set the tags field on the entity.
     /// Override for entities with a tags field.
     fn set_tags(&mut self, _tags: Vec<Uuid>) {
         // Default: no-op
     }
 
-    /// Optional: Set the source field on the entity.
-    /// Override for entities with a source field to set it appropriately.
-    /// Default is a no-op for entities without a source field.
+    /// Set the source field on the entity.
+    /// Override for entities with a source field.
     fn set_source(&mut self, _source: EntitySource) {
         // Default: no-op
     }
 
-    /// Optional: Preserve entity-specific immutable fields from the existing entity.
+    /// Preserve entity-specific immutable fields from the existing entity.
     /// Override for entities that have additional read-only fields beyond id/created_at.
-    /// For example, ApiKey should preserve `key` and `last_used`.
-    /// Default is a no-op for entities without extra immutable fields.
     fn preserve_immutable_fields(&mut self, _existing: &Self) {
         // Default: no-op
     }

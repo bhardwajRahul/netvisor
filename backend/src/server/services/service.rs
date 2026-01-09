@@ -1,6 +1,6 @@
 use crate::server::shared::entities::EntityDiscriminants;
-use crate::server::shared::services::entity_tags::EntityTagService;
-use crate::server::shared::storage::traits::{PaginatedResult, StorableEntity};
+use crate::server::shared::storage::traits::{PaginatedResult, Storable};
+use crate::server::tags::entity_tags::EntityTagService;
 use crate::server::{
     auth::middleware::auth::AuthenticatedEntity,
     bindings::{

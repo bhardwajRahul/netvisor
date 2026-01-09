@@ -7,7 +7,7 @@ use crate::server::shared::entities::EntityDiscriminants;
 use crate::server::subnets::r#impl::base::Subnet;
 use crate::server::{
     hosts::r#impl::base::Host,
-    shared::storage::traits::{SqlValue, StorableEntity},
+    shared::storage::traits::{Entity, SqlValue, Storable},
     topology::types::{
         base::{Topology, TopologyBase, TopologyOptions},
         edges::Edge,
@@ -19,27 +19,15 @@ use sqlx::Row;
 use sqlx::postgres::PgRow;
 use uuid::Uuid;
 
-impl StorableEntity for Topology {
+impl Storable for Topology {
     type BaseData = TopologyBase;
 
     fn table_name() -> &'static str {
         "topologies"
     }
 
-    fn get_base(&self) -> Self::BaseData {
-        self.base.clone()
-    }
-
-    fn network_id(&self) -> Option<Uuid> {
-        Some(self.base.network_id)
-    }
-
-    fn organization_id(&self) -> Option<Uuid> {
-        None
-    }
-
     fn new(base: Self::BaseData) -> Self {
-        let now = chrono::Utc::now();
+        let now = Utc::now();
 
         Self {
             id: Uuid::new_v4(),
@@ -47,6 +35,10 @@ impl StorableEntity for Topology {
             updated_at: now,
             base,
         }
+    }
+
+    fn get_base(&self) -> Self::BaseData {
+        self.base.clone()
     }
 
     fn id(&self) -> Uuid {
@@ -57,39 +49,12 @@ impl StorableEntity for Topology {
         self.created_at
     }
 
-    fn updated_at(&self) -> DateTime<Utc> {
-        self.updated_at
-    }
-
     fn set_id(&mut self, id: Uuid) {
         self.id = id;
     }
 
     fn set_created_at(&mut self, time: DateTime<Utc>) {
         self.created_at = time;
-    }
-
-    fn set_updated_at(&mut self, time: DateTime<Utc>) {
-        self.updated_at = time;
-    }
-
-    fn preserve_immutable_fields(&mut self, existing: &Self) {
-        self.id = existing.id;
-        self.base.parent_id = existing.base.parent_id;
-        self.created_at = existing.created_at;
-        self.updated_at = existing.updated_at;
-    }
-
-    fn get_tags(&self) -> Option<&Vec<Uuid>> {
-        Some(&self.base.tags)
-    }
-
-    fn set_tags(&mut self, tags: Vec<Uuid>) {
-        self.base.tags = tags;
-    }
-
-    fn entity_type() -> EntityDiscriminants {
-        EntityDiscriminants::Topology
     }
 
     fn to_params(&self) -> Result<(Vec<&'static str>, Vec<SqlValue>), anyhow::Error> {
@@ -258,5 +223,50 @@ impl StorableEntity for Topology {
                 tags: row.get("tags"),
             },
         })
+    }
+}
+
+impl Entity for Topology {
+    fn entity_type() -> EntityDiscriminants {
+        EntityDiscriminants::Topology
+    }
+
+    fn entity_name_singular() -> &'static str {
+        "topology"
+    }
+
+    fn entity_name_plural() -> &'static str {
+        "topologies"
+    }
+
+    fn network_id(&self) -> Option<Uuid> {
+        Some(self.base.network_id)
+    }
+
+    fn organization_id(&self) -> Option<Uuid> {
+        None
+    }
+
+    fn updated_at(&self) -> DateTime<Utc> {
+        self.updated_at
+    }
+
+    fn set_updated_at(&mut self, time: DateTime<Utc>) {
+        self.updated_at = time;
+    }
+
+    fn preserve_immutable_fields(&mut self, existing: &Self) {
+        self.id = existing.id;
+        self.base.parent_id = existing.base.parent_id;
+        self.created_at = existing.created_at;
+        self.updated_at = existing.updated_at;
+    }
+
+    fn get_tags(&self) -> Option<&Vec<Uuid>> {
+        Some(&self.base.tags)
+    }
+
+    fn set_tags(&mut self, tags: Vec<Uuid>) {
+        self.base.tags = tags;
     }
 }

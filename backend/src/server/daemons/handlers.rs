@@ -7,7 +7,7 @@ use crate::server::shared::extractors::Query;
 use crate::server::shared::handlers::query::{FilterQueryExtractor, NetworkFilterQuery};
 use crate::server::shared::services::traits::CrudService;
 use crate::server::shared::storage::filter::EntityFilter;
-use crate::server::shared::storage::traits::StorableEntity;
+use crate::server::shared::storage::traits::Storable;
 use crate::server::shared::types::api::ApiErrorResponse;
 use crate::server::{
     auth::middleware::auth::AuthenticatedEntity,

@@ -12,7 +12,7 @@ use crate::server::{
         definitions::{client::Client, dns_server::DnsServer, web_service::WebService},
         r#impl::base::{Service, ServiceBase},
     },
-    shared::{storage::traits::StorableEntity, types::entities::EntitySource},
+    shared::{storage::traits::Storable, types::entities::EntitySource},
     subnets::r#impl::{
         base::{Subnet, SubnetBase},
         types::SubnetType,

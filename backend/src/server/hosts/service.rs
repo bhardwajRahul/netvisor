@@ -19,20 +19,18 @@ use crate::server::{
             types::{EntityEvent, EntityOperation},
         },
         position::resolve_and_validate_input_positions,
-        services::{
-            entity_tags::EntityTagService,
-            traits::{ChildCrudService, CrudService, EventBusService},
-        },
+        services::traits::{ChildCrudService, CrudService, EventBusService},
         storage::{
             filter::EntityFilter,
             generic::GenericPostgresStorage,
-            traits::{PaginatedResult, StorableEntity, Storage},
+            traits::{Entity, PaginatedResult, Storable, Storage},
         },
         types::{
             api::ValidationError,
             entities::{EntitySource, EntitySourceDiscriminants},
         },
     },
+    tags::entity_tags::EntityTagService,
 };
 use anyhow::{Error, Result, anyhow};
 use async_trait::async_trait;

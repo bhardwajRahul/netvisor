@@ -8,7 +8,7 @@ use reqwest::StatusCode;
 use scanopy::server::hosts::r#impl::api::CreateHostRequest;
 use scanopy::server::hosts::r#impl::base::{Host, HostBase};
 use scanopy::server::networks::r#impl::{Network, NetworkBase};
-use scanopy::server::shared::storage::traits::StorableEntity;
+use scanopy::server::shared::storage::traits::Storable;
 use scanopy::server::shared::types::entities::EntitySource;
 use scanopy::server::subnets::r#impl::base::{Subnet, SubnetBase};
 use scanopy::server::subnets::r#impl::types::SubnetType;

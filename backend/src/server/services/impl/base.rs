@@ -12,7 +12,7 @@ use crate::server::services::r#impl::virtualization::{
 };
 use crate::server::shared::entities::ChangeTriggersTopologyStaleness;
 use crate::server::shared::position::Positioned;
-use crate::server::shared::storage::traits::StorableEntity;
+use crate::server::shared::storage::traits::Storable;
 use crate::server::shared::types::entities::{DiscoveryMetadata, EntitySource};
 use crate::server::subnets::r#impl::base::Subnet;
 use chrono::{DateTime, Utc};

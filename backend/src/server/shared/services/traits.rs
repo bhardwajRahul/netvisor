@@ -9,22 +9,22 @@ use std::collections::HashMap;
 use crate::server::{
     auth::middleware::auth::AuthenticatedEntity,
     shared::{
-        entities::{ChangeTriggersTopologyStaleness, Entity},
+        entities::{ChangeTriggersTopologyStaleness, Entity as EntityEnum},
         events::{
             bus::EventBus,
             types::{EntityEvent, EntityOperation},
         },
-        services::entity_tags::EntityTagService,
         storage::{
             child::ChildStorableEntity,
             filter::EntityFilter,
             generic::GenericPostgresStorage,
-            traits::{PaginatedResult, StorableEntity, Storage},
+            traits::{Entity, PaginatedResult, Storage},
         },
     },
+    tags::entity_tags::EntityTagService,
 };
 
-pub trait EventBusService<T: Into<Entity> + Default> {
+pub trait EventBusService<T: Into<EntityEnum> + Default> {
     /// Event bus and helpers
     fn event_bus(&self) -> &Arc<EventBus>;
 
@@ -46,7 +46,7 @@ pub trait EventBusService<T: Into<Entity> + Default> {
 /// Helper trait for services that use generic storage
 /// Provides default implementations for common CRUD operations
 #[async_trait]
-pub trait CrudService<T: StorableEntity + Into<Entity> + Default>: EventBusService<T>
+pub trait CrudService<T: Entity + Into<EntityEnum> + Default>: EventBusService<T>
 where
     T: Display + ChangeTriggersTopologyStaleness<T>,
 {
@@ -359,8 +359,8 @@ where
 pub trait ChildCrudService<T>: CrudService<T>
 where
     T: ChildStorableEntity
-        + StorableEntity
-        + Into<Entity>
+        + Entity
+        + Into<EntityEnum>
         + Default
         + Display
         + ChangeTriggersTopologyStaleness<T>,

@@ -6,24 +6,21 @@ use uuid::Uuid;
 
 use crate::server::{
     auth::middleware::auth::AuthenticatedEntity,
-    group_bindings::GroupBindingStorage,
-    groups::r#impl::base::Group,
+    groups::{group_bindings::GroupBindingStorage, r#impl::base::Group},
     shared::{
         entities::{ChangeTriggersTopologyStaleness, EntityDiscriminants},
         events::{
             bus::EventBus,
             types::{EntityEvent, EntityOperation},
         },
-        services::{
-            entity_tags::EntityTagService,
-            traits::{CrudService, EventBusService},
-        },
+        services::traits::{CrudService, EventBusService},
         storage::{
             filter::EntityFilter,
             generic::GenericPostgresStorage,
-            traits::{PaginatedResult, StorableEntity, Storage},
+            traits::{PaginatedResult, Storable, Storage},
         },
     },
+    tags::entity_tags::EntityTagService,
 };
 
 pub struct GroupService {

@@ -1,4 +1,3 @@
-use anyhow::Result;
 use chrono::{DateTime, Utc};
 use sqlx::{Row, postgres::PgRow};
 use uuid::Uuid;
@@ -7,11 +6,11 @@ use crate::server::{
     bindings::r#impl::base::{Binding, BindingBase, BindingType},
     shared::{
         entities::EntityDiscriminants,
-        storage::traits::{SqlValue, StorableEntity},
+        storage::traits::{Entity, SqlValue, Storable},
     },
 };
 
-impl StorableEntity for Binding {
+impl Storable for Binding {
     type BaseData = BindingBase;
 
     fn table_name() -> &'static str {
@@ -30,20 +29,8 @@ impl StorableEntity for Binding {
         self.id
     }
 
-    fn network_id(&self) -> Option<Uuid> {
-        Some(self.base.network_id)
-    }
-
-    fn organization_id(&self) -> Option<Uuid> {
-        None
-    }
-
     fn created_at(&self) -> DateTime<Utc> {
         self.created_at
-    }
-
-    fn updated_at(&self) -> DateTime<Utc> {
-        self.updated_at
     }
 
     fn set_id(&mut self, id: Uuid) {
@@ -54,15 +41,7 @@ impl StorableEntity for Binding {
         self.created_at = time;
     }
 
-    fn set_updated_at(&mut self, time: DateTime<Utc>) {
-        self.updated_at = time;
-    }
-
-    fn entity_type() -> EntityDiscriminants {
-        EntityDiscriminants::Binding
-    }
-
-    fn to_params(&self) -> Result<(Vec<&'static str>, Vec<SqlValue>)> {
+    fn to_params(&self) -> Result<(Vec<&'static str>, Vec<SqlValue>), anyhow::Error> {
         let (binding_type, interface_id, port_id) = match self.base.binding_type {
             BindingType::Interface { interface_id } => ("Interface", Some(interface_id), None),
             BindingType::Port {
@@ -95,7 +74,7 @@ impl StorableEntity for Binding {
         ))
     }
 
-    fn from_row(row: &PgRow) -> Result<Self> {
+    fn from_row(row: &PgRow) -> Result<Self, anyhow::Error> {
         let id: Uuid = row.get("id");
         let service_id: Uuid = row.get("service_id");
         let network_id: Uuid = row.get("network_id");
@@ -137,5 +116,35 @@ impl StorableEntity for Binding {
                 binding_type,
             },
         })
+    }
+}
+
+impl Entity for Binding {
+    fn entity_type() -> EntityDiscriminants {
+        EntityDiscriminants::Binding
+    }
+
+    fn entity_name_singular() -> &'static str {
+        "binding"
+    }
+
+    fn entity_name_plural() -> &'static str {
+        "bindings"
+    }
+
+    fn network_id(&self) -> Option<Uuid> {
+        Some(self.base.network_id)
+    }
+
+    fn organization_id(&self) -> Option<Uuid> {
+        None
+    }
+
+    fn updated_at(&self) -> DateTime<Utc> {
+        self.updated_at
+    }
+
+    fn set_updated_at(&mut self, time: DateTime<Utc>) {
+        self.updated_at = time;
     }
 }

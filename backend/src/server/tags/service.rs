@@ -34,7 +34,7 @@ impl CrudService<Tag> for TagService {
 
     fn entity_tag_service(
         &self,
-    ) -> Option<&Arc<crate::server::shared::services::entity_tags::EntityTagService>> {
+    ) -> Option<&Arc<crate::server::tags::entity_tags::EntityTagService>> {
         None
     }
 }

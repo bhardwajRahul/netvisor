@@ -5,13 +5,11 @@ use crate::server::{
     interfaces::r#impl::base::Interface,
     shared::{
         events::bus::EventBus,
-        services::{
-            entity_tags::EntityTagService,
-            traits::{ChildCrudService, CrudService, EventBusService},
-        },
+        services::traits::{ChildCrudService, CrudService, EventBusService},
         storage::{filter::EntityFilter, generic::GenericPostgresStorage, traits::Storage},
         types::api::ValidationError,
     },
+    tags::entity_tags::EntityTagService,
 };
 use anyhow::Result;
 use std::collections::HashMap;

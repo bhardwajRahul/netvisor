@@ -10,29 +10,17 @@ use crate::server::{
     },
     shared::{
         entities::EntityDiscriminants,
-        storage::traits::{SqlValue, StorableEntity},
+        storage::traits::{Entity, SqlValue, Storable},
         types::entities::EntitySource,
     },
     topology::types::edges::EdgeStyle,
 };
 
-impl StorableEntity for Group {
+impl Storable for Group {
     type BaseData = GroupBase;
 
     fn table_name() -> &'static str {
         "groups"
-    }
-
-    fn network_id(&self) -> Option<Uuid> {
-        Some(self.base.network_id)
-    }
-
-    fn organization_id(&self) -> Option<Uuid> {
-        None
-    }
-
-    fn get_base(&self) -> Self::BaseData {
-        self.base.clone()
     }
 
     fn new(base: Self::BaseData) -> Self {
@@ -46,6 +34,10 @@ impl StorableEntity for Group {
         }
     }
 
+    fn get_base(&self) -> Self::BaseData {
+        self.base.clone()
+    }
+
     fn id(&self) -> Uuid {
         self.id
     }
@@ -54,43 +46,12 @@ impl StorableEntity for Group {
         self.created_at
     }
 
-    fn updated_at(&self) -> DateTime<Utc> {
-        self.updated_at
-    }
-
     fn set_id(&mut self, id: Uuid) {
         self.id = id;
     }
 
     fn set_created_at(&mut self, time: DateTime<Utc>) {
         self.created_at = time;
-    }
-
-    fn set_updated_at(&mut self, time: DateTime<Utc>) {
-        self.updated_at = time;
-    }
-
-    fn set_source(&mut self, source: EntitySource) {
-        self.base.source = source;
-    }
-
-    fn preserve_immutable_fields(&mut self, existing: &Self) {
-        // source is set at creation time (Manual or Discovery), cannot be changed
-        self.base.source = existing.base.source.clone();
-        self.created_at = existing.created_at;
-        self.updated_at = existing.updated_at;
-    }
-
-    fn get_tags(&self) -> Option<&Vec<Uuid>> {
-        Some(&self.base.tags)
-    }
-
-    fn set_tags(&mut self, tags: Vec<Uuid>) {
-        self.base.tags = tags;
-    }
-
-    fn entity_type() -> EntityDiscriminants {
-        EntityDiscriminants::Group
     }
 
     fn to_params(&self) -> Result<(Vec<&'static str>, Vec<SqlValue>), anyhow::Error> {
@@ -175,5 +136,54 @@ impl StorableEntity for Group {
                 tags: Vec::new(), // Hydrated from entity_tags junction table
             },
         })
+    }
+}
+
+impl Entity for Group {
+    fn entity_type() -> EntityDiscriminants {
+        EntityDiscriminants::Group
+    }
+
+    fn entity_name_singular() -> &'static str {
+        "group"
+    }
+
+    fn entity_name_plural() -> &'static str {
+        "groups"
+    }
+
+    fn network_id(&self) -> Option<Uuid> {
+        Some(self.base.network_id)
+    }
+
+    fn organization_id(&self) -> Option<Uuid> {
+        None
+    }
+
+    fn updated_at(&self) -> DateTime<Utc> {
+        self.updated_at
+    }
+
+    fn set_updated_at(&mut self, time: DateTime<Utc>) {
+        self.updated_at = time;
+    }
+
+    fn get_tags(&self) -> Option<&Vec<Uuid>> {
+        Some(&self.base.tags)
+    }
+
+    fn set_tags(&mut self, tags: Vec<Uuid>) {
+        self.base.tags = tags;
+    }
+
+    fn set_source(&mut self, source: EntitySource) {
+        self.base.source = source;
+    }
+
+    fn preserve_immutable_fields(&mut self, existing: &Self) {
+        // source is set at creation time (Manual or Discovery), cannot be changed
+        self.base.source = existing.base.source.clone();
+        self.created_at = existing.created_at;
+        self.updated_at = existing.updated_at;
     }
 }

@@ -4,7 +4,7 @@ use crate::infra::{TestContext, reset_plan_to_default, set_billable_plan, set_pl
 use cidr::{IpCidr, Ipv4Cidr};
 use reqwest::StatusCode;
 use scanopy::server::hosts::r#impl::base::Host;
-use scanopy::server::shared::storage::traits::StorableEntity;
+use scanopy::server::shared::storage::traits::Storable;
 use scanopy::server::shared::types::entities::EntitySource;
 use scanopy::server::subnets::r#impl::base::{Subnet, SubnetBase};
 use scanopy::server::subnets::r#impl::types::SubnetType;

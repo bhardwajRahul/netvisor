@@ -1,23 +1,22 @@
 use crate::server::shared::{
     storage::{
         filter::EntityFilter,
-        traits::{PaginatedResult, SqlValue, StorableEntity, Storage},
+        traits::{PaginatedResult, SqlValue, Storable, Storage},
     },
     types::api::ValidationError,
 };
 use async_trait::async_trait;
-use chrono::Utc;
 use ipnetwork::IpNetwork;
 use sqlx::{PgPool, Postgres, postgres::PgArguments};
 use std::{fmt::Display, marker::PhantomData};
 use uuid::Uuid;
 
-pub struct GenericPostgresStorage<T: StorableEntity> {
+pub struct GenericPostgresStorage<T: Storable> {
     pool: PgPool,
     _phantom: PhantomData<T>,
 }
 
-impl<T: StorableEntity> GenericPostgresStorage<T>
+impl<T: Storable> GenericPostgresStorage<T>
 where
     T: Display,
 {
@@ -164,7 +163,7 @@ where
 }
 
 #[async_trait]
-impl<T: StorableEntity> Storage<T> for GenericPostgresStorage<T>
+impl<T: Storable> Storage<T> for GenericPostgresStorage<T>
 where
     T: Display,
 {
@@ -313,8 +312,8 @@ where
     }
 
     async fn update(&self, entity: &mut T) -> Result<T, anyhow::Error> {
-        entity.set_updated_at(Utc::now());
-
+        // Note: set_updated_at is called by the service layer for Entity types.
+        // The storage layer just persists the entity as-is.
         let (columns, values) = entity.to_params()?;
         let query_str = Self::build_update_query(&columns);
 

@@ -6,30 +6,17 @@ use uuid::Uuid;
 use crate::server::{
     shared::{
         entities::EntityDiscriminants,
-        storage::traits::{SqlValue, StorableEntity},
+        storage::traits::{Entity, SqlValue, Storable},
     },
     user_api_keys::r#impl::base::{UserApiKey, UserApiKeyBase},
     users::r#impl::permissions::UserOrgPermissions,
 };
 
-impl StorableEntity for UserApiKey {
+impl Storable for UserApiKey {
     type BaseData = UserApiKeyBase;
 
     fn table_name() -> &'static str {
         "user_api_keys"
-    }
-
-    fn get_base(&self) -> Self::BaseData {
-        self.base.clone()
-    }
-
-    fn network_id(&self) -> Option<Uuid> {
-        // User API keys use a junction table for network access
-        None
-    }
-
-    fn organization_id(&self) -> Option<Uuid> {
-        Some(self.base.organization_id)
     }
 
     fn new(base: Self::BaseData) -> Self {
@@ -43,6 +30,10 @@ impl StorableEntity for UserApiKey {
         }
     }
 
+    fn get_base(&self) -> Self::BaseData {
+        self.base.clone()
+    }
+
     fn id(&self) -> Uuid {
         self.id
     }
@@ -51,44 +42,12 @@ impl StorableEntity for UserApiKey {
         self.created_at
     }
 
-    fn updated_at(&self) -> DateTime<Utc> {
-        self.updated_at
-    }
-
     fn set_id(&mut self, id: Uuid) {
         self.id = id;
     }
 
     fn set_created_at(&mut self, time: DateTime<Utc>) {
         self.created_at = time;
-    }
-
-    fn set_updated_at(&mut self, time: DateTime<Utc>) {
-        self.updated_at = time;
-    }
-
-    fn preserve_immutable_fields(&mut self, existing: &Self) {
-        // key hash cannot be changed via update (use rotate endpoint instead)
-        self.base.key = existing.base.key.clone();
-        // last_used is server-set only
-        self.base.last_used = existing.base.last_used;
-        // user_id and organization_id cannot be changed
-        self.base.user_id = existing.base.user_id;
-        self.base.organization_id = existing.base.organization_id;
-        self.created_at = existing.created_at;
-        self.id = existing.id;
-    }
-
-    fn get_tags(&self) -> Option<&Vec<Uuid>> {
-        Some(&self.base.tags)
-    }
-
-    fn set_tags(&mut self, tags: Vec<Uuid>) {
-        self.base.tags = tags;
-    }
-
-    fn entity_type() -> EntityDiscriminants {
-        EntityDiscriminants::UserApiKey
     }
 
     fn to_params(&self) -> Result<(Vec<&'static str>, Vec<SqlValue>), anyhow::Error> {
@@ -164,5 +123,56 @@ impl StorableEntity for UserApiKey {
                 network_ids: Vec::new(), // Hydrated separately from junction table
             },
         })
+    }
+}
+
+impl Entity for UserApiKey {
+    fn entity_type() -> EntityDiscriminants {
+        EntityDiscriminants::UserApiKey
+    }
+
+    fn entity_name_singular() -> &'static str {
+        "user API key"
+    }
+
+    fn entity_name_plural() -> &'static str {
+        "user-api-keys"
+    }
+
+    fn network_id(&self) -> Option<Uuid> {
+        // User API keys use a junction table for network access
+        None
+    }
+
+    fn organization_id(&self) -> Option<Uuid> {
+        Some(self.base.organization_id)
+    }
+
+    fn updated_at(&self) -> DateTime<Utc> {
+        self.updated_at
+    }
+
+    fn set_updated_at(&mut self, time: DateTime<Utc>) {
+        self.updated_at = time;
+    }
+
+    fn preserve_immutable_fields(&mut self, existing: &Self) {
+        // key hash cannot be changed via update (use rotate endpoint instead)
+        self.base.key = existing.base.key.clone();
+        // last_used is server-set only
+        self.base.last_used = existing.base.last_used;
+        // user_id and organization_id cannot be changed
+        self.base.user_id = existing.base.user_id;
+        self.base.organization_id = existing.base.organization_id;
+        self.created_at = existing.created_at;
+        self.id = existing.id;
+    }
+
+    fn get_tags(&self) -> Option<&Vec<Uuid>> {
+        Some(&self.base.tags)
+    }
+
+    fn set_tags(&mut self, tags: Vec<Uuid>) {
+        self.base.tags = tags;
     }
 }

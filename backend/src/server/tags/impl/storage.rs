@@ -6,28 +6,16 @@ use uuid::Uuid;
 use crate::server::{
     shared::{
         entities::EntityDiscriminants,
-        storage::traits::{SqlValue, StorableEntity},
+        storage::traits::{Entity, SqlValue, Storable},
     },
     tags::r#impl::base::{Tag, TagBase},
 };
 
-impl StorableEntity for Tag {
+impl Storable for Tag {
     type BaseData = TagBase;
 
     fn table_name() -> &'static str {
         "tags"
-    }
-
-    fn get_base(&self) -> Self::BaseData {
-        self.base.clone()
-    }
-
-    fn network_id(&self) -> Option<Uuid> {
-        None
-    }
-
-    fn organization_id(&self) -> Option<Uuid> {
-        Some(self.base.organization_id)
     }
 
     fn new(base: Self::BaseData) -> Self {
@@ -41,6 +29,10 @@ impl StorableEntity for Tag {
         }
     }
 
+    fn get_base(&self) -> Self::BaseData {
+        self.base.clone()
+    }
+
     fn id(&self) -> Uuid {
         self.id
     }
@@ -49,24 +41,12 @@ impl StorableEntity for Tag {
         self.created_at
     }
 
-    fn updated_at(&self) -> DateTime<Utc> {
-        self.updated_at
-    }
-
     fn set_id(&mut self, id: Uuid) {
         self.id = id;
     }
 
     fn set_created_at(&mut self, time: DateTime<Utc>) {
         self.created_at = time;
-    }
-
-    fn set_updated_at(&mut self, time: DateTime<Utc>) {
-        self.updated_at = time;
-    }
-
-    fn entity_type() -> EntityDiscriminants {
-        EntityDiscriminants::Tag
     }
 
     fn to_params(&self) -> Result<(Vec<&'static str>, Vec<SqlValue>), anyhow::Error> {
@@ -117,5 +97,35 @@ impl StorableEntity for Tag {
                 color: row.get::<String, _>("color").parse().unwrap_or_default(),
             },
         })
+    }
+}
+
+impl Entity for Tag {
+    fn entity_type() -> EntityDiscriminants {
+        EntityDiscriminants::Tag
+    }
+
+    fn entity_name_singular() -> &'static str {
+        "tag"
+    }
+
+    fn entity_name_plural() -> &'static str {
+        "tags"
+    }
+
+    fn network_id(&self) -> Option<Uuid> {
+        None
+    }
+
+    fn organization_id(&self) -> Option<Uuid> {
+        Some(self.base.organization_id)
+    }
+
+    fn updated_at(&self) -> DateTime<Utc> {
+        self.updated_at
+    }
+
+    fn set_updated_at(&mut self, time: DateTime<Utc>) {
+        self.updated_at = time;
     }
 }

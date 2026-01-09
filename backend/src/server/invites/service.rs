@@ -12,12 +12,10 @@ use crate::server::{
             bus::EventBus,
             types::{EntityEvent, EntityOperation},
         },
-        services::{
-            entity_tags::EntityTagService,
-            traits::{CrudService, EventBusService},
-        },
+        services::traits::{CrudService, EventBusService},
         storage::{filter::EntityFilter, generic::GenericPostgresStorage, traits::Storage},
     },
+    tags::entity_tags::EntityTagService,
 };
 
 pub struct InviteService {

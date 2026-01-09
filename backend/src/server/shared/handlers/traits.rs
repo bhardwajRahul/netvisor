@@ -3,10 +3,10 @@ use crate::server::{
     auth::middleware::permissions::{Authorized, Member, Viewer},
     config::AppState,
     shared::{
-        entities::{ChangeTriggersTopologyStaleness, Entity},
+        entities::{ChangeTriggersTopologyStaleness, Entity as EntityEnum},
         handlers::query::FilterQueryExtractor,
         services::traits::{CrudService, EventBusService},
-        storage::{filter::EntityFilter, traits::StorableEntity},
+        storage::{filter::EntityFilter, traits::Entity},
         types::api::{ApiError, ApiResponse, ApiResult, PaginatedApiResponse},
         types::entities::EntitySource,
         validation::{
@@ -31,10 +31,10 @@ use uuid::Uuid;
 /// Trait for creating standard CRUD handlers for an entity
 #[async_trait]
 pub trait CrudHandlers:
-    StorableEntity + Serialize + for<'de> Deserialize<'de> + validator::Validate
+    Entity + Serialize + for<'de> Deserialize<'de> + validator::Validate
 where
     Self: Display + ChangeTriggersTopologyStaleness<Self> + Default,
-    Entity: From<Self>,
+    EntityEnum: From<Self>,
 {
     /// Get the service from AppState (must implement CrudService)
     type Service: CrudService<Self> + Send + Sync;
@@ -60,7 +60,7 @@ where
 pub fn create_crud_router<T>() -> Router<Arc<AppState>>
 where
     T: CrudHandlers + 'static + ChangeTriggersTopologyStaleness<T> + Default,
-    Entity: From<T>,
+    EntityEnum: From<T>,
 {
     Router::new()
         .route("/", post(create_handler::<T>))
@@ -78,7 +78,7 @@ pub async fn create_handler<T>(
 ) -> ApiResult<Json<ApiResponse<T>>>
 where
     T: CrudHandlers + 'static + ChangeTriggersTopologyStaleness<T> + Default,
-    Entity: From<T>,
+    EntityEnum: From<T>,
 {
     // Set source to Manual for user-created entities
     entity.set_source(EntitySource::Manual);
@@ -126,7 +126,7 @@ pub async fn get_all_handler<T>(
 ) -> ApiResult<Json<PaginatedApiResponse<T>>>
 where
     T: CrudHandlers + 'static + ChangeTriggersTopologyStaleness<T> + Default,
-    Entity: From<T>,
+    EntityEnum: From<T>,
 {
     let network_ids = auth.network_ids();
     let organization_id = auth
@@ -183,7 +183,7 @@ pub async fn get_by_id_handler<T>(
 ) -> ApiResult<Json<ApiResponse<T>>>
 where
     T: CrudHandlers + 'static + ChangeTriggersTopologyStaleness<T> + Default,
-    Entity: From<T>,
+    EntityEnum: From<T>,
 {
     let network_ids = auth.network_ids();
     let organization_id = auth
@@ -233,7 +233,7 @@ pub async fn update_handler<T>(
 ) -> ApiResult<Json<ApiResponse<T>>>
 where
     T: CrudHandlers + 'static + ChangeTriggersTopologyStaleness<T> + Default,
-    Entity: From<T>,
+    EntityEnum: From<T>,
 {
     let network_ids = auth.network_ids();
     let organization_id = auth
@@ -316,7 +316,7 @@ pub async fn delete_handler<T>(
 ) -> ApiResult<Json<ApiResponse<()>>>
 where
     T: CrudHandlers + 'static + ChangeTriggersTopologyStaleness<T> + Default,
-    Entity: From<T>,
+    EntityEnum: From<T>,
 {
     let network_ids = auth.network_ids();
     let organization_id = auth
@@ -378,7 +378,7 @@ pub async fn bulk_delete_handler<T>(
 ) -> ApiResult<Json<ApiResponse<BulkDeleteResponse>>>
 where
     T: CrudHandlers + 'static,
-    Entity: From<T>,
+    EntityEnum: From<T>,
 {
     if ids.is_empty() {
         return Err(ApiError::bad_request("No IDs provided for bulk delete"));

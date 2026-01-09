@@ -3,16 +3,14 @@ use crate::server::{
     networks::r#impl::Network,
     shared::{
         events::bus::EventBus,
-        services::{
-            entity_tags::EntityTagService,
-            traits::{CrudService, EventBusService},
-        },
+        services::traits::{CrudService, EventBusService},
         storage::{
             generic::GenericPostgresStorage,
             seed_data::{create_remote_subnet, create_wan_subnet},
         },
     },
     subnets::service::SubnetService,
+    tags::entity_tags::EntityTagService,
 };
 use anyhow::Result;
 use async_trait::async_trait;

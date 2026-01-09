@@ -1,5 +1,5 @@
 use crate::server::shared::extractors::Query;
-use crate::server::shared::storage::traits::StorableEntity;
+use crate::server::shared::storage::traits::Entity;
 use crate::server::{
     auth::middleware::{
         features::{ApiKeyFeature, BlockedInDemoMode, RequireFeature},

@@ -7,7 +7,6 @@ pub mod daemons;
 pub mod discovery;
 pub mod email;
 pub mod github;
-pub mod group_bindings;
 pub mod groups;
 pub mod hosts;
 pub mod interfaces;

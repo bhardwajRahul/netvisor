@@ -9,12 +9,10 @@ use crate::server::{
     shared::{
         api_key_common::ApiKeyService,
         events::bus::EventBus,
-        services::{
-            entity_tags::EntityTagService,
-            traits::{CrudService, EventBusService},
-        },
+        services::traits::{CrudService, EventBusService},
         storage::generic::GenericPostgresStorage,
     },
+    tags::entity_tags::EntityTagService,
 };
 
 pub struct DaemonApiKeyService {

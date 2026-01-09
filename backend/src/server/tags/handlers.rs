@@ -1,5 +1,5 @@
 use crate::server::auth::middleware::permissions::{Admin, Authorized, Member};
-use crate::server::shared::entities::EntityDiscriminants;
+use crate::server::shared::entities::{EntityDiscriminants, is_entity_taggable};
 use crate::server::shared::handlers::traits::create_handler;
 use crate::server::shared::services::traits::CrudService;
 use crate::server::shared::storage::filter::EntityFilter;
@@ -138,6 +138,14 @@ pub async fn bulk_add_tag(
     auth: Authorized<Member>,
     Json(request): Json<BulkTagRequest>,
 ) -> ApiResult<Json<ApiResponse<BulkTagResponse>>> {
+    // Validate entity type is taggable
+    if !is_entity_taggable(request.entity_type) {
+        return Err(ApiError::bad_request(&format!(
+            "Entity type {:?} does not support tagging",
+            request.entity_type
+        )));
+    }
+
     let organization_id = auth
         .organization_id()
         .ok_or_else(|| ApiError::forbidden("Organization context required"))?;
@@ -182,6 +190,14 @@ pub async fn bulk_remove_tag(
     _auth: Authorized<Member>,
     Json(request): Json<BulkTagRequest>,
 ) -> ApiResult<Json<ApiResponse<BulkTagResponse>>> {
+    // Validate entity type is taggable
+    if !is_entity_taggable(request.entity_type) {
+        return Err(ApiError::bad_request(&format!(
+            "Entity type {:?} does not support tagging",
+            request.entity_type
+        )));
+    }
+
     let affected_count = state
         .services
         .entity_tag_service
@@ -218,6 +234,14 @@ pub async fn set_entity_tags(
     auth: Authorized<Member>,
     Json(request): Json<SetTagsRequest>,
 ) -> ApiResult<Json<ApiResponse<()>>> {
+    // Validate entity type is taggable
+    if !is_entity_taggable(request.entity_type) {
+        return Err(ApiError::bad_request(&format!(
+            "Entity type {:?} does not support tagging",
+            request.entity_type
+        )));
+    }
+
     let organization_id = auth
         .organization_id()
         .ok_or_else(|| ApiError::forbidden("Organization context required"))?;

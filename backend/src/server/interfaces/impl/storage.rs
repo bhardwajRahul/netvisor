@@ -13,28 +13,16 @@ use crate::server::{
         entities::EntityDiscriminants,
         storage::{
             child::ChildStorableEntity,
-            traits::{SqlValue, StorableEntity},
+            traits::{Entity, SqlValue, Storable},
         },
     },
 };
 
-impl StorableEntity for Interface {
+impl Storable for Interface {
     type BaseData = InterfaceBase;
 
     fn table_name() -> &'static str {
         "interfaces"
-    }
-
-    fn get_base(&self) -> Self::BaseData {
-        self.base.clone()
-    }
-
-    fn network_id(&self) -> Option<Uuid> {
-        Some(self.base.network_id)
-    }
-
-    fn organization_id(&self) -> Option<Uuid> {
-        None
     }
 
     fn new(base: Self::BaseData) -> Self {
@@ -48,6 +36,10 @@ impl StorableEntity for Interface {
         }
     }
 
+    fn get_base(&self) -> Self::BaseData {
+        self.base.clone()
+    }
+
     fn id(&self) -> Uuid {
         self.id
     }
@@ -56,28 +48,12 @@ impl StorableEntity for Interface {
         self.created_at
     }
 
-    fn updated_at(&self) -> DateTime<Utc> {
-        self.updated_at
-    }
-
     fn set_id(&mut self, id: Uuid) {
         self.id = id;
     }
 
     fn set_created_at(&mut self, time: DateTime<Utc>) {
         self.created_at = time;
-    }
-
-    fn set_updated_at(&mut self, time: DateTime<Utc>) {
-        self.updated_at = time;
-    }
-
-    fn preserve_immutable_fields(&mut self, existing: &Self) {
-        self.created_at = existing.created_at
-    }
-
-    fn entity_type() -> EntityDiscriminants {
-        EntityDiscriminants::Interface
     }
 
     fn to_params(&self) -> Result<(Vec<&'static str>, Vec<SqlValue>), anyhow::Error> {
@@ -151,6 +127,40 @@ impl StorableEntity for Interface {
                 position: row.get("position"),
             },
         })
+    }
+}
+
+impl Entity for Interface {
+    fn entity_type() -> EntityDiscriminants {
+        EntityDiscriminants::Interface
+    }
+
+    fn entity_name_singular() -> &'static str {
+        "interface"
+    }
+
+    fn entity_name_plural() -> &'static str {
+        "interfaces"
+    }
+
+    fn network_id(&self) -> Option<Uuid> {
+        Some(self.base.network_id)
+    }
+
+    fn organization_id(&self) -> Option<Uuid> {
+        None
+    }
+
+    fn updated_at(&self) -> DateTime<Utc> {
+        self.updated_at
+    }
+
+    fn set_updated_at(&mut self, time: DateTime<Utc>) {
+        self.updated_at = time;
+    }
+
+    fn preserve_immutable_fields(&mut self, existing: &Self) {
+        self.created_at = existing.created_at;
     }
 }
 

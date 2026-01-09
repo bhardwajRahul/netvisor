@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use crate::server::shared::{
     entities::{ChangeTriggersTopologyStaleness, EntityDiscriminants},
-    storage::traits::{SqlValue, StorableEntity},
+    storage::traits::{Entity, SqlValue, Storable},
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -110,23 +110,11 @@ impl ChangeTriggersTopologyStaleness<Share> for Share {
     }
 }
 
-impl StorableEntity for Share {
+impl Storable for Share {
     type BaseData = ShareBase;
 
     fn table_name() -> &'static str {
         "shares"
-    }
-
-    fn get_base(&self) -> Self::BaseData {
-        self.base.clone()
-    }
-
-    fn network_id(&self) -> Option<Uuid> {
-        Some(self.base.network_id)
-    }
-
-    fn organization_id(&self) -> Option<Uuid> {
-        None
     }
 
     fn new(base: Self::BaseData) -> Self {
@@ -139,6 +127,10 @@ impl StorableEntity for Share {
         }
     }
 
+    fn get_base(&self) -> Self::BaseData {
+        self.base.clone()
+    }
+
     fn id(&self) -> Uuid {
         self.id
     }
@@ -147,24 +139,12 @@ impl StorableEntity for Share {
         self.created_at
     }
 
-    fn updated_at(&self) -> DateTime<Utc> {
-        self.updated_at
-    }
-
     fn set_id(&mut self, id: Uuid) {
         self.id = id;
     }
 
     fn set_created_at(&mut self, time: DateTime<Utc>) {
         self.created_at = time;
-    }
-
-    fn set_updated_at(&mut self, time: DateTime<Utc>) {
-        self.updated_at = time;
-    }
-
-    fn entity_type() -> EntityDiscriminants {
-        EntityDiscriminants::Share
     }
 
     fn to_params(&self) -> Result<(Vec<&'static str>, Vec<SqlValue>), anyhow::Error> {
@@ -220,5 +200,35 @@ impl StorableEntity for Share {
                 options,
             },
         })
+    }
+}
+
+impl Entity for Share {
+    fn entity_type() -> EntityDiscriminants {
+        EntityDiscriminants::Share
+    }
+
+    fn entity_name_singular() -> &'static str {
+        "share"
+    }
+
+    fn entity_name_plural() -> &'static str {
+        "shares"
+    }
+
+    fn network_id(&self) -> Option<Uuid> {
+        Some(self.base.network_id)
+    }
+
+    fn organization_id(&self) -> Option<Uuid> {
+        None
+    }
+
+    fn updated_at(&self) -> DateTime<Utc> {
+        self.updated_at
+    }
+
+    fn set_updated_at(&mut self, time: DateTime<Utc>) {
+        self.updated_at = time;
     }
 }

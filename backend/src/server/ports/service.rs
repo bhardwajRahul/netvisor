@@ -7,12 +7,10 @@ use crate::server::{
     ports::r#impl::base::Port,
     shared::{
         events::bus::EventBus,
-        services::{
-            entity_tags::EntityTagService,
-            traits::{ChildCrudService, CrudService, EventBusService},
-        },
+        services::traits::{ChildCrudService, CrudService, EventBusService},
         storage::generic::GenericPostgresStorage,
     },
+    tags::entity_tags::EntityTagService,
 };
 
 pub struct PortService {

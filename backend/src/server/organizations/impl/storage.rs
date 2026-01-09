@@ -9,27 +9,15 @@ use crate::server::{
     shared::{
         entities::EntityDiscriminants,
         events::types::TelemetryOperation,
-        storage::traits::{SqlValue, StorableEntity},
+        storage::traits::{Entity, SqlValue, Storable},
     },
 };
 
-impl StorableEntity for Organization {
+impl Storable for Organization {
     type BaseData = OrganizationBase;
 
     fn table_name() -> &'static str {
         "organizations"
-    }
-
-    fn get_base(&self) -> Self::BaseData {
-        self.base.clone()
-    }
-
-    fn network_id(&self) -> Option<Uuid> {
-        None
-    }
-
-    fn organization_id(&self) -> Option<Uuid> {
-        None
     }
 
     fn new(base: Self::BaseData) -> Self {
@@ -43,6 +31,10 @@ impl StorableEntity for Organization {
         }
     }
 
+    fn get_base(&self) -> Self::BaseData {
+        self.base.clone()
+    }
+
     fn id(&self) -> Uuid {
         self.id
     }
@@ -51,33 +43,12 @@ impl StorableEntity for Organization {
         self.created_at
     }
 
-    fn updated_at(&self) -> DateTime<Utc> {
-        self.updated_at
-    }
-
     fn set_id(&mut self, id: Uuid) {
         self.id = id;
     }
 
     fn set_created_at(&mut self, time: DateTime<Utc>) {
         self.created_at = time;
-    }
-
-    fn set_updated_at(&mut self, time: DateTime<Utc>) {
-        self.updated_at = time;
-    }
-
-    fn entity_type() -> EntityDiscriminants {
-        EntityDiscriminants::Organization
-    }
-
-    fn preserve_immutable_fields(&mut self, existing: &Self) {
-        // Billing fields are managed by Stripe integration, not user-editable
-        self.base.stripe_customer_id = existing.base.stripe_customer_id.clone();
-        self.base.plan = existing.base.plan;
-        self.base.plan_status = existing.base.plan_status.clone();
-        // Onboarding state is server-managed
-        self.base.onboarding = existing.base.onboarding.clone();
     }
 
     fn to_params(&self) -> Result<(Vec<&'static str>, Vec<SqlValue>), anyhow::Error> {
@@ -141,5 +112,44 @@ impl StorableEntity for Organization {
                 onboarding,
             },
         })
+    }
+}
+
+impl Entity for Organization {
+    fn entity_type() -> EntityDiscriminants {
+        EntityDiscriminants::Organization
+    }
+
+    fn entity_name_singular() -> &'static str {
+        "organization"
+    }
+
+    fn entity_name_plural() -> &'static str {
+        "organizations"
+    }
+
+    fn network_id(&self) -> Option<Uuid> {
+        None
+    }
+
+    fn organization_id(&self) -> Option<Uuid> {
+        None
+    }
+
+    fn updated_at(&self) -> DateTime<Utc> {
+        self.updated_at
+    }
+
+    fn set_updated_at(&mut self, time: DateTime<Utc>) {
+        self.updated_at = time;
+    }
+
+    fn preserve_immutable_fields(&mut self, existing: &Self) {
+        // Billing fields are managed by Stripe integration, not user-editable
+        self.base.stripe_customer_id = existing.base.stripe_customer_id.clone();
+        self.base.plan = existing.base.plan;
+        self.base.plan_status = existing.base.plan_status.clone();
+        // Onboarding state is server-managed
+        self.base.onboarding = existing.base.onboarding.clone();
     }
 }

@@ -1,4 +1,3 @@
-use anyhow::Result;
 use chrono::{DateTime, Utc};
 use sqlx::{Row, postgres::PgRow};
 use uuid::Uuid;
@@ -7,11 +6,11 @@ use crate::server::{
     ports::r#impl::base::{Port, PortBase, PortConfig, PortType, TransportProtocol},
     shared::{
         entities::EntityDiscriminants,
-        storage::traits::{SqlValue, StorableEntity},
+        storage::traits::{Entity, SqlValue, Storable},
     },
 };
 
-impl StorableEntity for Port {
+impl Storable for Port {
     type BaseData = PortBase;
 
     fn table_name() -> &'static str {
@@ -36,20 +35,8 @@ impl StorableEntity for Port {
         self.id
     }
 
-    fn network_id(&self) -> Option<Uuid> {
-        Some(self.base.network_id)
-    }
-
-    fn organization_id(&self) -> Option<Uuid> {
-        None
-    }
-
     fn created_at(&self) -> DateTime<Utc> {
         self.created_at
-    }
-
-    fn updated_at(&self) -> DateTime<Utc> {
-        self.updated_at
     }
 
     fn set_id(&mut self, id: Uuid) {
@@ -60,15 +47,7 @@ impl StorableEntity for Port {
         self.created_at = time;
     }
 
-    fn set_updated_at(&mut self, time: DateTime<Utc>) {
-        self.updated_at = time;
-    }
-
-    fn entity_type() -> EntityDiscriminants {
-        EntityDiscriminants::Port
-    }
-
-    fn to_params(&self) -> Result<(Vec<&'static str>, Vec<SqlValue>)> {
+    fn to_params(&self) -> Result<(Vec<&'static str>, Vec<SqlValue>), anyhow::Error> {
         let config = self.base.port_type.config();
         let port_type = Self::port_type_string(&self.base.port_type);
         let protocol = Self::protocol_string(config.protocol);
@@ -97,7 +76,7 @@ impl StorableEntity for Port {
         ))
     }
 
-    fn from_row(row: &PgRow) -> Result<Self> {
+    fn from_row(row: &PgRow) -> Result<Self, anyhow::Error> {
         let id: Uuid = row.get("id");
         let host_id: Uuid = row.get("host_id");
         let network_id: Uuid = row.get("network_id");
@@ -137,6 +116,36 @@ impl StorableEntity for Port {
                 port_type,
             },
         })
+    }
+}
+
+impl Entity for Port {
+    fn entity_type() -> EntityDiscriminants {
+        EntityDiscriminants::Port
+    }
+
+    fn entity_name_singular() -> &'static str {
+        "port"
+    }
+
+    fn entity_name_plural() -> &'static str {
+        "ports"
+    }
+
+    fn network_id(&self) -> Option<Uuid> {
+        Some(self.base.network_id)
+    }
+
+    fn organization_id(&self) -> Option<Uuid> {
+        None
+    }
+
+    fn updated_at(&self) -> DateTime<Utc> {
+        self.updated_at
+    }
+
+    fn set_updated_at(&mut self, time: DateTime<Utc>) {
+        self.updated_at = time;
     }
 }
 

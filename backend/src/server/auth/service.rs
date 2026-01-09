@@ -18,7 +18,7 @@ use crate::server::{
             types::{AuthEvent, AuthOperation, TelemetryEvent},
         },
         services::traits::CrudService,
-        storage::{filter::EntityFilter, traits::StorableEntity},
+        storage::{filter::EntityFilter, traits::Storable},
     },
     users::{
         r#impl::{
