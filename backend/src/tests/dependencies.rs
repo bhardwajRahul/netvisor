@@ -24,4 +24,34 @@ mod dependency_tests {
             stdout
         );
     }
+
+    #[test]
+    fn test_no_aws_lc_rs_dependency() {
+        // Ensures aws-lc-rs is NOT in the dependency tree.
+        //
+        // Most dependencies use `ring` as the rustls crypto provider. If any dependency
+        // adds `aws-lc-rs`, rustls 0.23+ will have both providers available and cannot
+        // auto-determine which to use, causing a runtime panic:
+        //   "Could not automatically determine the process-level CryptoProvider"
+        //
+        // Known culprit: metrics-exporter-prometheus's `push-gateway` feature explicitly
+        // enables `hyper-rustls/aws-lc-rs`. Fix by disabling default features.
+        let output = std::process::Command::new("cargo")
+            .args(["tree", "-i", "aws-lc-rs", "--target", "all"])
+            .current_dir(env!("CARGO_MANIFEST_DIR"))
+            .output()
+            .expect("Failed to run cargo tree");
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+
+        assert!(
+            stdout.contains("warning: nothing to print") || stdout.is_empty(),
+            "Found aws-lc-rs in dependencies! This causes rustls crypto provider conflicts.\n\
+             Run 'cargo tree -i aws-lc-rs --target all' to see the dependency chain.\n\
+             Output:\n{}",
+            stdout
+        );
+    }
 }
+
+
