@@ -146,7 +146,18 @@
 				}
 			}
 		} else {
-			// Authenticated - handle Plunk tracking
+			// Authenticated - check if email is verified
+			if (currentUser && !currentUser.email_verified) {
+				// Redirect unverified users to verification page
+				const isVerifyPage = $page.url.pathname === '/verify-email';
+				if (!isVerifyPage) {
+					// eslint-disable-next-line svelte/no-navigation-without-resolve
+					goto(`${resolve('/verify-email')}?email=${encodeURIComponent(currentUser.email)}`);
+				}
+				return;
+			}
+
+			// Handle Plunk tracking
 			const pendingPlunk = sessionStorage.getItem('pendingPlunkRegistration');
 			if (pendingPlunk && currentUser) {
 				sessionStorage.removeItem('pendingPlunkRegistration');
