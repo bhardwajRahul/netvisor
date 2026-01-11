@@ -48,12 +48,6 @@
     "helpText": "Seconds between heartbeat updates / work requests (for daemons in pull mode) to server"
   },
   {
-    "id": "concurrent_scans",
-    "cliFlag": "--concurrent-scans",
-    "envVar": "SCANOPY_CONCURRENT_SCANS",
-    "helpText": "Maximum parallel host scans"
-  },
-  {
     "id": "docker_proxy",
     "cliFlag": "--docker-proxy",
     "envVar": "SCANOPY_DOCKER_PROXY",
@@ -78,6 +72,12 @@
     "helpText": "Path to SSL chain if using a docker proxy with SSL"
   },
   {
+    "id": "interfaces",
+    "cliFlag": "--interfaces",
+    "envVar": "SCANOPY_INTERFACES",
+    "helpText": "Restrict daemon to specific network interface(s). Comma-separated for multiple (e.g., eth0,eth1). Leave empty for all interfaces. Only applies to network discovery"
+  },
+  {
     "id": "arp_retries",
     "cliFlag": "--arp-retries",
     "envVar": "SCANOPY_ARP_RETRIES",
@@ -96,9 +96,9 @@
     "helpText": "Enable faster ARP scanning on Windows by using broadcast ARP via Npcap instead of native SendARP, which doesn't support broadcast. **Requires Npcap installation**. Ignored on Linux/macOS"
   },
   {
-    "id": "interface",
-    "cliFlag": "--interface",
-    "envVar": "SCANOPY_INTERFACE",
-    "helpText": "Restrict daemon to specific network interface(s). Accepts comma-separated interface names. When set, daemon only scans subnets on these interfaces. Useful for multi-daemon deployments"
+    "id": "concurrent_scans",
+    "cliFlag": "--concurrent-scans",
+    "envVar": "SCANOPY_CONCURRENT_SCANS",
+    "helpText": "Maximum parallel host scans"
   }
 ]
