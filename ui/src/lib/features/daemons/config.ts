@@ -74,7 +74,7 @@ export const fieldDefs: FieldDef[] = [
 		cliFlag: '--daemon-port',
 		envVar: 'SCANOPY_DAEMON_PORT',
 		helpText: 'Port for daemon to listen on',
-		section: 'Network',
+		section: 'Server Connection',
 		validators: [portRangeValidation]
 	},
 	{
@@ -86,7 +86,7 @@ export const fieldDefs: FieldDef[] = [
 		envVar: 'SCANOPY_BIND_ADDRESS',
 		helpText: 'IP address to bind daemon to',
 		placeholder: '0.0.0.0',
-		section: 'Network',
+		section: 'Server Connection',
 		validators: [ipAddressFormat]
 	},
 	{
@@ -97,7 +97,7 @@ export const fieldDefs: FieldDef[] = [
 		cliFlag: '--allow-self-signed-certs',
 		envVar: 'SCANOPY_ALLOW_SELF_SIGNED_CERTS',
 		helpText: 'Allow self-signed certs for daemon -> server connections',
-		section: 'Network'
+		section: 'Server Connection'
 	},
 	// Performance section
 	{
@@ -130,17 +130,6 @@ export const fieldDefs: FieldDef[] = [
 		validators: [min(0), max(300)]
 	},
 	{
-		id: 'concurrentScans',
-		label: 'Concurrent Scans',
-		type: 'number',
-		cliFlag: '--concurrent-scans',
-		envVar: 'SCANOPY_CONCURRENT_SCANS',
-		helpText: 'Maximum parallel host scans',
-		placeholder: 'Auto',
-		section: 'Performance'
-	},
-	// Docker section
-	{
 		id: 'dockerProxy',
 		label: 'Docker Proxy',
 		type: 'string',
@@ -150,7 +139,7 @@ export const fieldDefs: FieldDef[] = [
 		helpText:
 			'Optional proxy for Docker API. Can use both non-SSL and SSL proxy; SSL proxy requires additional SSL config vars',
 		placeholder: 'http://localhost:80/',
-		section: 'Docker Proxy',
+		section: 'Docker Discovery',
 		validators: [url]
 	},
 	{
@@ -162,7 +151,7 @@ export const fieldDefs: FieldDef[] = [
 		envVar: 'SCANOPY_DOCKER_PROXY_SSL_CERT',
 		helpText: 'Path to SSL certificate if using a docker proxy with SSL',
 		placeholder: '/certs/cert.pem',
-		section: 'Docker Proxy',
+		section: 'Docker Discovery',
 		validators: []
 	},
 	{
@@ -174,7 +163,7 @@ export const fieldDefs: FieldDef[] = [
 		envVar: 'SCANOPY_DOCKER_PROXY_SSL_KEY',
 		helpText: 'Path to SSL private key if using a docker proxy with SSL',
 		placeholder: '/certs/key.pem',
-		section: 'Docker Proxy',
+		section: 'Docker Discovery',
 		validators: []
 	},
 	{
@@ -186,8 +175,21 @@ export const fieldDefs: FieldDef[] = [
 		envVar: 'SCANOPY_DOCKER_PROXY_SSL_CHAIN',
 		helpText: 'Path to SSL chain if using a docker proxy with SSL',
 		placeholder: '/certs/ca.pem',
-		section: 'Docker Proxy',
+		section: 'Docker Discovery',
 		validators: []
+	},
+	// Network Discovery
+	{
+		id: 'interfaces',
+		label: 'Interfaces',
+		type: 'string',
+		defaultValue: '',
+		cliFlag: '--interfaces',
+		envVar: 'SCANOPY_INTERFACES',
+		helpText:
+			'Restrict daemon to specific network interface(s). Comma-separated for multiple (e.g., eth0,eth1). Leave empty for all interfaces. Only applies to network discovery.',
+		placeholder: 'eth0',
+		section: 'Network Discovery'
 	},
 	{
 		id: 'arp_retries',
@@ -197,7 +199,7 @@ export const fieldDefs: FieldDef[] = [
 		envVar: 'SCANOPY_ARP_RETRIES',
 		helpText:
 			'Number of ARP retry rounds for non-responding hosts (default: 2, meaning 3 total attempts)',
-		section: 'Arp Scanning'
+		section: 'Network Discovery'
 	},
 	{
 		id: 'arp_rate_pps',
@@ -207,7 +209,7 @@ export const fieldDefs: FieldDef[] = [
 		envVar: 'SCANOPY_ARP_RATE_PPS',
 		helpText:
 			'Maximum ARP packets per second (default: 50, go more conservative for networks with enterprise switches)',
-		section: 'Arp Scanning'
+		section: 'Network Discovery'
 	},
 	{
 		id: 'use_npcap_arp',
@@ -218,6 +220,16 @@ export const fieldDefs: FieldDef[] = [
 		envVar: 'SCANOPY_USE_NPCAP_ARP',
 		helpText:
 			"Enable faster ARP scanning on Windows by using broadcast ARP via Npcap instead of native SendARP, which doesn't support broadcast. **Requires Npcap installation**. Ignored on Linux/macOS",
-		section: 'Arp Scanning'
+		section: 'Network Discovery'
+	},
+	{
+		id: 'concurrentScans',
+		label: 'Concurrent Scans',
+		type: 'number',
+		cliFlag: '--concurrent-scans',
+		envVar: 'SCANOPY_CONCURRENT_SCANS',
+		helpText: 'Maximum parallel host scans',
+		placeholder: 'Auto',
+		section: 'Network Discovery'
 	}
 ];

@@ -11,9 +11,8 @@
 	import { fetchOrganization } from '$lib/features/organizations/queries';
 	import GenericModal from '$lib/shared/components/layout/GenericModal.svelte';
 	import ModalHeaderIcon from '$lib/shared/components/layout/ModalHeaderIcon.svelte';
-	import { CheckCircle, Mail, AlertCircle, Loader2 } from 'lucide-svelte';
+	import { Mail } from 'lucide-svelte';
 	import { resolve } from '$app/paths';
-	import type { Color } from '$lib/shared/utils/styling';
 
 	const verifyMutation = useVerifyEmailMutation();
 	const resendMutation = useResendVerificationMutation();
@@ -24,26 +23,6 @@
 	let status = $state<Status>('verifying');
 	let errorMessage = $state('');
 	let email = $state('');
-
-	// Get icon and color based on status
-	let statusIcon = $derived(
-		status === 'verifying'
-			? Loader2
-			: status === 'success'
-				? CheckCircle
-				: status === 'pending'
-					? Mail
-					: AlertCircle
-	);
-	let statusColor: Color = $derived(
-		status === 'success'
-			? 'Green'
-			: status === 'error'
-				? 'Red'
-				: status === 'no-token'
-					? 'Orange'
-					: 'Blue'
-	);
 
 	onMount(async () => {
 		const token = $page.url.searchParams.get('token');
@@ -105,9 +84,10 @@
 				onClose={() => {}}
 				showCloseButton={false}
 				preventCloseOnClickOutside={true}
+				title="Verify Your Email"
 			>
 				{#snippet headerIcon()}
-					<ModalHeaderIcon Icon={statusIcon} color={statusColor} />
+					<ModalHeaderIcon Icon={Mail} color="Blue" />
 				{/snippet}
 
 				{#if status === 'verifying'}

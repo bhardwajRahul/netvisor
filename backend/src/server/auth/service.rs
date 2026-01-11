@@ -415,9 +415,7 @@ impl AuthService {
 
         // Check if email is verified
         if !user.base.email_verified {
-            return Err(anyhow!(
-                "EMAIL_NOT_VERIFIED:Please verify your email before logging in"
-            ));
+            return Err(anyhow!("Please verify your email before logging in"));
         }
 
         Ok(user.clone())
@@ -596,12 +594,8 @@ impl AuthService {
             self.event_bus
                 .publish_auth(AuthEvent {
                     id: Uuid::new_v4(),
-                    user_id: Some(authentication.user_id().expect("User should have user_id")),
-                    organization_id: Some(
-                        authentication
-                            .organization_id()
-                            .expect("User should have org_id"),
-                    ),
+                    user_id: authentication.user_id(),
+                    organization_id: authentication.organization_id(),
                     timestamp: Utc::now(),
                     operation: AuthOperation::LoggedOut,
                     ip_address: ip,
@@ -643,7 +637,12 @@ impl AuthService {
     }
 
     /// Verify email using token
-    pub async fn verify_email(&self, token: &str) -> Result<User> {
+    pub async fn verify_email(
+        &self,
+        token: &str,
+        ip: IpAddr,
+        user_agent: Option<String>,
+    ) -> Result<User> {
         // Find user by verification token
         let all_users = self
             .user_service
@@ -673,6 +672,20 @@ impl AuthService {
 
         self.user_service
             .update(&mut user, AuthenticatedEntity::System)
+            .await?;
+
+        self.event_bus
+            .publish_auth(AuthEvent {
+                id: Uuid::new_v4(),
+                user_id: Some(user.id),
+                organization_id: Some(user.base.organization_id),
+                timestamp: Utc::now(),
+                operation: AuthOperation::EmailVerified,
+                ip_address: ip,
+                user_agent,
+                metadata: serde_json::json!({}),
+                authentication: user.clone().into(),
+            })
             .await?;
 
         Ok(user)

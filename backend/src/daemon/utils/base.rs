@@ -119,10 +119,10 @@ pub trait DaemonUtils {
                     "No interfaces matched the filter. Check --interface argument."
                 );
             } else {
-                tracing::info!(
+                tracing::debug!(
                     filter = ?interface_filter,
                     matched = filtered.len(),
-                    "Filtered interfaces by --interface argument"
+                    "Filtered interfaces by --interfaces argument"
                 );
             }
 

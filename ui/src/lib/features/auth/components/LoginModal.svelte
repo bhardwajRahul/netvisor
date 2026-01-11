@@ -77,7 +77,7 @@
 <GenericModal
 	{isOpen}
 	title="Sign in to Scanopy"
-	size="md"
+	size="lg"
 	{onClose}
 	onOpen={handleOpen}
 	showCloseButton={false}

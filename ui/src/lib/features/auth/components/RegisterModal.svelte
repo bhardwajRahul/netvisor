@@ -111,7 +111,7 @@
 <GenericModal
 	{isOpen}
 	title="Create your account"
-	size="md"
+	size="lg"
 	{onClose}
 	onOpen={handleOpen}
 	showCloseButton={false}

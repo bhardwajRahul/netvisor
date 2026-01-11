@@ -97,10 +97,9 @@ pub struct DaemonCli {
     #[arg(long)]
     arp_rate_pps: Option<u32>,
 
-    /// Restrict daemon to specific network interface(s). Accepts comma-separated interface names.
-    /// When set, daemon only scans subnets on these interfaces. Useful for multi-daemon deployments.
+    /// Restrict daemon to specific network interface(s). Comma-separated for multiple (e.g., eth0,eth1). Leave empty for all interfaces. Only applies to network discovery
     #[arg(long, value_delimiter = ',')]
-    interface: Option<Vec<String>>,
+    interfaces: Option<Vec<String>>,
 }
 
 /// Unified configuration struct that handles both startup and runtime config
@@ -307,7 +306,7 @@ impl AppConfig {
         if let Some(arp_rate_pps) = cli_args.arp_rate_pps {
             figment = figment.merge(("arp_rate_pps", arp_rate_pps));
         }
-        if let Some(interface) = cli_args.interface {
+        if let Some(interface) = cli_args.interfaces {
             figment = figment.merge(("interface_filter", interface));
         }
 

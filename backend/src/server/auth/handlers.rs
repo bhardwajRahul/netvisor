@@ -713,13 +713,17 @@ async fn reset_password(
 )]
 async fn verify_email(
     State(state): State<Arc<AppState>>,
+    ClientIp(ip): ClientIp,
+    user_agent: Option<TypedHeader<UserAgent>>,
     session: Session,
     Json(request): Json<VerifyEmailRequest>,
 ) -> ApiResult<Json<ApiResponse<User>>> {
+    let user_agent = user_agent.map(|u| u.to_string());
+
     let user = state
         .services
         .auth_service
-        .verify_email(&request.token)
+        .verify_email(&request.token, ip, user_agent)
         .await?;
 
     // Auto-login user after successful verification

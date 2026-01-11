@@ -254,7 +254,7 @@ pub enum AuthOperation {
 impl AuthOperation {
     fn log_level(&self) -> EventLogLevel {
         match self {
-            AuthOperation::LoginFailed | AuthOperation::ApiKeyAuthFailed => EventLogLevel::Error,
+            AuthOperation::LoginFailed | AuthOperation::ApiKeyAuthFailed => EventLogLevel::Warn,
             _ => EventLogLevel::Info,
         }
     }
