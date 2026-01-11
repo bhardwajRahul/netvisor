@@ -47,8 +47,14 @@
 			await fetchOrganization();
 			// Navigate to correct destination
 			await navigate();
-		} catch {
-			// Error handled by mutation
+		} catch (e) {
+			// Check if this is an email verification error
+			if (e instanceof Error && e.message.startsWith('EMAIL_NOT_VERIFIED:')) {
+				// Redirect to verification page with email
+				// eslint-disable-next-line svelte/no-navigation-without-resolve
+				goto(`${resolve('/verify-email')}?email=${encodeURIComponent(data.email)}`);
+			}
+			// Other errors handled by mutation
 		}
 	}
 

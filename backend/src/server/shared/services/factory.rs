@@ -248,11 +248,17 @@ impl ServiceFactory {
             None
         });
 
+        let public_url = config
+            .as_ref()
+            .map(|c| c.public_url.clone())
+            .unwrap_or_else(|| "http://localhost:3000".to_string());
+
         let auth_service = Arc::new(AuthService::new(
             user_service.clone(),
             organization_service.clone(),
             email_service.clone(),
             event_bus.clone(),
+            public_url,
         ));
 
         let oidc_service = config.and_then(|c| {

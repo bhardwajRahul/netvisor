@@ -21,6 +21,8 @@ export type DaemonSetupRequest = components['schemas']['DaemonSetupRequest'];
 export type DaemonSetupResponse = components['schemas']['DaemonSetupResponse'];
 export type ForgotPasswordRequest = components['schemas']['ForgotPasswordRequest'];
 export type ResetPasswordRequest = components['schemas']['ResetPasswordRequest'];
+export type VerifyEmailRequest = components['schemas']['VerifyEmailRequest'];
+export type ResendVerificationRequest = components['schemas']['ResendVerificationRequest'];
 
 // NetworkSetup extended with optional id (assigned after setup API returns network_ids)
 export type NetworkSetup = components['schemas']['NetworkSetup'] & {

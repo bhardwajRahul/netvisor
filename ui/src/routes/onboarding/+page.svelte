@@ -139,6 +139,15 @@
 			// Track registration in Plunk for email marketing
 			trackPlunkEvent('register', user.email, subscribed);
 
+			// Check if email verification is required
+			if (!user.email_verified) {
+				// Redirect to verification pending page
+				onboardingStore.reset();
+				// eslint-disable-next-line svelte/no-navigation-without-resolve
+				goto(`${resolve('/verify-email')}?email=${encodeURIComponent(user.email)}`);
+				return;
+			}
+
 			// Before clearing onboarding store, get state for tracking and network preference
 			const state = onboardingStore.getState();
 

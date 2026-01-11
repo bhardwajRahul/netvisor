@@ -115,6 +115,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/resend-verification": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["resend_verification"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/reset-password": {
         parameters: {
             query?: never;
@@ -158,6 +174,22 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["update_password_auth"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/verify-email": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["verify_email"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1924,14 +1956,14 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-01-10T15:49:40.581783Z",
-             *       "id": "106389d2-04e4-4e82-8e11-47a5a01f0253",
+             *       "created_at": "2026-01-10T23:04:42.635661Z",
+             *       "id": "b1651c99-6b52-4f02-87b5-86a839f975e4",
              *       "interface_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-01-10T15:49:40.581783Z"
+             *       "updated_at": "2026-01-10T23:04:42.635661Z"
              *     }
              */
             data?: components["schemas"]["BindingBase"] & {
@@ -2334,14 +2366,14 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-01-10T15:49:40.576767Z",
-             *           "id": "e61f02ed-e94c-4cb9-b3e5-c2c0f18bc1d7",
+             *           "created_at": "2026-01-10T23:04:42.631462Z",
+             *           "id": "03dc9d87-1e10-4958-990b-2a81cef6c416",
              *           "interface_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-01-10T15:49:40.576767Z"
+             *           "updated_at": "2026-01-10T23:04:42.631462Z"
              *         }
              *       ],
              *       "created_at": "2026-01-15T10:30:00Z",
@@ -2350,7 +2382,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Scanopy Server",
+             *       "service_definition": "Switch",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -2633,14 +2665,14 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-01-10T15:49:40.565847Z",
-         *       "id": "18818e6c-fce3-4a8d-bc15-88a86b600c11",
+         *       "created_at": "2026-01-10T23:04:42.621931Z",
+         *       "id": "393ef68a-5f82-45c1-9d23-7e97285b1f2e",
          *       "interface_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-01-10T15:49:40.565847Z"
+         *       "updated_at": "2026-01-10T23:04:42.621931Z"
          *     }
          */
         Binding: components["schemas"]["BindingBase"] & {
@@ -2804,7 +2836,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Scanopy Server",
+         *           "service_definition": "Switch",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -3851,6 +3883,11 @@ export interface components {
             password: string;
             terms_accepted: boolean;
         };
+        /** @description Request to resend verification email */
+        ResendVerificationRequest: {
+            /** Format: email */
+            email: string;
+        };
         ResetPasswordRequest: {
             password: string;
             token: string;
@@ -3885,14 +3922,14 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-01-10T15:49:40.565735Z",
-         *           "id": "a789c783-ac23-4e21-b90f-7527cabee228",
+         *           "created_at": "2026-01-10T23:04:42.621834Z",
+         *           "id": "504e786d-c77f-45f8-986b-55e69c761d0f",
          *           "interface_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-01-10T15:49:40.565735Z"
+         *           "updated_at": "2026-01-10T23:04:42.621834Z"
          *         }
          *       ],
          *       "created_at": "2026-01-15T10:30:00Z",
@@ -3901,7 +3938,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Scanopy Server",
+         *       "service_definition": "Switch",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -4280,6 +4317,8 @@ export interface components {
         };
         UserBase: {
             email: string;
+            /** @description Whether the user has verified their email address */
+            email_verified?: boolean;
             network_ids: string[];
             /** Format: date-time */
             oidc_linked_at?: string | null;
@@ -4296,6 +4335,10 @@ export interface components {
         Uxy: {
             x: number;
             y: number;
+        };
+        /** @description Request to verify email using token */
+        VerifyEmailRequest: {
+            token: string;
         };
         /**
          * @description Health status for daemon versions
@@ -4575,6 +4618,48 @@ export interface operations {
             };
         };
     };
+    resend_verification: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResendVerificationRequest"];
+            };
+        };
+        responses: {
+            /** @description Verification email sent */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse"];
+                };
+            };
+            /** @description Invalid request or already verified */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Rate limited */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
     reset_password: {
         parameters: {
             query?: never;
@@ -4674,6 +4759,39 @@ export interface operations {
             };
             /** @description Blocked in demo mode */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    verify_email: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VerifyEmailRequest"];
+            };
+        };
+        responses: {
+            /** @description Email verified successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_User"];
+                };
+            };
+            /** @description Invalid or expired token */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };

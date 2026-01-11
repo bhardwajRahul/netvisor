@@ -33,7 +33,7 @@ use argon2::{
     Argon2,
     password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng},
 };
-use chrono::Utc;
+use chrono::{Duration, Utc};
 use email_address::EmailAddress;
 use std::{collections::HashMap, net::IpAddr, sync::Arc, time::Instant};
 use tokio::sync::RwLock;
@@ -45,28 +45,40 @@ pub struct AuthService {
     organization_service: Arc<OrganizationService>,
     email_service: Option<Arc<EmailService>>,
     login_attempts: Arc<RwLock<HashMap<EmailAddress, (u32, Instant)>>>,
-    password_reset_tokens: Arc<RwLock<HashMap<String, (Uuid, Instant)>>>,
+    /// Rate limiting for verification email resend (not token storage - tokens stored in DB)
+    verification_resend_cooldown: Arc<RwLock<HashMap<EmailAddress, Instant>>>,
     event_bus: Arc<EventBus>,
+    public_url: String,
 }
 
 impl AuthService {
     const MAX_LOGIN_ATTEMPTS: u32 = 5;
     const LOCKOUT_DURATION_SECS: u64 = 15 * 60; // 15 minutes
+    const VERIFICATION_TOKEN_EXPIRY_HOURS: i64 = 24;
+    const PASSWORD_RESET_TOKEN_EXPIRY_HOURS: i64 = 1;
+    const RESEND_COOLDOWN_SECS: u64 = 60;
 
     pub fn new(
         user_service: Arc<UserService>,
         organization_service: Arc<OrganizationService>,
         email_service: Option<Arc<EmailService>>,
         event_bus: Arc<EventBus>,
+        public_url: String,
     ) -> Self {
         Self {
             user_service,
             organization_service,
             email_service,
             login_attempts: Arc::new(RwLock::new(HashMap::new())),
-            password_reset_tokens: Arc::new(RwLock::new(HashMap::new())),
+            verification_resend_cooldown: Arc::new(RwLock::new(HashMap::new())),
             event_bus,
+            public_url,
         }
+    }
+
+    /// Check if email service is configured
+    pub fn has_email_service(&self) -> bool {
+        self.email_service.is_some()
     }
 
     /// Register a new user with password
@@ -106,7 +118,7 @@ impl AuthService {
         };
 
         // Provision user with password
-        let user = self
+        let mut user = self
             .provision_user(
                 ProvisionUserParams {
                     email: request.email,
@@ -123,6 +135,21 @@ impl AuthService {
             )
             .await?;
 
+        // Handle email verification based on email service availability
+        if self.email_service.is_some() {
+            // Email service configured: send verification email
+            if let Err(e) = self.send_verification_email_internal(&mut user).await {
+                tracing::warn!("Failed to send verification email: {}", e);
+                // Don't fail registration if email fails - user can resend later
+            }
+        } else {
+            // No email service (self-hosted): auto-verify user
+            user.base.email_verified = true;
+            self.user_service
+                .update(&mut user, AuthenticatedEntity::System)
+                .await?;
+        }
+
         let authentication: AuthenticatedEntity = user.clone().into();
         self.event_bus
             .publish_auth(AuthEvent {
@@ -134,7 +161,8 @@ impl AuthService {
                 ip_address: ip,
                 user_agent,
                 metadata: serde_json::json!({
-                    "method": "password"
+                    "method": "password",
+                    "email_verified": user.base.email_verified
                 }),
 
                 authentication,
@@ -385,6 +413,13 @@ impl AuthService {
         // Verify password
         verify_password(&request.password, password_hash)?;
 
+        // Check if email is verified
+        if !user.base.email_verified {
+            return Err(anyhow!(
+                "EMAIL_NOT_VERIFIED:Please verify your email before logging in"
+            ));
+        }
+
         Ok(user.clone())
     }
 
@@ -429,7 +464,7 @@ impl AuthService {
         self.user_service.update(&mut user, authentication).await
     }
 
-    /// Initiate password reset process - generates a token
+    /// Initiate password reset process - generates a token stored in database
     pub async fn initiate_password_reset(
         &self,
         email: &EmailAddress,
@@ -449,7 +484,7 @@ impl AuthService {
             .await?;
 
         // Find user but don't expose if they exist or not
-        let user = match all_users.iter().find(|u| &u.base.email == email) {
+        let mut user = match all_users.into_iter().find(|u| &u.base.email == email) {
             Some(user) => user,
             None => {
                 // User doesn't exist - but we still return Ok to prevent enumeration
@@ -472,9 +507,14 @@ impl AuthService {
             })
             .await?;
 
+        // Generate token and store in database
         let token = Uuid::new_v4().to_string();
-        let mut tokens = self.password_reset_tokens.write().await;
-        tokens.insert(token.clone(), (user.id, Instant::now()));
+        let expires = Utc::now() + Duration::hours(Self::PASSWORD_RESET_TOKEN_EXPIRY_HOURS);
+        user.base.password_reset_token = Some(token.clone());
+        user.base.password_reset_expires = Some(expires);
+        self.user_service
+            .update(&mut user, AuthenticatedEntity::System)
+            .await?;
 
         email_service
             .send_password_reset(user.base.email.clone(), url, token)
@@ -483,7 +523,7 @@ impl AuthService {
         Ok(())
     }
 
-    /// Reset password using token
+    /// Reset password using token from database
     pub async fn complete_password_reset(
         &self,
         token: &str,
@@ -491,22 +531,31 @@ impl AuthService {
         ip: IpAddr,
         user_agent: Option<String>,
     ) -> Result<User> {
-        let mut tokens = self.password_reset_tokens.write().await;
-        let (user_id, created_at) = tokens
-            .remove(token)
+        // Find user by password reset token
+        let all_users = self
+            .user_service
+            .get_all(StorableFilter::<User>::new())
+            .await?;
+
+        let mut user = all_users
+            .into_iter()
+            .find(|u| u.base.password_reset_token.as_deref() == Some(token))
             .ok_or_else(|| anyhow!("Invalid or expired password reset token"))?;
 
-        // Check if token is expired (valid for 1 hour)
-        if created_at.elapsed().as_secs() > 3600 {
-            return Err(anyhow!("Password reset token has expired"));
+        // Check if token is expired
+        if let Some(expires) = user.base.password_reset_expires {
+            if Utc::now() > expires {
+                // Clear expired token
+                user.base.password_reset_token = None;
+                user.base.password_reset_expires = None;
+                self.user_service
+                    .update(&mut user, AuthenticatedEntity::System)
+                    .await?;
+                return Err(anyhow!("Password reset token has expired"));
+            }
+        } else {
+            return Err(anyhow!("Invalid password reset token"));
         }
-
-        // Get user
-        let mut user = self
-            .user_service
-            .get_by_id(&user_id)
-            .await?
-            .ok_or_else(|| anyhow!("User not found"))?;
 
         let authentication: AuthenticatedEntity = user.clone().into();
         self.event_bus
@@ -524,9 +573,11 @@ impl AuthService {
             })
             .await?;
 
-        // Update password
+        // Update password and clear token
         let hashed_password = hash_password(new_password)?;
         user.set_password(hashed_password);
+        user.base.password_reset_token = None;
+        user.base.password_reset_expires = None;
         self.user_service
             .update(&mut user, AuthenticatedEntity::System)
             .await?;
@@ -565,6 +616,112 @@ impl AuthService {
         Ok(())
     }
 
+    /// Internal helper to generate verification token and send email
+    async fn send_verification_email_internal(&self, user: &mut User) -> Result<()> {
+        let email_service = self
+            .email_service
+            .as_ref()
+            .ok_or_else(|| anyhow!("Email service not configured"))?;
+
+        // Generate token and expiry
+        let token = Uuid::new_v4().to_string();
+        let expires = Utc::now() + Duration::hours(Self::VERIFICATION_TOKEN_EXPIRY_HOURS);
+
+        // Store token in user record
+        user.base.email_verification_token = Some(token.clone());
+        user.base.email_verification_expires = Some(expires);
+        self.user_service
+            .update(user, AuthenticatedEntity::System)
+            .await?;
+
+        // Send verification email
+        email_service
+            .send_verification_email(user.base.email.clone(), self.public_url.clone(), token)
+            .await?;
+
+        Ok(())
+    }
+
+    /// Verify email using token
+    pub async fn verify_email(&self, token: &str) -> Result<User> {
+        // Find user by verification token
+        let all_users = self
+            .user_service
+            .get_all(StorableFilter::<User>::new())
+            .await?;
+
+        let mut user = all_users
+            .into_iter()
+            .find(|u| u.base.email_verification_token.as_deref() == Some(token))
+            .ok_or_else(|| anyhow!("Invalid verification token"))?;
+
+        // Check if token is expired
+        if let Some(expires) = user.base.email_verification_expires {
+            if Utc::now() > expires {
+                return Err(anyhow!(
+                    "Verification token has expired. Please request a new one."
+                ));
+            }
+        } else {
+            return Err(anyhow!("Invalid verification token"));
+        }
+
+        // Mark as verified and clear token
+        user.base.email_verified = true;
+        user.base.email_verification_token = None;
+        user.base.email_verification_expires = None;
+
+        self.user_service
+            .update(&mut user, AuthenticatedEntity::System)
+            .await?;
+
+        Ok(user)
+    }
+
+    /// Resend verification email with rate limiting
+    pub async fn resend_verification_email(&self, email: &EmailAddress) -> Result<()> {
+        // Check rate limiting
+        {
+            let cooldowns = self.verification_resend_cooldown.read().await;
+            if let Some(last_sent) = cooldowns.get(email)
+                && last_sent.elapsed().as_secs() < Self::RESEND_COOLDOWN_SECS
+            {
+                let remaining = Self::RESEND_COOLDOWN_SECS - last_sent.elapsed().as_secs();
+                return Err(anyhow!(
+                    "Please wait {} seconds before requesting another verification email",
+                    remaining
+                ));
+            }
+        }
+
+        // Find user
+        let all_users = self
+            .user_service
+            .get_all(StorableFilter::<User>::new())
+            .await?;
+
+        let mut user = all_users
+            .into_iter()
+            .find(|u| &u.base.email == email)
+            .ok_or_else(|| anyhow!("User not found"))?;
+
+        // Check if already verified
+        if user.base.email_verified {
+            return Err(anyhow!("Email is already verified"));
+        }
+
+        // Send verification email
+        self.send_verification_email_internal(&mut user).await?;
+
+        // Update cooldown
+        self.verification_resend_cooldown
+            .write()
+            .await
+            .insert(email.clone(), Instant::now());
+
+        Ok(())
+    }
+
     /// Cleanup old login attempts (called periodically from background task)
     pub async fn cleanup_old_login_attempts(&self) {
         let mut attempts = self.login_attempts.write().await;
@@ -574,6 +731,16 @@ impl AuthService {
         });
 
         tracing::debug!("Cleaned up old login attempts");
+    }
+
+    /// Cleanup old verification resend cooldowns
+    pub async fn cleanup_old_verification_cooldowns(&self) {
+        let mut cooldowns = self.verification_resend_cooldown.write().await;
+
+        cooldowns
+            .retain(|_, last_sent| last_sent.elapsed().as_secs() < Self::RESEND_COOLDOWN_SECS * 2);
+
+        tracing::debug!("Cleaned up old verification cooldowns");
     }
 }
 

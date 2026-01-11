@@ -14,9 +14,11 @@ import type {
 	ForgotPasswordRequest,
 	LoginRequest,
 	RegisterRequest,
+	ResendVerificationRequest,
 	ResetPasswordRequest,
 	SetupRequest,
-	SetupResponse
+	SetupResponse,
+	VerifyEmailRequest
 } from './types/base';
 
 /**
@@ -198,6 +200,55 @@ export function useDaemonSetupMutation() {
 				throw new Error(data?.error || 'Failed to save daemon setup');
 			}
 			return data.data as DaemonSetupResponse;
+		},
+		onError: (error: Error) => {
+			pushError(error.message);
+		}
+	}));
+}
+
+/**
+ * Mutation hook for verifying email
+ */
+export function useVerifyEmailMutation() {
+	const queryClient = useQueryClient();
+
+	return createMutation(() => ({
+		mutationFn: async (request: VerifyEmailRequest) => {
+			const { data } = await apiClient.POST('/api/auth/verify-email', { body: request });
+			if (!data?.success || !data.data) {
+				throw new Error(data?.error || 'Email verification failed');
+			}
+			return data.data;
+		},
+		onSuccess: (user: User) => {
+			queryClient.setQueryData(queryKeys.auth.currentUser(), user);
+			// Mark that user has an account (for redirect logic after logout)
+			if (typeof localStorage !== 'undefined') {
+				localStorage.setItem('hasAccount', 'true');
+			}
+			pushSuccess('Email verified successfully!');
+		},
+		onError: (error: Error) => {
+			pushError(error.message);
+		}
+	}));
+}
+
+/**
+ * Mutation hook for resending verification email
+ */
+export function useResendVerificationMutation() {
+	return createMutation(() => ({
+		mutationFn: async (request: ResendVerificationRequest) => {
+			const { data } = await apiClient.POST('/api/auth/resend-verification', { body: request });
+			if (!data?.success) {
+				throw new Error(data?.error || 'Failed to resend verification email');
+			}
+			return true;
+		},
+		onSuccess: () => {
+			pushSuccess('Verification email sent. Please check your inbox.');
 		},
 		onError: (error: Error) => {
 			pushError(error.message);

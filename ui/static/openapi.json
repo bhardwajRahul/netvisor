@@ -308,6 +308,57 @@
         }
       }
     },
+    "/api/auth/resend-verification": {
+      "post": {
+        "tags": [
+          "auth",
+          "internal"
+        ],
+        "operationId": "resend_verification",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResendVerificationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Verification email sent",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request or already verified",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/auth/reset-password": {
       "post": {
         "tags": [
@@ -431,6 +482,47 @@
           },
           "403": {
             "description": "Blocked in demo mode",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/verify-email": {
+      "post": {
+        "tags": [
+          "auth",
+          "internal"
+        ],
+        "operationId": "verify_email",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyEmailRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Email verified successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_User"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid or expired token",
             "content": {
               "application/json": {
                 "schema": {
@@ -8450,14 +8542,14 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-01-10T16:11:39.883999Z",
-              "id": "4b3ab3eb-839f-4667-87ac-edb946a4a557",
+              "created_at": "2026-01-10T23:23:13.164012Z",
+              "id": "5b3f81f3-8ed9-4799-9a3e-22c74bb6e790",
               "interface_id": "550e8400-e29b-41d4-a716-446655440005",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-01-10T16:11:39.883999Z"
+              "updated_at": "2026-01-10T23:23:13.164012Z"
             }
           },
           "error": {
@@ -9747,14 +9839,14 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-01-10T16:11:39.880045Z",
-                  "id": "3c0e671b-6f24-4a0d-9f29-56a080172099",
+                  "created_at": "2026-01-10T23:23:13.160724Z",
+                  "id": "aa9288b8-fa89-47f1-b108-7aba28435ef7",
                   "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-01-10T16:11:39.880045Z"
+                  "updated_at": "2026-01-10T23:23:13.160724Z"
                 }
               ],
               "created_at": "2026-01-15T10:30:00Z",
@@ -9763,7 +9855,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Scanopy Server",
+              "service_definition": "Switch",
               "source": {
                 "type": "Manual"
               },
@@ -10870,14 +10962,14 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-01-10T16:11:39.872208Z",
-          "id": "13d3f509-3041-4467-b2d9-6f786a4346be",
+          "created_at": "2026-01-10T23:23:13.151159Z",
+          "id": "ef6debef-7133-4847-bbec-a8832e6ce5a7",
           "interface_id": "550e8400-e29b-41d4-a716-446655440005",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-01-10T16:11:39.872208Z"
+          "updated_at": "2026-01-10T23:23:13.151159Z"
         }
       },
       "BindingBase": {
@@ -11280,7 +11372,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Scanopy Server",
+              "service_definition": "Switch",
               "tags": [],
               "virtualization": null
             }
@@ -13944,14 +14036,14 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-01-10T16:11:39.879106Z",
-                    "id": "2ddcfa47-c471-48f5-910d-c8c07289b73f",
+                    "created_at": "2026-01-10T23:23:13.159740Z",
+                    "id": "dd1035a1-a124-48dc-ab68-18827ae56673",
                     "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-01-10T16:11:39.879106Z"
+                    "updated_at": "2026-01-10T23:23:13.159740Z"
                   }
                 ],
                 "created_at": "2026-01-15T10:30:00Z",
@@ -13960,7 +14052,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Scanopy Server",
+                "service_definition": "Switch",
                 "source": {
                   "type": "Manual"
                 },
@@ -14665,6 +14757,19 @@
           }
         }
       },
+      "ResendVerificationRequest": {
+        "type": "object",
+        "description": "Request to resend verification email",
+        "required": [
+          "email"
+        ],
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email"
+          }
+        }
+      },
       "ResetPasswordRequest": {
         "type": "object",
         "required": [
@@ -14817,14 +14922,14 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-01-10T16:11:39.872161Z",
-              "id": "076cb5a7-d1a9-4f00-9d93-e58672510a46",
+              "created_at": "2026-01-10T23:23:13.151108Z",
+              "id": "aca0bc93-e0e9-413c-a62d-4f4dc30ee750",
               "interface_id": "550e8400-e29b-41d4-a716-446655440005",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-01-10T16:11:39.872161Z"
+              "updated_at": "2026-01-10T23:23:13.151108Z"
             }
           ],
           "created_at": "2026-01-15T10:30:00Z",
@@ -14833,7 +14938,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Scanopy Server",
+          "service_definition": "Switch",
           "source": {
             "type": "Manual"
           },
@@ -16057,6 +16162,10 @@
           "email": {
             "type": "string"
           },
+          "email_verified": {
+            "type": "boolean",
+            "description": "Whether the user has verified their email address"
+          },
           "network_ids": {
             "type": "array",
             "items": {
@@ -16123,6 +16232,18 @@
           "y": {
             "type": "integer",
             "minimum": 0
+          }
+        }
+      },
+      "VerifyEmailRequest": {
+        "type": "object",
+        "description": "Request to verify email using token",
+        "required": [
+          "token"
+        ],
+        "properties": {
+          "token": {
+            "type": "string"
           }
         }
       },

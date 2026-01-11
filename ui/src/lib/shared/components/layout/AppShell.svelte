@@ -127,6 +127,7 @@
 				$page.url.pathname === '/auth' ||
 				$page.url.pathname === '/login' ||
 				$page.url.pathname === '/onboarding' ||
+				$page.url.pathname === '/verify-email' ||
 				$page.url.pathname.startsWith('/share/');
 
 			if (!isPublicRoute) {

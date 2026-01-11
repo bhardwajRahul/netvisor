@@ -6,7 +6,9 @@ use email_address::EmailAddress;
 use serde_json::Value;
 
 use crate::server::{
-    email::templates::{EMAIL_FOOTER, EMAIL_HEADER, INVITE_LINK_BODY, PASSWORD_RESET_BODY},
+    email::templates::{
+        EMAIL_FOOTER, EMAIL_HEADER, EMAIL_VERIFICATION_BODY, INVITE_LINK_BODY, PASSWORD_RESET_BODY,
+    },
     users::service::UserService,
 };
 
@@ -41,6 +43,13 @@ pub trait EmailProvider: Send + Sync {
         )
     }
 
+    fn build_verification_email(&self, url: String, token: String) -> String {
+        self.build_email(EMAIL_VERIFICATION_BODY.replace(
+            "{verify_url}",
+            &format!("{}/verify-email?token={}", url.trim_end_matches('/'), token),
+        ))
+    }
+
     /// Send an HTML email
     async fn send_password_reset(
         &self,
@@ -55,6 +64,14 @@ pub trait EmailProvider: Send + Sync {
         to: EmailAddress,
         from: EmailAddress,
         url: String,
+    ) -> Result<(), Error>;
+
+    /// Send email verification link
+    async fn send_verification_email(
+        &self,
+        to: EmailAddress,
+        url: String,
+        token: String,
     ) -> Result<(), Error>;
 
     /// Track an event with optional metadata (only for providers that support it)
@@ -101,6 +118,16 @@ impl EmailService {
         url: String,
     ) -> Result<()> {
         self.provider.send_invite(to, from, url).await
+    }
+
+    /// Send email verification link
+    pub async fn send_verification_email(
+        &self,
+        to: EmailAddress,
+        url: String,
+        token: String,
+    ) -> Result<()> {
+        self.provider.send_verification_email(to, url, token).await
     }
 
     /// Track an event with optional metadata (delegates to provider)

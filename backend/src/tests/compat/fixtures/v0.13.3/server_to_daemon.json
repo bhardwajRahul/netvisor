@@ -6,15 +6,15 @@
       "path": "/api/discovery/initiate",
       "request_body": {
         "discovery_type": {
-          "host_id": "3b54e0d4-527e-43f2-89ff-73256cfddbe0",
+          "host_id": "69b0863b-0cc0-4fd3-864c-e82a292b27ff",
           "type": "SelfReport"
         },
-        "session_id": "602b8616-d9bf-4652-b804-7ab5438da41f"
+        "session_id": "13d0ccaf-3c75-4da4-9270-5f81d9a88e41"
       },
       "response_status": 200,
       "response_body": {
         "data": {
-          "session_id": "602b8616-d9bf-4652-b804-7ab5438da41f"
+          "session_id": "13d0ccaf-3c75-4da4-9270-5f81d9a88e41"
         },
         "meta": {
           "api_version": 1,
@@ -27,8 +27,8 @@
       "method": "POST",
       "path": "/api/initialize",
       "request_body": {
-        "api_key": "scp_d_JWVzmn5ELyfnfHBTk8kLl040dAznYIzf",
-        "network_id": "e9de3f20-f888-4934-8ccf-2ac89076a110"
+        "api_key": "scp_d_A13Xqr7oAU1mZTtTCP5vUgQZ0Hd7yrYy",
+        "network_id": "d0569d71-d5f8-405e-b628-d5f3bf31dd20"
       },
       "response_status": 200,
       "response_body": {

@@ -3,8 +3,9 @@ use crate::server::{
         r#impl::{
             api::{
                 DaemonSetupRequest, DaemonSetupResponse, ForgotPasswordRequest, LoginRequest,
-                OidcAuthorizeParams, OidcCallbackParams, RegisterRequest, ResetPasswordRequest,
-                SetupRequest, SetupResponse, UpdateEmailPasswordRequest,
+                OidcAuthorizeParams, OidcCallbackParams, RegisterRequest,
+                ResendVerificationRequest, ResetPasswordRequest, SetupRequest, SetupResponse,
+                UpdateEmailPasswordRequest, VerifyEmailRequest,
             },
             base::{LoginRegisterParams, PendingDaemonSetup, PendingNetworkSetup, PendingSetup},
             oidc::{OidcFlow, OidcPendingAuth, OidcProviderMetadata, OidcRegisterParams},
@@ -63,6 +64,8 @@ pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
         .routes(routes!(unlink_oidc_account))
         .routes(routes!(forgot_password))
         .routes(routes!(reset_password))
+        .routes(routes!(verify_email))
+        .routes(routes!(resend_verification))
 }
 
 #[utoipa::path(
@@ -696,6 +699,60 @@ async fn reset_password(
         .map_err(|e| ApiError::internal_error(&format!("Failed to save session: {}", e)))?;
 
     Ok(Json(ApiResponse::success(user)))
+}
+
+#[utoipa::path(
+    post,
+    path = "/verify-email",
+    tags = ["auth", "internal"],
+    request_body = VerifyEmailRequest,
+    responses(
+        (status = 200, description = "Email verified successfully", body = ApiResponse<User>),
+        (status = 400, description = "Invalid or expired token", body = ApiErrorResponse),
+    )
+)]
+async fn verify_email(
+    State(state): State<Arc<AppState>>,
+    session: Session,
+    Json(request): Json<VerifyEmailRequest>,
+) -> ApiResult<Json<ApiResponse<User>>> {
+    let user = state
+        .services
+        .auth_service
+        .verify_email(&request.token)
+        .await?;
+
+    // Auto-login user after successful verification
+    session
+        .insert("user_id", user.id)
+        .await
+        .map_err(|e| ApiError::internal_error(&format!("Failed to save session: {}", e)))?;
+
+    Ok(Json(ApiResponse::success(user)))
+}
+
+#[utoipa::path(
+    post,
+    path = "/resend-verification",
+    tags = ["auth", "internal"],
+    request_body = ResendVerificationRequest,
+    responses(
+        (status = 200, description = "Verification email sent", body = EmptyApiResponse),
+        (status = 400, description = "Invalid request or already verified", body = ApiErrorResponse),
+        (status = 429, description = "Rate limited", body = ApiErrorResponse),
+    )
+)]
+async fn resend_verification(
+    State(state): State<Arc<AppState>>,
+    Json(request): Json<ResendVerificationRequest>,
+) -> ApiResult<Json<ApiResponse<()>>> {
+    state
+        .services
+        .auth_service
+        .resend_verification_email(&request.email)
+        .await?;
+
+    Ok(Json(ApiResponse::success(())))
 }
 
 async fn list_oidc_providers(

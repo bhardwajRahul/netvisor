@@ -113,3 +113,16 @@ pub struct DaemonSetupRequest {
 pub struct DaemonSetupResponse {
     pub api_key: Option<String>,
 }
+
+/// Request to verify email using token
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct VerifyEmailRequest {
+    pub token: String,
+}
+
+/// Request to resend verification email
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ResendVerificationRequest {
+    #[schema(value_type = String, format = "email")]
+    pub email: EmailAddress,
+}

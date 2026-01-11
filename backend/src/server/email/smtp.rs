@@ -9,7 +9,7 @@ use async_trait::async_trait;
 use email_address::EmailAddress;
 
 use crate::server::email::{
-    templates::PASSWORD_RESET_TITLE,
+    templates::{EMAIL_VERIFICATION_TITLE, PASSWORD_RESET_TITLE},
     traits::{EmailProvider, strip_html_tags},
 };
 
@@ -95,6 +95,20 @@ impl EmailProvider for SmtpEmailProvider {
             to,
             PASSWORD_RESET_TITLE.to_string(),
             self.build_password_reset_email(url, token),
+        )
+        .await
+    }
+
+    async fn send_verification_email(
+        &self,
+        to: EmailAddress,
+        url: String,
+        token: String,
+    ) -> Result<(), Error> {
+        self.send_email(
+            to,
+            EMAIL_VERIFICATION_TITLE.to_string(),
+            self.build_verification_email(url, token),
         )
         .await
     }

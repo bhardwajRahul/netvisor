@@ -293,6 +293,11 @@ pub fn user() -> User {
             oidc_linked_at: None,
             network_ids: vec![ids::NETWORK],
             terms_accepted_at: Some(example_timestamp()),
+            email_verified: true,
+            email_verification_token: None,
+            email_verification_expires: None,
+            password_reset_token: None,
+            password_reset_expires: None,
         },
     }
 }

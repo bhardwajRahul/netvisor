@@ -6501,14 +6501,14 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-01-10T16:11:39.913652Z",
-              "id": "43c5d9f5-5d02-4c0c-9ad1-d22e3cffaadb",
+              "created_at": "2026-01-10T23:23:13.163852Z",
+              "id": "b541cb07-24b2-44f6-90bf-4215e1042c22",
               "interface_id": "550e8400-e29b-41d4-a716-446655440005",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-01-10T16:11:39.913652Z"
+              "updated_at": "2026-01-10T23:23:13.163852Z"
             }
           },
           "error": {
@@ -7798,14 +7798,14 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-01-10T16:11:39.911318Z",
-                  "id": "bf56fb7c-2360-4114-9058-c1b5e02381fd",
+                  "created_at": "2026-01-10T23:23:13.160182Z",
+                  "id": "e9a07186-790f-4ac1-87e4-1c815e42b5e9",
                   "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-01-10T16:11:39.911318Z"
+                  "updated_at": "2026-01-10T23:23:13.160182Z"
                 }
               ],
               "created_at": "2026-01-15T10:30:00Z",
@@ -7814,7 +7814,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Scanopy Server",
+              "service_definition": "Switch",
               "source": {
                 "type": "Manual"
               },
@@ -8921,14 +8921,14 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-01-10T16:11:39.907121Z",
-          "id": "4b29a106-da4b-43af-a705-282e2748b1ff",
+          "created_at": "2026-01-10T23:23:13.151327Z",
+          "id": "348a8752-dffa-4505-b213-cc1a7824025e",
           "interface_id": "550e8400-e29b-41d4-a716-446655440005",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-01-10T16:11:39.907121Z"
+          "updated_at": "2026-01-10T23:23:13.151327Z"
         }
       },
       "BindingBase": {
@@ -9331,7 +9331,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Scanopy Server",
+              "service_definition": "Switch",
               "tags": [],
               "virtualization": null
             }
@@ -11995,14 +11995,14 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-01-10T16:11:39.910620Z",
-                    "id": "d0aade8b-a22e-4944-bd22-67407306ff27",
+                    "created_at": "2026-01-10T23:23:13.159424Z",
+                    "id": "2e8be836-6f23-4c83-964a-13ed12974b8a",
                     "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-01-10T16:11:39.910620Z"
+                    "updated_at": "2026-01-10T23:23:13.159424Z"
                   }
                 ],
                 "created_at": "2026-01-15T10:30:00Z",
@@ -12011,7 +12011,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Scanopy Server",
+                "service_definition": "Switch",
                 "source": {
                   "type": "Manual"
                 },
@@ -12716,6 +12716,19 @@
           }
         }
       },
+      "ResendVerificationRequest": {
+        "type": "object",
+        "description": "Request to resend verification email",
+        "required": [
+          "email"
+        ],
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email"
+          }
+        }
+      },
       "ResetPasswordRequest": {
         "type": "object",
         "required": [
@@ -12868,14 +12881,14 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-01-10T16:11:39.907077Z",
-              "id": "ea928f9d-5552-4e10-a7e3-1dc2d00710d3",
+              "created_at": "2026-01-10T23:23:13.151272Z",
+              "id": "98975266-37f9-4087-877a-2f9b7d2b0fd1",
               "interface_id": "550e8400-e29b-41d4-a716-446655440005",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-01-10T16:11:39.907077Z"
+              "updated_at": "2026-01-10T23:23:13.151272Z"
             }
           ],
           "created_at": "2026-01-15T10:30:00Z",
@@ -12884,7 +12897,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Scanopy Server",
+          "service_definition": "Switch",
           "source": {
             "type": "Manual"
           },
@@ -14108,6 +14121,10 @@
           "email": {
             "type": "string"
           },
+          "email_verified": {
+            "type": "boolean",
+            "description": "Whether the user has verified their email address"
+          },
           "network_ids": {
             "type": "array",
             "items": {
@@ -14174,6 +14191,18 @@
           "y": {
             "type": "integer",
             "minimum": 0
+          }
+        }
+      },
+      "VerifyEmailRequest": {
+        "type": "object",
+        "description": "Request to verify email using token",
+        "required": [
+          "token"
+        ],
+        "properties": {
+          "token": {
+            "type": "string"
           }
         }
       },

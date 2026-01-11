@@ -1,4 +1,7 @@
-use crate::server::email::{templates::PASSWORD_RESET_TITLE, traits::EmailProvider};
+use crate::server::email::{
+    templates::{EMAIL_VERIFICATION_TITLE, PASSWORD_RESET_TITLE},
+    traits::EmailProvider,
+};
 use anyhow::Error;
 use anyhow::anyhow;
 use async_trait::async_trait;
@@ -87,6 +90,23 @@ impl EmailProvider for PlunkEmailProvider {
             to,
             self.build_invite_title(from.clone()),
             self.build_invite_email(url, from),
+        )
+        .await
+        .map_err(|e| anyhow!("{}", e))
+        .map(|_| ())
+    }
+
+    /// Send email verification link
+    async fn send_verification_email(
+        &self,
+        to: EmailAddress,
+        url: String,
+        token: String,
+    ) -> Result<(), Error> {
+        self.send_transactional_email(
+            to,
+            EMAIL_VERIFICATION_TITLE.to_string(),
+            self.build_verification_email(url, token),
         )
         .await
         .map_err(|e| anyhow!("{}", e))
