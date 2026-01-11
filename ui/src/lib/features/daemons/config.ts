@@ -187,7 +187,7 @@ export const fieldDefs: FieldDef[] = [
 		cliFlag: '--interfaces',
 		envVar: 'SCANOPY_INTERFACES',
 		helpText:
-			'Restrict daemon to specific network interface(s). Comma-separated for multiple (e.g., eth0,eth1). Leave empty for all interfaces. Only applies to network discovery.',
+			'Restrict daemon to specific network interface(s). Comma-separated for multiple (e.g., eth0,eth1). Leave empty for all interfaces. Only applies to network discovery',
 		placeholder: 'eth0',
 		section: 'Network Discovery'
 	},
