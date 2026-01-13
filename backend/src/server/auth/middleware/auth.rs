@@ -2,7 +2,6 @@ use std::{fmt::Display, net::IpAddr, str::FromStr};
 
 use cidr::IpCidr;
 
-use crate::daemon::runtime::service::{INVALID_API_KEY_ERROR, REGISTERED_INVALID_KEY_ERROR};
 use crate::server::{
     config::AppState,
     daemon_api_keys::r#impl::base::DaemonApiKey,
@@ -445,9 +444,7 @@ impl AuthenticatedEntity {
                         key_prefix,
                     )
                     .await;
-                    return Err(AuthError(ApiError::unauthorized(
-                        "Invalid API key".to_string(),
-                    )));
+                    return Err(AuthError(ApiError::not_authenticated()));
                 }
                 ApiKeyType::Daemon => {
                     // Daemon API key authentication - requires X-Daemon-ID header
@@ -456,11 +453,7 @@ impl AuthenticatedEntity {
                         .get("X-Daemon-ID")
                         .and_then(|h| h.to_str().ok())
                         .and_then(|s| Uuid::parse_str(s).ok())
-                        .ok_or_else(|| {
-                            AuthError(ApiError::unauthorized(
-                                "X-Daemon-ID header required for daemon API keys".to_string(),
-                            ))
-                        })?;
+                        .ok_or_else(|| AuthError(ApiError::daemon_required()))?;
 
                     let api_key_filter = StorableFilter::<DaemonApiKey>::new().api_key(hashed_key);
                     if let Ok(Some(mut api_key)) = app_state
@@ -543,13 +536,9 @@ impl AuthenticatedEntity {
                     .await;
 
                     if daemon_exists {
-                        return Err(AuthError(ApiError::unauthorized(
-                            REGISTERED_INVALID_KEY_ERROR.to_string(),
-                        )));
+                        return Err(AuthError(ApiError::not_authenticated()));
                     }
-                    return Err(AuthError(ApiError::unauthorized(
-                        INVALID_API_KEY_ERROR.to_string(),
-                    )));
+                    return Err(AuthError(ApiError::not_authenticated()));
                 }
             }
         }
@@ -557,21 +546,21 @@ impl AuthenticatedEntity {
         // Try user authentication (session cookie)
         let session = Session::from_request_parts(parts, state)
             .await
-            .map_err(|_| AuthError(ApiError::unauthorized("Not authenticated".to_string())))?;
+            .map_err(|_| AuthError(ApiError::not_authenticated()))?;
 
         let user_id: Uuid = session
             .get("user_id")
             .await
-            .map_err(|_| AuthError(ApiError::unauthorized("Not authenticated".to_string())))?
-            .ok_or_else(|| AuthError(ApiError::unauthorized("Not authenticated".to_string())))?;
+            .map_err(|_| AuthError(ApiError::not_authenticated()))?
+            .ok_or_else(|| AuthError(ApiError::not_authenticated()))?;
 
         let user = app_state
             .services
             .user_service
             .get_by_id(&user_id)
             .await
-            .map_err(|_| AuthError(ApiError::unauthorized("User not found".to_string())))?
-            .ok_or_else(|| AuthError(ApiError::unauthorized("User not found".to_string())))?;
+            .map_err(|_| AuthError(ApiError::not_authenticated()))?
+            .ok_or_else(|| AuthError(ApiError::not_authenticated()))?;
 
         let network_ids: Vec<Uuid> = if matches!(
             user.base.permissions,
@@ -738,9 +727,7 @@ where
                 permissions,
                 network_ids,
             }),
-            _ => Err(AuthError(ApiError::unauthorized(
-                "API key authentication required".to_string(),
-            ))),
+            _ => Err(AuthError(ApiError::api_key_required())),
         }
     }
 }

@@ -9,6 +9,7 @@
 	import AccountTab from './AccountTab.svelte';
 	import OrganizationTab from './OrganizationTab.svelte';
 	import BillingTab from './BillingTab.svelte';
+	import * as m from '$lib/paraglide/messages';
 
 	let {
 		isOpen = false,
@@ -34,11 +35,11 @@
 	let orgSubView = $state<'main' | 'edit'>('main');
 
 	// Define base tabs
-	const baseTabs: ModalTab[] = [
-		{ id: 'account', label: 'Account', icon: User },
-		{ id: 'organization', label: 'Organization', icon: Building2 },
-		{ id: 'billing', label: 'Billing', icon: CreditCard }
-	];
+	let baseTabs = $derived<ModalTab[]>([
+		{ id: 'account', label: m.settings_account(), icon: User },
+		{ id: 'organization', label: m.settings_organization(), icon: Building2 },
+		{ id: 'billing', label: m.settings_billing(), icon: CreditCard }
+	]);
 
 	// Filter tabs based on permissions
 	let visibleTabs = $derived(
@@ -73,7 +74,7 @@
 
 <GenericModal
 	{isOpen}
-	title="Settings"
+	title={m.settings_title()}
 	size="xl"
 	onClose={handleClose}
 	onOpen={handleOpen}

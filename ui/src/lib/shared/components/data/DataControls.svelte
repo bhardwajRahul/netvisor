@@ -22,6 +22,7 @@
 	} from './types';
 	import { onMount, type Snippet } from 'svelte';
 	import Tag from './Tag.svelte';
+	import * as m from '$lib/paraglide/messages';
 	import TagPickerInline from '$lib/features/tags/components/TagPickerInline.svelte';
 	import {
 		useTagsQuery,
@@ -447,19 +448,19 @@
 	// Group items by selected field
 	let groupedItems = $derived.by(() => {
 		if (!selectedGroupField) {
-			return new SvelteMap([['All', processedItems]]);
+			return new SvelteMap([[m.common_all(), processedItems]]);
 		}
 
 		const field = fields.find((f) => getFieldKey(f) === selectedGroupField);
 		if (!field) {
-			return new SvelteMap([['All', processedItems]]);
+			return new SvelteMap([[m.common_all(), processedItems]]);
 		}
 
 		const groups = new SvelteMap<string, T[]>();
 
 		processedItems.forEach((item) => {
 			const value = getFieldValue(item, field);
-			const groupKey = value !== null && value !== undefined ? String(value) : 'Ungrouped';
+			const groupKey = value !== null && value !== undefined ? String(value) : m.common_ungrouped();
 
 			if (!groups.has(groupKey)) {
 				groups.set(groupKey, []);
@@ -863,9 +864,9 @@
 				class="btn-secondary flex items-center gap-2"
 			>
 				<SlidersHorizontal class="h-4 w-4" />
-				Filters
+				{m.common_filters()}
 				{#if hasActiveFilters}
-					<Tag label="Active" color="Blue" />
+					<Tag label={m.common_active()} color="Blue" />
 				{/if}
 			</button>
 		{/if}
@@ -875,14 +876,14 @@
 			<button
 				onclick={allSelected ? selectNone : selectAll}
 				class="btn-secondary flex items-center gap-2"
-				title={allSelected ? 'Deselect all' : 'Select all'}
+				title={allSelected ? m.common_deselectAll() : m.common_selectAll()}
 			>
 				{#if allSelected}
 					<Square class="h-4 w-4" />
 				{:else}
 					<CheckSquare class="h-4 w-4" />
 				{/if}
-				{allSelected ? 'None' : 'All'}
+				{allSelected ? m.common_none() : m.common_all()}
 			</button>
 		{/if}
 
@@ -890,7 +891,7 @@
 		<button
 			onclick={() => (viewMode = viewMode === 'card' ? 'list' : 'card')}
 			class="btn-secondary flex items-center gap-2"
-			title={viewMode === 'card' ? 'Switch to list view' : 'Switch to card view'}
+			title={viewMode === 'card' ? m.common_switchToListView() : m.common_switchToCardView()}
 		>
 			{#if viewMode === 'card'}
 				<List class="h-5.5 w-5.5" />
@@ -903,9 +904,9 @@
 		{#if groupableFields.length > 0}
 			<div class="relative">
 				<select bind:value={selectedGroupField} class="input-field appearance-none pr-8">
-					<option value={null}>No grouping</option>
+					<option value={null}>{m.common_noGrouping()}</option>
 					{#each groupableFields as field (getFieldKey(field))}
-						<option value={getFieldKey(field)}>Group by {field.label}</option>
+						<option value={getFieldKey(field)}>{m.common_groupBy({ field: field.label })}</option>
 					{/each}
 				</select>
 				{#if hasActiveGrouping}
@@ -929,7 +930,7 @@
 					}}
 					class="input-field appearance-none pr-8"
 				>
-					<option value={null}>Sort by...</option>
+					<option value={null}>{m.common_sortBy()}</option>
 					{#each sortableFields as field (getFieldKey(field))}
 						<option value={getFieldKey(field)}>{field.label}</option>
 					{/each}
@@ -954,7 +955,7 @@
 			<input
 				type="text"
 				bind:value={searchQuery}
-				placeholder="Search..."
+				placeholder={m.common_searchPlaceholder()}
 				class="input-field w-full pl-10 pr-10"
 			/>
 			{#if hasActiveSearch}
@@ -974,20 +975,22 @@
 			<div class="flex items-center justify-between">
 				<div class="flex items-center gap-4">
 					<span class="text-primary text-sm font-medium">
-						{selectedIds.size}
-						{selectedIds.size === 1 ? 'item' : 'items'} selected
+						{m.common_itemsSelected({
+							count: selectedIds.size,
+							itemLabel: selectedIds.size === 1 ? m.common_item() : m.common_items()
+						})}
 					</span>
 					<button
 						onclick={selectNone}
 						class="text-tertiary hover:text-secondary text-sm transition-colors"
 					>
-						Clear selection
+						{m.common_clearSelection()}
 					</button>
 				</div>
 				{#if allowBulkDelete && onBulkDelete}
 					<button onclick={handleBulkDelete} class="btn-danger flex items-center gap-2">
 						<Trash2 class="h-4 w-4" />
-						Delete Selected
+						{m.common_deleteSelected()}
 					</button>
 				{/if}
 			</div>
@@ -995,14 +998,14 @@
 			<!-- Bulk Tagging -->
 			{#if hasBulkTagging}
 				<div class="flex items-center gap-3 border-t border-gray-700 pt-3">
-					<span class="text-secondary text-sm">Tags:</span>
+					<span class="text-secondary text-sm">{m.common_tags()}</span>
 					<TagPickerInline
 						selectedTagIds={commonTags}
 						onAdd={handleBulkTagAdd}
 						onRemove={handleBulkTagRemove}
 					/>
 					{#if commonTags.length === 0 && selectedIds.size > 1}
-						<span class="text-tertiary text-xs">No common tags</span>
+						<span class="text-tertiary text-xs">{m.common_noCommonTags()}</span>
 					{/if}
 				</div>
 			{/if}
@@ -1013,13 +1016,13 @@
 	{#if showFilters}
 		<div class="card space-y-4 p-4">
 			<div class="flex items-center justify-between">
-				<h3 class="text-primary text-sm font-semibold">Filters</h3>
+				<h3 class="text-primary text-sm font-semibold">{m.common_filters()}</h3>
 				{#if hasActiveFilters}
 					<button
 						onclick={clearFilters}
 						class="text-tertiary hover:text-secondary text-xs transition-colors"
 					>
-						Clear all
+						{m.common_clearAll()}
 					</button>
 				{/if}
 			</div>
@@ -1040,7 +1043,7 @@
 										onchange={() => toggleBooleanFilter(fieldKey, 'showTrue')}
 										class="h-4 w-4 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-2 focus:ring-blue-500"
 									/>
-									<span class="text-secondary text-sm">Show True</span>
+									<span class="text-secondary text-sm">{m.common_showTrue()}</span>
 								</label>
 								<label class="flex items-center gap-2">
 									<input
@@ -1049,7 +1052,7 @@
 										onchange={() => toggleBooleanFilter(fieldKey, 'showFalse')}
 										class="h-4 w-4 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-2 focus:ring-blue-500"
 									/>
-									<span class="text-secondary text-sm">Show False</span>
+									<span class="text-secondary text-sm">{m.common_showFalse()}</span>
 								</label>
 							</div>
 						{:else if fieldKey === 'tags'}
@@ -1059,7 +1062,7 @@
 								class="flex max-h-40 flex-wrap gap-1.5 overflow-y-auto rounded border border-gray-600 bg-gray-800 p-2"
 							>
 								{#if allTags.length === 0}
-									<p class="text-tertiary text-xs">No tags available</p>
+									<p class="text-tertiary text-xs">{m.common_noTagsAvailable()}</p>
 								{:else}
 									{#each allTags as tag (tag.id)}
 										{@const isSelected = filter?.values.has(tag.id)}
@@ -1081,7 +1084,7 @@
 								class="max-h-40 space-y-1 overflow-y-auto rounded border border-gray-600 bg-gray-800 p-2"
 							>
 								{#if uniqueValues.length === 0}
-									<p class="text-tertiary text-xs">No values available</p>
+									<p class="text-tertiary text-xs">{m.common_noValuesAvailable()}</p>
 								{:else}
 									{#each uniqueValues as value (value)}
 										<label class="flex items-center gap-2">
@@ -1107,26 +1110,33 @@
 	<div class="text-tertiary flex items-center justify-between text-sm">
 		<span>
 			{#if totalCount === 0}
-				No items
+				{m.common_noItems()}
 			{:else if totalPages > 1}
-				Showing {showingStart}-{showingEnd} of {totalCount}
-				{totalCount === 1 ? 'item' : 'items'}
+				{m.common_showingRange({
+					start: showingStart,
+					end: showingEnd,
+					total: totalCount,
+					itemLabel: totalCount === 1 ? m.common_item() : m.common_items()
+				})}
 			{:else}
-				Showing {totalCount} of {items.length}
-				{items.length === 1 ? 'item' : 'items'}
+				{m.common_showingTotal({
+					count: totalCount,
+					total: items.length,
+					itemLabel: items.length === 1 ? m.common_item() : m.common_items()
+				})}
 			{/if}
 		</span>
 		<div class="flex items-center gap-4">
 			{#if hasActiveGrouping}
 				<span>
 					{groupedItems.size}
-					{groupedItems.size === 1 ? 'group' : 'groups'}
+					{groupedItems.size === 1 ? m.common_group() : m.common_groups()}
 				</span>
 			{/if}
 			<!-- Page size selector (only show when there are more than 20 items) -->
 			{#if totalCount > 20}
 				<div class="flex items-center gap-2">
-					<span class="text-tertiary text-sm">Show</span>
+					<span class="text-tertiary text-sm">{m.common_show()}</span>
 					<select
 						value={pageSize}
 						onchange={(e) =>
@@ -1145,18 +1155,18 @@
 						onclick={goToPrevPage}
 						disabled={!canGoPrev}
 						class="btn-secondary p-1 disabled:cursor-not-allowed disabled:opacity-50"
-						title="Previous page"
+						title={m.common_previousPage()}
 					>
 						<ChevronLeft class="h-5.5 w-5.5" />
 					</button>
 					<span class="text-secondary min-w-[80px] text-center">
-						Page {effectiveCurrentPage} of {totalPages}
+						{m.common_pageOf({ current: effectiveCurrentPage, total: totalPages })}
 					</span>
 					<button
 						onclick={goToNextPage}
 						disabled={!canGoNext}
 						class="btn-secondary p-1 disabled:cursor-not-allowed disabled:opacity-50"
-						title="Next page"
+						title={m.common_nextPage()}
 					>
 						<ChevronRight class="h-5.5 w-5.5" />
 					</button>

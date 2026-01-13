@@ -12,6 +12,7 @@
 	import { useServicesQuery } from '$lib/features/services/queries';
 	import { useInterfacesQuery } from '$lib/features/interfaces/queries';
 	import { usePortsQuery } from '$lib/features/ports/queries';
+	import * as m from '$lib/paraglide/messages';
 
 	interface Props {
 		otherHost?: Host | null;
@@ -68,28 +69,40 @@
 			const actions = [
 				{
 					id: 'delete',
-					name: `Host "${otherHost.name}" will be deleted`
+					name: m.hosts_consolidateModal_hostWillBeDeleted({ name: otherHost.name })
 				}
 			];
 
 			if (services.length > 0) {
 				actions.push({
 					id: 'services',
-					name: `${services.length} service${services.length !== 1 ? 's' : ''} from "${otherHost.name}" will be migrated to "${selectedTargetHost.name}"`
+					name: m.hosts_consolidateModal_servicesMigrated({
+						count: services.length,
+						source: otherHost.name,
+						destination: selectedTargetHost.name
+					})
 				});
 			}
 
 			if (interfaces.length > 0) {
 				actions.push({
 					id: 'interfaces',
-					name: `${interfaces.length} interface${interfaces.length !== 1 ? 's' : ''} from "${otherHost.name}" will be migrated to "${selectedTargetHost.name}"`
+					name: m.hosts_consolidateModal_interfacesMigrated({
+						count: interfaces.length,
+						source: otherHost.name,
+						destination: selectedTargetHost.name
+					})
 				});
 			}
 
 			if (ports.length > 0) {
 				actions.push({
 					id: 'ports',
-					name: `${ports.length} port${ports.length !== 1 ? 's' : ''} from "${otherHost.name}" will be migrated to "${selectedTargetHost.name}"`
+					name: m.hosts_consolidateModal_portsMigrated({
+						count: ports.length,
+						source: otherHost.name,
+						destination: selectedTargetHost.name
+					})
 				});
 			}
 
@@ -145,7 +158,7 @@
 
 <GenericModal
 	{isOpen}
-	title="Consolidate Hosts"
+	title={m.hosts_consolidateModal_title()}
 	size="lg"
 	onClose={handleClose}
 	preventCloseOnClickOutside={loading}
@@ -176,8 +189,8 @@
 				<!-- Target selection -->
 				<div>
 					<RichSelect
-						label="Select host which {otherHost?.name} will be consolidated with:"
-						placeholder="Choose a host..."
+						label={m.hosts_consolidateModal_selectHost({ hostName: otherHost?.name ?? '' })}
+						placeholder={m.hosts_consolidateModal_chooseHost()}
 						selectedValue={selectedDestinationHostId}
 						options={availableHosts}
 						onSelect={handleHostSelect}
@@ -193,9 +206,11 @@
 			<!-- Step 2: Conversion Preview -->
 			<div>
 				<div class="mb-6 text-center">
-					<h3 class="text-primary mb-2 text-lg font-medium">Consolidation Preview</h3>
+					<h3 class="text-primary mb-2 text-lg font-medium">
+						{m.hosts_consolidateModal_previewTitle()}
+					</h3>
 					<p class="text-secondary text-sm">
-						Review the changes before confirming the consolidation.
+						{m.hosts_consolidateModal_previewSubtitle()}
 					</p>
 				</div>
 
@@ -205,8 +220,8 @@
 				<!-- Warning -->
 				<div class="mt-4">
 					<InlineWarning
-						title="This action cannot be undone"
-						body="The source host will be permanently deleted and converted to an interface. Make sure this is what you want before proceeding."
+						title={m.hosts_consolidateModal_warningTitle()}
+						body={m.hosts_consolidateModal_warningBody()}
 					/>
 				</div>
 			</div>
@@ -223,12 +238,12 @@
 				<div class="flex items-center gap-3">
 					{#if showPreview}
 						<button type="button" disabled={loading} onclick={handleBack} class="btn-secondary">
-							Back
+							{m.common_back()}
 						</button>
 					{/if}
 
 					<button type="button" disabled={loading} onclick={handleClose} class="btn-secondary">
-						Cancel
+						{m.common_cancel()}
 					</button>
 
 					{#if !showPreview}
@@ -238,7 +253,7 @@
 							onclick={handleTargetSelection}
 							class="btn-primary"
 						>
-							Next
+							{m.common_next()}
 						</button>
 					{:else}
 						<button
@@ -247,7 +262,9 @@
 							onclick={handleConsolidate}
 							class="btn-danger"
 						>
-							{loading ? 'Consolidating...' : 'Consolidate Hosts'}
+							{loading
+								? m.hosts_consolidateModal_consolidating()
+								: m.hosts_consolidateModal_consolidateHosts()}
 						</button>
 					{/if}
 				</div>

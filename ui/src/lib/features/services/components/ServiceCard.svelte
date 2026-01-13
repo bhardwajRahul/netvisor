@@ -12,6 +12,7 @@
 	import { matchConfidenceColor, matchConfidenceLabel } from '$lib/shared/types';
 	import { SvelteMap } from 'svelte/reactivity';
 	import TagPickerInline from '$lib/features/tags/components/TagPickerInline.svelte';
+	import * as m from '$lib/paraglide/messages';
 
 	// TanStack Query hooks
 	const subnetsQuery = useSubnetsQuery();
@@ -71,7 +72,7 @@
 				const portList = ports.map((p) => formatPort(p)).join(', ');
 				const label = iface
 					? `${iface.name ? iface.name + ': ' : ''} ${iface.ip_address} (${portList})`
-					: `Unbound (${portList})`;
+					: `${m.services_unbound()} (${portList})`;
 				return {
 					id: iface?.id ?? 'unbound',
 					label,
@@ -98,48 +99,48 @@
 	// Build card data
 	let cardData = $derived({
 		title: service.name,
-		subtitle: 'On host ' + host.name,
+		subtitle: m.services_onHost({ hostName: host.name }),
 		iconColor: serviceDefinitions.getColorHelper(service.service_definition).icon,
 		Icon: serviceDefinitions.getIconComponent(service.service_definition),
 		fields: [
 			{
-				label: 'Port Bindings',
+				label: m.services_portBindings(),
 				value: groupedPortBindings,
-				emptyText: 'No ports assigned'
+				emptyText: m.services_noPortsAssigned()
 			},
 			{
-				label: 'Interface Bindings',
+				label: m.services_interfaceBindings(),
 				value: ifaces.map((iface: Interface) => ({
 					id: iface.id,
 					label: formatInterface(iface, isContainerSubnetFn),
 					color: entities.getColorHelper('Interface').color
 				})),
-				emptyText: 'No interfaces assigned'
+				emptyText: m.services_noInterfacesAssigned()
 			},
 			{
-				label: 'Match Confidence',
+				label: m.services_matchConfidence(),
 				value: [
 					{
 						id: service.id,
 						label:
 							service.source.type == 'DiscoveryWithMatch'
 								? matchConfidenceLabel(service.source.details.confidence)
-								: 'N/A (Not a discovered service)',
+								: m.services_notDiscoveredService(),
 						color:
 							service.source.type == 'DiscoveryWithMatch'
 								? matchConfidenceColor(service.source.details.confidence)
 								: 'Gray'
 					}
 				],
-				emptyText: 'Confidence value unavailable'
+				emptyText: m.services_confidenceUnavailable()
 			},
-			{ label: 'Tags', snippet: tagsSnippet }
+			{ label: m.common_tags(), snippet: tagsSnippet }
 		],
 		actions: [
 			...(onDelete
 				? [
 						{
-							label: 'Delete',
+							label: m.common_delete(),
 							icon: Trash2,
 							class: 'btn-icon-danger',
 							onClick: () => onDelete(service)
@@ -147,7 +148,14 @@
 					]
 				: []),
 			...(onEdit
-				? [{ label: 'Edit', icon: Edit, class: 'btn-icon', onClick: () => onEdit(service) }]
+				? [
+						{
+							label: m.common_edit(),
+							icon: Edit,
+							class: 'btn-icon',
+							onClick: () => onEdit(service)
+						}
+					]
 				: [])
 		]
 	});

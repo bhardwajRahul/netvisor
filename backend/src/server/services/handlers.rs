@@ -187,7 +187,7 @@ async fn get_all_services(
     let network_ids = auth.network_ids();
     let organization_id = auth
         .organization_id()
-        .ok_or_else(|| ApiError::forbidden("Organization context required"))?;
+        .ok_or_else(ApiError::organization_required)?;
 
     let base_filter = StorableFilter::<Service>::new().network_ids(&network_ids);
     let filter = query.apply_to_filter(base_filter, &network_ids, organization_id);
@@ -290,11 +290,7 @@ pub async fn create_service(
         .await?
         && host.base.network_id != request.network_id()
     {
-        return Err(ApiError::bad_request(&format!(
-            "Host is on network {}, Service can't be on a different network ({}).",
-            host.base.network_id,
-            request.network_id()
-        )));
+        return Err(ApiError::entity_network_mismatch("service"));
     }
 
     // Convert request to Service entity
@@ -349,10 +345,7 @@ pub async fn update_service(
         .await?
         && host.base.network_id != service.base.network_id
     {
-        return Err(ApiError::bad_request(&format!(
-            "Host is on network {}, Service \"{}\" can't be on a different network ({}).",
-            host.base.network_id, service.base.name, service.base.network_id
-        )));
+        return Err(ApiError::entity_network_mismatch("service"));
     }
 
     // Delegate to generic handler (handles validation, auth checks, update)

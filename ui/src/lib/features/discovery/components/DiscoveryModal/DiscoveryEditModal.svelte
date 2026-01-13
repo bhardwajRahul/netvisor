@@ -15,6 +15,7 @@
 	import { pushError } from '$lib/shared/stores/feedback';
 	import type { Daemon } from '$lib/features/daemons/types/base';
 	import type { Host } from '$lib/features/hosts/types/base';
+	import * as m from '$lib/paraglide/messages';
 
 	interface Props {
 		discovery?: Discovery | null;
@@ -51,9 +52,9 @@
 	let title = $derived(
 		isEditing
 			? isHistoricalRun
-				? `View Discovery Run: ${discovery?.name}`
-				: `Edit Discovery: ${discovery?.name}`
-			: 'Create Scheduled Discovery'
+				? m.discovery_viewRun({ name: discovery?.name ?? '' })
+				: m.discovery_edit({ name: discovery?.name ?? '' })
+			: m.discovery_createScheduled()
 	);
 
 	let daemon = $derived(daemons.find((d) => d.id === formData.daemon_id) || null);
@@ -165,7 +166,9 @@
 		}
 	});
 
-	let saveLabel = $derived(isEditing ? 'Update Discovery' : 'Create Discovery');
+	let saveLabel = $derived(
+		isEditing ? m.discovery_updateDiscovery() : m.discovery_createDiscovery()
+	);
 	let showSave = $derived(!isHistoricalRun);
 
 	let colorHelper = entities.getColorHelper('Discovery');
@@ -193,7 +196,7 @@
 				{:else if daemon}
 					<DiscoveryTypeForm {form} bind:formData {readOnly} {daemonHostId} {daemon} />
 				{:else}
-					<InlineWarning body="No daemon selected; can't set up discovery" />
+					<InlineWarning body={m.discovery_noDaemonSelected()} />
 				{/if}
 
 				{#if isEditing}
@@ -212,7 +215,7 @@
 							onclick={handleDelete}
 							class="btn-danger"
 						>
-							{deleting ? 'Deleting...' : 'Delete'}
+							{deleting ? m.discovery_deleting() : m.common_delete()}
 						</button>
 					{/if}
 				</div>
@@ -223,11 +226,11 @@
 						onclick={onClose}
 						class="btn-secondary"
 					>
-						{isHistoricalRun ? 'Close' : 'Cancel'}
+						{isHistoricalRun ? m.common_close() : m.common_cancel()}
 					</button>
 					{#if showSave}
 						<button type="submit" disabled={loading || deleting} class="btn-primary">
-							{loading ? 'Saving...' : saveLabel}
+							{loading ? m.discovery_saving() : saveLabel}
 						</button>
 					{/if}
 				</div>

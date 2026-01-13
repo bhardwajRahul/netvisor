@@ -4,6 +4,7 @@
 	import InlineWarning from '$lib/shared/components/feedback/InlineWarning.svelte';
 	import InlineSuccess from '$lib/shared/components/feedback/InlineSuccess.svelte';
 	import type { UseCase } from '../../types/base';
+	import * as m from '$lib/paraglide/messages';
 
 	let {
 		useCase
@@ -25,10 +26,10 @@
 		{ id: 'openbsd', label: 'OpenBSD' }
 	];
 
-	const methodOptions: { id: InstallMethod; label: string }[] = [
-		{ id: 'binary', label: 'Binary / Executable' },
-		{ id: 'docker', label: 'Docker Compose' }
-	];
+	let methodOptions = $derived([
+		{ id: 'binary' as InstallMethod, label: m.onboarding_binaryExecutable() },
+		{ id: 'docker' as InstallMethod, label: m.onboarding_dockerCompose() }
+	]);
 
 	// Check if OS is unsupported (BSD variants)
 	let isUnsupportedOS = $derived(selectedOS === 'freebsd' || selectedOS === 'openbsd');
@@ -60,18 +61,18 @@
 
 	let warningBody = $derived(
 		selectedOS === 'macos'
-			? "Docker Compose deployment with network_mode: host is only fully supported on Linux. On macOS, you'll need to use the binary install method."
+			? m.onboarding_dockerMacWarning()
 			: selectedOS === 'windows'
-				? "Docker Compose deployment with network_mode: host is only fully supported on Linux. On Windows, you'll need to use the binary install method."
-				: 'Docker Compose deployment with network_mode: host is only fully supported on Linux.'
+				? m.onboarding_dockerWindowsWarning()
+				: m.onboarding_dockerLinuxWarning()
 	);
 
 	let incompatibleBody = $derived(
 		selectedOS === 'freebsd'
-			? "Scanopy's daemon currently doesn't support FreeBSD. We recommend running the daemon on a Linux host or VM on your network instead."
+			? m.onboarding_freebsdNotSupported()
 			: selectedOS === 'openbsd'
-				? "Scanopy's daemon currently doesn't support OpenBSD. We recommend running the daemon on a Linux host or VM on your network instead."
-				: 'This operating system is not currently supported.'
+				? m.onboarding_openbsdNotSupported()
+				: m.onboarding_osNotSupported()
 	);
 
 	function handleOsSelect(os: OS) {
@@ -100,9 +101,7 @@
 <div class="space-y-6">
 	<!-- OS Selection -->
 	<div class="space-y-3" role="group" aria-label="Operating system selection">
-		<span class="text-secondary block text-sm font-medium"
-			>What is your host's operating system?</span
-		>
+		<span class="text-secondary block text-sm font-medium">{m.onboarding_osQuestion()}</span>
 		<div class="flex gap-2">
 			{#each osOptions as option (option.id)}
 				<button
@@ -120,7 +119,7 @@
 	{#if selectedOS && !isUnsupportedOS}
 		<div class="space-y-3" role="group" aria-label="Install method selection">
 			<span class="text-secondary block text-sm font-medium"
-				>How will you install the network scanner?</span
+				>{m.onboarding_installMethodQuestion()}</span
 			>
 			<div class="flex gap-2">
 				{#each methodOptions as option (option.id)}
@@ -138,13 +137,10 @@
 
 	<!-- Compatibility Result -->
 	{#if compatibility === 'compatible'}
-		<InlineSuccess title="Great, you're all set!" body="Scanopy can be deployed on your host." />
+		<InlineSuccess title={m.onboarding_compatibleTitle()} body={m.onboarding_compatibleBody()} />
 	{:else if compatibility === 'warning'}
-		<InlineWarning
-			title="Docker Compose installation is only compatible with Linux hosts"
-			body={warningBody}
-		/>
+		<InlineWarning title={m.onboarding_dockerLinuxOnlyTitle()} body={warningBody} />
 	{:else if compatibility === 'incompatible'}
-		<InlineDanger title="Not currently supported" body={incompatibleBody} />
+		<InlineDanger title={m.onboarding_notSupportedTitle()} body={incompatibleBody} />
 	{/if}
 </div>

@@ -56,13 +56,11 @@ pub async fn get_user_by_id(
         .get_by_id(&id)
         .await
         .map_err(|e| ApiError::internal_error(&e.to_string()))?
-        .ok_or_else(|| ApiError::not_found(format!("User '{}' not found", id)))?;
+        .ok_or_else(|| ApiError::user_not_found(id))?;
 
     // Validate user is in the same organization
     if user.base.organization_id != auth_org_id {
-        return Err(ApiError::forbidden(
-            "You can only view users in your organization",
-        ));
+        return Err(ApiError::permission_denied());
     }
 
     // Hydrate network_ids from junction table
@@ -94,10 +92,8 @@ pub async fn get_all_users(
 ) -> ApiResult<Json<PaginatedApiResponse<User>>> {
     let organization_id = auth
         .organization_id()
-        .ok_or_else(|| ApiError::forbidden("Organization context required"))?;
-    let user_id = auth
-        .user_id()
-        .ok_or_else(|| ApiError::forbidden("User context required"))?;
+        .ok_or_else(ApiError::organization_required)?;
+    let user_id = auth.user_id().ok_or_else(ApiError::user_required)?;
 
     // Get user permissions from entity
     let permissions = match &auth.entity {
@@ -107,7 +103,7 @@ pub async fn get_all_users(
         | crate::server::auth::middleware::auth::AuthenticatedEntity::ApiKey {
             permissions, ..
         } => *permissions,
-        _ => return Err(ApiError::forbidden("User or API key required")),
+        _ => return Err(ApiError::user_required()),
     };
 
     let org_filter = StorableFilter::<User>::new().organization_id(&organization_id);
@@ -182,7 +178,7 @@ pub async fn delete_user(
 ) -> ApiResult<Json<ApiResponse<()>>> {
     let organization_id = auth
         .organization_id()
-        .ok_or_else(|| ApiError::forbidden("Organization context required"))?;
+        .ok_or_else(ApiError::organization_required)?;
 
     // Get user permissions from entity
     let permissions = match &auth.entity {
@@ -192,7 +188,7 @@ pub async fn delete_user(
         | crate::server::auth::middleware::auth::AuthenticatedEntity::ApiKey {
             permissions, ..
         } => *permissions,
-        _ => return Err(ApiError::forbidden("User or API key required")),
+        _ => return Err(ApiError::user_required()),
     };
 
     let user_to_be_deleted = state
@@ -258,16 +254,14 @@ pub async fn update_user(
         .get_by_id(&id)
         .await
         .map_err(|e| ApiError::internal_error(&e.to_string()))?
-        .ok_or_else(|| ApiError::not_found(format!("User '{}' not found", id)))?;
+        .ok_or_else(|| ApiError::user_not_found(id))?;
 
     if request.base.organization_id != existing.base.organization_id {
-        return Err(ApiError::forbidden("You cannot change your organization"));
+        return Err(ApiError::permission_denied());
     }
 
     if request.base.permissions != existing.base.permissions {
-        return Err(ApiError::forbidden(
-            "You cannot change your own permissions",
-        ));
+        return Err(ApiError::permission_denied());
     }
 
     // Preserve fields that shouldn't be changed via this endpoint
@@ -306,9 +300,7 @@ async fn admin_update_user(
     Path(id): Path<Uuid>,
     Json(mut request): Json<User>,
 ) -> ApiResult<Json<ApiResponse<User>>> {
-    let admin_user_id = auth
-        .user_id()
-        .ok_or_else(|| ApiError::forbidden("User context required"))?;
+    let admin_user_id = auth.user_id().ok_or_else(ApiError::user_required)?;
 
     // Get admin permissions from entity
     let admin_permissions = match &auth.entity {
@@ -318,7 +310,7 @@ async fn admin_update_user(
         | crate::server::auth::middleware::auth::AuthenticatedEntity::ApiKey {
             permissions, ..
         } => *permissions,
-        _ => return Err(ApiError::forbidden("User or API key required")),
+        _ => return Err(ApiError::user_required()),
     };
 
     let service = User::get_service(&state);
@@ -328,36 +320,28 @@ async fn admin_update_user(
         .get_by_id(&id)
         .await
         .map_err(|e| ApiError::internal_error(&e.to_string()))?
-        .ok_or_else(|| ApiError::not_found(format!("User '{}' not found", id)))?;
+        .ok_or_else(|| ApiError::user_not_found(id))?;
 
     // Cannot edit yourself through this endpoint
     if admin_user_id == id {
-        return Err(ApiError::forbidden(
-            "Use the regular update endpoint to edit your own user",
-        ));
+        return Err(ApiError::permission_denied());
     }
 
     // Can only edit users with lower permissions than yourself
     if existing.base.permissions >= admin_permissions {
-        return Err(ApiError::forbidden(
-            "You can only edit users with lower permissions than you",
-        ));
+        return Err(ApiError::permission_denied());
     }
 
     // Cannot promote user to same or higher level than yourself
     if admin_permissions != UserOrgPermissions::Owner
         && request.base.permissions >= admin_permissions
     {
-        return Err(ApiError::forbidden(
-            "You cannot promote a user to your permission level or higher",
-        ));
+        return Err(ApiError::permission_denied());
     }
 
     // Cannot change organization
     if request.base.organization_id != existing.base.organization_id {
-        return Err(ApiError::forbidden(
-            "You cannot change a user's organization",
-        ));
+        return Err(ApiError::permission_denied());
     }
 
     // Preserve fields that shouldn't be changed via this endpoint
@@ -408,7 +392,7 @@ pub async fn bulk_delete_users(
 
     let organization_id = auth
         .organization_id()
-        .ok_or_else(|| ApiError::forbidden("Organization context required"))?;
+        .ok_or_else(ApiError::organization_required)?;
 
     // Get user permissions from entity
     let permissions = match &auth.entity {
@@ -418,7 +402,7 @@ pub async fn bulk_delete_users(
         | crate::server::auth::middleware::auth::AuthenticatedEntity::ApiKey {
             permissions, ..
         } => *permissions,
-        _ => return Err(ApiError::forbidden("User or API key required")),
+        _ => return Err(ApiError::user_required()),
     };
 
     let user_filter = StorableFilter::<User>::new().entity_ids(&ids);

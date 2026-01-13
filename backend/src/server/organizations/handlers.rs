@@ -52,9 +52,7 @@ pub async fn get_organization(
         .get_by_id(&organization_id)
         .await
         .map_err(|e| ApiError::internal_error(&e.to_string()))?
-        .ok_or_else(|| {
-            ApiError::not_found(format!("Organization '{}' not found", organization_id))
-        })?;
+        .ok_or_else(|| ApiError::not_found_entity("Organization", organization_id))?;
 
     Ok(Json(ApiResponse::success(entity)))
 }
@@ -118,7 +116,7 @@ pub async fn reset(
 ) -> ApiResult<Json<ApiResponse<()>>> {
     let user_org_id = auth
         .organization_id()
-        .ok_or_else(|| ApiError::forbidden("Organization context required"))?;
+        .ok_or_else(ApiError::organization_required)?;
 
     // Verify organization exists
     let org = state
@@ -126,10 +124,10 @@ pub async fn reset(
         .organization_service
         .get_by_id(&id)
         .await?
-        .ok_or_else(|| ApiError::not_found("Organization not found".to_string()))?;
+        .ok_or_else(|| ApiError::not_found_entity("Organization", id))?;
 
     if org.id != user_org_id {
-        return Err(ApiError::forbidden("Cannot reset another organization"));
+        return Err(ApiError::permission_denied());
     }
 
     let entity: AuthenticatedEntity = auth.into_entity();
@@ -162,22 +160,18 @@ pub async fn populate_demo_data(
 
     let user_org_id = auth
         .organization_id()
-        .ok_or_else(|| ApiError::forbidden("Organization context required"))?;
-    let user_id = auth
-        .user_id()
-        .ok_or_else(|| ApiError::forbidden("User context required"))?;
+        .ok_or_else(ApiError::organization_required)?;
+    let user_id = auth.user_id().ok_or_else(ApiError::user_required)?;
 
     let org = state
         .services
         .organization_service
         .get_by_id(&id)
         .await?
-        .ok_or_else(|| ApiError::not_found("Organization not found".to_string()))?;
+        .ok_or_else(|| ApiError::not_found_entity("Organization", id))?;
 
     if org.id != user_org_id {
-        return Err(ApiError::forbidden(
-            "Cannot populate demo data for another organization",
-        ));
+        return Err(ApiError::permission_denied());
     }
 
     // Only available for demo organizations

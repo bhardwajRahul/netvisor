@@ -1,9 +1,16 @@
 import { sveltekit } from '@sveltejs/kit/vite';
+import { paraglideVitePlugin } from '@inlang/paraglide-js';
 import { defineConfig } from 'vite';
 import pkg from './package.json';
 
 export default defineConfig({
-	plugins: [sveltekit()],
+	plugins: [
+		sveltekit(),
+		paraglideVitePlugin({
+			project: './project.inlang',
+			outdir: './src/lib/paraglide'
+		})
+	],
 	define: {
 		__APP_VERSION__: JSON.stringify(pkg.version)
 	},

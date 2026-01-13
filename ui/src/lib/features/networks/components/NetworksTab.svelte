@@ -12,6 +12,7 @@
 	import { useCurrentUserQuery } from '$lib/features/auth/queries';
 	import { permissions } from '$lib/shared/stores/metadata';
 	import type { TabProps } from '$lib/shared/types';
+	import * as m from '$lib/paraglide/messages';
 
 	let { isReadOnly = false }: TabProps = $props();
 	import {
@@ -63,11 +64,7 @@
 	);
 
 	function handleDeleteNetwork(network: Network) {
-		if (
-			confirm(
-				`Are you sure you want to delete network "${network.name}"? All hosts, groups, and subnets will be deleted along with it.`
-			)
-		) {
+		if (confirm(m.networks_confirmDelete({ name: network.name }))) {
 			deleteNetworkMutation.mutate(network.id);
 		}
 	}
@@ -83,7 +80,7 @@
 	}
 
 	async function handleBulkDelete(ids: string[]) {
-		if (confirm(`Are you sure you want to delete ${ids.length} Networks?`)) {
+		if (confirm(m.networks_confirmBulkDelete({ count: ids.length }))) {
 			await bulkDeleteNetworksMutation.mutateAsync(ids);
 		}
 	}
@@ -121,13 +118,13 @@
 	const networkFields: FieldConfig<Network>[] = [
 		{
 			key: 'name',
-			label: 'Name',
+			label: m.networks_fields_name(),
 			type: 'string',
 			searchable: true
 		},
 		{
 			key: 'tags',
-			label: 'Tags',
+			label: m.networks_fields_tags(),
 			type: 'array',
 			searchable: true,
 			filterable: true,
@@ -143,11 +140,11 @@
 
 <div class="space-y-6">
 	<!-- Header -->
-	<TabHeader title="Networks">
+	<TabHeader title={m.networks_title()}>
 		<svelte:fragment slot="actions">
 			{#if canManageNetworks}
 				<button class="btn-primary flex items-center" onclick={handleCreateNetwork}
-					><Plus class="h-5 w-5" />Create Network</button
+					><Plus class="h-5 w-5" />{m.networks_createNetwork()}</button
 				>
 			{/if}
 		</svelte:fragment>
@@ -159,10 +156,10 @@
 	{:else if networksData.length === 0}
 		<!-- Empty state -->
 		<EmptyState
-			title="No networks configured yet"
+			title={m.networks_noNetworksYet()}
 			subtitle=""
 			onClick={handleCreateNetwork}
-			cta="Create your first network"
+			cta={m.networks_createFirstNetwork()}
 		/>
 	{:else}
 		<DataControls

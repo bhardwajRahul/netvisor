@@ -7,6 +7,7 @@
 	import { Mail } from 'lucide-svelte';
 	import TextInput from '$lib/shared/components/forms/input/TextInput.svelte';
 	import ModalHeaderIcon from '$lib/shared/components/layout/ModalHeaderIcon.svelte';
+	import * as m from '$lib/paraglide/messages';
 
 	interface Props {
 		isOpen?: boolean;
@@ -47,7 +48,7 @@
 
 <GenericModal
 	{isOpen}
-	title={emailSent ? 'Check Your Email' : 'Reset Password'}
+	title={emailSent ? m.auth_checkYourEmail() : m.auth_resetPasswordTitle()}
 	size="md"
 	{onClose}
 	onOpen={handleOpen}
@@ -70,14 +71,11 @@
 	>
 		<div class="flex-1 overflow-auto p-6">
 			{#if emailSent}
-				<InlineInfo
-					title="Reset link sent"
-					body="If an account exists with that email, you'll receive a password reset link shortly. Please check your inbox and spam folder."
-				/>
+				<InlineInfo title={m.auth_resetLinkSentTitle()} body={m.auth_resetLinkSentBody()} />
 			{:else}
 				<div class="space-y-6">
 					<p class="text-sm text-gray-400">
-						Enter your email address and we'll send you a link to reset your password.
+						{m.auth_resetPasswordInstructions()}
 					</p>
 
 					<form.Field
@@ -87,7 +85,13 @@
 						}}
 					>
 						{#snippet children(field)}
-							<TextInput label="Email" id="email" {field} placeholder="Enter your email" required />
+							<TextInput
+								label={m.common_email()}
+								id="email"
+								{field}
+								placeholder={m.auth_enterYourEmail()}
+								required
+							/>
 						{/snippet}
 					</form.Field>
 				</div>
@@ -99,11 +103,11 @@
 			<div class="flex w-full flex-col gap-4">
 				{#if emailSent}
 					<button type="button" onclick={onBackToLogin} class="btn-primary w-full">
-						Back to Login
+						{m.auth_backToLogin()}
 					</button>
 				{:else}
 					<button type="submit" disabled={requesting} class="btn-primary w-full">
-						{requesting ? 'Sending...' : 'Send Reset Link'}
+						{requesting ? m.common_sending() : m.auth_sendResetLink()}
 					</button>
 
 					<div class="text-center">
@@ -112,7 +116,7 @@
 							onclick={onBackToLogin}
 							class="text-sm font-medium text-blue-400 hover:text-blue-300"
 						>
-							Back to Login
+							{m.auth_backToLogin()}
 						</button>
 					</div>
 				{/if}

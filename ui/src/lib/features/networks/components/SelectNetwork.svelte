@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { useNetworksQuery } from '$lib/features/networks/queries';
+	import * as m from '$lib/paraglide/messages';
 
 	/**
 	 * SelectNetwork supports two usage patterns:
@@ -24,7 +25,7 @@
 		onNetworkChange
 	}: Props = $props();
 
-	let helpText = $derived(disabled && disabledReason ? disabledReason : 'Select network');
+	let helpText = $derived(disabled && disabledReason ? disabledReason : m.networks_selectNetwork());
 
 	const networksQuery = useNetworksQuery();
 	let networksData = $derived(networksQuery.data ?? []);
@@ -54,7 +55,9 @@
 </script>
 
 <div>
-	<label for="network" class="text-secondary mb-2 block text-sm font-medium"> Network</label>
+	<label for="network" class="text-secondary mb-2 block text-sm font-medium">
+		{m.networks_networkLabel()}</label
+	>
 	<select
 		id="network"
 		{disabled}

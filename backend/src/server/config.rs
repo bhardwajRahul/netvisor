@@ -8,15 +8,15 @@ use axum::Json;
 use axum::extract::State;
 use axum::http::header::CACHE_CONTROL;
 use axum::response::IntoResponse;
-use tower_sessions_sqlx_store::PostgresStore;
 use clap::Parser;
 use figment::{
     Figment,
     providers::{Env, Format, Serialized, Toml},
 };
 use serde::{Deserialize, Serialize};
-use tower_sessions::SessionManagerLayer;
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
+use tower_sessions::SessionManagerLayer;
+use tower_sessions_sqlx_store::PostgresStore;
 use utoipa::ToSchema;
 
 use crate::server::shared::storage::factory::StorageFactory;
@@ -334,7 +334,7 @@ impl ServerConfig {
 pub struct AppState {
     pub config: ServerConfig,
     pub services: ServiceFactory,
-    pub session_store: SessionManagerLayer<PostgresStore>
+    pub session_store: SessionManagerLayer<PostgresStore>,
 }
 
 impl AppState {
@@ -346,7 +346,7 @@ impl AppState {
         Ok(Arc::new(Self {
             config,
             services,
-            session_store: storage.sessions
+            session_store: storage.sessions,
         }))
     }
 }

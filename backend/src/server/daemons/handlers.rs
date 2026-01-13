@@ -188,7 +188,7 @@ async fn get_all(
     let network_ids = auth.network_ids();
     let organization_id = auth
         .organization_id()
-        .ok_or_else(|| ApiError::forbidden("Organization context required"))?;
+        .ok_or_else(ApiError::organization_required)?;
 
     // Apply network filter and pagination
     let base_filter = StorableFilter::<Daemon>::new().network_ids(&network_ids);
@@ -261,11 +261,11 @@ async fn get_by_id(
         .daemon_service
         .get_by_id(&id)
         .await?
-        .ok_or_else(|| ApiError::not_found(format!("Daemon '{}' not found", id)))?;
+        .ok_or_else(|| ApiError::daemon_not_found(id))?;
 
     // Validate user has access to this daemon's network
     if !network_ids.contains(&daemon.base.network_id) {
-        return Err(ApiError::forbidden("You don't have access to this daemon"));
+        return Err(ApiError::daemon_access_denied(id));
     }
 
     // Hydrate tags from junction table
@@ -593,13 +593,11 @@ async fn daemon_startup(
         .get_by_id(&id)
         .await
         .map_err(|e| ApiError::internal_error(&format!("Failed to get daemon: {}", e)))?
-        .ok_or_else(|| ApiError::not_found(format!("Daemon '{}' not found", id)))?;
+        .ok_or_else(|| ApiError::daemon_not_found(id))?;
 
     // Validate daemon belongs to the authenticated daemon's network
     if daemon.base.network_id != daemon_network_id {
-        return Err(ApiError::forbidden(
-            "Cannot access daemon on a different network",
-        ));
+        return Err(ApiError::daemon_access_denied(id));
     }
 
     daemon.base.version = Some(request.daemon_version.clone());
@@ -659,13 +657,11 @@ async fn update_capabilities(
         .get_by_id(&id)
         .await
         .map_err(|e| ApiError::internal_error(&format!("Failed to get daemon: {}", e)))?
-        .ok_or_else(|| ApiError::not_found(format!("Daemon '{}' not found", &id)))?;
+        .ok_or_else(|| ApiError::daemon_not_found(id))?;
 
     // Validate daemon belongs to the authenticated daemon's network
     if daemon.base.network_id != daemon_network_id {
-        return Err(ApiError::forbidden(
-            "Cannot access daemon on a different network",
-        ));
+        return Err(ApiError::daemon_access_denied(id));
     }
 
     daemon.base.capabilities = updated_capabilities;
@@ -704,13 +700,11 @@ async fn receive_heartbeat(
         .get_by_id(&id)
         .await
         .map_err(|e| ApiError::internal_error(&format!("Failed to get daemon: {}", e)))?
-        .ok_or_else(|| ApiError::not_found(format!("Daemon '{}' not found", &id)))?;
+        .ok_or_else(|| ApiError::daemon_not_found(id))?;
 
     // Validate daemon belongs to the authenticated daemon's network
     if daemon.base.network_id != daemon_network_id {
-        return Err(ApiError::forbidden(
-            "Cannot access daemon on a different network",
-        ));
+        return Err(ApiError::daemon_access_denied(id));
     }
 
     daemon.base.last_seen = Utc::now();
@@ -756,13 +750,11 @@ async fn receive_work_request(
         .get_by_id(&daemon_id)
         .await
         .map_err(|e| ApiError::internal_error(&format!("Failed to get daemon: {}", e)))?
-        .ok_or_else(|| ApiError::not_found(format!("Daemon '{}' not found", &daemon_id)))?;
+        .ok_or_else(|| ApiError::daemon_not_found(daemon_id))?;
 
     // Validate daemon belongs to the authenticated daemon's network
     if daemon.base.network_id != daemon_network_id {
-        return Err(ApiError::forbidden(
-            "Cannot access daemon on a different network",
-        ));
+        return Err(ApiError::daemon_access_denied(daemon_id));
     }
 
     daemon.base.last_seen = Utc::now();

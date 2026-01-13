@@ -11,6 +11,7 @@
 	import type { Subnet } from '$lib/features/subnets/types/base';
 	import TextInput from '$lib/shared/components/forms/input/TextInput.svelte';
 	import type { AnyFieldApi } from '@tanstack/svelte-form';
+	import * as m from '$lib/paraglide/messages';
 
 	interface Props {
 		iface: Interface;
@@ -45,7 +46,7 @@
 {#if subnet}
 	<div class="space-y-6">
 		<ConfigHeader
-			title={'Interface with subnet "' + (subnet?.name ? subnet.name : subnet.cidr) + '"'}
+			title={m.hosts_interfaces_subnetInterface({ name: subnet?.name ? subnet.name : subnet.cidr })}
 			subtitle={subnet?.description}
 		/>
 
@@ -60,7 +61,7 @@
 				}}
 			>
 				{#snippet children(field: AnyFieldApi)}
-					<TextInput label="Name" id="interface_{iface.id}" placeholder="en0" {field} />
+					<TextInput label={m.common_name()} id="interface_{iface.id}" placeholder="en0" {field} />
 				{/snippet}
 			</form.Field>
 
@@ -78,11 +79,11 @@
 			>
 				{#snippet children(field: AnyFieldApi)}
 					<TextInput
-						label="IP Address"
+						label={m.hosts_interfaces_ipAddress()}
 						id="interface_ip_{iface.id}"
 						placeholder="192.168.1.100"
 						required={true}
-						helpText="Must be within {subnet.cidr}"
+						helpText={m.hosts_interfaces_ipMustBeWithin({ cidr: subnet.cidr })}
 						{field}
 					/>
 				{/snippet}
@@ -99,10 +100,10 @@
 			>
 				{#snippet children(field: AnyFieldApi)}
 					<TextInput
-						label="MAC Address"
+						label={m.hosts_interfaces_macAddress()}
 						id="interface_mac_{iface.id}"
 						placeholder="00:1B:44:11:3A:B7"
-						helpText="Format: XX:XX:XX:XX:XX:XX or XX-XX-XX-XX-XX-XX"
+						helpText={m.hosts_interfaces_macFormat()}
 						{field}
 					/>
 				{/snippet}

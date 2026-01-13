@@ -2,6 +2,7 @@ use crate::server::auth::middleware::permissions::{Authorized, Owner};
 use crate::server::billing::types::api::CreateCheckoutRequest;
 use crate::server::billing::types::base::BillingPlan;
 use crate::server::config::AppState;
+use crate::server::shared::types::ErrorCode;
 use crate::server::shared::types::api::{ApiError, ApiResult};
 use crate::server::shared::types::api::{ApiErrorResponse, ApiResponse, EmptyApiResponse};
 use axum::Json;
@@ -42,9 +43,7 @@ async fn get_billing_plans(
             Json(ApiResponse::success(plans)),
         ))
     } else {
-        Err(ApiError::bad_request(
-            "Billing is not enabled on this server",
-        ))
+        Err(ApiError::billing_setup_incomplete())
     }
 }
 
@@ -67,7 +66,7 @@ async fn create_checkout_session(
 ) -> ApiResult<Json<ApiResponse<String>>> {
     let organization_id = auth
         .organization_id()
-        .ok_or_else(|| ApiError::forbidden("Organization context required"))?;
+        .ok_or_else(ApiError::organization_required)?;
 
     // Build success/cancel URLs
     let success_url = format!("{}?session_id={{CHECKOUT_SESSION_ID}}", request.url);
@@ -77,7 +76,9 @@ async fn create_checkout_session(
         let current_plans = billing_service.get_plans();
 
         if !current_plans.contains(&request.plan) {
-            return Err(ApiError::bad_request("Requested plan is not a valid plan."));
+            return Err(ApiError::validation(ErrorCode::ValidationInvalidFormat {
+                field: "plan".to_string(),
+            }));
         }
 
         let session = billing_service
@@ -92,9 +93,7 @@ async fn create_checkout_session(
 
         Ok(Json(ApiResponse::success(session.url.unwrap())))
     } else {
-        Err(ApiError::bad_request(
-            "Billing is not enabled on this server",
-        ))
+        Err(ApiError::billing_setup_incomplete())
     }
 }
 
@@ -118,15 +117,17 @@ async fn handle_webhook(
     let signature = headers
         .get("stripe-signature")
         .and_then(|v| v.to_str().ok())
-        .ok_or_else(|| ApiError::bad_request("Missing stripe-signature header"))?;
+        .ok_or_else(|| {
+            ApiError::validation(ErrorCode::ValidationRequired {
+                field: "stripe-signature".to_string(),
+            })
+        })?;
 
     if let Some(billing_service) = &state.services.billing_service {
         billing_service.handle_webhook(&body, signature).await?;
         Ok(Json(ApiResponse::success(())))
     } else {
-        Err(ApiError::bad_request(
-            "Billing is not enabled on this server",
-        ))
+        Err(ApiError::billing_setup_incomplete())
     }
 }
 
@@ -149,7 +150,7 @@ async fn create_portal_session(
 ) -> ApiResult<Json<ApiResponse<String>>> {
     let organization_id = auth
         .organization_id()
-        .ok_or_else(|| ApiError::forbidden("Organization context required"))?;
+        .ok_or_else(ApiError::organization_required)?;
 
     if let Some(billing_service) = &state.services.billing_service {
         let session_url = billing_service
@@ -158,6 +159,6 @@ async fn create_portal_session(
 
         Ok(Json(ApiResponse::success(session_url)))
     } else {
-        Err(ApiError::bad_request("Billing not enabled"))
+        Err(ApiError::billing_setup_incomplete())
     }
 }

@@ -5,6 +5,7 @@
 	import TextInput from '$lib/shared/components/forms/input/TextInput.svelte';
 	import SelectInput from '$lib/shared/components/forms/input/SelectInput.svelte';
 	import type { AnyFieldApi } from '@tanstack/svelte-form';
+	import * as m from '$lib/paraglide/messages';
 
 	interface Props {
 		port: Port;
@@ -36,7 +37,7 @@
 </script>
 
 <div class="space-y-6">
-	<ConfigHeader title="Port Configuration" subtitle="Configure the port number and protocol" />
+	<ConfigHeader title={m.hosts_ports_configTitle()} subtitle={m.hosts_ports_configSubtitle()} />
 
 	<div class="space-y-4">
 		<form.Field
@@ -53,12 +54,12 @@
 		>
 			{#snippet children(field: AnyFieldApi)}
 				<TextInput
-					label="Port Number"
+					label={m.hosts_ports_portNumber()}
 					id="port_{port.id}_number"
 					placeholder="80"
 					type="number"
 					required={true}
-					helpText="Port must be between 1 and 65535"
+					helpText={m.hosts_ports_portNumberHelp()}
 					{field}
 				/>
 			{/snippet}
@@ -72,7 +73,7 @@
 		>
 			{#snippet children(field: AnyFieldApi)}
 				<SelectInput
-					label="Protocol"
+					label={m.hosts_ports_protocol()}
 					id="port_{port.id}_protocol"
 					options={protocolOptions}
 					{field}

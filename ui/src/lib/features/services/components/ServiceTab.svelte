@@ -20,6 +20,7 @@
 	import { useNetworksQuery } from '$lib/features/networks/queries';
 	import type { TabProps } from '$lib/shared/types';
 	import type { components } from '$lib/api/schema';
+	import * as m from '$lib/paraglide/messages';
 
 	type ServiceOrderField = components['schemas']['ServiceOrderField'];
 	type OrderDirection = components['schemas']['OrderDirection'];
@@ -125,7 +126,7 @@
 	);
 
 	function handleDeleteService(service: Service) {
-		if (confirm(`Are you sure you want to delete "${service.name}"?`)) {
+		if (confirm(m.services_confirmDelete({ serviceName: service.name }))) {
 			deleteServiceMutation.mutate(service.id);
 		}
 	}
@@ -141,7 +142,7 @@
 	}
 
 	async function handleBulkDelete(ids: string[]) {
-		if (confirm(`Are you sure you want to delete ${ids.length} Services?`)) {
+		if (confirm(m.services_confirmBulkDelete({ count: ids.length }))) {
 			await bulkDeleteServicesMutation.mutateAsync(ids);
 		}
 	}
@@ -215,14 +216,14 @@
 
 <div class="space-y-6">
 	<!-- Header -->
-	<TabHeader title="Services" subtitle="To create a service, add it to a host in the Hosts tab." />
+	<TabHeader title={m.services_title()} subtitle={m.services_subtitle()} />
 
 	<!-- Loading state (only on initial load) -->
 	{#if isInitialLoading}
 		<Loading />
 	{:else if servicesData.length === 0 && !servicesPagination}
 		<!-- Empty state -->
-		<EmptyState title="No services configured yet" subtitle="" />
+		<EmptyState title={m.services_noServicesYet()} subtitle="" />
 	{:else}
 		<DataControls
 			items={servicesData}

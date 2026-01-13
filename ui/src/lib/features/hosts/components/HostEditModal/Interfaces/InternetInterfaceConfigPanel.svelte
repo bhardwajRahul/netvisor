@@ -8,6 +8,7 @@
 	} from '$lib/shared/components/forms/validators';
 	import ConfigHeader from '$lib/shared/components/forms/config/ConfigHeader.svelte';
 	import type { Subnet } from '$lib/features/subnets/types/base';
+	import * as m from '$lib/paraglide/messages';
 
 	interface Props {
 		iface: Interface;
@@ -71,14 +72,14 @@
 {#if subnet}
 	<div class="space-y-6">
 		<ConfigHeader
-			title={'Subnet ' + (subnet?.name ? subnet.name : subnet.cidr)}
+			title={m.hosts_interfaces_subnet({ name: subnet?.name ? subnet.name : subnet.cidr })}
 			subtitle={subnet?.description}
 		/>
 
 		<div class="space-y-4">
 			<div>
 				<label for="interface_{iface.id}" class="text-secondary mb-1 block text-sm font-medium">
-					Name <span class="text-red-400">*</span>
+					{m.common_name()} <span class="text-red-400">*</span>
 				</label>
 				<input
 					type="text"
@@ -95,7 +96,7 @@
 
 			<div>
 				<label for="interface_ip_{iface.id}" class="text-secondary mb-1 block text-sm font-medium">
-					IP Address <span class="text-red-400">*</span>
+					{m.hosts_interfaces_ipAddress()} <span class="text-red-400">*</span>
 				</label>
 				<input
 					type="text"
@@ -108,7 +109,9 @@
 				{#if ipError}
 					<p class="mt-1 text-xs text-red-400">{ipError}</p>
 				{:else}
-					<p class="text-tertiary mt-1 text-xs">Must be within {subnet.cidr}</p>
+					<p class="text-tertiary mt-1 text-xs">
+						{m.hosts_interfaces_ipMustBeWithin({ cidr: subnet.cidr })}
+					</p>
 				{/if}
 			</div>
 		</div>

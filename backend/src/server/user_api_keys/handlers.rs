@@ -131,11 +131,11 @@ pub async fn create_user_api_key(
 
     // Validate permissions don't exceed user's permissions
     UserApiKeyService::validate_permissions(api_key.base.permissions, user_permissions)
-        .map_err(|e| ApiError::forbidden(&e))?;
+        .map_err(|_| ApiError::permission_denied())?;
 
     // Validate network access is a subset of user's access
     UserApiKeyService::validate_network_access(&api_key.base.network_ids, &user_network_ids)
-        .map_err(|e| ApiError::forbidden(&e))?;
+        .map_err(|_| ApiError::permission_denied())?;
 
     // Set user_id and organization_id from authenticated user
     api_key.base.user_id = user_id;
@@ -197,20 +197,20 @@ pub async fn update_user_api_key(
     let existing = service
         .get_by_id(&id)
         .await?
-        .ok_or_else(|| ApiError::not_found(format!("API key '{}' not found", id)))?;
+        .ok_or_else(|| ApiError::api_key_not_found(id))?;
 
     // Verify the user owns this key
     if existing.base.user_id != user_id {
-        return Err(ApiError::forbidden("You don't own this API key"));
+        return Err(ApiError::entity_access_denied("API key", id));
     }
 
     // Validate permissions don't exceed user's permissions
     UserApiKeyService::validate_permissions(request.base.permissions, user_permissions)
-        .map_err(|e| ApiError::forbidden(&e))?;
+        .map_err(|_| ApiError::permission_denied())?;
 
     // Validate network access is a subset of user's access
     UserApiKeyService::validate_network_access(&request.base.network_ids, &user_network_ids)
-        .map_err(|e| ApiError::forbidden(&e))?;
+        .map_err(|_| ApiError::permission_denied())?;
 
     // Preserve immutable fields
     request.preserve_immutable_fields(&existing);
@@ -304,7 +304,7 @@ pub async fn get_by_id(
         .map(|k| k.base.user_id != user_id)
         .unwrap_or(true)
     {
-        return Err(ApiError::not_found(format!("API key '{}' not found", id)));
+        return Err(ApiError::api_key_not_found(id));
     }
     Ok(result)
 }
@@ -338,7 +338,7 @@ pub async fn delete(
         .map(|k| k.base.user_id != user_id)
         .unwrap_or(true)
     {
-        return Err(ApiError::not_found(format!("API key '{}' not found", id)));
+        return Err(ApiError::api_key_not_found(id));
     }
 
     delete_handler::<UserApiKey>(state, auth.into_permission::<Member>(), Path(id)).await

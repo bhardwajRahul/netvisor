@@ -89,7 +89,7 @@ where
     let network_ids = auth.network_ids();
     let organization_id = auth
         .organization_id()
-        .ok_or_else(|| ApiError::forbidden("Organization context required"))?;
+        .ok_or_else(ApiError::organization_required)?;
     let user_id = auth.user_id();
 
     validate_create_access(
@@ -131,7 +131,7 @@ where
     let network_ids = auth.network_ids();
     let organization_id = auth
         .organization_id()
-        .ok_or_else(|| ApiError::forbidden("Organization context required"))?;
+        .ok_or_else(ApiError::organization_required)?;
     let user_id = auth.user_id();
 
     let base_filter = if T::is_network_keyed() {
@@ -188,7 +188,7 @@ where
     let network_ids = auth.network_ids();
     let organization_id = auth
         .organization_id()
-        .ok_or_else(|| ApiError::forbidden("Organization context required"))?;
+        .ok_or_else(ApiError::organization_required)?;
     let user_id = auth.user_id();
 
     let service = T::get_service(&state);
@@ -212,7 +212,7 @@ where
                 user_id = ?user_id,
                 "Entity not found"
             );
-            ApiError::not_found(format!("{} '{}' not found", T::entity_name(), id))
+            ApiError::not_found_entity(T::entity_name_singular(), id)
         })?;
 
     validate_read_access(
@@ -238,7 +238,7 @@ where
     let network_ids = auth.network_ids();
     let organization_id = auth
         .organization_id()
-        .ok_or_else(|| ApiError::forbidden("Organization context required"))?;
+        .ok_or_else(ApiError::organization_required)?;
     let user_id = auth.user_id();
 
     let service = T::get_service(&state);
@@ -265,7 +265,7 @@ where
                 user_id = ?user_id,
                 "Entity not found for update"
             );
-            ApiError::not_found(format!("{} '{}' not found", T::entity_name(), id))
+            ApiError::not_found_entity(T::entity_name_singular(), id)
         })?;
 
     // Preserve immutable fields from existing entity.
@@ -321,7 +321,7 @@ where
     let network_ids = auth.network_ids();
     let organization_id = auth
         .organization_id()
-        .ok_or_else(|| ApiError::forbidden("Organization context required"))?;
+        .ok_or_else(ApiError::organization_required)?;
 
     let service = T::get_service(&state);
 
@@ -344,7 +344,7 @@ where
                 entity_id = %id,
                 "Entity not found for deletion"
             );
-            ApiError::not_found(format!("{} '{}' not found", T::entity_name(), id))
+            ApiError::not_found_entity(T::entity_name_singular(), id)
         })?;
 
     validate_delete_access(
@@ -381,13 +381,13 @@ where
     EntityEnum: From<T>,
 {
     if ids.is_empty() {
-        return Err(ApiError::bad_request("No IDs provided for bulk delete"));
+        return Err(ApiError::bulk_empty());
     }
 
     let network_ids = auth.network_ids();
     let organization_id = auth
         .organization_id()
-        .ok_or_else(|| ApiError::forbidden("Organization context required"))?;
+        .ok_or_else(ApiError::organization_required)?;
     let user_id = auth.user_id();
 
     let service = T::get_service(&state);

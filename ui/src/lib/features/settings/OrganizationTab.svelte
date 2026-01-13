@@ -14,6 +14,7 @@
 	import { createForm } from '@tanstack/svelte-form';
 	import { required, max } from '$lib/shared/components/forms/validators';
 	import type { AnyFieldApi } from '@tanstack/svelte-form';
+	import * as m from '$lib/paraglide/messages';
 
 	let {
 		subView = $bindable<'main' | 'edit'>('main'),
@@ -64,10 +65,10 @@
 
 		try {
 			await updateOrganizationMutation.mutateAsync({ id: org.id, name });
-			pushSuccess('Organization updated successfully');
+			pushSuccess(m.settings_org_updated());
 			subView = 'main';
 		} catch {
-			pushError('Failed to update organization');
+			pushError(m.settings_org_updateFailed());
 		}
 	}
 
@@ -85,43 +86,35 @@
 	async function handleReset() {
 		if (!org) return;
 
-		if (
-			!confirm(
-				'Are you sure you want to reset all organization data? This will delete all entities and users from your organization. This action cannot be undone.'
-			)
-		) {
+		if (!confirm(m.settings_org_resetConfirm())) {
 			return;
 		}
 
 		try {
 			await resetOrganizationDataMutation.mutateAsync(org.id);
-			pushSuccess('Organization data has been reset');
+			pushSuccess(m.settings_org_resetSuccess());
 		} catch {
-			pushError('Failed to reset organization data');
+			pushError(m.settings_org_resetFailed());
 		}
 	}
 
 	async function handlePopulateDemo() {
 		if (!org) return;
 
-		if (
-			!confirm(
-				'Are you sure you want to populate demo data? This will add sample networks, hosts, and services to your organization.'
-			)
-		) {
+		if (!confirm(m.settings_org_populateConfirm())) {
 			return;
 		}
 
 		try {
 			await populateDemoDataMutation.mutateAsync(org.id);
-			pushSuccess('Demo data has been populated');
+			pushSuccess(m.settings_org_populateSuccess());
 		} catch {
-			pushError('Failed to populate demo data');
+			pushError(m.settings_org_populateFailed());
 		}
 	}
 
 	let showSave = $derived(subView === 'edit');
-	let cancelLabel = $derived(subView === 'main' ? 'Close' : 'Back');
+	let cancelLabel = $derived(subView === 'main' ? m.common_close() : m.common_back());
 </script>
 
 <div class="flex min-h-0 flex-1 flex-col">
@@ -130,23 +123,23 @@
 			<div class="flex-1 overflow-auto p-6">
 				<div class="space-y-6">
 					<!-- Organization Info -->
-					<InfoCard title="Organization Information">
-						<InfoRow label="Name">{org.name}</InfoRow>
+					<InfoCard title={m.settings_org_info()}>
+						<InfoRow label={m.common_name()}>{org.name}</InfoRow>
 						{#if org.plan}
-							<InfoRow label="Plan">{org.plan.type}</InfoRow>
+							<InfoRow label={m.settings_org_plan()}>{org.plan.type}</InfoRow>
 						{/if}
-						<InfoRow label="Created">
+						<InfoRow label={m.settings_org_created()}>
 							{formatTimestamp(org.created_at)}
 						</InfoRow>
-						<InfoRow label="ID" mono={true}>{org.id}</InfoRow>
+						<InfoRow label={m.settings_org_id()} mono={true}>{org.id}</InfoRow>
 					</InfoCard>
 
 					<!-- Actions -->
 					<InfoCard>
 						<div class="flex items-center justify-between">
 							<div>
-								<p class="text-primary text-sm font-medium">Organization Name</p>
-								<p class="text-secondary text-xs">Update your organization's display name</p>
+								<p class="text-primary text-sm font-medium">{m.settings_org_nameLabel()}</p>
+								<p class="text-secondary text-xs">{m.settings_org_updateName()}</p>
 							</div>
 							<button
 								onclick={() => {
@@ -155,7 +148,7 @@
 								}}
 								class="btn-primary"
 							>
-								Edit
+								{m.common_edit()}
 							</button>
 						</div>
 					</InfoCard>
@@ -165,14 +158,13 @@
 						<InfoCard>
 							<div class="flex items-center justify-between">
 								<div>
-									<p class="text-primary text-sm font-medium">Reset Organization Data</p>
+									<p class="text-primary text-sm font-medium">{m.settings_org_resetData()}</p>
 									<p class="text-secondary text-xs">
-										Delete everything except for any organization owner user account. This cannot be
-										undone.
+										{m.settings_org_resetDataHelp()}
 									</p>
 								</div>
 								<button onclick={handleReset} disabled={resetting} class="btn-danger">
-									{resetting ? 'Resetting...' : 'Reset'}
+									{resetting ? m.common_loading() : m.common_reset()}
 								</button>
 							</div>
 						</InfoCard>
@@ -182,13 +174,13 @@
 							<InfoCard>
 								<div class="flex items-center justify-between">
 									<div>
-										<p class="text-primary text-sm font-medium">Populate Demo Data</p>
+										<p class="text-primary text-sm font-medium">{m.settings_org_populateDemo()}</p>
 										<p class="text-secondary text-xs">
-											Fill the organization with sample data for demonstration purposes.
+											{m.settings_org_populateDemoHelp()}
 										</p>
 									</div>
 									<button onclick={handlePopulateDemo} disabled={populating} class="btn-primary">
-										{populating ? 'Populating...' : 'Populate'}
+										{populating ? m.settings_org_populating() : m.settings_org_populate()}
 									</button>
 								</div>
 							</InfoCard>
@@ -199,7 +191,7 @@
 		{:else if subView === 'edit'}
 			<div class="flex-1 overflow-auto p-6">
 				<div class="space-y-6">
-					<p class="text-secondary text-sm">Update your organization's display name</p>
+					<p class="text-secondary text-sm">{m.settings_org_updateName()}</p>
 					<form.Field
 						name="name"
 						validators={{
@@ -208,9 +200,9 @@
 					>
 						{#snippet children(field: AnyFieldApi)}
 							<TextInput
-								label="Organization Name"
+								label={m.settings_org_nameLabel()}
 								id="name"
-								placeholder="Enter organization name"
+								placeholder={m.settings_org_namePlaceholder()}
 								required={true}
 								{field}
 							/>
@@ -222,8 +214,8 @@
 	{:else}
 		<div class="flex-1 overflow-auto p-6">
 			<div class="text-secondary py-8 text-center">
-				<p>Unable to load organization information</p>
-				<p class="text-tertiary mt-2 text-sm">Please try again later</p>
+				<p>{m.settings_org_unableToLoad()}</p>
+				<p class="text-tertiary mt-2 text-sm">{m.settings_org_tryAgainLater()}</p>
 			</div>
 		</div>
 	{/if}
@@ -241,7 +233,7 @@
 					disabled={saving}
 					class="btn-primary"
 				>
-					{saving ? 'Saving...' : 'Save Changes'}
+					{saving ? m.settings_account_saving() : m.settings_account_saveChanges()}
 				</button>
 			{/if}
 		</div>

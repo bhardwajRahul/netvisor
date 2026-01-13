@@ -4,11 +4,12 @@
 	import type { EntityDisplayComponent } from './types';
 	import { tick, onMount } from 'svelte';
 	import { SvelteMap } from 'svelte/reactivity';
+	import * as m from '$lib/paraglide/messages';
 
 	export let label: string = '';
 	export let selectedValue: string | null = '';
 	export let options: V[] = [];
-	export let placeholder: string = 'Select an option...';
+	export let placeholder: string = m.common_selectOption();
 	export let required: boolean = false;
 	export let disabled: boolean = false;
 	export let error: string | null = null;
@@ -219,7 +220,7 @@
 				<ListSelectItem {context} item={selectedItem} {displayComponent} />
 			{:else}
 				<span class="text-secondary"
-					>{options.length == 0 ? 'No options available' : placeholder}</span
+					>{options.length == 0 ? m.common_noOptionsAvailable() : placeholder}</span
 				>
 			{/if}
 		</div>
@@ -253,7 +254,7 @@
 					bind:this={inputElement}
 					bind:value={filterText}
 					type="text"
-					placeholder="Type to filter options..."
+					placeholder={m.common_typeToFilter()}
 					class="text-primary w-full rounded border border-gray-600 bg-gray-800 px-2 py-1 text-sm placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
 					on:keydown={handleInputKeydown}
 					on:click|stopPropagation
@@ -265,7 +266,7 @@
 		<div class="max-h-80 overflow-y-auto">
 			{#if groupedOptions.length === 0 || groupedOptions.every((group) => group.options.length === 0)}
 				<div class="text-tertiary px-3 py-4 text-center text-sm">
-					No options match "{filterText}"
+					{m.common_noOptionsMatch({ filterText })}
 				</div>
 			{:else}
 				{#each groupedOptions as group, groupIndex (group.category ?? '__ungrouped__')}

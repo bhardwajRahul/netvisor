@@ -8,6 +8,7 @@
 	import { useGroupsQuery } from '$lib/features/groups/queries';
 	import { useCurrentUserQuery } from '$lib/features/auth/queries';
 	import TagPickerInline from '$lib/features/tags/components/TagPickerInline.svelte';
+	import * as m from '$lib/paraglide/messages';
 
 	interface Props {
 		network: Network;
@@ -55,7 +56,7 @@
 		Icon: entities.getIconComponent('Network'),
 		fields: [
 			{
-				label: 'Daemons',
+				label: m.networks_daemons(),
 				value: networkDaemons.map((d) => {
 					return {
 						id: d.id,
@@ -65,7 +66,7 @@
 				})
 			},
 			{
-				label: 'Subnets',
+				label: m.networks_subnets(),
 				value: networkSubnets.map((s) => {
 					return {
 						id: s.id,
@@ -75,7 +76,7 @@
 				})
 			},
 			{
-				label: 'Groups',
+				label: m.networks_groups(),
 				value: networkGroups.map((g) => {
 					return {
 						id: g.id,
@@ -84,20 +85,20 @@
 					};
 				})
 			},
-			{ label: 'Tags', snippet: tagsSnippet }
+			{ label: m.common_tags(), snippet: tagsSnippet }
 		],
 
 		actions: [
 			...(canManageNetworks
 				? [
 						{
-							label: 'Delete',
+							label: m.common_delete(),
 							icon: Trash2,
 							class: 'btn-icon-danger',
 							onClick: () => onDelete(network)
 						},
 						{
-							label: 'Edit',
+							label: m.common_edit(),
 							icon: Edit,
 							onClick: () => onEdit(network)
 						}
@@ -109,7 +110,7 @@
 
 {#snippet tagsSnippet()}
 	<div class="flex items-center gap-2">
-		<span class="text-secondary text-sm">Tags:</span>
+		<span class="text-secondary text-sm">{m.common_tags()}</span>
 		<TagPickerInline selectedTagIds={network.tags} entityId={network.id} entityType="Network" />
 	</div>
 {/snippet}

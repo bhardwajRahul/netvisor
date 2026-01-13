@@ -7,6 +7,7 @@
 	import { useConfigQuery } from '$lib/shared/stores/config-query';
 	import InlineInfo from '$lib/shared/components/feedback/InlineInfo.svelte';
 	import TextInput from '$lib/shared/components/forms/input/TextInput.svelte';
+	import * as m from '$lib/paraglide/messages';
 
 	interface Props {
 		orgName?: string | null;
@@ -76,7 +77,7 @@
 
 <GenericModal
 	{isOpen}
-	title="Sign in to Scanopy"
+	title={m.auth_signInToScanopy()}
 	size="md"
 	{onClose}
 	onOpen={handleOpen}
@@ -86,7 +87,7 @@
 	centerTitle={true}
 >
 	{#snippet headerIcon()}
-		<img src="/logos/scanopy-logo.png" alt="Scanopy Logo" class="h-8 w-8" />
+		<img src="/logos/scanopy-logo.png" alt={m.auth_scanopyLogo()} class="h-8 w-8" />
 	{/snippet}
 
 	<form
@@ -100,17 +101,14 @@
 		<div class="flex-1 overflow-auto p-6">
 			{#if demoMode}
 				<div class="mb-6">
-					<InlineInfo
-						title="Demo Mode"
-						body="You're about to log in to a demo account. Use the credentials below to explore Scanopy. Note that some actions are disabled in demo mode."
-					/>
+					<InlineInfo title={m.auth_demoModeTitle()} body={m.auth_demoModeBody()} />
 					<div class="mt-3 rounded-md bg-gray-800 p-3 font-mono text-sm">
 						<div class="text-secondary">
-							<span class="text-gray-400">Email:</span>
+							<span class="text-gray-400">{m.auth_demoEmail()}</span>
 							<span class="text-primary ml-2">demo@scanopy.net</span>
 						</div>
 						<div class="text-secondary mt-1">
-							<span class="text-gray-400">Password:</span>
+							<span class="text-gray-400">{m.auth_demoPassword()}</span>
 							<span class="text-primary ml-2">password123</span>
 						</div>
 					</div>
@@ -118,8 +116,8 @@
 			{:else if orgName && invitedBy}
 				<div class="mb-6">
 					<InlineInfo
-						title="You're invited!"
-						body={`You have been invited to join ${orgName} by ${invitedBy}. Please sign in or register to continue.`}
+						title={m.auth_youreInvitedTitle()}
+						body={m.auth_youreInvitedBody({ orgName, invitedBy })}
 					/>
 				</div>
 			{/if}
@@ -133,7 +131,13 @@
 						}}
 					>
 						{#snippet children(field)}
-							<TextInput label="Email" id="email" {field} placeholder="Enter your email" required />
+							<TextInput
+								label={m.common_email()}
+								id="email"
+								{field}
+								placeholder={m.auth_enterYourEmail()}
+								required
+							/>
 						{/snippet}
 					</form.Field>
 
@@ -145,11 +149,11 @@
 					>
 						{#snippet children(field)}
 							<TextInput
-								label="Password"
+								label={m.common_password()}
 								id="password"
 								type="password"
 								{field}
-								placeholder="Enter your password"
+								placeholder={m.auth_enterYourPassword()}
 								required
 							/>
 						{/snippet}
@@ -163,7 +167,7 @@
 			<div class="flex w-full flex-col gap-4">
 				<!-- Sign In Button -->
 				<button type="submit" disabled={signingIn} class="btn-primary w-full">
-					{signingIn ? 'Signing in...' : 'Sign In with Email'}
+					{signingIn ? m.auth_signingIn() : m.auth_signInWithEmail()}
 				</button>
 
 				<!-- OIDC Providers -->
@@ -173,7 +177,7 @@
 							<div class="w-full border-t border-gray-600"></div>
 						</div>
 						<div class="relative flex justify-center text-sm">
-							<span class="bg-gray-900 px-2 text-gray-400">or</span>
+							<span class="bg-gray-900 px-2 text-gray-400">{m.common_or()}</span>
 						</div>
 					</div>
 
@@ -187,7 +191,7 @@
 								{#if provider.logo}
 									<img src={provider.logo} alt={provider.name} class="h-5 w-5" />
 								{/if}
-								Sign in with {provider.name}
+								{m.auth_signInWith({ provider: provider.name })}
 							</button>
 						{/each}
 					</div>
@@ -197,13 +201,13 @@
 				{#if onSwitchToRegister && !disableRegistration && !demoMode}
 					<div class="text-center">
 						<p class="text-sm text-gray-400">
-							Don't have an account?
+							{m.auth_dontHaveAccount()}
 							<button
 								type="button"
 								onclick={onSwitchToRegister}
 								class="font-medium text-blue-400 hover:text-blue-300"
 							>
-								Register here
+								{m.auth_registerHere()}
 							</button>
 						</p>
 					</div>
@@ -212,13 +216,13 @@
 				{#if enablePasswordReset && !demoMode}
 					<div class="text-center">
 						<p class="text-sm text-gray-400">
-							Forgot your password?
+							{m.auth_forgotYourPassword()}
 							<button
 								type="button"
 								onclick={onSwitchToForgot}
 								class="font-medium text-blue-400 hover:text-blue-300"
 							>
-								Reset password
+								{m.auth_resetPassword()}
 							</button>
 						</p>
 					</div>

@@ -150,6 +150,12 @@ pub type EmptyApiResponse = ApiResponse<()>;
 pub struct ApiErrorResponse {
     pub success: bool,
     pub error: Option<String>,
+    /// Machine-readable error code for i18n translation
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
+    /// Parameters for interpolating into the translated error message
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub params: Option<serde_json::Map<String, serde_json::Value>>,
 }
 
 impl<T> ApiResponse<T> {
@@ -193,15 +199,60 @@ impl<T> PaginatedApiResponse<T> {
     }
 }
 
+use super::error_codes::ErrorCode;
+
 #[derive(Debug, Clone)]
 pub struct ApiError {
     pub status: StatusCode,
     pub message: String,
+    /// Optional error code for i18n translation on the frontend
+    pub error_code: Option<ErrorCode>,
 }
 
 impl ApiError {
     pub fn new(status: StatusCode, message: String) -> Self {
-        Self { status, message }
+        Self {
+            status,
+            message,
+            error_code: None,
+        }
+    }
+
+    /// Create an error with a translatable error code.
+    /// The message is auto-generated from the error code for non-i18n clients.
+    pub fn coded(status: StatusCode, code: ErrorCode) -> Self {
+        Self {
+            status,
+            message: code.interpolated_message(),
+            error_code: Some(code),
+        }
+    }
+
+    /// Validation error (400) with a translatable error code
+    pub fn validation(code: ErrorCode) -> Self {
+        Self::coded(StatusCode::BAD_REQUEST, code)
+    }
+
+    /// Not found error (404) for an entity
+    pub fn not_found_entity(entity: &str, id: impl ToString) -> Self {
+        Self::coded(
+            StatusCode::NOT_FOUND,
+            ErrorCode::EntityNotFound {
+                entity: entity.to_string(),
+                id: id.to_string(),
+            },
+        )
+    }
+
+    /// Entity already exists (400)
+    pub fn entity_exists(entity: &str, name: impl ToString) -> Self {
+        Self::coded(
+            StatusCode::BAD_REQUEST,
+            ErrorCode::EntityAlreadyExists {
+                entity: entity.to_string(),
+                name: name.to_string(),
+            },
+        )
     }
 
     pub fn conflict(message: &str) -> Self {
@@ -210,6 +261,16 @@ impl ApiError {
 
     pub fn forbidden(message: &str) -> Self {
         Self::new(StatusCode::FORBIDDEN, message.to_string())
+    }
+
+    /// Forbidden error (403) with organization required code
+    pub fn organization_required() -> Self {
+        Self::coded(StatusCode::FORBIDDEN, ErrorCode::AuthOrganizationRequired)
+    }
+
+    /// Forbidden error (403) with permission denied code
+    pub fn permission_denied() -> Self {
+        Self::coded(StatusCode::FORBIDDEN, ErrorCode::AuthPermissionDenied)
     }
 
     pub fn internal_error(message: &str) -> Self {
@@ -228,6 +289,16 @@ impl ApiError {
         Self::new(StatusCode::UNAUTHORIZED, message.to_string())
     }
 
+    /// Unauthorized error (401) with invalid credentials code
+    pub fn invalid_credentials() -> Self {
+        Self::coded(StatusCode::UNAUTHORIZED, ErrorCode::AuthInvalidCredentials)
+    }
+
+    /// Unauthorized error (401) with session expired code
+    pub fn session_expired() -> Self {
+        Self::coded(StatusCode::UNAUTHORIZED, ErrorCode::AuthSessionExpired)
+    }
+
     pub fn bad_gateway(message: String) -> Self {
         Self::new(StatusCode::BAD_GATEWAY, message.to_string())
     }
@@ -239,11 +310,339 @@ impl ApiError {
     pub fn payment_required(message: &str) -> Self {
         Self::new(StatusCode::PAYMENT_REQUIRED, message.to_string())
     }
+
+    /// Payment required (402) with billing code
+    pub fn billing_required() -> Self {
+        Self::coded(
+            StatusCode::PAYMENT_REQUIRED,
+            ErrorCode::BillingPaymentRequired,
+        )
+    }
+
+    /// Bad request (400) - billing setup is incomplete
+    pub fn billing_setup_incomplete() -> Self {
+        Self::coded(StatusCode::BAD_REQUEST, ErrorCode::BillingSetupIncomplete)
+    }
+
+    // === Auth errors ===
+
+    /// Forbidden (403) - user context required
+    pub fn user_required() -> Self {
+        Self::coded(StatusCode::FORBIDDEN, ErrorCode::AuthUserContextRequired)
+    }
+
+    /// Forbidden (403) - API key required
+    pub fn api_key_required() -> Self {
+        Self::coded(StatusCode::FORBIDDEN, ErrorCode::AuthApiKeyRequired)
+    }
+
+    /// Forbidden (403) - daemon context required
+    pub fn daemon_required() -> Self {
+        Self::coded(StatusCode::FORBIDDEN, ErrorCode::AuthDaemonRequired)
+    }
+
+    /// Forbidden (403) - password required
+    pub fn password_required() -> Self {
+        Self::coded(StatusCode::FORBIDDEN, ErrorCode::AuthPasswordRequired)
+    }
+
+    /// Bad request (400) - password invalid
+    pub fn password_invalid() -> Self {
+        Self::coded(StatusCode::BAD_REQUEST, ErrorCode::AuthPasswordInvalid)
+    }
+
+    /// Unauthorized (401) - not authenticated
+    pub fn not_authenticated() -> Self {
+        Self::coded(StatusCode::UNAUTHORIZED, ErrorCode::AuthNotAuthenticated)
+    }
+
+    // === Generic entity operations ===
+
+    /// Forbidden (403) - access denied to entity
+    pub fn entity_access_denied(entity: &str, id: impl ToString) -> Self {
+        Self::coded(
+            StatusCode::FORBIDDEN,
+            ErrorCode::EntityAccessDenied {
+                entity: entity.to_string(),
+                id: id.to_string(),
+            },
+        )
+    }
+
+    /// Forbidden (403) - entity has expired
+    pub fn entity_expired(entity: &str) -> Self {
+        Self::coded(
+            StatusCode::FORBIDDEN,
+            ErrorCode::EntityExpired {
+                entity: entity.to_string(),
+            },
+        )
+    }
+
+    /// Forbidden (403) - entity is disabled
+    pub fn entity_disabled(entity: &str) -> Self {
+        Self::coded(
+            StatusCode::FORBIDDEN,
+            ErrorCode::EntityDisabled {
+                entity: entity.to_string(),
+            },
+        )
+    }
+
+    /// Bad request (400) - at least one entity required
+    pub fn entity_required(entity: &str) -> Self {
+        Self::coded(
+            StatusCode::BAD_REQUEST,
+            ErrorCode::EntityRequired {
+                entity: entity.to_string(),
+            },
+        )
+    }
+
+    /// Bad request (400) - entity is on a different network
+    pub fn entity_network_mismatch(entity: &str) -> Self {
+        Self::coded(
+            StatusCode::BAD_REQUEST,
+            ErrorCode::EntityNetworkMismatch {
+                entity: entity.to_string(),
+            },
+        )
+    }
+
+    /// Forbidden (403) - entity cannot be deleted
+    pub fn entity_delete_forbidden(entity: &str, reason: Option<&str>) -> Self {
+        Self::coded(
+            StatusCode::FORBIDDEN,
+            ErrorCode::EntityDeleteForbidden {
+                entity: entity.to_string(),
+                reason: reason.map(|r| r.to_string()),
+            },
+        )
+    }
+
+    /// Forbidden (403) - entity cannot be updated
+    pub fn entity_update_forbidden(entity: &str) -> Self {
+        Self::coded(
+            StatusCode::FORBIDDEN,
+            ErrorCode::EntityUpdateForbidden {
+                entity: entity.to_string(),
+            },
+        )
+    }
+
+    // === Validation errors ===
+
+    /// Bad request (400) - field cannot be empty
+    pub fn field_empty(field: &str) -> Self {
+        Self::coded(
+            StatusCode::BAD_REQUEST,
+            ErrorCode::ValidationEmpty {
+                field: field.to_string(),
+            },
+        )
+    }
+
+    /// Bad request (400) - no IDs provided for bulk operation
+    pub fn bulk_empty() -> Self {
+        Self::coded(StatusCode::BAD_REQUEST, ErrorCode::ValidationBulkEmpty)
+    }
+
+    // === Interface errors ===
+
+    /// Bad request (400) - IP address is not within subnet range
+    pub fn interface_ip_out_of_range(ip: &str, subnet: &str) -> Self {
+        Self::coded(
+            StatusCode::BAD_REQUEST,
+            ErrorCode::InterfaceIpOutOfRange {
+                ip: ip.to_string(),
+                subnet: subnet.to_string(),
+            },
+        )
+    }
+
+    // === Share errors ===
+
+    /// Forbidden (403) - password required for share
+    pub fn share_password_required() -> Self {
+        Self::coded(StatusCode::FORBIDDEN, ErrorCode::SharePasswordRequired)
+    }
+
+    /// Forbidden (403) - incorrect share password
+    pub fn share_password_incorrect() -> Self {
+        Self::coded(StatusCode::FORBIDDEN, ErrorCode::SharePasswordIncorrect)
+    }
+
+    /// Forbidden (403) - share has expired
+    pub fn share_expired() -> Self {
+        Self::entity_expired("share")
+    }
+
+    /// Forbidden (403) - share is disabled
+    pub fn share_disabled() -> Self {
+        Self::entity_disabled("share")
+    }
+
+    /// Not found (404) - share not found
+    pub fn share_not_found(id: impl ToString) -> Self {
+        Self::not_found_entity("Share", id)
+    }
+
+    // === Invite errors ===
+
+    /// Forbidden (403) - invite already accepted
+    pub fn invite_already_accepted() -> Self {
+        Self::coded(StatusCode::FORBIDDEN, ErrorCode::InviteAlreadyAccepted)
+    }
+
+    /// Forbidden (403) - invite email mismatch
+    pub fn invite_email_mismatch() -> Self {
+        Self::coded(StatusCode::FORBIDDEN, ErrorCode::InviteEmailMismatch)
+    }
+
+    /// Forbidden (403) - invite has expired
+    pub fn invite_expired() -> Self {
+        Self::entity_expired("invite")
+    }
+
+    /// Not found (404) - invite not found
+    pub fn invite_not_found(id: impl ToString) -> Self {
+        Self::not_found_entity("Invite", id)
+    }
+
+    // === Other entity convenience methods ===
+
+    /// Not found (404) - host not found
+    pub fn host_not_found(id: impl ToString) -> Self {
+        Self::not_found_entity("Host", id)
+    }
+
+    /// Not found (404) - network not found
+    pub fn network_not_found(id: impl ToString) -> Self {
+        Self::not_found_entity("Network", id)
+    }
+
+    /// Not found (404) - daemon not found
+    pub fn daemon_not_found(id: impl ToString) -> Self {
+        Self::not_found_entity("Daemon", id)
+    }
+
+    /// Not found (404) - user not found
+    pub fn user_not_found(id: impl ToString) -> Self {
+        Self::not_found_entity("User", id)
+    }
+
+    /// Not found (404) - discovery not found
+    pub fn discovery_not_found(id: impl ToString) -> Self {
+        Self::not_found_entity("Discovery", id)
+    }
+
+    /// Not found (404) - subnet not found
+    pub fn subnet_not_found(id: impl ToString) -> Self {
+        Self::not_found_entity("Subnet", id)
+    }
+
+    /// Not found (404) - interface not found
+    pub fn interface_not_found(id: impl ToString) -> Self {
+        Self::not_found_entity("Interface", id)
+    }
+
+    /// Not found (404) - service not found
+    pub fn service_not_found(id: impl ToString) -> Self {
+        Self::not_found_entity("Service", id)
+    }
+
+    /// Not found (404) - API key not found
+    pub fn api_key_not_found(id: impl ToString) -> Self {
+        Self::not_found_entity("API key", id)
+    }
+
+    /// Not found (404) - organization not found
+    pub fn organization_not_found(id: impl ToString) -> Self {
+        Self::not_found_entity("Organization", id)
+    }
+
+    /// Forbidden (403) - access denied to network
+    pub fn network_access_denied(id: impl ToString) -> Self {
+        Self::entity_access_denied("network", id)
+    }
+
+    /// Forbidden (403) - access denied to daemon
+    pub fn daemon_access_denied(id: impl ToString) -> Self {
+        Self::entity_access_denied("daemon", id)
+    }
+
+    /// Forbidden (403) - access denied to organization
+    pub fn organization_access_denied(id: impl ToString) -> Self {
+        Self::entity_access_denied("organization", id)
+    }
+
+    /// Bad request (400) - at least one network required
+    pub fn network_required() -> Self {
+        Self::entity_required("network")
+    }
+
+    /// Forbidden (403) - API key has expired
+    pub fn api_key_expired() -> Self {
+        Self::entity_expired("API key")
+    }
+
+    /// Forbidden (403) - API key is disabled
+    pub fn api_key_disabled() -> Self {
+        Self::entity_disabled("API key")
+    }
+
+    /// Forbidden (429) - rate limit exceeded
+    pub fn rate_limit_exceeded() -> Self {
+        Self::coded(StatusCode::TOO_MANY_REQUESTS, ErrorCode::RateLimitExceeded)
+    }
+
+    // === Discovery errors ===
+
+    /// Bad request (400) - historical discovery is read-only
+    pub fn discovery_historical_read_only() -> Self {
+        Self::coded(
+            StatusCode::BAD_REQUEST,
+            ErrorCode::DiscoveryHistoricalReadOnly,
+        )
+    }
+
+    /// Bad request (400) - subnet is on a different network than the discovery
+    pub fn discovery_subnet_network_mismatch(subnet: &str) -> Self {
+        Self::coded(
+            StatusCode::BAD_REQUEST,
+            ErrorCode::DiscoverySubnetNetworkMismatch {
+                subnet: subnet.to_string(),
+            },
+        )
+    }
+
+    // === Daemon errors ===
+
+    /// Forbidden (403) - daemon cannot send updates for a different network
+    pub fn daemon_network_mismatch() -> Self {
+        Self::coded(StatusCode::FORBIDDEN, ErrorCode::DaemonNetworkMismatch)
+    }
+
+    /// Forbidden (403) - daemon cannot send updates for a different daemon
+    pub fn daemon_identity_mismatch() -> Self {
+        Self::coded(StatusCode::FORBIDDEN, ErrorCode::DaemonIdentityMismatch)
+    }
 }
 
 impl axum::response::IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        let response = ApiResponse::<()>::error(self.message);
+        let (code, params) = if let Some(ref error_code) = self.error_code {
+            (Some(error_code.code().to_string()), error_code.params())
+        } else {
+            (None, None)
+        };
+
+        let response = ApiErrorResponse {
+            success: false,
+            error: Some(self.message),
+            code,
+            params,
+        };
         (self.status, Json(response)).into_response()
     }
 }

@@ -20,6 +20,7 @@
 	import { useConfigQuery } from '$lib/shared/stores/config-query';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
 	import InfoRow from '$lib/shared/components/data/InfoRow.svelte';
+	import * as m from '$lib/paraglide/messages';
 
 	let {
 		subView = $bindable<'main' | 'credentials'>('main'),
@@ -64,7 +65,7 @@
 				}
 
 				if (Object.keys(updateRequest).length === 0) {
-					pushError('No changes to save');
+					pushError(m.settings_account_noChanges());
 					return;
 				}
 
@@ -74,7 +75,7 @@
 
 				if (data?.success && data.data) {
 					queryClient.setQueryData<User>(queryKeys.auth.currentUser(), data.data);
-					pushSuccess('Credentials updated successfully');
+					pushSuccess(m.settings_account_credentialsUpdated());
 					subView = 'main';
 				} else {
 					pushError(data?.error || 'Failed to update credentials');
@@ -109,9 +110,9 @@
 
 		if (data?.success && data.data) {
 			queryClient.setQueryData<User>(queryKeys.auth.currentUser(), data.data);
-			pushSuccess('OIDC account unlinked successfully');
+			pushSuccess(m.settings_account_oidcUnlinked());
 		} else {
-			pushError(data?.error || 'Failed to unlink OIDC account');
+			pushError(data?.error || m.settings_account_failedToUnlink());
 		}
 	}
 
@@ -140,7 +141,7 @@
 
 	let hasLinkedOidc = $derived(!!user?.oidc_provider);
 	let showSave = $derived(subView === 'credentials');
-	let cancelLabel = $derived(subView === 'main' ? 'Close' : 'Back');
+	let cancelLabel = $derived(subView === 'main' ? m.common_close() : m.common_back());
 </script>
 
 <form
@@ -156,16 +157,20 @@
 			{#if user}
 				<div class="space-y-6">
 					<!-- User Info -->
-					<InfoCard title="User Information">
-						<InfoRow label="Organization">{organization?.name}</InfoRow>
-						<InfoRow label="Email">{user.email}</InfoRow>
-						<InfoRow label="Permissions" mono={true}>{user.permissions}</InfoRow>
-						<InfoRow label="User ID" mono={true}>{user.id}</InfoRow>
+					<InfoCard title={m.settings_account_userInfo()}>
+						<InfoRow label={m.settings_account_organization()}>{organization?.name}</InfoRow>
+						<InfoRow label={m.common_email()}>{user.email}</InfoRow>
+						<InfoRow label={m.settings_account_permissions()} mono={true}
+							>{user.permissions}</InfoRow
+						>
+						<InfoRow label={m.settings_account_userId()} mono={true}>{user.id}</InfoRow>
 					</InfoCard>
 
 					<!-- Authentication Methods -->
 					<div>
-						<h3 class="text-primary mb-3 text-sm font-semibold">Authentication Methods</h3>
+						<h3 class="text-primary mb-3 text-sm font-semibold">
+							{m.settings_account_authMethods()}
+						</h3>
 						<div class="space-y-3">
 							<!-- Email & Password -->
 							<InfoCard variant="compact">
@@ -173,8 +178,12 @@
 									<div class="flex items-center gap-4">
 										<Key class="text-secondary h-5 w-5 flex-shrink-0" />
 										<div>
-											<p class="text-primary text-sm font-medium">Email & Password</p>
-											<p class="text-secondary text-xs">Update email and password</p>
+											<p class="text-primary text-sm font-medium">
+												{m.settings_account_emailPassword()}
+											</p>
+											<p class="text-secondary text-xs">
+												{m.settings_account_updateEmailPassword()}
+											</p>
 										</div>
 									</div>
 									<button
@@ -185,7 +194,7 @@
 										}}
 										class="btn-primary"
 									>
-										Update
+										{m.settings_account_update()}
 									</button>
 								</div>
 							</InfoCard>
@@ -194,8 +203,7 @@
 							{#if hasOidcProviders}
 								<div class="space-y-3">
 									<p class="text-secondary text-xs">
-										Link your account with an identity provider for faster sign-in. You can only
-										link one provider at a time.
+										{m.settings_account_oidcLinkHelp()}
 									</p>
 
 									{#each oidcProviders as provider (provider.slug)}
@@ -213,14 +221,18 @@
 														<p class="text-primary text-sm font-medium">{provider.name}</p>
 														{#if isLinked}
 															<p class="text-secondary text-xs">
-																Linked on {new Date(user.oidc_linked_at || '').toLocaleDateString()}
+																{m.settings_account_linkedOn({
+																	date: new Date(user.oidc_linked_at || '').toLocaleDateString()
+																})}
 															</p>
 														{:else if isDisabled}
 															<p class="text-secondary text-xs">
-																Unlink {linkedProvider?.name} first to link this provider
+																{m.settings_account_unlinkFirst({
+																	provider: linkedProvider?.name || ''
+																})}
 															</p>
 														{:else}
-															<p class="text-secondary text-xs">Not linked</p>
+															<p class="text-secondary text-xs">{m.settings_account_notLinked()}</p>
 														{/if}
 													</div>
 												</div>
@@ -230,7 +242,7 @@
 														onclick={() => unlinkOidcAccount(provider.slug)}
 														class="btn-danger"
 													>
-														Unlink
+														{m.settings_account_unlink()}
 													</button>
 												{:else if !hasLinkedOidc}
 													<button
@@ -241,11 +253,13 @@
 															isDisabled}
 														class={isDisabled ? 'btn-disabled' : 'btn-primary'}
 													>
-														{linkingProviderSlug == provider.slug ? 'Redirecting...' : 'Link'}
+														{linkingProviderSlug == provider.slug
+															? m.settings_account_redirecting()
+															: m.settings_account_link()}
 													</button>
 												{:else}
 													<button type="button" disabled={isDisabled} class="btn-primary">
-														Link
+														{m.settings_account_link()}
 													</button>
 												{/if}
 											</div>
@@ -261,18 +275,20 @@
 						<div class="flex items-center justify-between">
 							<div class="flex items-center gap-4">
 								<LogOut class="text-secondary h-5 w-5" />
-								<span class="text-primary text-sm">Sign out of your account</span>
+								<span class="text-primary text-sm">{m.settings_account_signOut()}</span>
 							</div>
-							<button type="button" onclick={handleLogout} class="btn-secondary"> Logout </button>
+							<button type="button" onclick={handleLogout} class="btn-secondary">
+								{m.settings_account_logout()}
+							</button>
 						</div>
 					</InfoCard>
 				</div>
 			{:else}
-				<div class="text-secondary py-8 text-center">Loading user information...</div>
+				<div class="text-secondary py-8 text-center">{m.settings_account_loadingUser()}</div>
 			{/if}
 		{:else if subView === 'credentials'}
 			<div class="space-y-2">
-				<p class="text-secondary mb-2 text-sm">Update your email address and/or password</p>
+				<p class="text-secondary mb-2 text-sm">{m.settings_account_updateCredentials()}</p>
 				<div class="space-y-6">
 					<form.Field
 						name="email"
@@ -281,7 +297,12 @@
 						}}
 					>
 						{#snippet children(field)}
-							<TextInput label="Email" id="email" {field} placeholder="Enter email" />
+							<TextInput
+								label={m.common_email()}
+								id="email"
+								{field}
+								placeholder={m.settings_account_enterEmail()}
+							/>
 						{/snippet}
 					</form.Field>
 
@@ -318,7 +339,7 @@
 			</button>
 			{#if showSave}
 				<button type="submit" disabled={savingCredentials} class="btn-primary">
-					{savingCredentials ? 'Saving...' : 'Save Changes'}
+					{savingCredentials ? m.settings_account_saving() : m.settings_account_saveChanges()}
 				</button>
 			{/if}
 		</div>

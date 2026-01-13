@@ -7,6 +7,7 @@
 	import InfoCard from '$lib/shared/components/data/InfoCard.svelte';
 	import { useUsersQuery } from '$lib/features/users/queries';
 	import { useNetworksQuery } from '$lib/features/networks/queries';
+	import * as m from '$lib/paraglide/messages';
 
 	let {
 		isOpen = false,
@@ -90,7 +91,7 @@
 				<InfoCard>
 					<svelte:fragment slot="default">
 						<div class="mb-3 flex items-center justify-between">
-							<h3 class="text-primary text-sm font-semibold">Current Plan</h3>
+							<h3 class="text-primary text-sm font-semibold">{m.settings_billing_currentPlan()}</h3>
 							<div class="flex items-center gap-2">
 								{#if planActive}
 									<CheckCircle class="h-4 w-4 text-green-400" />
@@ -113,7 +114,7 @@
 										</p>
 										{#if org.plan.trial_days > 0 && org.plan_status === 'trialing'}
 											<p class="text-secondary mt-1 text-xs">
-												Includes {org.plan.trial_days}-day free trial
+												{m.settings_billing_trialDays({ days: org.plan.trial_days })}
 											</p>
 										{/if}
 									</div>
@@ -121,7 +122,9 @@
 										<p class="text-primary text-2xl font-bold">
 											${org.plan.base_cents / 100}
 										</p>
-										<p class="text-secondary text-xs">per {org.plan.rate}</p>
+										<p class="text-secondary text-xs">
+											{m.settings_billing_per({ rate: org.plan.rate })}
+										</p>
 									</div>
 								</div>
 
@@ -130,14 +133,19 @@
 									<div class="border-t border-gray-700 pt-3">
 										<div class="flex items-baseline justify-between">
 											<div>
-												<p class="text-primary font-medium">Seats</p>
+												<p class="text-primary font-medium">{m.settings_billing_seats()}</p>
 												<p class="text-secondary text-sm">
-													{seatCount} total ({org.plan.included_seats} included
+													{m.settings_billing_seatsUsage({
+														count: seatCount,
+														included: org.plan.included_seats ?? 0
+													})}
 													{#if extraSeats > 0}
-														+ {extraSeats} extra @ ${org.plan.seat_cents
-															? org.plan.seat_cents / 100
-															: 0} each
-													{/if})
+														{m.settings_billing_extraSeats({
+															extra: extraSeats,
+															price: org.plan.seat_cents ? org.plan.seat_cents / 100 : 0
+														})}
+													{:else})
+													{/if}
 												</p>
 											</div>
 											{#if extraSeatsCents > 0}
@@ -145,10 +153,12 @@
 													<p class="text-primary text-xl font-bold">
 														+${extraSeatsCents / 100}
 													</p>
-													<p class="text-secondary text-xs">per {org.plan.rate}</p>
+													<p class="text-secondary text-xs">
+														{m.settings_billing_per({ rate: org.plan.rate })}
+													</p>
 												</div>
 											{:else}
-												<p class="text-tertiary text-sm">Included</p>
+												<p class="text-tertiary text-sm">{m.settings_billing_included()}</p>
 											{/if}
 										</div>
 									</div>
@@ -159,14 +169,19 @@
 									<div class="border-t border-gray-700 pt-3">
 										<div class="flex items-baseline justify-between">
 											<div>
-												<p class="text-primary font-medium">Networks</p>
+												<p class="text-primary font-medium">{m.settings_billing_networks()}</p>
 												<p class="text-secondary text-sm">
-													{networkCount} total ({org.plan.included_networks} included
+													{m.settings_billing_networksUsage({
+														count: networkCount,
+														included: org.plan.included_networks ?? 0
+													})}
 													{#if extraNetworks > 0}
-														+ {extraNetworks} extra @ ${org.plan.network_cents
-															? org.plan.network_cents / 100
-															: 0} each
-													{/if})
+														{m.settings_billing_extraNetworks({
+															extra: extraNetworks,
+															price: org.plan.network_cents ? org.plan.network_cents / 100 : 0
+														})}
+													{:else})
+													{/if}
 												</p>
 											</div>
 											{#if extraNetworksCents > 0}
@@ -174,10 +189,12 @@
 													<p class="text-primary text-xl font-bold">
 														+${extraNetworksCents / 100}
 													</p>
-													<p class="text-secondary text-xs">per {org.plan.rate}</p>
+													<p class="text-secondary text-xs">
+														{m.settings_billing_per({ rate: org.plan.rate })}
+													</p>
 												</div>
 											{:else}
-												<p class="text-tertiary text-sm">Included</p>
+												<p class="text-tertiary text-sm">{m.settings_billing_included()}</p>
 											{/if}
 										</div>
 									</div>
@@ -188,21 +205,19 @@
 								<div
 									class="rounded-md border border-blue-800 bg-blue-900/30 p-3 text-sm text-blue-300"
 								>
-									Your trial is active. You won't be charged until your trial ends.
+									{m.settings_billing_trialActive()}
 								</div>
 							{:else if org.plan_status === 'past_due'}
 								<div
 									class="rounded-md border border-red-800 bg-red-900/30 p-3 text-sm text-red-300"
 								>
-									Your payment is past due. Please update your payment method to continue using
-									Scanopy.
+									{m.settings_billing_pastDue()}
 								</div>
 							{:else if org.plan_status === 'canceled'}
 								<div
 									class="rounded-md border border-yellow-800 bg-yellow-900/30 p-3 text-sm text-yellow-300"
 								>
-									Your subscription has been canceled. Access will end at the end of your billing
-									period.
+									{m.settings_billing_canceled()}
 								</div>
 							{/if}
 						</div>
@@ -212,23 +227,25 @@
 				<!-- Actions -->
 				<div class="space-y-3">
 					<button onclick={handleManageSubscription} class="btn-primary w-full">
-						Manage Subscription
+						{m.settings_billing_manageSubscription()}
 					</button>
 				</div>
 
 				<!-- Additional Info -->
-				<InfoCard title="Need Help?">
+				<InfoCard title={m.settings_billing_needHelp()}>
 					<p class="text-secondary text-sm">
-						Contact us at <a href="mailto:billing@scanopy.net" class="text-blue-400 hover:underline"
+						{m.settings_billing_contactUs()}
+						<a href="mailto:billing@scanopy.net" class="text-blue-400 hover:underline"
 							>billing@scanopy.net</a
-						> for billing questions or assistance.
+						>
+						{m.settings_billing_billingQuestions()}
 					</p>
 				</InfoCard>
 			</div>
 		{:else}
 			<div class="text-secondary py-8 text-center">
-				<p>Unable to load billing information</p>
-				<p class="text-tertiary mt-2 text-sm">Please try again later</p>
+				<p>{m.settings_billing_unableToLoad()}</p>
+				<p class="text-tertiary mt-2 text-sm">{m.settings_billing_tryAgainLater()}</p>
 			</div>
 		{/if}
 	</div>
@@ -236,7 +253,7 @@
 	<!-- Footer -->
 	<div class="modal-footer">
 		<div class="flex justify-end">
-			<button type="button" onclick={onClose} class="btn-secondary">Close</button>
+			<button type="button" onclick={onClose} class="btn-secondary">{m.common_close()}</button>
 		</div>
 	</div>
 </div>

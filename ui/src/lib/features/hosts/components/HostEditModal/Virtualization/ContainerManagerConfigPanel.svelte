@@ -4,6 +4,7 @@
 	import { ServiceDisplay } from '$lib/shared/components/forms/selection/display/ServiceDisplay.svelte';
 	import ListManager from '$lib/shared/components/forms/selection/ListManager.svelte';
 	import { serviceDefinitions } from '$lib/shared/stores/metadata';
+	import * as m from '$lib/paraglide/messages';
 
 	interface Props {
 		service: Service;
@@ -83,12 +84,10 @@
 
 <div class="space-y-6">
 	<ListManager
-		label="Containers"
-		helpText="Manage containers controlled by this {serviceMetadata?.name
-			? serviceMetadata.name
-			: ''} instance"
-		placeholder="Add container service..."
-		emptyMessage="No containers managed by this service yet. Add services that run in containers on this host."
+		label={m.hosts_virtualization_containers()}
+		helpText={m.hosts_virtualization_containerHelp({ serviceName: serviceMetadata?.name ?? '' })}
+		placeholder={m.hosts_virtualization_addContainer()}
+		emptyMessage={m.hosts_virtualization_noContainersYet()}
 		allowReorder={false}
 		allowDuplicates={false}
 		allowItemEdit={() => false}

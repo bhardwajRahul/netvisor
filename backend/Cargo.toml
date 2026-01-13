@@ -12,6 +12,10 @@ path = "src/bin/daemon.rs"
 name = "server"
 path = "src/bin/server.rs"
 
+[[bin]]
+name = "generate-error-codes"
+path = "src/bin/generate-error-codes.rs"
+
 [lib]
 name = "scanopy"
 path = "src/lib.rs"

@@ -54,10 +54,8 @@ async fn create_invite(
     let network_ids = auth.network_ids();
     let organization_id = auth
         .organization_id()
-        .ok_or_else(|| ApiError::forbidden("Organization context required"))?;
-    let user_id = auth
-        .user_id()
-        .ok_or_else(|| ApiError::forbidden("User context required"))?;
+        .ok_or_else(ApiError::organization_required)?;
+    let user_id = auth.user_id().ok_or_else(ApiError::user_required)?;
 
     // Get user permissions and email from entity
     let (permissions, from_email) = match &auth.entity {
@@ -184,7 +182,7 @@ async fn get_invite(
 ) -> ApiResult<Json<ApiResponse<Invite>>> {
     let organization_id = auth
         .organization_id()
-        .ok_or_else(|| ApiError::forbidden("Organization context required"))?;
+        .ok_or_else(ApiError::organization_required)?;
 
     let invite = state
         .services
@@ -195,9 +193,7 @@ async fn get_invite(
 
     // Validate invite belongs to the user's organization
     if invite.base.organization_id != organization_id {
-        return Err(ApiError::forbidden(
-            "You can only view invites from your organization",
-        ));
+        return Err(ApiError::entity_access_denied("invite", id));
     }
 
     Ok(Json(ApiResponse::success(invite)))
@@ -219,10 +215,8 @@ async fn get_invites(
 ) -> ApiResult<Json<ApiResponse<Vec<Invite>>>> {
     let organization_id = auth
         .organization_id()
-        .ok_or_else(|| ApiError::forbidden("Organization context required"))?;
-    let user_id = auth
-        .user_id()
-        .ok_or_else(|| ApiError::forbidden("User context required"))?;
+        .ok_or_else(ApiError::organization_required)?;
+    let user_id = auth.user_id().ok_or_else(ApiError::user_required)?;
 
     // Get user permissions from entity
     let permissions = match &auth.entity {
@@ -269,10 +263,8 @@ async fn revoke_invite(
 ) -> ApiResult<Json<ApiResponse<()>>> {
     let organization_id = auth
         .organization_id()
-        .ok_or_else(|| ApiError::forbidden("Organization context required"))?;
-    let user_id = auth
-        .user_id()
-        .ok_or_else(|| ApiError::forbidden("User context required"))?;
+        .ok_or_else(ApiError::organization_required)?;
+    let user_id = auth.user_id().ok_or_else(ApiError::user_required)?;
 
     // Get user permissions from entity
     let permissions = match &auth.entity {
@@ -290,9 +282,7 @@ async fn revoke_invite(
         .map_err(|e| ApiError::bad_request(&e.to_string()))?;
 
     if invite.base.organization_id != organization_id {
-        return Err(ApiError::forbidden(
-            "Cannot revoke invites from other organizations",
-        ));
+        return Err(ApiError::entity_access_denied("invite", id));
     }
 
     // Verify user can revoke this invite
@@ -300,9 +290,7 @@ async fn revoke_invite(
         || invite.base.permissions < permissions
         || permissions == UserOrgPermissions::Owner)
     {
-        return Err(ApiError::forbidden(
-            "You can only revoke invites that you created or invites for users with lower permissions than you",
-        ));
+        return Err(ApiError::permission_denied());
     }
 
     state

@@ -65,7 +65,7 @@ pub async fn create_daemon_api_key(
     let network_ids = auth.network_ids();
     let organization_id = auth
         .organization_id()
-        .ok_or_else(|| ApiError::forbidden("Organization context required"))?;
+        .ok_or_else(ApiError::organization_required)?;
     let user_id = auth.user_id();
 
     tracing::debug!(
@@ -145,7 +145,7 @@ pub async fn update_daemon_api_key(
     let existing = DaemonApiKey::get_service(&state)
         .get_by_id(&id)
         .await?
-        .ok_or_else(|| ApiError::not_found(format!("Daemon API key '{}' not found", id)))?;
+        .ok_or_else(|| ApiError::api_key_not_found(id))?;
 
     // Validate user has access to this key's network
     validate_network_access(Some(existing.base.network_id), &network_ids, "update")?;

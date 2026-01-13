@@ -1892,7 +1892,13 @@ export interface components {
     schemas: {
         /** @description Error response type for API errors (no data field) */
         ApiErrorResponse: {
+            /** @description Machine-readable error code for i18n translation */
+            code?: string | null;
             error?: string | null;
+            /** @description Parameters for interpolating into the translated error message */
+            params?: {
+                [key: string]: unknown;
+            } | null;
             success: boolean;
         };
         /**
@@ -1924,14 +1930,14 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-01-10T15:49:40.581783Z",
-             *       "id": "106389d2-04e4-4e82-8e11-47a5a01f0253",
+             *       "created_at": "2026-01-12T02:23:03.212127Z",
+             *       "id": "1603d44e-366c-461e-bf6f-d790c3a107ab",
              *       "interface_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-01-10T15:49:40.581783Z"
+             *       "updated_at": "2026-01-12T02:23:03.212127Z"
              *     }
              */
             data?: components["schemas"]["BindingBase"] & {
@@ -2334,14 +2340,14 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-01-10T15:49:40.576767Z",
-             *           "id": "e61f02ed-e94c-4cb9-b3e5-c2c0f18bc1d7",
+             *           "created_at": "2026-01-12T02:23:03.208081Z",
+             *           "id": "ec75ca9c-c440-4ec1-ad97-ec1add013fad",
              *           "interface_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-01-10T15:49:40.576767Z"
+             *           "updated_at": "2026-01-12T02:23:03.208081Z"
              *         }
              *       ],
              *       "created_at": "2026-01-15T10:30:00Z",
@@ -2350,7 +2356,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Scanopy Server",
+             *       "service_definition": "PeaNUT",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -2633,14 +2639,14 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-01-10T15:49:40.565847Z",
-         *       "id": "18818e6c-fce3-4a8d-bc15-88a86b600c11",
+         *       "created_at": "2026-01-12T02:23:03.200146Z",
+         *       "id": "831995ac-ca09-4fa0-8745-566e73bc6ed0",
          *       "interface_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-01-10T15:49:40.565847Z"
+         *       "updated_at": "2026-01-12T02:23:03.200146Z"
          *     }
          */
         Binding: components["schemas"]["BindingBase"] & {
@@ -2804,7 +2810,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Scanopy Server",
+         *           "service_definition": "PeaNUT",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -3885,14 +3891,14 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-01-10T15:49:40.565735Z",
-         *           "id": "a789c783-ac23-4e21-b90f-7527cabee228",
+         *           "created_at": "2026-01-12T02:23:03.200070Z",
+         *           "id": "8353f429-497b-4e05-a5cb-80794ae5f03e",
          *           "interface_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-01-10T15:49:40.565735Z"
+         *           "updated_at": "2026-01-12T02:23:03.200070Z"
          *         }
          *       ],
          *       "created_at": "2026-01-15T10:30:00Z",
@@ -3901,7 +3907,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Scanopy Server",
+         *       "service_definition": "PeaNUT",
          *       "source": {
          *         "type": "Manual"
          *       },

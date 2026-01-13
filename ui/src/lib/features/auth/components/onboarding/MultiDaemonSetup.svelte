@@ -7,6 +7,7 @@
 	import { onboardingStore } from '../../stores/onboarding';
 	import { trackEvent } from '$lib/shared/utils/analytics';
 	import type { NetworkSetup } from '../../types/base';
+	import * as m from '$lib/paraglide/messages';
 
 	// Convert string to kebab-case
 	function toKebabCase(str: string): string {
@@ -148,7 +149,7 @@
 
 <GenericModal
 	{isOpen}
-	title="Start scanning your network"
+	title={m.onboarding_startScanning()}
 	{onClose}
 	size="xl"
 	showCloseButton={false}
@@ -156,14 +157,12 @@
 >
 	<div class="space-y-6 overflow-y-auto p-6">
 		<p class="text-secondary text-sm">
-			Install a daemon on any device on your network to start discovering hosts and services. We
-			recommend installing at least one now so you can see your network visualized immediately after
-			registration.
+			{m.onboarding_daemonInstallInfo()}
 		</p>
 
 		<InlineInfo
-			title="Daemons activate after account creation"
-			body="If you install a daemon now, it'll connect and start mapping your network automatically after you register."
+			title={m.onboarding_daemonsActivateTitle()}
+			body={m.onboarding_daemonsActivateBody()}
 		/>
 
 		<!-- Network cards -->
@@ -188,15 +187,16 @@
 										</div>
 									{/if}
 									<div>
-										<span class="text-secondary">Daemon for Network: {network.name}</span>
+										<span class="text-secondary"
+											>{m.onboarding_daemonForNetwork({ networkName: network.name })}</span
+										>
 										{#if state.choice === 'install_later'}
 											<div class="text-tertiary text-xs">
-												You can install this daemon later by going to the Daemons tab and selecting
-												"Create Daemon"
+												{m.onboarding_installLaterHelp()}
 											</div>
 										{:else if state.choice === 'install_now'}
 											<div class="text-xs text-success">
-												Use the configuration tool below to install your daemon.
+												{m.onboarding_installNowHelp()}
 											</div>
 										{/if}
 									</div>
@@ -209,7 +209,7 @@
 											class="btn-secondary"
 											onclick={() => network.id && handleInstallLater(network.id)}
 										>
-											Install Later
+											{m.onboarding_installLater()}
 										</button>
 										<button
 											type="button"
@@ -228,7 +228,7 @@
 											class="btn-secondary"
 											onclick={() => network.id && handleInstallNow(network.id)}
 										>
-											Install Now
+											{m.onboarding_installNow()}
 										</button>
 									{/if}
 								</div>
@@ -256,7 +256,7 @@
 											disabled={state.isLoading}
 											onclick={() => network.id && handleInstallLater(network.id)}
 										>
-											Install Later
+											{m.onboarding_installLater()}
 										</button>
 										<button
 											type="button"
@@ -264,7 +264,7 @@
 											disabled={state.isLoading}
 											onclick={() => network.id && handleInstallNow(network.id)}
 										>
-											{state.isLoading ? 'Setting up...' : 'Install Now'}
+											{state.isLoading ? m.common_settingUp() : m.onboarding_installNow()}
 										</button>
 									</div>
 								{/if}
@@ -280,7 +280,9 @@
 		<div class="modal-footer">
 			<div class="flex justify-end">
 				<button type="button" class="btn-primary" disabled={!allConfigured} onclick={onComplete}>
-					{allConfigured ? 'Continue to Registration' : 'Configure remaining daemons to continue'}
+					{allConfigured
+						? m.onboarding_continueToRegistration()
+						: m.onboarding_configureRemaining()}
 				</button>
 			</div>
 		</div>

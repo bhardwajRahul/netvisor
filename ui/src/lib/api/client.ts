@@ -8,6 +8,7 @@
 import createClient, { type Middleware } from 'openapi-fetch';
 import type { paths, components } from './schema';
 import { pushError } from '$lib/shared/stores/feedback';
+import { translateError, type ApiErrorResponse } from '$lib/i18n/errors';
 import { env } from '$env/dynamic/public';
 
 // Re-export schema types for convenience
@@ -131,6 +132,9 @@ const cachingMiddleware: Middleware = {
 
 /**
  * Error handling middleware - shows toast notifications on errors
+ *
+ * Uses translateError to display localized error messages when the backend
+ * provides an error code. Falls back to the raw error message or HTTP status.
  */
 const errorMiddleware: Middleware = {
 	async onResponse({ response, options }) {
@@ -140,8 +144,8 @@ const errorMiddleware: Middleware = {
 				return response;
 			}
 			try {
-				const errorData = await response.clone().json();
-				const errorMsg = errorData.error || `HTTP ${response.status}: ${response.statusText}`;
+				const errorData: ApiErrorResponse = await response.clone().json();
+				const errorMsg = translateError(errorData);
 				// Only show error if not silenced
 				if (!(options as { silenceErrors?: boolean }).silenceErrors) {
 					pushError(errorMsg);

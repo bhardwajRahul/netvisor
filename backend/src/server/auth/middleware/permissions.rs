@@ -55,10 +55,10 @@ impl PermissionRequirement for Viewer {
                 if *permissions >= UserOrgPermissions::Viewer {
                     Ok(())
                 } else {
-                    Err(ApiError::forbidden(Self::description()))
+                    Err(ApiError::permission_denied())
                 }
             }
-            _ => Err(ApiError::forbidden(Self::description())),
+            _ => Err(ApiError::permission_denied()),
         }
     }
 
@@ -81,10 +81,10 @@ impl PermissionRequirement for Member {
                 if *permissions >= UserOrgPermissions::Member {
                     Ok(())
                 } else {
-                    Err(ApiError::forbidden(Self::description()))
+                    Err(ApiError::permission_denied())
                 }
             }
-            _ => Err(ApiError::forbidden(Self::description())),
+            _ => Err(ApiError::permission_denied()),
         }
     }
 
@@ -107,10 +107,10 @@ impl PermissionRequirement for Admin {
                 if *permissions >= UserOrgPermissions::Admin {
                     Ok(())
                 } else {
-                    Err(ApiError::forbidden(Self::description()))
+                    Err(ApiError::permission_denied())
                 }
             }
-            _ => Err(ApiError::forbidden(Self::description())),
+            _ => Err(ApiError::permission_denied()),
         }
     }
 
@@ -133,10 +133,10 @@ impl PermissionRequirement for Owner {
                 if *permissions >= UserOrgPermissions::Owner {
                     Ok(())
                 } else {
-                    Err(ApiError::forbidden(Self::description()))
+                    Err(ApiError::permission_denied())
                 }
             }
-            _ => Err(ApiError::forbidden(Self::description())),
+            _ => Err(ApiError::permission_denied()),
         }
     }
 
@@ -159,7 +159,7 @@ impl PermissionRequirement for IsUser {
     fn check(entity: &AuthenticatedEntity) -> Result<(), ApiError> {
         match entity {
             AuthenticatedEntity::User { .. } => Ok(()),
-            _ => Err(ApiError::forbidden(Self::description())),
+            _ => Err(ApiError::user_required()),
         }
     }
 
@@ -178,7 +178,7 @@ impl PermissionRequirement for IsApiKey {
     fn check(entity: &AuthenticatedEntity) -> Result<(), ApiError> {
         match entity {
             AuthenticatedEntity::ApiKey { .. } => Ok(()),
-            _ => Err(ApiError::forbidden(Self::description())),
+            _ => Err(ApiError::api_key_required()),
         }
     }
 
@@ -197,7 +197,7 @@ impl PermissionRequirement for IsDaemon {
     fn check(entity: &AuthenticatedEntity) -> Result<(), ApiError> {
         match entity {
             AuthenticatedEntity::Daemon { .. } => Ok(()),
-            _ => Err(ApiError::forbidden(Self::description())),
+            _ => Err(ApiError::daemon_required()),
         }
     }
 
@@ -216,7 +216,7 @@ impl PermissionRequirement for IsSystem {
     fn check(entity: &AuthenticatedEntity) -> Result<(), ApiError> {
         match entity {
             AuthenticatedEntity::System => Ok(()),
-            _ => Err(ApiError::forbidden(Self::description())),
+            _ => Err(ApiError::permission_denied()),
         }
     }
 
@@ -282,14 +282,11 @@ impl<T: ExternalServiceType> PermissionRequirement for IsExternalService<T> {
                 if let Some(required_name) = T::required_name()
                     && name.to_lowercase() != required_name
                 {
-                    return Err(ApiError::forbidden(&format!(
-                        "External service '{}' required",
-                        required_name
-                    )));
+                    return Err(ApiError::permission_denied());
                 }
                 Ok(())
             }
-            _ => Err(ApiError::forbidden(Self::description())),
+            _ => Err(ApiError::permission_denied()),
         }
     }
 
@@ -317,12 +314,7 @@ where
         if A::check(entity).is_ok() || B::check(entity).is_ok() {
             Ok(())
         } else {
-            // Combine descriptions for a more helpful error message
-            Err(ApiError::forbidden(&format!(
-                "{} or {}",
-                A::description(),
-                B::description()
-            )))
+            Err(ApiError::permission_denied())
         }
     }
 

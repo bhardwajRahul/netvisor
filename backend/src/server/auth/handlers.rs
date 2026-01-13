@@ -196,7 +196,7 @@ async fn setup(
 ) -> ApiResult<Json<ApiResponse<SetupResponse>>> {
     // Validate request
     if request.organization_name.trim().is_empty() {
-        return Err(ApiError::bad_request("Organization name is required"));
+        return Err(ApiError::field_empty("organization_name"));
     }
     if request.organization_name.len() > 100 {
         return Err(ApiError::bad_request(
@@ -579,14 +579,14 @@ async fn get_current_user(
         .get("user_id")
         .await
         .map_err(|e| ApiError::internal_error(&format!("Failed to read session: {}", e)))?
-        .ok_or_else(|| ApiError::unauthorized("Not authenticated".to_string()))?;
+        .ok_or_else(ApiError::not_authenticated)?;
 
     let user = state
         .services
         .user_service
         .get_by_id(&user_id)
         .await?
-        .ok_or_else(|| ApiError::not_found("User not found".to_string()))?;
+        .ok_or_else(|| ApiError::user_not_found(user_id))?;
 
     Ok(Json(ApiResponse::success(user)))
 }
@@ -614,7 +614,7 @@ async fn update_password_auth(
         .get("user_id")
         .await
         .map_err(|e| ApiError::internal_error(&format!("Failed to read session: {}", e)))?
-        .ok_or_else(|| ApiError::unauthorized("Not authenticated".to_string()))?;
+        .ok_or_else(ApiError::not_authenticated)?;
 
     let user_agent = user_agent.map(|u| u.to_string());
 
@@ -1305,7 +1305,7 @@ async fn unlink_oidc_account(
         .get("user_id")
         .await
         .map_err(|e| ApiError::internal_error(&format!("Failed to read session: {}", e)))?
-        .ok_or_else(|| ApiError::unauthorized("Not authenticated".to_string()))?;
+        .ok_or_else(ApiError::not_authenticated)?;
 
     // Unlink OIDC account
     let updated_user = oidc_service

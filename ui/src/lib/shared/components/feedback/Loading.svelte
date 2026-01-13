@@ -1,5 +1,7 @@
 <script lang="ts">
-	export let message: string = 'Loading...';
+	import * as m from '$lib/paraglide/messages';
+
+	export let message: string = m.common_loading();
 </script>
 
 <div class="py-8 text-center">

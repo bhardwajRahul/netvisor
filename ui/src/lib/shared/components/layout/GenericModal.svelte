@@ -14,9 +14,10 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import { X } from 'lucide-svelte';
+	import * as m from '$lib/paraglide/messages';
 
 	let {
-		title = 'Modal',
+		title = m.common_modal(),
 		centerTitle = false,
 		isOpen = false,
 		onClose = null,
@@ -150,7 +151,12 @@
 					{/if}
 
 					{#if showCloseButton}
-						<button type="button" onclick={handleClose} class="btn-icon" aria-label="Close modal">
+						<button
+							type="button"
+							onclick={handleClose}
+							class="btn-icon"
+							aria-label={m.common_closeModal()}
+						>
 							<X class="h-5 w-5" />
 						</button>
 					{/if}

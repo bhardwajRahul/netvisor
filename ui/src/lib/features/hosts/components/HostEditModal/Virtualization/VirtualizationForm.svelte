@@ -15,6 +15,7 @@
 	import InlineWarning from '$lib/shared/components/feedback/InlineWarning.svelte';
 	import { useHostsQuery } from '$lib/features/hosts/queries';
 	import { useServicesQuery } from '$lib/features/services/queries';
+	import * as m from '$lib/paraglide/messages';
 
 	interface Props {
 		virtualizationManagerServices: Service[];
@@ -42,9 +43,9 @@
 	<ListConfigEditor items={virtualizationManagerServices} onChange={onServiceChange}>
 		<svelte:fragment slot="list" let:items let:onEdit let:highlightedIndex>
 			<ListManager
-				label="Virtualization Services"
-				helpText="Services that manage virtual machines or containers on this host"
-				emptyMessage="No virtualization services on this host."
+				label={m.hosts_virtualization_servicesLabel()}
+				helpText={m.hosts_virtualization_servicesHelp()}
+				emptyMessage={m.hosts_virtualization_emptyMessage()}
 				{items}
 				itemClickAction="edit"
 				allowItemRemove={() => false}
@@ -63,8 +64,8 @@
 			{#if selectedItem}
 				{#if selectedItem.id == uuidv4Sentinel}
 					<InlineWarning
-						title="Please Save {selectedItem.name}"
-						body="You need to save {selectedItem.name} before managing virtualization"
+						title={m.hosts_virtualization_pleaseSave({ name: selectedItem.name })}
+						body={m.hosts_virtualization_pleaseSaveBody({ name: selectedItem.name })}
 					/>
 				{:else}
 					{@const virtualizationType = serviceDefinitions.getMetadata(
@@ -82,15 +83,15 @@
 						/>
 					{:else}
 						<EntityConfigEmpty
-							title="Unknown virtualization type"
-							subtitle="This service has an unrecognized virtualization management type"
+							title={m.hosts_virtualization_unknownType()}
+							subtitle={m.hosts_virtualization_unknownTypeSubtitle()}
 						/>
 					{/if}
 				{/if}
 			{:else}
 				<EntityConfigEmpty
-					title="No service selected"
-					subtitle="Select a virtualization service from the list to manage its VMs or containers"
+					title={m.hosts_virtualization_noSelected()}
+					subtitle={m.hosts_virtualization_selectToManage()}
 				/>
 			{/if}
 		</svelte:fragment>

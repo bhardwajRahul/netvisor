@@ -26,6 +26,7 @@
 	import VirtualizationForm from './Virtualization/VirtualizationForm.svelte';
 	import { SvelteMap } from 'svelte/reactivity';
 	import { pushError } from '$lib/shared/stores/feedback';
+	import * as m from '$lib/paraglide/messages';
 
 	interface Props {
 		host?: Host | null;
@@ -57,7 +58,9 @@
 	let deleting = $state(false);
 
 	let isEditing = $derived(host !== null);
-	let title = $derived(isEditing ? `Edit ${host?.name}` : 'Create Host');
+	let title = $derived(
+		isEditing ? m.hosts_editHost({ name: host?.name ?? '' }) : m.hosts_createHost()
+	);
 
 	// formData holds structural data (ids, network_id, tags, etc.)
 	// Form fields (name, hostname, description, interface IPs, port numbers) are synced at submission
@@ -223,35 +226,35 @@
 	let tabs = $derived([
 		{
 			id: 'details',
-			label: 'Details',
+			label: m.common_details(),
 			icon: Info,
-			description: 'Basic host information and connection details'
+			description: m.hosts_editor_basicInfo()
 		},
 		{
 			id: 'interfaces',
-			label: 'Interfaces',
+			label: m.hosts_interfaces(),
 			icon: entities.getIconComponent('Interface'),
-			description: 'Network interfaces and subnet membership'
+			description: m.hosts_editor_interfacesDesc()
 		},
 		{
 			id: 'ports',
-			label: 'Ports',
+			label: m.hosts_ports_title(),
 			icon: entities.getIconComponent('Port'),
-			description: 'Service configuration'
+			description: m.hosts_editor_portsDesc()
 		},
 		{
 			id: 'services',
-			label: 'Services',
+			label: m.hosts_services(),
 			icon: entities.getIconComponent('Service'),
-			description: 'Service configuration'
+			description: m.hosts_editor_servicesDesc()
 		},
 		...(vmManagerServices && vmManagerServices.length > 0
 			? [
 					{
 						id: 'virtualization',
-						label: 'Virtualization',
+						label: m.hosts_virtualization_title(),
 						icon: concepts.getIconComponent('Virtualization'),
-						description: 'VMs and containers managed by services on this host'
+						description: m.hosts_editor_virtualizationDesc()
 					}
 				]
 			: [])
@@ -343,9 +346,13 @@
 
 	// Dynamic labels based on create/edit mode and tab position
 	let saveLabel = $derived(
-		isEditing ? 'Update Host' : currentTabIndex === tabs.length - 1 ? 'Create Host' : 'Next'
+		isEditing
+			? m.hosts_editor_updateHost()
+			: currentTabIndex === tabs.length - 1
+				? m.hosts_createHost()
+				: m.common_next()
 	);
-	let cancelLabel = $derived(isEditing ? 'Cancel' : 'Previous');
+	let cancelLabel = $derived(isEditing ? m.common_cancel() : m.common_back());
 	let showCancel = $derived(isEditing ? true : currentTabIndex !== 0);
 </script>
 
@@ -448,7 +455,7 @@
 							onclick={handleDelete}
 							class="btn-danger"
 						>
-							{deleting ? 'Deleting...' : 'Delete'}
+							{deleting ? m.hosts_editor_deleting() : m.common_delete()}
 						</button>
 					{/if}
 				</div>
@@ -464,7 +471,7 @@
 						</button>
 					{/if}
 					<button type="submit" disabled={loading || deleting} class="btn-primary">
-						{loading ? 'Saving...' : saveLabel}
+						{loading ? m.hosts_editor_saving() : saveLabel}
 					</button>
 				</div>
 			</div>

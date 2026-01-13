@@ -7,6 +7,7 @@
 	import TextInput from '$lib/shared/components/forms/input/TextInput.svelte';
 	import TextArea from '$lib/shared/components/forms/input/TextArea.svelte';
 	import Checkbox from '$lib/shared/components/forms/input/Checkbox.svelte';
+	import * as m from '$lib/paraglide/messages';
 
 	interface Props {
 		blocker: string;
@@ -64,11 +65,11 @@
 					message: feedbackText.trim()
 				});
 
-				pushSuccess('Thank you for your feedback!');
+				pushSuccess(m.onboarding_feedbackThankYou());
 				hasSubmitted = true;
 			} catch (error) {
 				console.error('Failed to submit feedback:', error);
-				pushError('Failed to submit feedback. Please try again.');
+				pushError(m.onboarding_feedbackError());
 			} finally {
 				isSubmitting = false;
 			}
@@ -88,10 +89,10 @@
 	<form.Field name="feedback">
 		{#snippet children(field)}
 			<TextArea
-				label="What's blocking you from getting started?"
+				label={m.onboarding_feedbackQuestion()}
 				id="feedback"
 				{field}
-				placeholder="Tell us what you need help with..."
+				placeholder={m.onboarding_feedbackPlaceholder()}
 				rows={3}
 			/>
 		{/snippet}
@@ -105,18 +106,18 @@
 	>
 		{#snippet children(field)}
 			<TextInput
-				label="Email"
+				label={m.common_email()}
 				id="email"
 				{field}
 				placeholder="your@email.com"
-				helpText="Optional - we'll follow up if we can help"
+				helpText={m.onboarding_emailOptional()}
 			/>
 		{/snippet}
 	</form.Field>
 
 	<form.Field name="subscribe">
 		{#snippet children(field)}
-			<Checkbox {field} id="subscribe" label="Also email me about product news and updates" />
+			<Checkbox {field} id="subscribe" label={m.onboarding_emailNewsUpdates()} />
 		{/snippet}
 	</form.Field>
 
@@ -128,18 +129,18 @@
 					class="text-secondary hover:text-primary text-sm"
 					onclick={onOtherIssue}
 				>
-					I have another issue
+					{m.onboarding_anotherIssue()}
 				</button>
 			{:else}
 				<div></div>
 			{/if}
 			<button type="button" class="btn-primary" disabled={!canSubmit} onclick={handleSubmit}>
 				{#if hasSubmitted}
-					Submitted
+					{m.onboarding_submitted()}
 				{:else if isSubmitting}
-					Sending...
+					{m.common_sending()}
 				{:else}
-					Submit
+					{m.common_submit()}
 				{/if}
 			</button>
 		</div>

@@ -12,6 +12,7 @@
 	import type { Service } from '$lib/features/services/types/base';
 	import ConfirmationDialog from '$lib/shared/components/feedback/ConfirmationDialog.svelte';
 	import EntityMetadataSection from '$lib/shared/components/forms/EntityMetadataSection.svelte';
+	import * as m from '$lib/paraglide/messages';
 
 	interface Props {
 		formData: HostFormData;
@@ -177,10 +178,10 @@
 		let:onMoveDown
 	>
 		<ListManager
-			label="Interfaces"
-			helpText="Configure network interfaces and addresses. Drag to reorder."
-			placeholder="Select subnet to create interface with..."
-			emptyMessage="No interfaces configured. Add one to get started."
+			label={m.hosts_interfaces_title()}
+			helpText={m.hosts_interfaces_helpText()}
+			placeholder={m.hosts_interfaces_placeholder()}
+			emptyMessage={m.hosts_interfaces_emptyMessage()}
 			allowReorder={true}
 			itemClickAction="edit"
 			options={availableSubnets}
@@ -226,8 +227,8 @@
 			/>
 		{:else if !selectedItem}
 			<EntityConfigEmpty
-				title="No interface selected"
-				subtitle="Select an interface from the list to configure it"
+				title={m.hosts_interfaces_noSelected()}
+				subtitle={m.hosts_interfaces_selectToConfig()}
 			/>
 		{/if}
 	</svelte:fragment>
@@ -237,11 +238,11 @@
 
 <ConfirmationDialog
 	isOpen={showDeleteConfirmation}
-	title="Delete Interface"
-	message="This interface has bindings from the following services. Deleting it will remove those bindings."
+	title={m.hosts_interfaces_deleteTitle()}
+	message={m.hosts_interfaces_deleteMessage()}
 	details={affectedServiceNames}
-	confirmLabel="Delete Interface"
-	cancelLabel="Cancel"
+	confirmLabel={m.hosts_interfaces_deleteConfirm()}
+	cancelLabel={m.common_cancel()}
 	variant="warning"
 	onConfirm={confirmDelete}
 	onCancel={cancelDelete}

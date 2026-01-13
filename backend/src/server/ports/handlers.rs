@@ -49,10 +49,7 @@ async fn validate_port_network_consistency(state: &AppState, port: &Port) -> Res
         .await?
         && host.base.network_id != port.base.network_id
     {
-        return Err(ApiError::bad_request(&format!(
-            "Host is on network {}, port can't be on a different network ({})",
-            host.base.network_id, port.base.network_id
-        )));
+        return Err(ApiError::entity_network_mismatch("port"));
     }
 
     Ok(())

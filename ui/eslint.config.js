@@ -17,7 +17,14 @@ export default [
 	prettier,
 	...svelte.configs.prettier,
 	{
-		ignores: ['tsconfig.json', '*.config.js', '*.config.ts', 'build/', '.svelte-kit/']
+		ignores: [
+			'tsconfig.json',
+			'*.config.js',
+			'*.config.ts',
+			'build/',
+			'.svelte-kit/',
+			'src/lib/paraglide/'
+		]
 	},
 	{
 		languageOptions: {
@@ -44,6 +51,13 @@ export default [
 		files: ['**/GenericCard.svelte'],
 		rules: {
 			'svelte/no-navigation-without-resolve': 'off'
+		}
+	},
+	{
+		files: ['**/UseCaseStep.svelte'],
+		rules: {
+			// i18n message contains safe HTML for commercial notice link
+			'svelte/no-at-html-tags': 'off'
 		}
 	}
 ];

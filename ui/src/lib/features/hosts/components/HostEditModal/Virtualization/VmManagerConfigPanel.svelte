@@ -6,6 +6,7 @@
 	import { serviceDefinitions } from '$lib/shared/stores/metadata';
 	import type { Host } from '$lib/features/hosts/types/base';
 	import { useServicesQuery } from '$lib/features/services/queries';
+	import * as m from '$lib/paraglide/messages';
 
 	interface Props {
 		service: Service;
@@ -89,12 +90,10 @@
 
 <div class="space-y-6">
 	<ListManager
-		label="Virtual Machines"
-		helpText="Manage VMs controlled by this {serviceMetadata?.name
-			? serviceMetadata.name
-			: ''} instance"
-		placeholder="Add VM host..."
-		emptyMessage="No VMs managed by this service yet. Add hosts that are VMs running on this hypervisor."
+		label={m.hosts_virtualization_virtualMachines()}
+		helpText={m.hosts_virtualization_vmHelp({ serviceName: serviceMetadata?.name ?? '' })}
+		placeholder={m.hosts_virtualization_addVmHost()}
+		emptyMessage={m.hosts_virtualization_noVmsYet()}
 		allowReorder={false}
 		allowDuplicates={false}
 		showSearch={true}

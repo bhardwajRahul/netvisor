@@ -73,9 +73,7 @@ pub async fn create_discovery(
     Json(discovery): Json<Discovery>,
 ) -> ApiResult<Json<ApiResponse<Discovery>>> {
     if let RunType::Historical { .. } = discovery.base.run_type {
-        return Err(ApiError::bad_request(
-            "Historial discovery is created when a discovery session completes, and can't be created using the API.",
-        ));
+        return Err(ApiError::discovery_historical_read_only());
     }
 
     // Custom validation: Check if any subnets aren't on the same network as the discovery
@@ -86,10 +84,9 @@ pub async fn create_discovery(
                 if let Some(subnet) = state.services.subnet_service.get_by_id(subnet_id).await?
                     && subnet.base.network_id != discovery.base.network_id
                 {
-                    return Err(ApiError::bad_request(&format!(
-                        "Discovery is on network {}, cannot target subnet \"{}\" which is on network {}.",
-                        discovery.base.network_id, subnet.base.name, subnet.base.network_id
-                    )));
+                    return Err(ApiError::discovery_subnet_network_mismatch(
+                        &subnet.base.name,
+                    ));
                 }
             }
         }
@@ -121,9 +118,7 @@ pub async fn update_discovery(
     discovery: Json<Discovery>,
 ) -> ApiResult<Json<ApiResponse<Discovery>>> {
     if let RunType::Historical { .. } = discovery.base.run_type {
-        return Err(ApiError::bad_request(
-            "Historial discovery can't be updated using the API.",
-        ));
+        return Err(ApiError::discovery_historical_read_only());
     }
 
     update_handler::<Discovery>(state, auth, id, discovery).await
@@ -155,16 +150,12 @@ async fn receive_discovery_update(
 
     // Validate daemon can only send updates for their own network
     if update.network_id != daemon_network_id {
-        return Err(ApiError::forbidden(
-            "Cannot send updates for a different network",
-        ));
+        return Err(ApiError::daemon_network_mismatch());
     }
 
     // Validate daemon can only send updates as themselves
     if update.daemon_id != daemon_id {
-        return Err(ApiError::forbidden(
-            "Cannot send updates for a different daemon",
-        ));
+        return Err(ApiError::daemon_identity_mismatch());
     }
 
     state
@@ -201,13 +192,11 @@ async fn start_session(
         .discovery_service
         .get_by_id(&discovery_id)
         .await?
-        .ok_or_else(|| ApiError::not_found(format!("Discovery '{}' not found", &discovery_id)))?;
+        .ok_or_else(|| ApiError::not_found_entity("Discovery", discovery_id))?;
 
     // Validate user has access to this discovery's network
     if !network_ids.contains(&discovery.base.network_id) {
-        return Err(ApiError::forbidden(
-            "You don't have access to this discovery's network",
-        ));
+        return Err(ApiError::network_access_denied(discovery.base.network_id));
     }
 
     // Update last_run BEFORE moving any fields
@@ -313,10 +302,10 @@ async fn cancel_discovery(
         .discovery_service
         .get_session(&session_id)
         .await
-        .ok_or_else(|| ApiError::not_found(format!("Session '{}' not found", session_id)))?;
+        .ok_or_else(|| ApiError::not_found_entity("Discovery session", session_id))?;
 
     if !auth.network_ids().contains(&session.network_id) {
-        return Err(ApiError::forbidden("You don't have access to this session"));
+        return Err(ApiError::network_access_denied(session.network_id));
     }
 
     state

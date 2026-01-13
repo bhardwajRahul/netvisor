@@ -8343,11 +8343,29 @@
           "success"
         ],
         "properties": {
+          "code": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Machine-readable error code for i18n translation"
+          },
           "error": {
             "type": [
               "string",
               "null"
             ]
+          },
+          "params": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Parameters for interpolating into the translated error message",
+            "additionalProperties": {},
+            "propertyNames": {
+              "type": "string"
+            }
           },
           "success": {
             "type": "boolean"
@@ -8450,14 +8468,14 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-01-10T16:11:39.883999Z",
-              "id": "4b3ab3eb-839f-4667-87ac-edb946a4a557",
+              "created_at": "2026-01-12T02:26:22.555674Z",
+              "id": "6986d044-fa9e-4b39-920e-8b4d83f54956",
               "interface_id": "550e8400-e29b-41d4-a716-446655440005",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-01-10T16:11:39.883999Z"
+              "updated_at": "2026-01-12T02:26:22.555674Z"
             }
           },
           "error": {
@@ -9747,14 +9765,14 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-01-10T16:11:39.880045Z",
-                  "id": "3c0e671b-6f24-4a0d-9f29-56a080172099",
+                  "created_at": "2026-01-12T02:26:22.551831Z",
+                  "id": "92b1ce01-120d-408c-a3e6-e3cb1635c857",
                   "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-01-10T16:11:39.880045Z"
+                  "updated_at": "2026-01-12T02:26:22.551831Z"
                 }
               ],
               "created_at": "2026-01-15T10:30:00Z",
@@ -9763,7 +9781,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Scanopy Server",
+              "service_definition": "PeaNUT",
               "source": {
                 "type": "Manual"
               },
@@ -10870,14 +10888,14 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-01-10T16:11:39.872208Z",
-          "id": "13d3f509-3041-4467-b2d9-6f786a4346be",
+          "created_at": "2026-01-12T02:26:22.543594Z",
+          "id": "190013dc-f510-4b20-a0dc-d4d3b0a7b311",
           "interface_id": "550e8400-e29b-41d4-a716-446655440005",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-01-10T16:11:39.872208Z"
+          "updated_at": "2026-01-12T02:26:22.543594Z"
         }
       },
       "BindingBase": {
@@ -11280,7 +11298,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Scanopy Server",
+              "service_definition": "PeaNUT",
               "tags": [],
               "virtualization": null
             }
@@ -13944,14 +13962,14 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-01-10T16:11:39.879106Z",
-                    "id": "2ddcfa47-c471-48f5-910d-c8c07289b73f",
+                    "created_at": "2026-01-12T02:26:22.551001Z",
+                    "id": "805294ee-8537-4259-a9cc-4277730b4d47",
                     "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-01-10T16:11:39.879106Z"
+                    "updated_at": "2026-01-12T02:26:22.551001Z"
                   }
                 ],
                 "created_at": "2026-01-15T10:30:00Z",
@@ -13960,7 +13978,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Scanopy Server",
+                "service_definition": "PeaNUT",
                 "source": {
                   "type": "Manual"
                 },
@@ -14817,14 +14835,14 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-01-10T16:11:39.872161Z",
-              "id": "076cb5a7-d1a9-4f00-9d93-e58672510a46",
+              "created_at": "2026-01-12T02:26:22.543545Z",
+              "id": "be1897e2-773f-4c82-9a40-79891a28b994",
               "interface_id": "550e8400-e29b-41d4-a716-446655440005",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-01-10T16:11:39.872161Z"
+              "updated_at": "2026-01-12T02:26:22.543545Z"
             }
           ],
           "created_at": "2026-01-15T10:30:00Z",
@@ -14833,7 +14851,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Scanopy Server",
+          "service_definition": "PeaNUT",
           "source": {
             "type": "Manual"
           },

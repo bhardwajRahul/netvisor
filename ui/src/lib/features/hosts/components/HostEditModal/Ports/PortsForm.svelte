@@ -11,6 +11,7 @@
 	import EntityConfigEmpty from '$lib/shared/components/forms/EntityConfigEmpty.svelte';
 	import ConfirmationDialog from '$lib/shared/components/feedback/ConfirmationDialog.svelte';
 	import EntityMetadataSection from '$lib/shared/components/forms/EntityMetadataSection.svelte';
+	import * as m from '$lib/paraglide/messages';
 
 	interface Props {
 		formData: HostFormData;
@@ -143,14 +144,14 @@
 <ListConfigEditor bind:items={formData.ports}>
 	<svelte:fragment slot="list" let:items let:onEdit let:highlightedIndex>
 		<ListManager
-			label="Ports"
-			helpText="Manage ports for this host"
-			placeholder="Add well-known or registered port..."
-			emptyMessage="No ports on this host. Add one to get started."
+			label={m.hosts_ports_title()}
+			helpText={m.hosts_ports_helpText()}
+			placeholder={m.hosts_ports_placeholder()}
+			emptyMessage={m.hosts_ports_emptyMessage()}
 			allowReorder={false}
 			allowCreateNew={true}
 			itemClickAction="edit"
-			createNewLabel="Custom Port"
+			createNewLabel={m.hosts_ports_customPort()}
 			allowDuplicates={false}
 			options={selectablePorts}
 			{items}
@@ -177,13 +178,13 @@
 			{/key}
 		{:else if selectedItem && selectedItem.type != 'Custom'}
 			<EntityConfigEmpty
-				title="Well-known or registered Port"
-				subtitle="This is a well-known or registered port, and can't be edited"
+				title={m.hosts_ports_wellKnownTitle()}
+				subtitle={m.hosts_ports_wellKnownSubtitle()}
 			/>
 		{:else}
 			<EntityConfigEmpty
-				title="No port selected"
-				subtitle="Select a port from the list to configure it"
+				title={m.hosts_ports_noSelected()}
+				subtitle={m.hosts_ports_selectToConfig()}
 			/>
 		{/if}
 	</svelte:fragment>
@@ -193,11 +194,11 @@
 
 <ConfirmationDialog
 	isOpen={showDeleteConfirmation}
-	title="Delete Port"
-	message="This port has bindings from the following services. Deleting it will remove those bindings."
+	title={m.hosts_ports_deleteTitle()}
+	message={m.hosts_ports_deleteMessage()}
 	details={affectedServiceNames}
-	confirmLabel="Delete Port"
-	cancelLabel="Cancel"
+	confirmLabel={m.hosts_ports_deleteConfirm()}
+	cancelLabel={m.common_cancel()}
 	variant="warning"
 	onConfirm={confirmDelete}
 	onCancel={cancelDelete}

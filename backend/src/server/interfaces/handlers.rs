@@ -47,10 +47,7 @@ async fn validate_interface_consistency(
         .await?
         && host.base.network_id != interface.base.network_id
     {
-        return Err(ApiError::bad_request(&format!(
-            "Host is on network {}, interface can't be on a different network ({})",
-            host.base.network_id, interface.base.network_id
-        )));
+        return Err(ApiError::entity_network_mismatch("Host"));
     }
 
     // Validate subnet is on the same network AND IP is within CIDR
@@ -61,18 +58,15 @@ async fn validate_interface_consistency(
         .await?
     {
         if subnet.base.network_id != interface.base.network_id {
-            return Err(ApiError::bad_request(&format!(
-                "Subnet \"{}\" is on network {}, interface can't be on a different network ({})",
-                subnet.base.name, subnet.base.network_id, interface.base.network_id
-            )));
+            return Err(ApiError::entity_network_mismatch("Subnet"));
         }
 
         // Validate IP address is within subnet CIDR
         if !subnet.base.cidr.contains(&interface.base.ip_address) {
-            return Err(ApiError::bad_request(&format!(
-                "IP address {} is not within subnet \"{}\" CIDR range ({})",
-                interface.base.ip_address, subnet.base.name, subnet.base.cidr
-            )));
+            return Err(ApiError::interface_ip_out_of_range(
+                &interface.base.ip_address.to_string(),
+                &subnet.base.name,
+            ));
         }
     }
 
@@ -165,7 +159,7 @@ async fn delete_interface(
     let network_ids = auth.network_ids();
     let organization_id = auth
         .organization_id()
-        .ok_or_else(|| ApiError::forbidden("Organization context required"))?;
+        .ok_or_else(ApiError::organization_required)?;
     let entity_auth = auth.into_entity();
 
     let service = &state.services.interface_service;
@@ -175,7 +169,7 @@ async fn delete_interface(
         .get_by_id(&id)
         .await
         .map_err(|e| ApiError::internal_error(&e.to_string()))?
-        .ok_or_else(|| ApiError::not_found(format!("Interface '{}' not found", id)))?;
+        .ok_or_else(|| ApiError::not_found_entity("Interface", id))?;
 
     validate_delete_access(
         Some(entity.base.network_id),
@@ -220,13 +214,13 @@ async fn bulk_delete_interfaces(
     Json(ids): Json<Vec<Uuid>>,
 ) -> ApiResult<Json<ApiResponse<BulkDeleteResponse>>> {
     if ids.is_empty() {
-        return Err(ApiError::bad_request("No IDs provided for bulk delete"));
+        return Err(ApiError::bulk_empty());
     }
 
     let network_ids = auth.network_ids();
     let organization_id = auth
         .organization_id()
-        .ok_or_else(|| ApiError::forbidden("Organization context required"))?;
+        .ok_or_else(ApiError::organization_required)?;
     let entity_auth = auth.into_entity();
 
     let service = &state.services.interface_service;

@@ -108,12 +108,22 @@ lint:
 	@echo "Linting UI..."
 	cd ui && npm run lint && npm run format -- --check && npm run check
 
-generate-types:
+generate-types: generate-api-types generate-error-codes
+	@echo "All types generated successfully"
+
+generate-api-types:
 	@echo "Exporting OpenAPI spec from backend..."
 	cd backend && cargo test generate_openapi_spec -- --nocapture
 	@echo "Generating TypeScript types from OpenAPI spec..."
 	cd ui && npm run generate:api
 	@echo "TypeScript types exported to ui/src/lib/api/schema.d.ts"
+
+generate-error-codes:
+	@echo "Generating error codes from Rust enum..."
+	cd backend && cargo run --bin generate-error-codes
+	@echo "Merging error messages into en.json..."
+	cd ui && node scripts/merge-error-messages.js
+	@echo "Error codes generated and merged"
 
 generate-schema:
 	@command -v tbls >/dev/null 2>&1 || { echo "Install tbls: brew install k1low/tap/tbls"; exit 1; }

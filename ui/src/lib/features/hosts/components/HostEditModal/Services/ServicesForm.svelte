@@ -13,6 +13,7 @@
 	import EntityConfigEmpty from '$lib/shared/components/forms/EntityConfigEmpty.svelte';
 	import ListSelectItem from '$lib/shared/components/forms/selection/ListSelectItem.svelte';
 	import { ArrowRightLeft } from 'lucide-svelte';
+	import * as m from '$lib/paraglide/messages';
 
 	interface Props {
 		formData: HostFormData;
@@ -123,10 +124,10 @@
 		>
 			{@const isTransferringPortBindings = selectedPortBindings.length > 0}
 			<ListManager
-				label="Services"
-				helpText="Services define what this host provides to the network. The icon for the first service in the list will be used as the host's logo in the Host tab."
-				placeholder="Select service type to add..."
-				emptyMessage="No services configured yet. Add one to get started."
+				label={m.hosts_services_title()}
+				helpText={m.hosts_services_helpText()}
+				placeholder={m.hosts_services_placeholder()}
+				emptyMessage={m.hosts_services_emptyMessage()}
 				options={availableServiceTypes}
 				itemClickAction="edit"
 				showSearch={true}
@@ -165,7 +166,7 @@
 								title="Transfer {selectedPortBindings.length} binding(s) here"
 							>
 								<ArrowRightLeft size={12} />
-								<span>Transfer Ports</span>
+								<span>{m.hosts_services_transferPorts()}</span>
 							</button>
 						{/if}
 					</div>
@@ -191,8 +192,8 @@
 
 			{#if !selectedItem}
 				<EntityConfigEmpty
-					title="No service selected"
-					subtitle="Select a service from the list to configure it"
+					title={m.hosts_services_noSelected()}
+					subtitle={m.hosts_services_selectToConfig()}
 				/>
 			{/if}
 		</svelte:fragment>

@@ -175,7 +175,7 @@ async fn get_all_hosts(
     let network_ids = auth.network_ids();
     let organization_id = auth
         .organization_id()
-        .ok_or_else(|| ApiError::forbidden("Organization context required"))?;
+        .ok_or_else(ApiError::organization_required)?;
 
     let base_filter = StorableFilter::<Host>::new().network_ids(&network_ids);
     let filter = query.apply_to_filter(base_filter, &network_ids, organization_id);
@@ -235,14 +235,14 @@ async fn get_host_by_id(
     let network_ids = auth.network_ids();
     let organization_id = auth
         .organization_id()
-        .ok_or_else(|| ApiError::forbidden("Organization context required"))?;
+        .ok_or_else(ApiError::organization_required)?;
 
     let mut host = state
         .services
         .host_service
         .get_host_response(&id)
         .await?
-        .ok_or_else(|| ApiError::not_found(format!("Host {} not found", id)))?;
+        .ok_or_else(|| ApiError::host_not_found(id))?;
 
     validate_read_access(Some(host.network_id), None, &network_ids, organization_id)?;
 
@@ -411,7 +411,7 @@ async fn update_host(
     let network_ids = auth.network_ids();
     let organization_id = auth
         .organization_id()
-        .ok_or_else(|| ApiError::forbidden("Organization context required"))?;
+        .ok_or_else(ApiError::organization_required)?;
 
     // Validate request (name length, etc.)
     request
@@ -427,7 +427,7 @@ async fn update_host(
     let existing_host = host_service
         .get_by_id(&id)
         .await?
-        .ok_or_else(|| ApiError::not_found(format!("Host {} not found", id)))?;
+        .ok_or_else(|| ApiError::host_not_found(id))?;
 
     validate_read_access(
         Some(existing_host.base.network_id),
@@ -547,28 +547,18 @@ async fn consolidate_hosts(
     let network_ids = auth.network_ids();
     let organization_id = auth
         .organization_id()
-        .ok_or_else(|| ApiError::forbidden("Organization context required"))?;
+        .ok_or_else(ApiError::organization_required)?;
 
     let host_service = &state.services.host_service;
 
     let destination_host = host_service
         .get_by_id(&destination_host_id)
         .await?
-        .ok_or_else(|| {
-            ApiError::not_found(format!(
-                "Could not find destination host {}",
-                destination_host_id
-            ))
-        })?;
+        .ok_or_else(|| ApiError::host_not_found(destination_host_id))?;
     let other_host = host_service
         .get_by_id(&other_host_id)
         .await?
-        .ok_or_else(|| {
-            ApiError::not_found(format!(
-                "Could not find host to consolidate {}",
-                other_host_id
-            ))
-        })?;
+        .ok_or_else(|| ApiError::host_not_found(other_host_id))?;
 
     // Validate user has access to both hosts
     validate_read_access(

@@ -9,6 +9,7 @@
 	import { useDaemonsQuery } from '$lib/features/daemons/queries';
 	import { useSubnetsQuery, isContainerSubnet } from '$lib/features/subnets/queries';
 	import TagPickerInline from '$lib/features/tags/components/TagPickerInline.svelte';
+	import * as m from '$lib/paraglide/messages';
 
 	// Queries
 	const servicesQuery = useServicesQuery();
@@ -86,7 +87,9 @@
 			title: host.name,
 			...(host.virtualization !== null && virtualizationService
 				? {
-						subtitle: 'VM Managed By ' + virtualizationService.name || 'Unknown Service'
+						subtitle: m.hosts_vmManagedBy({
+							serviceName: virtualizationService.name || m.hosts_unknownService()
+						})
 					}
 				: {}),
 			link: host.hostname ? `http://${host.hostname}` : undefined,
@@ -97,11 +100,11 @@
 					: entities.getIconComponent('Host'),
 			fields: [
 				{
-					label: 'Description',
+					label: m.hosts_description(),
 					value: host.description
 				},
 				{
-					label: 'Services',
+					label: m.hosts_services(),
 					value: hostServices
 						.filter((sv) => !containerIds.includes(sv.id))
 						.map((sv) => {
@@ -111,10 +114,10 @@
 								color: entities.getColorHelper('Service').color
 							};
 						}),
-					emptyText: 'No services assigned'
+					emptyText: m.hosts_noServicesAssigned()
 				},
 				{
-					label: 'Containers',
+					label: m.hosts_containers(),
 					value: containers
 						.map((c) => {
 							return {
@@ -124,10 +127,10 @@
 							};
 						})
 						.sort((a) => (containerIds.includes(a.id) ? 1 : -1)),
-					emptyText: 'No containers'
+					emptyText: m.hosts_noContainers()
 				},
 				{
-					label: 'Interfaces',
+					label: m.hosts_interfaces(),
 					value: hostInterfaces.map((i) => {
 						return {
 							id: i.id,
@@ -135,15 +138,15 @@
 							color: entities.getColorHelper('Interface').color
 						};
 					}),
-					emptyText: 'No interfaces'
+					emptyText: m.hosts_noInterfaces()
 				},
-				{ label: 'Tags', snippet: tagsSnippet }
+				{ label: m.common_tags(), snippet: tagsSnippet }
 			],
 			actions: [
 				...(onDelete
 					? [
 							{
-								label: 'Delete',
+								label: m.common_delete(),
 								icon: Trash2,
 								class: 'btn-icon-danger',
 								onClick: () => onDelete(host),
@@ -152,19 +155,19 @@
 						]
 					: []),
 				...(onConsolidate
-					? [{ label: 'Consolidate', icon: Replace, onClick: () => onConsolidate(host) }]
+					? [{ label: m.hosts_consolidate(), icon: Replace, onClick: () => onConsolidate(host) }]
 					: []),
 				...(onHide
 					? [
 							{
-								label: 'Hide',
+								label: m.hosts_hide(),
 								icon: Eye,
 								class: host.hidden ? 'text-blue-400' : '',
 								onClick: () => onHide(host)
 							}
 						]
 					: []),
-				...(onEdit ? [{ label: 'Edit', icon: Edit, onClick: () => onEdit(host) }] : [])
+				...(onEdit ? [{ label: m.common_edit(), icon: Edit, onClick: () => onEdit(host) }] : [])
 			]
 		};
 	});

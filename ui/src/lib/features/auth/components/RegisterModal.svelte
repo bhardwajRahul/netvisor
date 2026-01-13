@@ -16,6 +16,7 @@
 	import { useConfigQuery } from '$lib/shared/stores/config-query';
 	import { onboardingStore } from '../stores/onboarding';
 	import type { RegisterRequest } from '../types/base';
+	import * as m from '$lib/paraglide/messages';
 
 	let {
 		orgName = null,
@@ -110,7 +111,7 @@
 
 <GenericModal
 	{isOpen}
-	title="Create your account"
+	title={m.auth_createYourAccount()}
 	size="md"
 	{onClose}
 	onOpen={handleOpen}
@@ -120,7 +121,7 @@
 	centerTitle={true}
 >
 	{#snippet headerIcon()}
-		<img src="/logos/scanopy-logo.png" alt="Scanopy Logo" class="h-8 w-8" />
+		<img src="/logos/scanopy-logo.png" alt={m.auth_scanopyLogo()} class="h-8 w-8" />
 	{/snippet}
 
 	<form
@@ -135,8 +136,8 @@
 			{#if orgName && invitedBy}
 				<div class="mb-6">
 					<InlineInfo
-						title="You're invited!"
-						body={`You have been invited to join ${orgName} by ${invitedBy}. Please sign in or register to continue.`}
+						title={m.auth_youreInvitedTitle()}
+						body={m.auth_youreInvitedBody({ orgName, invitedBy })}
 					/>
 				</div>
 			{/if}
@@ -144,10 +145,10 @@
 			{#if hasPendingDaemons}
 				<div class="mb-6">
 					<InlineSuccess
-						title="You're all set"
+						title={m.auth_youreAllSetTitle()}
 						body={networksWithDaemons.length === 1
-							? `Register to finish setup. Your daemon will begin scanning "${pendingNetworkNames}" and populating your network map.`
-							: `Register to finish setup. Your daemons will begin scanning "${pendingNetworkNames}" and populating your network map.`}
+							? m.auth_youreAllSetBodySingle({ networkNames: pendingNetworkNames })
+							: m.auth_youreAllSetBodyMultiple({ networkNames: pendingNetworkNames })}
 					/>
 				</div>
 			{/if}
@@ -160,7 +161,13 @@
 					}}
 				>
 					{#snippet children(field)}
-						<TextInput label="Email" id="email" {field} placeholder="Enter your email" required />
+						<TextInput
+							label={m.common_email()}
+							id="email"
+							{field}
+							placeholder={m.auth_enterYourEmail()}
+							required
+						/>
 					{/snippet}
 				</form.Field>
 
@@ -197,12 +204,7 @@
 							{#if enableTermsCheckbox}
 								<form.Field name="terms_accepted">
 									{#snippet children(field)}
-										<Checkbox
-											label="I agree to the <a class='text-link' target='_blank' href='https://scanopy.net/terms'>terms</a> and <a target='_blank' class='text-link' href='https://scanopy.net/privacy'>privacy policy</a>"
-											helpText=""
-											{field}
-											id="terms"
-										/>
+										<Checkbox label={m.auth_termsAndPrivacy()} helpText="" {field} id="terms" />
 									{/snippet}
 								</form.Field>
 							{/if}
@@ -213,7 +215,7 @@
 							disabled={registering || (enableTermsCheckbox && !termsAccepted)}
 							class="btn-primary w-full"
 						>
-							{registering ? 'Creating account...' : 'Create Account with Email'}
+							{registering ? m.auth_creatingAccount() : m.auth_createAccountWithEmail()}
 						</button>
 
 						{#if hasOidcProviders}
@@ -222,7 +224,7 @@
 									<div class="w-full border-t border-gray-600"></div>
 								</div>
 								<div class="relative flex justify-center text-sm">
-									<span class="bg-gray-900 px-2 text-gray-400">or</span>
+									<span class="bg-gray-900 px-2 text-gray-400">{m.common_or()}</span>
 								</div>
 							</div>
 
@@ -237,7 +239,7 @@
 										{#if provider.logo}
 											<img src={provider.logo} alt={provider.name} class="h-5 w-5" />
 										{/if}
-										Create Account with {provider.name}
+										{m.auth_createAccountWith({ provider: provider.name })}
 									</button>
 								{/each}
 							</div>
@@ -249,7 +251,7 @@
 									{#snippet children(field)}
 										<Checkbox
 											{field}
-											label="Sign up for product updates via email"
+											label={m.auth_signUpForUpdates()}
 											id="subscribe"
 											helpText=""
 										/>

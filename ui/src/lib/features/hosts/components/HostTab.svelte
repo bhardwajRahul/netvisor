@@ -16,6 +16,7 @@
 	import { Plus } from 'lucide-svelte';
 	import { useTagsQuery } from '$lib/features/tags/queries';
 	import type { TabProps } from '$lib/shared/types';
+	import * as m from '$lib/paraglide/messages';
 
 	let { isReadOnly = false }: TabProps = $props();
 	import {
@@ -123,10 +124,10 @@
 	let hostFields = $derived(
 		defineFields<Host, HostOrderField>(
 			{
-				name: { label: 'Name', type: 'string', searchable: true },
-				hostname: { label: 'Hostname', type: 'string', searchable: true },
+				name: { label: m.hosts_fields_name(), type: 'string', searchable: true },
+				hostname: { label: m.hosts_fields_hostname(), type: 'string', searchable: true },
 				virtualized_by: {
-					label: 'Virtualized By',
+					label: m.hosts_fields_virtualizedBy(),
 					type: 'string',
 					filterable: true,
 					groupable: true,
@@ -136,29 +137,34 @@
 								(s) => s.id === host.virtualization?.details.service_id
 							);
 							if (virtualizationService) {
-								return virtualizationService?.name || 'Unknown Service';
+								return virtualizationService?.name || m.hosts_unknownService();
 							}
 						}
-						return 'Not Virtualized';
+						return m.hosts_notVirtualized();
 					}
 				},
 				network_id: {
-					label: 'Network',
+					label: m.hosts_fields_network(),
 					type: 'string',
 					filterable: true,
 					groupable: true,
 					getValue: (item) =>
-						networksData.find((n) => n.id == item.network_id)?.name || 'Unknown Network'
+						networksData.find((n) => n.id == item.network_id)?.name || m.hosts_unknownNetwork()
 				},
-				created_at: { label: 'Created', type: 'date' },
-				updated_at: { label: 'Updated', type: 'date' }
+				created_at: { label: m.hosts_fields_created(), type: 'date' },
+				updated_at: { label: m.hosts_fields_updated(), type: 'date' }
 			},
 			[
-				{ key: 'description', label: 'Description', type: 'string', searchable: true },
-				{ key: 'hidden', label: 'Hidden', type: 'boolean', filterable: true },
+				{
+					key: 'description',
+					label: m.hosts_fields_description(),
+					type: 'string',
+					searchable: true
+				},
+				{ key: 'hidden', label: m.hosts_fields_hidden(), type: 'boolean', filterable: true },
 				{
 					key: 'tags',
-					label: 'Tags',
+					label: m.hosts_fields_tags(),
 					type: 'array',
 					searchable: true,
 					filterable: true,
@@ -187,7 +193,7 @@
 	}
 
 	function handleDeleteHost(host: Host) {
-		if (confirm(`Are you sure you want to delete "${host.name}"?`)) {
+		if (confirm(m.hosts_confirmDelete({ name: host.name }))) {
 			deleteHostMutation.mutate(host.id);
 		}
 	}
@@ -238,7 +244,7 @@
 	}
 
 	async function handleBulkDelete(ids: string[]) {
-		if (confirm(`Are you sure you want to delete ${ids.length} Hosts?`)) {
+		if (confirm(m.hosts_confirmBulkDelete({ count: ids.length }))) {
 			await bulkDeleteHostsMutation.mutateAsync(ids);
 		}
 	}
@@ -265,11 +271,11 @@
 
 <div class="space-y-6">
 	<!-- Header -->
-	<TabHeader title="Hosts">
+	<TabHeader title={m.hosts_title()}>
 		<svelte:fragment slot="actions">
 			{#if !isReadOnly}
 				<button class="btn-primary flex items-center" onclick={handleCreateHost}
-					><Plus class="h-5 w-5" />Create Host</button
+					><Plus class="h-5 w-5" />{m.hosts_createHost()}</button
 				>
 			{/if}
 		</svelte:fragment>
@@ -281,10 +287,10 @@
 	{:else if hostsData.length === 0 && !hostsPagination}
 		<!-- Empty state -->
 		<EmptyState
-			title="No hosts configured yet"
+			title={m.hosts_noHostsYet()}
 			subtitle=""
 			onClick={handleCreateHost}
-			cta="Create your first host"
+			cta={m.hosts_createFirstHost()}
 		/>
 	{:else}
 		<DataControls

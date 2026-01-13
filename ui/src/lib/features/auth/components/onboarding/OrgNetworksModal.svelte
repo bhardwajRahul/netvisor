@@ -8,6 +8,7 @@
 	import { onboardingStore } from '../../stores/onboarding';
 	import { Plus, Trash2 } from 'lucide-svelte';
 	import { trackEvent } from '$lib/shared/utils/analytics';
+	import * as m from '$lib/paraglide/messages';
 
 	interface Props {
 		isOpen?: boolean;
@@ -109,10 +110,10 @@
 
 	let title = $derived(
 		useCase === 'msp'
-			? "Let's visualize your customers' networks!"
+			? m.onboarding_visualizeMsp()
 			: useCase === 'company'
-				? "Let's visualize your networks!"
-				: "Let's visualize your network!"
+				? m.onboarding_visualizeCompany()
+				: m.onboarding_visualizeHomelab()
 	);
 </script>
 
@@ -128,7 +129,7 @@
 	centerTitle={true}
 >
 	{#snippet headerIcon()}
-		<img src="/logos/scanopy-logo.png" alt="Scanopy Logo" class="h-8 w-8" />
+		<img src="/logos/scanopy-logo.png" alt={m.auth_scanopyLogo()} class="h-8 w-8" />
 	{/snippet}
 
 	<form
@@ -152,7 +153,7 @@
 							label={useCaseConfig.orgLabel}
 							id="organizationName"
 							placeholder={useCaseConfig.orgPlaceholder}
-							helpText={useCase === 'homelab' ? '' : 'Your company, team, or project name'}
+							helpText={useCase === 'homelab' ? '' : m.onboarding_orgHelpText()}
 							required={true}
 							{field}
 						/>
@@ -178,7 +179,7 @@
 											required={index == 0}
 											placeholder={useCaseConfig.networkPlaceholder}
 											helpText={index === 0 && useCase === 'msp'
-												? 'Each network represents a customer environment. One customer can have multiple networks.'
+												? m.onboarding_mspNetworkHelp()
 												: ''}
 										/>
 									{/snippet}
@@ -189,7 +190,7 @@
 									type="button"
 									class="btn-icon-danger"
 									onclick={() => removeNetwork(index)}
-									aria-label="Remove network"
+									aria-label={m.onboarding_removeNetwork()}
 								>
 									<Trash2 class="h-4 w-4" />
 								</button>
@@ -204,7 +205,7 @@
 							onclick={addNetwork}
 						>
 							<Plus class="h-4 w-4" />
-							Add another network
+							{m.onboarding_addAnotherNetwork()}
 						</button>
 					{/if}
 				</div>
@@ -214,7 +215,7 @@
 		<div class="modal-footer">
 			<div class="flex w-full flex-col gap-4">
 				<button type="submit" disabled={loading} class="btn-primary w-full">
-					{loading ? 'Setting up...' : 'Continue'}
+					{loading ? m.common_settingUp() : m.common_continue()}
 				</button>
 			</div>
 		</div>

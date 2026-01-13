@@ -12,6 +12,7 @@
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
 	import TextInput from '$lib/shared/components/forms/input/TextInput.svelte';
 	import TagPicker from '$lib/features/tags/components/TagPicker.svelte';
+	import * as m from '$lib/paraglide/messages';
 
 	let {
 		network = null,
@@ -37,8 +38,10 @@
 	let deleting = $state(false);
 
 	let isEditing = $derived(network !== null);
-	let title = $derived(isEditing ? `Edit ${network?.name}` : 'Create Network');
-	let saveLabel = $derived(isEditing ? 'Update Network' : 'Create Network');
+	let title = $derived(
+		isEditing ? m.networks_editNetwork({ name: network?.name ?? '' }) : m.networks_createNetwork()
+	);
+	let saveLabel = $derived(isEditing ? m.networks_updateNetwork() : m.networks_createNetwork());
 
 	function getDefaultValues() {
 		return network
@@ -116,7 +119,7 @@
 			<div class="space-y-8">
 				<!-- Network Details Section -->
 				<div class="space-y-4">
-					<h3 class="text-primary text-lg font-medium">Network Details</h3>
+					<h3 class="text-primary text-lg font-medium">{m.networks_networkDetails()}</h3>
 
 					<form.Field
 						name="name"
@@ -126,10 +129,10 @@
 					>
 						{#snippet children(field)}
 							<TextInput
-								label="Network Name"
+								label={m.networks_networkName()}
 								id="name"
 								{field}
-								placeholder="e.g Home Network"
+								placeholder={m.networks_networkNamePlaceholder()}
 								required
 							/>
 						{/snippet}
@@ -162,7 +165,7 @@
 							onclick={handleDelete}
 							class="btn-danger"
 						>
-							{deleting ? 'Deleting...' : 'Delete'}
+							{deleting ? m.hosts_editor_deleting() : m.common_delete()}
 						</button>
 					{/if}
 				</div>
@@ -173,10 +176,10 @@
 						onclick={onClose}
 						class="btn-secondary"
 					>
-						Cancel
+						{m.common_cancel()}
 					</button>
 					<button type="submit" disabled={loading || deleting} class="btn-primary">
-						{loading ? 'Saving...' : saveLabel}
+						{loading ? m.hosts_editor_saving() : saveLabel}
 					</button>
 				</div>
 			</div>

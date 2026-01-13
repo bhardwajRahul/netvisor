@@ -11,6 +11,7 @@
 	import { useInterfacesQuery } from '$lib/features/interfaces/queries';
 	import { usePortsQuery } from '$lib/features/ports/queries';
 	import { useServicesQuery } from '$lib/features/services/queries';
+	import * as m from '$lib/paraglide/messages';
 
 	// TanStack Query hooks to get child entities for hydrating host form data
 	const interfacesQuery = useInterfacesQuery();
@@ -120,9 +121,9 @@
 	{#snippet footer()}
 		<div class="modal-footer">
 			<div class="flex items-center justify-end gap-3">
-				<button type="button" onclick={onClose} class="btn-secondary"> Cancel </button>
+				<button type="button" onclick={onClose} class="btn-secondary"> {m.common_cancel()} </button>
 				<button type="button" onclick={handleSubmit} disabled={loading} class="btn-primary">
-					{loading ? 'Updating...' : 'Update Service'}
+					{loading ? m.services_updating() : m.services_updateService()}
 				</button>
 			</div>
 		</div>
