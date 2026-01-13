@@ -23,9 +23,41 @@ interface FieldDef {
 	validators?: Validator[];
 	required?: boolean;
 	showWhen?: (values: Record<string, string | number | boolean>) => boolean;
+	docsOnly?: boolean;
 }
 
 export const fieldDefs: FieldDef[] = [
+	// Docs-only fields (not shown in UI form, but needed for documentation)
+	{
+		id: 'serverUrl',
+		label: 'Server URL',
+		type: 'string',
+		cliFlag: '--server-url',
+		envVar: 'SCANOPY_SERVER_URL',
+		helpText: 'URL where the daemon can reach the server',
+		defaultValue: 'http://127.0.0.1:60072',
+		docsOnly: true
+	},
+	{
+		id: 'daemonApiKey',
+		label: 'API Key',
+		type: 'string',
+		cliFlag: '--daemon-api-key',
+		envVar: 'SCANOPY_DAEMON_API_KEY',
+		helpText: 'Authentication key for daemon (generated via UI)',
+		required: true,
+		docsOnly: true
+	},
+	{
+		id: 'networkId',
+		label: 'Network ID',
+		type: 'string',
+		cliFlag: '--network-id',
+		envVar: 'SCANOPY_NETWORK_ID',
+		helpText: 'UUID of the network to scan',
+		docsOnly: true
+	},
+	// UI form fields
 	{
 		id: 'name',
 		label: 'Name',

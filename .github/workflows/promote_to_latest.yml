@@ -90,7 +90,14 @@ jobs:
           repository: scanopy/website
           token: ${{ secrets.SYNC_FIXTURES_TO_WEBSITE_TOKEN }}
           path: website
-      
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: ui/package-lock.json
+
       - name: Copy fixtures to website repo
         run: |
           mkdir -p website/src/lib/fixtures/
@@ -99,6 +106,11 @@ jobs:
           cp ui/src/lib/data/billing-plans.json website/src/lib/fixtures/
           cp ui/static/openapi-public.json website/src/lib/fixtures/openapi.json
           cp ui/static/schema.mermaid website/src/lib/fixtures/schema.mermaid
+
+      - name: Generate daemon config fixture
+        run: |
+          cd ui && npm ci --ignore-scripts
+          npx vite-node scripts/export-daemon-field-defs.ts docs > ../website/src/lib/fixtures/daemon-config.json
 
       - name: Get previous release tag
         id: prev_tag
