@@ -721,7 +721,7 @@ async fn test_user_api_key_expired_disabled(ctx: &TestContext) -> Result<(), Str
         .map_err(|e| format!("Request failed: {}", e))?;
     assert_eq!(
         response.status(),
-        StatusCode::UNAUTHORIZED,
+        StatusCode::FORBIDDEN,
         "Disabled key should be rejected"
     );
     println!("  ✓ Disabled key is rejected");
@@ -743,7 +743,7 @@ async fn test_user_api_key_expired_disabled(ctx: &TestContext) -> Result<(), Str
         .map_err(|e| format!("Request failed: {}", e))?;
     assert_eq!(
         response.status(),
-        StatusCode::UNAUTHORIZED,
+        StatusCode::FORBIDDEN,
         "Expired key should be rejected"
     );
     println!("  ✓ Expired key is rejected");
