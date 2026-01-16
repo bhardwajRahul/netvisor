@@ -11,7 +11,8 @@
 		List,
 		Trash2,
 		CheckSquare,
-		Square
+		Square,
+		Download
 	} from 'lucide-svelte';
 	import {
 		type FieldConfig,
@@ -89,7 +90,10 @@
 		onOrderChange = null,
 		// Server-side tag filtering callback (optional)
 		// Called when tag filter selection changes, with array of selected tag IDs
-		onTagFilterChange = null
+		onTagFilterChange = null,
+		// CSV export callback (optional)
+		// Called when user clicks CSV export button; parent handles the actual export
+		onCsvExport = null
 	}: {
 		items: T[];
 		fields: FieldConfig<T>[];
@@ -112,6 +116,9 @@
 		// Server-side tag filtering: called when tag filter changes
 		// Args: array of tag IDs to filter by
 		onTagFilterChange?: ((tagIds: string[]) => void) | null;
+		// CSV export: called when user clicks CSV button
+		// Parent provides the handler with current filter/sort state
+		onCsvExport?: (() => void | Promise<void>) | null;
 	} = $props();
 
 	// Tags query for filter display
@@ -887,6 +894,20 @@
 			currentPage = 1;
 		}
 	}
+
+	// CSV export state and handler
+	let isExporting = $state(false);
+
+	async function handleCsvExport() {
+		if (!onCsvExport || isExporting) return;
+
+		isExporting = true;
+		try {
+			await onCsvExport();
+		} finally {
+			isExporting = false;
+		}
+	}
 </script>
 
 <div class="space-y-4">
@@ -903,6 +924,18 @@
 				{#if hasActiveFilters}
 					<Tag label={common_active()} color="Blue" />
 				{/if}
+			</button>
+		{/if}
+
+		<!-- CSV Export Button -->
+		{#if onCsvExport}
+			<button
+				onclick={handleCsvExport}
+				disabled={isExporting}
+				class="btn-secondary flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
+			>
+				<Download class="h-4 w-4" />
+				{isExporting ? 'Exporting...' : 'CSV'}
 			</button>
 		{/if}
 

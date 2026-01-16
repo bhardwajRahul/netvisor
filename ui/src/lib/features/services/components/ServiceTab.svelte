@@ -20,6 +20,7 @@
 	import { useNetworksQuery } from '$lib/features/networks/queries';
 	import type { TabProps } from '$lib/shared/types';
 	import type { components } from '$lib/api/schema';
+	import { downloadCsv } from '$lib/shared/utils/csvExport';
 	import {
 		common_services,
 		services_confirmBulkDelete,
@@ -105,6 +106,15 @@
 	function handleTagFilterChange(selectedTagIds: string[]) {
 		tagIds = selectedTagIds;
 		// Reset to page 1 is handled by DataControls
+	}
+
+	// CSV export handler
+	async function handleCsvExport() {
+		await downloadCsv('Service', {
+			tag_ids: tagIds.length > 0 ? tagIds : undefined,
+			order_by: orderBy,
+			order_direction: orderDirection
+		});
 	}
 
 	let showServiceEditor = $state(false);
@@ -243,6 +253,7 @@
 			onPageChange={handlePageChange}
 			onOrderChange={handleOrderChange}
 			onTagFilterChange={handleTagFilterChange}
+			onCsvExport={handleCsvExport}
 		>
 			{#snippet children(
 				item: Service,

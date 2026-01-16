@@ -50,6 +50,7 @@
 	import { useDaemonsQuery } from '$lib/features/daemons/queries';
 	import { useNetworksQuery } from '$lib/features/networks/queries';
 	import type { components } from '$lib/api/schema';
+	import { downloadCsv } from '$lib/shared/utils/csvExport';
 
 	type HostOrderField = components['schemas']['HostOrderField'];
 	type OrderDirection = components['schemas']['OrderDirection'];
@@ -129,6 +130,15 @@
 	function handleTagFilterChange(selectedTagIds: string[]) {
 		tagIds = selectedTagIds;
 		// Reset to page 1 is handled by DataControls
+	}
+
+	// CSV export handler
+	async function handleCsvExport() {
+		await downloadCsv('Host', {
+			tag_ids: tagIds.length > 0 ? tagIds : undefined,
+			order_by: orderBy,
+			order_direction: orderDirection
+		});
 	}
 
 	let showHostEditor = $state(false);
@@ -323,6 +333,7 @@
 			onPageChange={handlePageChange}
 			onOrderChange={handleOrderChange}
 			onTagFilterChange={handleTagFilterChange}
+			onCsvExport={handleCsvExport}
 		>
 			{#snippet children(
 				item: Host,

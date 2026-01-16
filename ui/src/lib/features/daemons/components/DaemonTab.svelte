@@ -18,6 +18,7 @@
 	import { useHostsQuery } from '$lib/features/hosts/queries';
 	import type { TabProps } from '$lib/shared/types';
 	import type { components } from '$lib/api/schema';
+	import { downloadCsv } from '$lib/shared/utils/csvExport';
 	import {
 		common_create,
 		common_created,
@@ -81,6 +82,11 @@
 
 	function getDaemonTags(daemon: Daemon): string[] {
 		return daemon.tags;
+	}
+
+	// CSV export handler
+	async function handleCsvExport() {
+		await downloadCsv('Daemon', {});
 	}
 
 	// Define field configuration for the DataTableControls
@@ -150,6 +156,7 @@
 			entityType={isReadOnly ? undefined : 'Daemon'}
 			getItemTags={getDaemonTags}
 			getItemId={(item) => item.id}
+			onCsvExport={handleCsvExport}
 		>
 			{#snippet children(
 				item: Daemon,

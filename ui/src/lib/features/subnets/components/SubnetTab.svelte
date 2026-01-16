@@ -19,6 +19,7 @@
 	import { useNetworksQuery } from '$lib/features/networks/queries';
 	import type { TabProps } from '$lib/shared/types';
 	import type { components } from '$lib/api/schema';
+	import { downloadCsv } from '$lib/shared/utils/csvExport';
 	import {
 		common_cidr,
 		common_confirmDeleteName,
@@ -111,6 +112,11 @@
 		return subnet.tags;
 	}
 
+	// CSV export handler
+	async function handleCsvExport() {
+		await downloadCsv('Subnet', {});
+	}
+
 	// Define field configuration for the DataTableControls
 	// Uses defineFields to ensure all SubnetOrderField values are covered
 	let subnetFields = $derived(
@@ -185,6 +191,7 @@
 			entityType={isReadOnly ? undefined : 'Subnet'}
 			getItemTags={getSubnetTags}
 			getItemId={(item) => item.id}
+			onCsvExport={handleCsvExport}
 		>
 			{#snippet children(
 				item: Subnet,

@@ -20,6 +20,7 @@
 	import { useNetworksQuery } from '$lib/features/networks/queries';
 	import type { TabProps } from '$lib/shared/types';
 	import type { components } from '$lib/api/schema';
+	import { downloadCsv } from '$lib/shared/utils/csvExport';
 	import {
 		common_confirmDeleteName,
 		common_create,
@@ -114,6 +115,11 @@
 		return group.tags;
 	}
 
+	// CSV export handler
+	async function handleCsvExport() {
+		await downloadCsv('Group', {});
+	}
+
 	// Define field configuration for the DataTableControls
 	// Uses defineFields to ensure all GroupOrderField values are covered
 	let groupFields = $derived(
@@ -185,6 +191,7 @@
 			entityType={isReadOnly ? undefined : 'Group'}
 			getItemTags={getGroupTags}
 			getItemId={(item) => item.id}
+			onCsvExport={handleCsvExport}
 		>
 			{#snippet children(
 				item: Group,

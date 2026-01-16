@@ -33,6 +33,7 @@
 	import { useDaemonsQuery } from '$lib/features/daemons/queries';
 	import { useSubnetsQuery } from '$lib/features/subnets/queries';
 	import { useGroupsQuery } from '$lib/features/groups/queries';
+	import { downloadCsv } from '$lib/shared/utils/csvExport';
 
 	// Queries
 	const currentUserQuery = useCurrentUserQuery();
@@ -122,6 +123,11 @@
 		editingNetwork = null;
 	}
 
+	// CSV export handler
+	async function handleCsvExport() {
+		await downloadCsv('Network', {});
+	}
+
 	// Define field configuration for the DataTableControls
 	const networkFields: FieldConfig<Network>[] = [
 		{
@@ -179,6 +185,7 @@
 			{allowBulkDelete}
 			storageKey="scanopy-networks-table-state"
 			getItemId={(item) => item.id}
+			onCsvExport={handleCsvExport}
 		>
 			{#snippet children(
 				item: Network,

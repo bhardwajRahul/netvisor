@@ -19,6 +19,7 @@
 	import { permissions } from '$lib/shared/stores/metadata';
 	import type { TabProps } from '$lib/shared/types';
 	import type { components } from '$lib/api/schema';
+	import { downloadCsv } from '$lib/shared/utils/csvExport';
 	import {
 		common_color,
 		common_confirmDeleteName,
@@ -106,6 +107,11 @@
 		}
 	}
 
+	// CSV export handler
+	async function handleCsvExport() {
+		await downloadCsv('Tag', {});
+	}
+
 	// Define field configuration for the DataTableControls
 	// Uses defineFields to ensure all TagOrderField values are covered
 	const tagFields = defineFields<Tag, TagOrderField>(
@@ -147,6 +153,7 @@
 			storageKey="scanopy-tags-table-state"
 			onBulkDelete={handleBulkDelete}
 			getItemId={(item) => item.id}
+			onCsvExport={handleCsvExport}
 		>
 			{#snippet children(
 				item: Tag,
