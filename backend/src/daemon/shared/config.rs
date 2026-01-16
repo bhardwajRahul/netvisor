@@ -153,7 +153,7 @@ pub struct AppConfig {
     pub arp_rate_pps: u32,
     /// Network interfaces to restrict scanning to. Empty means all interfaces.
     #[serde(default)]
-    pub interface_filter: Vec<String>,
+    pub interfaces: Vec<String>,
 }
 
 fn default_arp_retries() -> u32 {
@@ -192,7 +192,7 @@ impl Default for AppConfig {
             use_npcap_arp: false,
             arp_retries: default_arp_retries(),
             arp_rate_pps: default_arp_rate_pps(),
-            interface_filter: Vec::new(),
+            interfaces: Vec::new(),
         }
     }
 }
@@ -232,10 +232,20 @@ impl AppConfig {
             figment = figment.merge(Json::file(&config_path));
         }
 
-        // Add environment variables
+        // Handle SCANOPY_INTERFACES specially - Figment doesn't auto-split comma-separated values
+        if let Ok(interfaces_str) = std::env::var("SCANOPY_INTERFACES") {
+            let interfaces: Vec<String> = interfaces_str
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+            figment = figment.merge(("interfaces", interfaces));
+        }
+
+        // Add environment variables (interfaces handled above to support comma-separated values)
         figment = figment
-            .merge(Env::prefixed("NETVISOR_"))
-            .merge(Env::prefixed("SCANOPY_"));
+            .merge(Env::prefixed("NETVISOR_").ignore(&["INTERFACES"]))
+            .merge(Env::prefixed("SCANOPY_").ignore(&["INTERFACES"]));
 
         for (key, _) in std::env::vars() {
             if key.starts_with("NETVISOR_") {
@@ -307,7 +317,7 @@ impl AppConfig {
             figment = figment.merge(("arp_rate_pps", arp_rate_pps));
         }
         if let Some(interface) = cli_args.interfaces {
-            figment = figment.merge(("interface_filter", interface));
+            figment = figment.merge(("interfaces", interface));
         }
 
         let config: AppConfig = figment
@@ -533,9 +543,9 @@ impl ConfigStore {
         Ok(config.arp_rate_pps)
     }
 
-    pub async fn get_interface_filter(&self) -> Result<Vec<String>> {
+    pub async fn get_interfaces(&self) -> Result<Vec<String>> {
         let config = self.config.read().await;
-        Ok(config.interface_filter.clone())
+        Ok(config.interfaces.clone())
     }
 }
 
@@ -547,7 +557,7 @@ mod tests {
 
     use crate::daemon::shared::config::DaemonCli;
     use crate::{daemon::shared::config::AppConfig, tests::DAEMON_CONFIG_FIXTURE};
-    use clap::CommandFactory;
+    use clap::{CommandFactory, Parser};
     use std::collections::HashMap;
 
     #[test]
@@ -698,5 +708,38 @@ mod tests {
 
     fn normalize_text(s: &str) -> String {
         s.split_whitespace().collect::<Vec<_>>().join(" ")
+    }
+
+    /// Regression test for https://github.com/scanopy/scanopy/issues/463
+    /// Verifies that SCANOPY_INTERFACES env var correctly populates the interfaces config field.
+    /// The bug was that CLI field name (interfaces) didn't match config struct field name (interface_filter),
+    /// so Figment looked for SCANOPY_INTERFACE_FILTER instead of SCANOPY_INTERFACES.
+    #[test]
+    #[serial]
+    fn test_scanopy_interfaces_env_var() {
+        // Save and clear any existing value
+        let original = std::env::var("SCANOPY_INTERFACES").ok();
+        // SAFETY: This test runs serially and restores the original value after
+        unsafe { std::env::set_var("SCANOPY_INTERFACES", "eth0,enp6s18") };
+
+        // Load config with empty CLI args (env var should take effect)
+        let cli = DaemonCli::parse_from::<[&str; 0], &str>([]);
+        let config = AppConfig::load(cli).expect("Failed to load config");
+
+        // Restore original value
+        // SAFETY: This test runs serially
+        unsafe {
+            if let Some(val) = original {
+                std::env::set_var("SCANOPY_INTERFACES", val);
+            } else {
+                std::env::remove_var("SCANOPY_INTERFACES");
+            }
+        }
+
+        assert_eq!(
+            config.interfaces,
+            vec!["eth0", "enp6s18"],
+            "SCANOPY_INTERFACES env var should populate interfaces field"
+        );
     }
 }

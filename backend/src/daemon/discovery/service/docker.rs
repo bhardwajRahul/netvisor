@@ -109,7 +109,7 @@ impl RunsDiscovery for DiscoveryRunner<DockerScanDiscovery> {
         let subnets = self.discover_create_subnets().await?;
 
         // Get host interfaces (needed for docker daemon service host matching)
-        let interface_filter = self.as_ref().config_store.get_interface_filter().await?;
+        let interface_filter = self.as_ref().config_store.get_interfaces().await?;
         let (mut host_interfaces, _, _) = self
             .as_ref()
             .utils
@@ -230,7 +230,7 @@ impl DiscoversNetworkedEntities for DiscoveryRunner<DockerScanDiscovery> {
             .await?
             .ok_or_else(|| anyhow::anyhow!("Network ID not set"))?;
 
-        let interface_filter = self.as_ref().config_store.get_interface_filter().await?;
+        let interface_filter = self.as_ref().config_store.get_interfaces().await?;
         let (_, host_subnets, _) = self
             .as_ref()
             .utils

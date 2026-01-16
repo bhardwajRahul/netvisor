@@ -100,7 +100,7 @@ impl RunsDiscovery for DiscoveryRunner<SelfReportDiscovery> {
         let binding_ip = IpAddr::V4(binding_address.parse::<Ipv4Addr>()?);
 
         let interface_start = std::time::Instant::now();
-        let interface_filter = self.as_ref().config_store.get_interface_filter().await?;
+        let interface_filter = self.as_ref().config_store.get_interfaces().await?;
         let (interfaces, subnets, _) = utils
             .get_own_interfaces(
                 self.discovery_type(),
