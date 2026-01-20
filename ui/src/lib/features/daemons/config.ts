@@ -159,6 +159,7 @@ export const fieldDefs: FieldDef[] = [
 		section: () => m.common_performance(),
 		validators: [min(0), max(300)]
 	},
+	// Docker Discovery
 	{
 		id: 'dockerProxy',
 		label: () => m.daemons_config_dockerProxy(),
@@ -226,6 +227,15 @@ export const fieldDefs: FieldDef[] = [
 		cliFlag: '--arp-retries',
 		envVar: 'SCANOPY_ARP_RETRIES',
 		helpText: () => m.daemons_config_arpRetriesHelp(),
+		section: () => m.daemons_config_sectionNetworkDiscovery()
+	},
+	{
+		id: 'scan_rate_pps',
+		label: () => m.daemons_config_portScanPacketsPerSecond(),
+		type: 'number',
+		cliFlag: '--scan-rate-pps',
+		envVar: 'SCANOPY_SCAN_RATE_PPS',
+		helpText: () => m.daemons_config_portScanPacketsPerSecondHelp(),
 		section: () => m.daemons_config_sectionNetworkDiscovery()
 	},
 	{

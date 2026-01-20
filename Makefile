@@ -1,4 +1,4 @@
-.PHONY: help build test clean format generate-schema set-plan-community set-plan-starter set-plan-pro set-plan-team set-plan-business set-plan-enterprise
+.PHONY: help build test clean format generate-schema generate-messages set-plan-community set-plan-starter set-plan-pro set-plan-team set-plan-business set-plan-enterprise
 
 help:
 	@echo "Scanopy Development Commands"
@@ -21,6 +21,7 @@ help:
 	@echo "  make lint           - Run all linters"
 	@echo "  make format         - Format all code"
 	@echo "  make generate-types  - Generate TypeScript types from Rust"
+	@echo "  make generate-messages - Generate i18n message functions from messages/*.json"
 	@echo "  make generate-schema - Generate database schema diagram (requires tbls)"
 	@echo "  make clean          - Clean build artifacts and containers"
 	@echo "  make install-dev-mac    - Install development dependencies on macOS"
@@ -137,6 +138,11 @@ generate-schema:
 	awk '/^```mermaid$$/,/^```$$/{if(!/^```/)print}' /tmp/tbls-schema/README.md > ui/static/schema.mermaid && \
 	rm -rf /tmp/tbls-schema
 	@echo "✅ Generated ui/static/schema.mermaid"
+
+generate-messages:
+	@echo "Generating i18n messages..."
+	cd ui && npx paraglide-js compile --outdir ./src/lib/paraglide --silent
+	@echo "Messages generated successfully"
 
 stripe-webhook:
 	stripe listen --forward-to http://localhost:60072/api/billing/webhooks

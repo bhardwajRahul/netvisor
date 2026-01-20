@@ -4,7 +4,9 @@ use crate::daemon::discovery::service::base::{
 use crate::daemon::discovery::types::base::{DiscoveryCriticalError, DiscoverySessionUpdate};
 use crate::daemon::utils::arp::{self, ArpScanResult};
 use crate::daemon::utils::base::ConcurrentPipelineOps;
-use crate::daemon::utils::scanner::{can_arp_scan, scan_endpoints, scan_tcp_ports, scan_udp_ports};
+use crate::daemon::utils::scanner::{
+    PORT_SCAN_BATCH_MAX, can_arp_scan, probe_host_capacity, scan_endpoints, scan_tcp_ports, scan_udp_ports
+};
 use crate::server::discovery::r#impl::types::{DiscoveryType, HostNamingFallback};
 use crate::server::interfaces::r#impl::base::{Interface, InterfaceBase};
 use crate::server::ports::r#impl::base::PortType;
@@ -69,7 +71,7 @@ pub struct DeepScanParams<'a> {
     mac: Option<MacAddress>,
     phase1_ports: Vec<PortType>,
     cancel: CancellationToken,
-    port_scan_batch_size: usize,
+    scan_rate_pps: u32,
     gateway_ips: &'a [IpAddr],
     /// Optional counter for batch-level progress tracking
     batches_completed: Option<&'a Arc<AtomicUsize>>,
@@ -218,6 +220,9 @@ impl DiscoveryRunner<NetworkScanDiscovery> {
         let arp_retries = self.as_ref().config_store.get_arp_retries().await?;
         let arp_rate_pps = self.as_ref().config_store.get_arp_rate_pps().await?;
 
+        // Get port scan rate limit
+        let scan_rate_pps = self.as_ref().config_store.get_scan_rate_pps().await?;
+
         // Check ARP capability once before partitioning
         let arp_available = can_arp_scan(use_npcap);
 
@@ -281,7 +286,8 @@ impl DiscoveryRunner<NetworkScanDiscovery> {
         };
 
         // Get deep scan parameters with precise FD budget
-        let ports_per_host_batch = 200;
+        // Batch size varies per host, use max value as estimate for FD budget to ensure we don't hit FD limits
+        let estimated_ports_per_host_batch = PORT_SCAN_BATCH_MAX;
         let concurrent_ops = ConcurrentPipelineOps {
             arp_subnet_count,
             non_interfaced_scan_concurrency,
@@ -291,7 +297,7 @@ impl DiscoveryRunner<NetworkScanDiscovery> {
         let deep_scan_concurrency = self
             .as_ref()
             .utils
-            .get_optimal_deep_scan_concurrency(ports_per_host_batch, concurrent_ops)?;
+            .get_optimal_deep_scan_concurrency(estimated_ports_per_host_batch, concurrent_ops)?;
 
         let gateway_ips = self
             .as_ref()
@@ -480,6 +486,7 @@ impl DiscoveryRunner<NetworkScanDiscovery> {
                                 ip,
                                 cancel,
                                 port_scan_batch_size,
+                                scan_rate_pps,
                                 discovery_ports,
                             )
                             .await;
@@ -522,8 +529,8 @@ impl DiscoveryRunner<NetworkScanDiscovery> {
         let mut results: Vec<Host> = Vec::new();
 
         // Batch-level progress tracking for smoother UX
-        // TCP port scanning is the bulk of deep scan work (~328 batches per host for 65535 ports)
-        let batches_per_host = 65535_usize.div_ceil(ports_per_host_batch);
+        // TCP port scanning is the bulk of deep scan work (~256 batches per host for 65535 ports at 256 batch size)
+        let batches_per_host = 65535_usize.div_ceil(estimated_ports_per_host_batch);
         let total_batches = Arc::new(AtomicUsize::new(0));
         let batches_completed = Arc::new(AtomicUsize::new(0));
 
@@ -606,7 +613,7 @@ impl DiscoveryRunner<NetworkScanDiscovery> {
                                             mac,
                                             phase1_ports: Vec::new(),
                                             cancel,
-                                            port_scan_batch_size: ports_per_host_batch,
+                                            scan_rate_pps,
                                             gateway_ips: &gateway_ips,
                                             batches_completed: Some(&batches_completed),
                                         })
@@ -663,7 +670,7 @@ impl DiscoveryRunner<NetworkScanDiscovery> {
                                     mac,
                                     phase1_ports: Vec::new(),
                                     cancel,
-                                    port_scan_batch_size: ports_per_host_batch,
+                                    scan_rate_pps,
                                     gateway_ips: &gateway_ips,
                                     batches_completed: Some(&batches_completed),
                                 })
@@ -793,7 +800,7 @@ impl DiscoveryRunner<NetworkScanDiscovery> {
             mac,
             phase1_ports,
             cancel,
-            port_scan_batch_size,
+            scan_rate_pps,
             gateway_ips,
             batches_completed,
         } = params;
@@ -801,6 +808,10 @@ impl DiscoveryRunner<NetworkScanDiscovery> {
         if cancel.is_cancelled() {
             return Err(Error::msg("Discovery was cancelled"));
         }
+
+        // Probe host to determine optimal batch size
+        let probe_result = probe_host_capacity(ip, 200).await;
+        let port_scan_batch_size = probe_result.recommended_batch_size;
 
         let phase1_port_nums: HashSet<u16> = phase1_ports.iter().map(|p| p.number()).collect();
         let remaining_tcp_ports: Vec<u16> = (1..=65535)
@@ -811,18 +822,25 @@ impl DiscoveryRunner<NetworkScanDiscovery> {
             ip = %ip,
             phase1_ports = phase1_ports.len(),
             remaining_ports = remaining_tcp_ports.len(),
-            "Starting deep scan"
+            port_scan_batch_size,
+            "Starting deep scan with adaptive batch size"
         );
 
-        // Scan in batches
+        // Scan in batches with rate limiting
         let mut all_tcp_ports = Vec::new();
         for chunk in remaining_tcp_ports.chunks(port_scan_batch_size) {
             if cancel.is_cancelled() {
                 return Err(Error::msg("Discovery was cancelled"));
             }
 
-            let open_ports =
-                scan_tcp_ports(ip, cancel.clone(), port_scan_batch_size, chunk.to_vec()).await?;
+            let open_ports = scan_tcp_ports(
+                ip,
+                cancel.clone(),
+                port_scan_batch_size,
+                scan_rate_pps,
+                chunk.to_vec(),
+            )
+            .await?;
             all_tcp_ports.extend(open_ports);
 
             // Update batch-level progress
@@ -842,11 +860,12 @@ impl DiscoveryRunner<NetworkScanDiscovery> {
         open_ports.sort_by_key(|p| (p.number(), p.protocol()));
         open_ports.dedup();
 
-        // UDP and endpoint scanning
+        // UDP and endpoint scanning with rate limiting
         let udp_ports = scan_udp_ports(
             ip,
             cancel.clone(),
             port_scan_batch_size,
+            scan_rate_pps,
             subnet.base.cidr,
             gateway_ips.to_vec(),
         )

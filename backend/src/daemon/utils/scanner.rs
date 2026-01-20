@@ -26,13 +26,18 @@ use tokio_util::sync::CancellationToken;
 use crate::server::ports::r#impl::base::{PortType, TransportProtocol};
 
 pub const SCAN_TIMEOUT: Duration = Duration::from_millis(800);
+pub const PORT_SCAN_BATCH_MAX: usize = 400;
+pub const PORT_SCAN_BATCH_HIGH: usize = 200;
+pub const PORT_SCAN_BATCH_MED: usize = 128;
+pub const PORT_SCAN_BATCH_LOW: usize = 64;
 
-/// Generic batch scanner that maintains constant parallelism
+/// Generic batch scanner that maintains constant parallelism with rate limiting
 /// This is the core RustScan pattern extracted into a reusable function
 ///
 /// # Arguments
 /// * `items` - Items to scan
 /// * `batch_size` - Number of concurrent operations to maintain
+/// * `scan_rate_pps` - Maximum probes per second (0 = unlimited)
 /// * `cancel` - Cancellation token
 /// * `scan_fn` - Async function that scans an item and returns Option<Result>
 ///
@@ -41,6 +46,7 @@ pub const SCAN_TIMEOUT: Duration = Duration::from_millis(800);
 async fn batch_scan<T, O, F, Fut>(
     items: Vec<T>,
     batch_size: usize,
+    scan_rate_pps: u32,
     cancel: CancellationToken,
     scan_fn: F,
 ) -> Vec<O>
@@ -53,9 +59,17 @@ where
     let mut results = Vec::new();
     let mut item_iter = items.into_iter();
 
+    // Calculate stagger delay from rate limit
+    let stagger_delay = if scan_rate_pps > 0 {
+        Duration::from_micros(1_000_000 / scan_rate_pps as u64)
+    } else {
+        Duration::ZERO
+    };
+
     let mut futures: FuturesUnordered<Pin<Box<dyn Future<Output = Option<O>> + Send>>> =
         FuturesUnordered::new();
 
+    // Initial seeding with staggered starts
     for _ in 0..batch_size {
         if cancel.is_cancelled() {
             break;
@@ -63,6 +77,10 @@ where
 
         if let Some(item) = item_iter.next() {
             futures.push(Box::pin(scan_fn(item)));
+            // Stagger connection starts to avoid SYN burst
+            if !stagger_delay.is_zero() {
+                tokio::time::sleep(stagger_delay).await;
+            }
         } else {
             break;
         }
@@ -80,6 +98,10 @@ where
         while futures.len() < batch_size && !cancel.is_cancelled() {
             if let Some(item) = item_iter.next() {
                 futures.push(Box::pin(scan_fn(item)));
+                // Stagger connection starts to avoid SYN burst
+                if !stagger_delay.is_zero() {
+                    tokio::time::sleep(stagger_delay).await;
+                }
             } else {
                 break;
             }
@@ -109,10 +131,117 @@ pub fn can_arp_scan(use_npcap: bool) -> bool {
     available
 }
 
+/// Result of probing a host's connection capacity
+#[derive(Debug, Clone, Copy)]
+pub struct HostCapacityProbe {
+    /// Recommended batch size for this host
+    pub recommended_batch_size: usize,
+    /// Number of probe ports that responded
+    pub responsive_ports: usize,
+}
+
+impl Default for HostCapacityProbe {
+    fn default() -> Self {
+        Self {
+            recommended_batch_size: PORT_SCAN_BATCH_LOW, // Conservative default
+            responsive_ports: 0,
+        }
+    }
+}
+
+/// Probe a host with a small set of common ports to estimate its connection capacity.
+/// This helps determine an appropriate batch size before the full port scan.
+///
+/// # Arguments
+/// * `ip` - The IP address to probe
+/// * `timeout_ms` - Timeout per connection attempt in milliseconds
+///
+/// # Returns
+/// HostCapacityProbe with recommended batch size based on response pattern
+pub async fn probe_host_capacity(ip: IpAddr, timeout_ms: u64) -> HostCapacityProbe {
+    use std::time::Instant;
+
+    // Common TCP ports to probe - mix of services found on different device types
+    // Using PortType enum for named constants
+    let probe_ports = [                                                                                                                                                
+        PortType::Ssh,      // 22                                                                                                                                      
+        PortType::Telnet,   // 23                                                                                                                                      
+        PortType::Http,     // 80                                                                                                                                      
+        PortType::Https,    // 443                                                                                                                                     
+        PortType::Samba,    // 445 - Windows/NAS                                                                                                                       
+        PortType::Http8080, // 8080 - alternate web                                                                                                                    
+        PortType::Rdp,      // 3389                                                                                                                                    
+    ]; 
+
+    let probe_timeout = Duration::from_millis(timeout_ms);
+    let mut response_times: Vec<Duration> = Vec::new();
+    let mut responsive_count = 0;
+
+    // Send all probes concurrently
+    let start = Instant::now();
+    let mut futures: FuturesUnordered<Pin<Box<dyn Future<Output = Option<Duration>> + Send>>> =
+        FuturesUnordered::new();
+
+    for port_type in &probe_ports {
+        let socket = SocketAddr::new(ip, port_type.number());
+        let probe_start = start;
+
+        futures.push(Box::pin(async move {
+            match timeout(probe_timeout, TcpStream::connect(socket)).await {
+                Ok(Ok(_stream)) => Some(probe_start.elapsed()),
+                Ok(Err(_)) => None, // Connection refused - port closed but host responsive
+                Err(_) => None,     // Timeout - port filtered or host slow
+            }
+        }));
+    }
+
+    while let Some(result) = futures.next().await {
+        if let Some(duration) = result {
+            response_times.push(duration);
+            responsive_count += 1;
+        }
+    }
+
+    // Check response time consistency
+    let avg_response_time = if !response_times.is_empty() {
+        response_times.iter().sum::<Duration>() / response_times.len() as u32
+    } else {
+        Duration::from_millis(500)
+    };
+
+    // Determine host capacity based on probe results
+    let recommended_batch_size = if responsive_count >= 3 && avg_response_time < Duration::from_millis(100) {                                                          
+        // Multiple services + very fast = robust server                                                                                                               
+        PORT_SCAN_BATCH_MAX                                                                                                                                            
+    } else if responsive_count >= 2 && avg_response_time < Duration::from_millis(200) {                                                                                
+        // Good responsiveness                                                                                                                                         
+        PORT_SCAN_BATCH_HIGH                                                                                                                                           
+    } else if responsive_count >= 1 && avg_response_time < Duration::from_millis(500) {                                                                                
+        // Some response, moderate speed                                                                                                                               
+        PORT_SCAN_BATCH_MED                                                                                                                                            
+    } else {                                                                                                                                                           
+        // Slow, filtered, or no response - likely constrained device                                                                                                  
+        PORT_SCAN_BATCH_LOW                                                                                                                                            
+    }; 
+
+    tracing::debug!(
+        ip = %ip,
+        responsive_ports = responsive_count,
+        recommended_batch_size = recommended_batch_size,
+        "Host capacity probe complete"
+    );
+
+    HostCapacityProbe {
+        recommended_batch_size,
+        responsive_ports: responsive_count,
+    }
+}
+
 pub async fn scan_ports_and_endpoints(
     ip: IpAddr,
     cancel: CancellationToken,
     port_scan_batch_size: usize,
+    scan_rate_pps: u32,
     cidr: IpCidr,
     gateway_ips: Vec<IpAddr>,
     tcp_ports_to_check: Vec<u16>,
@@ -124,9 +253,15 @@ pub async fn scan_ports_and_endpoints(
     let mut open_ports = Vec::new();
     let mut endpoint_responses = Vec::new();
 
-    // Scan TCP ports with batching
-    let tcp_ports =
-        scan_tcp_ports(ip, cancel.clone(), port_scan_batch_size, tcp_ports_to_check).await?;
+    // Scan TCP ports with batching and rate limiting
+    let tcp_ports = scan_tcp_ports(
+        ip,
+        cancel.clone(),
+        port_scan_batch_size,
+        scan_rate_pps,
+        tcp_ports_to_check,
+    )
+    .await?;
 
     let use_https_ports: HashMap<u16, bool> =
         tcp_ports.iter().map(|(p, h)| (p.number(), *h)).collect();
@@ -138,9 +273,16 @@ pub async fn scan_ports_and_endpoints(
         return Err(anyhow!("Operation cancelled"));
     }
 
-    // Scan UDP ports with batching
-    let udp_ports =
-        scan_udp_ports(ip, cancel.clone(), port_scan_batch_size, cidr, gateway_ips).await?;
+    // Scan UDP ports with batching and rate limiting
+    let udp_ports = scan_udp_ports(
+        ip,
+        cancel.clone(),
+        port_scan_batch_size,
+        scan_rate_pps,
+        cidr,
+        gateway_ips,
+    )
+    .await?;
     open_ports.extend(udp_ports);
 
     if cancel.is_cancelled() {
@@ -197,6 +339,7 @@ pub async fn scan_tcp_ports(
     ip: IpAddr,
     cancel: CancellationToken,
     batch_size: usize,
+    scan_rate_pps: u32,
     tcp_ports_to_check: Vec<u16>,
 ) -> Result<Vec<(PortType, bool)>, Error> {
     let ports: Vec<PortType> = tcp_ports_to_check
@@ -204,87 +347,103 @@ pub async fn scan_tcp_ports(
         .map(|p| PortType::new_tcp(*p))
         .collect();
 
-    let open_ports = batch_scan(ports.clone(), batch_size, cancel, move |port| async move {
-        let socket = SocketAddr::new(ip, port.number());
+    let open_ports = batch_scan(
+        ports.clone(),
+        batch_size,
+        scan_rate_pps,
+        cancel,
+        move |port| async move {
+            let socket = SocketAddr::new(ip, port.number());
 
-        // Try connection with timeout, retry once on timeout for slow hosts
-        let mut attempts = 0;
-        let max_attempts = 2;
+            // Try connection with timeout, retry once on timeout for slow hosts
+            let mut attempts = 0;
+            let max_attempts = 2;
 
-        loop {
-            attempts += 1;
-            let start = std::time::Instant::now();
+            loop {
+                attempts += 1;
+                let start = std::time::Instant::now();
 
-            match timeout(SCAN_TIMEOUT, TcpStream::connect(socket)).await {
-                Ok(Ok(stream)) => {
-                    let connect_time = start.elapsed();
+                match timeout(SCAN_TIMEOUT, TcpStream::connect(socket)).await {
+                    Ok(Ok(stream)) => {
+                        let connect_time = start.elapsed();
 
-                    // Try to peek at the connection to detect immediate disconnects
-                    let mut buf = [0u8; 1];
-                    let peek_result =
-                        timeout(Duration::from_millis(50), stream.peek(&mut buf)).await;
+                        // Try to peek at the connection to detect immediate disconnects
+                        let mut buf = [0u8; 1];
+                        let peek_result =
+                            timeout(Duration::from_millis(50), stream.peek(&mut buf)).await;
 
-                    let use_https = match peek_result {
-                        Ok(Ok(0)) => {
-                            // Port open - HTTPS (immediate close)"
-                            true
-                        }
-                        Ok(Ok(_)) => {
-                            // Port open - got bytes
-                            false
-                        }
-                        Ok(Err(_)) => {
-                            // Port open - peek error
-                            false
-                        }
-                        Err(_) => {
-                            // Port open - no immediate response
-                            false
-                        }
-                    };
+                        let use_https = match peek_result {
+                            Ok(Ok(0)) => {
+                                // Port open - HTTPS (immediate close)"
+                                true
+                            }
+                            Ok(Ok(_)) => {
+                                // Port open - got bytes
+                                false
+                            }
+                            Ok(Err(_)) => {
+                                // Port open - peek error
+                                false
+                            }
+                            Err(_) => {
+                                // Port open - no immediate response
+                                false
+                            }
+                        };
 
-                    tracing::debug!(
-                        "Found open TCP port {}:{} (took {:?})",
-                        ip,
-                        port,
-                        connect_time
-                    );
-
-                    drop(stream);
-                    return Some((
-                        PortType::new_tcp(port.number()),
-                        use_https || port.is_https(),
-                    ));
-                }
-                Ok(Err(e)) => {
-                    if DiscoveryCriticalError::is_critical_error(e.to_string()) {
-                        tracing::error!("Critical error scanning {}:{}: {}", socket.ip(), port, e);
-                    }
-                    return None;
-                }
-                Err(_) => {
-                    let elapsed = start.elapsed();
-
-                    if attempts < max_attempts {
-                        tracing::trace!(
-                            "Port {}:{} timeout attempt {}/{} (took {:?}), retrying...",
+                        tracing::debug!(
+                            "Found open TCP port {}:{} (took {:?})",
                             ip,
                             port,
-                            attempts,
-                            max_attempts,
-                            elapsed
+                            connect_time
                         );
-                        // Small delay before retry
-                        tokio::time::sleep(Duration::from_millis(100)).await;
-                        continue;
-                    } else {
-                        tracing::trace!("Port {}:{} timeout after {} attempts", ip, port, attempts);
+
+                        drop(stream);
+                        return Some((
+                            PortType::new_tcp(port.number()),
+                            use_https || port.is_https(),
+                        ));
+                    }
+                    Ok(Err(e)) => {
+                        if DiscoveryCriticalError::is_critical_error(e.to_string()) {
+                            tracing::error!(
+                                "Critical error scanning {}:{}: {}",
+                                socket.ip(),
+                                port,
+                                e
+                            );
+                        }
                         return None;
+                    }
+                    Err(_) => {
+                        let elapsed = start.elapsed();
+
+                        if attempts < max_attempts {
+                            tracing::trace!(
+                                "Port {}:{} timeout attempt {}/{} (took {:?}), retrying...",
+                                ip,
+                                port,
+                                attempts,
+                                max_attempts,
+                                elapsed
+                            );
+                            // Small delay before retry
+                            tokio::time::sleep(Duration::from_millis(100)).await;
+                            continue;
+                        } else {
+                            tracing::trace!(
+                                "Port {}:{} timeout after {} attempts",
+                                ip,
+                                port,
+                                attempts
+                            );
+                            return None;
+                        }
                     }
                 }
             }
-        }
-    })
+        },
+    )
     .await;
 
     tracing::debug!(
@@ -301,6 +460,7 @@ pub async fn scan_udp_ports(
     ip: IpAddr,
     cancel: CancellationToken,
     batch_size: usize,
+    scan_rate_pps: u32,
     cidr: IpCidr,
     gateway_ips: Vec<IpAddr>,
 ) -> Result<Vec<PortType>, Error> {
@@ -316,35 +476,42 @@ pub async fn scan_udp_ports(
 
     let is_gateway = gateway_ips.contains(&ip);
 
-    let open_ports = batch_scan(ports.clone(), udp_batch_size, cancel, |port| async move {
-        let result = match port {
-            53 => test_dns_service(ip).await,
-            123 => test_ntp_service(ip).await,
-            161 => test_snmp_service(ip).await,
-            67 => {
-                if is_gateway {
-                    test_dhcp_service(ip, &cidr).await
-                } else {
-                    Ok(None)
+    // UDP rate limiting is less critical but still useful
+    let open_ports = batch_scan(
+        ports.clone(),
+        udp_batch_size,
+        scan_rate_pps,
+        cancel,
+        |port| async move {
+            let result = match port {
+                53 => test_dns_service(ip).await,
+                123 => test_ntp_service(ip).await,
+                161 => test_snmp_service(ip).await,
+                67 => {
+                    if is_gateway {
+                        test_dhcp_service(ip, &cidr).await
+                    } else {
+                        Ok(None)
+                    }
                 }
-            }
-            _ => Ok(None),
-        };
+                _ => Ok(None),
+            };
 
-        match result {
-            Ok(Some(detected_port)) => {
-                tracing::trace!("Found open UDP port {}:{}", ip, detected_port);
-                Some(PortType::new_udp(detected_port))
-            }
-            Ok(None) => None,
-            Err(e) => {
-                if DiscoveryCriticalError::is_critical_error(e.to_string()) {
-                    tracing::error!("Critical error scanning UDP {}:{}: {}", ip, port, e);
+            match result {
+                Ok(Some(detected_port)) => {
+                    tracing::trace!("Found open UDP port {}:{}", ip, detected_port);
+                    Some(PortType::new_udp(detected_port))
                 }
-                None
+                Ok(None) => None,
+                Err(e) => {
+                    if DiscoveryCriticalError::is_critical_error(e.to_string()) {
+                        tracing::error!("Critical error scanning UDP {}:{}: {}", ip, port, e);
+                    }
+                    None
+                }
             }
-        }
-    })
+        },
+    )
     .await;
 
     tracing::debug!(
@@ -401,7 +568,8 @@ pub async fn scan_endpoints(
     let use_https_ports_is_none = use_https_ports.is_none();
     let https_ports = use_https_ports.unwrap_or_default();
 
-    let responses = batch_scan(endpoints, endpoint_batch_size, cancel, move |endpoint| {
+    // Endpoint scanning uses HTTP client with connection pooling, rate limiting less critical
+    let responses = batch_scan(endpoints, endpoint_batch_size, 0, cancel, move |endpoint| {
         let client = client.clone();
         let https_ports = https_ports.clone();
         async move {

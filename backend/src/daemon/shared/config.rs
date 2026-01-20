@@ -97,6 +97,10 @@ pub struct DaemonCli {
     #[arg(long)]
     arp_rate_pps: Option<u32>,
 
+    /// Maximum port scan probes per second (default: 500, controls rate of TCP/UDP connection attempts to avoid overwhelming target hosts)
+    #[arg(long)]
+    scan_rate_pps: Option<u32>,
+
     /// Restrict daemon to specific network interface(s). Comma-separated for multiple (e.g., eth0,eth1). Leave empty for all interfaces. Only applies to network discovery
     #[arg(long, value_delimiter = ',')]
     interfaces: Option<Vec<String>>,
@@ -151,6 +155,8 @@ pub struct AppConfig {
     pub arp_retries: u32,
     #[serde(default = "default_arp_rate_pps")]
     pub arp_rate_pps: u32,
+    #[serde(default = "default_scan_rate_pps")]
+    pub scan_rate_pps: u32,
     /// Network interfaces to restrict scanning to. Empty means all interfaces.
     #[serde(default)]
     pub interfaces: Vec<String>,
@@ -162,6 +168,10 @@ fn default_arp_retries() -> u32 {
 
 fn default_arp_rate_pps() -> u32 {
     50 // Default: 50 pps, safe for most enterprise switches
+}
+
+fn default_scan_rate_pps() -> u32 {
+    500 // Default: 500 pps (2ms between probes), safe for most devices
 }
 
 impl Default for AppConfig {
@@ -193,6 +203,7 @@ impl Default for AppConfig {
             arp_retries: default_arp_retries(),
             arp_rate_pps: default_arp_rate_pps(),
             interfaces: Vec::new(),
+            scan_rate_pps: default_scan_rate_pps(),
         }
     }
 }
@@ -315,6 +326,9 @@ impl AppConfig {
         }
         if let Some(arp_rate_pps) = cli_args.arp_rate_pps {
             figment = figment.merge(("arp_rate_pps", arp_rate_pps));
+        }
+        if let Some(scan_rate_pps) = cli_args.scan_rate_pps {
+            figment = figment.merge(("scan_rate_pps", scan_rate_pps));
         }
         if let Some(interface) = cli_args.interfaces {
             figment = figment.merge(("interfaces", interface));
@@ -541,6 +555,11 @@ impl ConfigStore {
     pub async fn get_arp_rate_pps(&self) -> Result<u32> {
         let config = self.config.read().await;
         Ok(config.arp_rate_pps)
+    }
+
+    pub async fn get_scan_rate_pps(&self) -> Result<u32> {
+        let config = self.config.read().await;
+        Ok(config.scan_rate_pps)
     }
 
     pub async fn get_interfaces(&self) -> Result<Vec<String>> {
