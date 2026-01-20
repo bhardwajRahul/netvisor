@@ -237,7 +237,7 @@ async fn create_subnet(
         subnet_name = %request.base.name,
         subnet_cidr = %request.base.cidr,
         network_id = %request.base.network_id,
-        entity_id = %entity.entity_id(),
+        entity_id = %entity.entity_id().unwrap_or_default(),
         "Subnet create request received"
     );
 
@@ -245,7 +245,7 @@ async fn create_subnet(
         tracing::warn!(
             subnet_name = %request.base.name,
             subnet_cidr = %request.base.cidr,
-            entity_id = %entity.entity_id(),
+            entity_id = %entity.entity_id().unwrap_or_default(),
             error = %err,
             "Subnet validation failed"
         );

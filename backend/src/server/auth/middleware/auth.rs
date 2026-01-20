@@ -163,14 +163,25 @@ impl AuthenticatedEntity {
         }
     }
 
-    pub fn entity_id(&self) -> String {
+    pub fn entity_name(&self) -> String {
         match self {
-            AuthenticatedEntity::User { user_id, .. } => user_id.to_string(),
-            AuthenticatedEntity::Daemon { daemon_id, .. } => daemon_id.to_string(),
-            AuthenticatedEntity::ApiKey { api_key_id, .. } => api_key_id.to_string(),
+            AuthenticatedEntity::User { .. } => "user".to_string(),
+            AuthenticatedEntity::Daemon { .. } => "daemon".to_string(),
+            AuthenticatedEntity::ApiKey { .. } => "api_key".to_string(),
             AuthenticatedEntity::ExternalService { name } => format!("external_service:{}", name),
-            AuthenticatedEntity::System => "System".to_string(),
-            AuthenticatedEntity::Anonymous => "Anonymous".to_string(),
+            AuthenticatedEntity::System => "system".to_string(),
+            AuthenticatedEntity::Anonymous => "anonymous".to_string(),
+        }
+    }
+
+    pub fn entity_id(&self) -> Option<Uuid> {
+        match self {
+            AuthenticatedEntity::User { user_id, .. } => Some(*user_id),
+            AuthenticatedEntity::Daemon { daemon_id, .. } => Some(*daemon_id),
+            AuthenticatedEntity::ApiKey { api_key_id, .. } => Some(*api_key_id),
+            AuthenticatedEntity::ExternalService { .. } => None,
+            AuthenticatedEntity::System => None,
+            AuthenticatedEntity::Anonymous => None,
         }
     }
 
