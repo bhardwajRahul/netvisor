@@ -182,12 +182,13 @@
 	}
 
 	// Load state from localStorage
-	function loadState() {
-		if (!storageKey || typeof localStorage === 'undefined') return;
+	// Returns the restored pageSize if one was found, otherwise null
+	function loadState(): PageSizeOption | null {
+		if (!storageKey || typeof localStorage === 'undefined') return null;
 
 		try {
 			const saved = localStorage.getItem(storageKey);
-			if (!saved) return;
+			if (!saved) return null;
 
 			const state: SerializableState = JSON.parse(saved);
 
@@ -235,9 +236,13 @@
 			// Restore page size
 			if (state.pageSize && PAGE_SIZE_OPTIONS.includes(state.pageSize)) {
 				pageSize = state.pageSize;
+				return state.pageSize;
 			}
+
+			return null;
 		} catch (e) {
 			console.warn('Failed to load DataControls state from localStorage:', e);
+			return null;
 		}
 	}
 
@@ -301,7 +306,24 @@
 
 	// Load state on mount and set up auto-save
 	onMount(() => {
-		loadState();
+		const restoredPageSize = loadState();
+
+		// Notify parent of restored state for server-side pagination
+		// This ensures the parent's query uses the restored pageSize
+		if (restoredPageSize && onPageChange) {
+			onPageChange(currentPage, restoredPageSize);
+		}
+
+		// Notify parent of restored ordering state
+		if (onOrderChange && (selectedGroupField || sortState.field)) {
+			onOrderChange(selectedGroupField, sortState.field, sortState.direction);
+		}
+
+		// Notify parent of restored tag filter state
+		const tagFilter = filterState['tags'];
+		if (onTagFilterChange && tagFilter && tagFilter.values.size > 0) {
+			onTagFilterChange(Array.from(tagFilter.values));
+		}
 
 		// Set up reactive save (debounced)
 		let saveTimeout: ReturnType<typeof setTimeout>;
@@ -1153,9 +1175,15 @@
 					total: totalCount,
 					itemLabel: totalCount === 1 ? common_item() : common_items()
 				})}
-			{:else}
+			{:else if useServerPagination}
 				{common_showingTotal({
 					count: totalCount,
+					total: totalCount,
+					itemLabel: totalCount === 1 ? common_item() : common_items()
+				})}
+			{:else}
+				{common_showingTotal({
+					count: processedItems.length,
 					total: items.length,
 					itemLabel: items.length === 1 ? common_item() : common_items()
 				})}
