@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Service } from '$lib/features/services/types/base';
-	import { useServicesQuery } from '$lib/features/services/queries';
+	import { useServicesCacheQuery } from '$lib/features/services/queries';
 	import { ServiceDisplay } from '$lib/shared/components/forms/selection/display/ServiceDisplay.svelte';
 	import ListManager from '$lib/shared/components/forms/selection/ListManager.svelte';
 	import { serviceDefinitions } from '$lib/shared/stores/metadata';
@@ -19,8 +19,8 @@
 	let { service, onChange }: Props = $props();
 
 	// TanStack Query hooks
-	const servicesQuery = useServicesQuery();
-	let servicesData = $derived(servicesQuery.data?.items ?? []);
+	const servicesQuery = useServicesCacheQuery();
+	let servicesData = $derived(servicesQuery.data ?? []);
 
 	let serviceMetadata = $derived(serviceDefinitions.getItem(service.service_definition));
 

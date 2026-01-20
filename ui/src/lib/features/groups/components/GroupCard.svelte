@@ -3,7 +3,7 @@
 	import GenericCard from '$lib/shared/components/data/GenericCard.svelte';
 	import type { Group } from '../types/base';
 	import { entities, groupTypes } from '$lib/shared/stores/metadata';
-	import { useServicesQuery } from '$lib/features/services/queries';
+	import { useServicesCacheQuery } from '$lib/features/services/queries';
 	import { toColor } from '$lib/shared/utils/styling';
 	import { serviceDefinitions } from '$lib/shared/stores/metadata';
 	import TagPickerInline from '$lib/features/tags/components/TagPickerInline.svelte';
@@ -22,10 +22,10 @@
 	} from '$lib/paraglide/messages';
 
 	// Queries
-	const servicesQuery = useServicesQuery();
+	const servicesQuery = useServicesCacheQuery();
 
 	// Derived data
-	let servicesData = $derived(servicesQuery.data?.items ?? []);
+	let servicesData = $derived(servicesQuery.data ?? []);
 	let isServicesLoading = $derived(servicesQuery.isLoading);
 
 	let {

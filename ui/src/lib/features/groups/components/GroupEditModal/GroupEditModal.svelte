@@ -8,7 +8,7 @@
 	import type { Color } from '$lib/shared/utils/styling';
 	import ModalHeaderIcon from '$lib/shared/components/layout/ModalHeaderIcon.svelte';
 	import { entities, groupTypes } from '$lib/shared/stores/metadata';
-	import { useServicesQuery } from '$lib/features/services/queries';
+	import { useServicesCacheQuery } from '$lib/features/services/queries';
 	import { useNetworksQuery } from '$lib/features/networks/queries';
 	import { useHostsQuery } from '$lib/features/hosts/queries';
 	import { useInterfacesQuery } from '$lib/features/interfaces/queries';
@@ -65,7 +65,7 @@
 	}: Props = $props();
 
 	// TanStack Query hooks
-	const servicesQuery = useServicesQuery({ limit: 0 });
+	const servicesQuery = useServicesCacheQuery();
 	const networksQuery = useNetworksQuery();
 	// Use limit: 0 to get all hosts for group edit modal
 	const hostsQuery = useHostsQuery({ limit: 0 });
@@ -73,7 +73,7 @@
 	const portsQuery = usePortsQuery();
 	const subnetsQuery = useSubnetsQuery();
 
-	let servicesData = $derived(servicesQuery.data?.items ?? []);
+	let servicesData = $derived(servicesQuery.data ?? []);
 	let isServicesLoading = $derived(servicesQuery.isLoading);
 	let networksData = $derived(networksQuery.data ?? []);
 	let hostsData = $derived(hostsQuery.data?.items ?? []);

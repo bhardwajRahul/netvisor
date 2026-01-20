@@ -10,16 +10,16 @@
 	import type { Host, HostFormData } from '$lib/features/hosts/types/base';
 	import { useInterfacesQuery } from '$lib/features/interfaces/queries';
 	import { usePortsQuery } from '$lib/features/ports/queries';
-	import { useServicesQuery } from '$lib/features/services/queries';
+	import { useServicesCacheQuery } from '$lib/features/services/queries';
 	import { common_cancel, common_updating, services_updateService } from '$lib/paraglide/messages';
 
 	// TanStack Query hooks to get child entities for hydrating host form data
 	const interfacesQuery = useInterfacesQuery();
 	const portsQuery = usePortsQuery();
-	const servicesQuery = useServicesQuery();
+	const servicesQuery = useServicesCacheQuery();
 	let interfacesData = $derived(interfacesQuery.data ?? []);
 	let portsData = $derived(portsQuery.data ?? []);
-	let servicesData = $derived(servicesQuery.data?.items ?? []);
+	let servicesData = $derived(servicesQuery.data ?? []);
 
 	// Hydrate host to form data for ServiceConfigPanel
 	function hydrateHostToFormData(host: Host): HostFormData {

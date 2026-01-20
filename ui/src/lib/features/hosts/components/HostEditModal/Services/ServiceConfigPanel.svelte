@@ -6,7 +6,7 @@
 	import { required, max } from '$lib/shared/components/forms/validators';
 	import ConfigHeader from '$lib/shared/components/forms/config/ConfigHeader.svelte';
 	import { v4 as uuidv4 } from 'uuid';
-	import { useServicesQuery } from '$lib/features/services/queries';
+	import { useServicesCacheQuery } from '$lib/features/services/queries';
 	import { PortBindingDisplay } from '$lib/shared/components/forms/selection/display/PortBindingDisplay.svelte';
 	import { InterfaceBindingDisplay } from '$lib/shared/components/forms/selection/display/InterfaceBindingDisplay.svelte';
 	import MatchDetails from './MatchDetails.svelte';
@@ -38,11 +38,11 @@
 	} from '$lib/paraglide/messages';
 
 	// TanStack Query hooks
-	const servicesQuery = useServicesQuery();
+	const servicesQuery = useServicesCacheQuery();
 	const portsQuery = usePortsQuery();
 	const subnetsQuery = useSubnetsQuery();
 
-	let servicesData = $derived(servicesQuery.data?.items ?? []);
+	let servicesData = $derived(servicesQuery.data ?? []);
 	let portsData = $derived(portsQuery.data ?? []);
 	let subnetsData = $derived(subnetsQuery.data ?? []);
 

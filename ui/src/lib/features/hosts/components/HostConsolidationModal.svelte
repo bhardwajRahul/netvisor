@@ -9,7 +9,7 @@
 	import EntityList from '$lib/shared/components/data/EntityList.svelte';
 	import { entities } from '$lib/shared/stores/metadata';
 	import ModalHeaderIcon from '$lib/shared/components/layout/ModalHeaderIcon.svelte';
-	import { useServicesQuery } from '$lib/features/services/queries';
+	import { useServicesCacheQuery } from '$lib/features/services/queries';
 	import { useInterfacesQuery } from '$lib/features/interfaces/queries';
 	import { usePortsQuery } from '$lib/features/ports/queries';
 	import {
@@ -42,12 +42,12 @@
 	// TanStack Query hooks
 	// Use limit: 0 to get all hosts for consolidation modal dropdown
 	const hostsQuery = useHostsQuery({ limit: 0 });
-	const servicesQuery = useServicesQuery();
+	const servicesQuery = useServicesCacheQuery();
 	const interfacesQuery = useInterfacesQuery();
 	const portsQuery = usePortsQuery();
 
 	let hostsData = $derived(hostsQuery.data?.items ?? []);
-	let servicesData = $derived(servicesQuery.data?.items ?? []);
+	let servicesData = $derived(servicesQuery.data ?? []);
 	let interfacesData = $derived(interfacesQuery.data ?? []);
 	let portsData = $derived(portsQuery.data ?? []);
 

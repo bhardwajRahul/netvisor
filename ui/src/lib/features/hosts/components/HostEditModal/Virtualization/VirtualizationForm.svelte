@@ -14,7 +14,7 @@
 	import { uuidv4Sentinel } from '$lib/shared/utils/formatting';
 	import InlineWarning from '$lib/shared/components/feedback/InlineWarning.svelte';
 	import { useHostsQuery } from '$lib/features/hosts/queries';
-	import { useServicesQuery } from '$lib/features/services/queries';
+	import { useServicesCacheQuery } from '$lib/features/services/queries';
 	import {
 		common_noServiceSelected,
 		hosts_virtualization_emptyMessage,
@@ -38,9 +38,9 @@
 	// TanStack Query hooks for context data
 	// Use limit: 0 to get all hosts for virtualization form
 	const hostsQuery = useHostsQuery({ limit: 0 });
-	const servicesQuery = useServicesQuery();
+	const servicesQuery = useServicesCacheQuery();
 	let hostsData = $derived(hostsQuery.data?.items ?? []);
-	let servicesData = $derived(servicesQuery.data?.items ?? []);
+	let servicesData = $derived(servicesQuery.data ?? []);
 
 	// Context for VirtualizationManagerServiceDisplay
 	let displayContext: VirtualizationManagerContext = $derived({

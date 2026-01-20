@@ -1,16 +1,16 @@
 <script lang="ts">
 	import { formatInterface } from '$lib/features/hosts/queries';
 	import { ALL_INTERFACES, type HostFormData } from '$lib/features/hosts/types/base';
-	import { useServicesQuery } from '$lib/features/services/queries';
+	import { useServicesCacheQuery } from '$lib/features/services/queries';
 	import { useSubnetsQuery, isContainerSubnet } from '$lib/features/subnets/queries';
 	import type { PortBinding, Service } from '$lib/features/services/types/base';
 	import { formatPort } from '$lib/shared/utils/formatting';
 	import InlineDanger from '$lib/shared/components/feedback/InlineDanger.svelte';
 
 	// TanStack Query hooks
-	const servicesQuery = useServicesQuery();
+	const servicesQuery = useServicesCacheQuery();
 	const subnetsQuery = useSubnetsQuery();
-	let servicesData = $derived(servicesQuery.data?.items ?? []);
+	let servicesData = $derived(servicesQuery.data ?? []);
 	let subnetsData = $derived(subnetsQuery.data ?? []);
 
 	// Helper to check if subnet is a container subnet

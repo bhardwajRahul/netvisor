@@ -5,7 +5,7 @@
 	import ListManager from '$lib/shared/components/forms/selection/ListManager.svelte';
 	import { serviceDefinitions } from '$lib/shared/stores/metadata';
 	import type { Host } from '$lib/features/hosts/types/base';
-	import { useServicesQuery } from '$lib/features/services/queries';
+	import { useServicesCacheQuery } from '$lib/features/services/queries';
 	import {
 		hosts_virtualization_addVmHost,
 		hosts_virtualization_noVmsYet,
@@ -23,9 +23,9 @@
 	// TanStack Query hook
 	// Use limit: 0 to get all hosts for VM manager panel
 	const hostsQuery = useHostsQuery({ limit: 0 });
-	const servicesQuery = useServicesQuery();
+	const servicesQuery = useServicesCacheQuery();
 	let hostsData = $derived(hostsQuery.data?.items ?? []);
-	let servicesData = $derived(servicesQuery.data?.items ?? []);
+	let servicesData = $derived(servicesQuery.data ?? []);
 
 	let serviceMetadata = $derived(serviceDefinitions.getItem(service.service_definition));
 

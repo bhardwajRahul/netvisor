@@ -7,15 +7,15 @@
 	import type { Topology } from '$lib/features/topology/types/base';
 	import { getContext } from 'svelte';
 	import type { Writable } from 'svelte/store';
-	import { useServicesQuery } from '$lib/features/services/queries';
+	import { useServicesCacheQuery } from '$lib/features/services/queries';
 
 	let { edge, hostId }: { edge: Edge; hostId: string } = $props();
 
 	// Try to get topology from context (for share/embed pages), fallback to query + selected topology
 	const topologyContext = getContext<Writable<Topology> | undefined>('topology');
 	const topologiesQuery = useTopologiesQuery();
-	const servicesQuery = useServicesQuery();
-	let servicesData = $derived(servicesQuery.data?.items ?? []);
+	const servicesQuery = useServicesCacheQuery();
+	let servicesData = $derived(servicesQuery.data ?? []);
 	let topologiesData = $derived(topologiesQuery.data ?? []);
 	let topology = $derived(
 		topologyContext ? $topologyContext : topologiesData.find((t) => t.id === $selectedTopologyId)

@@ -106,6 +106,27 @@ export function useServicesQuery(
 }
 
 /**
+ * Query hook for accessing the services cache populated by useHostsQuery.
+ * This does NOT make API calls - it reads from the cache that hosts query populates.
+ * Use this when you need all services for filtering (e.g., by host_id in HostCard).
+ *
+ * For paginated/filtered API calls, use useServicesQuery() instead.
+ */
+export function useServicesCacheQuery() {
+	return createQuery(() => ({
+		queryKey: queryKeys.services.all,
+		queryFn: async () => {
+			// Services are populated by hosts query, return empty if not yet populated
+			return [] as Service[];
+		},
+		// Don't refetch - data comes from hosts query
+		staleTime: Infinity,
+		refetchOnMount: false,
+		refetchOnWindowFocus: false
+	}));
+}
+
+/**
  * Query hook for fetching specific services by IDs (for selective loading)
  * Used for lookups where only a subset of services is needed (e.g., virtualization lookups)
  *

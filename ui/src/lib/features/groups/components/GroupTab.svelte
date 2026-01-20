@@ -16,7 +16,7 @@
 		useDeleteGroupMutation,
 		useBulkDeleteGroupsMutation
 	} from '../queries';
-	import { useServicesQuery } from '$lib/features/services/queries';
+	import { useServicesCacheQuery } from '$lib/features/services/queries';
 	import { useNetworksQuery } from '$lib/features/networks/queries';
 	import type { TabProps } from '$lib/shared/types';
 	import type { components } from '$lib/api/schema';
@@ -46,7 +46,7 @@
 	const tagsQuery = useTagsQuery();
 	const groupsQuery = useGroupsQuery();
 	const networksQuery = useNetworksQuery();
-	useServicesQuery();
+	useServicesCacheQuery();
 
 	// Mutations
 	const createGroupMutation = useCreateGroupMutation();
