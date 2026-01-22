@@ -2,7 +2,7 @@
 
 > Auto-generated i18n message functions. Import `messages.js` to use translated strings.
 
-Compiled from: `./project.inlang`
+Compiled from: `/Users/maya/dev/scanopy-438-daemon-push/ui/project.inlang`
 
 
 ## What is this folder?

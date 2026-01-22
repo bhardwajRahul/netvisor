@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
+use crate::server::discovery::r#impl::types::DiscoveryType;
+
 #[derive(Debug, Clone, Serialize, Deserialize, Copy, PartialEq, Eq, Hash, ToSchema)]
 pub enum DiscoveryPhase {
     Pending, // Initial state, set by server; all subsequent states until Finished are set by Daemon
@@ -31,6 +33,7 @@ pub struct DiscoverySessionInfo {
     pub network_id: Uuid,
     pub daemon_id: Uuid,
     pub started_at: Option<DateTime<Utc>>,
+    pub discovery_type: DiscoveryType,
 }
 
 #[derive(Debug, Clone)]
@@ -101,7 +104,7 @@ impl Display for DiscoveryCriticalError {
             DiscoveryCriticalError::ResourceExhaustion => {
                 write!(
                     f,
-                    "Resource exhaustion during scan: too many open files - CONCURRENT_SCANS is likely too high for this system. Check README.md for troubleshooting."
+                    "Resource exhaustion during scan: too many open files - CONCURRENT_SCANS is likely too high for this system. Check readme for troubleshooting."
                 )
             }
         }

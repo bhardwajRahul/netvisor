@@ -1,5 +1,5 @@
 use crate::daemon::shared::config::ConfigStore;
-use crate::server::shared::types::api::ApiResponse;
+use crate::server::shared::types::api::{ApiErrorResponse, ApiResponse};
 use anyhow::{Error, bail};
 use reqwest::{Client, Method, RequestBuilder};
 use serde::{Serialize, de::DeserializeOwned};
@@ -56,7 +56,8 @@ impl DaemonApiClient {
             .header("Authorization", format!("Bearer {}", api_key)))
     }
 
-    /// Check response status and handle API errors
+    /// Check response status and handle API errors.
+    /// On error responses, attempts to parse as ApiErrorResponse to preserve error codes.
     async fn check_response(
         &self,
         response: reqwest::Response,
@@ -64,17 +65,18 @@ impl DaemonApiClient {
     ) -> Result<ApiResponse<serde_json::Value>, Error> {
         let status = response.status();
 
-        // Always try to parse the response body - even error responses contain useful messages
-        let api_response: ApiResponse<serde_json::Value> = match response.json().await {
-            Ok(parsed) => parsed,
-            Err(_) if !status.is_success() => {
-                // Couldn't parse body, fall back to just HTTP status
-                bail!("{}: HTTP {}", context, status);
+        if !status.is_success() {
+            // Try to parse as ApiErrorResponse to get error codes
+            if let Ok(error_response) = response.json::<ApiErrorResponse>().await {
+                return Err(error_response.into());
             }
-            Err(e) => {
-                bail!("{}: Failed to parse response: {}", context, e);
-            }
-        };
+            bail!("{}: HTTP {}", context, status);
+        }
+
+        let api_response: ApiResponse<serde_json::Value> = response
+            .json()
+            .await
+            .map_err(|e| anyhow::anyhow!("{}: Failed to parse response: {}", context, e))?;
 
         if !api_response.success {
             let error_msg = api_response
@@ -139,75 +141,8 @@ impl DaemonApiClient {
         self.execute(request, context).await
     }
 
-    /// POST request returning full ApiResponse for custom error handling
-    pub async fn post_raw<B: Serialize, T: DeserializeOwned>(
-        &self,
-        path: &str,
-        body: &B,
-    ) -> Result<ApiResponse<T>, Error> {
-        let request = self.build_request(Method::POST, path).await?.json(body);
-        let response = request.send().await?;
-        Ok(response.json().await?)
-    }
-
-    /// POST with no body, returning full ApiResponse
-    pub async fn post_empty_raw<T: DeserializeOwned>(
-        &self,
-        path: &str,
-    ) -> Result<ApiResponse<T>, Error> {
-        let request = self.build_request(Method::POST, path).await?;
-        let response = request.send().await?;
-        Ok(response.json().await?)
-    }
-
     /// Access config store for cases that need custom handling
     pub fn config(&self) -> &Arc<ConfigStore> {
         &self.config_store
-    }
-
-    /// POST request with automatic retry on transient failures
-    /// Uses exponential backoff starting at 500ms, capped at 30s
-    pub async fn post_with_retry<B: Serialize, T: DeserializeOwned>(
-        &self,
-        path: &str,
-        body: &B,
-        context: &str,
-        max_retries: u32,
-    ) -> Result<T, Error> {
-        let mut attempt = 0;
-        let mut delay = Duration::from_millis(500);
-
-        loop {
-            match self.post(path, body, context).await {
-                Ok(result) => return Ok(result),
-                Err(e) => {
-                    attempt += 1;
-                    if attempt > max_retries || !Self::is_retriable_error(&e) {
-                        return Err(e);
-                    }
-                    tracing::warn!(
-                        "Retrying {} (attempt {}/{}): {}",
-                        path,
-                        attempt,
-                        max_retries,
-                        e
-                    );
-                    tokio::time::sleep(delay).await;
-                    delay = std::cmp::min(delay * 2, Duration::from_secs(30));
-                }
-            }
-        }
-    }
-
-    /// Check if an error is retriable (transient network/server issues)
-    fn is_retriable_error(e: &Error) -> bool {
-        let err_str = e.to_string().to_lowercase();
-        err_str.contains("connection refused")
-            || err_str.contains("error sending request")
-            || err_str.contains("connection reset")
-            || err_str.contains("timeout")
-            || err_str.contains("http 502")
-            || err_str.contains("http 503")
-            || err_str.contains("http 504")
     }
 }

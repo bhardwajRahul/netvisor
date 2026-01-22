@@ -7,6 +7,7 @@ import { queryKeys } from '$lib/api/query-client';
 import { apiClient } from '$lib/api/client';
 import type { Daemon } from './types/base';
 import type { DiscoveryUpdatePayload } from '../discovery/types/api';
+import type { ProvisionDaemonRequest, ProvisionDaemonResponse } from './types/base';
 import { trackEventOnce } from '$lib/shared/utils/analytics';
 
 /**
@@ -76,6 +77,58 @@ export function useBulkDeleteDaemonsMutation() {
 			queryClient.setQueryData<Daemon[]>(
 				queryKeys.daemons.all,
 				(old) => old?.filter((d) => !ids.includes(d.id)) ?? []
+			);
+		}
+	}));
+}
+
+/**
+ * Mutation hook for provisioning a ServerPoll mode daemon
+ */
+export function useProvisionDaemonMutation() {
+	const queryClient = useQueryClient();
+
+	return createMutation(() => ({
+		mutationFn: async (request: ProvisionDaemonRequest): Promise<ProvisionDaemonResponse> => {
+			const { data } = await apiClient.POST('/api/v1/daemons/provision', {
+				body: request
+			});
+			if (!data?.success || !data.data) {
+				throw new Error(data?.error || 'Failed to provision daemon');
+			}
+			return data.data;
+		},
+		onSuccess: (response: ProvisionDaemonResponse) => {
+			// Add the newly created daemon to the cache
+			queryClient.setQueryData<Daemon[]>(queryKeys.daemons.all, (old) => [
+				...(old ?? []),
+				response.daemon
+			]);
+		}
+	}));
+}
+
+/**
+ * Mutation hook for retrying connection to an unreachable daemon
+ */
+export function useRetryDaemonConnectionMutation() {
+	const queryClient = useQueryClient();
+
+	return createMutation(() => ({
+		mutationFn: async (id: string) => {
+			const { data } = await apiClient.POST('/api/v1/daemons/{id}/retry-connection', {
+				params: { path: { id } }
+			});
+			if (!data?.success) {
+				throw new Error(data?.error || 'Failed to retry daemon connection');
+			}
+			return id;
+		},
+		onSuccess: (id: string) => {
+			// Update the daemon in the cache to mark as reachable
+			queryClient.setQueryData<Daemon[]>(
+				queryKeys.daemons.all,
+				(old) => old?.map((d) => (d.id === id ? { ...d, is_reachable: true } : d)) ?? []
 			);
 		}
 	}));

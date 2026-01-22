@@ -694,6 +694,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/daemons/provision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pre-provision a ServerPoll mode daemon
+         * @description Creates a daemon record on the server before the daemon is installed.
+         *     This is only for ServerPoll mode where the server initiates connections to the daemon.
+         *     For DaemonPoll mode, daemons self-register on startup.
+         *
+         *     Returns the daemon record and an API key that must be configured on the daemon.
+         */
+        post: operations["provision_daemon"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/daemons/{id}": {
         parameters: {
             query?: never;
@@ -710,6 +734,28 @@ export interface paths {
         post?: never;
         /** Delete daemon */
         delete: operations["delete_daemon"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/daemons/{id}/retry-connection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry connection to unreachable daemon
+         * @description Resets the is_reachable flag for a daemon that was marked unreachable
+         *     due to repeated polling failures. The poller will attempt to contact
+         *     the daemon again on the next cycle.
+         */
+        post: operations["retry_daemon_connection"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1939,7 +1985,7 @@ export interface components {
          * @description API metadata included in all responses
          * @example {
          *       "api_version": 1,
-         *       "server_version": "0.13.5"
+         *       "server_version": "0.13.6"
          *     }
          */
         ApiMeta: {
@@ -1950,7 +1996,7 @@ export interface components {
             api_version: number;
             /**
              * @description Server version (semver)
-             * @example 0.13.5
+             * @example 0.13.6
              */
             server_version: string;
         };
@@ -1964,14 +2010,14 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-01-13T22:33:31.255874Z",
-             *       "id": "0af52bdb-4f50-4c41-a558-3f62c024af16",
+             *       "created_at": "2026-01-21T22:09:51.277307Z",
+             *       "id": "7fe7f373-c9c9-42c7-8edb-3ac087aff623",
              *       "interface_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-01-13T22:33:31.255874Z"
+             *       "updated_at": "2026-01-21T22:09:51.277307Z"
              *     }
              */
             data?: components["schemas"]["BindingBase"] & {
@@ -2322,6 +2368,24 @@ export interface components {
             meta: components["schemas"]["ApiMeta"];
             success: boolean;
         };
+        ApiResponse_ProvisionDaemonResponse: {
+            /**
+             * @description Response from provisioning a daemon.
+             *     Contains the daemon record and the API key (shown only once).
+             */
+            data?: {
+                /** @description The created daemon record (with version status). */
+                daemon: components["schemas"]["DaemonResponse"];
+                /**
+                 * @description The API key (plaintext) for daemon authentication.
+                 *     This is shown only once - store it securely.
+                 */
+                daemon_api_key: string;
+            };
+            error?: string | null;
+            meta: components["schemas"]["ApiMeta"];
+            success: boolean;
+        };
         ApiResponse_PublicConfigResponse: {
             data?: {
                 billing_enabled: boolean;
@@ -2374,14 +2438,14 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-01-13T22:33:31.251337Z",
-             *           "id": "2adaa4fc-d1a9-4b4b-ae39-c59e23107fab",
+             *           "created_at": "2026-01-21T22:09:51.273176Z",
+             *           "id": "1109d742-6ae7-48c4-9f12-0eee1be2700a",
              *           "interface_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-01-13T22:33:31.251337Z"
+             *           "updated_at": "2026-01-21T22:09:51.273176Z"
              *         }
              *       ],
              *       "created_at": "2026-01-15T10:30:00Z",
@@ -2390,7 +2454,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Veeam",
+             *       "service_definition": "NUT",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -2673,14 +2737,14 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-01-13T22:33:31.241489Z",
-         *       "id": "e95ed47c-ed9d-4252-a7a3-e47f27d1c8fc",
+         *       "created_at": "2026-01-21T22:09:51.264613Z",
+         *       "id": "cb84eb07-d71f-4059-af84-69c5e656c642",
          *       "interface_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-01-13T22:33:31.241489Z"
+         *       "updated_at": "2026-01-21T22:09:51.264613Z"
          *     }
          */
         Binding: components["schemas"]["BindingBase"] & {
@@ -2844,7 +2908,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Veeam",
+         *           "service_definition": "NUT",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -2935,14 +2999,24 @@ export interface components {
         DaemonBase: {
             /**
              * Format: uuid
-             * @description Links daemon to its API key for ServerPoll mode
+             * @description Foreign key to API key used for ServerPoll authentication.
+             *     NULL for DaemonPoll daemons or those not yet linked to a key.
              */
             api_key_id?: string | null;
             capabilities: components["schemas"]["DaemonCapabilities"];
             /** Format: uuid */
             host_id: string;
-            /** Format: date-time */
-            readonly last_seen: string;
+            /**
+             * @description Whether the daemon is reachable (for ServerPoll circuit breaker).
+             *     Set to false after repeated polling failures, reset via retry-connection endpoint.
+             */
+            is_reachable?: boolean;
+            /**
+             * Format: date-time
+             * @description Timestamp of last successful contact with daemon.
+             *     NULL for provisioned ServerPoll daemons that haven't been contacted yet.
+             */
+            readonly last_seen?: string | null;
             mode: components["schemas"]["DaemonMode"];
             name: string;
             /** Format: uuid */
@@ -2967,7 +3041,17 @@ export interface components {
             name: string;
             url: string;
         };
-        /** @enum {string} */
+        /**
+         * @description Daemon operating mode that determines the communication pattern.
+         *
+         *     - **DaemonPoll** (formerly "Pull"): Daemon makes outbound connections to the server.
+         *       The daemon registers itself and polls for work. Best for daemons behind NAT/firewall.
+         *
+         *     - **ServerPoll** (formerly "Push"): Server makes connections to the daemon.
+         *       Server polls daemon for status and discovery results. Best for DMZ deployments
+         *       where daemon cannot make outbound connections.
+         * @enum {string}
+         */
         DaemonMode: "server_poll" | "daemon_poll";
         /**
          * @description Fields that daemons can be ordered/grouped by.
@@ -2999,21 +3083,6 @@ export interface components {
             /** Format: uuid */
             host_id: string;
             server_capabilities?: null | components["schemas"]["ServerCapabilities"];
-        };
-        /** @description Request to pre-provision a ServerPoll mode daemon */
-        ProvisionDaemonRequest: {
-            /** @description Human-readable name for the daemon */
-            name: string;
-            /** Format: uuid */
-            network_id: string;
-            /** @description URL where the server can reach the daemon */
-            url: string;
-        };
-        /** @description Response from provisioning a daemon */
-        ProvisionDaemonResponse: {
-            daemon: components["schemas"]["Daemon"];
-            /** @description The API key (plaintext) for daemon authentication. Shown only once. */
-            daemon_api_key: string;
         };
         /** @description Daemon response for UI including computed version status */
         DaemonResponse: components["schemas"]["DaemonBase"] & {
@@ -3599,7 +3668,7 @@ export interface components {
          *         "offset": 0,
          *         "total_count": 142
          *       },
-         *       "server_version": "0.13.5"
+         *       "server_version": "0.13.6"
          *     }
          */
         PaginatedApiMeta: {
@@ -3612,7 +3681,7 @@ export interface components {
             pagination: components["schemas"]["PaginationMeta"];
             /**
              * @description Server version (semver)
-             * @example 0.13.5
+             * @example 0.13.6
              */
             server_version: string;
         };
@@ -3875,6 +3944,34 @@ export interface components {
             /** @description Auto-derived from number+protocol; optional on create */
             type?: string;
         };
+        /**
+         * @description Request to pre-provision a ServerPoll mode daemon.
+         *     This creates the daemon record on the server before the daemon is installed.
+         */
+        ProvisionDaemonRequest: {
+            /** @description Human-readable name for the daemon. */
+            name: string;
+            /**
+             * Format: uuid
+             * @description Network this daemon will be associated with.
+             */
+            network_id: string;
+            /** @description URL where the server can reach the daemon (required for ServerPoll mode). */
+            url: string;
+        };
+        /**
+         * @description Response from provisioning a daemon.
+         *     Contains the daemon record and the API key (shown only once).
+         */
+        ProvisionDaemonResponse: {
+            /** @description The created daemon record (with version status). */
+            daemon: components["schemas"]["DaemonResponse"];
+            /**
+             * @description The API key (plaintext) for daemon authentication.
+             *     This is shown only once - store it securely.
+             */
+            daemon_api_key: string;
+        };
         ProxmoxVirtualization: {
             /** Format: uuid */
             service_id: string;
@@ -3950,14 +4047,14 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-01-13T22:33:31.241392Z",
-         *           "id": "276d1c1c-f8e2-452f-80b6-30703f2a043e",
+         *           "created_at": "2026-01-21T22:09:51.264537Z",
+         *           "id": "b3905ebd-eb11-4c12-899c-6627123e0ea1",
          *           "interface_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-01-13T22:33:31.241392Z"
+         *           "updated_at": "2026-01-21T22:09:51.264537Z"
          *         }
          *       ],
          *       "created_at": "2026-01-15T10:30:00Z",
@@ -3966,7 +4063,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Veeam",
+         *       "service_definition": "NUT",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -5971,6 +6068,48 @@ export interface operations {
             };
         };
     };
+    provision_daemon: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProvisionDaemonRequest"];
+            };
+        };
+        responses: {
+            /** @description Daemon provisioned successfully */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ProvisionDaemonResponse"];
+                };
+            };
+            /** @description Invalid request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
     get_daemon_by_id: {
         parameters: {
             query?: never;
@@ -6031,6 +6170,47 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse"];
+                };
+            };
+            /** @description Daemon not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    retry_daemon_connection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Daemon ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Connection retry initiated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse"];
+                };
+            };
+            /** @description Access denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
                 };
             };
             /** @description Daemon not found */

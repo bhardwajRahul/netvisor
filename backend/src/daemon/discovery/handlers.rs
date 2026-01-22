@@ -13,7 +13,7 @@ pub fn create_router() -> Router<Arc<DaemonAppState>> {
         .route("/cancel", post(handle_cancel_request))
 }
 
-async fn handle_discovery_request(
+pub async fn handle_discovery_request(
     State(state): State<Arc<DaemonAppState>>,
     Json(request): Json<DaemonDiscoveryRequest>,
 ) -> ApiResult<Json<ApiResponse<DaemonDiscoveryResponse>>> {
@@ -35,7 +35,7 @@ async fn handle_discovery_request(
     })))
 }
 
-async fn handle_cancel_request(
+pub async fn handle_cancel_request(
     State(state): State<Arc<DaemonAppState>>,
     Json(session_id): Json<Uuid>,
 ) -> ApiResult<Json<ApiResponse<Uuid>>> {

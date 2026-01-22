@@ -147,7 +147,7 @@ pub struct ApiResponse<T> {
 pub type EmptyApiResponse = ApiResponse<()>;
 
 /// Error response type for API errors (no data field)
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ApiErrorResponse {
     pub success: bool,
     pub error: Option<String>,
@@ -160,6 +160,24 @@ pub struct ApiErrorResponse {
     /// API metadata (version info)
     pub meta: ApiMeta,
 }
+
+impl ApiErrorResponse {
+    /// Check if this response matches the error code from an ApiError
+    pub fn matches_error(&self, expected: &ApiError) -> bool {
+        match (&self.code, &expected.error_code) {
+            (Some(response_code), Some(expected_code)) => response_code == expected_code.code(),
+            _ => false,
+        }
+    }
+}
+
+impl fmt::Display for ApiErrorResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.error.as_deref().unwrap_or("Unknown error"))
+    }
+}
+
+impl std::error::Error for ApiErrorResponse {}
 
 impl<T> ApiResponse<T> {
     pub fn success(data: T) -> Self {
@@ -366,6 +384,11 @@ impl ApiError {
         Self::coded(StatusCode::UNAUTHORIZED, ErrorCode::AuthDaemonKeyNotCreated)
     }
 
+    /// Forbidden (403) - action blocked in demo mode
+    pub fn demo_mode_blocked() -> Self {
+        Self::coded(StatusCode::FORBIDDEN, ErrorCode::AuthDemoMode)
+    }
+
     // === Generic entity operations ===
 
     /// Forbidden (403) - access denied to entity
@@ -400,21 +423,15 @@ impl ApiError {
     }
 
     /// Forbidden (403) - daemon API key has expired.
-    /// Uses "Invalid API key:" prefix for backward compatibility with daemons < v0.13.5.
     pub fn daemon_api_key_expired() -> Self {
-        Self::new(
-            StatusCode::FORBIDDEN,
-            "Invalid API key: this Daemon API Key has expired".to_string(),
-        )
+        use crate::server::daemon_api_keys::r#impl::base::DaemonApiKey;
+        Self::entity_expired::<DaemonApiKey>()
     }
 
     /// Forbidden (403) - daemon API key is disabled.
-    /// Uses "Invalid API key:" prefix for backward compatibility with daemons < v0.13.5.
     pub fn daemon_api_key_disabled() -> Self {
-        Self::new(
-            StatusCode::FORBIDDEN,
-            "Invalid API key: this Daemon API Key is disabled".to_string(),
-        )
+        use crate::server::daemon_api_keys::r#impl::base::DaemonApiKey;
+        Self::entity_disabled::<DaemonApiKey>()
     }
 
     /// Bad request (400) - at least one entity required

@@ -22,9 +22,11 @@ pub struct DaemonBase {
     #[serde(default)]
     #[schema(read_only, required)]
     pub url: String,
-    #[serde(default)]
-    #[schema(read_only, required)]
-    pub last_seen: DateTime<Utc>,
+    /// Timestamp of last successful contact with daemon.
+    /// NULL for provisioned ServerPoll daemons that haven't been contacted yet.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(read_only)]
+    pub last_seen: Option<DateTime<Utc>>,
     #[serde(default)]
     #[schema(read_only, required)]
     pub capabilities: DaemonCapabilities,
@@ -43,6 +45,10 @@ pub struct DaemonBase {
     /// NULL for DaemonPoll daemons or those not yet linked to a key.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub api_key_id: Option<Uuid>,
+    /// Whether the daemon is unreachable (for ServerPoll circuit breaker).
+    /// Set to true after repeated polling failures, reset via retry-connection endpoint.
+    #[serde(default)]
+    pub is_unreachable: bool,
 }
 
 #[derive(

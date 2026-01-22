@@ -1592,6 +1592,68 @@
         ]
       }
     },
+    "/api/v1/daemons/{id}/retry-connection": {
+      "post": {
+        "tags": [
+          "daemons"
+        ],
+        "summary": "Retry connection to unreachable daemon",
+        "description": "Resets the is_reachable flag for a daemon that was marked unreachable\ndue to repeated polling failures. The poller will attempt to contact\nthe daemon again on the next cycle.",
+        "operationId": "retry_daemon_connection",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Daemon ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Connection retry initiated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Access denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Daemon not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "user_api_key": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
     "/api/v1/discovery": {
       "get": {
         "tags": [
@@ -6584,14 +6646,14 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-01-19T17:49:33.963946Z",
-              "id": "46cd90aa-958f-46e8-802f-ddb04fae6ce9",
+              "created_at": "2026-01-22T19:43:12.630160Z",
+              "id": "533c240e-83e2-4729-bfe9-66d802499106",
               "interface_id": "550e8400-e29b-41d4-a716-446655440005",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-01-19T17:49:33.963946Z"
+              "updated_at": "2026-01-22T19:43:12.630160Z"
             }
           },
           "error": {
@@ -7679,8 +7741,8 @@
             ],
             "properties": {
               "daemon": {
-                "$ref": "#/components/schemas/Daemon",
-                "description": "The created daemon record."
+                "$ref": "#/components/schemas/DaemonResponse",
+                "description": "The created daemon record (with version status)."
               },
               "daemon_api_key": {
                 "type": "string",
@@ -7920,14 +7982,14 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-01-19T17:49:33.960602Z",
-                  "id": "56608d91-6646-4516-ad37-7e69d6d64b57",
+                  "created_at": "2026-01-22T19:43:12.625868Z",
+                  "id": "8949e0b4-0b44-4d4f-ad0c-6316afc27954",
                   "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-01-19T17:49:33.960602Z"
+                  "updated_at": "2026-01-22T19:43:12.625868Z"
                 }
               ],
               "created_at": "2026-01-15T10:30:00Z",
@@ -7936,7 +7998,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Active Directory",
+              "service_definition": "Lubelogger",
               "source": {
                 "type": "Manual"
               },
@@ -9043,14 +9105,14 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-01-19T17:49:33.953610Z",
-          "id": "68bc9516-e7e8-4210-adff-f379f5a30cd2",
+          "created_at": "2026-01-22T19:43:12.619619Z",
+          "id": "3f090beb-48b2-4f6e-ae78-05d89b11370d",
           "interface_id": "550e8400-e29b-41d4-a716-446655440005",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-01-19T17:49:33.953610Z"
+          "updated_at": "2026-01-22T19:43:12.619619Z"
         }
       },
       "BindingBase": {
@@ -9453,7 +9515,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Active Directory",
+              "service_definition": "Lubelogger",
               "tags": [],
               "virtualization": null
             }
@@ -9695,7 +9757,6 @@
           "host_id",
           "network_id",
           "url",
-          "last_seen",
           "capabilities",
           "mode",
           "name",
@@ -9718,9 +9779,17 @@
             "type": "string",
             "format": "uuid"
           },
+          "is_reachable": {
+            "type": "boolean",
+            "description": "Whether the daemon is reachable (for ServerPoll circuit breaker).\nSet to false after repeated polling failures, reset via retry-connection endpoint."
+          },
           "last_seen": {
-            "type": "string",
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "date-time",
+            "description": "Timestamp of last successful contact with daemon.\nNULL for provisioned ServerPoll daemons that haven't been contacted yet.",
             "readOnly": true
           },
           "mode": {
@@ -9774,25 +9843,6 @@
               "type": "string",
               "format": "uuid"
             }
-          }
-        }
-      },
-      "DaemonHeartbeatPayload": {
-        "type": "object",
-        "required": [
-          "url",
-          "name",
-          "mode"
-        ],
-        "properties": {
-          "mode": {
-            "$ref": "#/components/schemas/DaemonMode"
-          },
-          "name": {
-            "type": "string"
-          },
-          "url": {
-            "type": "string"
           }
         }
       },
@@ -9966,6 +10016,33 @@
           "daemon_version": {
             "type": "string",
             "description": "Daemon software version (semver format)"
+          }
+        }
+      },
+      "DaemonStatusPayload": {
+        "type": "object",
+        "description": "Daemon status payload sent when polling for work or in heartbeats.\nUsed by DaemonPoll mode to send status alongside work requests,\nand by ServerPoll mode when processing daemon status.",
+        "required": [
+          "url",
+          "name",
+          "mode"
+        ],
+        "properties": {
+          "mode": {
+            "$ref": "#/components/schemas/DaemonMode"
+          },
+          "name": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "version": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Daemon software version (optional for backwards compat)"
           }
         }
       },
@@ -12126,14 +12203,14 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-01-19T17:49:33.959816Z",
-                    "id": "b9d0ce2f-2b2c-40b5-b999-503b9b6bef2c",
+                    "created_at": "2026-01-22T19:43:12.625003Z",
+                    "id": "7f87c977-f7cd-464a-b1d4-e09b31cd6f87",
                     "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-01-19T17:49:33.959816Z"
+                    "updated_at": "2026-01-22T19:43:12.625003Z"
                   }
                 ],
                 "created_at": "2026-01-15T10:30:00Z",
@@ -12142,7 +12219,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Active Directory",
+                "service_definition": "Lubelogger",
                 "source": {
                   "type": "Manual"
                 },
@@ -12746,8 +12823,8 @@
         ],
         "properties": {
           "daemon": {
-            "$ref": "#/components/schemas/Daemon",
-            "description": "The created daemon record."
+            "$ref": "#/components/schemas/DaemonResponse",
+            "description": "The created daemon record (with version status)."
           },
           "daemon_api_key": {
             "type": "string",
@@ -13054,14 +13131,14 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-01-19T17:49:33.953561Z",
-              "id": "a92eb9db-0cb3-4a74-9752-bab1b92da8d0",
+              "created_at": "2026-01-22T19:43:12.619567Z",
+              "id": "9f706e50-212d-4b57-9a6d-f984b8b3f611",
               "interface_id": "550e8400-e29b-41d4-a716-446655440005",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-01-19T17:49:33.953561Z"
+              "updated_at": "2026-01-22T19:43:12.619567Z"
             }
           ],
           "created_at": "2026-01-15T10:30:00Z",
@@ -13070,7 +13147,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Active Directory",
+          "service_definition": "Lubelogger",
           "source": {
             "type": "Manual"
           },

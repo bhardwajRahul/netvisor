@@ -1,11 +1,9 @@
+use crate::daemon::runtime::state::DaemonStatus;
 use crate::server::auth::middleware::permissions::{Authorized, IsDaemon, Member, Viewer};
-use crate::server::billing::types::base::BillingPlan;
 use crate::server::daemon_api_keys::r#impl::base::{DaemonApiKey, DaemonApiKeyBase};
-use crate::server::daemons::r#impl::api::DaemonHeartbeatPayload;
-use crate::server::daemons::processor::DaemonStatusData;
+use crate::server::daemons::r#impl::api::DaemonStatusPayload;
 use crate::server::shared::api_key_common::{ApiKeyType, generate_api_key_for_storage};
 use crate::server::shared::entities::EntityDiscriminants;
-use crate::server::shared::events::types::TelemetryOperation;
 use crate::server::shared::extractors::Query;
 use crate::server::shared::handlers::ordering::OrderField;
 use crate::server::shared::handlers::query::{
@@ -17,7 +15,6 @@ use crate::server::shared::storage::traits::Storable;
 use crate::server::shared::types::api::ApiErrorResponse;
 use crate::server::shared::validation::validate_network_access;
 use crate::server::{
-    auth::middleware::auth::AuthenticatedEntity,
     config::AppState,
     daemons::r#impl::{
         api::{
@@ -27,25 +24,16 @@ use crate::server::{
         base::{Daemon, DaemonBase, DaemonMode},
         version::DaemonVersionPolicy,
     },
-    discovery::r#impl::{
-        base::{Discovery, DiscoveryBase},
-        types::{DiscoveryType, HostNamingFallback, RunType},
-    },
     hosts::r#impl::base::{Host, HostBase},
-    shared::{
-        events::types::TelemetryEvent,
-        services::traits::EventBusService,
-        types::{
-            api::{ApiError, ApiResponse, ApiResult, EmptyApiResponse, PaginatedApiResponse},
-            entities::EntitySource,
-        },
+    shared::types::{
+        api::{ApiError, ApiResponse, ApiResult, EmptyApiResponse, PaginatedApiResponse},
+        entities::EntitySource,
     },
 };
 use axum::{
     extract::{Path, State},
     response::Json,
 };
-use chrono::Utc;
 use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -156,6 +144,7 @@ pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
         .routes(routes!(get_by_id, generated::delete))
         .routes(routes!(generated::bulk_delete))
         .routes(routes!(provision_daemon))
+        .routes(routes!(retry_connection))
 }
 
 /// Daemon-internal endpoints (unversioned at /api/daemon)
@@ -164,7 +153,6 @@ pub fn create_internal_router() -> OpenApiRouter<Arc<AppState>> {
     OpenApiRouter::new()
         .routes(routes!(register_daemon))
         .routes(routes!(daemon_startup))
-        .routes(routes!(receive_heartbeat))
         .routes(routes!(update_capabilities))
         .routes(routes!(receive_work_request))
 }
@@ -296,8 +284,6 @@ async fn get_by_id(
     })))
 }
 
-const DAILY_MIDNIGHT_CRON: &str = "0 0 0 * * *";
-
 /// Register a new daemon
 ///
 /// Internal endpoint for daemon self-registration. Creates a host entry
@@ -318,257 +304,15 @@ async fn register_daemon(
     auth: Authorized<IsDaemon>,
     Json(request): Json<DaemonRegistrationRequest>,
 ) -> ApiResult<Json<ApiResponse<DaemonRegistrationResponse>>> {
-    // Check if this is a demo organization - block daemon registration
-    let network = state
+    // Delegate to processor for shared registration logic
+    // This ensures both DaemonPoll and ServerPoll modes use the same logic
+    let response = state
         .services
-        .network_service
-        .get_by_id(&request.network_id)
-        .await?
-        .ok_or_else(|| ApiError::not_found("Network not found".to_string()))?;
-
-    let org = state
-        .services
-        .organization_service
-        .get_by_id(&network.base.organization_id)
-        .await?
-        .ok_or_else(|| ApiError::not_found("Organization not found".to_string()))?;
-
-    if matches!(org.base.plan, Some(BillingPlan::Demo(_))) {
-        return Err(ApiError::forbidden(
-            "Daemon registration is disabled in demo mode",
-        ));
-    }
-
-    let service = &state.services.daemon_service;
-
-    tracing::info!("{:?}", request);
-
-    // Parse version early for use in server_capabilities
-    let daemon_version = request
-        .version
-        .as_ref()
-        .and_then(|v| semver::Version::parse(v).ok());
-
-    // Compute server_capabilities if version was provided
-    let policy = DaemonVersionPolicy::default();
-    let server_capabilities = daemon_version.as_ref().map(|v| {
-        let status = policy.evaluate(Some(v));
-        ServerCapabilities {
-            server_version: policy.latest.clone(),
-            minimum_daemon_version: policy.minimum_supported.clone(),
-            deprecation_warnings: status.warnings,
-        }
-    });
-
-    // Check if daemon already exists (re-registration scenario)
-    // This handles cases where a previous registration partially succeeded
-    if let Some(mut existing_daemon) = service.get_by_id(&request.daemon_id).await? {
-        tracing::info!(
-            daemon_id = %request.daemon_id,
-            host_id = %existing_daemon.base.host_id,
-            "Daemon already registered, updating registration"
-        );
-
-        // Update daemon with current info
-        existing_daemon.base.url = request.url;
-        existing_daemon.base.capabilities = request.capabilities;
-        existing_daemon.base.last_seen = Utc::now();
-        existing_daemon.base.mode = request.mode;
-        existing_daemon.base.name = request.name;
-        if let Some(v) = daemon_version.clone() {
-            existing_daemon.base.version = Some(v);
-        }
-
-        let updated_daemon = service
-            .update(&mut existing_daemon, auth.into_entity())
-            .await
-            .map_err(|e| ApiError::internal_error(&format!("Failed to update daemon: {}", e)))?;
-
-        // Return early - host and discoveries already exist from initial registration
-        return Ok(Json(ApiResponse::success(DaemonRegistrationResponse {
-            daemon: updated_daemon,
-            host_id: existing_daemon.base.host_id,
-            server_capabilities,
-        })));
-    }
-
-    // New registration - create host and daemon
-    let dummy_host = Host::new(HostBase {
-        network_id: request.network_id,
-        name: request.name.clone(),
-        hostname: None,
-        description: None,
-        source: EntitySource::Discovery { metadata: vec![] },
-        virtualization: None,
-        hidden: false,
-        tags: Vec::new(),
-    });
-
-    let host_response = state
-        .services
-        .host_service
-        .discover_host(dummy_host, vec![], vec![], vec![], auth.entity.clone())
+        .daemon_service
+        .process_registration(request, auth.into_entity())
         .await?;
 
-    // If user_id is nil (old daemon), fall back to org owner
-    let user_id = if request.user_id.is_nil() {
-        state
-            .services
-            .user_service
-            .get_organization_owners(&org.id)
-            .await?
-            .first()
-            .map(|u| u.id)
-            .unwrap_or(request.user_id)
-    } else {
-        request.user_id
-    };
-
-    let mut daemon = Daemon::new(DaemonBase {
-        host_id: host_response.id,
-        network_id: request.network_id,
-        url: request.url.clone(),
-        capabilities: request.capabilities.clone(),
-        last_seen: Utc::now(),
-        mode: request.mode,
-        name: request.name,
-        tags: Vec::new(),
-        version: daemon_version,
-        user_id,
-        api_key_id: None,
-    });
-
-    daemon.id = request.daemon_id;
-
-    let registered_daemon = service
-        .create(daemon, auth.entity.clone())
-        .await
-        .map_err(|e| ApiError::internal_error(&format!("Failed to register daemon: {}", e)))?;
-
-    let org_id = state
-        .services
-        .network_service
-        .get_by_id(&request.network_id)
-        .await?
-        .map(|n| n.base.organization_id)
-        .unwrap_or_default();
-    let organization = state
-        .services
-        .organization_service
-        .get_by_id(&org_id)
-        .await?;
-
-    if let Some(organization) = organization
-        && organization.not_onboarded(&TelemetryOperation::FirstDaemonRegistered)
-    {
-        let authentication: AuthenticatedEntity = auth.into_entity();
-        state
-            .services
-            .daemon_service
-            .event_bus()
-            .publish_telemetry(TelemetryEvent {
-                id: Uuid::new_v4(),
-                organization_id: organization.id,
-                operation: TelemetryOperation::FirstDaemonRegistered,
-                timestamp: Utc::now(),
-                metadata: serde_json::json!({
-                    "is_onboarding_step": true
-                }),
-
-                authentication,
-            })
-            .await?;
-    }
-
-    let discovery_service = state.services.discovery_service.clone();
-
-    let self_report_discovery_type = DiscoveryType::SelfReport {
-        host_id: host_response.id,
-    };
-
-    let self_report_discovery = discovery_service
-        .create_discovery(
-            Discovery::new(DiscoveryBase {
-                run_type: RunType::Scheduled {
-                    cron_schedule: DAILY_MIDNIGHT_CRON.to_string(),
-                    last_run: None,
-                    enabled: true,
-                },
-                discovery_type: self_report_discovery_type.clone(),
-                name: self_report_discovery_type.to_string(),
-                daemon_id: request.daemon_id,
-                network_id: request.network_id,
-                tags: Vec::new(),
-            }),
-            AuthenticatedEntity::System,
-        )
-        .await?;
-
-    discovery_service
-        .start_session(self_report_discovery, AuthenticatedEntity::System)
-        .await?;
-
-    if request.capabilities.has_docker_socket {
-        let docker_discovery_type = DiscoveryType::Docker {
-            host_id: host_response.id,
-            host_naming_fallback: HostNamingFallback::BestService,
-        };
-
-        let docker_discovery = discovery_service
-            .create_discovery(
-                Discovery::new(DiscoveryBase {
-                    run_type: RunType::Scheduled {
-                        cron_schedule: DAILY_MIDNIGHT_CRON.to_string(),
-                        last_run: None,
-                        enabled: true,
-                    },
-                    discovery_type: docker_discovery_type.clone(),
-                    name: docker_discovery_type.to_string(),
-                    daemon_id: request.daemon_id,
-                    network_id: request.network_id,
-                    tags: Vec::new(),
-                }),
-                AuthenticatedEntity::System,
-            )
-            .await?;
-
-        discovery_service
-            .start_session(docker_discovery, AuthenticatedEntity::System)
-            .await?;
-    }
-
-    let network_discovery_type = DiscoveryType::Network {
-        subnet_ids: None,
-        host_naming_fallback: HostNamingFallback::BestService,
-    };
-
-    let network_discovery = discovery_service
-        .create_discovery(
-            Discovery::new(DiscoveryBase {
-                run_type: RunType::Scheduled {
-                    cron_schedule: DAILY_MIDNIGHT_CRON.to_string(),
-                    last_run: None,
-                    enabled: true,
-                },
-                discovery_type: network_discovery_type.clone(),
-                name: network_discovery_type.to_string(),
-                daemon_id: request.daemon_id,
-                network_id: request.network_id,
-                tags: Vec::new(),
-            }),
-            AuthenticatedEntity::System,
-        )
-        .await?;
-
-    discovery_service
-        .start_session(network_discovery, AuthenticatedEntity::System)
-        .await?;
-
-    Ok(Json(ApiResponse::success(DaemonRegistrationResponse {
-        daemon: registered_daemon,
-        host_id: host_response.id,
-        server_capabilities,
-    })))
+    Ok(Json(ApiResponse::success(response)))
 }
 
 /// Daemon startup handshake
@@ -611,10 +355,9 @@ async fn daemon_startup(
     // Use processor for shared startup logic
     let capabilities = state
         .services
-        .daemon_processor
+        .daemon_service
         .process_startup(id, request.daemon_version, auth.into_entity())
-        .await
-        .map_err(|e| ApiError::internal_error(&format!("Failed to process startup: {}", e)))?;
+        .await?;
 
     Ok(Json(ApiResponse::success(capabilities)))
 }
@@ -658,59 +401,9 @@ async fn update_capabilities(
     // Use processor for shared capabilities update logic
     state
         .services
-        .daemon_processor
-        .process_capabilities(id, updated_capabilities, auth.into_entity())
-        .await
-        .map_err(|e| ApiError::internal_error(&format!("Failed to update capabilities: {}", e)))?;
-
-    Ok(Json(ApiResponse::success(())))
-}
-
-/// Receive daemon heartbeat
-///
-/// Internal endpoint for daemons to send periodic heartbeats.
-/// Updates the daemon's last_seen timestamp and current status.
-#[utoipa::path(
-    post,
-    path = "/{id}/heartbeat",
-    tags = ["daemons", "internal"],
-    params(("id" = Uuid, Path, description = "Daemon ID")),
-    request_body = DaemonHeartbeatPayload,
-    responses(
-        (status = 200, description = "Heartbeat received", body = EmptyApiResponse),
-        (status = 404, description = "Daemon not found", body = ApiErrorResponse),
-    ),
-    security(("daemon_api_key" = []))
-)]
-async fn receive_heartbeat(
-    State(state): State<Arc<AppState>>,
-    auth: Authorized<IsDaemon>,
-    Path(id): Path<Uuid>,
-    Json(request): Json<DaemonHeartbeatPayload>,
-) -> ApiResult<Json<ApiResponse<()>>> {
-    let daemon_network_id = auth.network_ids()[0];
-
-    // Validate daemon exists and belongs to the authenticated daemon's network
-    let daemon = state
-        .services
         .daemon_service
-        .get_by_id(&id)
-        .await
-        .map_err(|e| ApiError::internal_error(&format!("Failed to get daemon: {}", e)))?
-        .ok_or_else(|| ApiError::entity_not_found::<Daemon>(id))?;
-
-    if daemon.base.network_id != daemon_network_id {
-        return Err(ApiError::entity_access_denied::<Daemon>(id));
-    }
-
-    // Use processor for shared heartbeat logic
-    let status_data = DaemonStatusData::from(request);
-    state
-        .services
-        .daemon_processor
-        .process_heartbeat(id, status_data, auth.into_entity())
-        .await
-        .map_err(|e| ApiError::internal_error(&format!("Failed to process heartbeat: {}", e)))?;
+        .process_capabilities(id, updated_capabilities, auth.into_entity())
+        .await?;
 
     Ok(Json(ApiResponse::success(())))
 }
@@ -725,7 +418,7 @@ async fn receive_heartbeat(
     path = "/{id}/request-work",
     tags = ["daemons", "internal"],
     params(("id" = Uuid, Path, description = "Daemon ID")),
-    request_body = DaemonHeartbeatPayload,
+    request_body = DaemonStatusPayload,
     responses(
         (status = 200, description = "Work request processed - returns (Option<DiscoveryUpdatePayload>, bool)"),
         (status = 404, description = "Daemon not found", body = ApiErrorResponse),
@@ -736,7 +429,7 @@ async fn receive_work_request(
     State(state): State<Arc<AppState>>,
     auth: Authorized<IsDaemon>,
     Path(daemon_id): Path<Uuid>,
-    Json(request): Json<DaemonHeartbeatPayload>,
+    Json(request): Json<DaemonStatusPayload>,
 ) -> ApiResult<Json<ApiResponse<(Option<DiscoveryUpdatePayload>, bool)>>> {
     let daemon_network_id = auth.network_ids()[0];
 
@@ -754,23 +447,28 @@ async fn receive_work_request(
     }
 
     // Use processor for shared heartbeat logic
-    let status_data = DaemonStatusData::from(request);
+    let status = DaemonStatus {
+        url: request.url,
+        name: request.name,
+        mode: request.mode,
+        version: request.version,
+        capabilities: DaemonCapabilities::default(),
+    };
     state
         .services
-        .daemon_processor
-        .process_heartbeat(daemon_id, status_data, auth.entity.clone())
-        .await
-        .map_err(|e| ApiError::internal_error(&format!("Failed to process heartbeat: {}", e)))?;
+        .daemon_service
+        .process_heartbeat(daemon_id, status, auth.entity.clone())
+        .await?;
 
     // Use processor to get pending work and cancellation
     let next_session = state
         .services
-        .daemon_processor
+        .daemon_service
         .get_pending_work(daemon_id)
         .await;
     let cancellation = state
         .services
-        .daemon_processor
+        .daemon_service
         .get_pending_cancellation(daemon_id)
         .await;
 
@@ -809,8 +507,8 @@ pub struct ProvisionDaemonRequest {
 /// Contains the daemon record and the API key (shown only once).
 #[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct ProvisionDaemonResponse {
-    /// The created daemon record.
-    pub daemon: Daemon,
+    /// The created daemon record (with version status).
+    pub daemon: DaemonResponse,
     /// The API key (plaintext) for daemon authentication.
     /// This is shown only once - store it securely.
     pub daemon_api_key: String,
@@ -896,11 +594,12 @@ async fn provision_daemon(
         })?;
 
     // Create daemon record with mode=ServerPoll and linked API key
+    // last_seen is None until first successful contact from poller
     let daemon = Daemon::new(DaemonBase {
         host_id: created_host.id,
         network_id: request.network_id,
         url: request.url,
-        last_seen: Utc::now(),
+        last_seen: None,
         capabilities: DaemonCapabilities::default(),
         mode: DaemonMode::ServerPoll,
         name: request.name,
@@ -908,6 +607,7 @@ async fn provision_daemon(
         version: None,
         user_id,
         api_key_id: Some(created_api_key.id),
+        is_unreachable: false,
     });
 
     let created_daemon = state
@@ -927,8 +627,82 @@ async fn provision_daemon(
         "Daemon provisioned for ServerPoll mode"
     );
 
+    // Compute version status for response
+    let policy = DaemonVersionPolicy::default();
+    let version_status = policy.evaluate(created_daemon.base.version.as_ref());
+
     Ok(Json(ApiResponse::success(ProvisionDaemonResponse {
-        daemon: created_daemon,
+        daemon: DaemonResponse {
+            id: created_daemon.id,
+            created_at: created_daemon.created_at,
+            updated_at: created_daemon.updated_at,
+            base: created_daemon.base,
+            version_status,
+        },
         daemon_api_key: plaintext,
     })))
+}
+
+/// Retry connection to an unreachable daemon
+///
+/// Resets the is_unreachable flag for a daemon that was marked unreachable
+/// due to repeated polling failures. The poller will attempt to contact
+/// the daemon again on the next cycle.
+#[utoipa::path(
+    post,
+    path = "/{id}/retry-connection",
+    tag = "daemons",
+    operation_id = "retry_daemon_connection",
+    summary = "Retry connection to unreachable daemon",
+    params(("id" = Uuid, Path, description = "Daemon ID")),
+    responses(
+        (status = 200, description = "Connection retry initiated", body = EmptyApiResponse),
+        (status = 404, description = "Daemon not found", body = ApiErrorResponse),
+        (status = 403, description = "Access denied", body = ApiErrorResponse),
+    ),
+    security(("user_api_key" = []), ("session" = []))
+)]
+async fn retry_connection(
+    State(state): State<Arc<AppState>>,
+    auth: Authorized<Member>,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Json<ApiResponse<()>>> {
+    let network_ids = auth.network_ids();
+
+    let mut daemon = state
+        .services
+        .daemon_service
+        .get_by_id(&id)
+        .await?
+        .ok_or_else(|| ApiError::entity_not_found::<Daemon>(id))?;
+
+    // Validate user has access to this daemon's network
+    if !network_ids.contains(&daemon.base.network_id) {
+        return Err(ApiError::entity_access_denied::<Daemon>(id));
+    }
+
+    // Only allow retry for ServerPoll daemons
+    if daemon.base.mode != DaemonMode::ServerPoll {
+        return Err(ApiError::bad_request(
+            "Connection retry is only available for ServerPoll mode daemons",
+        ));
+    }
+
+    // Reset unreachability flag
+    if daemon.base.is_unreachable {
+        daemon.base.is_unreachable = false;
+        state
+            .services
+            .daemon_service
+            .update(&mut daemon, auth.into_entity())
+            .await?;
+
+        tracing::info!(
+            daemon_id = %id,
+            daemon_name = %daemon.base.name,
+            "Daemon connection retry initiated - marked as reachable"
+        );
+    }
+
+    Ok(Json(ApiResponse::success(())))
 }

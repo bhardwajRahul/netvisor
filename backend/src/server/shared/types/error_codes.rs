@@ -73,6 +73,8 @@ pub enum ErrorCode {
     AuthUserNotFound { id: String },
     /// Daemon is trying to register with a key that has not yet been created (onboarding)
     AuthDaemonKeyNotCreated,
+    /// Action is blocked in demo mode
+    AuthDemoMode,
 
     // === Generic Entity Operations ===
     /// Entity was not found
@@ -211,6 +213,7 @@ impl ErrorCode {
             Self::AuthDaemonKeyNotCreated => {
                 "Daemon is trying to register with an API key that has not yet been created"
             }
+            Self::AuthDemoMode => "This action is disabled in demo mode",
 
             // Generic Entity Operations
             Self::EntityNotFound { .. } => "{entity} with ID '{id}' not found",
@@ -305,6 +308,7 @@ impl ErrorCode {
             | Self::AuthPasswordInvalid
             | Self::AuthNotAuthenticated
             | Self::AuthDaemonKeyNotCreated
+            | Self::AuthDemoMode
             | Self::AuthOidcNotConfigured
             | Self::SharePasswordRequired
             | Self::SharePasswordIncorrect

@@ -3,7 +3,7 @@ import { getLocale, trackMessageCall, experimentalMiddlewareLocaleSplitting, isS
 /** @typedef {import('../runtime.js').LocalizedString} LocalizedString */
 
 const en_daemons_config_modehelp1 = /** @type {(inputs: {}) => LocalizedString} */ () => {
-	return /** @type {LocalizedString} */ (`Select whether the daemon will Pull work from the server or have work Pushed to it. If set to Push, you will need to ensure that network you are deploying the daemon on can be reached by the server by opening/forwarding the port to the daemon, and provide the Daemon URL where the server should try to reach the daemon. If set to Pull, no port opening/forwarding is needed`)
+	return /** @type {LocalizedString} */ (`DaemonPoll: Daemon connects to server (recommended - works behind NAT/firewall). ServerPoll: Server connects to daemon (for DMZ deployments where daemon cannot make outbound connections - requires providing Daemon URL)`)
 };
 
 /**

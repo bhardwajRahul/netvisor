@@ -4,13 +4,14 @@ use crate::daemon::shared::config::ConfigStore;
 use crate::daemon::utils::base::DaemonUtils;
 use crate::daemon::utils::base::{PlatformDaemonUtils, create_system_utils};
 use crate::server::daemons::r#impl::api::{
-    DaemonCapabilities, DaemonHeartbeatPayload, DaemonRegistrationRequest,
-    DaemonRegistrationResponse, DaemonStartupRequest, DiscoveryUpdatePayload, ServerCapabilities,
+    DaemonCapabilities, DaemonRegistrationRequest, DaemonRegistrationResponse,
+    DaemonStartupRequest, DaemonStatusPayload, DiscoveryUpdatePayload, ServerCapabilities,
 };
 use crate::server::daemons::r#impl::base::Daemon;
 use crate::server::daemons::r#impl::version::DeprecationSeverity;
-use crate::server::shared::types::api::ApiError;
+use crate::server::shared::types::api::{ApiError, ApiErrorResponse};
 use anyhow::Result;
+use backon::{ExponentialBuilder, Retryable};
 use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -112,49 +113,48 @@ impl DaemonRuntimeService {
     /// Check if an error indicates the API key is no longer valid (rotated/revoked).
     /// Returns Some(error) if authorization failed and the daemon should stop, None otherwise.
     fn check_authorization_error(error: &anyhow::Error, daemon_id: &Uuid) -> Option<anyhow::Error> {
-        let error_str = error.to_string().to_lowercase();
-        let expired_msg = ApiError::daemon_api_key_expired().message.to_lowercase();
-        let disabled_msg = ApiError::daemon_api_key_disabled().message.to_lowercase();
-
-        if error_str.contains(&expired_msg) || error_str.contains(&disabled_msg) {
+        if let Some(api_err) = error.downcast_ref::<ApiErrorResponse>()
+            && (api_err.matches_error(&ApiError::daemon_api_key_expired())
+                || api_err.matches_error(&ApiError::daemon_api_key_disabled()))
+        {
             tracing::error!(
                 daemon_id = %daemon_id,
                 "API key is no longer valid. The key may have been rotated or revoked. \
                  Please reconfigure the daemon with a valid API key."
             );
-            Some(anyhow::anyhow!(
+            return Some(anyhow::anyhow!(
                 "Daemon authorization failed: API key is no longer valid"
-            ))
-        } else {
-            None
+            ));
         }
+        None
     }
 
     /// Check if an error indicates the daemon record doesn't exist on the server.
     /// This can happen if the server's database was reset or the daemon was deleted.
     fn is_daemon_not_found_error(error: &anyhow::Error, daemon_id: &Uuid) -> bool {
-        let error_str = error.to_string().to_lowercase();
-        let expected_msg = ApiError::entity_not_found::<Daemon>(daemon_id)
-            .message
-            .to_lowercase();
-        error_str.contains(&expected_msg)
+        error
+            .downcast_ref::<ApiErrorResponse>()
+            .is_some_and(|e| e.matches_error(&ApiError::entity_not_found::<Daemon>(daemon_id)))
     }
 
     /// Check if an error indicates an authorization failure where the daemon is registered
     /// but the API key is invalid/revoked. Should fail immediately with a clear message.
     fn is_registered_daemon_auth_error(error: &anyhow::Error) -> bool {
-        let error_str = error.to_string().to_lowercase();
-        let expected_msg = ApiError::not_authenticated().message.to_lowercase();
-        error_str.contains(&expected_msg)
+        error
+            .downcast_ref::<ApiErrorResponse>()
+            .is_some_and(|e| e.matches_error(&ApiError::not_authenticated()))
     }
 
     /// Check if an error indicates an authorization failure for an unregistered daemon.
     /// This happens during onboarding when the API key isn't active yet in the database.
     fn is_unregistered_auth_error(error: &anyhow::Error) -> bool {
-        let error_str = error.to_string().to_lowercase();
-        let expected_msg = ApiError::daemon_key_not_yet_active().message.to_lowercase();
-        error_str.contains(&expected_msg)
+        error
+            .downcast_ref::<ApiErrorResponse>()
+            .is_some_and(|e| e.matches_error(&ApiError::daemon_key_not_yet_active()))
     }
+
+    /// Maximum consecutive poll failures before daemon exits
+    const MAX_POLL_RETRIES: usize = 30;
 
     pub async fn request_work(&self) -> Result<()> {
         let interval_secs = self.config.get_heartbeat_interval().await?;
@@ -168,7 +168,6 @@ impl DaemonRuntimeService {
         interval_timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
         let mut poll_count: u64 = 0;
-        let mut consecutive_failures: u64 = 0;
         let start_time = std::time::Instant::now();
 
         loop {
@@ -183,23 +182,39 @@ impl DaemonRuntimeService {
             tracing::debug!(target: LOG_TARGET, daemon_id = %daemon_id, "Polling server for work");
 
             let path = format!("/api/daemons/{}/request-work", daemon_id);
-            let result: Result<(Option<DiscoveryUpdatePayload>, bool), _> = self
-                .api_client
-                .post(
-                    &path,
-                    &DaemonHeartbeatPayload {
-                        url: url.clone(),
-                        name: name.clone(),
-                        mode,
-                    },
-                    "Failed to request work",
-                )
-                .await;
+            let status_payload = DaemonStatusPayload {
+                url: url.clone(),
+                name: name.clone(),
+                mode,
+                version: Some(semver::Version::parse(env!("CARGO_PKG_VERSION")).unwrap()),
+            };
+
+            // Use backon for retry with exponential backoff
+            let result = (|| async {
+                self.api_client
+                    .post::<_, (Option<DiscoveryUpdatePayload>, bool)>(
+                        &path,
+                        &status_payload,
+                        "Failed to request work",
+                    )
+                    .await
+            })
+            .retry(
+                ExponentialBuilder::default()
+                    .with_min_delay(Duration::from_secs(1))
+                    .with_max_delay(Duration::from_secs(30))
+                    .with_max_times(Self::MAX_POLL_RETRIES),
+            )
+            .when(|e| {
+                // Don't retry auth errors - exit immediately
+                Self::check_authorization_error(e, &daemon_id).is_none()
+                    // Don't retry API errors (structured responses from server)
+                    && e.downcast_ref::<ApiErrorResponse>().is_none()
+            })
+            .await;
 
             match result {
                 Ok((payload, cancel_current_session)) => {
-                    consecutive_failures = 0;
-
                     if cancel_current_session {
                         tracing::info!(target: LOG_TARGET, "Received cancellation request from server");
                         self.discovery_manager.cancel_current_session().await;
@@ -223,13 +238,14 @@ impl DaemonRuntimeService {
                     if let Some(auth_error) = Self::check_authorization_error(&e, &daemon_id) {
                         return Err(auth_error);
                     }
-                    consecutive_failures += 1;
-                    tracing::warn!(
+                    // Backon exhausted retries - exit the daemon
+                    tracing::error!(
                         target: LOG_TARGET,
-                        "Failed to poll for work: {} (failure #{})",
-                        e,
-                        consecutive_failures
+                        "Lost connection to server after {} retries: {}",
+                        Self::MAX_POLL_RETRIES,
+                        e
                     );
+                    return Err(anyhow::anyhow!("Lost connection to server"));
                 }
             }
 
@@ -241,95 +257,9 @@ impl DaemonRuntimeService {
 
                 tracing::info!(
                     target: LOG_TARGET,
-                    "Health: {} | Uptime: {} | Polls: {} | Discovery: {}",
-                    if consecutive_failures == 0 {
-                        "OK"
-                    } else {
-                        "DEGRADED"
-                    },
+                    "Health: OK | Uptime: {} | Polls: {} | Discovery: {}",
                     uptime_str,
                     poll_count,
-                    if discovery_active { "active" } else { "idle" }
-                );
-            }
-        }
-    }
-
-    pub async fn heartbeat(&self) -> Result<()> {
-        let interval = Duration::from_secs(self.config.get_heartbeat_interval().await?);
-        let daemon_id = self.config.get_id().await?;
-        let name = self.config.get_name().await?;
-        let mode = self.config.get_mode().await?;
-        let url = self.get_daemon_url().await?;
-
-        let mut interval_timer = tokio::time::interval(interval);
-        interval_timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-
-        let mut heartbeat_count: u64 = 0;
-        let mut consecutive_failures: u64 = 0;
-        let start_time = std::time::Instant::now();
-
-        loop {
-            interval_timer.tick().await;
-
-            if self.config.get_network_id().await?.is_none() {
-                tracing::warn!(target: LOG_TARGET, "Heartbeat skipped - network_id not configured");
-                continue;
-            }
-
-            heartbeat_count += 1;
-            tracing::debug!(target: LOG_TARGET, daemon_id = %daemon_id, "Sending heartbeat");
-
-            let path = format!("/api/daemons/{}/heartbeat", daemon_id);
-            match self
-                .api_client
-                .post_no_data::<_>(
-                    &path,
-                    &DaemonHeartbeatPayload {
-                        url: url.clone(),
-                        name: name.clone(),
-                        mode,
-                    },
-                    "Heartbeat failed",
-                )
-                .await
-            {
-                Ok(_) => {
-                    consecutive_failures = 0;
-                    if let Err(e) = self.config.update_heartbeat().await {
-                        tracing::warn!(target: LOG_TARGET, "Failed to update heartbeat timestamp: {}", e);
-                    }
-                }
-                Err(e) => {
-                    if let Some(auth_error) = Self::check_authorization_error(&e, &daemon_id) {
-                        return Err(auth_error);
-                    }
-                    consecutive_failures += 1;
-                    tracing::warn!(
-                        target: LOG_TARGET,
-                        "Heartbeat failed: {} (failure #{})",
-                        e,
-                        consecutive_failures
-                    );
-                }
-            }
-
-            // Periodic health summary
-            if heartbeat_count.is_multiple_of(HEALTH_LOG_INTERVAL) {
-                let uptime = start_time.elapsed();
-                let uptime_str = format_uptime(uptime);
-                let discovery_active = self.discovery_manager.is_discovery_running().await;
-
-                tracing::info!(
-                    target: LOG_TARGET,
-                    "Health: {} | Uptime: {} | Heartbeats: {} | Discovery: {}",
-                    if consecutive_failures == 0 {
-                        "OK"
-                    } else {
-                        "DEGRADED"
-                    },
-                    uptime_str,
-                    heartbeat_count,
                     if discovery_active { "active" } else { "idle" }
                 );
             }
@@ -400,6 +330,9 @@ impl DaemonRuntimeService {
         }
     }
 
+    /// Maximum number of registration retries (about 5 minutes with backoff)
+    const MAX_REGISTRATION_RETRIES: usize = 30;
+
     pub async fn register_with_server(
         &self,
         daemon_id: Uuid,
@@ -439,175 +372,110 @@ impl DaemonRuntimeService {
             if has_docker_socket { "yes" } else { "no" }
         );
 
-        // Retry loop for handling pending API keys (pre-registration setup flow)
-        // First attempt immediately, then wait 10s (user fills form), then exponential backoff: 1, 2, 4, 8...
-        // Caps at heartbeat_interval. Total retry duration capped at 5 minutes.
-        let heartbeat_interval = config.get_heartbeat_interval().await?;
-        let mut attempt = 0;
-        let retry_start = std::time::Instant::now();
-        const MAX_AUTH_RETRY_DURATION: Duration = Duration::from_secs(300); // 5 minutes
-
-        loop {
-            attempt += 1;
-
-            let result: Result<DaemonRegistrationResponse, _> = self
-                .api_client
-                .post(
+        // Use backon for retry logic - only retry on "key not yet active" errors
+        let result = (|| async {
+            self.api_client
+                .post::<_, DaemonRegistrationResponse>(
                     "/api/daemons/register",
                     &registration_request,
                     "Registration failed",
                 )
-                .await;
+                .await
+        })
+        .retry(
+            ExponentialBuilder::default()
+                .with_min_delay(Duration::from_secs(10))
+                .with_max_delay(Duration::from_secs(30))
+                .with_max_times(Self::MAX_REGISTRATION_RETRIES),
+        )
+        .when(|e| {
+            // Only retry on "key not yet active" errors
+            e.downcast_ref::<ApiErrorResponse>()
+                .is_some_and(|r| r.matches_error(&ApiError::daemon_key_not_yet_active()))
+        })
+        .notify(|_, dur| {
+            tracing::warn!(
+                target: LOG_TARGET,
+                "API key not yet active. Retrying in {:?}...",
+                dur
+            )
+        })
+        .await;
 
-            match result {
-                Ok(response) => {
-                    // Note: host_id is not cached locally - the server provides it
-                    // in discovery requests via DiscoveryType
-                    tracing::info!(target: LOG_TARGET, "Registration successful");
-                    if let Some(caps) = response.server_capabilities {
-                        tracing::info!(target: LOG_TARGET, "  Server version:  {}", caps.server_version);
-                        tracing::info!(target: LOG_TARGET, "  Min daemon ver:  {}", caps.minimum_daemon_version);
-                    }
-                    return Ok(());
+        match result {
+            Ok(response) => {
+                tracing::info!(target: LOG_TARGET, "Registration successful");
+                if let Some(caps) = response.server_capabilities {
+                    tracing::info!(target: LOG_TARGET, "  Server version:  {}", caps.server_version);
+                    tracing::info!(target: LOG_TARGET, "  Min daemon ver:  {}", caps.minimum_daemon_version);
                 }
-                Err(e) => {
-                    let error_str = e.to_string();
+                Ok(())
+            }
+            Err(e) => Self::handle_registration_error(&e, daemon_id, &self.config).await,
+        }
+    }
 
-                    // Check if this is a demo mode error - provide friendly message
-                    if error_str.contains("demo mode") || error_str.contains("HTTP 403") {
-                        tracing::error!(
-                            target: LOG_TARGET,
-                            daemon_id = %daemon_id,
-                            "This Scanopy instance is running in demo mode. \
-                             Daemon registration is disabled. \
-                             To use daemons, please create an account."
-                        );
-                        return Err(anyhow::anyhow!(
-                            "Demo mode: Daemon registration is disabled on this server"
-                        ));
-                    }
-
-                    // Check if this is an "Invalid API key" error
-                    // This can happen when daemon is installed before user completes registration
-                    if error_str.contains("Invalid API key") || error_str.contains("HTTP 401") {
-                        // Check if we've exceeded the maximum retry duration
-                        if retry_start.elapsed() > MAX_AUTH_RETRY_DURATION {
-                            tracing::error!(
-                                target: LOG_TARGET,
-                                daemon_id = %daemon_id,
-                                "API key validation failed after 5 minutes of retrying. \
-                                 The API key may be invalid or the user may not have completed registration. \
-                                 Please verify the API key is correct and restart the daemon to try again."
-                            );
-                            return Err(anyhow::anyhow!(
-                                "API key validation timed out after 5 minutes. Verify the API key and restart the daemon."
-                            ));
-                        }
-
-                        // Calculate retry delay:
-                        // Attempt 1 failed -> wait 10s (user filling out registration form)
-                        // Attempt 2 failed -> wait 1s
-                        // Attempt 3 failed -> wait 2s
-                        // Attempt 4 failed -> wait 4s, etc.
-                        // Capped at heartbeat_interval
-                        let retry_secs = if attempt == 1 {
-                            10 // Initial wait for user to complete registration
-                        } else {
-                            // Exponential backoff: 1, 2, 4, 8, 16...
-                            (1u64 << (attempt - 2)).min(heartbeat_interval)
-                        };
-
-                        tracing::warn!(
-                            target: LOG_TARGET,
-                            daemon_id = %daemon_id,
-                            attempt = %attempt,
-                            "API key not yet active. This daemon was likely installed before account \
-                             registration was completed. Waiting for account creation... \
-                             Retrying in {} seconds.",
-                            retry_secs
-                        );
-
-                        tokio::time::sleep(Duration::from_secs(retry_secs)).await;
-                        continue;
-                    }
-
-                    // Check for connection errors - provide helpful troubleshooting message
-                    let error_lower = error_str.to_lowercase();
-                    let server_url = config.get_server_url().await.unwrap_or_default();
-
-                    // Connection refused - server not running or wrong address
-                    if error_lower.contains("connection refused") {
-                        tracing::error!(
-                            target: LOG_TARGET,
-                            daemon_id = %daemon_id,
-                            server_url = %server_url,
-                            "Connection refused by server at {}. \
-                             The server may not be running or the URL may be incorrect.",
-                            server_url
-                        );
-                        return Err(anyhow::anyhow!(
-                            "Connection refused by server at {}. Verify the server is running and SCANOPY_SERVER_URL is correct.",
-                            server_url
-                        ));
-                    }
-
-                    // Timeout - differentiate between connect timeout and response timeout
-                    if error_lower.contains("timeout") || error_lower.contains("timed out") {
-                        // Connect timeout - couldn't establish connection at all
-                        if error_lower.contains("connect") {
-                            tracing::error!(
-                                target: LOG_TARGET,
-                                daemon_id = %daemon_id,
-                                server_url = %server_url,
-                                "Connection timed out trying to reach server at {}. \
-                                 The server may be unreachable or blocked by a firewall.",
-                                server_url
-                            );
-                            return Err(anyhow::anyhow!(
-                                "Connection timed out reaching server at {}. Check network connectivity and firewall rules.",
-                                server_url
-                            ));
-                        }
-                        // Response timeout - connected but server didn't respond
-                        tracing::error!(
-                            target: LOG_TARGET,
-                            daemon_id = %daemon_id,
-                            server_url = %server_url,
-                            "Server at {} did not respond in time. \
-                             The connection was established but the server did not send a response. \
-                             Consider switching to Pull mode (SCANOPY_MODE=Pull) if the server cannot reach this daemon.",
-                            server_url
-                        );
-                        return Err(anyhow::anyhow!(
-                            "Server at {} connected but did not respond. Consider using Pull mode (SCANOPY_MODE=Pull) if the server cannot initiate connections to this daemon.",
-                            server_url
-                        ));
-                    }
-
-                    // Generic connection error
-                    if error_lower.contains("connect error")
-                        || error_lower.contains("tcp connect")
-                        || error_lower.contains("error sending request")
-                    {
-                        tracing::error!(
-                            target: LOG_TARGET,
-                            daemon_id = %daemon_id,
-                            server_url = %server_url,
-                            "Failed to connect to server at {}: {}",
-                            server_url,
-                            error_str
-                        );
-                        return Err(anyhow::anyhow!(
-                            "Cannot connect to server at {}. Verify the server is running and the URL is correct.",
-                            server_url
-                        ));
-                    }
-
-                    // For other errors, fail immediately
-                    return Err(e);
-                }
+    /// Handle registration errors with user-friendly messages
+    async fn handle_registration_error(
+        e: &anyhow::Error,
+        daemon_id: Uuid,
+        config: &Arc<ConfigStore>,
+    ) -> Result<()> {
+        // Check for API error responses first
+        if let Some(api_err) = e.downcast_ref::<ApiErrorResponse>() {
+            if api_err.matches_error(&ApiError::daemon_key_not_yet_active()) {
+                tracing::error!(
+                    target: LOG_TARGET,
+                    daemon_id = %daemon_id,
+                    "API key validation timed out. Please verify the API key is correct and restart the daemon."
+                );
+                return Err(anyhow::anyhow!("API key validation timed out"));
+            }
+            if api_err.matches_error(&ApiError::demo_mode_blocked()) {
+                tracing::error!(
+                    target: LOG_TARGET,
+                    daemon_id = %daemon_id,
+                    "This Scanopy instance is running in demo mode. Daemon registration is disabled."
+                );
+                return Err(anyhow::anyhow!(
+                    "Demo mode: Daemon registration is disabled"
+                ));
             }
         }
+
+        // Connection errors still need string matching (not API responses)
+        let err_str = e.to_string().to_lowercase();
+        let server_url = config.get_server_url().await.unwrap_or_default();
+
+        if err_str.contains("connection refused") {
+            tracing::error!(
+                target: LOG_TARGET,
+                daemon_id = %daemon_id,
+                server_url = %server_url,
+                "Connection refused by server at {}",
+                server_url
+            );
+            return Err(anyhow::anyhow!(
+                "Connection refused by server at {}. Verify the server is running.",
+                server_url
+            ));
+        }
+
+        if err_str.contains("timeout") || err_str.contains("timed out") {
+            tracing::error!(
+                target: LOG_TARGET,
+                daemon_id = %daemon_id,
+                server_url = %server_url,
+                "Connection timed out reaching server at {}",
+                server_url
+            );
+            return Err(anyhow::anyhow!(
+                "Connection timed out reaching server at {}",
+                server_url
+            ));
+        }
+
+        Err(anyhow::anyhow!("Registration failed: {}", e))
     }
 
     /// Announce daemon startup to the server.

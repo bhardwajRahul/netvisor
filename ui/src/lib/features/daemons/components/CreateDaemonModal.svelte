@@ -13,6 +13,7 @@
 		createEmptyApiKeyFormData,
 		useCreateApiKeyMutation
 	} from '$lib/features/daemon_api_keys/queries';
+	import { useProvisionDaemonMutation } from '../queries';
 	import { useConfigQuery } from '$lib/shared/stores/config-query';
 	import InlineInfo from '$lib/shared/components/feedback/InlineInfo.svelte';
 	import CreateDaemonForm from './CreateDaemonForm.svelte';
@@ -59,6 +60,7 @@
 	const networksQuery = useNetworksQuery();
 	const configQuery = useConfigQuery();
 	const createApiKeyMutation = useCreateApiKeyMutation();
+	const provisionDaemonMutation = useProvisionDaemonMutation();
 
 	let networksData = $derived(networksQuery.data ?? []);
 	let configData = $derived(configQuery.data);
@@ -113,14 +115,33 @@
 		}
 
 		const daemonName = daemonFormRef?.getDaemonName() ?? 'daemon';
-		let newApiKey = createEmptyApiKeyFormData(selectedNetworkId);
-		newApiKey.name = `${daemonName} Api Key`;
+		const form = daemonFormRef?.getForm();
+		const mode = (form?.state.values['mode'] as string) ?? 'daemon_poll';
+		const daemonUrl = (form?.state.values['daemonUrl'] as string) ?? '';
 
-		try {
-			const result = await createApiKeyMutation.mutateAsync(newApiKey);
-			keyState = result.keyString;
-		} catch {
-			pushError(common_failedGenerateApiKey());
+		if (mode === 'server_poll') {
+			// ServerPoll mode: Call provision endpoint which creates daemon + API key
+			try {
+				const result = await provisionDaemonMutation.mutateAsync({
+					name: daemonName,
+					network_id: selectedNetworkId,
+					url: daemonUrl
+				});
+				keyState = result.daemon_api_key;
+			} catch {
+				pushError(common_failedGenerateApiKey());
+			}
+		} else {
+			// DaemonPoll mode: Just create API key, daemon will self-register
+			let newApiKey = createEmptyApiKeyFormData(selectedNetworkId);
+			newApiKey.name = `${daemonName} Api Key`;
+
+			try {
+				const result = await createApiKeyMutation.mutateAsync(newApiKey);
+				keyState = result.keyString;
+			} catch {
+				pushError(common_failedGenerateApiKey());
+			}
 		}
 	}
 

@@ -1,9 +1,10 @@
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
+
+use uuid::Uuid;
 
 use crate::{
     daemon::{
@@ -11,14 +12,16 @@ use crate::{
         shared::config::ConfigStore,
     },
     server::{
-        daemons::r#impl::{api::DiscoveryUpdatePayload, base::DaemonMode},
-        hosts::r#impl::api::DiscoveryHostRequest,
+        daemons::r#impl::{
+            api::{DaemonCapabilities, DiscoveryUpdatePayload},
+            base::DaemonMode,
+        },
+        hosts::r#impl::{api::DiscoveryHostRequest, api::HostResponse},
         subnets::r#impl::base::Subnet,
     },
 };
 
 /// Lightweight daemon status for polling responses.
-/// Mirrors DaemonHeartbeatPayload with added version field.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct DaemonStatus {
     pub url: String,
@@ -28,6 +31,9 @@ pub struct DaemonStatus {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<String>)]
     pub version: Option<Version>,
+    /// Daemon capabilities (docker socket, interfaced subnets)
+    #[serde(default)]
+    pub capabilities: DaemonCapabilities,
 }
 
 /// Buffered entities discovered during a discovery session.
@@ -60,25 +66,17 @@ pub struct DiscoveryPollResponse {
     pub entities: BufferedEntities,
 }
 
-/// Trait for providing daemon state to handlers.
-/// Abstracts the daemon's internal state for both DaemonPoll and ServerPoll modes.
-#[async_trait]
-pub trait DaemonStateProvider: Send + Sync {
-    /// Get lightweight daemon status (url, name, mode, version).
-    async fn get_status(&self) -> DaemonStatus;
-
-    /// Get current discovery session progress, if any.
-    async fn get_progress(&self) -> Option<DiscoveryUpdatePayload>;
-
-    /// Drain buffered entities since last call.
-    /// Returns accumulated hosts/subnets and clears the buffer.
-    async fn drain_entities(&self) -> BufferedEntities;
-
-    /// Check if daemon is available and ready to accept work.
-    async fn is_available(&self) -> bool;
+/// Payload sent by server to daemon with created entity confirmations.
+/// Maps pending (daemon-generated) IDs to actual server entities (after deduplication).
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct CreatedEntitiesPayload {
+    /// Subnets: (pending_id, actual_subnet) pairs
+    pub subnets: Vec<(Uuid, Subnet)>,
+    /// Hosts: (pending_id, actual_host_response) pairs - includes children (interfaces, ports, services)
+    pub hosts: Vec<(Uuid, HostResponse)>,
 }
 
-/// Concrete implementation of DaemonStateProvider.
+/// Daemon state for handlers.
 /// Delegates to ConfigStore for metadata, DaemonDiscoveryService for progress,
 /// and EntityBuffer for buffered entities.
 pub struct DaemonState {
@@ -110,22 +108,25 @@ impl DaemonState {
     }
 }
 
-#[async_trait]
-impl DaemonStateProvider for DaemonState {
-    async fn get_status(&self) -> DaemonStatus {
+impl DaemonState {
+    /// Get lightweight daemon status (url, name, mode, version).
+    pub async fn get_status(&self) -> DaemonStatus {
         let name = self.config.get_name().await.unwrap_or_default();
         let mode = self.config.get_mode().await.unwrap_or_default();
         let version = Version::parse(env!("CARGO_PKG_VERSION")).ok();
+        let capabilities = self.config.get_capabilities().await.unwrap_or_default();
 
         DaemonStatus {
             url: self.daemon_url.clone(),
             name,
             mode,
             version,
+            capabilities,
         }
     }
 
-    async fn get_progress(&self) -> Option<DiscoveryUpdatePayload> {
+    /// Get current discovery session progress, if any.
+    pub async fn get_progress(&self) -> Option<DiscoveryUpdatePayload> {
         // Get the current session from the discovery service
         let session = self.discovery_service.current_session.read().await;
 
@@ -141,10 +142,7 @@ impl DaemonStateProvider for DaemonState {
                 // For polling, this is acceptable as the server will get
                 // the terminal state in the next poll.
                 phase: crate::daemon::discovery::types::base::DiscoveryPhase::Scanning,
-                discovery_type:
-                    crate::server::discovery::r#impl::types::DiscoveryType::SelfReport {
-                        host_id: uuid::Uuid::nil(), // Placeholder - actual type not stored in session
-                    },
+                discovery_type: s.info.discovery_type.clone(),
                 progress,
                 error: None,
                 started_at: s.info.started_at,
@@ -153,12 +151,9 @@ impl DaemonStateProvider for DaemonState {
         })
     }
 
-    async fn drain_entities(&self) -> BufferedEntities {
+    /// Drain buffered entities since last call.
+    /// Returns accumulated hosts/subnets and clears the buffer.
+    pub async fn drain_entities(&self) -> BufferedEntities {
         self.entity_buffer.drain().await
-    }
-
-    async fn is_available(&self) -> bool {
-        // Daemon is available if it has been configured with a network_id
-        self.config.get_network_id().await.ok().flatten().is_some()
     }
 }

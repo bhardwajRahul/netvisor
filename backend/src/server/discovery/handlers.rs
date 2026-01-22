@@ -147,7 +147,9 @@ async fn receive_discovery_update(
 ) -> ApiResult<Json<ApiResponse<()>>> {
     // IsDaemon guarantees exactly one network_id and a daemon_id
     let daemon_network_id = auth.network_ids()[0];
-    let daemon_id = auth.daemon_id().expect("IsDaemon ensures daemon_id exists");
+    let daemon_id = auth
+        .daemon_id()
+        .ok_or_else(|| anyhow::anyhow!("Could not get daemon ID from authentication"))?;
 
     // Validate daemon can only send updates for their own network
     if update.network_id != daemon_network_id {
@@ -159,10 +161,12 @@ async fn receive_discovery_update(
         return Err(ApiError::daemon_identity_mismatch());
     }
 
+    // Delegate to processor for shared progress update logic
+    // This ensures both DaemonPoll and ServerPoll modes use the same logic
     state
         .services
-        .discovery_service
-        .update_session(update)
+        .daemon_service
+        .process_discovery_progress(update)
         .await?;
 
     Ok(Json(ApiResponse::success(())))

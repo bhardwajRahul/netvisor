@@ -1384,7 +1384,7 @@ fn generate_daemons(
                 host_id: host.id,
                 network_id: network.id,
                 url: "https://docker-prod01.acme.local:8443".to_string(),
-                last_seen: now,
+                last_seen: Some(now),
                 capabilities: DaemonCapabilities {
                     has_docker_socket: true,
                     interfaced_subnet_ids: vec![subnet.id],
@@ -1397,6 +1397,7 @@ fn generate_daemons(
                     .unwrap_or_default(),
                 user_id,
                 api_key_id: None,
+                is_unreachable: false,
             },
         });
     }
@@ -1414,7 +1415,7 @@ fn generate_daemons(
                 host_id: host.id,
                 network_id: network.id,
                 url: "https://app-01.cloud.acme.io:8443".to_string(),
-                last_seen: now,
+                last_seen: Some(now),
                 capabilities: DaemonCapabilities {
                     has_docker_socket: true,
                     interfaced_subnet_ids: vec![subnet.id],
@@ -1427,6 +1428,7 @@ fn generate_daemons(
                     .unwrap_or_default(),
                 user_id,
                 api_key_id: None,
+                is_unreachable: false,
             },
         });
     }
@@ -1443,7 +1445,7 @@ fn generate_daemons(
                 host_id: host.id,
                 network_id: network.id,
                 url: "https://nas.denver.acme.local:8443".to_string(),
-                last_seen: now,
+                last_seen: Some(now),
                 capabilities: DaemonCapabilities {
                     has_docker_socket: false,
                     interfaced_subnet_ids: vec![subnet.id],
@@ -1456,6 +1458,7 @@ fn generate_daemons(
                     .unwrap_or_default(),
                 user_id,
                 api_key_id: None,
+                is_unreachable: false,
             },
         });
     }
@@ -1471,7 +1474,7 @@ fn generate_daemons(
                 host_id: host.id,
                 network_id: network.id,
                 url: "https://dc01.riverside-medical.local:8443".to_string(),
-                last_seen: now,
+                last_seen: Some(now),
                 capabilities: DaemonCapabilities {
                     has_docker_socket: false,
                     interfaced_subnet_ids: vec![subnet.id],
@@ -1482,6 +1485,7 @@ fn generate_daemons(
                 version: None,
                 user_id,
                 api_key_id: None,
+                is_unreachable: false,
             },
         });
     }

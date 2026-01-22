@@ -13,3 +13,12 @@ ALTER TABLE daemons ADD COLUMN api_key_id UUID REFERENCES api_keys(id) ON DELETE
 
 -- Create index for efficient lookup
 CREATE INDEX idx_daemons_api_key ON daemons(api_key_id) WHERE api_key_id IS NOT NULL;
+
+-- Allow last_seen to be NULL for provisioned ServerPoll daemons not yet contacted
+-- This enables detecting first contact (last_seen transitions from NULL to a value)
+ALTER TABLE daemons ALTER COLUMN last_seen DROP NOT NULL;
+
+-- Track unreachability for ServerPoll circuit breaker
+-- When a daemon becomes unreachable after repeated failures, polling stops
+-- until manually retried via the retry-connection endpoint
+ALTER TABLE daemons ADD COLUMN is_unreachable BOOLEAN NOT NULL DEFAULT false;

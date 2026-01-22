@@ -4,16 +4,19 @@ use std::{
         Arc,
         atomic::{AtomicU8, AtomicU64, Ordering},
     },
+    time::Duration,
 };
 
 use crate::{
     daemon::{
-        discovery::{manager::DaemonDiscoverySessionManager, types::base::DiscoveryCriticalError},
+        discovery::{
+            buffer::EntityBuffer, manager::DaemonDiscoverySessionManager,
+            types::base::DiscoveryCriticalError,
+        },
         shared::api_client::DaemonApiClient,
     },
     server::{
         discovery::r#impl::types::{DiscoveryType, HostNamingFallback},
-        groups::r#impl::base::Group,
         services::{
             definitions::{docker_container::DockerContainer, open_ports::OpenPorts},
             r#impl::{
@@ -30,6 +33,7 @@ use crate::{
 };
 use anyhow::{Error, anyhow};
 use async_trait::async_trait;
+use backon::{ExponentialBuilder, Retryable};
 use chrono::Utc;
 use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
@@ -43,7 +47,10 @@ use crate::{
         utils::base::{PlatformDaemonUtils, create_system_utils},
     },
     server::{
-        daemons::r#impl::api::{DaemonDiscoveryRequest, DiscoveryUpdatePayload},
+        daemons::r#impl::{
+            api::{DaemonDiscoveryRequest, DiscoveryUpdatePayload},
+            base::DaemonMode,
+        },
         hosts::r#impl::{
             api::{DiscoveryHostRequest, HostResponse},
             base::{Host, HostBase},
@@ -112,15 +119,17 @@ pub struct DaemonDiscoveryService {
     pub api_client: Arc<DaemonApiClient>,
     pub utils: PlatformDaemonUtils,
     pub current_session: Arc<RwLock<Option<DiscoverySession>>>,
+    pub entity_buffer: Arc<EntityBuffer>,
 }
 
 impl DaemonDiscoveryService {
-    pub fn new(config_store: Arc<ConfigStore>) -> Self {
+    pub fn new(config_store: Arc<ConfigStore>, entity_buffer: Arc<EntityBuffer>) -> Self {
         Self {
             api_client: Arc::new(DaemonApiClient::new(config_store.clone())),
             config_store,
             utils: create_system_utils(),
             current_session: Arc::new(RwLock::new(None)),
+            entity_buffer,
         }
     }
 
@@ -256,6 +265,7 @@ pub trait DiscoversNetworkedEntities:
             network_id,
             daemon_id,
             started_at: Some(Utc::now()),
+            discovery_type: request.discovery_type.clone(),
         };
 
         let session = DiscoverySession::new(session_info, gateway_ips);
@@ -557,12 +567,19 @@ pub trait DiscoversNetworkedEntities:
 
 /// Default number of retries for entity creation during discovery.
 /// This handles transient failures during server switchovers (blue-green deployments).
-const ENTITY_CREATION_MAX_RETRIES: u32 = 5;
+const ENTITY_CREATION_MAX_RETRIES: usize = 5;
+
+/// Timeout for waiting for server confirmation in ServerPoll mode.
+const SERVER_POLL_CONFIRMATION_TIMEOUT: Duration = Duration::from_secs(60);
 
 #[async_trait]
 pub trait CreatesDiscoveredEntities:
     AsRef<DaemonDiscoveryService> + Send + Sync + RunsDiscovery
 {
+    /// Create a host with its children (interfaces, ports, services).
+    ///
+    /// In DaemonPoll mode: Immediately sends to server and returns the response.
+    /// In ServerPoll mode: Buffers the host for server to poll, waits for confirmation.
     async fn create_host(
         &self,
         host: Host,
@@ -570,56 +587,117 @@ pub trait CreatesDiscoveredEntities:
         ports: Vec<Port>,
         services: Vec<Service>,
     ) -> Result<HostResponse, Error> {
+        let service = self.as_ref();
+        let mode = service.config_store.get_mode().await?;
+        let pending_id = host.id;
+
         let request = DiscoveryHostRequest {
             host,
             interfaces,
             ports,
             services,
         };
-        self.as_ref()
-            .api_client
-            .post_with_retry(
-                "/api/v1/hosts/discovery",
-                &request,
-                "Failed to create host",
-                ENTITY_CREATION_MAX_RETRIES,
-            )
-            .await
+
+        // Always buffer first (for both modes)
+        service.entity_buffer.push_host(request.clone()).await;
+
+        match mode {
+            DaemonMode::DaemonPoll => {
+                // Immediately send to server, get response (with retry on transient failures)
+                let api_client = &service.api_client;
+                let response: HostResponse = (|| async {
+                    api_client
+                        .post("/api/v1/hosts/discovery", &request, "Failed to create host")
+                        .await
+                })
+                .retry(
+                    ExponentialBuilder::default()
+                        .with_min_delay(Duration::from_millis(500))
+                        .with_max_delay(Duration::from_secs(30))
+                        .with_max_times(ENTITY_CREATION_MAX_RETRIES),
+                )
+                .notify(|e, dur| tracing::warn!("Retrying host creation after {:?}: {}", dur, e))
+                .await?;
+
+                // Mark as created in buffer with actual server data
+                service
+                    .entity_buffer
+                    .mark_host_created(pending_id, response.clone())
+                    .await;
+
+                Ok(response)
+            }
+            DaemonMode::ServerPoll => {
+                // Wait for server to poll and confirm creation
+                let actual_host = service
+                    .entity_buffer
+                    .await_host(&pending_id, SERVER_POLL_CONFIRMATION_TIMEOUT)
+                    .await
+                    .ok_or_else(|| {
+                        anyhow!("Timeout waiting for host creation confirmation from server")
+                    })?;
+
+                // Build a HostResponse from the confirmed host
+                // Note: In ServerPoll mode, we don't have hydrated children back
+                // but the Host ID is what matters for subsequent operations
+                Ok(HostResponse::from_host_with_children(
+                    actual_host,
+                    request.interfaces,
+                    request.ports,
+                    request.services,
+                ))
+            }
+        }
     }
 
+    /// Create a subnet.
+    ///
+    /// In DaemonPoll mode: Immediately sends to server and returns the response.
+    /// In ServerPoll mode: Buffers the subnet for server to poll, waits for confirmation.
     async fn create_subnet(&self, subnet: &Subnet) -> Result<Subnet, Error> {
-        self.as_ref()
-            .api_client
-            .post_with_retry(
-                "/api/v1/subnets",
-                subnet,
-                "Failed to create subnet",
-                ENTITY_CREATION_MAX_RETRIES,
-            )
-            .await
-    }
+        let service = self.as_ref();
+        let mode = service.config_store.get_mode().await?;
+        let pending_id = subnet.id;
 
-    async fn create_service(&self, service: &Service) -> Result<Service, Error> {
-        self.as_ref()
-            .api_client
-            .post_with_retry(
-                "/api/v1/services",
-                service,
-                "Failed to create service",
-                ENTITY_CREATION_MAX_RETRIES,
-            )
-            .await
-    }
+        // Always buffer first (for both modes)
+        service.entity_buffer.push_subnet(subnet.clone()).await;
 
-    async fn create_group(&self, group: &Group) -> Result<Group, Error> {
-        self.as_ref()
-            .api_client
-            .post_with_retry(
-                "/api/v1/groups",
-                group,
-                "Failed to create group",
-                ENTITY_CREATION_MAX_RETRIES,
-            )
-            .await
+        match mode {
+            DaemonMode::DaemonPoll => {
+                // Immediately send to server, get response (with retry on transient failures)
+                let api_client = &service.api_client;
+                let actual: Subnet = (|| async {
+                    api_client
+                        .post("/api/v1/subnets", subnet, "Failed to create subnet")
+                        .await
+                })
+                .retry(
+                    ExponentialBuilder::default()
+                        .with_min_delay(Duration::from_millis(500))
+                        .with_max_delay(Duration::from_secs(30))
+                        .with_max_times(ENTITY_CREATION_MAX_RETRIES),
+                )
+                .notify(|e, dur| tracing::warn!("Retrying subnet creation after {:?}: {}", dur, e))
+                .await?;
+
+                // Mark as created in buffer with actual server data
+                service
+                    .entity_buffer
+                    .mark_subnet_created(pending_id, actual.clone())
+                    .await;
+
+                Ok(actual)
+            }
+            DaemonMode::ServerPoll => {
+                // Wait for server to poll and confirm creation
+                service
+                    .entity_buffer
+                    .await_subnet(&pending_id, SERVER_POLL_CONFIRMATION_TIMEOUT)
+                    .await
+                    .ok_or_else(|| {
+                        anyhow!("Timeout waiting for subnet creation confirmation from server")
+                    })
+            }
+        }
     }
 }

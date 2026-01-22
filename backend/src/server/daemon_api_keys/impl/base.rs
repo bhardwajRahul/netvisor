@@ -10,7 +10,7 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::Validate;
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, Validate)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, ToSchema, Validate)]
 pub struct DaemonApiKeyBase {
     #[serde(default)]
     #[serde(serialize_with = "serialize_sensitive_info")]
@@ -33,21 +33,6 @@ pub struct DaemonApiKeyBase {
     #[serde(skip)]
     #[validate(skip)]
     pub plaintext: Option<SecretString>,
-}
-
-impl Default for DaemonApiKeyBase {
-    fn default() -> Self {
-        Self {
-            key: String::default(),
-            name: String::default(),
-            last_used: None,
-            expires_at: None,
-            network_id: Uuid::default(),
-            is_enabled: false,
-            tags: Vec::new(),
-            plaintext: None,
-        }
-    }
 }
 
 // PartialEq ignores plaintext - we never compare secrets

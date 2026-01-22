@@ -78,6 +78,7 @@ impl RunsDiscovery for DiscoveryRunner<SelfReportDiscovery> {
             network_id,
             daemon_id,
             started_at: Some(Utc::now()),
+            discovery_type: request.discovery_type.clone(),
         };
 
         let session = DiscoverySession::new(session_info, Vec::new());
@@ -378,6 +379,12 @@ impl DiscoveryRunner<SelfReportDiscovery> {
             has_docker_socket,
             interfaced_subnet_ids: interfaced_subnet_ids.clone(),
         };
+
+        // Store capabilities locally for ServerPoll mode status responses
+        self.as_ref()
+            .config_store
+            .set_capabilities(capabilities.clone())
+            .await?;
 
         let daemon_id = self.as_ref().api_client.config().get_id().await?;
         let path = format!("/api/daemons/{}/update-capabilities", daemon_id);

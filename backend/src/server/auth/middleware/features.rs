@@ -26,15 +26,20 @@ pub struct FeatureCheckContext<'a> {
 
 pub enum FeatureCheckResult {
     Allowed,
-    Denied { message: String },
+    Denied { error: ApiError },
     PaymentRequired { message: String },
 }
 
 impl FeatureCheckResult {
     pub fn denied(msg: impl Into<String>) -> Self {
+        let message = msg.into();
         Self::Denied {
-            message: msg.into(),
+            error: ApiError::forbidden(&message),
         }
+    }
+
+    pub fn denied_with_error(error: ApiError) -> Self {
+        Self::Denied { error }
     }
 
     pub fn payment_required(msg: impl Into<String>) -> Self {
@@ -103,7 +108,7 @@ where
                 organization,
                 _phantom: std::marker::PhantomData,
             }),
-            FeatureCheckResult::Denied { message } => Err(AuthError(ApiError::forbidden(&message))),
+            FeatureCheckResult::Denied { error } => Err(AuthError(error)),
             FeatureCheckResult::PaymentRequired { message } => {
                 Err(AuthError(ApiError::payment_required(&message)))
             }
@@ -196,6 +201,6 @@ impl FeatureCheck for BlockedInDemoMode {
         }
 
         // Block non-owners on demo plan
-        FeatureCheckResult::denied("This action is disabled in demo mode")
+        FeatureCheckResult::denied_with_error(ApiError::demo_mode_blocked())
     }
 }

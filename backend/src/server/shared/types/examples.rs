@@ -267,7 +267,7 @@ pub fn daemon() -> Daemon {
                 has_docker_socket: true,
                 interfaced_subnet_ids: vec![ids::SUBNET],
             },
-            last_seen: example_timestamp(),
+            last_seen: Some(example_timestamp()),
             name: "home-daemon".to_string(),
             tags: vec![],
             version: Version::parse(env!("CARGO_PKG_VERSION"))
@@ -275,6 +275,7 @@ pub fn daemon() -> Daemon {
                 .unwrap_or_default(),
             user_id: ids::USER,
             api_key_id: None,
+            is_unreachable: false,
         },
     }
 }

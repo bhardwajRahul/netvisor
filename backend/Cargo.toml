@@ -96,6 +96,7 @@ async-fs = "2.1.3"
 async-trait = "0.1"
 futures = "0.3"
 tokio-util = "0.7.16"
+backon = "1.6"
 
 # === System Information ===
 hostname = "0.4.1"

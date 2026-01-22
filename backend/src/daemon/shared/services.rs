@@ -21,7 +21,13 @@ impl DaemonServiceFactory {
     pub async fn new(config: Arc<ConfigStore>, daemon_url: String) -> Result<Self> {
         // Initialize services with proper dependencies
 
-        let discovery_service = Arc::new(DaemonDiscoveryService::new(config.clone()));
+        // Create entity buffer first - shared between discovery service and daemon state
+        let entity_buffer = Arc::new(EntityBuffer::new());
+
+        let discovery_service = Arc::new(DaemonDiscoveryService::new(
+            config.clone(),
+            entity_buffer.clone(),
+        ));
         let discovery_manager = Arc::new(DaemonDiscoverySessionManager::new(
             discovery_service.clone(),
         ));
@@ -29,7 +35,6 @@ impl DaemonServiceFactory {
             config.clone(),
             discovery_manager.clone(),
         ));
-        let entity_buffer = Arc::new(EntityBuffer::new());
         let daemon_state = Arc::new(DaemonState::new(
             config.clone(),
             discovery_service.clone(),

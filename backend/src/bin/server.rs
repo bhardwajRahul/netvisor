@@ -12,7 +12,6 @@ use scanopy::server::{
     auth::middleware::{logging::request_logging_middleware, rate_limit::rate_limit_middleware},
     billing::plans::get_purchasable_plans,
     config::{AppState, ServerCli, ServerConfig, get_deployment_type},
-    daemons::{poller::DaemonPoller, processor::DaemonProcessor},
     shared::handlers::{cache::AppCache, factory::create_router},
 };
 use tower::ServiceBuilder;
@@ -127,16 +126,10 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
-    // Create daemon poller for ServerPoll mode daemons
-    let processor = Arc::new(DaemonProcessor::new(
-        state.services.daemon_service.clone(),
-        state.services.discovery_service.clone(),
-        state.services.host_service.clone(),
-        state.services.subnet_service.clone(),
-    ));
-    let poller = Arc::new(DaemonPoller::new(state.clone(), processor));
+    // Start daemon polling loop for ServerPoll mode daemons
+    let daemon_service = state.services.daemon_service.clone();
     tokio::spawn(async move {
-        poller.run_polling_loop().await;
+        daemon_service.start_polling_loop().await;
     });
 
     tracing::info!(target: LOG_TARGET, "  Background tasks started");

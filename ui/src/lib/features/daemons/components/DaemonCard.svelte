@@ -1,15 +1,19 @@
 <script lang="ts">
 	import GenericCard from '$lib/shared/components/data/GenericCard.svelte';
 	import type { Daemon } from '$lib/features/daemons/types/base';
-	import { getDaemonIsRunningDiscovery } from '$lib/features/daemons/queries';
+	import {
+		getDaemonIsRunningDiscovery,
+		useRetryDaemonConnectionMutation
+	} from '$lib/features/daemons/queries';
 	import { useActiveSessionsQuery } from '$lib/features/discovery/queries';
 	import { concepts, entities } from '$lib/shared/stores/metadata';
 	import { formatTimestamp } from '$lib/shared/utils/formatting';
 	import { toColor } from '$lib/shared/utils/styling';
-	import { ArrowBigUp, Trash2 } from 'lucide-svelte';
+	import { ArrowBigUp, RefreshCw, Trash2 } from 'lucide-svelte';
 	import { useNetworksQuery } from '$lib/features/networks/queries';
 	import { useHostsQuery } from '$lib/features/hosts/queries';
 	import { useSubnetsQuery } from '$lib/features/subnets/queries';
+	import { useApiKeysQuery } from '$lib/features/daemon_api_keys/queries';
 	import type { TagProps } from '$lib/shared/components/data/types';
 	import DaemonUpgradeModal from './DaemonUpgradeModal.svelte';
 	import TagPickerInline from '$lib/features/tags/components/TagPickerInline.svelte';
@@ -19,16 +23,19 @@
 
 	// Queries
 	const networksQuery = useNetworksQuery();
+	const retryConnectionMutation = useRetryDaemonConnectionMutation();
 	// Use limit: 0 to get all hosts for daemon card lookups
 	const hostsQuery = useHostsQuery({ limit: 0 });
 	const subnetsQuery = useSubnetsQuery();
 	const sessionsQuery = useActiveSessionsQuery();
+	const apiKeysQuery = useApiKeysQuery();
 
 	// Derived data
 	let networksData = $derived(networksQuery.data ?? []);
 	let hostsData = $derived(hostsQuery.data?.items ?? []);
 	let subnetsData = $derived(subnetsQuery.data ?? []);
 	let sessionsData = $derived(sessionsQuery.data ?? []);
+	let apiKeysData = $derived(apiKeysQuery.data ?? []);
 
 	let {
 		daemon,
@@ -46,9 +53,16 @@
 
 	let host = $derived(hostsData.find((h) => h.id === daemon.host_id) ?? null);
 	let daemonIsRunningDiscovery = $derived(getDaemonIsRunningDiscovery(daemon.id, sessionsData));
+	let linkedApiKey = $derived(
+		daemon.api_key_id ? apiKeysData.find((k) => k.id === daemon.api_key_id) : null
+	);
 
-	// Compute status tag based on version_status
+	// Compute status tag based on version_status and reachability
 	let status: TagProps | null = $derived.by(() => {
+		// Unreachable takes priority - it's a critical status
+		if (daemon.is_reachable === false) {
+			return { label: 'Unreachable', color: toColor('red') };
+		}
 		switch (daemon.version_status.status) {
 			case 'Deprecated':
 				return { label: 'Deprecated', color: toColor('red') };
@@ -62,6 +76,8 @@
 	let hasUpdateAvailable = $derived(
 		daemon.version_status.status === 'Outdated' || daemon.version_status.status === 'Deprecated'
 	);
+
+	let retryPending = $derived(retryConnectionMutation.isPending);
 
 	let upgradeButtonClass = $derived.by(() => {
 		switch (daemon.version_status.status) {
@@ -102,12 +118,20 @@
 			},
 			{
 				label: 'Last Seen',
-				value: formatTimestamp(daemon.last_seen)
+				value: daemon.last_seen ? formatTimestamp(daemon.last_seen) : 'Never'
 			},
 			{
 				label: 'Mode',
 				value: daemon.mode
 			},
+			...(linkedApiKey
+				? [
+						{
+							label: 'API Key',
+							value: linkedApiKey.name
+						}
+					]
+				: []),
 			{
 				label: 'Has Docker Socket',
 				value: [
@@ -169,6 +193,19 @@
 							class: upgradeButtonClass,
 							onClick: () => (upgradeModalOpen = true),
 							disabled: false,
+							forceLabel: true
+						}
+					]
+				: []),
+			// Show retry button for unreachable ServerPoll daemons
+			...(daemon.is_reachable === false && daemon.mode === 'server_poll'
+				? [
+						{
+							label: 'Retry Connection',
+							icon: RefreshCw,
+							class: 'btn-icon-info',
+							onClick: () => retryConnectionMutation.mutate(daemon.id),
+							disabled: retryPending,
 							forceLabel: true
 						}
 					]

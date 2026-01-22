@@ -93,7 +93,8 @@ export const fieldDefs: FieldDef[] = [
 		envVar: 'SCANOPY_DAEMON_URL',
 		helpText: () => m.daemons_config_daemonUrlHelp(),
 		placeholder: () => m.common_placeholderDaemonUrl(),
-		validators: [url],
+		validators: [required, url],
+		required: true,
 		showWhen: (values) => values.mode === 'server_poll'
 	},
 	// Network section

@@ -1,6 +1,8 @@
+use crate::daemon::discovery::types::base::DiscoveryPhase;
 use crate::daemon::runtime::service::LOG_TARGET;
 use crate::server::auth::middleware::auth::AuthenticatedEntity;
-use crate::server::daemons::r#impl::base::DaemonMode;
+use crate::server::daemons::r#impl::api::DiscoveryUpdatePayload;
+use crate::server::discovery::r#impl::base::Discovery;
 use crate::server::discovery::r#impl::types::RunType;
 use crate::server::shared::entities::{ChangeTriggersTopologyStaleness, EntityDiscriminants};
 use crate::server::shared::events::bus::EventBus;
@@ -19,19 +21,9 @@ use tokio::sync::{RwLock, broadcast};
 use tokio_cron_scheduler::{Job, JobScheduler};
 use uuid::Uuid;
 
-use crate::server::discovery::r#impl::base::Discovery;
-use crate::{
-    daemon::discovery::types::base::DiscoveryPhase,
-    server::daemons::{
-        r#impl::api::{DaemonDiscoveryRequest, DiscoveryUpdatePayload},
-        service::DaemonService,
-    },
-};
-
 /// Server-side session management for discovery
 pub struct DiscoveryService {
     discovery_storage: Arc<GenericPostgresStorage<Discovery>>,
-    daemon_service: Arc<DaemonService>,
     sessions: RwLock<HashMap<Uuid, DiscoveryUpdatePayload>>, // session_id -> session state mapping
     daemon_sessions: RwLock<HashMap<Uuid, Vec<Uuid>>>,       // daemon_id -> session_id mapping
     daemon_pull_cancellations: RwLock<HashMap<Uuid, (bool, Uuid)>>, // daemon_id -> (boolean, session_id) mapping for pull mode cancellations of current session on daemon
@@ -69,7 +61,6 @@ impl CrudService<Discovery> for DiscoveryService {
 impl DiscoveryService {
     pub async fn new(
         discovery_storage: Arc<GenericPostgresStorage<Discovery>>,
-        daemon_service: Arc<DaemonService>,
         event_bus: Arc<EventBus>,
         entity_tag_service: Arc<EntityTagService>,
     ) -> Result<Arc<Self>> {
@@ -78,7 +69,6 @@ impl DiscoveryService {
 
         Ok(Arc::new(Self {
             discovery_storage,
-            daemon_service,
             sessions: RwLock::new(HashMap::new()),
             daemon_sessions: RwLock::new(HashMap::new()),
             daemon_pull_cancellations: RwLock::new(HashMap::new()),
@@ -500,24 +490,23 @@ impl DiscoveryService {
             .or_default()
             .push(session_id);
 
-        let daemon_is_server_poll = self
-            .daemon_service
-            .get_by_id(&discovery.base.daemon_id)
-            .await?
-            .map(|d| d.base.mode == DaemonMode::ServerPoll)
-            .unwrap_or(false);
-
-        // Initiate session on daemon if none are running and daemon is server_poll
-        if !daemon_is_running_discovery && daemon_is_server_poll {
-            self.daemon_service
-                .send_discovery_request(
-                    &discovery.base.daemon_id,
-                    DaemonDiscoveryRequest {
-                        discovery_type: discovery.base.discovery_type,
-                        session_id,
-                    },
+        // Publish DiscoveryStarted event if no other sessions are running for daemon
+        // DaemonService subscribes to this event and sends the request to the daemon.
+        if !daemon_is_running_discovery {
+            self.event_bus()
+                .publish_entity(EntityEvent {
+                    id: Uuid::new_v4(),
+                    entity_id: discovery.id,
+                    entity_type: discovery.clone().into(),
+                    network_id: Some(discovery.base.network_id),
+                    organization_id: None,
+                    operation: EntityOperation::DiscoveryStarted,
+                    timestamp: Utc::now(),
+                    metadata: serde_json::json!({
+                        "session_id": session_id.to_string(),
+                    }),
                     authentication,
-                )
+                })
                 .await?;
         }
 
@@ -562,6 +551,7 @@ impl DiscoveryService {
         let session = sessions.get_mut(&update.session_id).unwrap();
 
         let daemon_id = session.daemon_id;
+        let network_id = session.network_id;
         tracing::debug!(
             session_id = %update.session_id,
             phase = %update.phase,
@@ -651,29 +641,39 @@ impl DiscoveryService {
             // Drop the sessions lock before sending the request
             drop(sessions);
 
-            // If any in queue and daemon is running push mode, initiate next session
+            // If any in queue, initiate next session
             // If daemon is daemon_poll mode, it will request next session on its next poll
-            let daemon_is_server_poll = self
-                .daemon_service
-                .get_by_id(&daemon_id)
-                .await?
-                .map(|d| d.base.mode == DaemonMode::ServerPoll)
-                .unwrap_or(false);
+            if let Some((discovery_type, session_id)) = next_session_info {
+                // Create a temporary Discovery to include in the event
+                // DaemonService subscriber will extract the discovery_type and session_id
+                let next_discovery = Discovery {
+                    id: Uuid::new_v4(),
+                    created_at: Utc::now(),
+                    updated_at: Utc::now(),
+                    base: crate::server::discovery::r#impl::base::DiscoveryBase {
+                        daemon_id,
+                        network_id,
+                        name: discovery_type.to_string(),
+                        tags: Vec::new(),
+                        discovery_type,
+                        run_type: RunType::AdHoc { last_run: None },
+                    },
+                };
 
-            if let Some((discovery_type, session_id)) = next_session_info
-                && daemon_is_server_poll
-            {
-                tracing::debug!("Starting next session");
-
-                self.daemon_service
-                    .send_discovery_request(
-                        &daemon_id,
-                        DaemonDiscoveryRequest {
-                            discovery_type,
-                            session_id,
-                        },
-                        AuthenticatedEntity::System,
-                    )
+                self.event_bus()
+                    .publish_entity(EntityEvent {
+                        id: Uuid::new_v4(),
+                        entity_id: next_discovery.id,
+                        entity_type: next_discovery.into(),
+                        network_id: Some(network_id),
+                        organization_id: None,
+                        operation: EntityOperation::DiscoveryStarted,
+                        timestamp: Utc::now(),
+                        metadata: serde_json::json!({
+                            "session_id": session_id.to_string(),
+                        }),
+                        authentication: AuthenticatedEntity::System,
+                    })
                     .await?;
             }
         }
@@ -740,110 +740,54 @@ impl DiscoveryService {
             )),
 
             // Active phases: send cancellation to daemon
+            // We do BOTH actions to support both daemon modes:
+            // 1. Publish DiscoveryCancelled event - DaemonService subscriber handles ServerPoll mode
+            // 2. Set cancellation flag - DaemonPoll mode checks on next poll via request_work
             DiscoveryPhase::Started | DiscoveryPhase::Scanning => {
-                if let Some(daemon) = self.daemon_service.get_by_id(&daemon_id).await? {
-                    match daemon.base.mode {
-                        DaemonMode::ServerPoll => {
-                            match self
-                                .daemon_service
-                                .send_discovery_cancellation(daemon, session_id, authentication)
-                                .await
-                            {
-                                Ok(_) => {
-                                    tracing::info!(
-                                        daemon_id = %daemon_id,
-                                        session_id = %session_id,
-                                        "Cancellation request sent",
-                                    );
-                                }
-                                Err(e) => {
-                                    tracing::warn!(
-                                        daemon_id = %daemon_id,
-                                        session_id = %session_id,
-                                        error = %e,
-                                        "Failed to reach daemon for cancellation (daemon may be down). Marking session as cancelled anyway."
-                                    );
-
-                                    // Daemon is unreachable, immediately fail the session
-                                    let mut sessions = self.sessions.write().await;
-                                    let mut daemon_sessions = self.daemon_sessions.write().await;
-
-                                    if let Some(session) = sessions.remove(&session_id) {
-                                        // Remove from daemon queue
-                                        if let Some(queue) = daemon_sessions.get_mut(&daemon_id) {
-                                            queue.retain(|id| *id != session_id);
-                                        }
-
-                                        // Broadcast failed/cancelled update
-                                        let cancelled_update = DiscoveryUpdatePayload {
-                                            session_id,
-                                            network_id,
-                                            daemon_id,
-                                            phase: DiscoveryPhase::Failed,
-                                            progress: session.progress,
-                                            error: Some("Daemon unreachable during cancellation. Session was removed from server.".to_string()),
-                                            started_at: session.started_at,
-                                            finished_at: Some(Utc::now()),
-                                            discovery_type: session.discovery_type.clone(),
-                                        };
-                                        let _ = self.update_tx.send(cancelled_update.clone());
-
-                                        // Create historical discovery record for the stalled session
-                                        let historical_discovery = Discovery {
-                                            id: Uuid::new_v4(),
-                                            created_at: session.started_at.unwrap_or(Utc::now()),
-                                            updated_at: Utc::now(),
-                                            base: crate::server::discovery::r#impl::base::DiscoveryBase {
-                                                daemon_id: session.daemon_id,
-                                                network_id: session.network_id,
-                                                tags: Vec::new(),
-                                                name: "Discovery Run (Cancellation Failed)".to_string(),
-                                                discovery_type: session.discovery_type.clone(),
-                                                run_type: RunType::Historical {
-                                                    results: cancelled_update,
-                                                },
-                                            },
-                                        };
-
-                                        if let Err(e) = self
-                                            .discovery_storage
-                                            .create(&historical_discovery)
-                                            .await
-                                        {
-                                            tracing::error!(
-                                                "Failed to create historical discovery record for stalled session {}: {}",
-                                                session_id,
-                                                e
-                                            );
-                                        }
-                                    }
-                                }
-                            }
-                            Ok(())
-                        }
-                        DaemonMode::DaemonPoll => {
-                            // Add to daemon_poll cancellations
-                            self.daemon_pull_cancellations
-                                .write()
-                                .await
-                                .entry(daemon_id)
-                                .insert_entry((true, session_id));
-
-                            tracing::info!(
-                                "Marked session {} for cancellation on next pull by daemon {}",
-                                session_id,
-                                daemon_id
-                            );
-                            Ok(())
-                        }
-                    }
-                } else {
-                    Err(anyhow!(
-                        "Daemon {} not found when trying to cancel discovery session {}",
+                // Publish DiscoveryCancelled event - DaemonService subscriber will handle it for ServerPoll
+                let cancel_discovery = Discovery {
+                    id: Uuid::new_v4(),
+                    created_at: Utc::now(),
+                    updated_at: Utc::now(),
+                    base: crate::server::discovery::r#impl::base::DiscoveryBase {
                         daemon_id,
-                        session_id
-                    ))
-                }
+                        network_id,
+                        name: session.discovery_type.to_string(),
+                        tags: Vec::new(),
+                        discovery_type: session.discovery_type.clone(),
+                        run_type: RunType::AdHoc { last_run: None },
+                    },
+                };
+
+                self.event_bus()
+                    .publish_entity(EntityEvent {
+                        id: Uuid::new_v4(),
+                        entity_id: cancel_discovery.id,
+                        entity_type: cancel_discovery.into(),
+                        network_id: Some(network_id),
+                        organization_id: None,
+                        operation: EntityOperation::DiscoveryCancelled,
+                        timestamp: Utc::now(),
+                        metadata: serde_json::json!({
+                            "session_id": session_id.to_string(),
+                        }),
+                        authentication,
+                    })
+                    .await?;
+
+                // Set cancellation flag for DaemonPoll mode (checked on next poll)
+                self.daemon_pull_cancellations
+                    .write()
+                    .await
+                    .insert(daemon_id, (true, session_id));
+
+                tracing::info!(
+                    daemon_id = %daemon_id,
+                    session_id = %session_id,
+                    "Discovery cancellation requested",
+                );
+
+                Ok(())
             }
 
             // Terminal phases: already done
@@ -926,76 +870,72 @@ impl DiscoveryService {
             return;
         }
 
-        // Second pass: send cancellation requests to daemons (no locks held)
+        // Second pass: request cancellation for stalled sessions (no locks held)
+        // We do BOTH actions to support both daemon modes:
+        // 1. Publish DiscoveryCancelled event - DaemonService subscriber handles ServerPoll mode
+        // 2. Set cancellation flag - DaemonPoll mode checks on next poll via request_work
         for (session_id, daemon_id) in &stalled_sessions {
             tracing::warn!(
                 session_id = %session_id,
                 daemon_id = %daemon_id,
-                "Sending cancellation to daemon for stalled session"
+                "Requesting cancellation for stalled session"
             );
 
-            // Try to get daemon info and send cancellation
-            match self.daemon_service.get_by_id(daemon_id).await {
-                Ok(Some(daemon)) => {
-                    match daemon.base.mode {
-                        DaemonMode::ServerPoll => {
-                            // Send HTTP cancellation request (best effort)
-                            let url = format!("{}/api/discovery/cancel", daemon.base.url);
-                            let client = reqwest::Client::new();
-                            match client.post(&url).json(session_id).send().await {
-                                Ok(response) if response.status().is_success() => {
-                                    tracing::info!(
-                                        daemon_id = %daemon_id,
-                                        session_id = %session_id,
-                                        "Sent cancellation request to daemon for stalled session"
-                                    );
-                                }
-                                Ok(response) => {
-                                    tracing::warn!(
-                                        daemon_id = %daemon_id,
-                                        session_id = %session_id,
-                                        status = %response.status(),
-                                        "Failed to cancel stalled session on daemon"
-                                    );
-                                }
-                                Err(e) => {
-                                    tracing::warn!(
-                                        daemon_id = %daemon_id,
-                                        session_id = %session_id,
-                                        error = %e,
-                                        "Failed to send cancellation request to daemon"
-                                    );
-                                }
-                            }
-                        }
-                        DaemonMode::DaemonPoll => {
-                            // Set cancellation flag for daemon_poll mode
-                            self.daemon_pull_cancellations
-                                .write()
-                                .await
-                                .insert(*daemon_id, (true, *session_id));
-                            tracing::info!(
-                                daemon_id = %daemon_id,
-                                session_id = %session_id,
-                                "Set cancellation flag for daemon_poll-mode daemon"
-                            );
-                        }
-                    }
-                }
-                Ok(None) => {
-                    tracing::warn!(
-                        daemon_id = %daemon_id,
-                        "Daemon not found when trying to cancel stalled session"
-                    );
-                }
-                Err(e) => {
-                    tracing::warn!(
-                        daemon_id = %daemon_id,
-                        error = %e,
-                        "Failed to get daemon for cancellation"
-                    );
-                }
+            // Publish DiscoveryCancelled event (best effort - DaemonService subscriber handles ServerPoll)
+            let cancel_discovery = Discovery {
+                id: Uuid::new_v4(),
+                created_at: Utc::now(),
+                updated_at: Utc::now(),
+                base: crate::server::discovery::r#impl::base::DiscoveryBase {
+                    daemon_id: *daemon_id,
+                    network_id: Uuid::nil(), // Not needed for cancellation
+                    name: "Stalled Session Cancellation".to_string(),
+                    tags: Vec::new(),
+                    discovery_type:
+                        crate::server::discovery::r#impl::types::DiscoveryType::SelfReport {
+                            host_id: Uuid::nil(),
+                        },
+                    run_type: RunType::AdHoc { last_run: None },
+                },
+            };
+
+            if let Err(e) = self
+                .event_bus()
+                .publish_entity(EntityEvent {
+                    id: Uuid::new_v4(),
+                    entity_id: cancel_discovery.id,
+                    entity_type: cancel_discovery.into(),
+                    network_id: None,
+                    organization_id: None,
+                    operation: EntityOperation::DiscoveryCancelled,
+                    timestamp: Utc::now(),
+                    metadata: serde_json::json!({
+                        "session_id": session_id.to_string(),
+                        "reason": "stalled",
+                    }),
+                    authentication: AuthenticatedEntity::System,
+                })
+                .await
+            {
+                tracing::warn!(
+                    daemon_id = %daemon_id,
+                    session_id = %session_id,
+                    error = %e,
+                    "Failed to publish cancellation event for stalled session"
+                );
             }
+
+            // Set cancellation flag for DaemonPoll mode (checked on next poll)
+            self.daemon_pull_cancellations
+                .write()
+                .await
+                .insert(*daemon_id, (true, *session_id));
+
+            tracing::info!(
+                daemon_id = %daemon_id,
+                session_id = %session_id,
+                "Cancellation requested for stalled session"
+            );
         }
 
         // Third pass: cleanup session state (write locks)

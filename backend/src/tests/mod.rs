@@ -173,7 +173,7 @@ pub fn daemon(network_id: &Uuid, host_id: &Uuid) -> Daemon {
         tags: Vec::new(),
         name: "daemon".to_string(),
         url: "http://192.168.1.50:60073".to_string(),
-        last_seen: Utc::now(),
+        last_seen: Some(Utc::now()),
         mode: DaemonMode::ServerPoll,
         capabilities: DaemonCapabilities {
             has_docker_socket: false,
@@ -182,6 +182,7 @@ pub fn daemon(network_id: &Uuid, host_id: &Uuid) -> Daemon {
         version: None,
         user_id: Uuid::nil(),
         api_key_id: None,
+        is_unreachable: false,
     })
 }
 

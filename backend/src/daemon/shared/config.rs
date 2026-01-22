@@ -11,7 +11,7 @@ use std::{path::PathBuf, sync::Arc};
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
-use crate::server::daemons::r#impl::base::DaemonMode;
+use crate::server::daemons::r#impl::{api::DaemonCapabilities, base::DaemonMode};
 
 #[derive(Parser)]
 #[command(name = "scanopy-daemon")]
@@ -154,6 +154,10 @@ pub struct AppConfig {
     /// Network interfaces to restrict scanning to. Empty means all interfaces.
     #[serde(default)]
     pub interface_filter: Vec<String>,
+    /// Daemon capabilities (docker socket availability, interfaced subnets)
+    /// Updated after SelfReport discovery completes
+    #[serde(default)]
+    pub capabilities: DaemonCapabilities,
 }
 
 fn default_arp_retries() -> u32 {
@@ -193,6 +197,7 @@ impl Default for AppConfig {
             arp_retries: default_arp_retries(),
             arp_rate_pps: default_arp_rate_pps(),
             interface_filter: Vec::new(),
+            capabilities: DaemonCapabilities::default(),
         }
     }
 }
@@ -536,6 +541,17 @@ impl ConfigStore {
     pub async fn get_interface_filter(&self) -> Result<Vec<String>> {
         let config = self.config.read().await;
         Ok(config.interface_filter.clone())
+    }
+
+    pub async fn get_capabilities(&self) -> Result<DaemonCapabilities> {
+        let config = self.config.read().await;
+        Ok(config.capabilities.clone())
+    }
+
+    pub async fn set_capabilities(&self, capabilities: DaemonCapabilities) -> Result<()> {
+        let mut config = self.config.write().await;
+        config.capabilities = capabilities;
+        self.save(&config.clone()).await
     }
 }
 
