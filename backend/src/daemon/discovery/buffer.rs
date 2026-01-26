@@ -120,9 +120,26 @@ impl EntityBuffer {
     // ========================================================================
 
     /// Add a discovered host with its children (interfaces, ports, services).
+    ///
+    /// If a host with the same ID already exists and is pending, merges children
+    /// (interfaces, ports, services, if_entries) into the existing entry.
+    /// This is critical for Docker discovery where all containers share the daemon's host_id.
     pub async fn push_host(&self, host: DiscoveryHostRequest) {
         let mut hosts = self.hosts.write().await;
-        hosts.insert(host.host.id, BufferedEntity::Pending(host));
+
+        match hosts.get_mut(&host.host.id) {
+            Some(BufferedEntity::Pending(existing)) => {
+                // Merge children into existing pending entry
+                existing.interfaces.extend(host.interfaces);
+                existing.ports.extend(host.ports);
+                existing.services.extend(host.services);
+                existing.if_entries.extend(host.if_entries);
+            }
+            Some(BufferedEntity::Created { .. }) | None => {
+                // No existing pending entry - insert new one
+                hosts.insert(host.host.id, BufferedEntity::Pending(host));
+            }
+        }
     }
 
     /// Mark host as created with actual server data.
@@ -592,5 +609,169 @@ mod tests {
         // Step 6: Session ends - clear_all removes all entities
         buffer.clear_all().await;
         assert!(buffer.is_empty().await);
+    }
+
+    #[tokio::test]
+    async fn test_push_host_merges_children_for_same_host_id() {
+        // This test verifies that push_host merges children when called multiple times
+        // with the same host_id. This is critical for Docker discovery where all containers
+        // share the daemon's host_id - without merging, only the last container survives.
+        use crate::server::interfaces::r#impl::base::{Interface, InterfaceBase};
+        use crate::server::services::r#impl::base::{Service, ServiceBase};
+        use chrono::Utc;
+        use std::net::{IpAddr, Ipv4Addr};
+
+        let buffer = EntityBuffer::new();
+        let network_id = Uuid::new_v4();
+        let host_id = Uuid::new_v4(); // Same host_id for all pushes
+        let subnet_id = Uuid::new_v4();
+        let now = Utc::now();
+
+        // First push: host with 2 interfaces
+        let host1 = DiscoveryHostRequest {
+            host: Host::new(HostBase {
+                name: "daemon-host".to_string(),
+                hostname: None,
+                tags: vec![],
+                network_id,
+                description: None,
+                source: EntitySource::Manual,
+                virtualization: None,
+                hidden: false,
+                sys_descr: None,
+                sys_object_id: None,
+                sys_location: None,
+                sys_contact: None,
+                management_url: None,
+                chassis_id: None,
+                snmp_credential_id: None,
+            }),
+            interfaces: vec![
+                Interface {
+                    id: Uuid::new_v4(),
+                    created_at: now,
+                    updated_at: now,
+                    base: InterfaceBase {
+                        network_id,
+                        host_id,
+                        subnet_id,
+                        ip_address: IpAddr::V4(Ipv4Addr::new(192, 168, 1, 10)),
+                        mac_address: None,
+                        name: Some("eth0".to_string()),
+                        position: 0,
+                    },
+                },
+                Interface {
+                    id: Uuid::new_v4(),
+                    created_at: now,
+                    updated_at: now,
+                    base: InterfaceBase {
+                        network_id,
+                        host_id,
+                        subnet_id,
+                        ip_address: IpAddr::V4(Ipv4Addr::new(192, 168, 1, 11)),
+                        mac_address: None,
+                        name: Some("eth1".to_string()),
+                        position: 1,
+                    },
+                },
+            ],
+            ports: vec![],
+            services: vec![Service {
+                id: Uuid::new_v4(),
+                created_at: now,
+                updated_at: now,
+                base: ServiceBase {
+                    network_id,
+                    host_id,
+                    name: "container-1".to_string(),
+                    ..Default::default()
+                },
+            }],
+            if_entries: vec![],
+        };
+        // Set the host ID to match our shared host_id
+        let mut host1 = host1;
+        host1.host.id = host_id;
+        buffer.push_host(host1).await;
+
+        // Second push: same host_id with 1 different interface and 1 different service
+        let host2 = DiscoveryHostRequest {
+            host: Host::new(HostBase {
+                name: "daemon-host".to_string(),
+                hostname: None,
+                tags: vec![],
+                network_id,
+                description: None,
+                source: EntitySource::Manual,
+                virtualization: None,
+                hidden: false,
+                sys_descr: None,
+                sys_object_id: None,
+                sys_location: None,
+                sys_contact: None,
+                management_url: None,
+                chassis_id: None,
+                snmp_credential_id: None,
+            }),
+            interfaces: vec![Interface {
+                id: Uuid::new_v4(),
+                created_at: now,
+                updated_at: now,
+                base: InterfaceBase {
+                    network_id,
+                    host_id,
+                    subnet_id,
+                    ip_address: IpAddr::V4(Ipv4Addr::new(192, 168, 1, 12)),
+                    mac_address: None,
+                    name: Some("eth2".to_string()),
+                    position: 2,
+                },
+            }],
+            ports: vec![],
+            services: vec![Service {
+                id: Uuid::new_v4(),
+                created_at: now,
+                updated_at: now,
+                base: ServiceBase {
+                    network_id,
+                    host_id,
+                    name: "container-2".to_string(),
+                    ..Default::default()
+                },
+            }],
+            if_entries: vec![],
+        };
+        let mut host2 = host2;
+        host2.host.id = host_id;
+        buffer.push_host(host2).await;
+
+        // Verify: should have 1 host with 3 interfaces and 2 services
+        let pending = buffer.get_pending().await;
+        assert_eq!(pending.hosts.len(), 1, "Should have exactly 1 host");
+
+        let host = &pending.hosts[0];
+        assert_eq!(host.host.id, host_id);
+        assert_eq!(
+            host.interfaces.len(),
+            3,
+            "Should have 3 interfaces after merge"
+        );
+        assert_eq!(host.services.len(), 2, "Should have 2 services after merge");
+
+        // Verify interface names to confirm correct merge
+        let interface_names: Vec<_> = host
+            .interfaces
+            .iter()
+            .filter_map(|i| i.base.name.clone())
+            .collect();
+        assert!(interface_names.contains(&"eth0".to_string()));
+        assert!(interface_names.contains(&"eth1".to_string()));
+        assert!(interface_names.contains(&"eth2".to_string()));
+
+        // Verify service names
+        let service_names: Vec<_> = host.services.iter().map(|s| s.base.name.clone()).collect();
+        assert!(service_names.contains(&"container-1".to_string()));
+        assert!(service_names.contains(&"container-2".to_string()));
     }
 }

@@ -9,6 +9,7 @@ use crate::server::{
     if_entries::r#impl::base::{IfAdminStatus, IfEntry, IfEntryBase, IfOperStatus, Neighbor},
     shared::{
         entities::EntityDiscriminants,
+        entity_metadata::EntityCategory,
         storage::{
             child::ChildStorableEntity,
             traits::{Entity, SqlValue, Storable},
@@ -327,12 +328,12 @@ impl Entity for IfEntry {
         EntityDiscriminants::IfEntry
     }
 
-    fn entity_name_singular() -> &'static str {
-        "if entry"
-    }
+    const ENTITY_NAME_SINGULAR: &'static str = "ifTable Entry";
+    const ENTITY_NAME_PLURAL: &'static str = "ifTable Entries";
+    const ENTITY_DESCRIPTION: &'static str = "SNMP interface entries (ifTable). Physical and logical interfaces discovered via SNMP on hosts.";
 
-    fn entity_name_plural() -> &'static str {
-        "if-entries"
+    fn entity_category() -> EntityCategory {
+        EntityCategory::NetworkInfrastructure
     }
 
     fn network_id(&self) -> Option<Uuid> {

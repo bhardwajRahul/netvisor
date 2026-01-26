@@ -13,7 +13,7 @@ help:
 	@echo "  make dev-server     - Start server dev environment"
 	@echo "  make dev-ui         - Start ui"
 	@echo "  make dev-daemon     - Start daemon dev environment"
-	@echo "  make dev-container  - Start containerized development environment using docker-compose.dev.yml (server + ui + daemon)"
+	@echo "  make dev-container  - Start containerized development environment using docker-compose.test.yml (server + ui + daemon)"
 	@echo "  make dev-container-rebuild  - Rebuild and start containerized dev environment"
 	@echo "  make dev-container-rebuild-clean  - Rebuild, clean, and start containerized dev environment"
 	@echo "  make dev-down       - Stop development containers"
@@ -84,17 +84,17 @@ dev-ui:
 	cd ui && npm run dev
 
 dev-container:
-	docker compose -f docker-compose.dev.yml up
+	docker compose -f docker-compose.test.yml up
 
 dev-container-rebuild:
-	docker compose -f docker-compose.dev.yml up --build --force-recreate
+	docker compose -f docker-compose.test.yml up --build --force-recreate
 
 dev-container-rebuild-clean:
-	docker compose -f docker-compose.dev.yml build --no-cache
-	docker compose -f docker-compose.dev.yml up
+	docker compose -f docker-compose.test.yml build --no-cache
+	docker compose -f docker-compose.test.yml up
 
 dev-down:
-	docker compose -f docker-compose.dev.yml down --volumes --rmi local
+	docker compose -f docker-compose.test.yml down --volumes --rmi local
 
 test:
 	cd ui && npx vite-node scripts/export-daemon-field-defs.ts 2>/dev/null | grep -v 'paraglide-js' > ../backend/src/tests/daemon-config-frontend-fields.json

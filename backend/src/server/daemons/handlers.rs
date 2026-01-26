@@ -14,7 +14,7 @@ use crate::server::shared::handlers::query::{
 };
 use crate::server::shared::services::traits::CrudService;
 use crate::server::shared::storage::filter::StorableFilter;
-use crate::server::shared::storage::traits::Storable;
+use crate::server::shared::storage::traits::{Entity, Storable};
 use crate::server::shared::types::api::ApiErrorResponse;
 use crate::server::shared::validation::validate_network_access;
 use crate::server::{
@@ -136,9 +136,9 @@ impl FilterQueryExtractor for DaemonFilterQuery {
 // Generated handlers for operations that use generic CRUD logic
 mod generated {
     use super::*;
-    crate::crud_delete_handler!(Daemon, "daemons", "daemon");
-    crate::crud_bulk_delete_handler!(Daemon, "daemons");
-    crate::crud_export_csv_handler!(Daemon, "daemons", "daemon");
+    crate::crud_delete_handler!(Daemon);
+    crate::crud_bulk_delete_handler!(Daemon);
+    crate::crud_export_csv_handler!(Daemon);
 }
 
 /// User-facing daemon management endpoints (versioned at /api/v1/daemons)
@@ -162,7 +162,7 @@ pub fn create_internal_router() -> OpenApiRouter<Arc<AppState>> {
         .routes(routes!(receive_work_request))
 }
 
-/// Get all daemons
+/// Get all Daemons
 ///
 /// Returns all daemons accessible to the user.
 /// Supports pagination via `limit` and `offset` query parameters,
@@ -170,7 +170,7 @@ pub fn create_internal_router() -> OpenApiRouter<Arc<AppState>> {
 #[utoipa::path(
     get,
     path = "",
-    tag = "daemons",
+    tag = Daemon::ENTITY_NAME_PLURAL,
     operation_id = "get_daemons",
     summary = "Get all daemons",
     params(DaemonFilterQuery),
@@ -231,13 +231,13 @@ async fn get_all(
     )))
 }
 
-/// Get daemon by ID
+/// Get Daemon by ID
 ///
 /// Returns a specific daemon with computed version status.
 #[utoipa::path(
     get,
     path = "/{id}",
-    tag = "daemons",
+    tag = Daemon::ENTITY_NAME_PLURAL,
     operation_id = "get_daemon_by_id",
     summary = "Get daemon by ID",
     params(("id" = Uuid, Path, description = "Daemon ID")),
@@ -289,14 +289,14 @@ async fn get_by_id(
     })))
 }
 
-/// Register a new daemon
+/// Register a new Daemon
 ///
 /// Internal endpoint for daemon self-registration. Creates a host entry
 /// and sets up default discovery jobs for the daemon.
 #[utoipa::path(
     post,
     path = "/register",
-    tags = ["daemons", "internal"],
+    tags = [Daemon::ENTITY_NAME_PLURAL, "internal"],
     request_body = DaemonRegistrationRequest,
     responses(
         (status = 200, description = "Daemon registered successfully", body = ApiResponse<DaemonRegistrationResponse>),
@@ -327,7 +327,7 @@ async fn register_daemon(
 #[utoipa::path(
     post,
     path = "/{id}/startup",
-    tags = ["daemons", "internal"],
+    tags = [Daemon::ENTITY_NAME_PLURAL, "internal"],
     params(("id" = Uuid, Path, description = "Daemon ID")),
     request_body = DaemonStartupRequest,
     responses(
@@ -367,13 +367,13 @@ async fn daemon_startup(
     Ok(Json(ApiResponse::success(capabilities)))
 }
 
-/// Update daemon capabilities
+/// Update Daemon capabilities
 ///
 /// Internal endpoint for daemons to report their current capabilities.
 #[utoipa::path(
     post,
     path = "/{id}/update-capabilities",
-    tags = ["daemons", "internal"],
+    tags = [Daemon::ENTITY_NAME_PLURAL, "internal"],
     params(("id" = Uuid, Path, description = "Daemon ID")),
     request_body = DaemonCapabilities,
     responses(
@@ -421,7 +421,7 @@ async fn update_capabilities(
 #[utoipa::path(
     post,
     path = "/{id}/request-work",
-    tags = ["daemons", "internal"],
+    tags = [Daemon::ENTITY_NAME_PLURAL, "internal"],
     params(("id" = Uuid, Path, description = "Daemon ID")),
     request_body = DaemonStatusPayload,
     responses(
@@ -496,7 +496,7 @@ async fn receive_work_request(
 // Pre-provisioning (ServerPoll mode only)
 // ============================================================================
 
-/// Pre-provision a ServerPoll mode daemon
+/// Pre-provision a ServerPoll mode Daemon
 ///
 /// Creates a daemon record on the server before the daemon is installed.
 /// This is only for ServerPoll mode where the server initiates connections to the daemon.
@@ -506,7 +506,7 @@ async fn receive_work_request(
 #[utoipa::path(
     post,
     path = "/provision",
-    tag = "daemons",
+    tags = ["internal", Daemon::ENTITY_NAME_PLURAL],
     operation_id = "provision_daemon",
     summary = "Pre-provision a ServerPoll mode daemon",
     request_body = ProvisionDaemonRequest,
@@ -639,7 +639,7 @@ async fn provision_daemon(
     })))
 }
 
-/// Retry connection to an unreachable daemon
+/// Retry connection to an unreachable Daemon
 ///
 /// Resets the is_unreachable flag for a daemon that was marked unreachable
 /// due to repeated polling failures. The poller will attempt to contact
@@ -647,7 +647,7 @@ async fn provision_daemon(
 #[utoipa::path(
     post,
     path = "/{id}/retry-connection",
-    tag = "daemons",
+    tag = Daemon::ENTITY_NAME_PLURAL,
     operation_id = "retry_daemon_connection",
     summary = "Retry connection to unreachable daemon",
     params(("id" = Uuid, Path, description = "Daemon ID")),

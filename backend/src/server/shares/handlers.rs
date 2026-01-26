@@ -25,7 +25,7 @@ use crate::server::{
     shared::{
         handlers::traits::{CrudHandlers, create_handler, update_handler},
         services::traits::CrudService,
-        storage::traits::Storage,
+        storage::traits::{Entity, Storage},
         types::{
             api::{ApiError, ApiErrorResponse, ApiResponse, ApiResult},
             error_codes::ErrorCode,
@@ -41,11 +41,11 @@ use crate::server::{
 // Generated handlers for generic CRUD operations
 mod generated {
     use super::*;
-    crate::crud_get_all_handler!(Share, "shares", "share");
-    crate::crud_get_by_id_handler!(Share, "shares", "share");
-    crate::crud_delete_handler!(Share, "shares", "share");
-    crate::crud_bulk_delete_handler!(Share, "shares");
-    crate::crud_export_csv_handler!(Share, "shares", "share");
+    crate::crud_get_all_handler!(Share);
+    crate::crud_get_by_id_handler!(Share);
+    crate::crud_delete_handler!(Share);
+    crate::crud_bulk_delete_handler!(Share);
+    crate::crud_export_csv_handler!(Share);
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -89,7 +89,7 @@ pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
 #[utoipa::path(
     post,
     path = "",
-    tag = "shares",
+    tag = Share::ENTITY_NAME_PLURAL,
     request_body = CreateUpdateShareRequest,
     responses(
         (status = 200, description = "Share created", body = ApiResponse<Share>),
@@ -122,7 +122,7 @@ async fn create_share(
 #[utoipa::path(
     put,
     path = "/{id}",
-    tag = "shares",
+    tag = Share::ENTITY_NAME_PLURAL,
     params(("id" = Uuid, Path, description = "Share ID")),
     request_body = CreateUpdateShareRequest,
     responses(
@@ -205,7 +205,7 @@ async fn get_share_org_plan(state: &AppState, share: &Share) -> Result<BillingPl
 #[utoipa::path(
     get,
     path = "/public/{id}",
-    tag = "shares",
+    tag = Share::ENTITY_NAME_PLURAL,
     params(("id" = Uuid, Path, description = "Share ID")),
     responses(
         (status = 200, description = "Share metadata", body = ApiResponse<PublicShareMetadata>),
@@ -237,7 +237,7 @@ async fn get_public_share_metadata(
 #[utoipa::path(
     post,
     path = "/public/{id}/verify",
-    tags = ["shares", "internal"],
+    tags = [Share::ENTITY_NAME_PLURAL, "internal"],
     params(("id" = Uuid, Path, description = "Share ID")),
     request_body = String,
     responses(

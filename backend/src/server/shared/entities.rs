@@ -4,6 +4,7 @@ use crate::server::interfaces::r#impl::base::Interface;
 use crate::server::invites::r#impl::base::Invite;
 use crate::server::ports::r#impl::base::Port;
 use crate::server::services::r#impl::base::Service;
+use crate::server::shared::concepts::Concept;
 use crate::server::shares::r#impl::base::Share;
 use crate::server::snmp_credentials::r#impl::base::SnmpCredential;
 use crate::server::subnets::r#impl::base::Subnet;
@@ -116,7 +117,7 @@ impl EntityMetadataProvider for EntityDiscriminants {
             EntityDiscriminants::Discovery => Color::Green,
             EntityDiscriminants::DaemonApiKey => Color::Yellow,
             EntityDiscriminants::UserApiKey => Color::Yellow,
-            EntityDiscriminants::SnmpCredential => Color::Orange,
+            EntityDiscriminants::SnmpCredential => Concept::SNMP.color(),
             EntityDiscriminants::User => Color::Blue,
             EntityDiscriminants::Invite => Color::Green,
             EntityDiscriminants::Share => Color::Teal,
@@ -155,7 +156,7 @@ impl EntityMetadataProvider for EntityDiscriminants {
             EntityDiscriminants::Port => Icon::EthernetPort,
             EntityDiscriminants::Binding => Icon::Link,
             EntityDiscriminants::IfEntry => Icon::Cable,
-            EntityDiscriminants::SnmpCredential => Icon::Shield,
+            EntityDiscriminants::SnmpCredential => Icon::Asterisk,
             EntityDiscriminants::Subnet => Icon::Network,
             EntityDiscriminants::Group => Icon::Group,
             EntityDiscriminants::Topology => Icon::ChartBarStacked,

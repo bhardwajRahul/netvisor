@@ -716,8 +716,15 @@ pub async fn test_snmp_service(ip: IpAddr) -> Result<Option<u16>, Error> {
     let target = format!("{}:161", ip);
     let community = b"public";
 
-    match AsyncSession::new_v2c(&target, community, 0).await {
-        Ok(mut session) => {
+    // Wrap session creation with timeout to prevent hanging
+    let session_result = timeout(
+        Duration::from_millis(2000),
+        AsyncSession::new_v2c(&target, community, 0),
+    )
+    .await;
+
+    match session_result {
+        Ok(Ok(mut session)) => {
             let sys_descr_oid = Oid::from(&[1, 3, 6, 1, 2, 1, 1, 1, 0])
                 .map_err(|e| anyhow!("Invalid Oid: {:?}", e))?;
 
@@ -733,7 +740,8 @@ pub async fn test_snmp_service(ip: IpAddr) -> Result<Option<u16>, Error> {
                 Err(_) => Ok(None),
             }
         }
-        Err(_) => Ok(None),
+        Ok(Err(_)) => Ok(None),
+        Err(_) => Ok(None), // Session creation timed out
     }
 }
 

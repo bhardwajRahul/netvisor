@@ -295,7 +295,7 @@
 		{
 			id: 'snmp',
 			label: hosts_editor_snmpTab(),
-			icon: entities.getIconComponent('SnmpCredential'),
+			icon: concepts.getIconComponent('SNMP'),
 			description: hosts_editor_snmpTabDesc()
 		},
 		// IfEntries tab - only show when data exists (populated by discovery)

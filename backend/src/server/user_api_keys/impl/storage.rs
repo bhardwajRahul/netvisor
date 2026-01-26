@@ -7,6 +7,7 @@ use uuid::Uuid;
 use crate::server::{
     shared::{
         entities::EntityDiscriminants,
+        entity_metadata::EntityCategory,
         storage::traits::{Entity, SqlValue, Storable},
     },
     user_api_keys::r#impl::base::{UserApiKey, UserApiKeyBase},
@@ -164,12 +165,12 @@ impl Entity for UserApiKey {
         EntityDiscriminants::UserApiKey
     }
 
-    fn entity_name_singular() -> &'static str {
-        "user API key"
-    }
+    const ENTITY_NAME_SINGULAR: &'static str = "User API Key";
+    const ENTITY_NAME_PLURAL: &'static str = "User API Keys";
+    const ENTITY_DESCRIPTION: &'static str = "User API keys for programmatic access. Create and manage personal API keys with scoped permissions.";
 
-    fn entity_name_plural() -> &'static str {
-        "user-api-keys"
+    fn entity_category() -> EntityCategory {
+        EntityCategory::OrganizationsAndUsers
     }
 
     fn network_id(&self) -> Option<Uuid> {

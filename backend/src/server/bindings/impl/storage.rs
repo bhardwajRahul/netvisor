@@ -7,6 +7,7 @@ use crate::server::{
     bindings::r#impl::base::{Binding, BindingBase, BindingType},
     shared::{
         entities::EntityDiscriminants,
+        entity_metadata::EntityCategory,
         storage::traits::{Entity, SqlValue, Storable},
     },
 };
@@ -160,12 +161,12 @@ impl Entity for Binding {
         EntityDiscriminants::Binding
     }
 
-    fn entity_name_singular() -> &'static str {
-        "binding"
-    }
+    const ENTITY_NAME_SINGULAR: &'static str = "Binding";
+    const ENTITY_NAME_PLURAL: &'static str = "Bindings";
+    const ENTITY_DESCRIPTION: &'static str = "Service bindings linking services to interfaces and/or ports. Defines where a service is accessible.";
 
-    fn entity_name_plural() -> &'static str {
-        "bindings"
+    fn entity_category() -> EntityCategory {
+        EntityCategory::NetworkInfrastructure
     }
 
     fn network_id(&self) -> Option<Uuid> {

@@ -1,18 +1,21 @@
 <script lang="ts">
-	import { createForm } from '@tanstack/svelte-form';
+	import { createForm, type AnyFieldApi } from '@tanstack/svelte-form';
 	import { submitForm } from '$lib/shared/components/forms/form-context';
 	import { required, max } from '$lib/shared/components/forms/validators';
 	import GenericModal from '$lib/shared/components/layout/GenericModal.svelte';
 	import ModalHeaderIcon from '$lib/shared/components/layout/ModalHeaderIcon.svelte';
 	import EntityMetadataSection from '$lib/shared/components/forms/EntityMetadataSection.svelte';
+	import SnmpCredentialFields from './SnmpCredentialFields.svelte';
 	import type { SnmpCredential } from '../types/base';
 	import { createDefaultSnmpCredential } from '../types/base';
 	import { entities } from '$lib/shared/stores/metadata';
 	import { Key } from 'lucide-svelte';
+	import BetaTag from '$lib/shared/components/data/BetaTag.svelte';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
 	import { pushError } from '$lib/shared/stores/feedback';
 	import TextInput from '$lib/shared/components/forms/input/TextInput.svelte';
 	import {
+		common_betaSnmpExplainer,
 		common_cancel,
 		common_couldNotLoadOrganization,
 		common_create,
@@ -23,17 +26,10 @@
 		common_name,
 		common_saving,
 		common_update,
-		common_version,
 		m,
-		snmp_communityString,
-		snmp_communityStringHelp,
-		snmp_communityStringPlaceholder,
 		snmp_createCredential,
-		snmp_namePlaceholder,
-		snmp_versionV2c,
-		snmp_versionV3ComingSoon
+		snmp_namePlaceholder
 	} from '$lib/paraglide/messages';
-	import SelectInput from '$lib/shared/components/forms/input/SelectInput.svelte';
 
 	let {
 		credential = null,
@@ -141,7 +137,10 @@
 				<!-- Credential Details Section -->
 				<div class="space-y-4">
 					<p class="text-secondary">{m.snmp_modalCreateHelpText()}</p>
-					<h3 class="text-primary text-lg font-medium">{common_details()}</h3>
+					<h3 class="text-primary flex items-center gap-2 text-lg font-medium">
+						{common_details()}
+						<BetaTag tooltip={common_betaSnmpExplainer()} />
+					</h3>
 
 					<form.Field
 						name="name"
@@ -161,40 +160,12 @@
 					</form.Field>
 
 					<form.Field name="version">
-						{#snippet children(field)}
-							<div class="space-y-2">
-								<label for="version" class="text-secondary block text-sm font-medium">
-									{common_version()}
-								</label>
-								<SelectInput
-									label={common_version()}
-									id="version"
-									{field}
-									options={[
-										{ value: 'V2c', label: snmp_versionV2c() },
-										{ value: 'V3', label: snmp_versionV3ComingSoon(), disabled: true }
-									]}
-								/>
-							</div>
-						{/snippet}
-					</form.Field>
-
-					<form.Field
-						name="community"
-						validators={{
-							onBlur: ({ value }) => required(value) || max(256)(value)
-						}}
-					>
-						{#snippet children(field)}
-							<TextInput
-								label={snmp_communityString()}
-								id="community"
-								type="password"
-								{field}
-								placeholder={snmp_communityStringPlaceholder()}
-								required
-								helpText={snmp_communityStringHelp()}
-							/>
+						{#snippet children(versionField: AnyFieldApi)}
+							<form.Field name="community">
+								{#snippet children(communityField: AnyFieldApi)}
+									<SnmpCredentialFields {versionField} {communityField} />
+								{/snippet}
+							</form.Field>
 						{/snippet}
 					</form.Field>
 				</div>

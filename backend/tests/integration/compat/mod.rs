@@ -24,10 +24,36 @@ mod types;
 
 pub use replay::*;
 
+use crate::infra::{TestClient, setup_authenticated_user};
+use scanopy::server::daemon_api_keys::r#impl::api::DaemonApiKeyResponse;
+use scanopy::server::daemon_api_keys::r#impl::base::{DaemonApiKey, DaemonApiKeyBase};
+use scanopy::server::shared::storage::traits::Storable;
 use uuid::Uuid;
 
 const SERVER_URL: &str = "http://localhost:60072";
 const DAEMON_URL: &str = "http://localhost:60073";
+
+/// Create a daemon API key for use in compat tests.
+async fn create_compat_test_api_key(network_id: Uuid) -> Result<String, String> {
+    let client = TestClient::new();
+
+    // Re-authenticate to get a session
+    setup_authenticated_user(&client).await?;
+
+    let api_key = DaemonApiKey::new(DaemonApiKeyBase {
+        key: String::new(),
+        name: "Compat Test API Key".to_string(),
+        last_used: None,
+        expires_at: None,
+        network_id,
+        is_enabled: true,
+        tags: Vec::new(),
+        plaintext: None,
+    });
+
+    let response: DaemonApiKeyResponse = client.post("/api/v1/auth/daemon", &api_key).await?;
+    Ok(response.key)
+}
 
 /// Run all compatibility tests against running server and daemon.
 pub async fn run_compat_tests(
@@ -36,12 +62,16 @@ pub async fn run_compat_tests(
     organization_id: Uuid,
     user_id: Uuid,
 ) -> Result<(), String> {
+    // Create a daemon API key for replay requests
+    let api_key = create_compat_test_api_key(network_id).await?;
+    println!("  Created daemon API key for compat tests");
+
     let ctx = ReplayContext {
         daemon_id,
         network_id,
         user_id,
         organization_id,
-        api_key: String::new(), // Daemon auth uses X-Daemon-ID header
+        api_key,
     };
 
     println!("\n=== Server Compatibility (old daemon → current server) ===");

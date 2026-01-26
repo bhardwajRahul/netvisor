@@ -16,6 +16,7 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::Validate;
 
+use crate::server::shared::entity_metadata::EntityCategory;
 use crate::server::shared::storage::traits::{Entity, SqlValue, Storable};
 
 /// CSV row representation for Network export
@@ -198,12 +199,12 @@ impl Entity for Network {
         EntityDiscriminants::Network
     }
 
-    fn entity_name_singular() -> &'static str {
-        "network"
-    }
+    const ENTITY_NAME_SINGULAR: &'static str = "Network";
+    const ENTITY_NAME_PLURAL: &'static str = "Networks";
+    const ENTITY_DESCRIPTION: &'static str = "Network containers. Top-level organizational unit that contains subnets, hosts, and other entities.";
 
-    fn entity_name_plural() -> &'static str {
-        "networks"
+    fn entity_category() -> EntityCategory {
+        EntityCategory::NetworkInfrastructure
     }
 
     fn network_id(&self) -> Option<Uuid> {

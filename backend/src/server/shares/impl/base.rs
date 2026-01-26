@@ -2,6 +2,7 @@ use std::fmt::Display;
 
 use crate::server::shared::{
     entities::{ChangeTriggersTopologyStaleness, EntityDiscriminants},
+    entity_metadata::EntityCategory,
     storage::traits::{Entity, SqlValue, Storable},
 };
 use chrono::{DateTime, Utc};
@@ -240,12 +241,13 @@ impl Entity for Share {
         EntityDiscriminants::Share
     }
 
-    fn entity_name_singular() -> &'static str {
-        "share"
-    }
+    const ENTITY_NAME_SINGULAR: &'static str = "Share";
+    const ENTITY_NAME_PLURAL: &'static str = "Shares";
+    const ENTITY_DESCRIPTION: &'static str =
+        "Shared network views. Create read-only shareable links to your network topology.";
 
-    fn entity_name_plural() -> &'static str {
-        "shares"
+    fn entity_category() -> EntityCategory {
+        EntityCategory::Visualization
     }
 
     fn network_id(&self) -> Option<Uuid> {

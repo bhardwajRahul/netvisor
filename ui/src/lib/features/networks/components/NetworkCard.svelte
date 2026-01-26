@@ -17,7 +17,7 @@
 		common_subnets,
 		common_tags
 	} from '$lib/paraglide/messages';
-	import { useSnmpCredentialQuery } from '$lib/features/snmp/queries';
+	import { useSnmpCredentialsQuery } from '$lib/features/snmp/queries';
 	import { uuidv4Sentinel } from '$lib/shared/utils/formatting';
 	import { toColor } from '$lib/shared/utils/styling';
 
@@ -55,8 +55,14 @@
 	let networkDaemons = $derived(daemonsData.filter((d) => d.network_id == network.id));
 	let networkSubnets = $derived(subnetsData.filter((s) => s.network_id == network.id));
 	let networkGroups = $derived(groupsData.filter((g) => g.network_id == network.id));
+
+	// Use the list query and find by ID (queries inside $derived don't work correctly)
+	const snmpCredentialsQuery = useSnmpCredentialsQuery();
+	let snmpCredentialsData = $derived(snmpCredentialsQuery.data ?? []);
 	let snmpCredential = $derived(
-		network.snmp_credential_id ? useSnmpCredentialQuery(network.snmp_credential_id).data : null
+		network.snmp_credential_id
+			? (snmpCredentialsData.find((c) => c.id === network.snmp_credential_id) ?? null)
+			: null
 	);
 
 	let canManageNetworks = $derived(

@@ -18,7 +18,7 @@ pub struct DaemonServiceFactory {
 }
 
 impl DaemonServiceFactory {
-    pub async fn new(config: Arc<ConfigStore>, daemon_url: String) -> Result<Self> {
+    pub async fn new(config: Arc<ConfigStore>) -> Result<Self> {
         // Initialize services with proper dependencies
 
         // Create entity buffer first - shared between discovery service and daemon state
@@ -39,7 +39,6 @@ impl DaemonServiceFactory {
             config.clone(),
             discovery_service.clone(),
             entity_buffer.clone(),
-            daemon_url,
         ));
 
         Ok(Self {

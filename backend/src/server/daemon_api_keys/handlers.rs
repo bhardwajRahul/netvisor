@@ -28,11 +28,11 @@ use uuid::Uuid;
 
 mod generated {
     use super::*;
-    crate::crud_get_all_handler!(DaemonApiKey, "daemon_api_keys", "daemon_api_key");
-    crate::crud_get_by_id_handler!(DaemonApiKey, "daemon_api_keys", "daemon_api_key");
-    crate::crud_delete_handler!(DaemonApiKey, "daemon_api_keys", "daemon_api_key");
-    crate::crud_bulk_delete_handler!(DaemonApiKey, "daemon_api_keys");
-    crate::crud_export_csv_handler!(DaemonApiKey, "daemon_api_keys", "daemon_api_key");
+    crate::crud_get_all_handler!(DaemonApiKey);
+    crate::crud_get_by_id_handler!(DaemonApiKey);
+    crate::crud_delete_handler!(DaemonApiKey);
+    crate::crud_bulk_delete_handler!(DaemonApiKey);
+    crate::crud_export_csv_handler!(DaemonApiKey);
 }
 
 pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
@@ -45,11 +45,11 @@ pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
         .routes(routes!(generated::export_csv))
 }
 
-/// Create daemon API key
+/// Create Daemon API Key
 #[utoipa::path(
     post,
     path = "",
-    tag = "daemon_api_keys",
+    tag = DaemonApiKey::ENTITY_NAME_PLURAL,
     responses(
         (status = 200, description = "Daemon API key created", body = ApiResponse<DaemonApiKeyResponse>),
         (status = 400, description = "Bad request", body = ApiErrorResponse),
@@ -123,11 +123,11 @@ pub async fn create_daemon_api_key(
     })))
 }
 
-/// Update a daemon API key
+/// Update a Daemon API Key
 #[utoipa::path(
     put,
     path = "/{id}",
-    tag = "daemon_api_keys",
+    tag = DaemonApiKey::ENTITY_NAME_PLURAL,
     params(("id" = Uuid, Path, description = "Daemon API key ID")),
     responses(
         (status = 200, description = "Daemon API key updated", body = ApiResponse<DaemonApiKey>),
@@ -159,11 +159,11 @@ pub async fn update_daemon_api_key(
     update_handler::<DaemonApiKey>(State(state), auth, Path(id), Json(request)).await
 }
 
-/// Rotate a daemon API key
+/// Rotate a Daemon API Key
 #[utoipa::path(
     post,
     path = "/{id}/rotate",
-    tag = "daemon_api_keys",
+    tag = DaemonApiKey::ENTITY_NAME_PLURAL,
     params(("id" = Uuid, Path, description = "Daemon API key ID")),
     responses(
         (status = 200, description = "Daemon API key rotated, returns new key", body = ApiResponse<String>),

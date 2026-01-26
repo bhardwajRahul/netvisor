@@ -68,7 +68,7 @@ export interface UseCaseConfig {
 export const USE_CASES: Record<UseCase, UseCaseConfig> = {
 	homelab: {
 		label: 'Homelab',
-		description: 'Personal network at home',
+		description: 'Home network, NAS, Raspberry Pi, smart devices',
 		orgLabel: 'What should we call your setup?',
 		orgPlaceholder: 'My Homelab',
 		networkLabel: 'Network name',
@@ -81,7 +81,7 @@ export const USE_CASES: Record<UseCase, UseCaseConfig> = {
 	},
 	company: {
 		label: 'Company',
-		description: 'Internal business network',
+		description: 'Office network, servers, workstations',
 		orgLabel: 'Organization name',
 		orgPlaceholder: 'Acme Inc',
 		networkLabel: 'Network / Location',
@@ -94,7 +94,7 @@ export const USE_CASES: Record<UseCase, UseCaseConfig> = {
 	},
 	msp: {
 		label: 'MSP / IT Service Provider',
-		description: 'Managing customer networks',
+		description: 'Client networks across multiple locations',
 		orgLabel: 'Your company name',
 		orgPlaceholder: 'Acme MSP',
 		networkLabel: 'Customer network',

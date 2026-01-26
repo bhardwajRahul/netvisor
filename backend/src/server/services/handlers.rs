@@ -7,7 +7,7 @@ use crate::server::shared::handlers::query::{
 use crate::server::shared::handlers::traits::update_handler;
 use crate::server::shared::services::traits::CrudService;
 use crate::server::shared::storage::filter::StorableFilter;
-use crate::server::shared::storage::traits::Storable;
+use crate::server::shared::storage::traits::{Entity, Storable};
 use crate::server::shared::types::api::{
     ApiError, ApiErrorResponse, ApiResponse, ApiResult, PaginatedApiResponse,
 };
@@ -147,10 +147,10 @@ impl FilterQueryExtractor for ServiceFilterQuery {
 // Generated handlers for operations that use generic CRUD logic
 mod generated {
     use super::*;
-    crate::crud_get_by_id_handler!(Service, "services", "service");
-    crate::crud_delete_handler!(Service, "services", "service");
-    crate::crud_bulk_delete_handler!(Service, "services");
-    crate::crud_export_csv_handler!(Service, "services", "service");
+    crate::crud_get_by_id_handler!(Service);
+    crate::crud_delete_handler!(Service);
+    crate::crud_bulk_delete_handler!(Service);
+    crate::crud_export_csv_handler!(Service);
 }
 
 pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
@@ -173,7 +173,7 @@ pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
 #[utoipa::path(
     get,
     path = "",
-    tag = "services",
+    tag = Service::ENTITY_NAME_PLURAL,
     params(ServiceFilterQuery),
     responses(
         (status = 200, description = "List of services", body = PaginatedApiResponse<Service>),
@@ -269,7 +269,7 @@ async fn get_all_services(
 #[utoipa::path(
     post,
     path = "",
-    tag = "services",
+    tag = Service::ENTITY_NAME_PLURAL,
     request_body = CreateServiceRequest,
     responses(
         (status = 200, description = "Service created successfully", body = ApiResponse<Service>),
@@ -324,7 +324,7 @@ pub async fn create_service(
 #[utoipa::path(
     put,
     path = "/{id}",
-    tag = "services",
+    tag = Service::ENTITY_NAME_PLURAL,
     params(("id" = Uuid, Path, description = "Service ID")),
     request_body = Service,
     responses(

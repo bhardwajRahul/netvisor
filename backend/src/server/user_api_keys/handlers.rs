@@ -36,7 +36,7 @@ use uuid::Uuid;
 // Generated handlers for CSV export
 mod generated {
     use super::*;
-    crate::crud_export_csv_handler!(UserApiKey, "user_api_keys", "user_api_key");
+    crate::crud_export_csv_handler!(UserApiKey);
 }
 
 pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
@@ -53,7 +53,7 @@ pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
 #[utoipa::path(
     get,
     path = "",
-    tag = "user_api_keys",
+    tag = UserApiKey::ENTITY_NAME_PLURAL,
     operation_id = "get_all_user_api_keys",
     params(NoFilterQuery),
     responses(
@@ -107,7 +107,7 @@ pub async fn get_all(
 #[utoipa::path(
     post,
     path = "",
-    tag = "user_api_keys",
+    tag = UserApiKey::ENTITY_NAME_PLURAL,
     operation_id = "create_user_api_key",
     responses(
         (status = 200, description = "API key created", body = ApiResponse<UserApiKeyResponse>),
@@ -176,7 +176,7 @@ pub async fn create_user_api_key(
 #[utoipa::path(
     put,
     path = "/{id}",
-    tag = "user_api_keys",
+    tag = UserApiKey::ENTITY_NAME_PLURAL,
     operation_id = "update_user_api_key",
     params(("id" = Uuid, Path, description = "API key ID")),
     responses(
@@ -243,7 +243,7 @@ pub async fn update_user_api_key(
 #[utoipa::path(
     post,
     path = "/{id}/rotate",
-    tag = "user_api_keys",
+    tag = UserApiKey::ENTITY_NAME_PLURAL,
     operation_id = "rotate_user_api_key",
     params(("id" = Uuid, Path, description = "API key ID")),
     responses(
@@ -286,7 +286,7 @@ pub async fn rotate_key_handler(
 #[utoipa::path(
     get,
     path = "/{id}",
-    tag = "user_api_keys",
+    tag = UserApiKey::ENTITY_NAME_PLURAL,
     operation_id = "get_user_api_key_by_id",
     params(("id" = Uuid, Path, description = "API key ID")),
     responses(
@@ -320,7 +320,7 @@ pub async fn get_by_id(
 #[utoipa::path(
     delete,
     path = "/{id}",
-    tag = "user_api_keys",
+    tag = UserApiKey::ENTITY_NAME_PLURAL,
     operation_id = "delete_user_api_key",
     params(("id" = Uuid, Path, description = "API key ID")),
     responses(
@@ -355,7 +355,7 @@ pub async fn delete(
 #[utoipa::path(
     post,
     path = "/bulk-delete",
-    tag = "user_api_keys",
+    tag = UserApiKey::ENTITY_NAME_PLURAL,
     operation_id = "bulk_delete_user_api_keys",
     request_body(content = Vec<Uuid>, description = "Array of API key IDs to delete"),
     responses(

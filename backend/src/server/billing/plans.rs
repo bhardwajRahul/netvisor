@@ -16,13 +16,13 @@ fn get_default_plans() -> Vec<BillingPlan> {
             included_networks: Some(1),
         }),
         BillingPlan::Pro(PlanConfig {
-            base_cents: 5999,
+            base_cents: 2999,
             rate: BillingRate::Month,
             trial_days: 7,
             seat_cents: None,
             network_cents: None,
-            included_seats: Some(3),
-            included_networks: Some(5),
+            included_seats: Some(1),
+            included_networks: Some(3),
         }),
         BillingPlan::Team(PlanConfig {
             base_cents: 14999,

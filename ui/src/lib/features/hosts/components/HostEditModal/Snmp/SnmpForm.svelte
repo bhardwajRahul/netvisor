@@ -6,9 +6,11 @@
 	import RadioGroup from '$lib/shared/components/forms/input/RadioGroup.svelte';
 	import { useSnmpCredentialsQuery } from '$lib/features/snmp/queries';
 	import { SnmpCredentialDisplay } from '$lib/shared/components/forms/selection/display/SnmpCredentialDisplay.svelte';
+	import BetaTag from '$lib/shared/components/data/BetaTag.svelte';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
 	import { useCurrentUserQuery } from '$lib/features/auth/queries';
 	import {
+		common_betaSnmpExplainer,
 		common_contact,
 		common_location,
 		common_none,
@@ -18,8 +20,6 @@
 		hosts_snmp_credentialOverride,
 		hosts_snmp_demoModeReadOnly,
 		hosts_snmp_managementUrl,
-		hosts_snmp_networkDefault,
-		hosts_snmp_overrideHelp,
 		hosts_snmp_sysDescr,
 		hosts_snmp_sysObjectId,
 		hosts_snmp_systemInfo,
@@ -88,10 +88,10 @@
 	});
 
 	// Credential mode options
-	const credentialModeOptions = [
-		{ value: 'default', label: hosts_snmp_useNetworkDefault() },
+	let credentialModeOptions = $derived([
+		{ value: 'default', label: hosts_snmp_useNetworkDefault() + ` (${networkCredentialName()})` },
 		{ value: 'override', label: 'Override with specific credential' }
-	];
+	]);
 
 	// Check if we have SNMP data to display
 	let hasSnmpData = $derived(
@@ -107,17 +107,10 @@
 <div class="space-y-6 p-6">
 	<!-- Credential Override Section -->
 	<div class="space-y-4">
-		<h3 class="text-primary text-lg font-medium">{common_snmpCredential()}</h3>
-
-		<div class="bg-tertiary/30 mb-4 rounded-lg p-4">
-			<p class="text-muted text-sm">
-				{hosts_snmp_networkDefault({ name: networkCredentialName() })}
-			</p>
-			<p class="text-muted mt-1 text-xs">
-				{hosts_snmp_overrideHelp()}
-			</p>
-		</div>
-
+		<h3 class="text-primary flex items-center gap-2 text-lg font-medium">
+			{common_snmpCredential()}
+			<BetaTag tooltip={common_betaSnmpExplainer()} />
+		</h3>
 		<!-- Credential Mode Radio Buttons -->
 		<form.Field name="credential_mode">
 			{#snippet children(field: AnyFieldApi)}

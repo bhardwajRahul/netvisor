@@ -106,6 +106,8 @@ jobs:
           cp ui/src/lib/data/billing-plans.json website/src/lib/fixtures/
           cp ui/static/openapi-public.json website/src/lib/fixtures/openapi.json
           cp ui/static/schema.mermaid website/src/lib/fixtures/schema.mermaid
+          cp ui/static/schema-er.mermaid website/src/lib/fixtures/schema-er.mermaid
+          cp ui/static/entity-metadata.json website/src/lib/fixtures/entity-metadata.json
 
       - name: Generate daemon config fixture
         run: |

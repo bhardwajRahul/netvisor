@@ -4,7 +4,6 @@
 	import Toast from '$lib/shared/components/feedback/Toast.svelte';
 	import BillingPlanForm from '$lib/features/billing/BillingPlanForm.svelte';
 	import type { BillingPlan } from '$lib/features/billing/types';
-	import { useConfigQuery } from '$lib/shared/stores/config-query';
 	import {
 		createStaticHelpers,
 		type BillingPlanMetadata,
@@ -14,10 +13,8 @@
 	import { onboardingStore } from '$lib/features/auth/stores/onboarding';
 	import { useCurrentUserQuery } from '$lib/features/auth/queries';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
-	import { pushSuccess, pushError } from '$lib/shared/stores/feedback';
 	import PlanInquiryModal from '$lib/features/billing/PlanInquiryModal.svelte';
-	import { trackEvent, getPosthogDistinctId } from '$lib/shared/utils/analytics';
-	import { billing_inquiryFailed, billing_inquirySuccess } from '$lib/paraglide/messages';
+	import { trackEvent } from '$lib/shared/utils/analytics';
 
 	// Create helpers from static fixtures (no API calls needed)
 	const billingPlanHelpers = createStaticHelpers<BillingPlanMetadata>(billingPlansJson);
@@ -50,10 +47,6 @@
 
 	// Returning customers (have had a subscription) shouldn't see trial offers
 	let isReturningCustomer = $derived(!!organization?.plan_status);
-
-	// TanStack Query for config
-	const configQuery = useConfigQuery();
-	let configData = $derived(configQuery.data);
 
 	// Checkout mutation
 	const checkoutMutation = useCheckoutMutation();
@@ -102,44 +95,6 @@
 		selectedPlan = plan;
 		inquiryModalOpen = true;
 	}
-
-	async function handleInquirySubmit(email: string, message: string) {
-		const plunkKey = configData?.plunk_key;
-		if (!plunkKey) {
-			pushError(billing_inquiryFailed());
-			return;
-		}
-
-		try {
-			const posthogId = getPosthogDistinctId();
-
-			await fetch('https://next-api.useplunk.com/v1/track', {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-					Authorization: `Bearer ${plunkKey}`
-				},
-				body: JSON.stringify({
-					event: 'plan_inquiry',
-					email: 'sales@scanopy.net',
-					subscribed: false,
-					data: {
-						user_email: email,
-						organization_id: currentUser?.organization_id,
-						plan_type: selectedPlan?.type,
-						message,
-						use_case: useCase,
-						posthog_id: posthogId
-					}
-				})
-			});
-
-			pushSuccess(billing_inquirySuccess());
-		} catch (error) {
-			console.error('Failed to send plan inquiry:', error);
-			pushError(billing_inquiryFailed());
-		}
-	}
 </script>
 
 <div class="relative min-h-dvh bg-gray-900">
@@ -174,8 +129,8 @@
 	<PlanInquiryModal
 		isOpen={inquiryModalOpen}
 		planName={selectedPlan ? billingPlanHelpers.getName(selectedPlan.type) : ''}
+		planType={selectedPlan?.type ?? ''}
 		userEmail={currentUser?.email ?? ''}
 		onClose={() => (inquiryModalOpen = false)}
-		onSubmit={handleInquirySubmit}
 	/>
 </div>

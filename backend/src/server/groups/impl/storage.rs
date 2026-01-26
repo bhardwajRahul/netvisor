@@ -11,6 +11,7 @@ use crate::server::{
     },
     shared::{
         entities::EntityDiscriminants,
+        entity_metadata::EntityCategory,
         storage::traits::{Entity, SqlValue, Storable},
         types::entities::EntitySource,
     },
@@ -176,12 +177,12 @@ impl Entity for Group {
         EntityDiscriminants::Group
     }
 
-    fn entity_name_singular() -> &'static str {
-        "group"
-    }
+    const ENTITY_NAME_SINGULAR: &'static str = "Group";
+    const ENTITY_NAME_PLURAL: &'static str = "Groups";
+    const ENTITY_DESCRIPTION: &'static str = "Logical groupings of hosts. Organize hosts into groups for easier management and visualization.";
 
-    fn entity_name_plural() -> &'static str {
-        "groups"
+    fn entity_category() -> EntityCategory {
+        EntityCategory::Visualization
     }
 
     fn network_id(&self) -> Option<Uuid> {

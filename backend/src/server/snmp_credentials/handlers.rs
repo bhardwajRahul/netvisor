@@ -10,7 +10,7 @@ use crate::server::shared::handlers::traits::{
 };
 use crate::server::shared::services::traits::CrudService;
 use crate::server::shared::storage::filter::StorableFilter;
-use crate::server::shared::storage::traits::{Storable, Storage};
+use crate::server::shared::storage::traits::{Entity, Storable, Storage};
 use crate::server::shared::types::api::{
     ApiError, ApiErrorResponse, EmptyApiResponse, PaginatedApiResponse,
 };
@@ -117,8 +117,8 @@ impl FilterQueryExtractor for SnmpCredentialFilterQuery {
 // Generated handler for read-only operations
 mod generated {
     use super::*;
-    crate::crud_get_by_id_handler!(SnmpCredential, "snmp-credentials", "snmp_credential");
-    crate::crud_export_csv_handler!(SnmpCredential, "snmp-credentials", "snmp_credential");
+    crate::crud_get_by_id_handler!(SnmpCredential);
+    crate::crud_export_csv_handler!(SnmpCredential);
 }
 
 pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
@@ -133,11 +133,11 @@ pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
         .routes(routes!(bulk_delete_snmp_credentials))
 }
 
-/// Update snmp_credential
+/// Update SNMP Credential
 #[utoipa::path(
     put,
     path = "/{id}",
-    tag = "snmp-credentials",
+    tag = SnmpCredential::ENTITY_NAME_PLURAL,
     params(
         ("id" = Uuid, Path, description = "snmp_credential ID")
     ),
@@ -165,11 +165,11 @@ async fn update_snmp_credential(
     .await
 }
 
-/// Delete snmp_credential
+/// Delete SNMP credential
 #[utoipa::path(
     delete,
     path = "/{id}",
-    tag = "snmp-credentials",
+    tag = SnmpCredential::ENTITY_NAME_PLURAL,
     params(
         ("id" = Uuid, Path, description = "snmp_credential ID")
     ),
@@ -193,14 +193,14 @@ async fn delete_snmp_credential(
     .await
 }
 
-/// Bulk delete snmp-credentials
+/// Bulk delete SNMP Credential
 #[utoipa::path(
     post,
     path = "/bulk-delete",
-    tag = "snmp-credentials",
+    tag = SnmpCredential::ENTITY_NAME_PLURAL,
     request_body = Vec<Uuid>,
     responses(
-        (status = 200, description = "snmp-credentials deleted successfully", body = ApiResponse<BulkDeleteResponse>),
+        (status = 200, description = "SNMP Credentials deleted successfully", body = ApiResponse<BulkDeleteResponse>),
         (status = 400, description = "Validation error", body = ApiErrorResponse),
     ),
     security(("user_api_key" = []), ("session" = []))
@@ -219,14 +219,13 @@ async fn bulk_delete_snmp_credentials(
     .await
 }
 
-/// List all SNMP credentials
+/// List all SNMP Credentials
 ///
-/// Returns all SNMP credentials in the authenticated user's organization.
-/// The community string is returned for authorized users - handle with care.
+/// Returns all SNMP Credentials in the authenticated user's organization.
 #[utoipa::path(
     get,
     path = "",
-    tag = "snmp-credentials",
+    tag = SnmpCredential::ENTITY_NAME_PLURAL,
     params(SnmpCredentialFilterQuery),
     responses(
         (status = 200, description = "List of SNMP credentials", body = PaginatedApiResponse<SnmpCredential>),
@@ -268,7 +267,7 @@ async fn get_all_snmp_credentials(
     )))
 }
 
-/// Create a new SNMP credential
+/// Create a new SNMP Credential
 ///
 /// Creates an SNMP credential scoped to your organization. Credential names must
 /// be unique within the organization.
@@ -281,7 +280,7 @@ async fn get_all_snmp_credentials(
 #[utoipa::path(
     post,
     path = "",
-    tag = "snmp-credentials",
+    tag = SnmpCredential::ENTITY_NAME_PLURAL,
     request_body = SnmpCredential,
     responses(
         (status = 200, description = "SNMP credential created successfully", body = ApiResponse<SnmpCredential>),

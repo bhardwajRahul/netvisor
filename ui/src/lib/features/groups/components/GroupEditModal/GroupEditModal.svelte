@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { createForm } from '@tanstack/svelte-form';
-	import { submitForm } from '$lib/shared/components/forms/form-context';
+	import { submitForm, validateForm } from '$lib/shared/components/forms/form-context';
 	import { required, max } from '$lib/shared/components/forms/validators';
+	import { Info, Palette } from 'lucide-svelte';
 	import { createEmptyGroupFormData } from '../../queries';
 	import GenericModal from '$lib/shared/components/layout/GenericModal.svelte';
 	import type { Group, EdgeStyle } from '../../types/base';
@@ -24,12 +25,14 @@
 	import SelectNetwork from '$lib/features/networks/components/SelectNetwork.svelte';
 	import TagPicker from '$lib/features/tags/components/TagPicker.svelte';
 	import {
+		common_back,
 		common_cancel,
 		common_create,
 		common_delete,
 		common_deleting,
 		common_description,
 		common_editName,
+		common_next,
 		common_saving,
 		common_update,
 		groups_createGroup,
@@ -104,7 +107,40 @@
 	let title = $derived(
 		isEditing ? common_editName({ name: group?.name ?? '' }) : groups_createGroup()
 	);
-	let saveLabel = $derived(isEditing ? common_update() : common_create());
+
+	// Tab management
+	let activeTab = $state('details');
+
+	let tabs = $derived([
+		{ id: 'details', label: groups_groupDetails(), icon: Info },
+		{ id: 'bindings', label: groups_serviceBindings(), icon: entities.getIconComponent('Binding') },
+		{ id: 'edge-style', label: groups_edgeAppearance(), icon: Palette }
+	]);
+
+	let currentTabIndex = $derived(tabs.findIndex((t) => t.id === activeTab) || 0);
+
+	function nextTab() {
+		if (currentTabIndex < tabs.length - 1) {
+			activeTab = tabs[currentTabIndex + 1].id;
+		}
+	}
+
+	function previousTab() {
+		if (currentTabIndex > 0) {
+			activeTab = tabs[currentTabIndex - 1].id;
+		}
+	}
+
+	// Dynamic labels based on create/edit mode and tab position
+	let saveLabel = $derived(
+		isEditing
+			? common_update()
+			: currentTabIndex === tabs.length - 1
+				? common_create()
+				: common_next()
+	);
+	let cancelLabel = $derived(isEditing ? common_cancel() : common_back());
+	let showCancel = $derived(isEditing ? true : currentTabIndex !== 0);
 
 	function getDefaultValues(): Group {
 		return group ? { ...group } : createEmptyGroupFormData(defaultNetworkId);
@@ -118,9 +154,10 @@
 				...(value as Group),
 				name: value.name.trim(),
 				description: value.description?.trim() || '',
-				// Explicitly use local bindingIds state - form.setFieldValue doesn't reliably
-				// sync array fields back to form.state.values in TanStack Svelte Form
-				binding_ids: bindingIds
+				// Use local state for values that need Svelte reactivity
+				binding_ids: bindingIds,
+				color: edgeColor,
+				edge_style: edgeEdgeStyle
 			};
 
 			loading = true;
@@ -136,10 +173,12 @@
 		}
 	}));
 
-	// Local state for binding_ids to enable Svelte 5 reactivity
+	// Local state to enable Svelte 5 reactivity
 	// (form.state.values is not tracked by $derived)
 	let bindingIds = $state<string[]>([]);
 	let selectedNetworkId = $state<string>('');
+	let edgeColor = $state<Color>('Blue');
+	let edgeEdgeStyle = $state<EdgeStyle>('SmoothStep');
 
 	// Reset form when modal opens
 	function handleOpen() {
@@ -147,6 +186,9 @@
 		form.reset(defaults);
 		bindingIds = defaults.binding_ids ?? [];
 		selectedNetworkId = defaults.network_id ?? '';
+		edgeColor = defaults.color || 'Blue';
+		edgeEdgeStyle = defaults.edge_style || 'SmoothStep';
+		activeTab = 'details';
 	}
 
 	// Available service bindings (exclude already selected ones and Unclaimed Open Ports)
@@ -188,6 +230,26 @@
 		await submitForm(form);
 	}
 
+	// Handle form-based submission for create flow with steps
+	async function handleFormSubmit() {
+		if (isEditing || currentTabIndex === tabs.length - 1) {
+			handleSubmit();
+		} else {
+			const isValid = await validateForm(form);
+			if (isValid) {
+				nextTab();
+			}
+		}
+	}
+
+	function handleFormCancel() {
+		if (isEditing || currentTabIndex === 0) {
+			onClose();
+		} else {
+			previousTab();
+		}
+	}
+
 	async function handleDelete() {
 		if (onDelete && group) {
 			deleting = true;
@@ -209,25 +271,24 @@
 
 	let colorHelper = entities.getColorHelper('Group');
 
-	// EdgeStyleForm needs direct formData binding - create a reactive wrapper
-
+	// Read-only formData for EdgeStyleForm display (uses callbacks for changes)
 	let edgeStyleFormData = $derived({
-		get color() {
-			return form.state.values.color;
-		},
-		set color(v: Color) {
-			form.setFieldValue('color', v);
-		},
-		get edge_style() {
-			return form.state.values.edge_style;
-		},
-		set edge_style(v: EdgeStyle) {
-			form.setFieldValue('edge_style', v);
-		}
+		color: edgeColor,
+		edge_style: edgeEdgeStyle
 	} as Group);
 </script>
 
-<GenericModal {isOpen} {title} size="xl" {onClose} onOpen={handleOpen} showCloseButton={true}>
+<GenericModal
+	{isOpen}
+	{title}
+	size="full"
+	{onClose}
+	onOpen={handleOpen}
+	showCloseButton={true}
+	tabs={isEditing ? tabs : []}
+	{activeTab}
+	onTabChange={(tabId) => (activeTab = tabId)}
+>
 	{#snippet headerIcon()}
 		<ModalHeaderIcon Icon={entities.getIconComponent('Group')} color={colorHelper.color} />
 	{/snippet}
@@ -236,16 +297,14 @@
 		onsubmit={(e) => {
 			e.preventDefault();
 			e.stopPropagation();
-			handleSubmit();
+			handleFormSubmit();
 		}}
 		class="flex min-h-0 flex-1 flex-col"
 	>
-		<div class="flex-1 overflow-auto p-6">
-			<div class="space-y-8">
-				<!-- Group Details Section -->
-				<div class="space-y-4">
-					<h3 class="text-primary text-lg font-medium">{groups_groupDetails()}</h3>
-
+		<div class="flex-1 overflow-auto">
+			<!-- Details Tab -->
+			{#if activeTab === 'details'}
+				<div class="space-y-4 p-6">
 					<form.Field
 						name="name"
 						validators={{
@@ -311,49 +370,59 @@
 							/>
 						{/snippet}
 					</form.Field>
-				</div>
 
-				<!-- Service Bindings Section -->
-				<div class="space-y-4">
-					<div class="border-t border-gray-700 pt-6">
-						<div class="rounded-lg bg-gray-800/50 p-4">
-							<ListManager
-								label={groups_serviceBindings()}
-								helpText={groups_serviceBindingsHelp()}
-								placeholder={isServicesLoading ? groups_loadingServices() : groups_selectBinding()}
-								emptyMessage={groups_noBindingsYet()}
-								allowReorder={true}
-								allowItemEdit={() => false}
-								showSearch={true}
-								options={availableServiceBindings}
-								items={selectedServiceBindings}
-								optionDisplayComponent={BindingWithServiceDisplay}
-								itemDisplayComponent={BindingWithServiceDisplay}
-								getItemContext={() => bindingContext}
-								getOptionContext={() => bindingContext}
-								onAdd={handleAdd}
-								onRemove={handleRemove}
-								onMoveUp={(index) => handleServiceBindingsReorder(index, index - 1)}
-								onMoveDown={(index) => handleServiceBindingsReorder(index, index + 1)}
-							/>
-						</div>
+					{#if isEditing && group}
+						<EntityMetadataSection entities={[group]} />
+					{/if}
+				</div>
+			{/if}
+
+			<!-- Bindings Tab -->
+			{#if activeTab === 'bindings'}
+				<div class="p-6">
+					<div class="rounded-lg bg-gray-800/50 p-4">
+						<ListManager
+							label={groups_serviceBindings()}
+							helpText={groups_serviceBindingsHelp()}
+							placeholder={isServicesLoading ? groups_loadingServices() : groups_selectBinding()}
+							emptyMessage={groups_noBindingsYet()}
+							allowReorder={true}
+							allowItemEdit={() => false}
+							showSearch={true}
+							options={availableServiceBindings}
+							items={selectedServiceBindings}
+							optionDisplayComponent={BindingWithServiceDisplay}
+							itemDisplayComponent={BindingWithServiceDisplay}
+							getItemContext={() => bindingContext}
+							getOptionContext={() => bindingContext}
+							onAdd={handleAdd}
+							onRemove={handleRemove}
+							onMoveUp={(index) => handleServiceBindingsReorder(index, index - 1)}
+							onMoveDown={(index) => handleServiceBindingsReorder(index, index + 1)}
+						/>
 					</div>
 				</div>
+			{/if}
 
-				<!-- Edge Style Section -->
-				<div class="space-y-4">
-					<div class="border-t border-gray-700 pt-6">
-						<h3 class="text-primary mb-4 text-lg font-medium">{groups_edgeAppearance()}</h3>
-						<div class="rounded-lg bg-gray-800/50 p-4">
-							<EdgeStyleForm formData={edgeStyleFormData} />
-						</div>
+			<!-- Edge Style Tab -->
+			{#if activeTab === 'edge-style'}
+				<div class="p-6">
+					<div class="rounded-lg bg-gray-800/50 p-4">
+						<EdgeStyleForm
+							formData={edgeStyleFormData}
+							showCollapseToggle={false}
+							onColorChange={(color) => {
+								edgeColor = color;
+								form.setFieldValue('color', color);
+							}}
+							onEdgeStyleChange={(style) => {
+								edgeEdgeStyle = style;
+								form.setFieldValue('edge_style', style);
+							}}
+						/>
 					</div>
 				</div>
-
-				{#if isEditing && group}
-					<EntityMetadataSection entities={[group]} />
-				{/if}
-			</div>
+			{/if}
 		</div>
 
 		<!-- Footer -->
@@ -372,14 +441,16 @@
 					{/if}
 				</div>
 				<div class="flex items-center gap-3">
-					<button
-						type="button"
-						disabled={loading || deleting}
-						onclick={onClose}
-						class="btn-secondary"
-					>
-						{common_cancel()}
-					</button>
+					{#if showCancel}
+						<button
+							type="button"
+							disabled={loading || deleting}
+							onclick={handleFormCancel}
+							class="btn-secondary"
+						>
+							{cancelLabel}
+						</button>
+					{/if}
 					<button type="submit" disabled={loading || deleting} class="btn-primary">
 						{loading ? common_saving() : saveLabel}
 					</button>

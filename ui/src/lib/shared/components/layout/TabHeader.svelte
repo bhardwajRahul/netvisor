@@ -6,7 +6,10 @@
 <div class="flex items-center justify-between">
 	<div>
 		{#if title}
-			<h2 class="text-primary text-2xl font-bold">{title}</h2>
+			<h2 class="text-primary flex items-center gap-2 text-2xl font-bold">
+				{title}
+				<slot name="titleSuffix" />
+			</h2>
 		{/if}
 		{#if subtitle}
 			<p class="text-secondary mt-1">{subtitle}</p>

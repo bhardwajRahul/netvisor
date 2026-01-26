@@ -5,7 +5,7 @@
 	import { queryClient, queryKeys } from '$lib/api/query-client';
 	import { useCurrentUserQuery } from '$lib/features/auth/queries';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
-	import { identifyUser, trackPlunkEvent } from '$lib/shared/utils/analytics';
+	import { identifyUser, trackPlunkEvent, trackEvent } from '$lib/shared/utils/analytics';
 	import Loading from '$lib/shared/components/feedback/Loading.svelte';
 	import { resolve } from '$app/paths';
 	import { resetTopologyOptions } from '$lib/features/topology/queries';
@@ -15,7 +15,9 @@
 	import { getRoute } from '$lib/shared/utils/navigation';
 	import type { PostHog } from 'posthog-js';
 	import { browser } from '$app/environment';
-	import CookieConsent from '$lib/shared/components/feedback/CookieConsent.svelte';
+	import CookieConsent, {
+		hasAnalyticsConsent
+	} from '$lib/shared/components/feedback/CookieConsent.svelte';
 	import {
 		billing_subscriptionActivated,
 		billing_subscriptionDelayed
@@ -71,8 +73,15 @@
 					ui_host: 'https://us.posthog.com',
 					defaults: '2025-11-30',
 					secure_cookie: true,
-					persistence: 'memory',
-					opt_out_capturing_by_default: true,
+					persistence: 'localStorage+cookie',
+					opt_out_capturing_by_default: !hasAnalyticsConsent(),
+					opt_out_capturing_persistence_type: 'localStorage', // Respect opt-out choice
+					capture_pageview: true,
+					capture_pageleave: true,
+
+					// Don't auto-identify until consent
+					person_profiles: 'identified_only', // Only create person profiles after identify
+
 					loaded: () => {
 						posthogInstance = posthog;
 					}
@@ -97,6 +106,15 @@
 			);
 
 			if (orgData && isBillingPlanActive(orgData)) {
+				// Track billing completion for funnel analytics
+				trackEvent('billing_completed', {
+					plan: orgData.plan?.type ?? 'unknown',
+					amount: orgData.plan?.base_cents ?? 0,
+					stripe_customer_id: orgData.stripe_customer_id ?? undefined
+					// Note: stripe_charge_id not available client-side
+					// Would need backend to include in org response or separate endpoint
+				});
+
 				pushSuccess(billing_subscriptionActivated());
 				return true;
 			}
@@ -205,7 +223,7 @@
 	});
 </script>
 
-{#if isCheckingAuth}
+{#if isCheckingAuth && !$page.url.pathname.startsWith('/onboarding')}
 	<div class="flex min-h-screen items-center justify-center bg-gray-900">
 		<Loading />
 	</div>

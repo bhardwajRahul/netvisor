@@ -4,6 +4,7 @@ use crate::server::bindings::r#impl::base::Binding;
 use crate::server::groups::r#impl::base::Group;
 use crate::server::services::r#impl::base::Service;
 use crate::server::shared::entities::EntityDiscriminants;
+use crate::server::shared::entity_metadata::EntityCategory;
 use crate::server::shared::events::types::TelemetryOperation;
 use crate::server::subnets::r#impl::base::Subnet;
 use crate::server::{
@@ -104,10 +105,29 @@ pub trait Entity: Storable {
     fn to_csv_row(&self) -> Self::CsvRow;
 
     /// Singular name for error messages (e.g., "host")
-    fn entity_name_singular() -> &'static str;
+    /// Use the constant in const contexts, use the method at runtime.
+    const ENTITY_NAME_SINGULAR: &'static str;
 
     /// Plural name for API paths and collections (e.g., "hosts")
-    fn entity_name_plural() -> &'static str;
+    /// Use the constant in const contexts, use the method at runtime.
+    const ENTITY_NAME_PLURAL: &'static str;
+
+    /// Description for API documentation and database schema docs.
+    /// Should be 1-3 sentences explaining the entity's purpose.
+    const ENTITY_DESCRIPTION: &'static str;
+
+    /// Category for documentation grouping.
+    fn entity_category() -> EntityCategory;
+
+    /// Singular name for error messages (e.g., "host")
+    fn entity_name_singular() -> &'static str {
+        Self::ENTITY_NAME_SINGULAR
+    }
+
+    /// Plural name for API paths and collections (e.g., "hosts")
+    fn entity_name_plural() -> &'static str {
+        Self::ENTITY_NAME_PLURAL
+    }
 
     /// Tenant scoping - network context
     fn network_id(&self) -> Option<Uuid>;

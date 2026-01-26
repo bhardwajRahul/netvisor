@@ -4,21 +4,16 @@ use std::sync::Arc;
 use utoipa_axum::{router::OpenApiRouter, routes};
 use uuid::Uuid;
 
-use crate::server::auth::middleware::features::{BlockedInDemoMode, RequireFeature};
-use crate::server::auth::middleware::permissions::{Admin, Authorized, Member};
+use crate::server::auth::middleware::permissions::{Authorized, Member};
 use crate::server::config::AppState;
 use crate::server::hosts::r#impl::base::Host;
 use crate::server::if_entries::r#impl::base::{IfEntry, Neighbor};
 use crate::server::if_entries::service::IfEntryService;
 use crate::server::shared::handlers::query::HostChildQuery;
-use crate::server::shared::handlers::traits::{
-    BulkDeleteResponse, CrudHandlers, bulk_delete_handler, create_handler, delete_handler,
-    update_handler,
-};
+use crate::server::shared::handlers::traits::{CrudHandlers, create_handler, update_handler};
 use crate::server::shared::services::traits::CrudService;
-use crate::server::shared::types::api::{
-    ApiError, ApiErrorResponse, ApiResponse, ApiResult, EmptyApiResponse,
-};
+use crate::server::shared::storage::traits::Entity;
+use crate::server::shared::types::api::{ApiError, ApiErrorResponse, ApiResponse, ApiResult};
 
 impl CrudHandlers for IfEntry {
     type Service = IfEntryService;
@@ -29,12 +24,14 @@ impl CrudHandlers for IfEntry {
     }
 }
 
-// Generated handlers for read-only operations
+// Generated handlers
 mod generated {
     use super::*;
-    crate::crud_get_all_handler!(IfEntry, "if-entries", "if_entry");
-    crate::crud_get_by_id_handler!(IfEntry, "if-entries", "if_entry");
-    crate::crud_export_csv_handler!(IfEntry, "if-entries", "if_entry");
+    crate::crud_get_all_handler!(IfEntry);
+    crate::crud_get_by_id_handler!(IfEntry);
+    crate::crud_delete_handler!(IfEntry);
+    crate::crud_bulk_delete_handler!(IfEntry);
+    crate::crud_export_csv_handler!(IfEntry);
 }
 
 pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
@@ -44,9 +41,9 @@ pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
         .routes(routes!(
             generated::get_by_id,
             update_if_entry,
-            delete_if_entry
+            generated::delete
         ))
-        .routes(routes!(bulk_delete_if_entries))
+        .routes(routes!(generated::bulk_delete))
 }
 
 /// Validate that if entry's host is on the same network as the entry
@@ -95,14 +92,14 @@ async fn validate_neighbor_host(state: &AppState, if_entry: &IfEntry) -> Result<
     Ok(())
 }
 
-/// Create a new if entry
+/// Create a new IfEntry
 ///
 /// Creates an SNMP ifTable entry for a host. These are typically created by
 /// SNMP discovery, but can also be created manually.
 #[utoipa::path(
     post,
     path = "",
-    tag = "if-entries",
+    tag = IfEntry::ENTITY_NAME_PLURAL,
     request_body = IfEntry,
     responses(
         (status = 200, description = "If entry created successfully", body = ApiResponse<IfEntry>),
@@ -112,8 +109,7 @@ async fn validate_neighbor_host(state: &AppState, if_entry: &IfEntry) -> Result<
 )]
 async fn create_if_entry(
     State(state): State<Arc<AppState>>,
-    auth: Authorized<Admin>,
-    _demo_check: RequireFeature<BlockedInDemoMode>,
+    auth: Authorized<Member>,
     Json(if_entry): Json<IfEntry>,
 ) -> ApiResult<Json<ApiResponse<IfEntry>>> {
     validate_if_entry_network_consistency(&state, &if_entry).await?;
@@ -124,19 +120,14 @@ async fn create_if_entry(
         .await
         .map_err(|e| ApiError::bad_request(&e.to_string()))?;
     validate_neighbor_host(&state, &if_entry).await?;
-    create_handler::<IfEntry>(
-        State(state),
-        auth.into_permission::<Member>(),
-        Json(if_entry),
-    )
-    .await
+    create_handler::<IfEntry>(State(state), auth, Json(if_entry)).await
 }
 
-/// Update an if entry
+/// Update an IfEntry
 #[utoipa::path(
     put,
     path = "/{id}",
-    tag = "if-entries",
+    tag = IfEntry::ENTITY_NAME_PLURAL,
     params(("id" = Uuid, Path, description = "If entry ID")),
     request_body = IfEntry,
     responses(
@@ -148,8 +139,7 @@ async fn create_if_entry(
 )]
 async fn update_if_entry(
     State(state): State<Arc<AppState>>,
-    auth: Authorized<Admin>,
-    _demo_check: RequireFeature<BlockedInDemoMode>,
+    auth: Authorized<Member>,
     path: Path<Uuid>,
     Json(if_entry): Json<IfEntry>,
 ) -> ApiResult<Json<ApiResponse<IfEntry>>> {
@@ -161,55 +151,5 @@ async fn update_if_entry(
         .await
         .map_err(|e| ApiError::bad_request(&e.to_string()))?;
     validate_neighbor_host(&state, &if_entry).await?;
-    update_handler::<IfEntry>(
-        State(state),
-        auth.into_permission::<Member>(),
-        path,
-        Json(if_entry),
-    )
-    .await
-}
-
-/// Delete if_entry
-#[utoipa::path(
-    delete,
-    path = "/{id}",
-    tag = "if-entries",
-    params(
-        ("id" = Uuid, Path, description = "if_entry ID")
-    ),
-    responses(
-        (status = 200, description = "if_entry deleted successfully", body = EmptyApiResponse),
-        (status = 404, description = "if_entry not found", body = ApiErrorResponse),
-    ),
-    security(("user_api_key" = []), ("session" = []))
-)]
-async fn delete_if_entry(
-    state: State<Arc<AppState>>,
-    auth: Authorized<Admin>,
-    _demo_check: RequireFeature<BlockedInDemoMode>,
-    id: Path<Uuid>,
-) -> ApiResult<Json<ApiResponse<()>>> {
-    delete_handler::<IfEntry>(state, auth.into_permission::<Member>(), id).await
-}
-
-/// Bulk delete if-entries
-#[utoipa::path(
-    post,
-    path = "/bulk-delete",
-    tag = "if-entries",
-    request_body = Vec<Uuid>,
-    responses(
-        (status = 200, description = "if-entries deleted successfully", body = ApiResponse<BulkDeleteResponse>),
-        (status = 400, description = "Validation error", body = ApiErrorResponse),
-    ),
-    security(("user_api_key" = []), ("session" = []))
-)]
-async fn bulk_delete_if_entries(
-    state: State<Arc<AppState>>,
-    auth: Authorized<Admin>,
-    _demo_check: RequireFeature<BlockedInDemoMode>,
-    ids: Json<Vec<Uuid>>,
-) -> ApiResult<Json<ApiResponse<BulkDeleteResponse>>> {
-    bulk_delete_handler::<IfEntry>(state, auth.into_permission::<Member>(), ids).await
+    update_handler::<IfEntry>(State(state), auth, path, Json(if_entry)).await
 }

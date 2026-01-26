@@ -21,13 +21,16 @@ pub async fn run_discovery(client: &TestClient) -> Result<(), String> {
         .await
         .map_err(|e| format!("Failed to connect to SSE: {}", e))?;
 
-    let timeout = tokio::time::sleep(tokio::time::Duration::from_secs(300));
+    // 15 minutes to allow for deep port scanning (65535 ports × multiple hosts)
+    // With adaptive batch sizing, constrained hosts use smaller batches (64 ports)
+    // which means 1024+ batches per host. This timeout accommodates slow CI environments.
+    let timeout = tokio::time::sleep(tokio::time::Duration::from_secs(900));
     tokio::pin!(timeout);
 
     loop {
         tokio::select! {
             _ = &mut timeout => {
-                return Err("Discovery timed out after 5 minutes".to_string());
+                return Err("Discovery timed out after 15 minutes".to_string());
             }
             chunk = event_source.chunk() => {
                 match chunk {

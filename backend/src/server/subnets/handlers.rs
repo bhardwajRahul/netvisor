@@ -10,7 +10,7 @@ use crate::server::shared::handlers::query::{
 use crate::server::shared::handlers::traits::{CrudHandlers, update_handler};
 use crate::server::shared::services::traits::CrudService;
 use crate::server::shared::storage::filter::StorableFilter;
-use crate::server::shared::storage::traits::Storable;
+use crate::server::shared::storage::traits::{Entity, Storable};
 use crate::server::shared::types::api::{
     ApiError, ApiErrorResponse, ApiJson, ApiResponse, ApiResult, PaginatedApiResponse,
 };
@@ -117,10 +117,10 @@ impl FilterQueryExtractor for SubnetFilterQuery {
 // Generated handlers for most CRUD operations
 mod generated {
     use super::*;
-    crate::crud_get_by_id_handler!(Subnet, "subnets", "subnet");
-    crate::crud_delete_handler!(Subnet, "subnets", "subnet");
-    crate::crud_bulk_delete_handler!(Subnet, "subnets");
-    crate::crud_export_csv_handler!(Subnet, "subnets", "subnet");
+    crate::crud_get_by_id_handler!(Subnet);
+    crate::crud_delete_handler!(Subnet);
+    crate::crud_bulk_delete_handler!(Subnet);
+    crate::crud_export_csv_handler!(Subnet);
 }
 
 pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
@@ -144,7 +144,7 @@ pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
 #[utoipa::path(
     get,
     path = "",
-    tag = "subnets",
+    tag = Subnet::ENTITY_NAME_PLURAL,
     operation_id = "list_subnets",
     summary = "List all subnets",
     params(SubnetFilterQuery),
@@ -219,7 +219,7 @@ async fn get_all_subnets(
 #[utoipa::path(
     post,
     path = "",
-    tag = "subnets",
+    tag = Subnet::ENTITY_NAME_PLURAL,
     request_body = Subnet,
     responses(
         (status = 200, description = "Subnet created successfully", body = ApiResponse<Subnet>),
@@ -299,7 +299,7 @@ async fn create_subnet(
 #[utoipa::path(
     put,
     path = "/{id}",
-    tag = "subnets",
+    tag = Subnet::ENTITY_NAME_PLURAL,
     params(("id" = Uuid, Path, description = "Subnet ID")),
     request_body = Subnet,
     responses(

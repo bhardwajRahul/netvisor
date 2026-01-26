@@ -9,6 +9,7 @@
 	import SnmpCredentialCard from './SnmpCredentialCard.svelte';
 	import SnmpCredentialEditModal from './SnmpCredentialEditModal.svelte';
 	import TabHeader from '$lib/shared/components/layout/TabHeader.svelte';
+	import BetaTag from '$lib/shared/components/data/BetaTag.svelte';
 	import Loading from '$lib/shared/components/feedback/Loading.svelte';
 	import EmptyState from '$lib/shared/components/layout/EmptyState.svelte';
 	import type { SnmpCredential } from '../types/base';
@@ -22,6 +23,7 @@
 	import { downloadCsv } from '$lib/shared/utils/csvExport';
 	import type { components } from '$lib/api/schema';
 	import {
+		common_betaSnmpExplainer,
 		common_confirmDeleteName,
 		common_create,
 		common_created,
@@ -134,6 +136,9 @@
 
 <div class="space-y-6">
 	<TabHeader title={common_snmpCredentials()} subtitle={snmp_subtitle()}>
+		<svelte:fragment slot="titleSuffix">
+			<BetaTag tooltip={common_betaSnmpExplainer()} />
+		</svelte:fragment>
 		<svelte:fragment slot="actions">
 			{#if canManage}
 				<button class="btn-primary flex items-center" onclick={handleCreateCredential}>

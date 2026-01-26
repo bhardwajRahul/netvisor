@@ -7,7 +7,7 @@ use crate::server::shared::handlers::query::{
 use crate::server::shared::handlers::traits::create_handler;
 use crate::server::shared::services::traits::CrudService;
 use crate::server::shared::storage::filter::StorableFilter;
-use crate::server::shared::storage::traits::{Storable, Storage};
+use crate::server::shared::storage::traits::{Entity, Storable, Storage};
 use crate::server::shared::types::api::{ApiError, ApiErrorResponse, PaginatedApiResponse};
 use crate::server::tags::r#impl::base::Tag;
 use crate::server::{
@@ -102,11 +102,11 @@ impl FilterQueryExtractor for TagFilterQuery {
 // Generated handlers for most CRUD operations
 mod generated {
     use super::*;
-    crate::crud_get_by_id_handler!(Tag, "tags", "tag");
-    crate::crud_update_handler!(Tag, "tags", "tag");
-    crate::crud_delete_handler!(Tag, "tags", "tag");
-    crate::crud_bulk_delete_handler!(Tag, "tags");
-    crate::crud_export_csv_handler!(Tag, "tags", "tag");
+    crate::crud_get_by_id_handler!(Tag);
+    crate::crud_update_handler!(Tag);
+    crate::crud_delete_handler!(Tag);
+    crate::crud_bulk_delete_handler!(Tag);
+    crate::crud_export_csv_handler!(Tag);
 }
 
 pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
@@ -133,7 +133,7 @@ pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
 #[utoipa::path(
     get,
     path = "",
-    tag = "tags",
+    tag = Tag::ENTITY_NAME_PLURAL,
     params(TagFilterQuery),
     responses(
         (status = 200, description = "List of tags", body = PaginatedApiResponse<Tag>),
@@ -190,7 +190,7 @@ async fn get_all_tags(
 #[utoipa::path(
     post,
     path = "",
-    tag = "tags",
+    tag = Tag::ENTITY_NAME_PLURAL,
     request_body = Tag,
     responses(
         (status = 200, description = "Tag created successfully", body = ApiResponse<Tag>),
@@ -262,7 +262,7 @@ pub struct SetTagsRequest {
 #[utoipa::path(
     post,
     path = "/assign/bulk-add",
-    tag = "tags",
+    tag = Tag::ENTITY_NAME_PLURAL,
     request_body = BulkTagRequest,
     responses(
         (status = 200, description = "Tag added successfully", body = ApiResponse<BulkTagResponse>),
@@ -315,7 +315,7 @@ pub async fn bulk_add_tag(
 #[utoipa::path(
     post,
     path = "/assign/bulk-remove",
-    tag = "tags",
+    tag = Tag::ENTITY_NAME_PLURAL,
     request_body = BulkTagRequest,
     responses(
         (status = 200, description = "Tag removed successfully", body = ApiResponse<BulkTagResponse>),
@@ -358,7 +358,7 @@ pub async fn bulk_remove_tag(
 #[utoipa::path(
     put,
     path = "/assign",
-    tag = "tags",
+    tag = Tag::ENTITY_NAME_PLURAL,
     request_body = SetTagsRequest,
     responses(
         (status = 200, description = "Tags set successfully", body = EmptyApiResponse),

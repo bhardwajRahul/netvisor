@@ -65,3 +65,43 @@ export async function downloadCsv(
 	document.body.removeChild(link);
 	URL.revokeObjectURL(blobUrl);
 }
+
+/**
+ * Download ZIP export for hosts with all children.
+ * Returns a zip containing hosts.csv, interfaces.csv, ports.csv, services.csv, if_entries.csv
+ */
+export async function downloadHostsZip(params: CsvExportParams): Promise<void> {
+	const baseUrl = getServerUrl();
+	const url = new URL('/api/v1/hosts/export/zip', baseUrl);
+
+	// Add all params to URL (same as CSV export)
+	for (const [key, value] of Object.entries(params)) {
+		if (value === undefined) continue;
+		if (Array.isArray(value)) {
+			value.forEach((v) => url.searchParams.append(key, v));
+		} else {
+			url.searchParams.set(key, value);
+		}
+	}
+
+	const response = await fetch(url.toString(), {
+		method: 'GET',
+		credentials: 'include'
+	});
+
+	if (!response.ok) {
+		pushError(`Export failed: ${response.statusText}`);
+		throw new Error(`Export failed: ${response.statusText}`);
+	}
+
+	// Trigger download
+	const blob = await response.blob();
+	const blobUrl = URL.createObjectURL(blob);
+	const link = document.createElement('a');
+	link.href = blobUrl;
+	link.download = 'hosts-export.zip';
+	document.body.appendChild(link);
+	link.click();
+	document.body.removeChild(link);
+	URL.revokeObjectURL(blobUrl);
+}

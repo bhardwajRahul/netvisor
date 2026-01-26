@@ -1,6 +1,10 @@
 use crate::daemon::runtime::state::BufferedEntities;
 use crate::server::auth::middleware::auth::AuthenticatedEntity;
 use crate::server::auth::middleware::permissions::{Authorized, IsDaemon, Member, Or, Viewer};
+use crate::server::if_entries::r#impl::base::IfEntry;
+use crate::server::interfaces::r#impl::base::Interface;
+use crate::server::ports::r#impl::base::Port;
+use crate::server::services::r#impl::base::Service;
 use crate::server::shared::entities::EntityDiscriminants;
 use crate::server::shared::extractors::Query;
 use crate::server::shared::handlers::ordering::OrderField;
@@ -10,7 +14,8 @@ use crate::server::shared::handlers::query::{
 use crate::server::shared::handlers::traits::{
     BulkDeleteResponse, bulk_delete_handler, delete_handler,
 };
-use crate::server::shared::services::traits::CrudService;
+use crate::server::shared::services::{csv::build_csv, traits::CrudService};
+use crate::server::shared::storage::traits::Entity;
 use crate::server::shared::storage::{filter::StorableFilter, traits::Storable};
 use crate::server::shared::types::api::{ApiErrorResponse, EmptyApiResponse};
 use crate::server::shared::validation::{validate_network_access, validate_read_access};
@@ -24,14 +29,20 @@ use crate::server::{
     },
     shared::types::api::{ApiError, ApiResponse, ApiResult, PaginatedApiResponse},
 };
+use axum::body::Body;
 use axum::extract::{Path, State};
-use axum::response::Json;
+use axum::http::{HeaderMap, HeaderValue, header};
+use axum::response::{IntoResponse, Json};
 use serde::{Deserialize, Serialize};
+use std::io::{Cursor, Write};
 use std::sync::Arc;
 use utoipa::IntoParams;
 use utoipa_axum::{router::OpenApiRouter, routes};
 use uuid::Uuid;
 use validator::Validate;
+use zip::CompressionMethod;
+use zip::ZipWriter;
+use zip::write::SimpleFileOptions;
 
 // ============================================================================
 // Host Ordering
@@ -146,7 +157,7 @@ impl FilterQueryExtractor for HostFilterQuery {
 // Generated handlers for CSV export
 mod generated {
     use super::*;
-    crate::crud_export_csv_handler!(Host, "hosts", "host");
+    crate::crud_export_csv_handler!(Host);
 }
 
 pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
@@ -155,6 +166,7 @@ pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
         .routes(routes!(get_host_by_id, update_host, delete_host))
         .routes(routes!(bulk_delete_hosts))
         .routes(routes!(generated::export_csv))
+        .routes(routes!(export_hosts_zip))
         .routes(routes!(consolidate_hosts))
         .routes(routes!(create_host_discovery))
 }
@@ -168,7 +180,7 @@ pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
 #[utoipa::path(
     get,
     path = "",
-    tag = "hosts",
+    tag = Host::ENTITY_NAME_PLURAL,
     params(HostFilterQuery),
     responses(
         (status = 200, description = "List of hosts with their children", body = PaginatedApiResponse<HostResponse>),
@@ -227,7 +239,7 @@ async fn get_all_hosts(
 #[utoipa::path(
     get,
     path = "/{id}",
-    tag = "hosts",
+    tag = Host::ENTITY_NAME_PLURAL,
     params(("id" = Uuid, Path, description = "Host ID")),
     responses(
         (status = 200, description = "Host found", body = ApiResponse<HostResponse>),
@@ -281,7 +293,7 @@ async fn get_host_by_id(
 #[utoipa::path(
     post,
     path = "",
-    tag = "hosts",
+    tag = Host::ENTITY_NAME_PLURAL,
     request_body = CreateHostRequest,
     responses(
         (status = 200, description = "Host created successfully", body = ApiResponse<HostResponse>),
@@ -401,7 +413,7 @@ async fn create_host(
 #[utoipa::path(
     put,
     path = "/{id}",
-    tag = "hosts",
+    tag = Host::ENTITY_NAME_PLURAL,
     params(("id" = Uuid, Path, description = "Host ID")),
     request_body = UpdateHostRequest,
     responses(
@@ -542,7 +554,7 @@ async fn create_host_discovery(
 #[utoipa::path(
     put,
     path = "/{destination_host}/consolidate/{other_host}",
-    tag = "hosts",
+    tag = Host::ENTITY_NAME_PLURAL,
     params(
         ("destination_host" = Uuid, Path, description = "Destination host ID - will receive all children"),
         ("other_host" = Uuid, Path, description = "Host to merge into destination - will be deleted")
@@ -620,7 +632,7 @@ async fn consolidate_hosts(
 #[utoipa::path(
     delete,
     path = "/{id}",
-    tag = "hosts",
+    tag = Host::ENTITY_NAME_PLURAL,
     params(
         ("id" = Uuid, Path, description = "Host ID")
     ),
@@ -661,7 +673,7 @@ pub async fn delete_host(
 #[utoipa::path(
     post,
     path = "/bulk-delete",
-    tag = "hosts",
+    tag = Host::ENTITY_NAME_PLURAL,
     request_body(content = Vec<Uuid>, description = "Array of host IDs to delete"),
     responses(
         (status = 200, description = "Hosts deleted successfully", body = ApiResponse<BulkDeleteResponse>),
@@ -685,4 +697,150 @@ pub async fn bulk_delete_hosts(
     }
 
     bulk_delete_handler::<Host>(axum::extract::State(state), auth, axum::extract::Json(ids)).await
+}
+
+/// Export hosts with children to ZIP
+///
+/// Exports all hosts matching the filter criteria along with their children
+/// (interfaces, ports, services, if_entries) as a ZIP archive containing
+/// separate CSV files for each entity type.
+#[utoipa::path(
+    get,
+    path = "/export/zip",
+    tag = Host::ENTITY_NAME_PLURAL,
+    operation_id = "export_hosts_zip",
+    params(HostFilterQuery),
+    responses(
+        (status = 200, description = "ZIP file containing CSVs", content_type = "application/zip"),
+    ),
+    security(("user_api_key" = []), ("session" = []))
+)]
+async fn export_hosts_zip(
+    State(state): State<Arc<AppState>>,
+    auth: Authorized<Viewer>,
+    Query(query): Query<HostFilterQuery>,
+) -> ApiResult<impl IntoResponse> {
+    let network_ids = auth.network_ids();
+    let organization_id = auth
+        .organization_id()
+        .ok_or_else(ApiError::organization_required)?;
+
+    // Build host filter (same as CSV export)
+    let base_filter = StorableFilter::<Host>::new().network_ids(&network_ids);
+    let filter = query.apply_to_filter(base_filter, &network_ids, organization_id);
+
+    // Apply tag filter if specified
+    let filter = match &query.tag_ids {
+        Some(tag_ids) if !tag_ids.is_empty() => {
+            filter.has_any_tags(tag_ids, EntityDiscriminants::Host)
+        }
+        _ => filter,
+    };
+
+    // Get all hosts (no pagination for export)
+    let hosts = state.services.host_service.get_all(filter).await?;
+    let host_ids: Vec<Uuid> = hosts.iter().map(|h| h.id).collect();
+
+    // Fetch children for these hosts
+    let interfaces = state
+        .services
+        .interface_service
+        .get_all(
+            StorableFilter::<Interface>::new()
+                .host_ids(&host_ids)
+                .network_ids(&network_ids),
+        )
+        .await?;
+
+    let ports = state
+        .services
+        .port_service
+        .get_all(
+            StorableFilter::<Port>::new()
+                .host_ids(&host_ids)
+                .network_ids(&network_ids),
+        )
+        .await?;
+
+    let services = state
+        .services
+        .service_service
+        .get_all(
+            StorableFilter::<Service>::new()
+                .host_ids(&host_ids)
+                .network_ids(&network_ids),
+        )
+        .await?;
+
+    let if_entries = state
+        .services
+        .if_entry_service
+        .get_all(
+            StorableFilter::<IfEntry>::new()
+                .host_ids(&host_ids)
+                .network_ids(&network_ids),
+        )
+        .await?;
+
+    // Build CSVs
+    let hosts_csv = build_csv(&hosts)
+        .map_err(|e| ApiError::internal_error(&format!("Failed to build hosts CSV: {}", e)))?;
+    let interfaces_csv = build_csv(&interfaces)
+        .map_err(|e| ApiError::internal_error(&format!("Failed to build interfaces CSV: {}", e)))?;
+    let ports_csv = build_csv(&ports)
+        .map_err(|e| ApiError::internal_error(&format!("Failed to build ports CSV: {}", e)))?;
+    let services_csv = build_csv(&services)
+        .map_err(|e| ApiError::internal_error(&format!("Failed to build services CSV: {}", e)))?;
+    let if_entries_csv = build_csv(&if_entries)
+        .map_err(|e| ApiError::internal_error(&format!("Failed to build if_entries CSV: {}", e)))?;
+
+    // Build zip archive
+    let mut buffer = Cursor::new(Vec::new());
+    {
+        let mut zip = ZipWriter::new(&mut buffer);
+        let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+
+        zip.start_file("hosts.csv", options)
+            .map_err(|e| ApiError::internal_error(&format!("Failed to create zip: {}", e)))?;
+        zip.write_all(&hosts_csv)
+            .map_err(|e| ApiError::internal_error(&format!("Failed to write zip: {}", e)))?;
+
+        zip.start_file("interfaces.csv", options)
+            .map_err(|e| ApiError::internal_error(&format!("Failed to create zip: {}", e)))?;
+        zip.write_all(&interfaces_csv)
+            .map_err(|e| ApiError::internal_error(&format!("Failed to write zip: {}", e)))?;
+
+        zip.start_file("ports.csv", options)
+            .map_err(|e| ApiError::internal_error(&format!("Failed to create zip: {}", e)))?;
+        zip.write_all(&ports_csv)
+            .map_err(|e| ApiError::internal_error(&format!("Failed to write zip: {}", e)))?;
+
+        zip.start_file("services.csv", options)
+            .map_err(|e| ApiError::internal_error(&format!("Failed to create zip: {}", e)))?;
+        zip.write_all(&services_csv)
+            .map_err(|e| ApiError::internal_error(&format!("Failed to write zip: {}", e)))?;
+
+        zip.start_file("if_entries.csv", options)
+            .map_err(|e| ApiError::internal_error(&format!("Failed to create zip: {}", e)))?;
+        zip.write_all(&if_entries_csv)
+            .map_err(|e| ApiError::internal_error(&format!("Failed to write zip: {}", e)))?;
+
+        zip.finish()
+            .map_err(|e| ApiError::internal_error(&format!("Failed to finalize zip: {}", e)))?;
+    }
+
+    let zip_data = buffer.into_inner();
+
+    // Build response with appropriate headers
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/zip"),
+    );
+    headers.insert(
+        header::CONTENT_DISPOSITION,
+        HeaderValue::from_static("attachment; filename=\"hosts-export.zip\""),
+    );
+
+    Ok((headers, Body::from(zip_data)))
 }

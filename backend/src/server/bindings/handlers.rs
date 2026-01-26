@@ -12,6 +12,7 @@ use crate::server::shared::handlers::query::BindingQuery;
 use crate::server::shared::handlers::traits::{CrudHandlers, create_handler, update_handler};
 use crate::server::shared::services::traits::CrudService;
 use crate::server::shared::storage::filter::StorableFilter;
+use crate::server::shared::storage::traits::Entity;
 use crate::server::shared::types::api::{ApiError, ApiErrorResponse, ApiResponse, ApiResult};
 impl CrudHandlers for Binding {
     type Service = BindingService;
@@ -24,11 +25,11 @@ impl CrudHandlers for Binding {
 
 mod generated {
     use super::*;
-    crate::crud_get_all_handler!(Binding, "bindings", "binding");
-    crate::crud_get_by_id_handler!(Binding, "bindings", "binding");
-    crate::crud_delete_handler!(Binding, "bindings", "binding");
-    crate::crud_bulk_delete_handler!(Binding, "bindings");
-    crate::crud_export_csv_handler!(Binding, "bindings", "binding");
+    crate::crud_get_all_handler!(Binding);
+    crate::crud_get_by_id_handler!(Binding);
+    crate::crud_delete_handler!(Binding);
+    crate::crud_bulk_delete_handler!(Binding);
+    crate::crud_export_csv_handler!(Binding);
 }
 
 /// Validates that a binding doesn't conflict with existing bindings.
@@ -119,7 +120,7 @@ async fn validate_no_binding_type_conflict(
     Ok(())
 }
 
-/// Create a new binding
+/// Create a new Binding
 ///
 /// Creates a binding that associates a service with a port or interface.
 ///
@@ -141,7 +142,7 @@ async fn validate_no_binding_type_conflict(
 #[utoipa::path(
     post,
     path = "",
-    tag = "bindings",
+    tag = Binding::ENTITY_NAME_PLURAL,
     request_body = Binding,
     responses(
         (status = 200, description = "Binding created (superseded bindings may be removed)", body = ApiResponse<Binding>),
@@ -193,7 +194,7 @@ async fn create_binding(
     create_handler::<Binding>(State(state), auth, Json(binding)).await
 }
 
-/// Update a binding
+/// Update a Binding
 ///
 /// Updates an existing binding. The same conflict detection rules from binding creation apply.
 ///
@@ -204,7 +205,7 @@ async fn create_binding(
 #[utoipa::path(
     put,
     path = "/{id}",
-    tag = "bindings",
+    tag = Binding::ENTITY_NAME_PLURAL,
     params(("id" = Uuid, Path, description = "Binding ID")),
     request_body = Binding,
     responses(

@@ -16,15 +16,36 @@ use utoipa::openapi::security::{ApiKey, ApiKeyValue, SecurityScheme};
 use utoipa::openapi::{Components, OpenApi, PathItem};
 use utoipa_scalar::{Scalar, Servable};
 
+use crate::server::bindings::r#impl::base::Binding;
 use crate::server::config::AppState;
+use crate::server::daemon_api_keys::r#impl::base::DaemonApiKey;
 use crate::server::daemons::handlers::DaemonOrderField;
+use crate::server::daemons::r#impl::base::Daemon;
+use crate::server::discovery::r#impl::base::Discovery;
 use crate::server::groups::handlers::GroupOrderField;
+use crate::server::groups::r#impl::base::Group;
 use crate::server::hosts::handlers::HostOrderField;
+use crate::server::hosts::r#impl::base::Host;
+use crate::server::if_entries::r#impl::base::IfEntry;
+use crate::server::interfaces::r#impl::base::Interface;
+use crate::server::invites::r#impl::base::Invite;
+use crate::server::networks::r#impl::Network;
+use crate::server::organizations::r#impl::base::Organization;
+use crate::server::ports::r#impl::base::Port;
 use crate::server::services::handlers::ServiceOrderField;
+use crate::server::services::r#impl::base::Service;
 use crate::server::shared::handlers::query::{OrderDirection, PaginationParams};
+use crate::server::shared::storage::traits::Entity;
+use crate::server::shares::r#impl::base::Share;
 use crate::server::snmp_credentials::handlers::SnmpCredentialOrderField;
+use crate::server::snmp_credentials::r#impl::base::SnmpCredential;
 use crate::server::subnets::handlers::SubnetOrderField;
+use crate::server::subnets::r#impl::base::Subnet;
 use crate::server::tags::handlers::TagOrderField;
+use crate::server::tags::r#impl::base::Tag;
+use crate::server::topology::types::base::Topology;
+use crate::server::user_api_keys::r#impl::base::UserApiKey;
+use crate::server::users::r#impl::base::User;
 
 /// Tag used to mark endpoints that should be hidden from public documentation
 /// but included in the full OpenAPI spec for client generation.
@@ -155,53 +176,34 @@ Resources are scoped to your **organization** and **network(s)**:
         license(name = "Dual (AGPL3.0, Commercial License Available)")
     ),
     tags(
-        (name = "api_keys", description = "API keys for daemon authentication. Create and manage keys that allow daemons to communicate with the server."),
+        // Entity tags - descriptions sourced from Entity trait for consistency
+        (name = Binding::ENTITY_NAME_PLURAL, description = Binding::ENTITY_DESCRIPTION),
+        (name = Daemon::ENTITY_NAME_PLURAL, description = Daemon::ENTITY_DESCRIPTION),
+        (name = DaemonApiKey::ENTITY_NAME_PLURAL, description = DaemonApiKey::ENTITY_DESCRIPTION),
+        (name = Discovery::ENTITY_NAME_PLURAL, description = Discovery::ENTITY_DESCRIPTION),
+        (name = Group::ENTITY_NAME_PLURAL, description = Group::ENTITY_DESCRIPTION),
+        (name = Host::ENTITY_NAME_PLURAL, description = Host::ENTITY_DESCRIPTION),
+        (name = IfEntry::ENTITY_NAME_PLURAL, description = IfEntry::ENTITY_DESCRIPTION),
+        (name = Interface::ENTITY_NAME_PLURAL, description = Interface::ENTITY_DESCRIPTION),
+        (name = Invite::ENTITY_NAME_PLURAL, description = Invite::ENTITY_DESCRIPTION),
+        (name = Network::ENTITY_NAME_PLURAL, description = Network::ENTITY_DESCRIPTION),
+        (name = Organization::ENTITY_NAME_PLURAL, description = Organization::ENTITY_DESCRIPTION),
+        (name = Port::ENTITY_NAME_PLURAL, description = Port::ENTITY_DESCRIPTION),
+        (name = Service::ENTITY_NAME_PLURAL, description = Service::ENTITY_DESCRIPTION),
+        (name = Share::ENTITY_NAME_PLURAL, description = Share::ENTITY_DESCRIPTION),
+        (name = SnmpCredential::ENTITY_NAME_PLURAL, description = SnmpCredential::ENTITY_DESCRIPTION),
+        (name = Subnet::ENTITY_NAME_PLURAL, description = Subnet::ENTITY_DESCRIPTION),
+        (name = Tag::ENTITY_NAME_PLURAL, description = Tag::ENTITY_DESCRIPTION),
+        (name = Topology::ENTITY_NAME_PLURAL, description = Topology::ENTITY_DESCRIPTION),
+        (name = User::ENTITY_NAME_PLURAL, description = User::ENTITY_DESCRIPTION),
+        (name = UserApiKey::ENTITY_NAME_PLURAL, description = UserApiKey::ENTITY_DESCRIPTION),
+        // Non-entity tags with inline descriptions
         (name = "auth", description = "Authentication and session management. Handle user login, logout, and session state."),
         (name = "config", description = "Server configuration. Public configuration settings for client applications."),
-        (name = "daemon_api_keys", description = "Daemon API keys for scanner authentication. Create and manage keys that allow daemons to authenticate with the server and submit discovery results."),
-        (name = "discoveries", description = "Network discovery operations. Trigger and monitor scans that detect hosts, services, and network topology."),
         (name = "github", description = "GitHub integration endpoints."),
-        (name = "ports", description = "Ports that have been scanned and found open on a host"),
-        (name = "bindings", description = "
-            ## Binding Types
-            - **Interface binding**: Service is present at an interface (IP address) without a specific port.
-              Used for non-port-bound services like gateways.
-            - **Port binding (specific interface)**: Service listens on a specific port on a specific interface.
-            - **Port binding (all interfaces)**: Service listens on a specific port on all interfaces
-              (`interface_id: null`).
-        "),
-        (name = "groups", description = "Logical groupings of hosts. Organize hosts into groups for easier management and visualization."),
-        (name = "hosts", description = "Network hosts (devices). Manage discovered or manually created hosts on your network."),
-        (name = "interfaces", description = "Network interfaces on hosts. Each host can have multiple interfaces with different IP addresses."),
         (name = "internal", description = "Internal endpoints for system operations. Not part of the public API."),
-        (name = "invites", description = "Organization invitations. Invite users to join your organization."),
         (name = "metadata", description = "Entity metadata registry. Schema information for all entity types in the system."),
-        (name = "networks", description = "Network containers. Top-level organizational unit that contains subnets, hosts, and other entities."),
-        (name = "organizations", description = "Manage organization settings."),
-        (name = "services", description = "Services running on hosts. Detected or manually added services like databases, web servers, etc."),
-        (name = "shares", description = "Shared network views. Create read-only shareable links to your network topology."),
-        (name = "snmp-credentials", description = "SNMP credentials for network device discovery. Manage credentials used to query SNMP-enabled devices."),
-        (name = "if-entries", description = "SNMP interface entries (ifTable). Physical and logical interfaces discovered via SNMP on hosts."),
-        (name = "subnets", description = "IP subnets within networks. Define address ranges and organize hosts by subnet."),
         (name = "system", description = "System information endpoints. Version and compatibility checking."),
-        (name = "tags", description = "Custom tags for categorization. Apply labels to entities for filtering and organization."),
-        (name = "user_api_keys", description = "
-            User API keys for programmatic access. Create and manage personal API keys with scoped permissions for automation and integrations.
-            
-            ## Permissions
-            
-            API keys inherit the permission level assigned at creation. Each level determines what resources the key can access:
-
-            | Permission | Network Resources | Tags       | Users                      |
-            | ---------- | ----------------- | ---------- | -------------------------- |
-            | **Viewer** | Read              | Read       | —                          |
-            | **Member** | Read/Write        | Read       | —                          |
-            | **Admin**  | Read/Write        | Read/Write | Read/Write (Member, Viewer)|
-            | **Owner**  | Read/Write        | Read/Write | Read/Write (all levels)    |
-
-            Network resources include hosts, subnets, services, and groups. Organization settings (name, billing) require a user session and are not accessible via API keys.
-        "),
-        (name = "users", description = "User account management. Manage user profiles and permissions within organizations."),
     )
 )]
 pub struct ApiDoc;

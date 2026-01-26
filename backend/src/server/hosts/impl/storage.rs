@@ -11,6 +11,7 @@ use crate::server::{
     },
     shared::{
         entities::EntityDiscriminants,
+        entity_metadata::EntityCategory,
         storage::traits::{Entity, SqlValue, Storable},
         types::entities::EntitySource,
     },
@@ -190,12 +191,13 @@ impl Entity for Host {
         EntityDiscriminants::Host
     }
 
-    fn entity_name_singular() -> &'static str {
-        "host"
-    }
+    const ENTITY_NAME_SINGULAR: &'static str = "Host";
+    const ENTITY_NAME_PLURAL: &'static str = "Hosts";
+    const ENTITY_DESCRIPTION: &'static str =
+        "Network hosts (devices). Manage discovered or manually created hosts on your network.";
 
-    fn entity_name_plural() -> &'static str {
-        "hosts"
+    fn entity_category() -> EntityCategory {
+        EntityCategory::NetworkInfrastructure
     }
 
     fn network_id(&self) -> Option<Uuid> {

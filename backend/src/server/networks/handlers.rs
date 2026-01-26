@@ -2,6 +2,7 @@ use crate::server::shared::handlers::traits::{
     BulkDeleteResponse, CrudHandlers, bulk_delete_handler, create_handler, delete_handler,
     update_handler,
 };
+use crate::server::shared::storage::traits::Entity;
 use crate::server::{
     auth::middleware::{
         features::{CreateNetworkFeature, RequireFeature},
@@ -23,9 +24,9 @@ use uuid::Uuid;
 // Generated handlers for operations that use generic CRUD logic
 mod generated {
     use super::*;
-    crate::crud_get_all_handler!(Network, "networks", "network");
-    crate::crud_get_by_id_handler!(Network, "networks", "network");
-    crate::crud_export_csv_handler!(Network, "networks", "network");
+    crate::crud_get_all_handler!(Network);
+    crate::crud_get_by_id_handler!(Network);
+    crate::crud_export_csv_handler!(Network);
 }
 
 pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
@@ -44,7 +45,7 @@ pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
 #[utoipa::path(
     post,
     path = "",
-    tag = "networks",
+    tag = Network::ENTITY_NAME_PLURAL,
     responses(
         (status = 200, description = "Network created", body = ApiResponse<Network>),
     ),
@@ -78,7 +79,7 @@ async fn create_network(
 #[utoipa::path(
     put,
     path = "/{id}",
-    tag = "networks",
+    tag = Network::ENTITY_NAME_PLURAL,
     params(("id" = Uuid, Path, description = "Network ID")),
     request_body = Network,
     responses(
@@ -101,7 +102,7 @@ async fn update_network(
 #[utoipa::path(
     delete,
     path = "/{id}",
-    tag = "networks",
+    tag = Network::ENTITY_NAME_PLURAL,
     params(("id" = Uuid, Path, description = "Network ID")),
     responses(
         (status = 200, description = "Network deleted", body = EmptyApiResponse),
@@ -122,7 +123,7 @@ async fn delete_network(
 #[utoipa::path(
     post,
     path = "/bulk-delete",
-    tag = "networks",
+    tag = Network::ENTITY_NAME_PLURAL,
     request_body(content = Vec<Uuid>, description = "Array of network IDs to delete"),
     responses(
         (status = 200, description = "Networks deleted successfully", body = ApiResponse<BulkDeleteResponse>),

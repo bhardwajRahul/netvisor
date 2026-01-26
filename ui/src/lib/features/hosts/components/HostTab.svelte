@@ -11,6 +11,7 @@
 	import EmptyState from '$lib/shared/components/layout/EmptyState.svelte';
 	import HostEditor from './HostEditModal/HostEditor.svelte';
 	import HostConsolidationModal from './HostConsolidationModal.svelte';
+	import HostExportModal from './HostExportModal.svelte';
 	import DataControls from '$lib/shared/components/data/DataControls.svelte';
 	import { defineFields } from '$lib/shared/components/data/types';
 	import { Plus } from 'lucide-svelte';
@@ -50,7 +51,6 @@
 	import { useDaemonsQuery } from '$lib/features/daemons/queries';
 	import { useNetworksQuery } from '$lib/features/networks/queries';
 	import type { components } from '$lib/api/schema';
-	import { downloadCsv } from '$lib/shared/utils/csvExport';
 
 	type HostOrderField = components['schemas']['HostOrderField'];
 	type OrderDirection = components['schemas']['OrderDirection'];
@@ -132,14 +132,13 @@
 		// Reset to page 1 is handled by DataControls
 	}
 
-	// CSV export handler
-	async function handleCsvExport() {
-		await downloadCsv('Host', {
-			tag_ids: tagIds.length > 0 ? tagIds : undefined,
-			order_by: orderBy,
-			order_direction: orderDirection
-		});
-	}
+	// Export modal state
+	let showExportModal = $state(false);
+	let exportParams = $derived({
+		tag_ids: tagIds.length > 0 ? tagIds : undefined,
+		order_by: orderBy,
+		order_direction: orderDirection
+	});
 
 	let showHostEditor = $state(false);
 	let editingHost = $state<Host | null>(null);
@@ -333,7 +332,9 @@
 			onPageChange={handlePageChange}
 			onOrderChange={handleOrderChange}
 			onTagFilterChange={handleTagFilterChange}
-			onCsvExport={handleCsvExport}
+			onExportClick={() => {
+				showExportModal = true;
+			}}
 		>
 			{#snippet children(
 				item: Host,
@@ -370,4 +371,10 @@
 	{otherHost}
 	onConsolidate={handleConsolidateHosts}
 	onClose={() => (showHostConsolidationModal = false)}
+/>
+
+<HostExportModal
+	isOpen={showExportModal}
+	onClose={() => (showExportModal = false)}
+	{exportParams}
 />

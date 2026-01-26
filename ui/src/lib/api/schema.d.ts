@@ -99,6 +99,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/onboarding-state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get current onboarding state from session */
+        get: operations["onboarding_state"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/onboarding-step": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Store onboarding step in session */
+        post: operations["onboarding_step"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/register": {
         parameters: {
             query?: never;
@@ -297,7 +331,7 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Register a new daemon
+         * Register a new Daemon
          * @description Internal endpoint for daemon self-registration. Creates a host entry
          *     and sets up default discovery jobs for the daemon.
          */
@@ -361,7 +395,7 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Update daemon capabilities
+         * Update Daemon capabilities
          * @description Internal endpoint for daemons to report their current capabilities.
          */
         post: operations["update_capabilities"];
@@ -418,10 +452,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List all daemon_api_keys */
-        get: operations["list_daemon_api_keys"];
+        /** List all Daemon API Keys */
+        get: operations["list_Daemon API Keys"];
         put?: never;
-        /** Create daemon API key */
+        /** Create Daemon API Key */
         post: operations["create_daemon_api_key"];
         delete?: never;
         options?: never;
@@ -438,8 +472,8 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Bulk delete daemon_api_keys */
-        post: operations["bulk_delete_daemon_api_keys"];
+        /** Bulk delete Daemon API Keys */
+        post: operations["bulk_delete_Daemon API Keys"];
         delete?: never;
         options?: never;
         head?: never;
@@ -454,10 +488,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Export daemon_api_keys to CSV
-         * @description Export all daemon_api_keys matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.
+         * Export Daemon API Keys to CSV
+         * @description Export all Daemon API Keys matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.
          */
-        get: operations["export_daemon_api_keys_csv"];
+        get: operations["export_Daemon API Keys_csv"];
         put?: never;
         post?: never;
         delete?: never;
@@ -473,13 +507,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get daemon_api_key by ID */
-        get: operations["get_daemon_api_key_by_id"];
-        /** Update a daemon API key */
+        /** Get Daemon API Key by ID */
+        get: operations["get_Daemon API Key_by_id"];
+        /** Update a Daemon API Key */
         put: operations["update_daemon_api_key"];
         post?: never;
-        /** Delete daemon_api_key */
-        delete: operations["delete_daemon_api_key"];
+        /** Delete Daemon API Key */
+        delete: operations["delete_Daemon API Key"];
         options?: never;
         head?: never;
         patch?: never;
@@ -494,7 +528,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Rotate a daemon API key */
+        /** Rotate a Daemon API Key */
         post: operations["rotate_key_handler"];
         delete?: never;
         options?: never;
@@ -545,10 +579,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Export user_api_keys to CSV
-         * @description Export all user_api_keys matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.
+         * Export User API Keys to CSV
+         * @description Export all User API Keys matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.
          */
-        get: operations["export_user_api_keys_csv"];
+        get: operations["export_User API Keys_csv"];
         put?: never;
         post?: never;
         delete?: never;
@@ -600,11 +634,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List all bindings */
-        get: operations["list_bindings"];
+        /** List all Bindings */
+        get: operations["list_Bindings"];
         put?: never;
         /**
-         * Create a new binding
+         * Create a new Binding
          * @description Creates a binding that associates a service with a port or interface.
          *
          *     ### Binding Types
@@ -639,8 +673,8 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Bulk delete bindings */
-        post: operations["bulk_delete_bindings"];
+        /** Bulk delete Bindings */
+        post: operations["bulk_delete_Bindings"];
         delete?: never;
         options?: never;
         head?: never;
@@ -655,10 +689,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Export bindings to CSV
-         * @description Export all bindings matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.
+         * Export Bindings to CSV
+         * @description Export all Bindings matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.
          */
-        get: operations["export_bindings_csv"];
+        get: operations["export_Bindings_csv"];
         put?: never;
         post?: never;
         delete?: never;
@@ -674,10 +708,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get binding by ID */
-        get: operations["get_binding_by_id"];
+        /** Get Binding by ID */
+        get: operations["get_Binding_by_id"];
         /**
-         * Update a binding
+         * Update a Binding
          * @description Updates an existing binding. The same conflict detection rules from binding creation apply.
          *
          *     ## Validation Rules
@@ -687,8 +721,8 @@ export interface paths {
          */
         put: operations["update_binding"];
         post?: never;
-        /** Delete binding */
-        delete: operations["delete_binding"];
+        /** Delete Binding */
+        delete: operations["delete_Binding"];
         options?: never;
         head?: never;
         patch?: never;
@@ -725,8 +759,8 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Bulk delete daemons */
-        post: operations["bulk_delete_daemons"];
+        /** Bulk delete Daemons */
+        post: operations["bulk_delete_Daemons"];
         delete?: never;
         options?: never;
         head?: never;
@@ -741,10 +775,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Export daemons to CSV
-         * @description Export all daemons matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.
+         * Export Daemons to CSV
+         * @description Export all Daemons matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.
          */
-        get: operations["export_daemons_csv"];
+        get: operations["export_Daemons_csv"];
         put?: never;
         post?: never;
         delete?: never;
@@ -791,8 +825,8 @@ export interface paths {
         get: operations["get_daemon_by_id"];
         put?: never;
         post?: never;
-        /** Delete daemon */
-        delete: operations["delete_daemon"];
+        /** Delete Daemon */
+        delete: operations["delete_Daemon"];
         options?: never;
         head?: never;
         patch?: never;
@@ -827,10 +861,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List all discoveries */
-        get: operations["list_discoveries"];
+        /** List all Discoveries */
+        get: operations["list_Discoveries"];
         put?: never;
-        /** Create new discovery */
+        /** Create new Discovery */
         post: operations["create_discovery"];
         delete?: never;
         options?: never;
@@ -845,7 +879,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get active discovery sessions */
+        /** Get active Discovery Sessions */
         get: operations["get_active_sessions"];
         put?: never;
         post?: never;
@@ -864,8 +898,8 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Bulk delete discoveries */
-        post: operations["bulk_delete_discoveries"];
+        /** Bulk delete Discoveries */
+        post: operations["bulk_delete_Discoveries"];
         delete?: never;
         options?: never;
         head?: never;
@@ -880,10 +914,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Export discoveries to CSV
-         * @description Export all discoveries matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.
+         * Export Discoveries to CSV
+         * @description Export all Discoveries matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.
          */
-        get: operations["export_discoveries_csv"];
+        get: operations["export_Discoveries_csv"];
         put?: never;
         post?: never;
         delete?: never;
@@ -901,7 +935,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Start a discovery session */
+        /** Start a Discovery Session */
         post: operations["start_session"];
         delete?: never;
         options?: never;
@@ -916,13 +950,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get discovery by ID */
-        get: operations["get_discovery_by_id"];
-        /** Update discovery */
+        /** Get Discovery by ID */
+        get: operations["get_Discovery_by_id"];
+        /** Update Discovery */
         put: operations["update_discovery"];
         post?: never;
-        /** Delete discovery */
-        delete: operations["delete_discovery"];
+        /** Delete Discovery */
+        delete: operations["delete_Discovery"];
         options?: never;
         head?: never;
         patch?: never;
@@ -937,7 +971,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Cancel a discovery session */
+        /** Cancel a Discovery Session */
         post: operations["cancel_discovery"];
         delete?: never;
         options?: never;
@@ -973,14 +1007,14 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List all groups
+         * List all Groups
          * @description Returns all groups the authenticated user has access to.
          *     Supports pagination via `limit` and `offset` query parameters,
          *     and ordering via `group_by`, `order_by`, and `order_direction`.
          */
         get: operations["get_all_groups"];
         put?: never;
-        /** Create a new group */
+        /** Create a new Group */
         post: operations["create_group"];
         delete?: never;
         options?: never;
@@ -997,8 +1031,8 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Bulk delete groups */
-        post: operations["bulk_delete_groups"];
+        /** Bulk delete Groups */
+        post: operations["bulk_delete_Groups"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1013,10 +1047,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Export groups to CSV
-         * @description Export all groups matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.
+         * Export Groups to CSV
+         * @description Export all Groups matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.
          */
-        get: operations["export_groups_csv"];
+        get: operations["export_Groups_csv"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1032,13 +1066,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get group by ID */
-        get: operations["get_group_by_id"];
-        /** Update a group */
+        /** Get Group by ID */
+        get: operations["get_Group_by_id"];
+        /** Update a Group */
         put: operations["update_group"];
         post?: never;
-        /** Delete group */
-        delete: operations["delete_group"];
+        /** Delete Group */
+        delete: operations["delete_Group"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1131,10 +1165,32 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Export hosts to CSV
-         * @description Export all hosts matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.
+         * Export Hosts to CSV
+         * @description Export all Hosts matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.
          */
-        get: operations["export_hosts_csv"];
+        get: operations["export_Hosts_csv"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hosts/export/zip": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export hosts with children to ZIP
+         * @description Exports all hosts matching the filter criteria along with their children
+         *     (interfaces, ports, services, if_entries) as a ZIP archive containing
+         *     separate CSV files for each entity type.
+         */
+        get: operations["export_hosts_zip"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1221,11 +1277,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List all if-entries */
-        get: operations["list_if-entries"];
+        /** List all ifTable Entries */
+        get: operations["list_ifTable Entries"];
         put?: never;
         /**
-         * Create a new if entry
+         * Create a new IfEntry
          * @description Creates an SNMP ifTable entry for a host. These are typically created by
          *     SNMP discovery, but can also be created manually.
          */
@@ -1245,8 +1301,8 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Bulk delete if-entries */
-        post: operations["bulk_delete_if_entries"];
+        /** Bulk delete ifTable Entries */
+        post: operations["bulk_delete_ifTable Entries"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1261,10 +1317,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Export if-entries to CSV
-         * @description Export all if-entries matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.
+         * Export ifTable Entries to CSV
+         * @description Export all ifTable Entries matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.
          */
-        get: operations["export_if-entries_csv"];
+        get: operations["export_ifTable Entries_csv"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1280,13 +1336,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get if_entry by ID */
-        get: operations["get_if_entry_by_id"];
-        /** Update an if entry */
+        /** Get ifTable Entry by ID */
+        get: operations["get_ifTable Entry_by_id"];
+        /** Update an IfEntry */
         put: operations["update_if_entry"];
         post?: never;
-        /** Delete if_entry */
-        delete: operations["delete_if_entry"];
+        /** Delete ifTable Entry */
+        delete: operations["delete_ifTable Entry"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1299,8 +1355,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List all interfaces */
-        get: operations["list_interfaces"];
+        /** List all Interfaces */
+        get: operations["list_Interfaces"];
         put?: never;
         /**
          * Create a new interface
@@ -1341,10 +1397,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Export interfaces to CSV
-         * @description Export all interfaces matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.
+         * Export Interfaces to CSV
+         * @description Export all Interfaces matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.
          */
-        get: operations["export_interfaces_csv"];
+        get: operations["export_Interfaces_csv"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1360,8 +1416,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get interface by ID */
-        get: operations["get_interface_by_id"];
+        /** Get Interface by ID */
+        get: operations["get_Interface_by_id"];
         /**
          * Update an interface
          *     Position must be within valid range and not conflict with other interfaces.
@@ -1437,8 +1493,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List all networks */
-        get: operations["list_networks"];
+        /** List all Networks */
+        get: operations["list_Networks"];
         put?: never;
         /** Create a new network */
         post: operations["create_network"];
@@ -1473,10 +1529,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Export networks to CSV
-         * @description Export all networks matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.
+         * Export Networks to CSV
+         * @description Export all Networks matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.
          */
-        get: operations["export_networks_csv"];
+        get: operations["export_Networks_csv"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1492,8 +1548,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get network by ID */
-        get: operations["get_network_by_id"];
+        /** Get Network by ID */
+        get: operations["get_Network_by_id"];
         /** Update a network */
         put: operations["update_network"];
         post?: never;
@@ -1579,8 +1635,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List all ports */
-        get: operations["list_ports"];
+        /** List all Ports */
+        get: operations["list_Ports"];
         put?: never;
         /** Create a new port */
         post: operations["create_port"];
@@ -1599,8 +1655,8 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Bulk delete ports */
-        post: operations["bulk_delete_ports"];
+        /** Bulk delete Ports */
+        post: operations["bulk_delete_Ports"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1615,10 +1671,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Export ports to CSV
-         * @description Export all ports matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.
+         * Export Ports to CSV
+         * @description Export all Ports matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.
          */
-        get: operations["export_ports_csv"];
+        get: operations["export_Ports_csv"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1634,13 +1690,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get port by ID */
-        get: operations["get_port_by_id"];
+        /** Get Port by ID */
+        get: operations["get_Port_by_id"];
         /** Update a port */
         put: operations["update_port"];
         post?: never;
-        /** Delete port */
-        delete: operations["delete_port"];
+        /** Delete Port */
+        delete: operations["delete_Port"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1693,8 +1749,8 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Bulk delete services */
-        post: operations["bulk_delete_services"];
+        /** Bulk delete Services */
+        post: operations["bulk_delete_Services"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1709,10 +1765,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Export services to CSV
-         * @description Export all services matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.
+         * Export Services to CSV
+         * @description Export all Services matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.
          */
-        get: operations["export_services_csv"];
+        get: operations["export_Services_csv"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1728,8 +1784,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get service by ID */
-        get: operations["get_service_by_id"];
+        /** Get Service by ID */
+        get: operations["get_Service_by_id"];
         /**
          * Update a service
          * @description Updates an existing service. All binding validation rules from service creation apply here as well.
@@ -1745,8 +1801,8 @@ export interface paths {
          */
         put: operations["update_service"];
         post?: never;
-        /** Delete service */
-        delete: operations["delete_service"];
+        /** Delete Service */
+        delete: operations["delete_Service"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1759,8 +1815,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List all shares */
-        get: operations["list_shares"];
+        /** List all Shares */
+        get: operations["list_Shares"];
         put?: never;
         /** Create a new share */
         post: operations["create_share"];
@@ -1779,8 +1835,8 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Bulk delete shares */
-        post: operations["bulk_delete_shares"];
+        /** Bulk delete Shares */
+        post: operations["bulk_delete_Shares"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1795,10 +1851,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Export shares to CSV
-         * @description Export all shares matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.
+         * Export Shares to CSV
+         * @description Export all Shares matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.
          */
-        get: operations["export_shares_csv"];
+        get: operations["export_Shares_csv"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1851,13 +1907,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get share by ID */
-        get: operations["get_share_by_id"];
+        /** Get Share by ID */
+        get: operations["get_Share_by_id"];
         /** Update a share */
         put: operations["update_share"];
         post?: never;
-        /** Delete share */
-        delete: operations["delete_share"];
+        /** Delete Share */
+        delete: operations["delete_Share"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1871,14 +1927,13 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List all SNMP credentials
-         * @description Returns all SNMP credentials in the authenticated user's organization.
-         *     The community string is returned for authorized users - handle with care.
+         * List all SNMP Credentials
+         * @description Returns all SNMP Credentials in the authenticated user's organization.
          */
         get: operations["get_all_snmp_credentials"];
         put?: never;
         /**
-         * Create a new SNMP credential
+         * Create a new SNMP Credential
          * @description Creates an SNMP credential scoped to your organization. Credential names must
          *     be unique within the organization.
          *
@@ -1904,7 +1959,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Bulk delete snmp-credentials */
+        /** Bulk delete SNMP Credential */
         post: operations["bulk_delete_snmp_credentials"];
         delete?: never;
         options?: never;
@@ -1920,10 +1975,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Export snmp-credentials to CSV
-         * @description Export all snmp-credentials matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.
+         * Export SNMP Credentials to CSV
+         * @description Export all SNMP Credentials matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.
          */
-        get: operations["export_snmp-credentials_csv"];
+        get: operations["export_SNMP Credentials_csv"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1939,12 +1994,12 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get snmp_credential by ID */
-        get: operations["get_snmp_credential_by_id"];
-        /** Update snmp_credential */
+        /** Get SNMP Credential by ID */
+        get: operations["get_SNMP Credential_by_id"];
+        /** Update SNMP Credential */
         put: operations["update_snmp_credential"];
         post?: never;
-        /** Delete snmp_credential */
+        /** Delete SNMP credential */
         delete: operations["delete_snmp_credential"];
         options?: never;
         head?: never;
@@ -1984,8 +2039,8 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Bulk delete subnets */
-        post: operations["bulk_delete_subnets"];
+        /** Bulk delete Subnets */
+        post: operations["bulk_delete_Subnets"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2000,10 +2055,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Export subnets to CSV
-         * @description Export all subnets matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.
+         * Export Subnets to CSV
+         * @description Export all Subnets matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.
          */
-        get: operations["export_subnets_csv"];
+        get: operations["export_Subnets_csv"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2019,8 +2074,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get subnet by ID */
-        get: operations["get_subnet_by_id"];
+        /** Get Subnet by ID */
+        get: operations["get_Subnet_by_id"];
         /**
          * Update a subnet
          * @description Updates subnet properties. If the CIDR is being changed, validates that
@@ -2028,8 +2083,8 @@ export interface paths {
          */
         put: operations["update_subnet"];
         post?: never;
-        /** Delete subnet */
-        delete: operations["delete_subnet"];
+        /** Delete Subnet */
+        delete: operations["delete_Subnet"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2151,8 +2206,8 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Bulk delete tags */
-        post: operations["bulk_delete_tags"];
+        /** Bulk delete Tags */
+        post: operations["bulk_delete_Tags"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2167,10 +2222,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Export tags to CSV
-         * @description Export all tags matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.
+         * Export Tags to CSV
+         * @description Export all Tags matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.
          */
-        get: operations["export_tags_csv"];
+        get: operations["export_Tags_csv"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2186,13 +2241,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get tag by ID */
-        get: operations["get_tag_by_id"];
-        /** Update tag */
-        put: operations["update_tag"];
+        /** Get Tag by ID */
+        get: operations["get_Tag_by_id"];
+        /** Update Tag */
+        put: operations["update_Tag"];
         post?: never;
-        /** Delete tag */
-        delete: operations["delete_tag"];
+        /** Delete Tag */
+        delete: operations["delete_Tag"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2224,10 +2279,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Export topologies to CSV
-         * @description Export all topologies matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.
+         * Export Topologies to CSV
+         * @description Export all Topologies matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.
          */
-        get: operations["export_topologies_csv"];
+        get: operations["export_Topologies_csv"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2243,12 +2298,12 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get topology by ID */
-        get: operations["get_topology_by_id"];
+        /** Get Topology by ID */
+        get: operations["get_Topology_by_id"];
         put: operations["update_topology"];
         post?: never;
-        /** Delete topology */
-        delete: operations["delete_topology"];
+        /** Delete Topology */
+        delete: operations["delete_Topology"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2453,10 +2508,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Export users to CSV
-         * @description Export all users matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.
+         * Export Users to CSV
+         * @description Export all Users matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.
          */
-        get: operations["export_users_csv"];
+        get: operations["export_Users_csv"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2564,14 +2619,14 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-01-23T21:46:49.467819Z",
-             *       "id": "0d03bf35-d0cf-4b57-b80a-18ecc67c2d09",
+             *       "created_at": "2026-01-25T22:56:13.076918Z",
+             *       "id": "24870b26-1b85-4fe5-bc63-34657b9bd95b",
              *       "interface_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-01-23T21:46:49.467819Z"
+             *       "updated_at": "2026-01-25T22:56:13.076918Z"
              *     }
              */
             data?: components["schemas"]["BindingBase"] & {
@@ -2802,14 +2857,14 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-01-23T21:46:49.455005Z",
-             *               "id": "b9116612-c660-4fe1-b383-f021f7efdc43",
+             *               "created_at": "2026-01-25T22:56:13.053260Z",
+             *               "id": "25d6b52d-f17e-4f7e-8e61-9bee0341f845",
              *               "interface_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-01-23T21:46:49.455005Z"
+             *               "updated_at": "2026-01-25T22:56:13.053260Z"
              *             }
              *           ],
              *           "created_at": "2026-01-15T10:30:00Z",
@@ -2818,7 +2873,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Tomcat",
+             *           "service_definition": "Kerberos",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -2963,6 +3018,18 @@ export interface components {
             meta: components["schemas"]["ApiMeta"];
             success: boolean;
         };
+        ApiResponse_OnboardingStateResponse: {
+            /** @description Response from onboarding state endpoint */
+            data?: {
+                /** @description Network IDs from pending setup (if any) */
+                network_ids: string[];
+                /** @description Current onboarding step (if any) */
+                step?: string | null;
+            };
+            error?: string | null;
+            meta: components["schemas"]["ApiMeta"];
+            success: boolean;
+        };
         ApiResponse_Organization: {
             data?: components["schemas"]["OrganizationBase"] & {
                 /** Format: date-time */
@@ -3072,14 +3139,14 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-01-23T21:46:49.464017Z",
-             *           "id": "25c0e8b5-71f0-4877-b14d-ebef76a2d1ce",
+             *           "created_at": "2026-01-25T22:56:13.069131Z",
+             *           "id": "471aafe0-e962-464e-a571-dd1ab6cf92b6",
              *           "interface_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-01-23T21:46:49.464017Z"
+             *           "updated_at": "2026-01-25T22:56:13.069131Z"
              *         }
              *       ],
              *       "created_at": "2026-01-15T10:30:00Z",
@@ -3088,7 +3155,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Tomcat",
+             *       "service_definition": "Kerberos",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -3384,14 +3451,14 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-01-23T21:46:49.455276Z",
-         *       "id": "c7f28945-92d6-452e-877b-be4169256f49",
+         *       "created_at": "2026-01-25T22:56:13.053442Z",
+         *       "id": "a6096085-f374-43c1-b568-33ac809fae65",
          *       "interface_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-01-23T21:46:49.455276Z"
+         *       "updated_at": "2026-01-25T22:56:13.053442Z"
          *     }
          */
         Binding: components["schemas"]["BindingBase"] & {
@@ -3556,7 +3623,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Tomcat",
+         *           "service_definition": "Kerberos",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -3720,7 +3787,11 @@ export interface components {
             name: string;
             /** Format: uuid */
             network_id: string;
-            url: string;
+            /**
+             * @description URL is ignored by server - kept for backwards compat with old daemons.
+             *     URL is only set via admin provisioning for ServerPoll daemons.
+             */
+            url?: string | null;
             /**
              * Format: uuid
              * @description User responsible for maintaining this daemon (from frontend install command)
@@ -3772,7 +3843,8 @@ export interface components {
         DaemonStatusPayload: {
             mode: components["schemas"]["DaemonMode"];
             name: string;
-            url: string;
+            /** @description URL is ignored by server - kept for backwards compat with old daemons. */
+            url?: string | null;
             /** @description Daemon software version (optional for backwards compat) */
             version?: string | null;
         };
@@ -4159,14 +4231,14 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-01-23T21:46:49.454661Z",
-         *               "id": "62f1eeae-b9f0-4543-9eee-ec8eae1cd1b1",
+         *               "created_at": "2026-01-25T22:56:13.052997Z",
+         *               "id": "d44c64c4-ca3e-43b6-8550-9961a7ecd221",
          *               "interface_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-01-23T21:46:49.454661Z"
+         *               "updated_at": "2026-01-25T22:56:13.052997Z"
          *             }
          *           ],
          *           "created_at": "2026-01-15T10:30:00Z",
@@ -4175,7 +4247,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Tomcat",
+         *           "service_definition": "Kerberos",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -4600,6 +4672,12 @@ export interface components {
         /** @description Network configuration for setup */
         NetworkSetup: {
             name: string;
+            /** @description SNMP community string (for V2c) */
+            snmp_community?: string | null;
+            /** @description Whether SNMP is enabled for this network */
+            snmp_enabled?: boolean;
+            /** @description SNMP version ("V2c" or "V3") */
+            snmp_version?: string | null;
         };
         Node: components["schemas"]["NodeType"] & {
             header?: string | null;
@@ -4627,6 +4705,17 @@ export interface components {
             logo?: string | null;
             name: string;
             slug: string;
+        };
+        /** @description Response from onboarding state endpoint */
+        OnboardingStateResponse: {
+            /** @description Network IDs from pending setup (if any) */
+            network_ids: string[];
+            /** @description Current onboarding step (if any) */
+            step?: string | null;
+        };
+        /** @description Request to save onboarding step */
+        OnboardingStepRequest: {
+            step: string;
         };
         /**
          * @description Direction for ORDER BY clauses.
@@ -5061,14 +5150,14 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-01-23T21:46:49.455184Z",
-         *           "id": "2fc3fc73-720a-4fca-a61a-959e4ed375d7",
+         *           "created_at": "2026-01-25T22:56:13.053381Z",
+         *           "id": "1dd61722-01b3-4049-9764-6037b1f7eee4",
          *           "interface_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-01-23T21:46:49.455184Z"
+         *           "updated_at": "2026-01-25T22:56:13.053381Z"
          *         }
          *       ],
          *       "created_at": "2026-01-15T10:30:00Z",
@@ -5077,7 +5166,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Tomcat",
+         *       "service_definition": "Kerberos",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -5850,6 +5939,50 @@ export interface operations {
             };
         };
     };
+    onboarding_state: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Onboarding state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_OnboardingStateResponse"];
+                };
+            };
+        };
+    };
+    onboarding_step: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OnboardingStepRequest"];
+            };
+        };
+        responses: {
+            /** @description Step saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse"];
+                };
+            };
+        };
+    };
     register: {
         parameters: {
             query?: never;
@@ -6407,7 +6540,7 @@ export interface operations {
             };
         };
     };
-    list_daemon_api_keys: {
+    "list_Daemon API Keys": {
         parameters: {
             query?: {
                 /** @description Filter by network ID */
@@ -6425,7 +6558,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description List of daemon_api_keys */
+            /** @description List of Daemon API Keys */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6492,21 +6625,21 @@ export interface operations {
             };
         };
     };
-    bulk_delete_daemon_api_keys: {
+    "bulk_delete_Daemon API Keys": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** @description Array of daemon_api_keys IDs to delete */
+        /** @description Array of Daemon API Key IDs to delete */
         requestBody: {
             content: {
                 "application/json": string[];
             };
         };
         responses: {
-            /** @description DaemonApiKeys deleted */
+            /** @description Daemon API Keys deleted */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6517,7 +6650,7 @@ export interface operations {
             };
         };
     };
-    export_daemon_api_keys_csv: {
+    "export_Daemon API Keys_csv": {
         parameters: {
             query?: {
                 /** @description Filter by network ID */
@@ -6535,7 +6668,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description CSV file containing daemon_api_keys */
+            /** @description CSV file containing Daemon API Keys */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6546,19 +6679,19 @@ export interface operations {
             };
         };
     };
-    get_daemon_api_key_by_id: {
+    "get_Daemon API Key_by_id": {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                /** @description DaemonApiKey ID */
+                /** @description Daemon API Key ID */
                 id: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description DaemonApiKey found */
+            /** @description Daemon API Key found */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6567,7 +6700,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiResponse_DaemonApiKey"];
                 };
             };
-            /** @description DaemonApiKey not found */
+            /** @description Daemon API Key not found */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -6614,19 +6747,19 @@ export interface operations {
             };
         };
     };
-    delete_daemon_api_key: {
+    "delete_Daemon API Key": {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                /** @description DaemonApiKey ID */
+                /** @description Daemon API Key ID */
                 id: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description DaemonApiKey deleted */
+            /** @description Daemon API Key deleted */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6635,7 +6768,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiResponse"];
                 };
             };
-            /** @description DaemonApiKey not found */
+            /** @description Daemon API Key not found */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -6797,7 +6930,7 @@ export interface operations {
             };
         };
     };
-    export_user_api_keys_csv: {
+    "export_User API Keys_csv": {
         parameters: {
             query?: {
                 /** @description Maximum number of results to return (1-1000, default: 50). Use 0 for no limit. */
@@ -6811,7 +6944,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description CSV file containing user_api_keys */
+            /** @description CSV file containing User API Keys */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6972,7 +7105,7 @@ export interface operations {
             };
         };
     };
-    list_bindings: {
+    list_Bindings: {
         parameters: {
             query?: {
                 /** @description Filter by service ID */
@@ -6994,7 +7127,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description List of bindings */
+            /** @description List of Bindings */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7052,14 +7185,14 @@ export interface operations {
             };
         };
     };
-    bulk_delete_bindings: {
+    bulk_delete_Bindings: {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** @description Array of bindings IDs to delete */
+        /** @description Array of Binding IDs to delete */
         requestBody: {
             content: {
                 "application/json": string[];
@@ -7077,7 +7210,7 @@ export interface operations {
             };
         };
     };
-    export_bindings_csv: {
+    export_Bindings_csv: {
         parameters: {
             query?: {
                 /** @description Filter by service ID */
@@ -7099,7 +7232,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description CSV file containing bindings */
+            /** @description CSV file containing Bindings */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7110,7 +7243,7 @@ export interface operations {
             };
         };
     };
-    get_binding_by_id: {
+    get_Binding_by_id: {
         parameters: {
             query?: never;
             header?: never;
@@ -7187,7 +7320,7 @@ export interface operations {
             };
         };
     };
-    delete_binding: {
+    delete_Binding: {
         parameters: {
             query?: never;
             header?: never;
@@ -7252,14 +7385,14 @@ export interface operations {
             };
         };
     };
-    bulk_delete_daemons: {
+    bulk_delete_Daemons: {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** @description Array of daemons IDs to delete */
+        /** @description Array of Daemon IDs to delete */
         requestBody: {
             content: {
                 "application/json": string[];
@@ -7277,7 +7410,7 @@ export interface operations {
             };
         };
     };
-    export_daemons_csv: {
+    export_Daemons_csv: {
         parameters: {
             query?: {
                 /** @description Filter by network ID */
@@ -7299,7 +7432,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description CSV file containing daemons */
+            /** @description CSV file containing Daemons */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7393,7 +7526,7 @@ export interface operations {
             };
         };
     };
-    delete_daemon: {
+    delete_Daemon: {
         parameters: {
             query?: never;
             header?: never;
@@ -7466,7 +7599,7 @@ export interface operations {
             };
         };
     };
-    list_discoveries: {
+    list_Discoveries: {
         parameters: {
             query?: {
                 /** @description Filter by network ID */
@@ -7484,7 +7617,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description List of discoveries */
+            /** @description List of Discoveries */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7553,21 +7686,21 @@ export interface operations {
             };
         };
     };
-    bulk_delete_discoveries: {
+    bulk_delete_Discoveries: {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** @description Array of discoveries IDs to delete */
+        /** @description Array of Discovery IDs to delete */
         requestBody: {
             content: {
                 "application/json": string[];
             };
         };
         responses: {
-            /** @description Discoverys deleted */
+            /** @description Discoveries deleted */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7578,7 +7711,7 @@ export interface operations {
             };
         };
     };
-    export_discoveries_csv: {
+    export_Discoveries_csv: {
         parameters: {
             query?: {
                 /** @description Filter by network ID */
@@ -7596,7 +7729,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description CSV file containing discoveries */
+            /** @description CSV file containing Discoveries */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7640,7 +7773,7 @@ export interface operations {
             };
         };
     };
-    get_discovery_by_id: {
+    get_Discovery_by_id: {
         parameters: {
             query?: never;
             header?: never;
@@ -7708,7 +7841,7 @@ export interface operations {
             };
         };
     };
-    delete_discovery: {
+    delete_Discovery: {
         parameters: {
             query?: never;
             header?: never;
@@ -7856,14 +7989,14 @@ export interface operations {
             };
         };
     };
-    bulk_delete_groups: {
+    bulk_delete_Groups: {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** @description Array of groups IDs to delete */
+        /** @description Array of Group IDs to delete */
         requestBody: {
             content: {
                 "application/json": string[];
@@ -7881,7 +8014,7 @@ export interface operations {
             };
         };
     };
-    export_groups_csv: {
+    export_Groups_csv: {
         parameters: {
             query?: {
                 /** @description Filter by network ID */
@@ -7903,7 +8036,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description CSV file containing groups */
+            /** @description CSV file containing Groups */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7914,7 +8047,7 @@ export interface operations {
             };
         };
     };
-    get_group_by_id: {
+    get_Group_by_id: {
         parameters: {
             query?: never;
             header?: never;
@@ -7991,7 +8124,7 @@ export interface operations {
             };
         };
     };
-    delete_group: {
+    delete_Group: {
         parameters: {
             query?: never;
             header?: never;
@@ -8169,7 +8302,7 @@ export interface operations {
             };
         };
     };
-    export_hosts_csv: {
+    export_Hosts_csv: {
         parameters: {
             query?: {
                 /** @description Filter by network ID */
@@ -8195,13 +8328,50 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description CSV file containing hosts */
+            /** @description CSV file containing Hosts */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "text/csv": unknown;
+                };
+            };
+        };
+    };
+    export_hosts_zip: {
+        parameters: {
+            query?: {
+                /** @description Filter by network ID */
+                network_id?: string | null;
+                /** @description Filter by specific entity IDs (for selective loading) */
+                ids?: string[] | null;
+                /** @description Filter by tag IDs (returns hosts that have ANY of the specified tags) */
+                tag_ids?: string[] | null;
+                /** @description Primary ordering field (used for grouping). Always sorts ASC to keep groups together. */
+                group_by?: null | components["schemas"]["HostOrderField"];
+                /** @description Secondary ordering field (sorting within groups or standalone sort). */
+                order_by?: null | components["schemas"]["HostOrderField"];
+                /** @description Direction for order_by field (group_by always uses ASC). */
+                order_direction?: null | components["schemas"]["OrderDirection"];
+                /** @description Maximum number of results to return (1-1000, default: 50). Use 0 for no limit. */
+                limit?: number | null;
+                /** @description Number of results to skip. Default: 0. */
+                offset?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ZIP file containing CSVs */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/zip": unknown;
                 };
             };
         };
@@ -8367,7 +8537,7 @@ export interface operations {
             };
         };
     };
-    "list_if-entries": {
+    "list_ifTable Entries": {
         parameters: {
             query?: {
                 /** @description Filter by host ID */
@@ -8387,7 +8557,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description List of if-entries */
+            /** @description List of ifTable Entries */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8436,20 +8606,21 @@ export interface operations {
             };
         };
     };
-    bulk_delete_if_entries: {
+    "bulk_delete_ifTable Entries": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
+        /** @description Array of ifTable Entry IDs to delete */
         requestBody: {
             content: {
                 "application/json": string[];
             };
         };
         responses: {
-            /** @description if-entries deleted successfully */
+            /** @description ifTable Entries deleted */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8458,18 +8629,9 @@ export interface operations {
                     "application/json": components["schemas"]["ApiResponse_BulkDeleteResponse"];
                 };
             };
-            /** @description Validation error */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiErrorResponse"];
-                };
-            };
         };
     };
-    "export_if-entries_csv": {
+    "export_ifTable Entries_csv": {
         parameters: {
             query?: {
                 /** @description Filter by host ID */
@@ -8489,7 +8651,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description CSV file containing if-entries */
+            /** @description CSV file containing ifTable Entries */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8500,19 +8662,19 @@ export interface operations {
             };
         };
     };
-    get_if_entry_by_id: {
+    "get_ifTable Entry_by_id": {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                /** @description IfEntry ID */
+                /** @description ifTable Entry ID */
                 id: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description IfEntry found */
+            /** @description ifTable Entry found */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8521,7 +8683,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiResponse_IfEntry"];
                 };
             };
-            /** @description IfEntry not found */
+            /** @description ifTable Entry not found */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -8577,19 +8739,19 @@ export interface operations {
             };
         };
     };
-    delete_if_entry: {
+    "delete_ifTable Entry": {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                /** @description if_entry ID */
+                /** @description ifTable Entry ID */
                 id: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description if_entry deleted successfully */
+            /** @description ifTable Entry deleted */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8598,7 +8760,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiResponse"];
                 };
             };
-            /** @description if_entry not found */
+            /** @description ifTable Entry not found */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -8609,7 +8771,7 @@ export interface operations {
             };
         };
     };
-    list_interfaces: {
+    list_Interfaces: {
         parameters: {
             query?: {
                 /** @description Filter by host ID */
@@ -8629,7 +8791,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description List of interfaces */
+            /** @description List of Interfaces */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8711,7 +8873,7 @@ export interface operations {
             };
         };
     };
-    export_interfaces_csv: {
+    export_Interfaces_csv: {
         parameters: {
             query?: {
                 /** @description Filter by host ID */
@@ -8731,7 +8893,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description CSV file containing interfaces */
+            /** @description CSV file containing Interfaces */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8742,7 +8904,7 @@ export interface operations {
             };
         };
     };
-    get_interface_by_id: {
+    get_Interface_by_id: {
         parameters: {
             query?: never;
             header?: never;
@@ -8986,7 +9148,7 @@ export interface operations {
             };
         };
     };
-    list_networks: {
+    list_Networks: {
         parameters: {
             query?: {
                 /** @description Maximum number of results to return (1-1000, default: 50). Use 0 for no limit. */
@@ -9000,7 +9162,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description List of networks */
+            /** @description List of Networks */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -9074,7 +9236,7 @@ export interface operations {
             };
         };
     };
-    export_networks_csv: {
+    export_Networks_csv: {
         parameters: {
             query?: {
                 /** @description Maximum number of results to return (1-1000, default: 50). Use 0 for no limit. */
@@ -9088,7 +9250,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description CSV file containing networks */
+            /** @description CSV file containing Networks */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -9099,7 +9261,7 @@ export interface operations {
             };
         };
     };
-    get_network_by_id: {
+    get_Network_by_id: {
         parameters: {
             query?: never;
             header?: never;
@@ -9373,7 +9535,7 @@ export interface operations {
             };
         };
     };
-    list_ports: {
+    list_Ports: {
         parameters: {
             query?: {
                 /** @description Filter by host ID */
@@ -9393,7 +9555,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description List of ports */
+            /** @description List of Ports */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -9442,14 +9604,14 @@ export interface operations {
             };
         };
     };
-    bulk_delete_ports: {
+    bulk_delete_Ports: {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** @description Array of ports IDs to delete */
+        /** @description Array of Port IDs to delete */
         requestBody: {
             content: {
                 "application/json": string[];
@@ -9467,7 +9629,7 @@ export interface operations {
             };
         };
     };
-    export_ports_csv: {
+    export_Ports_csv: {
         parameters: {
             query?: {
                 /** @description Filter by host ID */
@@ -9487,7 +9649,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description CSV file containing ports */
+            /** @description CSV file containing Ports */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -9498,7 +9660,7 @@ export interface operations {
             };
         };
     };
-    get_port_by_id: {
+    get_Port_by_id: {
         parameters: {
             query?: never;
             header?: never;
@@ -9575,7 +9737,7 @@ export interface operations {
             };
         };
     };
-    delete_port: {
+    delete_Port: {
         parameters: {
             query?: never;
             header?: never;
@@ -9679,14 +9841,14 @@ export interface operations {
             };
         };
     };
-    bulk_delete_services: {
+    bulk_delete_Services: {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** @description Array of services IDs to delete */
+        /** @description Array of Service IDs to delete */
         requestBody: {
             content: {
                 "application/json": string[];
@@ -9704,7 +9866,7 @@ export interface operations {
             };
         };
     };
-    export_services_csv: {
+    export_Services_csv: {
         parameters: {
             query?: {
                 /** @description Filter by network ID */
@@ -9732,7 +9894,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description CSV file containing services */
+            /** @description CSV file containing Services */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -9743,7 +9905,7 @@ export interface operations {
             };
         };
     };
-    get_service_by_id: {
+    get_Service_by_id: {
         parameters: {
             query?: never;
             header?: never;
@@ -9820,7 +9982,7 @@ export interface operations {
             };
         };
     };
-    delete_service: {
+    delete_Service: {
         parameters: {
             query?: never;
             header?: never;
@@ -9852,7 +10014,7 @@ export interface operations {
             };
         };
     };
-    list_shares: {
+    list_Shares: {
         parameters: {
             query?: {
                 /** @description Filter by network ID */
@@ -9870,7 +10032,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description List of shares */
+            /** @description List of Shares */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -9919,14 +10081,14 @@ export interface operations {
             };
         };
     };
-    bulk_delete_shares: {
+    bulk_delete_Shares: {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** @description Array of shares IDs to delete */
+        /** @description Array of Share IDs to delete */
         requestBody: {
             content: {
                 "application/json": string[];
@@ -9944,7 +10106,7 @@ export interface operations {
             };
         };
     };
-    export_shares_csv: {
+    export_Shares_csv: {
         parameters: {
             query?: {
                 /** @description Filter by network ID */
@@ -9962,7 +10124,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description CSV file containing shares */
+            /** @description CSV file containing Shares */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -10050,7 +10212,7 @@ export interface operations {
             };
         };
     };
-    get_share_by_id: {
+    get_Share_by_id: {
         parameters: {
             query?: never;
             header?: never;
@@ -10118,7 +10280,7 @@ export interface operations {
             };
         };
     };
-    delete_share: {
+    delete_Share: {
         parameters: {
             query?: never;
             header?: never;
@@ -10236,7 +10398,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description snmp-credentials deleted successfully */
+            /** @description SNMP Credentials deleted successfully */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -10256,7 +10418,7 @@ export interface operations {
             };
         };
     };
-    "export_snmp-credentials_csv": {
+    "export_SNMP Credentials_csv": {
         parameters: {
             query?: {
                 /** @description Primary ordering field (used for grouping). Always sorts ASC to keep groups together. */
@@ -10276,7 +10438,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description CSV file containing snmp-credentials */
+            /** @description CSV file containing SNMP Credentials */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -10287,19 +10449,19 @@ export interface operations {
             };
         };
     };
-    get_snmp_credential_by_id: {
+    "get_SNMP Credential_by_id": {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                /** @description SnmpCredential ID */
+                /** @description SNMP Credential ID */
                 id: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description SnmpCredential found */
+            /** @description SNMP Credential found */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -10308,7 +10470,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiResponse_SnmpCredential"];
                 };
             };
-            /** @description SnmpCredential not found */
+            /** @description SNMP Credential not found */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -10462,14 +10624,14 @@ export interface operations {
             };
         };
     };
-    bulk_delete_subnets: {
+    bulk_delete_Subnets: {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** @description Array of subnets IDs to delete */
+        /** @description Array of Subnet IDs to delete */
         requestBody: {
             content: {
                 "application/json": string[];
@@ -10487,7 +10649,7 @@ export interface operations {
             };
         };
     };
-    export_subnets_csv: {
+    export_Subnets_csv: {
         parameters: {
             query?: {
                 /** @description Filter by network ID */
@@ -10509,7 +10671,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description CSV file containing subnets */
+            /** @description CSV file containing Subnets */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -10520,7 +10682,7 @@ export interface operations {
             };
         };
     };
-    get_subnet_by_id: {
+    get_Subnet_by_id: {
         parameters: {
             query?: never;
             header?: never;
@@ -10597,7 +10759,7 @@ export interface operations {
             };
         };
     };
-    delete_subnet: {
+    delete_Subnet: {
         parameters: {
             query?: never;
             header?: never;
@@ -10819,14 +10981,14 @@ export interface operations {
             };
         };
     };
-    bulk_delete_tags: {
+    bulk_delete_Tags: {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** @description Array of tags IDs to delete */
+        /** @description Array of Tag IDs to delete */
         requestBody: {
             content: {
                 "application/json": string[];
@@ -10844,7 +11006,7 @@ export interface operations {
             };
         };
     };
-    export_tags_csv: {
+    export_Tags_csv: {
         parameters: {
             query?: {
                 /** @description Primary ordering field (used for grouping). Always sorts ASC to keep groups together. */
@@ -10864,7 +11026,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description CSV file containing tags */
+            /** @description CSV file containing Tags */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -10875,7 +11037,7 @@ export interface operations {
             };
         };
     };
-    get_tag_by_id: {
+    get_Tag_by_id: {
         parameters: {
             query?: never;
             header?: never;
@@ -10907,7 +11069,7 @@ export interface operations {
             };
         };
     };
-    update_tag: {
+    update_Tag: {
         parameters: {
             query?: never;
             header?: never;
@@ -10943,7 +11105,7 @@ export interface operations {
             };
         };
     };
-    delete_tag: {
+    delete_Tag: {
         parameters: {
             query?: never;
             header?: never;
@@ -11037,7 +11199,7 @@ export interface operations {
             };
         };
     };
-    export_topologies_csv: {
+    export_Topologies_csv: {
         parameters: {
             query?: {
                 /** @description Filter by network ID */
@@ -11055,7 +11217,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description CSV file containing topologies */
+            /** @description CSV file containing Topologies */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -11066,7 +11228,7 @@ export interface operations {
             };
         };
     };
-    get_topology_by_id: {
+    get_Topology_by_id: {
         parameters: {
             query?: never;
             header?: never;
@@ -11134,7 +11296,7 @@ export interface operations {
             };
         };
     };
-    delete_topology: {
+    delete_Topology: {
         parameters: {
             query?: never;
             header?: never;
@@ -11577,7 +11739,7 @@ export interface operations {
             };
         };
     };
-    export_users_csv: {
+    export_Users_csv: {
         parameters: {
             query?: {
                 /** @description Maximum number of results to return (1-1000, default: 50). Use 0 for no limit. */
@@ -11591,7 +11753,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description CSV file containing users */
+            /** @description CSV file containing Users */
             200: {
                 headers: {
                     [name: string]: unknown;

@@ -68,7 +68,7 @@ services:
       - SCANOPY_DAEMON_PORT=60073
       - SCANOPY_BIND_ADDRESS=0.0.0.0
       - SCANOPY_NAME=scanopy-daemon
-      - SCANOPY_MODE=Push
+      - SCANOPY_MODE=daemon_poll
       - SCANOPY_LOG_LEVEL=debug
       - SCANOPY_HEARTBEAT_INTERVAL=30
     volumes:

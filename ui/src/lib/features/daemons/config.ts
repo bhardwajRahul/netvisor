@@ -5,6 +5,7 @@ import {
 	ipAddressFormat,
 	min,
 	url,
+	urlWithoutPort,
 	type Validator
 } from '$lib/shared/components/forms/validators';
 import * as m from '$lib/paraglide/messages';
@@ -90,13 +91,12 @@ export const fieldDefs: FieldDef[] = [
 		defaultValue: '',
 		cliFlag: '--daemon-url',
 		envVar: 'SCANOPY_DAEMON_URL',
-		helpText: () => m.daemons_config_daemonUrlHelp(),
-		placeholder: () => m.common_placeholderDaemonUrl(),
-		validators: [required, url],
+		helpText: () => m.daemons_config_daemonUrlHelpNoPort(),
+		placeholder: () => m.common_placeholderDaemonUrlNoPort(),
+		validators: [required, urlWithoutPort],
 		required: true,
 		showWhen: (values) => values.mode === 'server_poll'
 	},
-	// Network section
 	{
 		id: 'daemonPort',
 		label: () => m.common_port(),
@@ -104,10 +104,11 @@ export const fieldDefs: FieldDef[] = [
 		placeholder: 60073,
 		cliFlag: '--daemon-port',
 		envVar: 'SCANOPY_DAEMON_PORT',
-		helpText: () => m.daemons_config_portHelp(),
-		section: () => m.daemons_config_sectionServerConnection(),
-		validators: [portRangeValidation]
+		helpText: () => m.daemons_config_portHelpServerPoll(),
+		validators: [portRangeValidation],
+		showWhen: (values) => values.mode === 'server_poll'
 	},
+	// Network section
 	{
 		id: 'bindAddress',
 		label: () => m.daemons_config_bindAddress(),
@@ -118,7 +119,8 @@ export const fieldDefs: FieldDef[] = [
 		helpText: () => m.daemons_config_bindAddressHelp(),
 		placeholder: '0.0.0.0',
 		section: () => m.daemons_config_sectionServerConnection(),
-		validators: [ipAddressFormat]
+		validators: [ipAddressFormat],
+		showWhen: (values) => values.mode === 'server_poll'
 	},
 	{
 		id: 'allowSelfSignedCerts',
@@ -128,7 +130,8 @@ export const fieldDefs: FieldDef[] = [
 		cliFlag: '--allow-self-signed-certs',
 		envVar: 'SCANOPY_ALLOW_SELF_SIGNED_CERTS',
 		helpText: () => m.daemons_config_allowSelfSignedCertsHelp(),
-		section: () => m.daemons_config_sectionServerConnection()
+		section: () => m.daemons_config_sectionServerConnection(),
+		showWhen: (values) => values.mode === 'daemon_poll'
 	},
 	// Performance section
 	{
@@ -226,6 +229,7 @@ export const fieldDefs: FieldDef[] = [
 		type: 'number',
 		cliFlag: '--arp-retries',
 		envVar: 'SCANOPY_ARP_RETRIES',
+		placeholder: 3,
 		helpText: () => m.daemons_config_arpRetriesHelp(),
 		section: () => m.daemons_config_sectionNetworkDiscovery()
 	},
@@ -235,6 +239,7 @@ export const fieldDefs: FieldDef[] = [
 		type: 'number',
 		cliFlag: '--scan-rate-pps',
 		envVar: 'SCANOPY_SCAN_RATE_PPS',
+		placeholder: 500,
 		helpText: () => m.daemons_config_portScanPacketsPerSecondHelp(),
 		section: () => m.daemons_config_sectionNetworkDiscovery()
 	},
@@ -242,6 +247,7 @@ export const fieldDefs: FieldDef[] = [
 		id: 'arp_rate_pps',
 		label: () => m.daemons_config_arpPacketsPerSecond(),
 		type: 'number',
+		placeholder: 50,
 		cliFlag: '--arp-rate-pps',
 		envVar: 'SCANOPY_ARP_RATE_PPS',
 		helpText: () => m.daemons_config_arpPacketsPerSecondHelp(),

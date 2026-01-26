@@ -12,6 +12,7 @@ use crate::server::{
     interfaces::r#impl::base::{Interface, InterfaceBase},
     shared::{
         entities::EntityDiscriminants,
+        entity_metadata::EntityCategory,
         storage::{
             child::ChildStorableEntity,
             traits::{Entity, SqlValue, Storable},
@@ -168,12 +169,12 @@ impl Entity for Interface {
         EntityDiscriminants::Interface
     }
 
-    fn entity_name_singular() -> &'static str {
-        "interface"
-    }
+    const ENTITY_NAME_SINGULAR: &'static str = "Interface";
+    const ENTITY_NAME_PLURAL: &'static str = "Interfaces";
+    const ENTITY_DESCRIPTION: &'static str = "Network interfaces on hosts. Each host can have multiple interfaces with different IP addresses.";
 
-    fn entity_name_plural() -> &'static str {
-        "interfaces"
+    fn entity_category() -> EntityCategory {
+        EntityCategory::NetworkInfrastructure
     }
 
     fn network_id(&self) -> Option<Uuid> {

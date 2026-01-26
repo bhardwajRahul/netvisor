@@ -14,6 +14,7 @@ use validator::Validate;
 use crate::server::{
     shared::{
         entities::{ChangeTriggersTopologyStaleness, EntityDiscriminants},
+        entity_metadata::EntityCategory,
         storage::traits::{Entity, SqlValue, Storable},
     },
     users::r#impl::permissions::UserOrgPermissions,
@@ -225,12 +226,13 @@ impl Entity for Invite {
         EntityDiscriminants::Invite
     }
 
-    fn entity_name_singular() -> &'static str {
-        "invite"
-    }
+    const ENTITY_NAME_SINGULAR: &'static str = "Invite";
+    const ENTITY_NAME_PLURAL: &'static str = "Invites";
+    const ENTITY_DESCRIPTION: &'static str =
+        "Organization invitations. Invite users to join your organization.";
 
-    fn entity_name_plural() -> &'static str {
-        "invites"
+    fn entity_category() -> EntityCategory {
+        EntityCategory::OrganizationsAndUsers
     }
 
     fn network_id(&self) -> Option<Uuid> {

@@ -453,7 +453,11 @@ impl DaemonService {
             .ok_or_else(|| ApiError::entity_not_found::<Daemon>(daemon_id))?;
 
         daemon.base.last_seen = Some(Utc::now());
-        daemon.base.url = status.url;
+        // NOTE: We intentionally do NOT update URL from status.
+        // URL is only set:
+        // - ServerPoll: Admin provides URL during provisioning
+        // - DaemonPoll: URL not needed (server never connects to daemon)
+        // This prevents daemons from overwriting admin-configured URLs.
         daemon.base.name = status.name;
         daemon.base.mode = status.mode;
 
@@ -551,7 +555,8 @@ impl DaemonService {
             );
 
             // Update daemon with current info
-            existing_daemon.base.url = request.url;
+            // NOTE: We do NOT update URL from registration request.
+            // URL is only set via admin provisioning for ServerPoll daemons.
             existing_daemon.base.capabilities = request.capabilities;
             existing_daemon.base.last_seen = Some(Utc::now());
             existing_daemon.base.mode = request.mode;
@@ -607,7 +612,9 @@ impl DaemonService {
         let mut daemon = Daemon::new(DaemonBase {
             host_id: host_response.id,
             network_id: request.network_id,
-            url: request.url.clone(),
+            // DaemonPoll mode: URL not needed (server never connects to daemon)
+            // ServerPoll mode: URL is set during provisioning, not during registration
+            url: String::new(),
             capabilities: request.capabilities.clone(),
             last_seen: Some(Utc::now()),
             mode: request.mode,

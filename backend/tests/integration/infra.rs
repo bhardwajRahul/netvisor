@@ -20,7 +20,7 @@ use std::fmt::Display;
 use std::process::{Child, Command};
 use uuid::Uuid;
 
-/// Database URL for test database (exposed on port 5435 by docker-compose.dev.yml)
+/// Database URL for test database (exposed on port 5435 by docker-compose.test.yml)
 const TEST_DATABASE_URL: &str = "postgres://postgres:password@localhost:5435/scanopy";
 
 pub const BASE_URL: &str = "http://localhost:60072";
@@ -48,7 +48,7 @@ impl ContainerManager {
             .args([
                 "compose",
                 "-f",
-                "docker-compose.dev.yml",
+                "docker-compose.test.yml",
                 "up",
                 "--build",
                 "--force-recreate",
@@ -83,7 +83,7 @@ impl ContainerManager {
             .args([
                 "compose",
                 "-f",
-                "docker-compose.dev.yml",
+                "docker-compose.test.yml",
                 "down",
                 "-v",
                 "--rmi",
@@ -415,6 +415,9 @@ pub async fn setup_authenticated_user(client: &TestClient) -> Result<User, Strin
         organization_name: "My Organization".to_string(),
         networks: vec![NetworkSetup {
             name: "My Network".to_string(),
+            snmp_enabled: false,
+            snmp_version: None,
+            snmp_community: None,
         }],
     };
 

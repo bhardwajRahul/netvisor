@@ -161,7 +161,6 @@ impl DaemonRuntimeService {
         let daemon_id = self.config.get_id().await?;
         let name = self.config.get_name().await?;
         let mode = self.config.get_mode().await?;
-        let url = self.get_daemon_url().await?;
 
         let mut interval_timer = tokio::time::interval(interval);
         interval_timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -182,7 +181,8 @@ impl DaemonRuntimeService {
 
             let path = format!("/api/daemons/{}/request-work", daemon_id);
             let status_payload = DaemonStatusPayload {
-                url: url.clone(),
+                // URL not sent - server manages this via provisioning
+                url: None,
                 name: name.clone(),
                 mode,
                 version: Some(semver::Version::parse(env!("CARGO_PKG_VERSION")).unwrap()),
@@ -354,14 +354,14 @@ impl DaemonRuntimeService {
         let name = config.get_name().await?;
         let version = env!("CARGO_PKG_VERSION");
 
-        let url = self.get_daemon_url().await?;
-
         let user_id = config.get_user_id().await?.unwrap_or(Uuid::nil());
 
         let registration_request = DaemonRegistrationRequest {
             daemon_id,
             network_id,
-            url: url.clone(),
+            // URL not sent - server manages this via provisioning for ServerPoll,
+            // and doesn't need it for DaemonPoll
+            url: None,
             name: name.clone(),
             mode,
             capabilities: DaemonCapabilities {

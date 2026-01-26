@@ -14,7 +14,7 @@ use crate::server::shared::handlers::query::{
 use crate::server::shared::handlers::traits::{create_handler, update_handler};
 use crate::server::shared::services::traits::CrudService;
 use crate::server::shared::storage::filter::StorableFilter;
-use crate::server::shared::storage::traits::Storable;
+use crate::server::shared::storage::traits::{Entity, Storable};
 use crate::server::shared::types::api::{
     ApiError, ApiErrorResponse, ApiResponse, ApiResult, PaginatedApiResponse,
 };
@@ -111,10 +111,10 @@ impl FilterQueryExtractor for GroupFilterQuery {
 // Generated handlers for operations that use generic CRUD logic
 mod generated {
     use super::*;
-    crate::crud_get_by_id_handler!(Group, "groups", "group");
-    crate::crud_delete_handler!(Group, "groups", "group");
-    crate::crud_bulk_delete_handler!(Group, "groups");
-    crate::crud_export_csv_handler!(Group, "groups", "group");
+    crate::crud_get_by_id_handler!(Group);
+    crate::crud_delete_handler!(Group);
+    crate::crud_bulk_delete_handler!(Group);
+    crate::crud_export_csv_handler!(Group);
 }
 
 pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
@@ -129,7 +129,7 @@ pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
         .routes(routes!(generated::export_csv))
 }
 
-/// List all groups
+/// List all Groups
 ///
 /// Returns all groups the authenticated user has access to.
 /// Supports pagination via `limit` and `offset` query parameters,
@@ -137,7 +137,7 @@ pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
 #[utoipa::path(
     get,
     path = "",
-    tag = "groups",
+    tag = Group::ENTITY_NAME_PLURAL,
     params(GroupFilterQuery),
     responses(
         (status = 200, description = "List of groups", body = PaginatedApiResponse<Group>),
@@ -184,11 +184,11 @@ async fn get_all_groups(
     )))
 }
 
-/// Create a new group
+/// Create a new Group
 #[utoipa::path(
     post,
     path = "",
-    tag = "groups",
+    tag = Group::ENTITY_NAME_PLURAL,
     request_body = Group,
     responses(
         (status = 200, description = "Group created successfully", body = ApiResponse<Group>),
@@ -223,11 +223,11 @@ async fn create_group(
     create_handler::<Group>(State(state), auth, Json(group)).await
 }
 
-/// Update a group
+/// Update a Group
 #[utoipa::path(
     put,
     path = "/{id}",
-    tag = "groups",
+    tag = Group::ENTITY_NAME_PLURAL,
     params(("id" = Uuid, Path, description = "Group ID")),
     request_body = Group,
     responses(

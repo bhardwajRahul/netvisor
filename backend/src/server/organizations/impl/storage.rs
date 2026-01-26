@@ -9,6 +9,7 @@ use crate::server::{
     organizations::r#impl::base::{Organization, OrganizationBase},
     shared::{
         entities::EntityDiscriminants,
+        entity_metadata::EntityCategory,
         events::types::TelemetryOperation,
         storage::traits::{Entity, SqlValue, Storable},
     },
@@ -143,12 +144,12 @@ impl Entity for Organization {
         EntityDiscriminants::Organization
     }
 
-    fn entity_name_singular() -> &'static str {
-        "organization"
-    }
+    const ENTITY_NAME_SINGULAR: &'static str = "Organization";
+    const ENTITY_NAME_PLURAL: &'static str = "Organizations";
+    const ENTITY_DESCRIPTION: &'static str = "Manage organization settings.";
 
-    fn entity_name_plural() -> &'static str {
-        "organizations"
+    fn entity_category() -> EntityCategory {
+        EntityCategory::OrganizationsAndUsers
     }
 
     fn network_id(&self) -> Option<Uuid> {

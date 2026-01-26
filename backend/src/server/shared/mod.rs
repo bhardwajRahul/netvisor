@@ -1,6 +1,7 @@
 pub mod api_key_common;
 pub mod concepts;
 pub mod entities;
+pub mod entity_metadata;
 pub mod events;
 pub mod extractors;
 pub mod handlers;

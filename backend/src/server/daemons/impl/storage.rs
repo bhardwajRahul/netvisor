@@ -12,6 +12,7 @@ use crate::server::{
     },
     shared::{
         entities::EntityDiscriminants,
+        entity_metadata::EntityCategory,
         storage::traits::{Entity, SqlValue, Storable},
     },
 };
@@ -184,12 +185,13 @@ impl Entity for Daemon {
         EntityDiscriminants::Daemon
     }
 
-    fn entity_name_singular() -> &'static str {
-        "daemon"
-    }
+    const ENTITY_NAME_SINGULAR: &'static str = "Daemon";
+    const ENTITY_NAME_PLURAL: &'static str = "Daemons";
+    const ENTITY_DESCRIPTION: &'static str =
+        "Daemons are scanning agents that connect to the server to perform network discovery.";
 
-    fn entity_name_plural() -> &'static str {
-        "daemons"
+    fn entity_category() -> EntityCategory {
+        EntityCategory::DiscoveryAndDaemons
     }
 
     fn network_id(&self) -> Option<Uuid> {

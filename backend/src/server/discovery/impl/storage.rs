@@ -11,6 +11,7 @@ use crate::server::{
     },
     shared::{
         entities::EntityDiscriminants,
+        entity_metadata::EntityCategory,
         storage::traits::{Entity, SqlValue, Storable},
     },
 };
@@ -150,12 +151,12 @@ impl Entity for Discovery {
         EntityDiscriminants::Discovery
     }
 
-    fn entity_name_singular() -> &'static str {
-        "discovery"
-    }
+    const ENTITY_NAME_SINGULAR: &'static str = "Discovery";
+    const ENTITY_NAME_PLURAL: &'static str = "Discoveries";
+    const ENTITY_DESCRIPTION: &'static str = "Network discovery operations. Trigger and monitor scans that detect hosts, services, and network topology.";
 
-    fn entity_name_plural() -> &'static str {
-        "discoveries"
+    fn entity_category() -> EntityCategory {
+        EntityCategory::DiscoveryAndDaemons
     }
 
     fn network_id(&self) -> Option<Uuid> {

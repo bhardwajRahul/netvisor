@@ -1,3 +1,32 @@
+<script lang="ts" module>
+	export const COOKIE_NAME = 'scanopy_gdpr';
+
+	export interface CookiePreferences {
+		necessary: boolean;
+		analytics: boolean;
+	}
+
+	export function getCookie(name: string): string | null {
+		if (typeof document === 'undefined') return null;
+		const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+		return match ? decodeURIComponent(match[2]) : null;
+	}
+
+	export function getGdprPreferences(): CookiePreferences | null {
+		const saved = getCookie(COOKIE_NAME);
+		if (!saved) return null;
+		try {
+			return JSON.parse(saved) as CookiePreferences;
+		} catch {
+			return null;
+		}
+	}
+
+	export function hasAnalyticsConsent(): boolean {
+		return getGdprPreferences()?.analytics ?? false;
+	}
+</script>
+
 <script lang="ts">
 	import posthog from 'posthog-js';
 	import { dev } from '$app/environment';
@@ -19,14 +48,8 @@
 		cookies_settingsDesc
 	} from '$lib/paraglide/messages';
 
-	const COOKIE_NAME = 'scanopy_gdpr';
 	const COOKIE_DOMAIN = dev ? '' : '.scanopy.net';
 	const COOKIE_DAYS = 365;
-
-	interface CookiePreferences {
-		necessary: boolean;
-		analytics: boolean;
-	}
 
 	let preferences: CookiePreferences = $state({
 		necessary: true,
@@ -40,25 +63,15 @@
 
 	onMount(() => {
 		mounted = true;
-		const saved = getCookie(COOKIE_NAME);
+		const saved = getGdprPreferences();
 		if (saved) {
-			try {
-				const parsed = JSON.parse(saved) as CookiePreferences;
-				preferences = { ...preferences, ...parsed };
-				hasConsented = true;
-				applyPreferences();
-			} catch {
-				showBanner = true;
-			}
+			preferences = { ...preferences, ...saved };
+			hasConsented = true;
+			applyPreferences();
 		} else {
 			showBanner = true;
 		}
 	});
-
-	function getCookie(name: string): string | null {
-		const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
-		return match ? decodeURIComponent(match[2]) : null;
-	}
 
 	function setCookie(name: string, value: string, days: number) {
 		const expires = new Date(Date.now() + days * 864e5).toUTCString();

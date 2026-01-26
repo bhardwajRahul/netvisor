@@ -50,7 +50,8 @@ export const queryClient = createQueryClient();
 export const queryKeys = {
 	auth: {
 		all: ['auth'] as const,
-		currentUser: () => [...queryKeys.auth.all, 'currentUser'] as const
+		currentUser: () => [...queryKeys.auth.all, 'currentUser'] as const,
+		onboardingState: () => [...queryKeys.auth.all, 'onboardingState'] as const
 	},
 	invites: {
 		all: ['invites'] as const,

@@ -107,6 +107,25 @@
 		keyState = trimmedKey;
 	}
 
+	/**
+	 * Construct full daemon URL from base URL and port.
+	 * Combines the base URL (without port) with the specified port number.
+	 */
+	function constructDaemonUrl(baseUrl: string, port: number): string {
+		try {
+			// Parse the URL to extract components without mutating
+			const parsed = new globalThis.URL(baseUrl);
+			const protocol = parsed.protocol;
+			const hostname = parsed.hostname;
+			const pathname = parsed.pathname === '/' ? '' : parsed.pathname;
+			// Construct URL with port
+			return `${protocol}//${hostname}:${port}${pathname}`;
+		} catch {
+			// Fallback for malformed URLs
+			return `${baseUrl}:${port}`;
+		}
+	}
+
 	async function handleCreateNewApiKey() {
 		// Validate form first
 		const isValid = await daemonFormRef?.validate();
@@ -117,15 +136,19 @@
 		const daemonName = daemonFormRef?.getDaemonName() ?? 'daemon';
 		const form = daemonFormRef?.getForm();
 		const mode = (form?.state.values['mode'] as string) ?? 'daemon_poll';
-		const daemonUrl = (form?.state.values['daemonUrl'] as string) ?? '';
+		const daemonUrlBase = (form?.state.values['daemonUrl'] as string) ?? '';
+		const daemonPort = daemonFormRef?.getDaemonPort() ?? 60073;
 
 		if (mode === 'server_poll') {
 			// ServerPoll mode: Call provision endpoint which creates daemon + API key
+			// Combine base URL with port for full daemon URL
+			const fullDaemonUrl = constructDaemonUrl(daemonUrlBase, daemonPort);
+
 			try {
 				const result = await provisionDaemonMutation.mutateAsync({
 					name: daemonName,
 					network_id: selectedNetworkId,
-					url: daemonUrl
+					url: fullDaemonUrl
 				});
 				keyState = result.daemon_api_key;
 			} catch {

@@ -8,7 +8,10 @@ use crate::server::shared::entities::EntityDiscriminants;
 use crate::server::subnets::r#impl::base::Subnet;
 use crate::server::{
     hosts::r#impl::base::Host,
-    shared::storage::traits::{Entity, SqlValue, Storable},
+    shared::{
+        entity_metadata::EntityCategory,
+        storage::traits::{Entity, SqlValue, Storable},
+    },
     topology::types::{
         base::{Topology, TopologyBase, TopologyOptions},
         edges::Edge,
@@ -279,12 +282,13 @@ impl Entity for Topology {
         EntityDiscriminants::Topology
     }
 
-    fn entity_name_singular() -> &'static str {
-        "topology"
-    }
+    const ENTITY_NAME_SINGULAR: &'static str = "Topology";
+    const ENTITY_NAME_PLURAL: &'static str = "Topologies";
+    const ENTITY_DESCRIPTION: &'static str =
+        "Network topology maps showing host relationships and connections.";
 
-    fn entity_name_plural() -> &'static str {
-        "topologies"
+    fn entity_category() -> EntityCategory {
+        EntityCategory::Visualization
     }
 
     fn network_id(&self) -> Option<Uuid> {

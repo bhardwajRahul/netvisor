@@ -7,6 +7,7 @@ use crate::server::{
     ports::r#impl::base::{Port, PortBase, PortConfig, PortType, TransportProtocol},
     shared::{
         entities::EntityDiscriminants,
+        entity_metadata::EntityCategory,
         storage::traits::{Entity, SqlValue, Storable},
     },
 };
@@ -154,12 +155,13 @@ impl Entity for Port {
         EntityDiscriminants::Port
     }
 
-    fn entity_name_singular() -> &'static str {
-        "port"
-    }
+    const ENTITY_NAME_SINGULAR: &'static str = "Port";
+    const ENTITY_NAME_PLURAL: &'static str = "Ports";
+    const ENTITY_DESCRIPTION: &'static str =
+        "Ports that have been scanned and found open on a host.";
 
-    fn entity_name_plural() -> &'static str {
-        "ports"
+    fn entity_category() -> EntityCategory {
+        EntityCategory::NetworkInfrastructure
     }
 
     fn network_id(&self) -> Option<Uuid> {

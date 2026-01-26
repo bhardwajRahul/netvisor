@@ -1,10 +1,7 @@
 <script lang="ts" generics="T">
 	import {
 		Search,
-		SlidersHorizontal,
 		X,
-		ChevronDown,
-		ChevronUp,
 		ChevronLeft,
 		ChevronRight,
 		LayoutGrid,
@@ -35,7 +32,6 @@
 		common_deselectAll,
 		common_filters,
 		common_group,
-		common_groupBy,
 		common_groupByLabel,
 		common_groups,
 		common_item,
@@ -43,7 +39,6 @@
 		common_itemsSelected,
 		common_nextPage,
 		common_noCommonTags,
-		common_noGrouping,
 		common_noItems,
 		common_noTagsAvailable,
 		common_noValuesAvailable,
@@ -57,7 +52,6 @@
 		common_showTrue,
 		common_showingRange,
 		common_showingTotal,
-		common_sortBy,
 		common_sortByLabel,
 		common_switchToCardView,
 		common_switchToListView,
@@ -96,9 +90,12 @@
 		// Server-side tag filtering callback (optional)
 		// Called when tag filter selection changes, with array of selected tag IDs
 		onTagFilterChange = null,
-		// CSV export callback (optional)
-		// Called when user clicks CSV export button; parent handles the actual export
-		onCsvExport = null
+		// CSV export callback (optional, default behavior)
+		// Called when user clicks export button; parent handles the actual export
+		onCsvExport = null,
+		// Export button click override (optional)
+		// If provided, replaces onCsvExport entirely - use for custom export UI (e.g., modal with options)
+		onExportClick = null
 	}: {
 		items: T[];
 		fields: FieldConfig<T>[];
@@ -121,9 +118,10 @@
 		// Server-side tag filtering: called when tag filter changes
 		// Args: array of tag IDs to filter by
 		onTagFilterChange?: ((tagIds: string[]) => void) | null;
-		// CSV export: called when user clicks CSV button
-		// Parent provides the handler with current filter/sort state
+		// CSV export: default behavior when user clicks export button
 		onCsvExport?: (() => void | Promise<void>) | null;
+		// Export button click override: if provided, replaces onCsvExport entirely
+		onExportClick?: (() => void | Promise<void>) | null;
 	} = $props();
 
 	// Tags query for filter display
@@ -922,19 +920,24 @@
 		}
 	}
 
-	// CSV export state and handler
+	// Export button state and handler
 	let isExporting = $state(false);
 
-	async function handleCsvExport() {
-		if (!onCsvExport || isExporting) return;
+	async function handleExportClick() {
+		// Use onExportClick override if provided, otherwise fall back to onCsvExport
+		const handler = onExportClick ?? onCsvExport;
+		if (!handler || isExporting) return;
 
 		isExporting = true;
 		try {
-			await onCsvExport();
+			await handler();
 		} finally {
 			isExporting = false;
 		}
 	}
+
+	// Show export button if either handler is provided
+	let hasExportHandler = $derived(onExportClick !== null || onCsvExport !== null);
 
 	// Sticky detection
 	let isStuck = $state(false);
@@ -975,7 +978,7 @@
 			<!-- Left: Search + Filter/Group/Sort -->
 			<div class="flex items-end gap-4">
 				<!-- Search Input -->
-				<div class="relative w-64 min-w-48">
+				<div class="relative w-96 min-w-48">
 					<Search class="text-tertiary absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" />
 					<input
 						type="text"
@@ -1097,13 +1100,13 @@
 					</button>
 				{/if}
 
-				<!-- CSV Export -->
-				{#if onCsvExport}
+				<!-- Export Button -->
+				{#if hasExportHandler}
 					<button
-						onclick={handleCsvExport}
+						onclick={handleExportClick}
 						disabled={isExporting}
 						class="btn-secondary h-[42px] disabled:cursor-not-allowed disabled:opacity-50"
-						title={isExporting ? 'Exporting...' : 'Export CSV'}
+						title={isExporting ? 'Exporting...' : 'Export'}
 					>
 						<Download class="h-5 w-5" />
 					</button>

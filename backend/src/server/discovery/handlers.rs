@@ -10,6 +10,7 @@ use crate::server::{
     shared::{
         handlers::traits::{create_handler, update_handler},
         services::traits::CrudService,
+        storage::traits::Entity,
         types::api::{ApiError, ApiErrorResponse, ApiResponse, ApiResult, EmptyApiResponse},
     },
 };
@@ -31,11 +32,11 @@ use uuid::Uuid;
 // Generated handlers for operations that use generic CRUD logic
 mod generated {
     use super::*;
-    crate::crud_get_all_handler!(Discovery, "discoveries", "discovery");
-    crate::crud_get_by_id_handler!(Discovery, "discoveries", "discovery");
-    crate::crud_delete_handler!(Discovery, "discoveries", "discovery");
-    crate::crud_bulk_delete_handler!(Discovery, "discoveries");
-    crate::crud_export_csv_handler!(Discovery, "discoveries", "discovery");
+    crate::crud_get_all_handler!(Discovery);
+    crate::crud_get_by_id_handler!(Discovery);
+    crate::crud_delete_handler!(Discovery);
+    crate::crud_bulk_delete_handler!(Discovery);
+    crate::crud_export_csv_handler!(Discovery);
 }
 
 pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
@@ -57,11 +58,11 @@ pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
         .route("/stream", get(discovery_stream))
 }
 
-/// Create new discovery
+/// Create new Discovery
 #[utoipa::path(
     post,
     path = "",
-    tag = "discoveries",
+    tag = Discovery::ENTITY_NAME_PLURAL,
     request_body = Discovery,
     responses(
         (status = 200, description = "Discovery created successfully", body = ApiResponse<Discovery>),
@@ -100,11 +101,11 @@ pub async fn create_discovery(
     create_handler::<Discovery>(State(state), auth, Json(discovery)).await
 }
 
-/// Update discovery
+/// Update Discovery
 #[utoipa::path(
     put,
     path = "/{id}",
-    tag = "discoveries",
+    tag = Discovery::ENTITY_NAME_PLURAL,
     params(("id" = uuid::Uuid, Path, description = "Discovery ID")),
     request_body = Discovery,
     responses(
@@ -133,7 +134,7 @@ pub async fn update_discovery(
 #[utoipa::path(
     post,
     path = "/{session_id}/update",
-    tags = ["discovery", "internal"],
+    tags = [Discovery::ENTITY_NAME_PLURAL, "internal"],
     params(("session_id" = Uuid, Path, description = "Discovery session ID")),
     request_body = DiscoveryUpdatePayload,
     responses(
@@ -174,11 +175,11 @@ async fn receive_discovery_update(
     Ok(Json(ApiResponse::success(())))
 }
 
-/// Start a discovery session
+/// Start a Discovery Session
 #[utoipa::path(
     post,
     path = "/start-session",
-    tag = "discoveries",
+    tag = Discovery::ENTITY_NAME_PLURAL,
     request_body = Uuid,
     responses(
         (status = 200, description = "Discovery session started", body = ApiResponse<DiscoveryUpdatePayload>),
@@ -265,11 +266,11 @@ async fn discovery_stream(
     Sse::new(stream).keep_alive(KeepAlive::default())
 }
 
-/// Get active discovery sessions
+/// Get active Discovery Sessions
 #[utoipa::path(
     get,
     path = "/active-sessions",
-    tag = "discoveries",
+    tag = Discovery::ENTITY_NAME_PLURAL,
     responses(
         (status = 200, description = "List of active discovery sessions", body = ApiResponse<Vec<DiscoveryUpdatePayload>>),
     ),
@@ -289,11 +290,11 @@ async fn get_active_sessions(
     Ok(Json(ApiResponse::success(sessions)))
 }
 
-/// Cancel a discovery session
+/// Cancel a Discovery Session
 #[utoipa::path(
     post,
     path = "/{session_id}/cancel",
-    tag = "discoveries",
+    tag = Discovery::ENTITY_NAME_PLURAL,
     params(("session_id" = Uuid, Path, description = "Session ID")),
     responses(
         (status = 200, description = "Discovery session cancelled", body = EmptyApiResponse),

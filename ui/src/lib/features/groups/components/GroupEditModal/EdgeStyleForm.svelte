@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { createColorHelper, AVAILABLE_COLORS } from '$lib/shared/utils/styling';
-	import type { Group } from '../../types/base';
+	import { createColorHelper, AVAILABLE_COLORS, type Color } from '$lib/shared/utils/styling';
+	import type { Group, EdgeStyle } from '../../types/base';
 	import { Edit } from 'lucide-svelte';
 	import {
 		common_bezier,
@@ -19,12 +19,34 @@
 	let {
 		formData = $bindable(),
 		collapsed = $bindable(false),
-		editable = true
+		editable = true,
+		showCollapseToggle = true,
+		onColorChange,
+		onEdgeStyleChange
 	}: {
 		formData: Group;
 		collapsed?: boolean;
 		editable?: boolean;
+		showCollapseToggle?: boolean;
+		onColorChange?: (color: Color) => void;
+		onEdgeStyleChange?: (style: EdgeStyle) => void;
 	} = $props();
+
+	function handleColorChange(color: Color) {
+		if (onColorChange) {
+			onColorChange(color);
+		} else {
+			formData.color = color;
+		}
+	}
+
+	function handleEdgeStyleChange(style: EdgeStyle) {
+		if (onEdgeStyleChange) {
+			onEdgeStyleChange(style);
+		} else {
+			formData.edge_style = style;
+		}
+	}
 
 	let edgeStyleOptions = $derived([
 		{ value: 'Straight' as const, label: common_straight() },
@@ -50,7 +72,7 @@
 	);
 </script>
 
-{#if collapsed}
+{#if showCollapseToggle && collapsed}
 	<!-- Collapsed view -->
 	<div class="flex items-center justify-between gap-3">
 		<div class="flex items-center gap-3">
@@ -82,13 +104,15 @@
 {:else}
 	<!-- Expanded view -->
 	<div class="space-y-6">
-		<!-- Header with collapse button -->
-		<div class="flex items-center justify-between">
-			<div class="block text-sm font-medium text-gray-200">{groups_editEdgeStyle()}</div>
-			<button type="button" onclick={() => (collapsed = true)} class="btn-secondary text-xs">
-				{common_done()}
-			</button>
-		</div>
+		{#if showCollapseToggle}
+			<!-- Header with collapse button -->
+			<div class="flex items-center justify-between">
+				<div class="block text-sm font-medium text-gray-200">{groups_editEdgeStyle()}</div>
+				<button type="button" onclick={() => (collapsed = true)} class="btn-secondary text-xs">
+					{common_done()}
+				</button>
+			</div>
+		{/if}
 
 		<!-- Edge Color Section -->
 		<div class="space-y-3">
@@ -100,7 +124,7 @@
 					{@const colorHelper = createColorHelper(color)}
 					<button
 						type="button"
-						onclick={() => (formData.color = color)}
+						onclick={() => handleColorChange(color)}
 						class="group relative aspect-square w-full rounded-lg border-2 transition-all hover:scale-110"
 						class:border-gray-500={formData.color !== color}
 						class:border-white={formData.color === color}
@@ -140,7 +164,7 @@
 				{#each edgeStyleOptions as option (option.value)}
 					<button
 						type="button"
-						onclick={() => (formData.edge_style = option.value)}
+						onclick={() => handleEdgeStyleChange(option.value)}
 						class="flex w-full items-center gap-3 rounded-lg border px-4 py-3 text-left transition-all hover:bg-gray-700/30"
 						class:border-gray-600={formData.edge_style !== option.value}
 						class:bg-gray-700-20={formData.edge_style !== option.value}

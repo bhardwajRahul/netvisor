@@ -84,6 +84,15 @@ pub struct ResetPasswordRequest {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct NetworkSetup {
     pub name: String,
+    /// Whether SNMP is enabled for this network
+    #[serde(default)]
+    pub snmp_enabled: bool,
+    /// SNMP version ("V2c" or "V3")
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub snmp_version: Option<String>,
+    /// SNMP community string (for V2c)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub snmp_community: Option<String>,
 }
 
 /// Setup request for pre-registration org/network configuration
@@ -125,4 +134,19 @@ pub struct VerifyEmailRequest {
 pub struct ResendVerificationRequest {
     #[schema(value_type = String, format = "email")]
     pub email: EmailAddress,
+}
+
+/// Request to save onboarding step
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct OnboardingStepRequest {
+    pub step: String,
+}
+
+/// Response from onboarding state endpoint
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct OnboardingStateResponse {
+    /// Current onboarding step (if any)
+    pub step: Option<String>,
+    /// Network IDs from pending setup (if any)
+    pub network_ids: Vec<Uuid>,
 }

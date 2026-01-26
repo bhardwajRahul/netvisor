@@ -24,7 +24,10 @@ use crate::{
 /// Lightweight daemon status for polling responses.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct DaemonStatus {
-    pub url: String,
+    /// URL is not used by server - kept for backwards compat.
+    /// Server never updates daemon URL from status (URL is set during provisioning).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
     pub name: String,
     pub mode: DaemonMode,
     /// Daemon software version (semver format)
@@ -83,8 +86,6 @@ pub struct DaemonState {
     config: Arc<ConfigStore>,
     discovery_service: Arc<DaemonDiscoveryService>,
     entity_buffer: Arc<EntityBuffer>,
-    /// Cached daemon URL (computed once on startup)
-    daemon_url: String,
 }
 
 impl DaemonState {
@@ -92,13 +93,11 @@ impl DaemonState {
         config: Arc<ConfigStore>,
         discovery_service: Arc<DaemonDiscoveryService>,
         entity_buffer: Arc<EntityBuffer>,
-        daemon_url: String,
     ) -> Self {
         Self {
             config,
             discovery_service,
             entity_buffer,
-            daemon_url,
         }
     }
 
@@ -109,7 +108,8 @@ impl DaemonState {
 }
 
 impl DaemonState {
-    /// Get lightweight daemon status (url, name, mode, version).
+    /// Get lightweight daemon status (name, mode, version, capabilities).
+    /// Note: URL is intentionally not included - server manages URL via provisioning.
     pub async fn get_status(&self) -> DaemonStatus {
         let name = self.config.get_name().await.unwrap_or_default();
         let mode = self.config.get_mode().await.unwrap_or_default();
@@ -117,7 +117,9 @@ impl DaemonState {
         let capabilities = self.config.get_capabilities().await.unwrap_or_default();
 
         DaemonStatus {
-            url: self.daemon_url.clone(),
+            // Don't send URL - server manages this via provisioning for ServerPoll,
+            // and doesn't need it for DaemonPoll
+            url: None,
             name,
             mode,
             version,

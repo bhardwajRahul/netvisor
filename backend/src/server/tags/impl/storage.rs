@@ -7,6 +7,7 @@ use uuid::Uuid;
 use crate::server::{
     shared::{
         entities::EntityDiscriminants,
+        entity_metadata::EntityCategory,
         storage::traits::{Entity, SqlValue, Storable},
     },
     tags::r#impl::base::{Tag, TagBase},
@@ -132,12 +133,13 @@ impl Entity for Tag {
         EntityDiscriminants::Tag
     }
 
-    fn entity_name_singular() -> &'static str {
-        "tag"
-    }
+    const ENTITY_NAME_SINGULAR: &'static str = "Tag";
+    const ENTITY_NAME_PLURAL: &'static str = "Tags";
+    const ENTITY_DESCRIPTION: &'static str =
+        "Custom tags for categorization. Apply labels to entities for filtering and organization.";
 
-    fn entity_name_plural() -> &'static str {
-        "tags"
+    fn entity_category() -> EntityCategory {
+        EntityCategory::Metadata
     }
 
     fn network_id(&self) -> Option<Uuid> {

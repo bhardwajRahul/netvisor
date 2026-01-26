@@ -54,8 +54,8 @@ jobs:
       - name: Show container logs on test failure
         if: failure()
         run: |
-          docker compose -f docker-compose.dev.yml logs
-          docker compose -f docker-compose.dev.yml ps
+          docker compose -f docker-compose.test.yml logs
+          docker compose -f docker-compose.test.yml ps
           
       - name: Cleanup containers
         if: always()
@@ -69,6 +69,8 @@ jobs:
           mv ui/src/lib/data/billing-plans-next.json ui/src/lib/data/billing-plans.json
           mv ui/src/lib/data/features-next.json ui/src/lib/data/features.json
           mv ui/static/schema-next.mermaid ui/static/schema.mermaid
+          mv ui/static/schema-er-next.mermaid ui/static/schema-er.mermaid
+          mv ui/static/entity-metadata-next.json ui/static/entity-metadata.json
           echo "✅ Updated test fixtures"
       
       - name: Commit and push fixture updates
@@ -76,8 +78,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add backend/Cargo.toml backend/Cargo.lock ui/package.json ui/package-lock.json
-          git add backend/src/tests/scanopy.sql backend/src/tests/daemon_config.json ui/static/services.json ui/src/lib/data/billing-plans.json ui/src/lib/data/features.json ui/static/schema.mermaid
-          
+          git add backend/src/tests/scanopy.sql backend/src/tests/daemon_config.json ui/static/services.json ui/src/lib/data/billing-plans.json ui/src/lib/data/features.json ui/static/schema.mermaid ui/static/schema-er.mermaid ui/static/entity-metadata.json
+
           if git diff --staged --quiet; then
             echo "No fixture changes to commit"
           else

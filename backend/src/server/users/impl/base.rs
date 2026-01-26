@@ -4,6 +4,7 @@ use std::str::FromStr;
 use crate::server::{
     shared::{
         entities::{ChangeTriggersTopologyStaleness, EntityDiscriminants},
+        entity_metadata::EntityCategory,
         storage::traits::{Entity, SqlValue, Storable},
     },
     users::r#impl::permissions::UserOrgPermissions,
@@ -343,12 +344,13 @@ impl Entity for User {
         EntityDiscriminants::User
     }
 
-    fn entity_name_singular() -> &'static str {
-        "user"
-    }
+    const ENTITY_NAME_SINGULAR: &'static str = "User";
+    const ENTITY_NAME_PLURAL: &'static str = "Users";
+    const ENTITY_DESCRIPTION: &'static str =
+        "User account management. Manage user profiles and permissions within organizations.";
 
-    fn entity_name_plural() -> &'static str {
-        "users"
+    fn entity_category() -> EntityCategory {
+        EntityCategory::OrganizationsAndUsers
     }
 
     fn network_id(&self) -> Option<Uuid> {

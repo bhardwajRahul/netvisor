@@ -50,7 +50,7 @@ pub struct VersionInfo {
 #[utoipa::path(
     get,
     path = "/api/version",
-    tag = "system",
+    tags = ["system", "internal"],
     responses(
         (status = 200, description = "Version information", body = ApiResponse<VersionInfo>)
     )

@@ -1,4 +1,5 @@
 use crate::server::shared::extractors::Query;
+use crate::server::shared::storage::traits::Entity;
 use crate::server::{
     auth::middleware::permissions::{Authorized, IsUser, Member, Viewer},
     config::AppState,
@@ -40,9 +41,9 @@ use uuid::Uuid;
 // Generated handlers for generic CRUD operations
 mod generated {
     use super::*;
-    crate::crud_get_by_id_handler!(Topology, "topologies", "topology");
-    crate::crud_delete_handler!(Topology, "topologies", "topology");
-    crate::crud_export_csv_handler!(Topology, "topologies", "topology");
+    crate::crud_get_by_id_handler!(Topology);
+    crate::crud_delete_handler!(Topology);
+    crate::crud_export_csv_handler!(Topology);
 }
 
 /// Topology endpoints are internal-only (hidden from public docs)
@@ -70,7 +71,7 @@ pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
 #[utoipa::path(
     put,
     path = "/{id}",
-    tags = ["topology", "internal"],
+    tags = [Topology::ENTITY_NAME_PLURAL, "internal"],
     params(("id" = Uuid, Path, description = "Topology ID")),
     responses(
         (status = 200, description = "Topology updated", body = ApiResponse<Topology>),
@@ -91,7 +92,7 @@ async fn update_topology(
 #[utoipa::path(
     get,
     path = "",
-    tags = ["topology", "internal"],
+    tags = [Topology::ENTITY_NAME_PLURAL, "internal"],
     params(NetworkFilterQuery),
     responses(
         (status = 200, description = "List of topologies", body = PaginatedApiResponse<Topology>),
@@ -135,7 +136,7 @@ async fn get_all_topologies(
 #[utoipa::path(
     post,
     path = "",
-    tags = ["topology", "internal"],
+    tags = [Topology::ENTITY_NAME_PLURAL, "internal"],
     request_body = Topology,
     responses(
         (status = 200, description = "Topology created", body = ApiResponse<Topology>),
@@ -242,7 +243,7 @@ async fn create_topology(
 #[utoipa::path(
     post,
     path = "/{id}/refresh",
-    tags = ["topology", "internal"],
+    tags = [Topology::ENTITY_NAME_PLURAL, "internal"],
     params(("id" = Uuid, Path, description = "Topology ID")),
     request_body = TopologyRebuildRequest,
     responses(
@@ -307,7 +308,7 @@ async fn refresh(
 #[utoipa::path(
     post,
     path = "/{id}/rebuild",
-    tags = ["topology", "internal"],
+    tags = [Topology::ENTITY_NAME_PLURAL, "internal"],
     params(("id" = Uuid, Path, description = "Topology ID")),
     request_body = TopologyRebuildRequest,
     responses(
@@ -424,7 +425,7 @@ async fn rebuild(
 #[utoipa::path(
     post,
     path = "/{id}/node-position",
-    tags = ["topology", "internal"],
+    tags = [Topology::ENTITY_NAME_PLURAL, "internal"],
     params(("id" = Uuid, Path, description = "Topology ID")),
     request_body = TopologyNodePositionUpdate,
     responses(
@@ -482,7 +483,7 @@ async fn update_node_position(
 #[utoipa::path(
     post,
     path = "/{id}/edge-handles",
-    tags = ["topology", "internal"],
+    tags = [Topology::ENTITY_NAME_PLURAL, "internal"],
     params(("id" = Uuid, Path, description = "Topology ID")),
     request_body = TopologyEdgeHandleUpdate,
     responses(
@@ -541,7 +542,7 @@ async fn update_edge_handles(
 #[utoipa::path(
     post,
     path = "/{id}/node-resize",
-    tags = ["topology", "internal"],
+    tags = [Topology::ENTITY_NAME_PLURAL, "internal"],
     params(("id" = Uuid, Path, description = "Topology ID")),
     request_body = TopologyNodeResizeUpdate,
     responses(
@@ -601,7 +602,7 @@ async fn update_node_resize(
 #[utoipa::path(
     post,
     path = "/{id}/metadata",
-    tags = ["topology", "internal"],
+    tags = [Topology::ENTITY_NAME_PLURAL, "internal"],
     params(("id" = Uuid, Path, description = "Topology ID")),
     request_body = TopologyMetadataUpdate,
     responses(
@@ -647,7 +648,7 @@ async fn update_metadata(
 #[utoipa::path(
     post,
     path = "/{id}/lock",
-    tags = ["topology"],
+    tags = [Topology::ENTITY_NAME_PLURAL],
     params(("id" = Uuid, Path, description = "Topology ID")),
     responses(
         (status = 200, description = "Topology locked", body = ApiResponse<Topology>),
@@ -692,7 +693,7 @@ async fn lock(
 #[utoipa::path(
     post,
     path = "/{id}/unlock",
-    tags = ["topology"],
+    tags = [Topology::ENTITY_NAME_PLURAL],
     params(("id" = Uuid, Path, description = "Topology ID")),
     responses(
         (status = 200, description = "Topology unlocked", body = ApiResponse<Topology>),

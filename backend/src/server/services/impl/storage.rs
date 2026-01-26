@@ -12,6 +12,7 @@ use crate::server::{
     },
     shared::{
         entities::EntityDiscriminants,
+        entity_metadata::EntityCategory,
         storage::{
             child::ChildStorableEntity,
             traits::{Entity, SqlValue, Storable},
@@ -170,12 +171,12 @@ impl Entity for Service {
         EntityDiscriminants::Service
     }
 
-    fn entity_name_singular() -> &'static str {
-        "service"
-    }
+    const ENTITY_NAME_SINGULAR: &'static str = "Service";
+    const ENTITY_NAME_PLURAL: &'static str = "Services";
+    const ENTITY_DESCRIPTION: &'static str = "Services running on hosts. Detected or manually added services like databases, web servers, etc.";
 
-    fn entity_name_plural() -> &'static str {
-        "services"
+    fn entity_category() -> EntityCategory {
+        EntityCategory::NetworkInfrastructure
     }
 
     fn network_id(&self) -> Option<Uuid> {

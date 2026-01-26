@@ -25,7 +25,7 @@ pub struct DaemonCli {
     #[arg(long)]
     network_id: Option<String>,
 
-    /// Port for daemon to listen on
+    /// Port the daemon listens on. Combined with daemon URL for server to connect.
     #[arg(short, long)]
     daemon_port: Option<u16>,
 
@@ -77,7 +77,7 @@ pub struct DaemonCli {
     #[arg(long)]
     allow_self_signed_certs: Option<bool>,
 
-    /// Public URL where server can reach daemon in ServerPoll mode
+    /// Base URL where server can reach daemon (without port). Port is specified separately.
     #[arg(long)]
     daemon_url: Option<String>,
 

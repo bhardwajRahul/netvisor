@@ -87,6 +87,10 @@ pub struct DeepScanParams<'a> {
     gateway_ips: &'a [IpAddr],
     /// Optional counter for batch-level progress tracking
     batches_completed: Option<&'a Arc<AtomicUsize>>,
+    /// Total batches counter for adjusting after adaptive batch sizing
+    total_batches: Option<&'a Arc<AtomicUsize>>,
+    /// Initially estimated batches per host (used to adjust total after probing)
+    estimated_batches_per_host: usize,
     /// SNMP credential for this host (from default or IP-specific override)
     snmp_credential: Option<SnmpQueryCredential>,
 }
@@ -618,6 +622,7 @@ impl DiscoveryRunner<NetworkScanDiscovery> {
                                 let hosts_scanned = hosts_scanned.clone();
                                 let last_activity = last_activity.clone();
                                 let batches_completed = batches_completed.clone();
+                                let total_batches = total_batches.clone();
 
                                 total_batches.fetch_add(batches_per_host, Ordering::Relaxed);
                                 let snmp_credential = self.domain.snmp_credentials.get_credential_for_ip(&ip);
@@ -632,6 +637,8 @@ impl DiscoveryRunner<NetworkScanDiscovery> {
                                             scan_rate_pps,
                                             gateway_ips: &gateway_ips,
                                             batches_completed: Some(&batches_completed),
+                                            total_batches: Some(&total_batches),
+                                            estimated_batches_per_host: batches_per_host,
                                             snmp_credential,
                                         })
                                         .await;
@@ -678,6 +685,7 @@ impl DiscoveryRunner<NetworkScanDiscovery> {
                         let hosts_scanned = hosts_scanned.clone();
                         let last_activity = last_activity.clone();
                         let batches_completed = batches_completed.clone();
+                        let total_batches = total_batches.clone();
                         let snmp_credential = self.domain.snmp_credentials.get_credential_for_ip(&ip);
 
                         pending_scans.push(Box::pin(async move {
@@ -691,6 +699,8 @@ impl DiscoveryRunner<NetworkScanDiscovery> {
                                     scan_rate_pps,
                                     gateway_ips: &gateway_ips,
                                     batches_completed: Some(&batches_completed),
+                                    total_batches: Some(&total_batches),
+                                    estimated_batches_per_host: batches_per_host,
                                     snmp_credential,
                                 })
                                 .await;
@@ -745,11 +755,13 @@ impl DiscoveryRunner<NetworkScanDiscovery> {
                         channel_closed,
                         total_batches = total_batches_val,
                         batches_completed = batches_completed_val,
+                        pending_scans_count = pending_scans.len(),
+                        pending_hosts_count = pending_hosts.len(),
                         has_pending,
                         pipeline_elapsed_secs = pipeline_elapsed.as_secs(),
                         estimated_arp_secs = estimated_arp_duration.as_secs(),
                         grace_elapsed_secs = grace_elapsed.as_secs(),
-                        "Progress calculation"
+                        "Discovery loop state"
                     );
 
                     // Report progress if it changed OR if enough time has passed (heartbeat)
@@ -822,6 +834,8 @@ impl DiscoveryRunner<NetworkScanDiscovery> {
             scan_rate_pps,
             gateway_ips,
             batches_completed,
+            total_batches,
+            estimated_batches_per_host,
             snmp_credential,
         } = params;
 
@@ -838,12 +852,33 @@ impl DiscoveryRunner<NetworkScanDiscovery> {
             .filter(|p| !phase1_port_nums.contains(p))
             .collect();
 
+        // Adjust total_batches to reflect actual batch size (vs initial estimate)
+        // This ensures progress calculation uses accurate batch counts
+        let actual_batches = remaining_tcp_ports.len().div_ceil(port_scan_batch_size);
+        if let Some(total) = total_batches {
+            if actual_batches > estimated_batches_per_host {
+                // Add the difference (actual is more than estimated)
+                total.fetch_add(
+                    actual_batches - estimated_batches_per_host,
+                    Ordering::Relaxed,
+                );
+            } else if actual_batches < estimated_batches_per_host {
+                // Subtract the difference (actual is less than estimated)
+                total.fetch_sub(
+                    estimated_batches_per_host - actual_batches,
+                    Ordering::Relaxed,
+                );
+            }
+        }
+
         tracing::debug!(
             ip = %ip,
             phase1_ports = phase1_ports.len(),
             remaining_ports = remaining_tcp_ports.len(),
             snmp_enabled = snmp_credential.is_some(),
             port_scan_batch_size,
+            estimated_batches = estimated_batches_per_host,
+            actual_batches,
             "Starting deep scan with adaptive batch size"
         );
 

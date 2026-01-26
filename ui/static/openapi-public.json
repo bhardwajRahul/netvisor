@@ -12,10 +12,10 @@
     "/api/v1/auth/daemon": {
       "get": {
         "tags": [
-          "daemon_api_keys"
+          "Daemon API Keys"
         ],
-        "summary": "List all daemon_api_keys",
-        "operationId": "list_daemon_api_keys",
+        "summary": "List all Daemon API Keys",
+        "operationId": "list_Daemon API Keys",
         "parameters": [
           {
             "name": "network_id",
@@ -78,7 +78,7 @@
         ],
         "responses": {
           "200": {
-            "description": "List of daemon_api_keys",
+            "description": "List of Daemon API Keys",
             "content": {
               "application/json": {
                 "schema": {
@@ -125,9 +125,9 @@
       },
       "post": {
         "tags": [
-          "daemon_api_keys"
+          "Daemon API Keys"
         ],
-        "summary": "Create daemon API key",
+        "summary": "Create Daemon API Key",
         "operationId": "create_daemon_api_key",
         "requestBody": {
           "content": {
@@ -194,12 +194,12 @@
     "/api/v1/auth/daemon/bulk-delete": {
       "post": {
         "tags": [
-          "daemon_api_keys"
+          "Daemon API Keys"
         ],
-        "summary": "Bulk delete daemon_api_keys",
-        "operationId": "bulk_delete_daemon_api_keys",
+        "summary": "Bulk delete Daemon API Keys",
+        "operationId": "bulk_delete_Daemon API Keys",
         "requestBody": {
-          "description": "Array of daemon_api_keys IDs to delete",
+          "description": "Array of Daemon API Key IDs to delete",
           "content": {
             "application/json": {
               "schema": {
@@ -215,7 +215,7 @@
         },
         "responses": {
           "200": {
-            "description": "DaemonApiKeys deleted",
+            "description": "Daemon API Keys deleted",
             "content": {
               "application/json": {
                 "schema": {
@@ -238,11 +238,11 @@
     "/api/v1/auth/daemon/export/csv": {
       "get": {
         "tags": [
-          "daemon_api_keys"
+          "Daemon API Keys"
         ],
-        "summary": "Export daemon_api_keys to CSV",
-        "description": "Export all daemon_api_keys matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.",
-        "operationId": "export_daemon_api_keys_csv",
+        "summary": "Export Daemon API Keys to CSV",
+        "description": "Export all Daemon API Keys matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.",
+        "operationId": "export_Daemon API Keys_csv",
         "parameters": [
           {
             "name": "network_id",
@@ -305,7 +305,7 @@
         ],
         "responses": {
           "200": {
-            "description": "CSV file containing daemon_api_keys",
+            "description": "CSV file containing Daemon API Keys",
             "content": {
               "text/csv": {}
             }
@@ -324,15 +324,15 @@
     "/api/v1/auth/daemon/{id}": {
       "get": {
         "tags": [
-          "daemon_api_keys"
+          "Daemon API Keys"
         ],
-        "summary": "Get daemon_api_key by ID",
-        "operationId": "get_daemon_api_key_by_id",
+        "summary": "Get Daemon API Key by ID",
+        "operationId": "get_Daemon API Key_by_id",
         "parameters": [
           {
             "name": "id",
             "in": "path",
-            "description": "DaemonApiKey ID",
+            "description": "Daemon API Key ID",
             "required": true,
             "schema": {
               "type": "string",
@@ -342,7 +342,7 @@
         ],
         "responses": {
           "200": {
-            "description": "DaemonApiKey found",
+            "description": "Daemon API Key found",
             "content": {
               "application/json": {
                 "schema": {
@@ -352,7 +352,7 @@
             }
           },
           "404": {
-            "description": "DaemonApiKey not found",
+            "description": "Daemon API Key not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -373,9 +373,9 @@
       },
       "put": {
         "tags": [
-          "daemon_api_keys"
+          "Daemon API Keys"
         ],
-        "summary": "Update a daemon API key",
+        "summary": "Update a Daemon API Key",
         "operationId": "update_daemon_api_key",
         "parameters": [
           {
@@ -432,15 +432,15 @@
       },
       "delete": {
         "tags": [
-          "daemon_api_keys"
+          "Daemon API Keys"
         ],
-        "summary": "Delete daemon_api_key",
-        "operationId": "delete_daemon_api_key",
+        "summary": "Delete Daemon API Key",
+        "operationId": "delete_Daemon API Key",
         "parameters": [
           {
             "name": "id",
             "in": "path",
-            "description": "DaemonApiKey ID",
+            "description": "Daemon API Key ID",
             "required": true,
             "schema": {
               "type": "string",
@@ -450,7 +450,7 @@
         ],
         "responses": {
           "200": {
-            "description": "DaemonApiKey deleted",
+            "description": "Daemon API Key deleted",
             "content": {
               "application/json": {
                 "schema": {
@@ -460,7 +460,7 @@
             }
           },
           "404": {
-            "description": "DaemonApiKey not found",
+            "description": "Daemon API Key not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -483,9 +483,9 @@
     "/api/v1/auth/daemon/{id}/rotate": {
       "post": {
         "tags": [
-          "daemon_api_keys"
+          "Daemon API Keys"
         ],
-        "summary": "Rotate a daemon API key",
+        "summary": "Rotate a Daemon API Key",
         "operationId": "rotate_key_handler",
         "parameters": [
           {
@@ -534,7 +534,7 @@
     "/api/v1/auth/keys": {
       "get": {
         "tags": [
-          "user_api_keys"
+          "User API Keys"
         ],
         "summary": "Get all user API keys for the current user",
         "operationId": "get_all_user_api_keys",
@@ -609,7 +609,7 @@
       },
       "post": {
         "tags": [
-          "user_api_keys"
+          "User API Keys"
         ],
         "summary": "Create a new user API key",
         "operationId": "create_user_api_key",
@@ -675,7 +675,7 @@
     "/api/v1/auth/keys/bulk-delete": {
       "post": {
         "tags": [
-          "user_api_keys"
+          "User API Keys"
         ],
         "summary": "Bulk delete user API keys",
         "operationId": "bulk_delete_user_api_keys",
@@ -716,11 +716,11 @@
     "/api/v1/auth/keys/export/csv": {
       "get": {
         "tags": [
-          "user_api_keys"
+          "User API Keys"
         ],
-        "summary": "Export user_api_keys to CSV",
-        "description": "Export all user_api_keys matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.",
-        "operationId": "export_user_api_keys_csv",
+        "summary": "Export User API Keys to CSV",
+        "description": "Export all User API Keys matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.",
+        "operationId": "export_User API Keys_csv",
         "parameters": [
           {
             "name": "limit",
@@ -754,7 +754,7 @@
         ],
         "responses": {
           "200": {
-            "description": "CSV file containing user_api_keys",
+            "description": "CSV file containing User API Keys",
             "content": {
               "text/csv": {}
             }
@@ -773,7 +773,7 @@
     "/api/v1/auth/keys/{id}": {
       "get": {
         "tags": [
-          "user_api_keys"
+          "User API Keys"
         ],
         "summary": "Get a user API key by ID",
         "operationId": "get_user_api_key_by_id",
@@ -819,7 +819,7 @@
       },
       "put": {
         "tags": [
-          "user_api_keys"
+          "User API Keys"
         ],
         "summary": "Update a user API key",
         "operationId": "update_user_api_key",
@@ -885,7 +885,7 @@
       },
       "delete": {
         "tags": [
-          "user_api_keys"
+          "User API Keys"
         ],
         "summary": "Delete a user API key",
         "operationId": "delete_user_api_key",
@@ -933,7 +933,7 @@
     "/api/v1/auth/keys/{id}/rotate": {
       "post": {
         "tags": [
-          "user_api_keys"
+          "User API Keys"
         ],
         "summary": "Rotate a user API key",
         "operationId": "rotate_user_api_key",
@@ -991,10 +991,10 @@
     "/api/v1/bindings": {
       "get": {
         "tags": [
-          "bindings"
+          "Bindings"
         ],
-        "summary": "List all bindings",
-        "operationId": "list_bindings",
+        "summary": "List all Bindings",
+        "operationId": "list_Bindings",
         "parameters": [
           {
             "name": "service_id",
@@ -1080,7 +1080,7 @@
         ],
         "responses": {
           "200": {
-            "description": "List of bindings",
+            "description": "List of Bindings",
             "content": {
               "application/json": {
                 "schema": {
@@ -1127,9 +1127,9 @@
       },
       "post": {
         "tags": [
-          "bindings"
+          "Bindings"
         ],
-        "summary": "Create a new binding",
+        "summary": "Create a new Binding",
         "description": "Creates a binding that associates a service with a port or interface.\n\n### Binding Types\n\n- **Interface binding**: Service is present at an interface (IP address) without a specific port.\n  Used for non-port-bound services like gateways.\n- **Port binding (specific interface)**: Service listens on a specific port on a specific interface.\n- **Port binding (all interfaces)**: Service listens on a specific port on all interfaces\n  (`interface_id: null`).\n\n### Validation and Deduplication Rules\n\n- **Conflict detection**: Interface bindings conflict with port bindings on the same interface.\n  A port binding on all interfaces conflicts with any interface binding for the same service.\n- **All-interfaces precedence**: When creating a port binding with `interface_id: null`,\n  any existing specific-interface bindings for the same port are automatically removed,\n  as they are superseded by the all-interfaces binding.",
         "operationId": "create_binding",
         "requestBody": {
@@ -1187,12 +1187,12 @@
     "/api/v1/bindings/bulk-delete": {
       "post": {
         "tags": [
-          "bindings"
+          "Bindings"
         ],
-        "summary": "Bulk delete bindings",
-        "operationId": "bulk_delete_bindings",
+        "summary": "Bulk delete Bindings",
+        "operationId": "bulk_delete_Bindings",
         "requestBody": {
-          "description": "Array of bindings IDs to delete",
+          "description": "Array of Binding IDs to delete",
           "content": {
             "application/json": {
               "schema": {
@@ -1231,11 +1231,11 @@
     "/api/v1/bindings/export/csv": {
       "get": {
         "tags": [
-          "bindings"
+          "Bindings"
         ],
-        "summary": "Export bindings to CSV",
-        "description": "Export all bindings matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.",
-        "operationId": "export_bindings_csv",
+        "summary": "Export Bindings to CSV",
+        "description": "Export all Bindings matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.",
+        "operationId": "export_Bindings_csv",
         "parameters": [
           {
             "name": "service_id",
@@ -1321,7 +1321,7 @@
         ],
         "responses": {
           "200": {
-            "description": "CSV file containing bindings",
+            "description": "CSV file containing Bindings",
             "content": {
               "text/csv": {}
             }
@@ -1340,10 +1340,10 @@
     "/api/v1/bindings/{id}": {
       "get": {
         "tags": [
-          "bindings"
+          "Bindings"
         ],
-        "summary": "Get binding by ID",
-        "operationId": "get_binding_by_id",
+        "summary": "Get Binding by ID",
+        "operationId": "get_Binding_by_id",
         "parameters": [
           {
             "name": "id",
@@ -1389,9 +1389,9 @@
       },
       "put": {
         "tags": [
-          "bindings"
+          "Bindings"
         ],
-        "summary": "Update a binding",
+        "summary": "Update a Binding",
         "description": "Updates an existing binding. The same conflict detection rules from binding creation apply.\n\n## Validation Rules\n\n- **Conflict detection**: The updated binding must not conflict with other bindings on the\n  same service. Interface bindings conflict with port bindings on the same interface.",
         "operationId": "update_binding",
         "parameters": [
@@ -1459,10 +1459,10 @@
       },
       "delete": {
         "tags": [
-          "bindings"
+          "Bindings"
         ],
-        "summary": "Delete binding",
-        "operationId": "delete_binding",
+        "summary": "Delete Binding",
+        "operationId": "delete_Binding",
         "parameters": [
           {
             "name": "id",
@@ -1510,7 +1510,7 @@
     "/api/v1/daemons": {
       "get": {
         "tags": [
-          "daemons"
+          "Daemons"
         ],
         "summary": "Get all daemons",
         "description": "Returns all daemons accessible to the user.\nSupports pagination via `limit` and `offset` query parameters,\nand ordering via `group_by`, `order_by`, and `order_direction`.",
@@ -1632,12 +1632,12 @@
     "/api/v1/daemons/bulk-delete": {
       "post": {
         "tags": [
-          "daemons"
+          "Daemons"
         ],
-        "summary": "Bulk delete daemons",
-        "operationId": "bulk_delete_daemons",
+        "summary": "Bulk delete Daemons",
+        "operationId": "bulk_delete_Daemons",
         "requestBody": {
-          "description": "Array of daemons IDs to delete",
+          "description": "Array of Daemon IDs to delete",
           "content": {
             "application/json": {
               "schema": {
@@ -1676,11 +1676,11 @@
     "/api/v1/daemons/export/csv": {
       "get": {
         "tags": [
-          "daemons"
+          "Daemons"
         ],
-        "summary": "Export daemons to CSV",
-        "description": "Export all daemons matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.",
-        "operationId": "export_daemons_csv",
+        "summary": "Export Daemons to CSV",
+        "description": "Export all Daemons matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.",
+        "operationId": "export_Daemons_csv",
         "parameters": [
           {
             "name": "network_id",
@@ -1775,69 +1775,9 @@
         ],
         "responses": {
           "200": {
-            "description": "CSV file containing daemons",
+            "description": "CSV file containing Daemons",
             "content": {
               "text/csv": {}
-            }
-          }
-        },
-        "security": [
-          {
-            "user_api_key": []
-          },
-          {
-            "session": []
-          }
-        ]
-      }
-    },
-    "/api/v1/daemons/provision": {
-      "post": {
-        "tags": [
-          "daemons"
-        ],
-        "summary": "Pre-provision a ServerPoll mode daemon",
-        "description": "Creates a daemon record on the server before the daemon is installed.\nThis is only for ServerPoll mode where the server initiates connections to the daemon.\nFor DaemonPoll mode, daemons self-register on startup.\n\nReturns the daemon record and an API key that must be configured on the daemon.",
-        "operationId": "provision_daemon",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ProvisionDaemonRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "Daemon provisioned successfully",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_ProvisionDaemonResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
             }
           }
         },
@@ -1854,7 +1794,7 @@
     "/api/v1/daemons/{id}": {
       "get": {
         "tags": [
-          "daemons"
+          "Daemons"
         ],
         "summary": "Get daemon by ID",
         "description": "Returns a specific daemon with computed version status.",
@@ -1914,10 +1854,10 @@
       },
       "delete": {
         "tags": [
-          "daemons"
+          "Daemons"
         ],
-        "summary": "Delete daemon",
-        "operationId": "delete_daemon",
+        "summary": "Delete Daemon",
+        "operationId": "delete_Daemon",
         "parameters": [
           {
             "name": "id",
@@ -1965,7 +1905,7 @@
     "/api/v1/daemons/{id}/retry-connection": {
       "post": {
         "tags": [
-          "daemons"
+          "Daemons"
         ],
         "summary": "Retry connection to unreachable daemon",
         "description": "Resets the is_unreachable flag for a daemon that was marked unreachable\ndue to repeated polling failures. The poller will attempt to contact\nthe daemon again on the next cycle.",
@@ -2027,10 +1967,10 @@
     "/api/v1/discovery": {
       "get": {
         "tags": [
-          "discoveries"
+          "Discoveries"
         ],
-        "summary": "List all discoveries",
-        "operationId": "list_discoveries",
+        "summary": "List all Discoveries",
+        "operationId": "list_Discoveries",
         "parameters": [
           {
             "name": "network_id",
@@ -2090,7 +2030,7 @@
         ],
         "responses": {
           "200": {
-            "description": "List of discoveries",
+            "description": "List of Discoveries",
             "content": {
               "application/json": {
                 "schema": {
@@ -2137,9 +2077,9 @@
       },
       "post": {
         "tags": [
-          "discoveries"
+          "Discoveries"
         ],
-        "summary": "Create new discovery",
+        "summary": "Create new Discovery",
         "operationId": "create_discovery",
         "requestBody": {
           "content": {
@@ -2186,9 +2126,9 @@
     "/api/v1/discovery/active-sessions": {
       "get": {
         "tags": [
-          "discoveries"
+          "Discoveries"
         ],
-        "summary": "Get active discovery sessions",
+        "summary": "Get active Discovery Sessions",
         "operationId": "get_active_sessions",
         "responses": {
           "200": {
@@ -2215,12 +2155,12 @@
     "/api/v1/discovery/bulk-delete": {
       "post": {
         "tags": [
-          "discoveries"
+          "Discoveries"
         ],
-        "summary": "Bulk delete discoveries",
-        "operationId": "bulk_delete_discoveries",
+        "summary": "Bulk delete Discoveries",
+        "operationId": "bulk_delete_Discoveries",
         "requestBody": {
-          "description": "Array of discoveries IDs to delete",
+          "description": "Array of Discovery IDs to delete",
           "content": {
             "application/json": {
               "schema": {
@@ -2236,7 +2176,7 @@
         },
         "responses": {
           "200": {
-            "description": "Discoverys deleted",
+            "description": "Discoveries deleted",
             "content": {
               "application/json": {
                 "schema": {
@@ -2259,11 +2199,11 @@
     "/api/v1/discovery/export/csv": {
       "get": {
         "tags": [
-          "discoveries"
+          "Discoveries"
         ],
-        "summary": "Export discoveries to CSV",
-        "description": "Export all discoveries matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.",
-        "operationId": "export_discoveries_csv",
+        "summary": "Export Discoveries to CSV",
+        "description": "Export all Discoveries matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.",
+        "operationId": "export_Discoveries_csv",
         "parameters": [
           {
             "name": "network_id",
@@ -2323,7 +2263,7 @@
         ],
         "responses": {
           "200": {
-            "description": "CSV file containing discoveries",
+            "description": "CSV file containing Discoveries",
             "content": {
               "text/csv": {}
             }
@@ -2342,9 +2282,9 @@
     "/api/v1/discovery/start-session": {
       "post": {
         "tags": [
-          "discoveries"
+          "Discoveries"
         ],
-        "summary": "Start a discovery session",
+        "summary": "Start a Discovery Session",
         "operationId": "start_session",
         "requestBody": {
           "content": {
@@ -2392,10 +2332,10 @@
     "/api/v1/discovery/{id}": {
       "get": {
         "tags": [
-          "discoveries"
+          "Discoveries"
         ],
-        "summary": "Get discovery by ID",
-        "operationId": "get_discovery_by_id",
+        "summary": "Get Discovery by ID",
+        "operationId": "get_Discovery_by_id",
         "parameters": [
           {
             "name": "id",
@@ -2441,9 +2381,9 @@
       },
       "put": {
         "tags": [
-          "discoveries"
+          "Discoveries"
         ],
-        "summary": "Update discovery",
+        "summary": "Update Discovery",
         "operationId": "update_discovery",
         "parameters": [
           {
@@ -2500,10 +2440,10 @@
       },
       "delete": {
         "tags": [
-          "discoveries"
+          "Discoveries"
         ],
-        "summary": "Delete discovery",
-        "operationId": "delete_discovery",
+        "summary": "Delete Discovery",
+        "operationId": "delete_Discovery",
         "parameters": [
           {
             "name": "id",
@@ -2551,9 +2491,9 @@
     "/api/v1/discovery/{session_id}/cancel": {
       "post": {
         "tags": [
-          "discoveries"
+          "Discoveries"
         ],
-        "summary": "Cancel a discovery session",
+        "summary": "Cancel a Discovery Session",
         "operationId": "cancel_discovery",
         "parameters": [
           {
@@ -2592,9 +2532,9 @@
     "/api/v1/groups": {
       "get": {
         "tags": [
-          "groups"
+          "Groups"
         ],
-        "summary": "List all groups",
+        "summary": "List all Groups",
         "description": "Returns all groups the authenticated user has access to.\nSupports pagination via `limit` and `offset` query parameters,\nand ordering via `group_by`, `order_by`, and `order_direction`.",
         "operationId": "get_all_groups",
         "parameters": [
@@ -2712,9 +2652,9 @@
       },
       "post": {
         "tags": [
-          "groups"
+          "Groups"
         ],
-        "summary": "Create a new group",
+        "summary": "Create a new Group",
         "operationId": "create_group",
         "requestBody": {
           "content": {
@@ -2761,12 +2701,12 @@
     "/api/v1/groups/bulk-delete": {
       "post": {
         "tags": [
-          "groups"
+          "Groups"
         ],
-        "summary": "Bulk delete groups",
-        "operationId": "bulk_delete_groups",
+        "summary": "Bulk delete Groups",
+        "operationId": "bulk_delete_Groups",
         "requestBody": {
-          "description": "Array of groups IDs to delete",
+          "description": "Array of Group IDs to delete",
           "content": {
             "application/json": {
               "schema": {
@@ -2805,11 +2745,11 @@
     "/api/v1/groups/export/csv": {
       "get": {
         "tags": [
-          "groups"
+          "Groups"
         ],
-        "summary": "Export groups to CSV",
-        "description": "Export all groups matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.",
-        "operationId": "export_groups_csv",
+        "summary": "Export Groups to CSV",
+        "description": "Export all Groups matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.",
+        "operationId": "export_Groups_csv",
         "parameters": [
           {
             "name": "network_id",
@@ -2904,7 +2844,7 @@
         ],
         "responses": {
           "200": {
-            "description": "CSV file containing groups",
+            "description": "CSV file containing Groups",
             "content": {
               "text/csv": {}
             }
@@ -2923,10 +2863,10 @@
     "/api/v1/groups/{id}": {
       "get": {
         "tags": [
-          "groups"
+          "Groups"
         ],
-        "summary": "Get group by ID",
-        "operationId": "get_group_by_id",
+        "summary": "Get Group by ID",
+        "operationId": "get_Group_by_id",
         "parameters": [
           {
             "name": "id",
@@ -2972,9 +2912,9 @@
       },
       "put": {
         "tags": [
-          "groups"
+          "Groups"
         ],
-        "summary": "Update a group",
+        "summary": "Update a Group",
         "operationId": "update_group",
         "parameters": [
           {
@@ -3041,10 +2981,10 @@
       },
       "delete": {
         "tags": [
-          "groups"
+          "Groups"
         ],
-        "summary": "Delete group",
-        "operationId": "delete_group",
+        "summary": "Delete Group",
+        "operationId": "delete_Group",
         "parameters": [
           {
             "name": "id",
@@ -3092,7 +3032,7 @@
     "/api/v1/hosts": {
       "get": {
         "tags": [
-          "hosts"
+          "Hosts"
         ],
         "summary": "List all hosts",
         "description": "Returns all hosts the authenticated user has access to, with their\ninterfaces, ports, and services included. Supports pagination via\n`limit` and `offset` query parameters, and ordering via `group_by`,\n`order_by`, and `order_direction`.",
@@ -3244,7 +3184,7 @@
       },
       "post": {
         "tags": [
-          "hosts"
+          "Hosts"
         ],
         "summary": "Create a new host",
         "description": "Creates a host with optional interfaces, ports, and services.\nThe `source` field is automatically set to `Manual`.\n\n### Tag Validation\n\n- Tags must exist and belong to your organization\n- Duplicate tag UUIDs are automatically deduplicated\n- Invalid or cross-organization tag UUIDs return a 400 error\n\n",
@@ -3307,7 +3247,7 @@
     "/api/v1/hosts/bulk-delete": {
       "post": {
         "tags": [
-          "hosts"
+          "Hosts"
         ],
         "summary": "Bulk delete hosts",
         "description": "Deletes multiple hosts in a single request. The request body should be\nan array of host IDs to delete. Fails if any host has an associated daemon.",
@@ -3362,11 +3302,11 @@
     "/api/v1/hosts/export/csv": {
       "get": {
         "tags": [
-          "hosts"
+          "Hosts"
         ],
-        "summary": "Export hosts to CSV",
-        "description": "Export all hosts matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.",
-        "operationId": "export_hosts_csv",
+        "summary": "Export Hosts to CSV",
+        "description": "Export all Hosts matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.",
+        "operationId": "export_Hosts_csv",
         "parameters": [
           {
             "name": "network_id",
@@ -3493,9 +3433,159 @@
         ],
         "responses": {
           "200": {
-            "description": "CSV file containing hosts",
+            "description": "CSV file containing Hosts",
             "content": {
               "text/csv": {}
+            }
+          }
+        },
+        "security": [
+          {
+            "user_api_key": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/hosts/export/zip": {
+      "get": {
+        "tags": [
+          "Hosts"
+        ],
+        "summary": "Export hosts with children to ZIP",
+        "description": "Exports all hosts matching the filter criteria along with their children\n(interfaces, ports, services, if_entries) as a ZIP archive containing\nseparate CSV files for each entity type.",
+        "operationId": "export_hosts_zip",
+        "parameters": [
+          {
+            "name": "network_id",
+            "in": "query",
+            "description": "Filter by network ID",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "ids",
+            "in": "query",
+            "description": "Filter by specific entity IDs (for selective loading)",
+            "required": false,
+            "schema": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "string",
+                "format": "uuid"
+              }
+            }
+          },
+          {
+            "name": "tag_ids",
+            "in": "query",
+            "description": "Filter by tag IDs (returns hosts that have ANY of the specified tags)",
+            "required": false,
+            "schema": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "string",
+                "format": "uuid"
+              }
+            }
+          },
+          {
+            "name": "group_by",
+            "in": "query",
+            "description": "Primary ordering field (used for grouping). Always sorts ASC to keep groups together.",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/HostOrderField"
+                }
+              ]
+            }
+          },
+          {
+            "name": "order_by",
+            "in": "query",
+            "description": "Secondary ordering field (sorting within groups or standalone sort).",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/HostOrderField"
+                }
+              ]
+            }
+          },
+          {
+            "name": "order_direction",
+            "in": "query",
+            "description": "Direction for order_by field (group_by always uses ASC).",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/OrderDirection"
+                }
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum number of results to return (1-1000, default: 50). Use 0 for no limit.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "maximum": 1000,
+              "minimum": 0
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Number of results to skip. Default: 0.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ZIP file containing CSVs",
+            "content": {
+              "application/zip": {}
             }
           }
         },
@@ -3512,7 +3602,7 @@
     "/api/v1/hosts/{destination_host}/consolidate/{other_host}": {
       "put": {
         "tags": [
-          "hosts"
+          "Hosts"
         ],
         "summary": "Consolidate hosts",
         "description": "Merges all interfaces, ports, and services from `other_host` into\n`destination_host`, then deletes `other_host`. Both hosts must be\non the same network.\n\n### Merge Behavior\n\n- **Interfaces**: Transferred to destination. If an interface with matching subnet+IP or MAC\n  already exists on destination, bindings are remapped to use the existing interface.\n- **Ports**: Transferred to destination. If a port with the same number and protocol already\n  exists, bindings are remapped to use the existing port.\n- **Services**: Transferred to destination with deduplication.\n  See [upsert behavior](https://scanopy.net/docs/discovery/#upsert-behavior) for details.\n\n### Restrictions\n\n- Cannot consolidate a host with itself.\n- Cannot consolidate a host that has a daemon - consolidate into it instead.",
@@ -3584,7 +3674,7 @@
     "/api/v1/hosts/{id}": {
       "get": {
         "tags": [
-          "hosts"
+          "Hosts"
         ],
         "summary": "Get a host by ID",
         "description": "Returns a single host with its interfaces, ports, and services.",
@@ -3634,7 +3724,7 @@
       },
       "put": {
         "tags": [
-          "hosts"
+          "Hosts"
         ],
         "summary": "Update a host",
         "description": "Updates host properties. Children (interfaces, ports, services)\nare managed via their own endpoints.\n\n### Tag Validation\n\n- Tags must exist and belong to your organization\n- Duplicate tag UUIDs are automatically deduplicated\n- Invalid or cross-organization tag UUIDs return a 400 error",
@@ -3704,7 +3794,7 @@
       },
       "delete": {
         "tags": [
-          "hosts"
+          "Hosts"
         ],
         "summary": "Delete a host",
         "description": "Prevents deletion if the host has a daemon associated with it",
@@ -3766,10 +3856,10 @@
     "/api/v1/if-entries": {
       "get": {
         "tags": [
-          "if-entries"
+          "ifTable Entries"
         ],
-        "summary": "List all if-entries",
-        "operationId": "list_if-entries",
+        "summary": "List all ifTable Entries",
+        "operationId": "list_ifTable Entries",
         "parameters": [
           {
             "name": "host_id",
@@ -3845,7 +3935,7 @@
         ],
         "responses": {
           "200": {
-            "description": "List of if-entries",
+            "description": "List of ifTable Entries",
             "content": {
               "application/json": {
                 "schema": {
@@ -3892,9 +3982,9 @@
       },
       "post": {
         "tags": [
-          "if-entries"
+          "ifTable Entries"
         ],
-        "summary": "Create a new if entry",
+        "summary": "Create a new IfEntry",
         "description": "Creates an SNMP ifTable entry for a host. These are typically created by\nSNMP discovery, but can also be created manually.",
         "operationId": "create_if_entry",
         "requestBody": {
@@ -3942,11 +4032,12 @@
     "/api/v1/if-entries/bulk-delete": {
       "post": {
         "tags": [
-          "if-entries"
+          "ifTable Entries"
         ],
-        "summary": "Bulk delete if-entries",
-        "operationId": "bulk_delete_if_entries",
+        "summary": "Bulk delete ifTable Entries",
+        "operationId": "bulk_delete_ifTable Entries",
         "requestBody": {
+          "description": "Array of ifTable Entry IDs to delete",
           "content": {
             "application/json": {
               "schema": {
@@ -3962,21 +4053,11 @@
         },
         "responses": {
           "200": {
-            "description": "if-entries deleted successfully",
+            "description": "ifTable Entries deleted",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ApiResponse_BulkDeleteResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Validation error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
                 }
               }
             }
@@ -3995,11 +4076,11 @@
     "/api/v1/if-entries/export/csv": {
       "get": {
         "tags": [
-          "if-entries"
+          "ifTable Entries"
         ],
-        "summary": "Export if-entries to CSV",
-        "description": "Export all if-entries matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.",
-        "operationId": "export_if-entries_csv",
+        "summary": "Export ifTable Entries to CSV",
+        "description": "Export all ifTable Entries matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.",
+        "operationId": "export_ifTable Entries_csv",
         "parameters": [
           {
             "name": "host_id",
@@ -4075,7 +4156,7 @@
         ],
         "responses": {
           "200": {
-            "description": "CSV file containing if-entries",
+            "description": "CSV file containing ifTable Entries",
             "content": {
               "text/csv": {}
             }
@@ -4094,15 +4175,15 @@
     "/api/v1/if-entries/{id}": {
       "get": {
         "tags": [
-          "if-entries"
+          "ifTable Entries"
         ],
-        "summary": "Get if_entry by ID",
-        "operationId": "get_if_entry_by_id",
+        "summary": "Get ifTable Entry by ID",
+        "operationId": "get_ifTable Entry_by_id",
         "parameters": [
           {
             "name": "id",
             "in": "path",
-            "description": "IfEntry ID",
+            "description": "ifTable Entry ID",
             "required": true,
             "schema": {
               "type": "string",
@@ -4112,7 +4193,7 @@
         ],
         "responses": {
           "200": {
-            "description": "IfEntry found",
+            "description": "ifTable Entry found",
             "content": {
               "application/json": {
                 "schema": {
@@ -4122,7 +4203,7 @@
             }
           },
           "404": {
-            "description": "IfEntry not found",
+            "description": "ifTable Entry not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -4143,9 +4224,9 @@
       },
       "put": {
         "tags": [
-          "if-entries"
+          "ifTable Entries"
         ],
-        "summary": "Update an if entry",
+        "summary": "Update an IfEntry",
         "operationId": "update_if_entry",
         "parameters": [
           {
@@ -4212,15 +4293,15 @@
       },
       "delete": {
         "tags": [
-          "if-entries"
+          "ifTable Entries"
         ],
-        "summary": "Delete if_entry",
-        "operationId": "delete_if_entry",
+        "summary": "Delete ifTable Entry",
+        "operationId": "delete_ifTable Entry",
         "parameters": [
           {
             "name": "id",
             "in": "path",
-            "description": "if_entry ID",
+            "description": "ifTable Entry ID",
             "required": true,
             "schema": {
               "type": "string",
@@ -4230,7 +4311,7 @@
         ],
         "responses": {
           "200": {
-            "description": "if_entry deleted successfully",
+            "description": "ifTable Entry deleted",
             "content": {
               "application/json": {
                 "schema": {
@@ -4240,7 +4321,7 @@
             }
           },
           "404": {
-            "description": "if_entry not found",
+            "description": "ifTable Entry not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -4263,10 +4344,10 @@
     "/api/v1/interfaces": {
       "get": {
         "tags": [
-          "interfaces"
+          "Interfaces"
         ],
-        "summary": "List all interfaces",
-        "operationId": "list_interfaces",
+        "summary": "List all Interfaces",
+        "operationId": "list_Interfaces",
         "parameters": [
           {
             "name": "host_id",
@@ -4339,7 +4420,7 @@
         ],
         "responses": {
           "200": {
-            "description": "List of interfaces",
+            "description": "List of Interfaces",
             "content": {
               "application/json": {
                 "schema": {
@@ -4386,7 +4467,7 @@
       },
       "post": {
         "tags": [
-          "interfaces"
+          "Interfaces"
         ],
         "summary": "Create a new interface\nPosition is automatically assigned to the end of the host's interface list.",
         "operationId": "create_interface",
@@ -4435,7 +4516,7 @@
     "/api/v1/interfaces/bulk-delete": {
       "post": {
         "tags": [
-          "interfaces"
+          "Interfaces"
         ],
         "summary": "Bulk delete interfaces\nRemaining interfaces for affected hosts are renumbered to maintain sequential positions.",
         "operationId": "bulk_delete_interfaces",
@@ -4488,11 +4569,11 @@
     "/api/v1/interfaces/export/csv": {
       "get": {
         "tags": [
-          "interfaces"
+          "Interfaces"
         ],
-        "summary": "Export interfaces to CSV",
-        "description": "Export all interfaces matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.",
-        "operationId": "export_interfaces_csv",
+        "summary": "Export Interfaces to CSV",
+        "description": "Export all Interfaces matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.",
+        "operationId": "export_Interfaces_csv",
         "parameters": [
           {
             "name": "host_id",
@@ -4565,7 +4646,7 @@
         ],
         "responses": {
           "200": {
-            "description": "CSV file containing interfaces",
+            "description": "CSV file containing Interfaces",
             "content": {
               "text/csv": {}
             }
@@ -4584,10 +4665,10 @@
     "/api/v1/interfaces/{id}": {
       "get": {
         "tags": [
-          "interfaces"
+          "Interfaces"
         ],
-        "summary": "Get interface by ID",
-        "operationId": "get_interface_by_id",
+        "summary": "Get Interface by ID",
+        "operationId": "get_Interface_by_id",
         "parameters": [
           {
             "name": "id",
@@ -4633,7 +4714,7 @@
       },
       "put": {
         "tags": [
-          "interfaces"
+          "Interfaces"
         ],
         "summary": "Update an interface\nPosition must be within valid range and not conflict with other interfaces.",
         "operationId": "update_interface",
@@ -4702,7 +4783,7 @@
       },
       "delete": {
         "tags": [
-          "interfaces"
+          "Interfaces"
         ],
         "summary": "Delete an interface\nRemaining interfaces for the host are renumbered to maintain sequential positions.",
         "operationId": "delete_interface",
@@ -4753,7 +4834,7 @@
     "/api/v1/invites": {
       "get": {
         "tags": [
-          "invites"
+          "Invites"
         ],
         "summary": "List all invites",
         "operationId": "get_invites",
@@ -4780,7 +4861,7 @@
       },
       "post": {
         "tags": [
-          "invites"
+          "Invites"
         ],
         "summary": "Create invite",
         "operationId": "create_invite",
@@ -4829,7 +4910,7 @@
     "/api/v1/invites/{id}": {
       "get": {
         "tags": [
-          "invites"
+          "Invites"
         ],
         "summary": "Get an invite by ID",
         "operationId": "get_invite",
@@ -4890,7 +4971,7 @@
     "/api/v1/invites/{id}/revoke": {
       "delete": {
         "tags": [
-          "invites"
+          "Invites"
         ],
         "summary": "Revoke an invite",
         "operationId": "revoke_invite",
@@ -4951,10 +5032,10 @@
     "/api/v1/networks": {
       "get": {
         "tags": [
-          "networks"
+          "Networks"
         ],
-        "summary": "List all networks",
-        "operationId": "list_networks",
+        "summary": "List all Networks",
+        "operationId": "list_Networks",
         "parameters": [
           {
             "name": "limit",
@@ -4988,7 +5069,7 @@
         ],
         "responses": {
           "200": {
-            "description": "List of networks",
+            "description": "List of Networks",
             "content": {
               "application/json": {
                 "schema": {
@@ -5035,7 +5116,7 @@
       },
       "post": {
         "tags": [
-          "networks"
+          "Networks"
         ],
         "summary": "Create a new network",
         "operationId": "create_network",
@@ -5074,7 +5155,7 @@
     "/api/v1/networks/bulk-delete": {
       "post": {
         "tags": [
-          "networks"
+          "Networks"
         ],
         "summary": "Bulk delete networks",
         "operationId": "bulk_delete_networks",
@@ -5128,11 +5209,11 @@
     "/api/v1/networks/export/csv": {
       "get": {
         "tags": [
-          "networks"
+          "Networks"
         ],
-        "summary": "Export networks to CSV",
-        "description": "Export all networks matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.",
-        "operationId": "export_networks_csv",
+        "summary": "Export Networks to CSV",
+        "description": "Export all Networks matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.",
+        "operationId": "export_Networks_csv",
         "parameters": [
           {
             "name": "limit",
@@ -5166,7 +5247,7 @@
         ],
         "responses": {
           "200": {
-            "description": "CSV file containing networks",
+            "description": "CSV file containing Networks",
             "content": {
               "text/csv": {}
             }
@@ -5185,10 +5266,10 @@
     "/api/v1/networks/{id}": {
       "get": {
         "tags": [
-          "networks"
+          "Networks"
         ],
-        "summary": "Get network by ID",
-        "operationId": "get_network_by_id",
+        "summary": "Get Network by ID",
+        "operationId": "get_Network_by_id",
         "parameters": [
           {
             "name": "id",
@@ -5234,7 +5315,7 @@
       },
       "put": {
         "tags": [
-          "networks"
+          "Networks"
         ],
         "summary": "Update a network",
         "operationId": "update_network",
@@ -5303,7 +5384,7 @@
       },
       "delete": {
         "tags": [
-          "networks"
+          "Networks"
         ],
         "summary": "Delete a network",
         "operationId": "delete_network",
@@ -5364,7 +5445,7 @@
     "/api/v1/organizations": {
       "get": {
         "tags": [
-          "organizations"
+          "Organizations"
         ],
         "summary": "Get the current user's organization",
         "operationId": "get_organization",
@@ -5400,7 +5481,7 @@
     "/api/v1/organizations/{id}": {
       "put": {
         "tags": [
-          "organizations"
+          "Organizations"
         ],
         "summary": "Update organization name",
         "operationId": "update_org_name",
@@ -5471,10 +5552,10 @@
     "/api/v1/ports": {
       "get": {
         "tags": [
-          "ports"
+          "Ports"
         ],
-        "summary": "List all ports",
-        "operationId": "list_ports",
+        "summary": "List all Ports",
+        "operationId": "list_Ports",
         "parameters": [
           {
             "name": "host_id",
@@ -5550,7 +5631,7 @@
         ],
         "responses": {
           "200": {
-            "description": "List of ports",
+            "description": "List of Ports",
             "content": {
               "application/json": {
                 "schema": {
@@ -5597,7 +5678,7 @@
       },
       "post": {
         "tags": [
-          "ports"
+          "Ports"
         ],
         "summary": "Create a new port",
         "operationId": "create_port",
@@ -5646,12 +5727,12 @@
     "/api/v1/ports/bulk-delete": {
       "post": {
         "tags": [
-          "ports"
+          "Ports"
         ],
-        "summary": "Bulk delete ports",
-        "operationId": "bulk_delete_ports",
+        "summary": "Bulk delete Ports",
+        "operationId": "bulk_delete_Ports",
         "requestBody": {
-          "description": "Array of ports IDs to delete",
+          "description": "Array of Port IDs to delete",
           "content": {
             "application/json": {
               "schema": {
@@ -5690,11 +5771,11 @@
     "/api/v1/ports/export/csv": {
       "get": {
         "tags": [
-          "ports"
+          "Ports"
         ],
-        "summary": "Export ports to CSV",
-        "description": "Export all ports matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.",
-        "operationId": "export_ports_csv",
+        "summary": "Export Ports to CSV",
+        "description": "Export all Ports matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.",
+        "operationId": "export_Ports_csv",
         "parameters": [
           {
             "name": "host_id",
@@ -5770,7 +5851,7 @@
         ],
         "responses": {
           "200": {
-            "description": "CSV file containing ports",
+            "description": "CSV file containing Ports",
             "content": {
               "text/csv": {}
             }
@@ -5789,10 +5870,10 @@
     "/api/v1/ports/{id}": {
       "get": {
         "tags": [
-          "ports"
+          "Ports"
         ],
-        "summary": "Get port by ID",
-        "operationId": "get_port_by_id",
+        "summary": "Get Port by ID",
+        "operationId": "get_Port_by_id",
         "parameters": [
           {
             "name": "id",
@@ -5838,7 +5919,7 @@
       },
       "put": {
         "tags": [
-          "ports"
+          "Ports"
         ],
         "summary": "Update a port",
         "operationId": "update_port",
@@ -5907,10 +5988,10 @@
       },
       "delete": {
         "tags": [
-          "ports"
+          "Ports"
         ],
-        "summary": "Delete port",
-        "operationId": "delete_port",
+        "summary": "Delete Port",
+        "operationId": "delete_Port",
         "parameters": [
           {
             "name": "id",
@@ -5958,7 +6039,7 @@
     "/api/v1/services": {
       "get": {
         "tags": [
-          "services"
+          "Services"
         ],
         "summary": "List all services",
         "description": "Returns all services the authenticated user has access to.\nSupports pagination via `limit` and `offset` query parameters,\nand ordering via `group_by`, `order_by`, and `order_direction`.",
@@ -6123,7 +6204,7 @@
       },
       "post": {
         "tags": [
-          "services"
+          "Services"
         ],
         "summary": "Create a new service",
         "description": "Creates a service with optional bindings to interfaces or ports.\nThe `id`, `created_at`, `updated_at`, and `source` fields are generated server-side.\nBindings are specified without `service_id` or `network_id` - these are assigned automatically.\n\n### Binding Validation Rules\n\n- **Cross-host validation**: All bindings must reference ports/interfaces that belong to the\n  service's host. Bindings referencing entities from other hosts will be rejected.\n- **Deduplication**: Duplicate bindings in the same request are automatically deduplicated.\n- **All-interfaces precedence**: If a port binding with `interface_id: null` (all interfaces)\n  is included, any specific-interface bindings for the same port are automatically removed.\n- **Conflict detection**: Interface bindings conflict with port bindings on the same interface.\n  A port binding on all interfaces conflicts with any interface binding.",
@@ -6173,12 +6254,12 @@
     "/api/v1/services/bulk-delete": {
       "post": {
         "tags": [
-          "services"
+          "Services"
         ],
-        "summary": "Bulk delete services",
-        "operationId": "bulk_delete_services",
+        "summary": "Bulk delete Services",
+        "operationId": "bulk_delete_Services",
         "requestBody": {
-          "description": "Array of services IDs to delete",
+          "description": "Array of Service IDs to delete",
           "content": {
             "application/json": {
               "schema": {
@@ -6217,11 +6298,11 @@
     "/api/v1/services/export/csv": {
       "get": {
         "tags": [
-          "services"
+          "Services"
         ],
-        "summary": "Export services to CSV",
-        "description": "Export all services matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.",
-        "operationId": "export_services_csv",
+        "summary": "Export Services to CSV",
+        "description": "Export all Services matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.",
+        "operationId": "export_Services_csv",
         "parameters": [
           {
             "name": "network_id",
@@ -6361,7 +6442,7 @@
         ],
         "responses": {
           "200": {
-            "description": "CSV file containing services",
+            "description": "CSV file containing Services",
             "content": {
               "text/csv": {}
             }
@@ -6380,10 +6461,10 @@
     "/api/v1/services/{id}": {
       "get": {
         "tags": [
-          "services"
+          "Services"
         ],
-        "summary": "Get service by ID",
-        "operationId": "get_service_by_id",
+        "summary": "Get Service by ID",
+        "operationId": "get_Service_by_id",
         "parameters": [
           {
             "name": "id",
@@ -6429,7 +6510,7 @@
       },
       "put": {
         "tags": [
-          "services"
+          "Services"
         ],
         "summary": "Update a service",
         "description": "Updates an existing service. All binding validation rules from service creation apply here as well.\n\n## Binding Validation Rules\n\n- **Cross-host validation**: All bindings must reference ports/interfaces that belong to the\n  service's host. Bindings referencing entities from other hosts will be rejected.\n- **Deduplication**: Duplicate bindings are automatically deduplicated.\n- **All-interfaces precedence**: If a port binding with `interface_id: null` (all interfaces)\n  is included, any specific-interface bindings for the same port are automatically removed.\n- **Conflict detection**: Interface bindings conflict with port bindings on the same interface.",
@@ -6499,10 +6580,10 @@
       },
       "delete": {
         "tags": [
-          "services"
+          "Services"
         ],
-        "summary": "Delete service",
-        "operationId": "delete_service",
+        "summary": "Delete Service",
+        "operationId": "delete_Service",
         "parameters": [
           {
             "name": "id",
@@ -6550,10 +6631,10 @@
     "/api/v1/shares": {
       "get": {
         "tags": [
-          "shares"
+          "Shares"
         ],
-        "summary": "List all shares",
-        "operationId": "list_shares",
+        "summary": "List all Shares",
+        "operationId": "list_Shares",
         "parameters": [
           {
             "name": "network_id",
@@ -6613,7 +6694,7 @@
         ],
         "responses": {
           "200": {
-            "description": "List of shares",
+            "description": "List of Shares",
             "content": {
               "application/json": {
                 "schema": {
@@ -6660,7 +6741,7 @@
       },
       "post": {
         "tags": [
-          "shares"
+          "Shares"
         ],
         "summary": "Create a new share",
         "operationId": "create_share",
@@ -6709,12 +6790,12 @@
     "/api/v1/shares/bulk-delete": {
       "post": {
         "tags": [
-          "shares"
+          "Shares"
         ],
-        "summary": "Bulk delete shares",
-        "operationId": "bulk_delete_shares",
+        "summary": "Bulk delete Shares",
+        "operationId": "bulk_delete_Shares",
         "requestBody": {
-          "description": "Array of shares IDs to delete",
+          "description": "Array of Share IDs to delete",
           "content": {
             "application/json": {
               "schema": {
@@ -6753,11 +6834,11 @@
     "/api/v1/shares/export/csv": {
       "get": {
         "tags": [
-          "shares"
+          "Shares"
         ],
-        "summary": "Export shares to CSV",
-        "description": "Export all shares matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.",
-        "operationId": "export_shares_csv",
+        "summary": "Export Shares to CSV",
+        "description": "Export all Shares matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.",
+        "operationId": "export_Shares_csv",
         "parameters": [
           {
             "name": "network_id",
@@ -6817,7 +6898,7 @@
         ],
         "responses": {
           "200": {
-            "description": "CSV file containing shares",
+            "description": "CSV file containing Shares",
             "content": {
               "text/csv": {}
             }
@@ -6836,7 +6917,7 @@
     "/api/v1/shares/public/{id}": {
       "get": {
         "tags": [
-          "shares"
+          "Shares"
         ],
         "summary": "Get share metadata",
         "description": "Does not include any topology data",
@@ -6880,10 +6961,10 @@
     "/api/v1/shares/{id}": {
       "get": {
         "tags": [
-          "shares"
+          "Shares"
         ],
-        "summary": "Get share by ID",
-        "operationId": "get_share_by_id",
+        "summary": "Get Share by ID",
+        "operationId": "get_Share_by_id",
         "parameters": [
           {
             "name": "id",
@@ -6929,7 +7010,7 @@
       },
       "put": {
         "tags": [
-          "shares"
+          "Shares"
         ],
         "summary": "Update a share",
         "operationId": "update_share",
@@ -6988,10 +7069,10 @@
       },
       "delete": {
         "tags": [
-          "shares"
+          "Shares"
         ],
-        "summary": "Delete share",
-        "operationId": "delete_share",
+        "summary": "Delete Share",
+        "operationId": "delete_Share",
         "parameters": [
           {
             "name": "id",
@@ -7039,10 +7120,10 @@
     "/api/v1/snmp-credentials": {
       "get": {
         "tags": [
-          "snmp-credentials"
+          "SNMP Credentials"
         ],
-        "summary": "List all SNMP credentials",
-        "description": "Returns all SNMP credentials in the authenticated user's organization.\nThe community string is returned for authorized users - handle with care.",
+        "summary": "List all SNMP Credentials",
+        "description": "Returns all SNMP Credentials in the authenticated user's organization.",
         "operationId": "get_all_snmp_credentials",
         "parameters": [
           {
@@ -7146,9 +7227,9 @@
       },
       "post": {
         "tags": [
-          "snmp-credentials"
+          "SNMP Credentials"
         ],
-        "summary": "Create a new SNMP credential",
+        "summary": "Create a new SNMP Credential",
         "description": "Creates an SNMP credential scoped to your organization. Credential names must\nbe unique within the organization.\n\n### Validation\n\n- Name must be 1-100 characters\n- Name must be unique within your organization\n- Community string is required",
         "operationId": "create_snmp_credential",
         "requestBody": {
@@ -7206,9 +7287,9 @@
     "/api/v1/snmp-credentials/bulk-delete": {
       "post": {
         "tags": [
-          "snmp-credentials"
+          "SNMP Credentials"
         ],
-        "summary": "Bulk delete snmp-credentials",
+        "summary": "Bulk delete SNMP Credential",
         "operationId": "bulk_delete_snmp_credentials",
         "requestBody": {
           "content": {
@@ -7226,7 +7307,7 @@
         },
         "responses": {
           "200": {
-            "description": "snmp-credentials deleted successfully",
+            "description": "SNMP Credentials deleted successfully",
             "content": {
               "application/json": {
                 "schema": {
@@ -7259,11 +7340,11 @@
     "/api/v1/snmp-credentials/export/csv": {
       "get": {
         "tags": [
-          "snmp-credentials"
+          "SNMP Credentials"
         ],
-        "summary": "Export snmp-credentials to CSV",
-        "description": "Export all snmp-credentials matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.",
-        "operationId": "export_snmp-credentials_csv",
+        "summary": "Export SNMP Credentials to CSV",
+        "description": "Export all SNMP Credentials matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.",
+        "operationId": "export_SNMP Credentials_csv",
         "parameters": [
           {
             "name": "group_by",
@@ -7345,7 +7426,7 @@
         ],
         "responses": {
           "200": {
-            "description": "CSV file containing snmp-credentials",
+            "description": "CSV file containing SNMP Credentials",
             "content": {
               "text/csv": {}
             }
@@ -7364,15 +7445,15 @@
     "/api/v1/snmp-credentials/{id}": {
       "get": {
         "tags": [
-          "snmp-credentials"
+          "SNMP Credentials"
         ],
-        "summary": "Get snmp_credential by ID",
-        "operationId": "get_snmp_credential_by_id",
+        "summary": "Get SNMP Credential by ID",
+        "operationId": "get_SNMP Credential_by_id",
         "parameters": [
           {
             "name": "id",
             "in": "path",
-            "description": "SnmpCredential ID",
+            "description": "SNMP Credential ID",
             "required": true,
             "schema": {
               "type": "string",
@@ -7382,7 +7463,7 @@
         ],
         "responses": {
           "200": {
-            "description": "SnmpCredential found",
+            "description": "SNMP Credential found",
             "content": {
               "application/json": {
                 "schema": {
@@ -7392,7 +7473,7 @@
             }
           },
           "404": {
-            "description": "SnmpCredential not found",
+            "description": "SNMP Credential not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -7413,9 +7494,9 @@
       },
       "put": {
         "tags": [
-          "snmp-credentials"
+          "SNMP Credentials"
         ],
-        "summary": "Update snmp_credential",
+        "summary": "Update SNMP Credential",
         "operationId": "update_snmp_credential",
         "parameters": [
           {
@@ -7482,9 +7563,9 @@
       },
       "delete": {
         "tags": [
-          "snmp-credentials"
+          "SNMP Credentials"
         ],
-        "summary": "Delete snmp_credential",
+        "summary": "Delete SNMP credential",
         "operationId": "delete_snmp_credential",
         "parameters": [
           {
@@ -7533,7 +7614,7 @@
     "/api/v1/subnets": {
       "get": {
         "tags": [
-          "subnets"
+          "Subnets"
         ],
         "summary": "List all subnets",
         "description": "Returns all subnets accessible to the authenticated user or daemon.\nDaemons can only access subnets within their assigned network.\nSupports pagination via `limit` and `offset` query parameters,\nand ordering via `group_by`, `order_by`, and `order_direction`.",
@@ -7656,7 +7737,7 @@
       },
       "post": {
         "tags": [
-          "subnets"
+          "Subnets"
         ],
         "summary": "Create a new subnet",
         "operationId": "create_subnet",
@@ -7708,12 +7789,12 @@
     "/api/v1/subnets/bulk-delete": {
       "post": {
         "tags": [
-          "subnets"
+          "Subnets"
         ],
-        "summary": "Bulk delete subnets",
-        "operationId": "bulk_delete_subnets",
+        "summary": "Bulk delete Subnets",
+        "operationId": "bulk_delete_Subnets",
         "requestBody": {
-          "description": "Array of subnets IDs to delete",
+          "description": "Array of Subnet IDs to delete",
           "content": {
             "application/json": {
               "schema": {
@@ -7752,11 +7833,11 @@
     "/api/v1/subnets/export/csv": {
       "get": {
         "tags": [
-          "subnets"
+          "Subnets"
         ],
-        "summary": "Export subnets to CSV",
-        "description": "Export all subnets matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.",
-        "operationId": "export_subnets_csv",
+        "summary": "Export Subnets to CSV",
+        "description": "Export all Subnets matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.",
+        "operationId": "export_Subnets_csv",
         "parameters": [
           {
             "name": "network_id",
@@ -7851,7 +7932,7 @@
         ],
         "responses": {
           "200": {
-            "description": "CSV file containing subnets",
+            "description": "CSV file containing Subnets",
             "content": {
               "text/csv": {}
             }
@@ -7870,10 +7951,10 @@
     "/api/v1/subnets/{id}": {
       "get": {
         "tags": [
-          "subnets"
+          "Subnets"
         ],
-        "summary": "Get subnet by ID",
-        "operationId": "get_subnet_by_id",
+        "summary": "Get Subnet by ID",
+        "operationId": "get_Subnet_by_id",
         "parameters": [
           {
             "name": "id",
@@ -7919,7 +8000,7 @@
       },
       "put": {
         "tags": [
-          "subnets"
+          "Subnets"
         ],
         "summary": "Update a subnet",
         "description": "Updates subnet properties. If the CIDR is being changed, validates that\nall existing interfaces on this subnet have IPs within the new CIDR range.",
@@ -7989,10 +8070,10 @@
       },
       "delete": {
         "tags": [
-          "subnets"
+          "Subnets"
         ],
-        "summary": "Delete subnet",
-        "operationId": "delete_subnet",
+        "summary": "Delete Subnet",
+        "operationId": "delete_Subnet",
         "parameters": [
           {
             "name": "id",
@@ -8040,7 +8121,7 @@
     "/api/v1/tags": {
       "get": {
         "tags": [
-          "tags"
+          "Tags"
         ],
         "summary": "List all tags",
         "description": "Returns all tags in the authenticated user's organization.\nSupports pagination via `limit` and `offset` query parameters,\nand ordering via `group_by`, `order_by`, and `order_direction`.",
@@ -8147,7 +8228,7 @@
       },
       "post": {
         "tags": [
-          "tags"
+          "Tags"
         ],
         "summary": "Create a new tag",
         "description": "Creates a tag scoped to your organization. Tag names must be unique within the organization.\n\n### Validation\n\n- Name must be 1-100 characters (empty names are rejected)\n- Name must be unique within your organization",
@@ -8207,7 +8288,7 @@
     "/api/v1/tags/assign": {
       "put": {
         "tags": [
-          "tags"
+          "Tags"
         ],
         "summary": "Set all tags for an entity",
         "description": "Replaces all tags on an entity with the provided list.\n\n### Validation\n\n- Entity type must be taggable (Host, Service, Subnet, Group, Network, Discovery, Daemon, DaemonApiKey, UserApiKey)\n- All tags must exist and belong to your organization",
@@ -8267,7 +8348,7 @@
     "/api/v1/tags/assign/bulk-add": {
       "post": {
         "tags": [
-          "tags"
+          "Tags"
         ],
         "summary": "Bulk add a tag to multiple entities",
         "description": "Adds a single tag to multiple entities of the same type. This is useful for batch tagging operations.\n\n### Validation\n\n- Entity type must be taggable (Host, Service, Subnet, Group, Network, Discovery, Daemon, DaemonApiKey, UserApiKey)\n- Tag must exist and belong to your organization\n- Entities that already have the tag are silently skipped",
@@ -8327,7 +8408,7 @@
     "/api/v1/tags/assign/bulk-remove": {
       "post": {
         "tags": [
-          "tags"
+          "Tags"
         ],
         "summary": "Bulk remove a tag from multiple entities",
         "description": "Removes a single tag from multiple entities of the same type.\n\n### Validation\n\n- Entity type must be taggable (Host, Service, Subnet, Group, Network, Discovery, Daemon, DaemonApiKey, UserApiKey)\n- Entities that don't have the tag are silently skipped",
@@ -8377,12 +8458,12 @@
     "/api/v1/tags/bulk-delete": {
       "post": {
         "tags": [
-          "tags"
+          "Tags"
         ],
-        "summary": "Bulk delete tags",
-        "operationId": "bulk_delete_tags",
+        "summary": "Bulk delete Tags",
+        "operationId": "bulk_delete_Tags",
         "requestBody": {
-          "description": "Array of tags IDs to delete",
+          "description": "Array of Tag IDs to delete",
           "content": {
             "application/json": {
               "schema": {
@@ -8421,11 +8502,11 @@
     "/api/v1/tags/export/csv": {
       "get": {
         "tags": [
-          "tags"
+          "Tags"
         ],
-        "summary": "Export tags to CSV",
-        "description": "Export all tags matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.",
-        "operationId": "export_tags_csv",
+        "summary": "Export Tags to CSV",
+        "description": "Export all Tags matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.",
+        "operationId": "export_Tags_csv",
         "parameters": [
           {
             "name": "group_by",
@@ -8507,7 +8588,7 @@
         ],
         "responses": {
           "200": {
-            "description": "CSV file containing tags",
+            "description": "CSV file containing Tags",
             "content": {
               "text/csv": {}
             }
@@ -8526,10 +8607,10 @@
     "/api/v1/tags/{id}": {
       "get": {
         "tags": [
-          "tags"
+          "Tags"
         ],
-        "summary": "Get tag by ID",
-        "operationId": "get_tag_by_id",
+        "summary": "Get Tag by ID",
+        "operationId": "get_Tag_by_id",
         "parameters": [
           {
             "name": "id",
@@ -8575,10 +8656,10 @@
       },
       "put": {
         "tags": [
-          "tags"
+          "Tags"
         ],
-        "summary": "Update tag",
-        "operationId": "update_tag",
+        "summary": "Update Tag",
+        "operationId": "update_Tag",
         "parameters": [
           {
             "name": "id",
@@ -8634,10 +8715,10 @@
       },
       "delete": {
         "tags": [
-          "tags"
+          "Tags"
         ],
-        "summary": "Delete tag",
-        "operationId": "delete_tag",
+        "summary": "Delete Tag",
+        "operationId": "delete_Tag",
         "parameters": [
           {
             "name": "id",
@@ -8685,11 +8766,11 @@
     "/api/v1/topology/export/csv": {
       "get": {
         "tags": [
-          "topologies"
+          "Topologies"
         ],
-        "summary": "Export topologies to CSV",
-        "description": "Export all topologies matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.",
-        "operationId": "export_topologies_csv",
+        "summary": "Export Topologies to CSV",
+        "description": "Export all Topologies matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.",
+        "operationId": "export_Topologies_csv",
         "parameters": [
           {
             "name": "network_id",
@@ -8752,7 +8833,7 @@
         ],
         "responses": {
           "200": {
-            "description": "CSV file containing topologies",
+            "description": "CSV file containing Topologies",
             "content": {
               "text/csv": {}
             }
@@ -8771,7 +8852,7 @@
     "/api/v1/topology/{id}/lock": {
       "post": {
         "tags": [
-          "topology"
+          "Topologies"
         ],
         "summary": "Lock a topology",
         "operationId": "lock",
@@ -8832,7 +8913,7 @@
     "/api/v1/topology/{id}/unlock": {
       "post": {
         "tags": [
-          "topology"
+          "Topologies"
         ],
         "summary": "Unlock a topology",
         "operationId": "unlock",
@@ -8893,7 +8974,7 @@
     "/api/v1/users": {
       "get": {
         "tags": [
-          "users"
+          "Users"
         ],
         "summary": "List all users",
         "operationId": "get_all_users",
@@ -8953,7 +9034,7 @@
     "/api/v1/users/bulk-delete": {
       "post": {
         "tags": [
-          "users"
+          "Users"
         ],
         "summary": "Bulk delete users",
         "operationId": "bulk_delete_users",
@@ -9007,11 +9088,11 @@
     "/api/v1/users/export/csv": {
       "get": {
         "tags": [
-          "users"
+          "Users"
         ],
-        "summary": "Export users to CSV",
-        "description": "Export all users matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.",
-        "operationId": "export_users_csv",
+        "summary": "Export Users to CSV",
+        "description": "Export all Users matching the filter criteria to CSV format. Ignores pagination parameters (limit/offset) and exports all matching records.",
+        "operationId": "export_Users_csv",
         "parameters": [
           {
             "name": "limit",
@@ -9045,7 +9126,7 @@
         ],
         "responses": {
           "200": {
-            "description": "CSV file containing users",
+            "description": "CSV file containing Users",
             "content": {
               "text/csv": {}
             }
@@ -9059,27 +9140,6 @@
             "session": []
           }
         ]
-      }
-    },
-    "/api/version": {
-      "get": {
-        "tags": [
-          "system"
-        ],
-        "summary": "Get API version information",
-        "operationId": "get_version",
-        "responses": {
-          "200": {
-            "description": "Version information",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_VersionInfo"
-                }
-              }
-            }
-          }
-        }
       }
     }
   },
@@ -9222,14 +9282,14 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-01-24T14:34:04.823352Z",
-              "id": "e71e8740-ab76-4eef-8abc-47c30d0097da",
+              "created_at": "2026-01-25T22:56:13.072925Z",
+              "id": "2f52d078-e6b6-471f-9456-e157217a334d",
               "interface_id": "550e8400-e29b-41d4-a716-446655440005",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-01-24T14:34:04.823352Z"
+              "updated_at": "2026-01-25T22:56:13.072925Z"
             }
           },
           "error": {
@@ -9961,14 +10021,14 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-01-24T14:34:04.808795Z",
-                      "id": "cd1fcbea-f341-48b6-bd56-bcd34744413d",
+                      "created_at": "2026-01-25T22:56:13.052848Z",
+                      "id": "e40bd15e-826e-4bac-a9b1-7ee15eb14677",
                       "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-01-24T14:34:04.808795Z"
+                      "updated_at": "2026-01-25T22:56:13.052848Z"
                     }
                   ],
                   "created_at": "2026-01-15T10:30:00Z",
@@ -9977,7 +10037,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Autobrr",
+                  "service_definition": "Kerberos",
                   "source": {
                     "type": "Manual"
                   },
@@ -10329,6 +10389,51 @@
               "organization_id": "550e8400-e29b-41d4-a716-446655440001",
               "tags": [],
               "updated_at": "2026-01-15T10:30:00Z"
+            }
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ApiMeta"
+          },
+          "success": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ApiResponse_OnboardingStateResponse": {
+        "type": "object",
+        "required": [
+          "success",
+          "meta"
+        ],
+        "properties": {
+          "data": {
+            "type": "object",
+            "description": "Response from onboarding state endpoint",
+            "required": [
+              "network_ids"
+            ],
+            "properties": {
+              "network_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "description": "Network IDs from pending setup (if any)"
+              },
+              "step": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Current onboarding step (if any)"
+              }
             }
           },
           "error": {
@@ -10719,14 +10824,14 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-01-24T14:34:04.819195Z",
-                  "id": "c7ae330e-222d-4f41-a6ba-cfb8cf34eefc",
+                  "created_at": "2026-01-25T22:56:13.067105Z",
+                  "id": "fda67fdf-b04f-4303-8f94-98d8929b6ef5",
                   "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-01-24T14:34:04.819195Z"
+                  "updated_at": "2026-01-25T22:56:13.067105Z"
                 }
               ],
               "created_at": "2026-01-15T10:30:00Z",
@@ -10735,7 +10840,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Autobrr",
+              "service_definition": "Kerberos",
               "source": {
                 "type": "Manual"
               },
@@ -11895,14 +12000,14 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-01-24T14:34:04.809005Z",
-          "id": "30dce216-d0cf-44a4-9468-4aaa4af03d72",
+          "created_at": "2026-01-25T22:56:13.053046Z",
+          "id": "eeb0abe8-37aa-4709-88fe-858e7cdea581",
           "interface_id": "550e8400-e29b-41d4-a716-446655440005",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-01-24T14:34:04.809005Z"
+          "updated_at": "2026-01-25T22:56:13.053046Z"
         }
       },
       "BindingBase": {
@@ -12356,7 +12461,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Autobrr",
+              "service_definition": "Kerberos",
               "tags": [],
               "virtualization": null
             }
@@ -12713,7 +12818,6 @@
           "daemon_id",
           "network_id",
           "name",
-          "url",
           "mode",
           "capabilities"
         ],
@@ -12736,7 +12840,11 @@
             "format": "uuid"
           },
           "url": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "URL is ignored by server - kept for backwards compat with old daemons.\nURL is only set via admin provisioning for ServerPoll daemons."
           },
           "user_id": {
             "type": "string",
@@ -12864,7 +12972,6 @@
         "type": "object",
         "description": "Daemon status payload sent when polling for work or in heartbeats.\nUsed by DaemonPoll mode to send status alongside work requests,\nand by ServerPoll mode when processing daemon status.",
         "required": [
-          "url",
           "name",
           "mode"
         ],
@@ -12876,7 +12983,11 @@
             "type": "string"
           },
           "url": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "URL is ignored by server - kept for backwards compat with old daemons."
           },
           "version": {
             "type": [
@@ -14154,14 +14265,14 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-01-24T14:34:04.808520Z",
-                  "id": "41a3dddf-e432-4ead-b489-c088e829caab",
+                  "created_at": "2026-01-25T22:56:13.052559Z",
+                  "id": "f5bc89cd-c460-4775-a9d2-5c6a79275a63",
                   "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-01-24T14:34:04.808520Z"
+                  "updated_at": "2026-01-25T22:56:13.052559Z"
                 }
               ],
               "created_at": "2026-01-15T10:30:00Z",
@@ -14170,7 +14281,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Autobrr",
+              "service_definition": "Kerberos",
               "source": {
                 "type": "Manual"
               },
@@ -15319,6 +15430,24 @@
         "properties": {
           "name": {
             "type": "string"
+          },
+          "snmp_community": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "SNMP community string (for V2c)"
+          },
+          "snmp_enabled": {
+            "type": "boolean",
+            "description": "Whether SNMP is enabled for this network"
+          },
+          "snmp_version": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "SNMP version (\"V2c\" or \"V3\")"
           }
         }
       },
@@ -15430,6 +15559,42 @@
             "type": "string"
           },
           "slug": {
+            "type": "string"
+          }
+        }
+      },
+      "OnboardingStateResponse": {
+        "type": "object",
+        "description": "Response from onboarding state endpoint",
+        "required": [
+          "network_ids"
+        ],
+        "properties": {
+          "network_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Network IDs from pending setup (if any)"
+          },
+          "step": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Current onboarding step (if any)"
+          }
+        }
+      },
+      "OnboardingStepRequest": {
+        "type": "object",
+        "description": "Request to save onboarding step",
+        "required": [
+          "step"
+        ],
+        "properties": {
+          "step": {
             "type": "string"
           }
         }
@@ -15909,14 +16074,14 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-01-24T14:34:04.799181Z",
-                        "id": "411bddac-828c-40a4-9356-9a32e7ae582f",
+                        "created_at": "2026-01-25T22:56:13.040415Z",
+                        "id": "bb6366b6-3129-460f-bb11-c0c2560d7ce2",
                         "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-01-24T14:34:04.799181Z"
+                        "updated_at": "2026-01-25T22:56:13.040415Z"
                       }
                     ],
                     "created_at": "2026-01-15T10:30:00Z",
@@ -15925,7 +16090,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Autobrr",
+                    "service_definition": "Kerberos",
                     "source": {
                       "type": "Manual"
                     },
@@ -16002,14 +16167,14 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-01-24T14:34:04.818194Z",
-                    "id": "f4b99b9f-d95e-47ac-b5de-7e7c9e0b83f8",
+                    "created_at": "2026-01-25T22:56:13.065536Z",
+                    "id": "2523d07e-8793-49e4-ae50-36bb861400cf",
                     "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-01-24T14:34:04.818194Z"
+                    "updated_at": "2026-01-25T22:56:13.065536Z"
                   }
                 ],
                 "created_at": "2026-01-15T10:30:00Z",
@@ -16018,7 +16183,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Autobrr",
+                "service_definition": "Kerberos",
                 "source": {
                   "type": "Manual"
                 },
@@ -16988,14 +17153,14 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-01-24T14:34:04.808937Z",
-              "id": "3ec46306-8625-45c2-889c-364334254638",
+              "created_at": "2026-01-25T22:56:13.052980Z",
+              "id": "aa033eea-84ab-4244-8269-0fce7a9c50f2",
               "interface_id": "550e8400-e29b-41d4-a716-446655440005",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-01-24T14:34:04.808937Z"
+              "updated_at": "2026-01-25T22:56:13.052980Z"
             }
           ],
           "created_at": "2026-01-15T10:30:00Z",
@@ -17004,7 +17169,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Autobrr",
+          "service_definition": "Kerberos",
           "source": {
             "type": "Manual"
           },
@@ -18636,8 +18801,84 @@
   },
   "tags": [
     {
-      "name": "api_keys",
+      "name": "Bindings",
+      "description": "Service bindings linking services to interfaces and/or ports. Defines where a service is accessible."
+    },
+    {
+      "name": "Daemons",
+      "description": "Daemons are scanning agents that connect to the server to perform network discovery."
+    },
+    {
+      "name": "Daemon API Keys",
       "description": "API keys for daemon authentication. Create and manage keys that allow daemons to communicate with the server."
+    },
+    {
+      "name": "Discoveries",
+      "description": "Network discovery operations. Trigger and monitor scans that detect hosts, services, and network topology."
+    },
+    {
+      "name": "Groups",
+      "description": "Logical groupings of hosts. Organize hosts into groups for easier management and visualization."
+    },
+    {
+      "name": "Hosts",
+      "description": "Network hosts (devices). Manage discovered or manually created hosts on your network."
+    },
+    {
+      "name": "ifTable Entries",
+      "description": "SNMP interface entries (ifTable). Physical and logical interfaces discovered via SNMP on hosts."
+    },
+    {
+      "name": "Interfaces",
+      "description": "Network interfaces on hosts. Each host can have multiple interfaces with different IP addresses."
+    },
+    {
+      "name": "Invites",
+      "description": "Organization invitations. Invite users to join your organization."
+    },
+    {
+      "name": "Networks",
+      "description": "Network containers. Top-level organizational unit that contains subnets, hosts, and other entities."
+    },
+    {
+      "name": "Organizations",
+      "description": "Manage organization settings."
+    },
+    {
+      "name": "Ports",
+      "description": "Ports that have been scanned and found open on a host."
+    },
+    {
+      "name": "Services",
+      "description": "Services running on hosts. Detected or manually added services like databases, web servers, etc."
+    },
+    {
+      "name": "Shares",
+      "description": "Shared network views. Create read-only shareable links to your network topology."
+    },
+    {
+      "name": "SNMP Credentials",
+      "description": "SNMP credentials for network device discovery. Manage credentials used to query SNMP-enabled devices."
+    },
+    {
+      "name": "Subnets",
+      "description": "IP subnets within networks. Define address ranges and organize hosts by subnet."
+    },
+    {
+      "name": "Tags",
+      "description": "Custom tags for categorization. Apply labels to entities for filtering and organization."
+    },
+    {
+      "name": "Topologies",
+      "description": "Network topology maps showing host relationships and connections."
+    },
+    {
+      "name": "Users",
+      "description": "User account management. Manage user profiles and permissions within organizations."
+    },
+    {
+      "name": "User API Keys",
+      "description": "User API keys for programmatic access. Create and manage personal API keys with scoped permissions."
     },
     {
       "name": "auth",
@@ -18648,88 +18889,16 @@
       "description": "Server configuration. Public configuration settings for client applications."
     },
     {
-      "name": "daemon_api_keys",
-      "description": "Daemon API keys for scanner authentication. Create and manage keys that allow daemons to authenticate with the server and submit discovery results."
-    },
-    {
-      "name": "discoveries",
-      "description": "Network discovery operations. Trigger and monitor scans that detect hosts, services, and network topology."
-    },
-    {
       "name": "github",
       "description": "GitHub integration endpoints."
-    },
-    {
-      "name": "ports",
-      "description": "Ports that have been scanned and found open on a host"
-    },
-    {
-      "name": "bindings",
-      "description": "\n            ## Binding Types\n            - **Interface binding**: Service is present at an interface (IP address) without a specific port.\n              Used for non-port-bound services like gateways.\n            - **Port binding (specific interface)**: Service listens on a specific port on a specific interface.\n            - **Port binding (all interfaces)**: Service listens on a specific port on all interfaces\n              (`interface_id: null`).\n        "
-    },
-    {
-      "name": "groups",
-      "description": "Logical groupings of hosts. Organize hosts into groups for easier management and visualization."
-    },
-    {
-      "name": "hosts",
-      "description": "Network hosts (devices). Manage discovered or manually created hosts on your network."
-    },
-    {
-      "name": "interfaces",
-      "description": "Network interfaces on hosts. Each host can have multiple interfaces with different IP addresses."
-    },
-    {
-      "name": "invites",
-      "description": "Organization invitations. Invite users to join your organization."
     },
     {
       "name": "metadata",
       "description": "Entity metadata registry. Schema information for all entity types in the system."
     },
     {
-      "name": "networks",
-      "description": "Network containers. Top-level organizational unit that contains subnets, hosts, and other entities."
-    },
-    {
-      "name": "organizations",
-      "description": "Manage organization settings."
-    },
-    {
-      "name": "services",
-      "description": "Services running on hosts. Detected or manually added services like databases, web servers, etc."
-    },
-    {
-      "name": "shares",
-      "description": "Shared network views. Create read-only shareable links to your network topology."
-    },
-    {
-      "name": "snmp-credentials",
-      "description": "SNMP credentials for network device discovery. Manage credentials used to query SNMP-enabled devices."
-    },
-    {
-      "name": "if-entries",
-      "description": "SNMP interface entries (ifTable). Physical and logical interfaces discovered via SNMP on hosts."
-    },
-    {
-      "name": "subnets",
-      "description": "IP subnets within networks. Define address ranges and organize hosts by subnet."
-    },
-    {
       "name": "system",
       "description": "System information endpoints. Version and compatibility checking."
-    },
-    {
-      "name": "tags",
-      "description": "Custom tags for categorization. Apply labels to entities for filtering and organization."
-    },
-    {
-      "name": "user_api_keys",
-      "description": "\n            User API keys for programmatic access. Create and manage personal API keys with scoped permissions for automation and integrations.\n            \n            ## Permissions\n            \n            API keys inherit the permission level assigned at creation. Each level determines what resources the key can access:\n\n            | Permission | Network Resources | Tags       | Users                      |\n            | ---------- | ----------------- | ---------- | -------------------------- |\n            | **Viewer** | Read              | Read       | —                          |\n            | **Member** | Read/Write        | Read       | —                          |\n            | **Admin**  | Read/Write        | Read/Write | Read/Write (Member, Viewer)|\n            | **Owner**  | Read/Write        | Read/Write | Read/Write (all levels)    |\n\n            Network resources include hosts, subnets, services, and groups. Organization settings (name, billing) require a user session and are not accessible via API keys.\n        "
-    },
-    {
-      "name": "users",
-      "description": "User account management. Manage user profiles and permissions within organizations."
     }
   ]
 }

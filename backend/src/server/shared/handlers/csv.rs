@@ -10,8 +10,8 @@ use crate::server::{
         entities::{ChangeTriggersTopologyStaleness, Entity as EntityEnum},
         extractors::Query,
         handlers::query::FilterQueryExtractor,
-        services::traits::CrudService,
-        storage::{filter::StorableFilter, traits::Entity},
+        services::{csv::build_csv, traits::CrudService},
+        storage::filter::StorableFilter,
         types::api::{ApiError, ApiResult},
     },
 };
@@ -92,19 +92,6 @@ where
     );
 
     Ok((headers, Body::from(csv_data)))
-}
-
-/// Build CSV data from a list of entities.
-/// Headers are derived automatically from the CsvRow struct field names.
-fn build_csv<T: Entity>(entities: &[T]) -> Result<Vec<u8>, csv::Error> {
-    let mut wtr = csv::Writer::from_writer(vec![]);
-
-    for entity in entities {
-        wtr.serialize(entity.to_csv_row())?;
-    }
-
-    wtr.into_inner()
-        .map_err(|e| csv::Error::from(e.into_error()))
 }
 
 /// Response type for CSV export (used in OpenAPI documentation)

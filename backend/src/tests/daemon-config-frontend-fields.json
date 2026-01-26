@@ -15,13 +15,13 @@
     "id": "daemon_url",
     "cliFlag": "--daemon-url",
     "envVar": "SCANOPY_DAEMON_URL",
-    "helpText": "Public URL where server can reach daemon in ServerPoll mode"
+    "helpText": "Base URL where server can reach daemon (without port). Port is specified separately"
   },
   {
     "id": "daemon_port",
     "cliFlag": "--daemon-port",
     "envVar": "SCANOPY_DAEMON_PORT",
-    "helpText": "Port for daemon to listen on"
+    "helpText": "Port the daemon listens on. Combined with daemon URL for server to connect"
   },
   {
     "id": "bind_address",

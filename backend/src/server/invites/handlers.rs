@@ -8,6 +8,7 @@ use crate::server::invites::r#impl::base::Invite;
 use crate::server::organizations::r#impl::api::CreateInviteRequest;
 use crate::server::shared::services::traits::CrudService;
 use crate::server::shared::storage::filter::StorableFilter;
+use crate::server::shared::storage::traits::Entity;
 use crate::server::shared::types::api::ApiResponse;
 use crate::server::shared::types::api::ApiResult;
 use crate::server::shared::types::api::{ApiError, ApiErrorResponse, EmptyApiResponse};
@@ -36,7 +37,7 @@ pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
 #[utoipa::path(
     post,
     path = "",
-    tag = "invites",
+    tag = Invite::ENTITY_NAME_PLURAL,
     request_body = CreateInviteRequest,
     responses(
         (status = 200, description = "Invite created", body = ApiResponse<Invite>),
@@ -166,7 +167,7 @@ async fn create_invite(
 #[utoipa::path(
     get,
     path = "/{id}",
-    tag = "invites",
+    tag = Invite::ENTITY_NAME_PLURAL,
     params(("id" = Uuid, Path, description = "Invite ID")),
     responses(
         (status = 200, description = "Invite details", body = ApiResponse<Invite>),
@@ -203,7 +204,7 @@ async fn get_invite(
 #[utoipa::path(
     get,
     path = "",
-    tag = "invites",
+    tag = Invite::ENTITY_NAME_PLURAL,
     responses(
         (status = 200, description = "List of active invites", body = ApiResponse<Vec<Invite>>),
     ),
@@ -246,7 +247,7 @@ async fn get_invites(
 #[utoipa::path(
     delete,
     path = "/{id}/revoke",
-    tag = "invites",
+    tag = Invite::ENTITY_NAME_PLURAL,
     params(("id" = Uuid, Path, description = "Invite ID")),
     responses(
         (status = 200, description = "Invite revoked", body = EmptyApiResponse),

@@ -44,7 +44,10 @@ pub struct DaemonRegistrationRequest {
     pub daemon_id: Uuid,
     pub network_id: Uuid,
     pub name: String,
-    pub url: String,
+    /// URL is ignored by server - kept for backwards compat with old daemons.
+    /// URL is only set via admin provisioning for ServerPoll daemons.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
     pub mode: DaemonMode,
     pub capabilities: DaemonCapabilities,
     /// User responsible for maintaining this daemon (from frontend install command)
@@ -146,7 +149,9 @@ impl DiscoveryUpdatePayload {
 /// and by ServerPoll mode when processing daemon status.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct DaemonStatusPayload {
-    pub url: String,
+    /// URL is ignored by server - kept for backwards compat with old daemons.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
     pub name: String,
     pub mode: DaemonMode,
     /// Daemon software version (optional for backwards compat)

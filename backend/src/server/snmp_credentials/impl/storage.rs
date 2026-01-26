@@ -8,6 +8,7 @@ use uuid::Uuid;
 use crate::server::{
     shared::{
         entities::EntityDiscriminants,
+        entity_metadata::EntityCategory,
         storage::traits::{Entity, SqlValue, Storable},
     },
     snmp_credentials::r#impl::base::{SnmpCredential, SnmpCredentialBase},
@@ -20,7 +21,6 @@ pub struct SnmpCredentialCsvRow {
     pub organization_id: Uuid,
     pub name: String,
     pub version: String,
-    pub community: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -127,7 +127,6 @@ impl Entity for SnmpCredential {
             organization_id: self.base.organization_id,
             name: self.base.name.clone(),
             version: self.base.version.to_string(),
-            community: "********".to_string(), // Redact sensitive data
             created_at: self.created_at,
             updated_at: self.updated_at,
         }
@@ -137,12 +136,12 @@ impl Entity for SnmpCredential {
         EntityDiscriminants::SnmpCredential
     }
 
-    fn entity_name_singular() -> &'static str {
-        "snmp credential"
-    }
+    const ENTITY_NAME_SINGULAR: &'static str = "SNMP Credential";
+    const ENTITY_NAME_PLURAL: &'static str = "SNMP Credentials";
+    const ENTITY_DESCRIPTION: &'static str = "SNMP credentials for network device discovery. Manage credentials used to query SNMP-enabled devices.";
 
-    fn entity_name_plural() -> &'static str {
-        "snmp-credentials"
+    fn entity_category() -> EntityCategory {
+        EntityCategory::DiscoveryAndDaemons
     }
 
     fn network_id(&self) -> Option<Uuid> {

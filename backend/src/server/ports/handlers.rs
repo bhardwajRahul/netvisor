@@ -11,6 +11,7 @@ use crate::server::ports::{r#impl::base::Port, service::PortService};
 use crate::server::shared::handlers::query::HostChildQuery;
 use crate::server::shared::handlers::traits::{CrudHandlers, create_handler, update_handler};
 use crate::server::shared::services::traits::CrudService;
+use crate::server::shared::storage::traits::Entity;
 use crate::server::shared::types::api::{ApiError, ApiErrorResponse, ApiResponse, ApiResult};
 
 impl CrudHandlers for Port {
@@ -24,11 +25,11 @@ impl CrudHandlers for Port {
 
 mod generated {
     use super::*;
-    crate::crud_get_all_handler!(Port, "ports", "port");
-    crate::crud_get_by_id_handler!(Port, "ports", "port");
-    crate::crud_delete_handler!(Port, "ports", "port");
-    crate::crud_bulk_delete_handler!(Port, "ports");
-    crate::crud_export_csv_handler!(Port, "ports", "port");
+    crate::crud_get_all_handler!(Port);
+    crate::crud_get_by_id_handler!(Port);
+    crate::crud_delete_handler!(Port);
+    crate::crud_bulk_delete_handler!(Port);
+    crate::crud_export_csv_handler!(Port);
 }
 
 pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
@@ -62,7 +63,7 @@ async fn validate_port_network_consistency(state: &AppState, port: &Port) -> Res
 #[utoipa::path(
     post,
     path = "",
-    tag = "ports",
+    tag = Port::ENTITY_NAME_PLURAL,
     request_body = Port,
     responses(
         (status = 200, description = "Port created successfully", body = ApiResponse<Port>),
@@ -83,7 +84,7 @@ async fn create_port(
 #[utoipa::path(
     put,
     path = "/{id}",
-    tag = "ports",
+    tag = Port::ENTITY_NAME_PLURAL,
     params(("id" = Uuid, Path, description = "Port ID")),
     request_body = Port,
     responses(

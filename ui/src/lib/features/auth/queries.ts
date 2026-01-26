@@ -260,3 +260,37 @@ export function useResendVerificationMutation() {
 export function isAuthenticated(user: User | null | undefined): boolean {
 	return user !== null && user !== undefined;
 }
+
+/**
+ * Mutation hook for saving onboarding step
+ */
+export function useOnboardingStepMutation() {
+	return createMutation(() => ({
+		mutationFn: async (step: string) => {
+			const { data } = await apiClient.POST('/api/auth/onboarding-step', { body: { step } });
+			if (!data?.success) {
+				throw new Error(data?.error || 'Failed to save onboarding step');
+			}
+			return true;
+		}
+	}));
+}
+
+/**
+ * Query hook for fetching onboarding state
+ */
+export function useOnboardingStateQuery() {
+	return createQuery(() => ({
+		queryKey: queryKeys.auth.onboardingState(),
+		queryFn: async () => {
+			const { data } = await apiClient.GET('/api/auth/onboarding-state', {});
+			if (!data?.success || !data.data) {
+				return { step: null, network_ids: [] };
+			}
+			return data.data;
+		},
+		// Don't retry - if it fails, just use defaults
+		retry: false,
+		staleTime: 60 * 1000
+	}));
+}

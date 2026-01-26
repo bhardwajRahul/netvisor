@@ -9,6 +9,7 @@ use uuid::Uuid;
 use crate::server::{
     shared::{
         entities::EntityDiscriminants,
+        entity_metadata::EntityCategory,
         storage::traits::{Entity, SqlValue, Storable},
         types::{entities::EntitySource, metadata::HasId},
     },
@@ -161,12 +162,13 @@ impl Entity for Subnet {
         EntityDiscriminants::Subnet
     }
 
-    fn entity_name_singular() -> &'static str {
-        "subnet"
-    }
+    const ENTITY_NAME_SINGULAR: &'static str = "Subnet";
+    const ENTITY_NAME_PLURAL: &'static str = "Subnets";
+    const ENTITY_DESCRIPTION: &'static str =
+        "IP subnets within networks. Define address ranges and organize hosts by subnet.";
 
-    fn entity_name_plural() -> &'static str {
-        "subnets"
+    fn entity_category() -> EntityCategory {
+        EntityCategory::NetworkInfrastructure
     }
 
     fn network_id(&self) -> Option<Uuid> {

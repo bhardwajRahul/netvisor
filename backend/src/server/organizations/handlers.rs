@@ -9,7 +9,7 @@ use crate::server::organizations::r#impl::base::Organization;
 use crate::server::shared::handlers::traits::{CrudHandlers, update_handler};
 use crate::server::shared::services::traits::CrudService;
 use crate::server::shared::storage::filter::StorableFilter;
-use crate::server::shared::storage::traits::Storable;
+use crate::server::shared::storage::traits::{Entity, Storable};
 use crate::server::shared::types::api::ApiResponse;
 use crate::server::shared::types::api::ApiResult;
 use crate::server::shared::types::api::{ApiError, ApiErrorResponse, EmptyApiResponse};
@@ -37,7 +37,7 @@ pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
 #[utoipa::path(
     get,
     path = "",
-    tag = "organizations",
+    tag = Organization::ENTITY_NAME_PLURAL,
     responses(
         (status = 200, description = "Organization details", body = ApiResponse<Organization>),
         (status = 404, description = "Organization not found", body = ApiErrorResponse),
@@ -63,7 +63,7 @@ pub async fn get_organization(
 #[utoipa::path(
     put,
     path = "/{id}",
-    tag = "organizations",
+    tag = Organization::ENTITY_NAME_PLURAL,
     params(("id" = Uuid, Path, description = "Organization ID")),
     request_body = String,
     responses(
@@ -102,7 +102,7 @@ pub async fn update_org_name(
 #[utoipa::path(
     post,
     path = "/{id}/reset",
-    tags = ["organizations", "internal"],
+    tags = [Organization::ENTITY_NAME_PLURAL, "internal"],
     params(("id" = Uuid, Path, description = "Organization ID")),
     responses(
         (status = 200, description = "Organization reset", body = EmptyApiResponse),
@@ -143,7 +143,7 @@ pub async fn reset(
 #[utoipa::path(
     post,
     path = "/{id}/populate-demo",
-    tags = ["organizations", "internal"],
+    tags = [Organization::ENTITY_NAME_PLURAL, "internal"],
     params(("id" = Uuid, Path, description = "Organization ID")),
     responses(
         (status = 200, description = "Demo data populated", body = EmptyApiResponse),

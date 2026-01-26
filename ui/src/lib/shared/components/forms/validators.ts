@@ -115,6 +115,26 @@ export function url(value: FormValue): string | undefined {
 	}
 }
 
+/** URL format validator that rejects URLs with explicit ports */
+export function urlWithoutPort(value: FormValue): string | undefined {
+	if (!value || typeof value !== 'string') return undefined;
+	try {
+		const parsed = new URL(value);
+		// Require hostname to have at least one dot (e.g., example.com) or be localhost
+		const hostname = parsed.hostname;
+		if (hostname !== 'localhost' && !hostname.includes('.')) {
+			return 'Please enter a valid URL with a domain (e.g., https://example.com)';
+		}
+		// Reject URLs with explicit ports
+		if (parsed.port) {
+			return 'URL should not include a port. Use the Port field below.';
+		}
+		return undefined;
+	} catch {
+		return 'Please enter a valid URL';
+	}
+}
+
 /** Numeric value validator */
 export function numeric(value: FormValue): string | undefined {
 	if (!value) return undefined;

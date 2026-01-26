@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tick } from 'svelte';
 	import { createForm } from '@tanstack/svelte-form';
 	import { submitForm } from '$lib/shared/components/forms/form-context';
 	import { required, max } from '$lib/shared/components/forms/validators';
@@ -16,8 +17,10 @@
 	import RichSelect from '$lib/shared/components/forms/selection/RichSelect.svelte';
 	import RadioGroup from '$lib/shared/components/forms/input/RadioGroup.svelte';
 	import { useSnmpCredentialsQuery } from '$lib/features/snmp/queries';
+	import BetaTag from '$lib/shared/components/data/BetaTag.svelte';
 	import { SnmpCredentialDisplay } from '$lib/shared/components/forms/selection/display/SnmpCredentialDisplay.svelte';
 	import {
+		common_betaSnmpExplainer,
 		common_cancel,
 		common_couldNotLoadUser,
 		common_create,
@@ -88,7 +91,7 @@
 		onSubmit: async ({ value }) => {
 			if (!organization) {
 				pushError(common_couldNotLoadUser());
-				onClose();
+				handleClose();
 				return;
 			}
 
@@ -114,10 +117,16 @@
 	// Local state for snmp_mode to enable Svelte 5 reactivity
 	let snmpMode = $state<'none' | 'custom'>('none');
 	let previousSnmpMode = $state<'none' | 'custom'>('none');
+	let isInitialized = $state(false);
+	// Key to force form.Field components to re-mount on modal open
+	let formKey = $state(0);
 
-	// Sync snmp mode from form store and handle changes
+	// Sync snmp mode from form store and handle mode changes (after initialization)
 	$effect(() => {
 		return form.store.subscribe(() => {
+			// Skip until modal has been opened and initialized
+			if (!isInitialized) return;
+
 			const newMode = (form.state.values as { snmp_mode?: string }).snmp_mode as 'none' | 'custom';
 			if (newMode !== previousSnmpMode) {
 				previousSnmpMode = newMode;
@@ -133,16 +142,38 @@
 	});
 
 	// Reset form when modal opens
-	function handleOpen() {
+	async function handleOpen() {
 		const defaults = getDefaultValues();
-		const hasCredential = defaults.snmp_credential_id !== null;
+		// Check for both null and undefined (API might return either)
+		const hasCredential = defaults.snmp_credential_id != null;
 		const mode = hasCredential ? 'custom' : 'none';
+
+		// Set local state first
+		snmpMode = mode;
+		previousSnmpMode = mode;
+
+		// Reset form with all values including snmp_mode
 		form.reset({
 			...defaults,
 			snmp_mode: mode
 		});
-		snmpMode = mode;
-		previousSnmpMode = mode;
+
+		// Explicitly set the field value after reset to ensure it takes effect
+		form.setFieldValue('snmp_mode', mode);
+
+		// Wait for Svelte to process state updates
+		await tick();
+
+		// Increment formKey to force form.Field components to re-mount with fresh state
+		formKey++;
+
+		// Mark as initialized so the effect starts handling subsequent changes
+		isInitialized = true;
+	}
+
+	function handleClose() {
+		isInitialized = false;
+		onClose();
 	}
 
 	async function handleSubmit() {
@@ -169,7 +200,14 @@
 	let colorHelper = entities.getColorHelper('Network');
 </script>
 
-<GenericModal {isOpen} {title} size="xl" {onClose} onOpen={handleOpen} showCloseButton={true}>
+<GenericModal
+	{isOpen}
+	{title}
+	size="xl"
+	onClose={handleClose}
+	onOpen={handleOpen}
+	showCloseButton={true}
+>
 	{#snippet headerIcon()}
 		<ModalHeaderIcon Icon={entities.getIconComponent('Network')} color={colorHelper.color} />
 	{/snippet}
@@ -214,17 +252,25 @@
 						{/snippet}
 					</form.Field>
 
-					<form.Field name="snmp_mode">
-						{#snippet children(field)}
-							<RadioGroup
-								label="Default SNMP Credential"
-								id="snmp_mode"
-								{field}
-								options={snmpModeOptions}
-								disabled={isNonOwnerInDemo}
-							/>
-						{/snippet}
-					</form.Field>
+					{#key formKey}
+						<div class="space-y-2">
+							<label class="text-primary flex items-center gap-2 text-sm font-medium">
+								Default SNMP Credential
+								<BetaTag tooltip={common_betaSnmpExplainer()} />
+							</label>
+							<form.Field name="snmp_mode">
+								{#snippet children(field)}
+									<RadioGroup
+										label=""
+										id="snmp_mode"
+										{field}
+										options={snmpModeOptions}
+										disabled={isNonOwnerInDemo}
+									/>
+								{/snippet}
+							</form.Field>
+						</div>
+					{/key}
 
 					{#if snmpMode === 'custom'}
 						<form.Field name="snmp_credential_id">
@@ -276,7 +322,7 @@
 					<button
 						type="button"
 						disabled={loading || deleting}
-						onclick={onClose}
+						onclick={handleClose}
 						class="btn-secondary"
 					>
 						{common_cancel()}

@@ -4,6 +4,7 @@ use crate::server::shared::extractors::Query;
 use crate::server::shared::handlers::query::{FilterQueryExtractor, NoFilterQuery};
 use crate::server::shared::handlers::traits::{BulkDeleteResponse, CrudHandlers, delete_handler};
 use crate::server::shared::storage::filter::StorableFilter;
+use crate::server::shared::storage::traits::Entity;
 use crate::server::shared::types::api::{
     ApiError, ApiErrorResponse, EmptyApiResponse, PaginatedApiResponse,
 };
@@ -26,7 +27,7 @@ use uuid::Uuid;
 // Generated handlers for CSV export
 mod generated {
     use super::*;
-    crate::crud_export_csv_handler!(User, "users", "user");
+    crate::crud_export_csv_handler!(User);
 }
 
 pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
@@ -42,7 +43,7 @@ pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
 #[utoipa::path(
     get,
     path = "/{id}",
-    tag = "users",
+    tag = User::ENTITY_NAME_PLURAL,
     params(("id" = Uuid, Path, description = "User ID")),
     responses(
         (status = 200, description = "User found", body = ApiResponse<User>),
@@ -85,7 +86,7 @@ pub async fn get_user_by_id(
 #[utoipa::path(
     get,
     path = "",
-    tag = "users",
+    tag = User::ENTITY_NAME_PLURAL,
     params(NoFilterQuery),
     responses(
         (status = 200, description = "List of users", body = PaginatedApiResponse<User>),
@@ -167,7 +168,7 @@ pub async fn get_all_users(
 #[utoipa::path(
     delete,
     path = "/{id}",
-    tag = "users",
+    tag = User::ENTITY_NAME_PLURAL,
     params(("id" = Uuid, Path, description = "User ID")),
     responses(
         (status = 200, description = "User deleted", body = EmptyApiResponse),
@@ -231,7 +232,7 @@ pub async fn delete_user(
 #[utoipa::path(
     put,
     path = "/{id}",
-    tags = ["users", "internal"],
+    tags = [User::ENTITY_NAME_PLURAL, "internal"],
     params(("id" = Uuid, Path, description = "User ID")),
     request_body = User,
     responses(
@@ -290,7 +291,7 @@ pub async fn update_user(
 #[utoipa::path(
     put,
     path = "/{id}/admin",
-    tags = ["users", "internal"],
+    tags = [User::ENTITY_NAME_PLURAL, "internal"],
     params(("id" = Uuid, Path, description = "User ID")),
     request_body = User,
     responses(
@@ -381,7 +382,7 @@ async fn admin_update_user(
 #[utoipa::path(
     post,
     path = "/bulk-delete",
-    tag = "users",
+    tag = User::ENTITY_NAME_PLURAL,
     request_body(content = Vec<Uuid>, description = "Array of user IDs to delete"),
     responses(
         (status = 200, description = "Users deleted successfully", body = ApiResponse<BulkDeleteResponse>),
