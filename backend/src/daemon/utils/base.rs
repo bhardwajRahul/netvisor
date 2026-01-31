@@ -78,7 +78,9 @@ impl ConcurrentPipelineOps {
 }
 
 /// Parameters for scan concurrency, including both concurrent hosts and port batch size.
-/// These values are calculated together to ensure the total FD usage stays within limits.
+/// These values must be calculated together to ensure total FD usage stays within limits.
+/// Previously, batch size was calculated independently which caused FD exhaustion when
+/// concurrent_scans * port_batch_size exceeded available file descriptors.
 #[derive(Debug, Clone)]
 pub struct ScanConcurrencyParams {
     /// Number of hosts to scan concurrently
