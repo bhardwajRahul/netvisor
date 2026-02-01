@@ -1307,20 +1307,6 @@ impl DaemonService {
             }
         }
 
-        // Check for pending cancellation
-        if let Some(session_id) = self.get_pending_cancellation(daemon.id).await
-            && let Err(e) = self
-                .send_discovery_cancellation_to_daemon(daemon, &api_key, session_id)
-                .await
-        {
-            tracing::warn!(
-                daemon_id = %daemon.id,
-                session_id = %session_id,
-                "Failed to cancel discovery: {}",
-                e
-            );
-        }
-
         Ok(())
     }
 
