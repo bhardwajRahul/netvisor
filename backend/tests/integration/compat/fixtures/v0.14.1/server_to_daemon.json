@@ -1,0 +1,209 @@
+{
+  "version": "0.14.1",
+  "exchanges": [
+    {
+      "method": "POST",
+      "path": "/api/initialize",
+      "request_body": {
+        "api_key": "scp_d_mQ4NIHvOHRpwl3OgC2EGrjzU6AoM3fkW",
+        "network_id": "9ca6ee23-2d86-4463-8e3a-275f914a88b2"
+      },
+      "response_status": 200,
+      "response_body": {
+        "data": "Daemon initialized successfully",
+        "meta": {
+          "api_version": 1,
+          "server_version": "0.14.1"
+        },
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/discovery/cancel",
+      "request_body": "00000000-0000-0000-0000-000000000000",
+      "response_status": 409,
+      "response_body": {
+        "error": "Discovery session not currently running",
+        "meta": {
+          "api_version": 1,
+          "server_version": "0.14.1"
+        },
+        "success": false
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/discovery/initiate",
+      "request_body": {
+        "discovery_type": {
+          "host_id": "8f6b3991-b3ef-4d1d-9708-d2f57289a34f",
+          "type": "SelfReport"
+        },
+        "session_id": "f2d5414b-3369-4280-929d-5422dd11a4b4"
+      },
+      "response_status": 200,
+      "response_body": {
+        "data": {
+          "session_id": "f2d5414b-3369-4280-929d-5422dd11a4b4"
+        },
+        "meta": {
+          "api_version": 1,
+          "server_version": "0.14.1"
+        },
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/first-contact",
+      "request_body": {
+        "daemon_id": "8934f1fb-af23-4c39-ada2-2414397efb1e",
+        "server_capabilities": {
+          "minimum_daemon_version": "0.12.0",
+          "server_version": "0.14.1"
+        }
+      },
+      "response_status": 200,
+      "response_body": {
+        "data": {
+          "capabilities": {
+            "has_docker_socket": false,
+            "interfaced_subnet_ids": []
+          },
+          "mode": "server_poll",
+          "name": "scanopy-daemon-serverpoll",
+          "version": "0.14.1"
+        },
+        "meta": {
+          "api_version": 1,
+          "server_version": "0.14.1"
+        },
+        "success": true
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/poll",
+      "request_body": {},
+      "response_status": 200,
+      "response_body": {
+        "data": {
+          "entities": {
+            "hosts": [],
+            "subnets": [
+              {
+                "cidr": "172.25.0.0/28",
+                "created_at": "2026-02-02T14:27:03.002238410Z",
+                "description": null,
+                "id": "30c59d3a-2913-4b6b-8fff-d0f739437431",
+                "name": "172.25.0.0/28",
+                "network_id": "9ca6ee23-2d86-4463-8e3a-275f914a88b2",
+                "source": {
+                  "metadata": [
+                    {
+                      "daemon_id": "6229832f-7a1c-45c2-8c9c-4050db38933f",
+                      "date": "2026-02-02T14:27:03.002233832Z",
+                      "host_id": "a9590643-88e0-45c1-8420-738ed98070ba",
+                      "type": "SelfReport"
+                    }
+                  ],
+                  "type": "Discovery"
+                },
+                "subnet_type": "Lan",
+                "tags": [],
+                "updated_at": "2026-02-02T14:27:03.002238410Z"
+              }
+            ]
+          },
+          "progress": {
+            "daemon_id": "6229832f-7a1c-45c2-8c9c-4050db38933f",
+            "discovery_type": {
+              "host_id": "cc741d90-bcc0-4653-b38b-52b23f9e6a61",
+              "type": "SelfReport"
+            },
+            "error": null,
+            "finished_at": "2026-02-02T14:27:02.850382645Z",
+            "network_id": "9ca6ee23-2d86-4463-8e3a-275f914a88b2",
+            "phase": "Cancelled",
+            "progress": 0,
+            "session_id": "c8c6530c-aaff-4d7c-a872-ba4457906d77",
+            "started_at": "2026-02-02T14:27:02.844332097Z"
+          }
+        },
+        "meta": {
+          "api_version": 1,
+          "server_version": "0.14.1"
+        },
+        "success": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/discovery/entities-created",
+      "request_body": {
+        "hosts": [],
+        "subnets": [
+          [
+            "30c59d3a-2913-4b6b-8fff-d0f739437431",
+            {
+              "cidr": "172.25.0.0/28",
+              "created_at": "2026-02-02T14:27:03.002238410Z",
+              "description": null,
+              "id": "30c59d3a-2913-4b6b-8fff-d0f739437431",
+              "name": "172.25.0.0/28",
+              "network_id": "9ca6ee23-2d86-4463-8e3a-275f914a88b2",
+              "source": {
+                "metadata": [
+                  {
+                    "daemon_id": "6229832f-7a1c-45c2-8c9c-4050db38933f",
+                    "date": "2026-02-02T14:27:03.002233832Z",
+                    "host_id": "a9590643-88e0-45c1-8420-738ed98070ba",
+                    "type": "SelfReport"
+                  }
+                ],
+                "type": "Discovery"
+              },
+              "subnet_type": "Lan",
+              "tags": [],
+              "updated_at": "2026-02-02T14:27:03.002238410Z"
+            }
+          ]
+        ]
+      },
+      "response_status": 200,
+      "response_body": {
+        "data": "Created entities acknowledged",
+        "meta": {
+          "api_version": 1,
+          "server_version": "0.14.1"
+        },
+        "success": true
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/status",
+      "request_body": {},
+      "response_status": 200,
+      "response_body": {
+        "data": {
+          "capabilities": {
+            "has_docker_socket": false,
+            "interfaced_subnet_ids": [
+              "30c59d3a-2913-4b6b-8fff-d0f739437431"
+            ]
+          },
+          "mode": "server_poll",
+          "name": "scanopy-daemon-serverpoll",
+          "version": "0.14.1"
+        },
+        "meta": {
+          "api_version": 1,
+          "server_version": "0.14.1"
+        },
+        "success": true
+      }
+    }
+  ]
+}
