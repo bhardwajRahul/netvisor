@@ -43,6 +43,12 @@ pub async fn demo_mode_middleware(
         return next.run(request).await;
     }
 
+    // Allow auth endpoints (login, logout, register, OIDC callbacks, etc.)
+    // These must work regardless of demo mode to allow users to authenticate
+    if request.uri().path().starts_with("/api/auth/") {
+        return next.run(request).await;
+    }
+
     let (mut parts, body) = request.into_parts();
 
     let entity = AuthenticatedEntity::from_request_parts(&mut parts, &state)
