@@ -209,6 +209,17 @@
     }
   },
   {
+    "id": "snmp_integration",
+    "name": "SNMP Integration",
+    "description": "Query network devices for interface and hardware details",
+    "category": "Core",
+    "icon": "sparkle",
+    "color": "Gray",
+    "metadata": {
+      "is_coming_soon": false
+    }
+  },
+  {
     "id": "real_time_updates",
     "name": "Real-time Updates",
     "description": "Live topology updates as your network changes",
