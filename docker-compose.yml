@@ -21,7 +21,7 @@ services:
       SCANOPY_BIND_ADDRESS: ${SCANOPY_BIND_ADDRESS:-0.0.0.0}
       SCANOPY_NAME: ${SCANOPY_NAME:-scanopy-daemon}
       SCANOPY_HEARTBEAT_INTERVAL: ${SCANOPY_HEARTBEAT_INTERVAL:-30}
-      SCANOPY_MODE: ${SCANOPY_MODE:-Push}
+      SCANOPY_MODE: ${SCANOPY_MODE:-daemon_poll}
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:${SCANOPY_DAEMON_PORT:-60073}/api/health || exit 1"]
       interval: 5s

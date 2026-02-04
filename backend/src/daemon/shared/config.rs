@@ -205,7 +205,7 @@ impl Default for AppConfig {
             user_id: None,
             concurrent_scans: 15,
             docker_proxy: None,
-            mode: DaemonMode::ServerPoll,
+            mode: DaemonMode::DaemonPoll,
             server_port: None,
             server_target: None,
             allow_self_signed_certs: false,
