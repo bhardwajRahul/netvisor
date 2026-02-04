@@ -401,7 +401,8 @@ pub async fn get_public_config(State(state): State<Arc<AppState>>) -> impl IntoR
             public_url: state.config.public_url.clone(),
             has_email_opt_in: state.config.plunk_secret.is_some(),
             posthog_key: state.config.posthog_key.clone(),
-            needs_cookie_consent: state.config.posthog_key.is_some(),
+            needs_cookie_consent: state.config.posthog_key.is_some()
+                || state.config.hubspot_api_key.is_some(),
             deployment_type,
             plunk_key: state.config.plunk_key.clone(),
         })),
