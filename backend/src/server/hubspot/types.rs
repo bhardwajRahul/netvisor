@@ -285,6 +285,11 @@ pub struct CompanyProperties {
     /// Date of inquiry submission (ISO 8601)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub scanopy_inquiry_date: Option<String>,
+
+    /// Flag for non-commercial orgs that were synced before filtering was added
+    /// Used to identify records that can be bulk-deleted in HubSpot
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scanopy_non_commercial: Option<bool>,
 }
 
 impl CompanyProperties {
@@ -446,6 +451,11 @@ impl CompanyProperties {
     pub fn with_inquiry_date(mut self, date: DateTime<Utc>) -> Self {
         // HubSpot datetime properties use Unix timestamp in milliseconds
         self.scanopy_inquiry_date = Some(date.timestamp_millis().to_string());
+        self
+    }
+
+    pub fn with_non_commercial(mut self, value: bool) -> Self {
+        self.scanopy_non_commercial = Some(value);
         self
     }
 }

@@ -229,6 +229,7 @@ fn generate_networks(organization_id: Uuid, tags: &[Tag], now: DateTime<Utc>) ->
         .find(|t| t.base.name == "Managed Client")
         .map(|t| t.id);
 
+    // Stagger timestamps so networks sort in predictable order (Headquarters first)
     vec![
         Network {
             id: Uuid::new_v4(),
@@ -243,8 +244,8 @@ fn generate_networks(organization_id: Uuid, tags: &[Tag], now: DateTime<Utc>) ->
         },
         Network {
             id: Uuid::new_v4(),
-            created_at: now,
-            updated_at: now,
+            created_at: now + chrono::Duration::seconds(1),
+            updated_at: now + chrono::Duration::seconds(1),
             base: NetworkBase {
                 name: "Cloud Infrastructure".to_string(),
                 organization_id,
@@ -254,8 +255,8 @@ fn generate_networks(organization_id: Uuid, tags: &[Tag], now: DateTime<Utc>) ->
         },
         Network {
             id: Uuid::new_v4(),
-            created_at: now,
-            updated_at: now,
+            created_at: now + chrono::Duration::seconds(2),
+            updated_at: now + chrono::Duration::seconds(2),
             base: NetworkBase {
                 name: "Remote Office - Denver".to_string(),
                 organization_id,
@@ -265,8 +266,8 @@ fn generate_networks(organization_id: Uuid, tags: &[Tag], now: DateTime<Utc>) ->
         },
         Network {
             id: Uuid::new_v4(),
-            created_at: now,
-            updated_at: now,
+            created_at: now + chrono::Duration::seconds(3),
+            updated_at: now + chrono::Duration::seconds(3),
             base: NetworkBase {
                 name: "Client: Riverside Medical".to_string(),
                 organization_id,
@@ -1314,6 +1315,28 @@ fn generate_hosts_and_services(
         ),
     ));
 
+    // -- Denver VPN Endpoint --
+    let denver_vpn = find_subnet("Denver VPN");
+    result.push(host_with_services!(
+        create_host(
+            "denver-vpn",
+            Some("vpn.denver.acme.local"),
+            Some("VPN endpoint to headquarters"),
+            denver,
+            denver_vpn,
+            Ipv4Addr::new(10, 8, 0, 1),
+            vec![],
+            now
+        ),
+        now,
+        (
+            "WireGuard",
+            "WireGuard VPN",
+            Some(PortType::Wireguard),
+            vec![]
+        ),
+    ));
+
     // ========== RIVERSIDE MEDICAL (CLIENT) ==========
     let riverside = find_network("Riverside");
     let riverside_lan = find_subnet("Riverside LAN");
@@ -2151,10 +2174,22 @@ pub fn generate_groups(networks: &[Network], services: &[Service], tags: &[Tag])
         .iter()
         .find(|n| n.base.name == "Headquarters")
         .unwrap();
+    let denver = networks
+        .iter()
+        .find(|n| n.base.name.contains("Denver"))
+        .unwrap();
+    let riverside = networks
+        .iter()
+        .find(|n| n.base.name.contains("Riverside"))
+        .unwrap();
 
     let monitoring_tag = tags
         .iter()
         .find(|t| t.base.name == "Monitoring")
+        .map(|t| t.id);
+    let backup_tag = tags
+        .iter()
+        .find(|t| t.base.name == "Backup Target")
         .map(|t| t.id);
 
     // Find service bindings for groups
@@ -2241,6 +2276,78 @@ pub fn generate_groups(networks: &[Network], services: &[Service], tags: &[Tag])
                 color: Color::Green,
                 edge_style: EdgeStyle::SmoothStep,
                 tags: vec![],
+            },
+        });
+    }
+
+    // HQ Network Access Path: pfSense (Management) -> Portainer (Servers)
+    // Cross-subnet group spanning Management and Servers subnets
+    let pfsense_binding = find_service_binding("pfSense");
+    let portainer_binding = find_service_binding("Portainer");
+
+    if let (Some(pfsense), Some(portainer)) = (pfsense_binding, portainer_binding) {
+        groups.push(Group {
+            id: Uuid::new_v4(),
+            created_at: now,
+            updated_at: now,
+            base: GroupBase {
+                name: "Network Access Path".to_string(),
+                network_id: hq.id,
+                description: Some("Traffic path from firewall to application servers".to_string()),
+                group_type: GroupType::RequestPath,
+                binding_ids: vec![pfsense, portainer],
+                source: EntitySource::Manual,
+                color: Color::Cyan,
+                edge_style: EdgeStyle::Bezier,
+                tags: vec![],
+            },
+        });
+    }
+
+    // Denver VPN Connection: OPNsense (LAN) -> WireGuard (VPN Tunnel)
+    // Cross-subnet group spanning Office LAN and VPN Tunnel subnets
+    let opnsense_binding = find_service_binding("OPNsense");
+    let wireguard_binding = find_service_binding("WireGuard");
+
+    if let (Some(opnsense), Some(wireguard)) = (opnsense_binding, wireguard_binding) {
+        groups.push(Group {
+            id: Uuid::new_v4(),
+            created_at: now,
+            updated_at: now,
+            base: GroupBase {
+                name: "VPN Connection".to_string(),
+                network_id: denver.id,
+                description: Some("VPN tunnel connection to headquarters".to_string()),
+                group_type: GroupType::RequestPath,
+                binding_ids: vec![opnsense, wireguard],
+                source: EntitySource::Manual,
+                color: Color::Teal,
+                edge_style: EdgeStyle::Bezier,
+                tags: vec![],
+            },
+        });
+    }
+
+    // Riverside Backup Path: Active Directory (LAN) -> Veeam (Management)
+    // Cross-subnet group spanning LAN and Management subnets
+    let ad_binding = find_service_binding("Active Directory");
+    let veeam_binding = find_service_binding("Veeam");
+
+    if let (Some(ad), Some(veeam)) = (ad_binding, veeam_binding) {
+        groups.push(Group {
+            id: Uuid::new_v4(),
+            created_at: now,
+            updated_at: now,
+            base: GroupBase {
+                name: "Backup Path".to_string(),
+                network_id: riverside.id,
+                description: Some("Domain controller backup to Veeam server".to_string()),
+                group_type: GroupType::RequestPath,
+                binding_ids: vec![ad, veeam],
+                source: EntitySource::Manual,
+                color: Color::Green,
+                edge_style: EdgeStyle::SmoothStep,
+                tags: backup_tag.into_iter().collect(),
             },
         });
     }
