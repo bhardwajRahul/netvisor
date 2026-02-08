@@ -147,9 +147,8 @@ pub struct CompanyAttributes {
     pub scanopy_first_snmp_credential_date: Option<String>,
     pub scanopy_first_invite_sent_date: Option<String>,
     pub scanopy_first_invite_accepted_date: Option<String>,
-    pub scanopy_urgency: Option<String>,
-    pub scanopy_inquiry_plan_type: Option<String>,
     pub scanopy_inquiry_urgency: Option<String>,
+    pub scanopy_inquiry_plan_type: Option<String>,
     pub scanopy_inquiry_network_count: Option<i64>,
     pub scanopy_inquiry_date: Option<String>,
 
@@ -289,7 +288,7 @@ impl CompanyAttributes {
     }
 
     pub fn with_urgency(mut self, urgency: impl Into<String>) -> Self {
-        self.scanopy_urgency = Some(urgency.into());
+        self.scanopy_inquiry_urgency = Some(urgency.into());
         self
     }
 
@@ -369,7 +368,7 @@ impl CompanyAttributes {
             scanopy_first_invite_accepted_date,
             "scanopy_first_invite_accepted_date"
         );
-        insert_opt!(scanopy_urgency, "scanopy_urgency");
+        insert_opt!(scanopy_inquiry_urgency, "scanopy_urgency");
         insert_opt!(scanopy_inquiry_plan_type, "scanopy_inquiry_plan_type");
         insert_opt!(scanopy_inquiry_urgency, "scanopy_inquiry_urgency");
         insert_opt_num!(
