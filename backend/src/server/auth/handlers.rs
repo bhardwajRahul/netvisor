@@ -258,9 +258,11 @@ async fn setup(
     let pending_setup = PendingSetup {
         org_name: request.organization_name.trim().to_string(),
         networks,
-        use_case: None,     // Will be merged from onboarding step
-        company_size: None, // Not yet collected in setup flow
-        job_title: None,    // Not yet collected in setup flow
+        use_case: None,              // Will be merged from onboarding step
+        company_size: None,          // Will be merged from onboarding step
+        job_title: None,             // Will be merged from onboarding step
+        referral_source: None,       // Will be merged from onboarding step
+        referral_source_other: None, // Will be merged from onboarding step
     };
 
     session
@@ -332,6 +334,30 @@ pub async fn extract_pending_setup(session: &Session) -> Option<PendingSetup> {
         setup.use_case = Some(use_case);
     }
 
+    // Merge in qualification fields from onboarding step
+    if setup.job_title.is_none()
+        && let Ok(Some(job_title)) = session.get::<String>("onboarding_job_title").await
+    {
+        setup.job_title = Some(job_title);
+    }
+    if setup.company_size.is_none()
+        && let Ok(Some(company_size)) = session.get::<String>("onboarding_company_size").await
+    {
+        setup.company_size = Some(company_size);
+    }
+    if setup.referral_source.is_none()
+        && let Ok(Some(referral_source)) = session.get::<String>("onboarding_referral_source").await
+    {
+        setup.referral_source = Some(referral_source);
+    }
+    if setup.referral_source_other.is_none()
+        && let Ok(Some(referral_source_other)) = session
+            .get::<String>("onboarding_referral_source_other")
+            .await
+    {
+        setup.referral_source_other = Some(referral_source_other);
+    }
+
     Some(setup)
 }
 
@@ -353,6 +379,12 @@ pub async fn clear_pending_setup(session: &Session) {
         .await;
     let _ = session.remove::<String>("onboarding_step").await;
     let _ = session.remove::<String>("onboarding_use_case").await;
+    let _ = session.remove::<String>("onboarding_job_title").await;
+    let _ = session.remove::<String>("onboarding_company_size").await;
+    let _ = session.remove::<String>("onboarding_referral_source").await;
+    let _ = session
+        .remove::<String>("onboarding_referral_source_other")
+        .await;
 }
 
 /// Store onboarding step in session
@@ -381,6 +413,46 @@ async fn onboarding_step(
             .await
             .map_err(|e| {
                 ApiError::internal_error(&format!("Failed to save onboarding use_case: {}", e))
+            })?;
+    }
+
+    // Save qualification fields if provided
+    if let Some(job_title) = request.job_title {
+        session
+            .insert("onboarding_job_title", job_title)
+            .await
+            .map_err(|e| {
+                ApiError::internal_error(&format!("Failed to save onboarding job_title: {}", e))
+            })?;
+    }
+    if let Some(company_size) = request.company_size {
+        session
+            .insert("onboarding_company_size", company_size)
+            .await
+            .map_err(|e| {
+                ApiError::internal_error(&format!("Failed to save onboarding company_size: {}", e))
+            })?;
+    }
+    if let Some(referral_source) = request.referral_source {
+        session
+            .insert("onboarding_referral_source", referral_source)
+            .await
+            .map_err(|e| {
+                ApiError::internal_error(&format!(
+                    "Failed to save onboarding referral_source: {}",
+                    e
+                ))
+            })?;
+    }
+    if let Some(referral_source_other) = request.referral_source_other {
+        session
+            .insert("onboarding_referral_source_other", referral_source_other)
+            .await
+            .map_err(|e| {
+                ApiError::internal_error(&format!(
+                    "Failed to save onboarding referral_source_other: {}",
+                    e
+                ))
             })?;
     }
 

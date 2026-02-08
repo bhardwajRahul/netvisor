@@ -165,6 +165,29 @@ impl BrevoService {
             .get("marketing_opt_in")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
+        let referral_source = event
+            .metadata
+            .get("referral_source")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let referral_source_other = event
+            .metadata
+            .get("referral_source_other")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        // Format referral source for HubSpot (combine "other" with free text)
+        let formatted_referral_source = referral_source.map(|source| {
+            if source == "other" {
+                if let Some(ref other_text) = referral_source_other {
+                    format!("other: {}", other_text)
+                } else {
+                    source
+                }
+            } else {
+                source
+            }
+        });
 
         let mut contact_attrs = ContactAttributes::new()
             .with_email(email.to_string())
@@ -180,6 +203,9 @@ impl BrevoService {
         }
         if let Some(title) = job_title {
             contact_attrs = contact_attrs.with_jobtitle(title);
+        }
+        if let Some(ref source) = formatted_referral_source {
+            contact_attrs = contact_attrs.with_referral_source(source);
         }
 
         let org_filter = StorableFilter::<Network>::new_from_org_id(&event.organization_id);
@@ -198,6 +224,9 @@ impl BrevoService {
         }
         if let Some(size) = company_size {
             company_attrs = company_attrs.with_company_size(size);
+        }
+        if let Some(source) = formatted_referral_source {
+            company_attrs = company_attrs.with_referral_source(source);
         }
 
         let (_contact_id, company_id) = self

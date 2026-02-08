@@ -18,6 +18,9 @@ export interface OnboardingState {
 	// CRM qualification data (company/msp only, not persisted to DB)
 	jobTitle: string | null;
 	companySize: string | null;
+	// Referral source (Cloud only, not persisted to DB)
+	referralSource: string | null;
+	referralSourceOther: string | null;
 }
 
 const STORAGE_KEY = 'scanopy_onboarding';
@@ -67,7 +70,9 @@ const initialState: OnboardingState = {
 	populateSeedData: true,
 	currentBlocker: null,
 	jobTitle: null,
-	companySize: persisted.companySize
+	companySize: persisted.companySize,
+	referralSource: null,
+	referralSourceOther: null
 };
 
 function createOnboardingStore() {
@@ -191,6 +196,13 @@ function createOnboardingStore() {
 			updateAndPersist((state) => ({
 				...state,
 				companySize
+			})),
+
+		setReferralSource: (referralSource: string | null, referralSourceOther: string | null) =>
+			update((state) => ({
+				...state,
+				referralSource,
+				referralSourceOther
 			})),
 
 		// Get the current state synchronously

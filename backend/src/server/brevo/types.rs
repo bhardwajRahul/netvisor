@@ -5,7 +5,7 @@ use uuid::Uuid;
 
 /// Brevo contact attributes for Scanopy users.
 /// Brevo uses UPPERCASE attribute names in an `attributes` map.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ContactAttributes {
     pub email: Option<String>,
     pub firstname: Option<String>,
@@ -19,6 +19,10 @@ pub struct ContactAttributes {
     pub scanopy_signup_date: Option<String>,
     pub scanopy_last_login_date: Option<String>,
     pub scanopy_marketing_opt_in: Option<bool>,
+
+    /// How user heard about Scanopy
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scanopy_referral_source: Option<String>,
 }
 
 impl ContactAttributes {
@@ -76,6 +80,11 @@ impl ContactAttributes {
         self
     }
 
+    pub fn with_referral_source(mut self, source: impl Into<String>) -> Self {
+        self.scanopy_referral_source = Some(source.into());
+        self
+    }
+
     /// Convert to Brevo API attributes map (UPPERCASE keys)
     pub fn to_attributes(&self) -> HashMap<String, serde_json::Value> {
         let mut attrs = HashMap::new();
@@ -120,7 +129,7 @@ impl ContactAttributes {
 
 /// Brevo company attributes for Scanopy organizations.
 /// Attributes are free-form key/value in an `attributes` map.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct CompanyAttributes {
     pub name: Option<String>,
     pub scanopy_org_id: Option<String>,
@@ -152,6 +161,10 @@ pub struct CompanyAttributes {
     pub scanopy_inquiry_urgency: Option<String>,
     pub scanopy_inquiry_network_count: Option<i64>,
     pub scanopy_inquiry_date: Option<String>,
+
+    /// How user heard about Scanopy
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scanopy_referral_source: Option<String>,
 }
 
 impl CompanyAttributes {
@@ -375,6 +388,11 @@ impl CompanyAttributes {
         insert_opt!(scanopy_inquiry_date, "scanopy_inquiry_date");
 
         attrs
+    }
+    
+    pub fn with_referral_source(mut self, source: impl Into<String>) -> Self {
+        self.scanopy_referral_source = Some(source.into());
+        self
     }
 }
 

@@ -98,10 +98,15 @@
 	$effect(() => {
 		if (stepInitialized && !isInviteFlow && currentStep !== lastPersistedStep) {
 			lastPersistedStep = currentStep;
-			// Include use_case in the mutation so it's persisted with the step
+			// Include use_case and qualification data in the mutation so they're persisted with the step
+			const state = onboardingStore.getState();
 			onboardingStepMutation.mutate({
 				step: currentStep,
-				use_case: useCase ?? undefined
+				use_case: useCase ?? undefined,
+				job_title: state.jobTitle ?? undefined,
+				company_size: state.companySize ?? undefined,
+				referral_source: state.referralSource ?? undefined,
+				referral_source_other: state.referralSourceOther ?? undefined
 			});
 		}
 	});

@@ -266,9 +266,23 @@ export function isAuthenticated(user: User | null | undefined): boolean {
  */
 export function useOnboardingStepMutation() {
 	return createMutation(() => ({
-		mutationFn: async (params: { step: string; use_case?: string }) => {
+		mutationFn: async (params: {
+			step: string;
+			use_case?: string;
+			job_title?: string;
+			company_size?: string;
+			referral_source?: string;
+			referral_source_other?: string;
+		}) => {
 			const { data } = await apiClient.POST('/api/auth/onboarding-step', {
-				body: { step: params.step, use_case: params.use_case }
+				body: {
+					step: params.step,
+					use_case: params.use_case,
+					job_title: params.job_title,
+					company_size: params.company_size,
+					referral_source: params.referral_source,
+					referral_source_other: params.referral_source_other
+				}
 			});
 			if (!data?.success) {
 				throw new Error(data?.error || 'Failed to save onboarding step');

@@ -296,6 +296,12 @@ impl AuthService {
             let use_case = pending_setup.as_ref().and_then(|s| s.use_case.clone());
             let company_size = pending_setup.as_ref().and_then(|s| s.company_size.clone());
             let job_title = pending_setup.as_ref().and_then(|s| s.job_title.clone());
+            let referral_source = pending_setup
+                .as_ref()
+                .and_then(|s| s.referral_source.clone());
+            let referral_source_other = pending_setup
+                .as_ref()
+                .and_then(|s| s.referral_source_other.clone());
 
             let mut metadata = serde_json::json!({
                 "org_name": org_name,
@@ -309,6 +315,12 @@ impl AuthService {
             }
             if let Some(job_title) = job_title {
                 metadata["job_title"] = serde_json::json!(job_title);
+            }
+            if let Some(referral_source) = referral_source {
+                metadata["referral_source"] = serde_json::json!(referral_source);
+            }
+            if let Some(referral_source_other) = referral_source_other {
+                metadata["referral_source_other"] = serde_json::json!(referral_source_other);
             }
 
             self.event_bus

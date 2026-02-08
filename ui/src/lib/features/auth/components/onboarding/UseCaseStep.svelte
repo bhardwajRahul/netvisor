@@ -7,16 +7,28 @@
 	import { trackEvent } from '$lib/shared/utils/analytics';
 	import GenericModal from '$lib/shared/components/layout/GenericModal.svelte';
 	import SelectInput from '$lib/shared/components/forms/input/SelectInput.svelte';
+	import TextInput from '$lib/shared/components/forms/input/TextInput.svelte';
 	import {
 		auth_scanopyLogo,
 		common_continue,
+		common_other,
+		common_reddit,
+		common_youtube,
 		onboarding_alreadyHaveAccount,
 		onboarding_commercialNoticeBody,
 		onboarding_commercialNoticeTitle,
 		onboarding_haveQuestionsFirst,
+		onboarding_howDidYouHear,
 		onboarding_howWillYouUse,
 		onboarding_logInHere,
 		onboarding_readyToScan,
+		onboarding_referralSource_blogArticle,
+		onboarding_referralSource_hackerNews,
+		onboarding_referralSource_otherPlaceholder,
+		onboarding_referralSource_searchEngine,
+		onboarding_referralSource_selfHosted,
+		onboarding_referralSource_socialMedia,
+		onboarding_referralSource_wordOfMouth,
 		onboarding_tailorSetup,
 		onboarding_understandContinue,
 		onboarding_yesLetsGo
@@ -59,6 +71,20 @@
 		{ value: '1001+', label: '1001+ employees' }
 	];
 
+	// Referral source options
+	const referralSourceOptions = [
+		{ value: '', label: onboarding_howDidYouHear(), disabled: true },
+		{ value: 'search_engine', label: onboarding_referralSource_searchEngine() },
+		{ value: 'youtube', label: common_youtube() },
+		{ value: 'blog_article', label: onboarding_referralSource_blogArticle() },
+		{ value: 'reddit', label: common_reddit() },
+		{ value: 'hacker_news', label: onboarding_referralSource_hackerNews() },
+		{ value: 'social_media', label: onboarding_referralSource_socialMedia() },
+		{ value: 'word_of_mouth', label: onboarding_referralSource_wordOfMouth() },
+		{ value: 'self_hosted', label: onboarding_referralSource_selfHosted() },
+		{ value: 'other', label: common_other() }
+	];
+
 	// Icons for each use case (kept separate from types for flexibility)
 	const useCaseIcons: Record<UseCase, typeof Home> = {
 		homelab: Home,
@@ -72,11 +98,16 @@
 	// Show business fields for company/msp
 	$: showBusinessFields = selectedUseCase === 'company' || selectedUseCase === 'msp';
 
+	// Show Cloud-only qualification fields
+	$: showCloudFields = configData && isCloud(configData);
+
 	// Form for business qualification fields
 	const form = createForm(() => ({
 		defaultValues: {
 			role: '',
-			companySize: ''
+			companySize: '',
+			referralSource: '',
+			referralSourceOther: ''
 		}
 	}));
 
@@ -85,7 +116,7 @@
 
 		// Reset business fields when switching to homelab
 		if (useCase === 'homelab') {
-			form.reset({ role: '', companySize: '' });
+			form.reset({ role: '', companySize: '', referralSource: '', referralSourceOther: '' });
 		}
 
 		// For Community self-hosted + Company/MSP: show license warning
@@ -101,10 +132,16 @@
 	}
 
 	function saveBusinessFields() {
+		const values = form.state.values;
 		if (showBusinessFields) {
-			const values = form.state.values;
 			onboardingStore.setJobTitle(values.role || null);
 			onboardingStore.setCompanySize(values.companySize || null);
+		}
+		if (showCloudFields) {
+			onboardingStore.setReferralSource(
+				values.referralSource || null,
+				values.referralSourceOther || null
+			);
 		}
 	}
 
@@ -124,7 +161,9 @@
 		trackEvent('onboarding_use_case_selected', {
 			use_case: selectedUseCase,
 			role: values.role || undefined,
-			company_size: values.companySize || undefined
+			company_size: values.companySize || undefined,
+			referral_source: values.referralSource || undefined,
+			referral_source_other: values.referralSourceOther || undefined
 		});
 		trackEvent('onboarding_ready_to_scan', { ready: true, use_case: selectedUseCase });
 		onboardingStore.setUseCase(selectedUseCase);
@@ -139,7 +178,9 @@
 		trackEvent('onboarding_use_case_selected', {
 			use_case: selectedUseCase,
 			role: values.role || undefined,
-			company_size: values.companySize || undefined
+			company_size: values.companySize || undefined,
+			referral_source: values.referralSource || undefined,
+			referral_source_other: values.referralSourceOther || undefined
 		});
 		trackEvent('onboarding_ready_to_scan', { ready: false, use_case: selectedUseCase });
 		onboardingStore.setUseCase(selectedUseCase);
@@ -198,30 +239,64 @@
 					{/each}
 				</div>
 
-				<!-- Business Qualification Fields (Company/MSP only) -->
-				{#if showBusinessFields}
-					<div class="card card-static">
-						<p class="text-secondary text-sm">Help us tailor your experience:</p>
+				<!-- Cloud-only qualification fields -->
+				{#if showCloudFields}
+					<!-- Business Qualification Fields (Company/MSP only) -->
+					{#if showBusinessFields}
+						<div class="card card-static">
+							<p class="text-secondary text-sm">Help us tailor your experience:</p>
 
-						<div class="grid gap-4 sm:grid-cols-2">
-							<form.Field name="role">
-								{#snippet children(field)}
-									<SelectInput label="Your role" id="role" {field} options={roleOptions} />
-								{/snippet}
-							</form.Field>
+							<div class="grid gap-4 sm:grid-cols-2">
+								<form.Field name="role">
+									{#snippet children(field)}
+										<SelectInput label="Your role" id="role" {field} options={roleOptions} />
+									{/snippet}
+								</form.Field>
 
-							<form.Field name="companySize">
+								<form.Field name="companySize">
+									{#snippet children(field)}
+										<SelectInput
+											label="Company size"
+											id="company-size"
+											{field}
+											options={companySizeOptions}
+										/>
+									{/snippet}
+								</form.Field>
+							</div>
+						</div>
+					{/if}
+
+					<!-- Referral Source (all use cases on Cloud) -->
+					{#if selectedUseCase}
+						<div class="card card-static">
+							<form.Field name="referralSource">
 								{#snippet children(field)}
 									<SelectInput
-										label="Company size"
-										id="company-size"
+										label={onboarding_howDidYouHear()}
+										id="referral-source"
 										{field}
-										options={companySizeOptions}
+										options={referralSourceOptions}
 									/>
 								{/snippet}
 							</form.Field>
+
+							{#if form.state.values.referralSource === 'other'}
+								<div class="mt-3">
+									<form.Field name="referralSourceOther">
+										{#snippet children(field)}
+											<TextInput
+												label=""
+												id="referral-source-other"
+												{field}
+												placeholder={onboarding_referralSource_otherPlaceholder()}
+											/>
+										{/snippet}
+									</form.Field>
+								</div>
+							{/if}
 						</div>
-					</div>
+					{/if}
 				{/if}
 
 				<!-- License Warning (Community + Company/MSP) -->

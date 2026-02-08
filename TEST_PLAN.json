@@ -1,0 +1,679 @@
+{
+  "branch": "billing-overhaul",
+  "tests": [
+    {
+      "id": "cloud-qualification-fields",
+      "category": "Onboarding",
+      "description": "Cloud onboarding shows qualification fields (role, company size, referral source)",
+      "steps": [
+        "Open Cloud deployment in incognito/private window",
+        "Start registration — reach use case selection step",
+        "Select 'Company' or 'MSP'",
+        "Look for role and company size fields",
+        "Look for 'How did you hear about Scanopy?' field",
+        "Switch to 'Homelab'",
+        "Verify role/company size fields disappear but referral source remains"
+      ],
+      "expected": "Company/MSP: role + company size + referral source. Homelab: referral source only. All fields Cloud-only.",
+      "flow": "setup",
+      "sequence": 1,
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "referral-source-other-text",
+      "category": "Onboarding",
+      "description": "Selecting 'Other' referral source shows free text input",
+      "steps": [
+        "Still on use case step, select 'Company'",
+        "In 'How did you hear about Scanopy?' dropdown, select 'Other'",
+        "Verify a text input appears with placeholder",
+        "Type a custom answer (e.g. 'Conference talk')",
+        "Switch referral source to something else — text input should disappear"
+      ],
+      "expected": "Free text input appears only when 'Other' selected. Disappears when switching to another option.",
+      "flow": "setup",
+      "sequence": 2,
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "onboarding-three-steps",
+      "category": "Onboarding",
+      "description": "Onboarding flow has exactly 3 steps (no daemon/verification steps)",
+      "steps": [
+        "Select a use case and fill in referral source, then click 'Yes, let's go'",
+        "Verify Step 2 is Setup (org name, network details) — no daemon step",
+        "Fill in org/network details and proceed",
+        "Verify Step 3 is Register (email/password)",
+        "Verify there is no daemon setup or daemon verification step anywhere"
+      ],
+      "expected": "Onboarding is 3 steps: use_case → setup → register. No daemon or daemon_verification steps.",
+      "flow": "setup",
+      "sequence": 3,
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "onboarding-single-network",
+      "category": "Onboarding",
+      "description": "Onboarding creates exactly one network, no 'add another' option",
+      "steps": [
+        "On the Setup step (org/network configuration), look at the network section",
+        "Verify there is no 'Add another network' button",
+        "Verify exactly one network name field is shown"
+      ],
+      "expected": "Setup step shows single network form with no option to add more",
+      "flow": "setup",
+      "sequence": 4,
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "referral-source-tracked-posthog",
+      "category": "Onboarding",
+      "description": "Referral source is included in PostHog analytics event",
+      "steps": [
+        "Open browser DevTools Network tab before clicking 'Yes, let's go' on use case step",
+        "Note: if you already passed use case step, this can be verified retroactively in PostHog",
+        "Look for onboarding_use_case_selected event in network requests or PostHog dashboard"
+      ],
+      "expected": "Event includes referral_source property with the selected value. If 'other', includes referral_source_other.",
+      "flow": "setup",
+      "sequence": 5,
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "new-user-starts-on-free",
+      "category": "Onboarding",
+      "description": "New users start on Free plan after completing onboarding",
+      "steps": [
+        "Complete registration (email/password) on the Register step",
+        "After landing on main app, navigate to Settings > Billing",
+        "Verify current plan shows as 'Free'"
+      ],
+      "expected": "Newly registered user is on Free plan with active status",
+      "flow": "setup",
+      "sequence": 6,
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "onboarding-lands-on-daemons",
+      "category": "Onboarding",
+      "description": "After onboarding, user lands on daemons tab with create modal auto-opened",
+      "steps": [
+        "After registration completes, observe where the app lands",
+        "Verify the Daemons tab is active/selected",
+        "Verify the Create Daemon modal opens automatically",
+        "Verify DaemonPoll option is disabled with UpgradeBadge (user is on Free)",
+        "Close the modal and navigate away, then back — modal should NOT reopen"
+      ],
+      "expected": "User lands on daemons tab with auto-opened create modal. DaemonPoll disabled for Free. Flag is one-shot.",
+      "flow": "setup",
+      "sequence": 7,
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "qualification-fields-reach-backend",
+      "category": "Onboarding",
+      "description": "Job title, company size, referral source are saved to backend session and reach HubSpot",
+      "steps": [
+        "Using the account just registered (Company use case with role, company size, referral source filled)",
+        "Check backend logs or HubSpot for the contact/company record",
+        "Verify all qualification fields are present"
+      ],
+      "expected": "HubSpot contact/company has scanopy_referral_source property set. Job title and company size also synced.",
+      "flow": "setup",
+      "sequence": 8,
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "selfhosted-no-qualification-fields",
+      "category": "Onboarding",
+      "description": "Self-hosted onboarding does NOT show qualification fields",
+      "steps": [
+        "Open self-hosted deployment registration in incognito/private window",
+        "Reach use case selection step",
+        "Select any use case (homelab, company, MSP)",
+        "Look for qualification fields (role, company size, referral source)"
+      ],
+      "expected": "No qualification fields shown on self-hosted. Only use case selection and continue button.",
+      "flow": "setup",
+      "sequence": 9,
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "free-plan-visible-in-selection",
+      "category": "Free Tier Plan",
+      "description": "Free plan appears in plan selection UI alongside paid plans",
+      "steps": [
+        "Log in as an owner on a Cloud deployment",
+        "Navigate to Settings > Billing tab",
+        "Click 'Change Plan' or view plan selection modal",
+        "Verify Free plan is listed with name 'Free', description mentioning 25 hosts and manual discovery",
+        "Verify Free plan shows 'Current Plan' badge if user is on Free"
+      ],
+      "expected": "Free plan is visible in the plan selection UI with correct metadata (name, description, green color, $0 price)",
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "free-plan-config-values",
+      "category": "Free Tier Plan",
+      "description": "Free plan has correct configuration: 25 hosts, no scheduled discovery, no daemon poll",
+      "steps": [
+        "Open billing fixtures JSON at ui/src/lib/api/fixtures/billing-plans-next.json",
+        "Locate the Free plan entry",
+        "Verify included_hosts is 25, host_cents is null",
+        "Verify features include scheduled_discovery: false, daemon_poll: false",
+        "Verify included_seats is 1, included_networks is 1"
+      ],
+      "expected": "Free plan fixtures show correct limits and feature flags",
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "removed-unlimited-features",
+      "category": "Free Tier Plan",
+      "description": "unlimited_hosts and unlimited_scans are fully removed from features",
+      "steps": [
+        "Open features fixture at ui/src/lib/api/fixtures/features-next.json",
+        "Search for 'unlimited_hosts' and 'unlimited_scans'",
+        "Verify neither appears",
+        "Verify 'scheduled_discovery' and 'daemon_poll' features exist instead",
+        "Open billing-plans-next.json and verify no plan has unlimited_hosts or unlimited_scans in features"
+      ],
+      "expected": "No references to unlimited_hosts/unlimited_scans in fixtures; replaced by scheduled_discovery and daemon_poll",
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "host-limit-manual-creation",
+      "category": "Backend Enforcement",
+      "description": "Manual host creation blocked when at 25-host limit on Free plan",
+      "steps": [
+        "Set up org on Free plan with 25 hosts (seed via DB or API)",
+        "Attempt to create a new host via API: POST /api/hosts with valid payload",
+        "Check the response"
+      ],
+      "expected": "API returns 403 with error code 'billing_host_limit_reached' and message mentioning 25-host limit",
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "host-limit-discovery-creation",
+      "category": "Backend Enforcement",
+      "description": "Discovery host creation cancelled when hitting 25-host limit",
+      "steps": [
+        "Set up org on Free plan with 24 hosts",
+        "Run an ad-hoc discovery that discovers 5+ new hosts",
+        "Wait for discovery to complete or be cancelled",
+        "Check host count — should be at most 25",
+        "Check discovery session status"
+      ],
+      "expected": "Discovery is cancelled when host limit is reached. Host count does not exceed 25. Discovery session shows cancelled status.",
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "host-limit-upsert-allowed",
+      "category": "Backend Enforcement",
+      "description": "Upserting existing hosts is allowed even when at host limit",
+      "steps": [
+        "Set up org on Free plan with 25 hosts",
+        "Run a discovery that re-discovers existing hosts (same IPs/MACs)",
+        "Wait for discovery to complete"
+      ],
+      "expected": "Discovery succeeds — existing hosts are updated without triggering host limit error. No new hosts created.",
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "scheduled-discovery-blocked-free",
+      "category": "Backend Enforcement",
+      "description": "Scheduled discovery creation blocked on Free plan",
+      "steps": [
+        "Log in as owner on Free plan",
+        "Attempt to create a discovery with RunType::Scheduled via API: POST /api/discoveries with schedule fields",
+        "Check response"
+      ],
+      "expected": "API returns 403 with error code 'billing_feature_not_available' mentioning 'Scheduled Discovery'",
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "scheduled-discovery-update-blocked-free",
+      "category": "Backend Enforcement",
+      "description": "Updating a discovery to Scheduled type blocked on Free plan",
+      "steps": [
+        "On Free plan, have an existing AdHoc discovery",
+        "Attempt to update it to RunType::Scheduled via API: PUT /api/discoveries/:id",
+        "Check response"
+      ],
+      "expected": "API returns 403 with error code 'billing_feature_not_available' mentioning 'Scheduled Discovery'",
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "daemon-poll-registration-blocked-free",
+      "category": "Backend Enforcement",
+      "description": "DaemonPoll daemon registration blocked on Free plan",
+      "steps": [
+        "On Free plan, attempt to register a daemon with DaemonPoll mode",
+        "Check the registration response"
+      ],
+      "expected": "API returns 403 with error code 'billing_feature_not_available' mentioning 'DaemonPoll'",
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "daemon-standby-signal",
+      "category": "Backend Enforcement",
+      "description": "DaemonPoll daemon receives standby error and blocks indefinitely",
+      "steps": [
+        "Set up org with active DaemonPoll daemon on paid plan",
+        "Downgrade org to Free plan",
+        "Observe daemon's request-work call",
+        "Check daemon logs"
+      ],
+      "expected": "Daemon receives DaemonStandby error code. Daemon logs 'Plan does not support DaemonPoll mode. Daemon is on standby.' and blocks (does not exit or retry).",
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "daemon-standby-backward-compat",
+      "category": "Backend Enforcement",
+      "description": "Standby signal is backward-compatible (no response format change)",
+      "steps": [
+        "Verify request-work endpoint still returns (Option<DiscoveryUpdatePayload>, bool) tuple on success",
+        "Verify standby is signaled via ApiError (not tuple field change)",
+        "Old daemons that don't handle DaemonStandby specifically should still stop gracefully"
+      ],
+      "expected": "Response format unchanged. Old daemons exit via generic error handler. New daemons block on standby.",
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "trial-without-credit-card",
+      "category": "Trial Flow",
+      "description": "Trial starts without requiring credit card",
+      "steps": [
+        "Log in as owner on Free plan",
+        "Open plan selection modal",
+        "Select a paid plan that has trial_days > 0 (e.g., Starter)",
+        "Click to start trial",
+        "Verify no credit card form appears",
+        "Check org plan status"
+      ],
+      "expected": "Trial starts immediately without credit card. Org plan_status is 'trialing'. trial_end_date is set.",
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "trial-end-date-visible",
+      "category": "Trial Flow",
+      "description": "Trial countdown visible in billing settings",
+      "steps": [
+        "Log in as owner on a trialing plan",
+        "Navigate to Settings > Billing tab",
+        "Look for trial countdown"
+      ],
+      "expected": "Trial end date or countdown is displayed in the billing tab",
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "trial-ending-email",
+      "category": "Transactional Emails",
+      "description": "3-day reminder email sent before trial expires (when no payment method)",
+      "steps": [
+        "Set up org on trial without payment method",
+        "Trigger customer.subscription.trial_will_end webhook (or wait for Stripe to fire it)",
+        "Check email sent to org owner"
+      ],
+      "expected": "Email with subject about trial ending in 3 days, prompting to add payment method",
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "trial-ending-email-skipped-with-payment",
+      "category": "Transactional Emails",
+      "description": "3-day reminder NOT sent when org has payment method",
+      "steps": [
+        "Set up org on trial WITH payment method added",
+        "Trigger customer.subscription.trial_will_end webhook",
+        "Check whether email was sent"
+      ],
+      "expected": "No reminder email sent — org has payment method so Stripe handles trial→active normally",
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "trial-expiry-downgrade-to-free",
+      "category": "Trial Expiry",
+      "description": "Trial expiry without payment method downgrades to Free",
+      "steps": [
+        "Set up org on trial (e.g. Starter) without payment method",
+        "Trigger trial expiry via subscription.updated webhook (status changes from trialing)",
+        "Check org plan and status"
+      ],
+      "expected": "Org plan is Free, plan_status is 'active'. Stripe subscription cancelled.",
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "downgrade-converts-scheduled-to-adhoc",
+      "category": "Trial Expiry",
+      "description": "Downgrade to Free converts Scheduled discoveries to AdHoc",
+      "steps": [
+        "Set up org on paid plan with 3 Scheduled discoveries",
+        "Downgrade to Free (via trial expiry or plan change)",
+        "Check all discovery run types"
+      ],
+      "expected": "All previously Scheduled discoveries are now RunType::AdHoc. Not just disabled — actually converted.",
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "downgrade-sets-daemon-standby",
+      "category": "Trial Expiry",
+      "description": "Downgrade to Free puts DaemonPoll daemons on standby",
+      "steps": [
+        "Set up org on paid plan with 2 DaemonPoll daemons",
+        "Downgrade to Free",
+        "Check daemon standby field"
+      ],
+      "expected": "Both DaemonPoll daemons have standby=true. ServerPoll daemons (if any) are unaffected.",
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "downgrade-deletes-excess-hosts",
+      "category": "Trial Expiry",
+      "description": "Downgrade to Free deletes hosts exceeding 25, keeping most recent and daemon hosts",
+      "steps": [
+        "Set up org on paid plan with 40 hosts, one of which is a daemon's host",
+        "Downgrade to Free",
+        "Count remaining hosts",
+        "Check which hosts were kept"
+      ],
+      "expected": "Exactly 25 hosts remain. Daemon host is preserved. Other 25 are the most recently updated. 15 hosts deleted.",
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "downgrade-email-with-overage",
+      "category": "Transactional Emails",
+      "description": "Trial expired/downgrade email includes overage counts",
+      "steps": [
+        "Set up org on paid plan with 40 hosts, 3 scheduled discoveries, 2 DaemonPoll daemons",
+        "Trigger downgrade to Free (trial expiry without payment)",
+        "Check the downgrade email"
+      ],
+      "expected": "Email mentions: 15 hosts deleted, 3 discoveries converted to manual, 2 daemons on standby. Prompts to upgrade.",
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "upgrade-clears-daemon-standby",
+      "category": "Plan Changes",
+      "description": "Upgrading from Free clears standby on DaemonPoll daemons",
+      "steps": [
+        "Have org on Free with DaemonPoll daemons on standby",
+        "Upgrade to a paid plan with daemon_poll: true",
+        "Check daemon standby field"
+      ],
+      "expected": "Daemon standby set to false after upgrade. Daemon can resume after restart.",
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "payment-method-collection",
+      "category": "Payment Method",
+      "description": "Setup payment method flow via Settings",
+      "steps": [
+        "Log in as org owner on Free or trialing plan without payment method",
+        "Navigate to Settings > Billing tab",
+        "Click 'Add Payment Method' CTA",
+        "Verify redirect to Stripe Checkout in setup mode",
+        "Complete payment method entry in Stripe",
+        "Return to app"
+      ],
+      "expected": "Stripe Checkout opens in setup mode (no charge). After completion, has_payment_method is true. CTA disappears.",
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "notification-bubble-no-payment",
+      "category": "Notification Bubble",
+      "description": "Amber notification dot on Settings nav when no payment method on Free/trialing",
+      "steps": [
+        "Log in as user on Free plan without payment method",
+        "Look at the sidebar navigation",
+        "Check the Settings nav item"
+      ],
+      "expected": "Amber notification dot visible on Settings icon in sidebar",
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "notification-bubble-dismissed-after-payment",
+      "category": "Notification Bubble",
+      "description": "Notification dot disappears after payment method is added",
+      "steps": [
+        "Start with amber dot visible on Settings",
+        "Add payment method via Settings > Billing",
+        "Return to main app / refresh",
+        "Check Settings nav item"
+      ],
+      "expected": "Amber notification dot is gone after has_payment_method becomes true",
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "plan-selection-modal-not-gating",
+      "category": "Plan Selection",
+      "description": "Plan selection is a modal, not a gating page — no 402 lockout",
+      "steps": [
+        "Log in as user on Free plan",
+        "Navigate around the app (hosts, discovery, settings)",
+        "Verify no 402 billing gating page appears",
+        "Open plan selection via Settings > Billing > Change Plan",
+        "Verify it opens as a modal overlay"
+      ],
+      "expected": "No gating redirect. Free plan users can navigate freely. Plan selection is a dismissible modal.",
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "change-plan-upgrade",
+      "category": "Plan Changes",
+      "description": "In-app upgrade from Free to paid plan",
+      "steps": [
+        "Log in as owner on Free plan",
+        "Open plan selection modal",
+        "Select a paid plan (e.g. Starter)",
+        "Click upgrade button",
+        "Complete checkout/trial flow"
+      ],
+      "expected": "Plan changes to selected plan. If trial available, trial starts without card. Otherwise checkout redirects to Stripe.",
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "change-plan-downgrade-preview",
+      "category": "Plan Changes",
+      "description": "Downgrade preview shows impact before confirming",
+      "steps": [
+        "Log in as owner on paid plan with hosts > 25, scheduled discoveries, DaemonPoll daemons",
+        "Open plan selection modal",
+        "Select Free plan / downgrade",
+        "Before confirmation, check for preview information"
+      ],
+      "expected": "Confirmation dialog shows: X hosts to delete, Y discoveries to convert, Z daemons to standby. User must confirm.",
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "change-plan-downgrade-confirmed",
+      "category": "Plan Changes",
+      "description": "Confirmed downgrade executes all cleanup operations",
+      "steps": [
+        "From downgrade preview dialog, click Confirm",
+        "Wait for operation to complete",
+        "Check plan, hosts, discoveries, daemons"
+      ],
+      "expected": "Plan is Free. Excess hosts deleted. Scheduled→AdHoc. DaemonPoll→standby. Email sent.",
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "frontend-scheduled-discovery-disabled",
+      "category": "Frontend Enforcement",
+      "description": "Scheduled discovery option disabled with UpgradeBadge on Free plan",
+      "steps": [
+        "Log in on Free plan",
+        "Open discovery creation modal",
+        "Look at the run type options"
+      ],
+      "expected": "Scheduled option is disabled/greyed out. UpgradeBadge ('Upgrade') shown next to it. Only AdHoc selectable.",
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "frontend-daemon-poll-disabled",
+      "category": "Frontend Enforcement",
+      "description": "DaemonPoll option disabled with UpgradeBadge on Free plan",
+      "steps": [
+        "Log in on Free plan",
+        "Open Create Daemon modal (or navigate to daemon creation)",
+        "Look at daemon mode options"
+      ],
+      "expected": "DaemonPoll option is disabled. UpgradeBadge shown next to it. ServerPoll is default/only option.",
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "frontend-host-limit-indicator",
+      "category": "Frontend Enforcement",
+      "description": "Host count indicator and limit enforcement in UI",
+      "steps": [
+        "Log in on Free plan with 20 hosts",
+        "Navigate to Hosts tab",
+        "Check for host count indicator (e.g. '20 / 25 hosts')",
+        "Add hosts until reaching 25",
+        "Check indicator and create button state at 25/25"
+      ],
+      "expected": "Shows 'X / 25 hosts'. At 25/25: create button disabled, UpgradeBadge shown, 'Upgrade for unlimited hosts' messaging.",
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "frontend-host-limit-warning",
+      "category": "Frontend Enforcement",
+      "description": "Warning shown when approaching host limit",
+      "steps": [
+        "Log in on Free plan with 22 hosts",
+        "Navigate to Hosts tab",
+        "Check for warning indicator"
+      ],
+      "expected": "Warning styling visible when approaching limit (20+/25), indicating user is close to cap",
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "upgrade-badge-opens-settings",
+      "category": "Frontend Enforcement",
+      "description": "Clicking UpgradeBadge navigates to settings/billing",
+      "steps": [
+        "Log in on Free plan",
+        "Find any UpgradeBadge (on disabled Scheduled, DaemonPoll, or host limit)",
+        "Click the UpgradeBadge"
+      ],
+      "expected": "User is navigated to Settings page (billing tab) where they can change plan",
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "billing-tab-free-plan-info",
+      "category": "Settings Billing Tab",
+      "description": "Billing tab shows Free plan limits and upgrade prompt",
+      "steps": [
+        "Log in as owner on Free plan",
+        "Navigate to Settings > Billing tab",
+        "Review the displayed information"
+      ],
+      "expected": "Shows: current plan (Free), host usage with progress bar (X/25), 'Manual discovery only', 'ServerPoll only', prominent upgrade CTA",
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "billing-tab-trial-info",
+      "category": "Settings Billing Tab",
+      "description": "Billing tab shows trial countdown and payment CTA during trial",
+      "steps": [
+        "Log in as owner on trialing plan without payment method",
+        "Navigate to Settings > Billing tab"
+      ],
+      "expected": "Shows trial countdown from trial_end_date, prominent 'Add Payment Method' CTA",
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "email-trial-started",
+      "category": "Transactional Emails",
+      "description": "Trial started email sent on trial activation",
+      "steps": [
+        "Start a trial on paid plan",
+        "Check email inbox"
+      ],
+      "expected": "Email received: 'Welcome to your [Plan] trial! [X] days to explore.'",
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "email-payment-method-added",
+      "category": "Transactional Emails",
+      "description": "Confirmation email sent when payment method is added",
+      "steps": [
+        "Add payment method via Settings > Billing",
+        "Check email inbox"
+      ],
+      "expected": "Email received confirming payment method added and subscription will continue after trial",
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "email-plan-changed",
+      "category": "Transactional Emails",
+      "description": "Email sent on plan change (upgrade or downgrade)",
+      "steps": [
+        "Change plan via plan selection modal (upgrade or downgrade)",
+        "Check email inbox"
+      ],
+      "expected": "Email received describing the plan change and what changed",
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "paid-plan-no-restrictions",
+      "category": "Paid Plans",
+      "description": "Paid plans have no Free tier restrictions",
+      "steps": [
+        "Log in as owner on Starter or higher plan",
+        "Verify: no host limit indicator, Scheduled discovery enabled, DaemonPoll enabled",
+        "Create hosts freely past 25",
+        "Create Scheduled discovery",
+        "Register DaemonPoll daemon"
+      ],
+      "expected": "No restrictions. All features available. No UpgradeBadges visible. No host limit.",
+      "status": null,
+      "feedback": null
+    }
+  ]
+}

@@ -58,6 +58,12 @@ pub struct PendingSetup {
     /// Job title
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub job_title: Option<String>,
+    /// How they heard about Scanopy
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub referral_source: Option<String>,
+    /// Free-text referral source (when "other" is selected)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub referral_source_other: Option<String>,
 }
 
 /// Daemon setup data collected before registration

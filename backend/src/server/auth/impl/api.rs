@@ -146,6 +146,18 @@ pub struct OnboardingStepRequest {
     /// Use case selection (homelab, company, msp)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub use_case: Option<String>,
+    /// Job title/role
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub job_title: Option<String>,
+    /// Company size
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub company_size: Option<String>,
+    /// Referral source (how they heard about Scanopy)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub referral_source: Option<String>,
+    /// Free-text referral source (when "other" is selected)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub referral_source_other: Option<String>,
 }
 
 /// Network data in onboarding state response
