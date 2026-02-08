@@ -295,8 +295,9 @@ export interface paths {
         put?: never;
         /**
          * Submit enterprise plan inquiry
-         * @description Dual submission: Form API (for notifications) + CRM API (for Company properties).
-         *     Requires authentication to link the inquiry to an organization.
+         * @description Updates Brevo contact/company with inquiry data, creates a deal, and
+         *     tracks an event for automation triggers. Requires authentication to
+         *     link the inquiry to an organization.
          */
         post: operations["submit_enterprise_inquiry"];
         delete?: never;
@@ -2716,14 +2717,14 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-02-06T00:13:30.486983Z",
-             *       "id": "626fcb42-0172-4143-9e1b-2880e513b3df",
+             *       "created_at": "2026-02-08T14:11:00.672207Z",
+             *       "id": "8c043606-e92b-44a3-b280-b12f1ce5f9a2",
              *       "interface_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-02-06T00:13:30.486983Z"
+             *       "updated_at": "2026-02-08T14:11:00.672207Z"
              *     }
              */
             data?: components["schemas"]["BindingBase"] & {
@@ -2967,14 +2968,14 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-02-06T00:13:30.472384Z",
-             *               "id": "118a678a-9ef5-44ca-95fd-4f1f023f553e",
+             *               "created_at": "2026-02-08T14:11:00.655163Z",
+             *               "id": "8dbba743-2222-4ead-a9f5-49a2398e7c1c",
              *               "interface_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-02-06T00:13:30.472384Z"
+             *               "updated_at": "2026-02-08T14:11:00.655163Z"
              *             }
              *           ],
              *           "created_at": "2026-01-15T10:30:00Z",
@@ -2983,7 +2984,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "NTP Server",
+             *           "service_definition": "Nest Thermostat",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3257,14 +3258,14 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-02-06T00:13:30.482724Z",
-             *           "id": "753839fb-dbfd-45b1-8e5f-6959ea522429",
+             *           "created_at": "2026-02-08T14:11:00.667172Z",
+             *           "id": "e46669d9-ea6b-409c-9fa7-1444ce34b577",
              *           "interface_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-02-06T00:13:30.482724Z"
+             *           "updated_at": "2026-02-08T14:11:00.667172Z"
              *         }
              *       ],
              *       "created_at": "2026-01-15T10:30:00Z",
@@ -3273,7 +3274,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "NTP Server",
+             *       "service_definition": "Nest Thermostat",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -3575,14 +3576,14 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-02-06T00:13:30.472572Z",
-         *       "id": "2328d7b9-cae7-4a3d-9e71-7e3c18371ab9",
+         *       "created_at": "2026-02-08T14:11:00.655522Z",
+         *       "id": "394d121b-09ac-4aa4-8171-25c417d6fc6e",
          *       "interface_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-02-06T00:13:30.472572Z"
+         *       "updated_at": "2026-02-08T14:11:00.655522Z"
          *     }
          */
         Binding: components["schemas"]["BindingBase"] & {
@@ -3759,7 +3760,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "NTP Server",
+         *           "service_definition": "Nest Thermostat",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -4066,6 +4067,11 @@ export interface components {
         } | {
             host_naming_fallback: components["schemas"]["HostNamingFallback"];
             /**
+             * @description Whether to probe raw-socket ports (9100-9107) during endpoint scanning.
+             *     Disabled by default to prevent ghost printing on JetDirect printers.
+             */
+            probe_raw_socket_ports?: boolean;
+            /**
              * @description SNMP credentials for querying devices during discovery
              *     Server builds this mapping before initiating discovery
              */
@@ -4172,9 +4178,7 @@ export interface components {
             company: string;
             /** @description Contact email */
             email: string;
-            /** @description HubSpot tracking cookie (hutk) for linking form submission to visitor */
-            hutk?: string | null;
-            /** @description Message/use case description (maps to HubSpot "message" field) */
+            /** @description Message/use case description */
             message: string;
             /** @description Contact name */
             name: string;
@@ -4402,14 +4406,14 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-02-06T00:13:30.472122Z",
-         *               "id": "9d5036ca-1e67-486a-a613-7f52f07f5e9a",
+         *               "created_at": "2026-02-08T14:11:00.654642Z",
+         *               "id": "6aa4a15a-c9d9-42dd-bf61-4083d12dce45",
          *               "interface_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-02-06T00:13:30.472122Z"
+         *               "updated_at": "2026-02-08T14:11:00.654642Z"
          *             }
          *           ],
          *           "created_at": "2026-01-15T10:30:00Z",
@@ -4418,7 +4422,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "NTP Server",
+         *           "service_definition": "Nest Thermostat",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -5366,14 +5370,14 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-02-06T00:13:30.472508Z",
-         *           "id": "0540a769-ed2f-413d-92b3-499a9847126c",
+         *           "created_at": "2026-02-08T14:11:00.655401Z",
+         *           "id": "7ee44626-9053-477c-8a5b-881d4777845a",
          *           "interface_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-02-06T00:13:30.472508Z"
+         *           "updated_at": "2026-02-08T14:11:00.655401Z"
          *         }
          *       ],
          *       "created_at": "2026-01-15T10:30:00Z",
@@ -5382,7 +5386,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "NTP Server",
+         *       "service_definition": "Nest Thermostat",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -6568,7 +6572,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiResponse"];
                 };
             };
-            /** @description Invalid request or HubSpot not configured */
+            /** @description Invalid request or Brevo not configured */
             400: {
                 headers: {
                     [name: string]: unknown;

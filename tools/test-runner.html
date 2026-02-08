@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Test Runner</title>
+<style>
+  :root {
+    --bg: #0d1117; --surface: #161b22; --border: #30363d; --text: #e6edf3;
+    --text-muted: #8b949e; --green: #3fb950; --red: #f85149; --yellow: #d29922;
+    --blue: #58a6ff; --purple: #bc8cff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); line-height: 1.5; }
+  .container { max-width: 960px; margin: 0 auto; padding: 24px; }
+  h1 { font-size: 24px; margin-bottom: 8px; }
+  .subtitle { color: var(--text-muted); margin-bottom: 24px; }
+  .actions { display: flex; gap: 8px; margin-bottom: 24px; flex-wrap: wrap; }
+  button, label.btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 13px; cursor: pointer; transition: border-color 0.15s; }
+  button:hover, label.btn:hover { border-color: var(--blue); }
+  input[type="file"] { display: none; }
+  .stats { display: flex; gap: 16px; margin-bottom: 24px; font-size: 13px; color: var(--text-muted); }
+  .stats span { display: inline-flex; align-items: center; gap: 4px; }
+  .stats .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .dot-pass { background: var(--green); } .dot-fail { background: var(--red); }
+  .dot-partial { background: var(--yellow); } .dot-skipped { background: var(--text-muted); } .dot-pending { background: var(--border); }
+  .branch-group { margin-bottom: 32px; }
+  .branch-header { font-size: 16px; font-weight: 600; padding: 8px 0; border-bottom: 1px solid var(--border); margin-bottom: 12px; color: var(--purple); }
+  .category { font-size: 13px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin: 16px 0 8px; }
+  .test-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 14px; margin-bottom: 8px; transition: border-color 0.15s; }
+  .test-card.status-passed { border-left: 3px solid var(--green); }
+  .test-card.status-failed { border-left: 3px solid var(--red); }
+  .test-card.status-partial { border-left: 3px solid var(--yellow); }
+  .test-card.status-skipped { border-left: 3px solid var(--text-muted); opacity: 0.6; }
+  .test-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+  .test-desc { font-size: 14px; flex: 1; }
+  .test-id { font-size: 11px; color: var(--text-muted); font-family: monospace; }
+  .test-steps { margin: 10px 0; padding-left: 20px; font-size: 13px; color: var(--text-muted); }
+  .test-steps li { margin-bottom: 2px; }
+  .test-expected { font-size: 13px; color: var(--text-muted); margin: 8px 0; padding: 8px; background: var(--bg); border-radius: 4px; }
+  .test-expected strong { color: var(--text); font-weight: 500; }
+  .test-actions { display: flex; gap: 6px; margin-top: 10px; align-items: center; flex-wrap: wrap; }
+  .status-btn { padding: 4px 10px; border-radius: 4px; border: 1px solid var(--border); background: transparent; color: var(--text-muted); font-size: 12px; cursor: pointer; }
+  .status-btn:hover { border-color: var(--text-muted); }
+  .status-btn.active-passed { background: var(--green); color: #000; border-color: var(--green); }
+  .status-btn.active-failed { background: var(--red); color: #fff; border-color: var(--red); }
+  .status-btn.active-partial { background: var(--yellow); color: #000; border-color: var(--yellow); }
+  .status-btn.active-skipped { background: var(--text-muted); color: #000; border-color: var(--text-muted); }
+  .feedback-input { flex: 1; min-width: 200px; padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 12px; font-family: inherit; }
+  .feedback-input::placeholder { color: var(--text-muted); }
+  .feedback-input:focus { outline: none; border-color: var(--blue); }
+  .fix-on { display: flex; align-items: center; gap: 4px; margin-top: 6px; font-size: 11px; color: var(--text-muted); }
+  .fix-on select { padding: 2px 4px; border-radius: 3px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 11px; font-family: monospace; }
+  .empty { text-align: center; padding: 60px 20px; color: var(--text-muted); }
+  .empty p { margin-bottom: 12px; }
+  .filter-bar { display: flex; gap: 8px; margin-bottom: 16px; }
+  .filter-btn { padding: 3px 10px; border-radius: 12px; border: 1px solid var(--border); background: transparent; color: var(--text-muted); font-size: 12px; cursor: pointer; }
+  .filter-btn.active { background: var(--surface); color: var(--text); border-color: var(--blue); }
+  .conflict-note { font-size: 11px; color: var(--yellow); margin-top: 4px; }
+  .flow-badge { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-left: 6px; vertical-align: middle; }
+  .flow-badge-setup { background: var(--blue); color: #000; }
+  .flow-sequence { font-size: 12px; font-weight: 700; color: var(--blue); margin-right: 8px; min-width: 24px; text-align: center; }
+  .flow-branch-tag { font-size: 10px; color: var(--purple); font-family: monospace; margin-left: 6px; }
+  .flow-header { font-size: 16px; font-weight: 600; padding: 8px 0; border-bottom: 2px solid var(--blue); margin-bottom: 12px; color: var(--blue); display: flex; align-items: center; gap: 8px; }
+  .flow-progress { font-size: 12px; color: var(--text-muted); font-weight: 400; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Test Runner</h1>
+  <p class="subtitle">Load test plans, mark results, export for agents</p>
+  <div class="actions">
+    <label class="btn"><input type="file" id="loadFile" accept=".json" multiple onchange="loadFiles(this.files)">Load JSON files</label>
+    <button onclick="exportResults()">Export TEST_RESULTS.json</button>
+    <button onclick="resetAll()">Reset All</button>
+  </div>
+  <div class="stats" id="stats"></div>
+  <div class="filter-bar" id="filterBar"></div>
+  <div id="content">
+    <div class="empty"><p>Loading test plans...</p></div>
+  </div>
+</div>
+<!-- Auto-generated by `make test-plan` — contains all TEST_PLAN.json from worktrees -->
+<script src="test-plans.js" onerror="showManualLoad()"></script>
+<script>
+let plans = {};
+let filter = 'all';
+let allBranches = [];
+
+function showManualLoad() {
+  document.getElementById('content').innerHTML =
+    '<div class="empty"><p>No auto-loaded plans found.</p>' +
+    '<p style="font-size:13px">Run <code>make test-plan</code> to collect plans from worktrees, or use the "Load JSON files" button.</p></div>';
+}
+
+// Auto-load from test-plans.js if available
+if (typeof TEST_PLANS !== 'undefined' && Array.isArray(TEST_PLANS)) {
+  TEST_PLANS.forEach(data => {
+    if (!data.branch || !data.tests) return;
+    const saved = JSON.parse(localStorage.getItem(`test-results-${data.branch}`) || '{}');
+    data.tests.forEach(t => {
+      if (saved[t.id]) { t.status = saved[t.id].status; t.feedback = saved[t.id].feedback; t.fix_on = saved[t.id].fix_on; }
+    });
+    plans[data.branch] = data;
+    allBranches.push(data.branch);
+  });
+  render();
+} else if (typeof TEST_PLANS === 'undefined') {
+  showManualLoad();
+}
+
+function loadFiles(files) {
+  Array.from(files).forEach(f => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const data = JSON.parse(e.target.result);
+        if (!data.branch || !data.tests) { alert(`Invalid format in ${f.name}: needs "branch" and "tests"`); return; }
+        const saved = JSON.parse(localStorage.getItem(`test-results-${data.branch}`) || '{}');
+        data.tests.forEach(t => {
+          if (saved[t.id]) { t.status = saved[t.id].status; t.feedback = saved[t.id].feedback; t.fix_on = saved[t.id].fix_on; }
+        });
+        plans[data.branch] = data;
+        if (!allBranches.includes(data.branch)) allBranches.push(data.branch);
+        render();
+      } catch (err) { alert(`Error parsing ${f.name}: ${err.message}`); }
+    };
+    reader.readAsText(f);
+  });
+}
+
+function setStatus(branch, testId, status) {
+  const test = plans[branch].tests.find(t => t.id === testId);
+  if (!test) return;
+  test.status = test.status === status ? null : status;
+  save(branch);
+  render();
+}
+
+function setFeedback(branch, testId, feedback) {
+  const test = plans[branch].tests.find(t => t.id === testId);
+  if (!test) return;
+  test.feedback = feedback || null;
+  save(branch);
+}
+
+function setFixOn(branch, testId, fixOn) {
+  const test = plans[branch].tests.find(t => t.id === testId);
+  if (!test) return;
+  test.fix_on = fixOn === 'merged' ? null : fixOn; // null = default (merged)
+  save(branch);
+}
+
+function save(branch) {
+  const results = {};
+  plans[branch].tests.forEach(t => {
+    results[t.id] = { status: t.status, feedback: t.feedback, fix_on: t.fix_on };
+  });
+  localStorage.setItem(`test-results-${branch}`, JSON.stringify(results));
+}
+
+function exportResults() {
+  const results = {};
+  Object.entries(plans).forEach(([branch, data]) => {
+    results[branch] = {
+      tests: data.tests
+        .filter(t => t.status === 'failed' || t.status === 'partial')
+        .map(t => ({
+          id: t.id,
+          category: t.category,
+          description: t.description,
+          status: t.status,
+          feedback: t.feedback || null,
+          fix_on: t.fix_on || 'merged'
+        }))
+    };
+  });
+  // Remove branches with no failures
+  Object.keys(results).forEach(b => { if (!results[b].tests.length) delete results[b]; });
+  const blob = new Blob([JSON.stringify(results, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = 'TEST_RESULTS.json'; a.click();
+}
+
+function resetAll() {
+  if (!confirm('Reset all test statuses and feedback?')) return;
+  Object.keys(plans).forEach(branch => {
+    plans[branch].tests.forEach(t => { t.status = null; t.feedback = null; t.fix_on = null; });
+    localStorage.removeItem(`test-results-${branch}`);
+  });
+  render();
+}
+
+function setFilter(f) { filter = f; render(); }
+
+function render() {
+  const content = document.getElementById('content');
+  const branches = Object.keys(plans);
+  if (!branches.length) return;
+
+  let total = 0, passed = 0, failed = 0, partial = 0, skipped = 0, pending = 0;
+  branches.forEach(b => plans[b].tests.forEach(t => {
+    total++;
+    if (t.status === 'passed') passed++;
+    else if (t.status === 'failed') failed++;
+    else if (t.status === 'partial') partial++;
+    else if (t.status === 'skipped') skipped++;
+    else pending++;
+  }));
+  document.getElementById('stats').innerHTML =
+    `<span><span class="dot dot-pass"></span> ${passed} passed</span>` +
+    `<span><span class="dot dot-fail"></span> ${failed} failed</span>` +
+    `<span><span class="dot dot-partial"></span> ${partial} partial</span>` +
+    `<span><span class="dot dot-skipped"></span> ${skipped} skipped</span>` +
+    `<span><span class="dot dot-pending"></span> ${pending} pending</span>` +
+    `<span>/ ${total} total</span>`;
+
+  // Detect available flows
+  const flows = new Set();
+  branches.forEach(b => plans[b].tests.forEach(t => { if (t.flow) flows.add(t.flow); }));
+  const flowFilters = Array.from(flows).sort().map(f =>
+    `<button class="filter-btn ${filter==='flow:'+f?'active':''}" style="${filter==='flow:'+f?'border-color:var(--blue)':''}" onclick="setFilter('flow:${f}')">&#9654; ${f}</button>`
+  );
+  document.getElementById('filterBar').innerHTML =
+    ['all','pending','passed','failed','partial','skipped'].map(f =>
+      `<button class="filter-btn ${filter===f?'active':''}" onclick="setFilter('${f}')">${f}</button>`
+    ).join('') + (flowFilters.length ? '<span style="border-left:1px solid var(--border);margin:0 4px"></span>' + flowFilters.join('') : '');
+
+  let html = '';
+
+  // Flow view: aggregate tests across branches, sorted by sequence
+  if (filter.startsWith('flow:')) {
+    const flowName = filter.slice(5);
+    const flowTests = [];
+    branches.forEach(branch => {
+      plans[branch].tests.forEach(t => {
+        if (t.flow === flowName) flowTests.push({ ...t, _branch: branch });
+      });
+    });
+    flowTests.sort((a, b) => (a.sequence || 999) - (b.sequence || 999));
+
+    const done = flowTests.filter(t => t.status && t.status !== 'pending').length;
+    html += `<div class="branch-group">`;
+    html += `<div class="flow-header">${esc(flowName)} flow <span class="flow-progress">${done} / ${flowTests.length} done</span></div>`;
+    flowTests.forEach(t => {
+      html += renderTestCard(t._branch, t, { showSequence: true, showBranch: true });
+    });
+    html += `</div>`;
+  } else {
+    // Normal branch-grouped view
+    branches.sort().forEach(branch => {
+      const tests = plans[branch].tests.filter(t => {
+        if (filter === 'all') return true;
+        if (filter === 'pending') return !t.status;
+        return t.status === filter;
+      });
+      if (!tests.length && filter !== 'all') return;
+
+      html += `<div class="branch-group"><div class="branch-header">${esc(branch)}</div>`;
+
+      const categories = {};
+      tests.forEach(t => {
+        const cat = t.category || 'General';
+        if (!categories[cat]) categories[cat] = [];
+        categories[cat].push(t);
+      });
+
+      Object.entries(categories).forEach(([cat, catTests]) => {
+        html += `<div class="category">${esc(cat)}</div>`;
+        catTests.forEach(t => {
+          html += renderTestCard(branch, t, { showSequence: false, showBranch: false });
+        });
+      });
+      html += `</div>`;
+    });
+  }
+
+  content.innerHTML = html || '<div class="empty"><p>No tests match the current filter.</p></div>';
+}
+
+function renderTestCard(branch, t, opts) {
+  const statusClass = t.status ? `status-${t.status}` : '';
+  const fixOn = t.fix_on || 'merged';
+  let h = `<div class="test-card ${statusClass}">`;
+  h += `<div class="test-header">`;
+  if (opts.showSequence && t.sequence != null) {
+    h += `<span class="flow-sequence">${t.sequence}</span>`;
+  }
+  h += `<div class="test-desc">${esc(t.description)}`;
+  if (t.flow && !opts.showSequence) {
+    h += `<span class="flow-badge flow-badge-${t.flow}">${esc(t.flow)}</span>`;
+  }
+  if (opts.showBranch) {
+    h += `<span class="flow-branch-tag">${esc(branch)}</span>`;
+  }
+  h += `</div><div class="test-id">${esc(t.id)}</div></div>`;
+  if (t.steps && t.steps.length) {
+    h += `<ol class="test-steps">${t.steps.map(s => `<li>${esc(s)}</li>`).join('')}</ol>`;
+  }
+  if (t.expected) {
+    h += `<div class="test-expected"><strong>Expected:</strong> ${esc(t.expected)}</div>`;
+  }
+  h += `<div class="test-actions">`;
+  h += `<button class="status-btn ${t.status==='passed'?'active-passed':''}" onclick="setStatus('${ea(branch)}','${ea(t.id)}','passed')">Pass</button>`;
+  h += `<button class="status-btn ${t.status==='failed'?'active-failed':''}" onclick="setStatus('${ea(branch)}','${ea(t.id)}','failed')">Fail</button>`;
+  h += `<button class="status-btn ${t.status==='partial'?'active-partial':''}" onclick="setStatus('${ea(branch)}','${ea(t.id)}','partial')">Partial</button>`;
+  h += `<button class="status-btn ${t.status==='skipped'?'active-skipped':''}" onclick="setStatus('${ea(branch)}','${ea(t.id)}','skipped')">Skip</button>`;
+  h += `<input class="feedback-input" placeholder="Feedback..." value="${esc(t.feedback||'')}" onchange="setFeedback('${ea(branch)}','${ea(t.id)}',this.value)">`;
+  h += `</div>`;
+  if (t.status === 'failed' || t.status === 'partial') {
+    const opts2 = `<option value="merged" ${fixOn==='merged'?'selected':''}>merged branch (default)</option>` +
+      allBranches.map(b =>
+        `<option value="${esc(b)}" ${fixOn===b?'selected':''}>${esc(b)}</option>`
+      ).join('');
+    h += `<div class="fix-on">Fix on: <select onchange="setFixOn('${ea(branch)}','${ea(t.id)}',this.value)">${opts2}</select>`;
+    if (fixOn !== 'merged') h += `<span class="conflict-note">Routed to source worktree branch</span>`;
+    h += `</div>`;
+  }
+  h += `</div>`;
+  return h;
+}
+
+function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML.replace(/'/g, '&#39;').replace(/"/g, '&quot;'); }
+function ea(s) { return esc(s).replace(/\\/g, '\\\\'); } // escape for JS attribute context
+</script>
+</body>
+</html>

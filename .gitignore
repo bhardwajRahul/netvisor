@@ -25,3 +25,7 @@ oidc.toml
 
 # AI
 CLAUDE.md
+TASK.md
+TEST_PLAN.json
+TEST_RESULTS.json
+tools/test-plans.js

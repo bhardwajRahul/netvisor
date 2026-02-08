@@ -22,7 +22,9 @@ if (format === 'docs') {
 			defaultDisplay = '_Required_';
 		} else if (f.type === 'number' && f.placeholder !== undefined) {
 			// For numbers, placeholder often represents the actual default
-			defaultDisplay = String(f.placeholder);
+			const placeholderValue =
+				typeof f.placeholder === 'function' ? f.placeholder() : f.placeholder;
+			defaultDisplay = String(placeholderValue);
 		}
 
 		return {

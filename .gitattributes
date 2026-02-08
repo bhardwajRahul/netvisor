@@ -1,0 +1,9 @@
+# Generated files — auto-resolve merge conflicts by keeping ours, then regenerate with `make generate-types`
+ui/src/lib/api/schema.d.ts merge=ours
+ui/static/openapi.json merge=ours
+ui/static/openapi-public.json merge=ours
+ui/src/lib/generated/error-codes.ts merge=ours
+ui/src/lib/generated/error-messages.json merge=ours
+ui/src/lib/data/billing-plans-next.json merge=ours
+ui/src/lib/data/features-next.json merge=ours
+backend/tests/integration/compat/fixtures/**/*.json merge=ours

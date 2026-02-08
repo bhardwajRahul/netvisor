@@ -11966,14 +11966,14 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-02-07T04:22:55.834549Z",
-              "id": "da77ab5f-d2eb-49fb-980d-47dbfc4dfe1b",
+              "created_at": "2026-02-08T14:11:00.672207Z",
+              "id": "8c043606-e92b-44a3-b280-b12f1ce5f9a2",
               "interface_id": "550e8400-e29b-41d4-a716-446655440005",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-02-07T04:22:55.834549Z"
+              "updated_at": "2026-02-08T14:11:00.672207Z"
             }
           },
           "error": {
@@ -12751,14 +12751,14 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-02-07T04:22:55.817776Z",
-                      "id": "e5202890-d3c1-4060-bdf0-60df810413ed",
+                      "created_at": "2026-02-08T14:11:00.655163Z",
+                      "id": "8dbba743-2222-4ead-a9f5-49a2398e7c1c",
                       "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-02-07T04:22:55.817776Z"
+                      "updated_at": "2026-02-08T14:11:00.655163Z"
                     }
                   ],
                   "created_at": "2026-01-15T10:30:00Z",
@@ -12767,7 +12767,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "NTP Server",
+                  "service_definition": "Nest Thermostat",
                   "source": {
                     "type": "Manual"
                   },
@@ -13583,14 +13583,14 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-02-07T04:22:55.829586Z",
-                  "id": "27c4de42-01cd-4714-a405-470a95c3f55e",
+                  "created_at": "2026-02-08T14:11:00.667172Z",
+                  "id": "e46669d9-ea6b-409c-9fa7-1444ce34b577",
                   "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-02-07T04:22:55.829586Z"
+                  "updated_at": "2026-02-08T14:11:00.667172Z"
                 }
               ],
               "created_at": "2026-01-15T10:30:00Z",
@@ -13599,7 +13599,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "NTP Server",
+              "service_definition": "Nest Thermostat",
               "source": {
                 "type": "Manual"
               },
@@ -14801,14 +14801,14 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-02-07T04:22:55.817971Z",
-          "id": "80f05e93-c9ba-430a-b81b-c0c55da4ec11",
+          "created_at": "2026-02-08T14:11:00.655522Z",
+          "id": "394d121b-09ac-4aa4-8171-25c417d6fc6e",
           "interface_id": "550e8400-e29b-41d4-a716-446655440005",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-02-07T04:22:55.817971Z"
+          "updated_at": "2026-02-08T14:11:00.655522Z"
         }
       },
       "BindingBase": {
@@ -15302,7 +15302,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "NTP Server",
+              "service_definition": "Nest Thermostat",
               "tags": [],
               "virtualization": null
             }
@@ -16112,6 +16112,10 @@
             "properties": {
               "host_naming_fallback": {
                 "$ref": "#/components/schemas/HostNamingFallback"
+              },
+              "probe_raw_socket_ports": {
+                "type": "boolean",
+                "description": "Whether to probe raw-socket ports (9100-9107) during endpoint scanning.\nDisabled by default to prevent ghost printing on JetDirect printers."
               },
               "snmp_credentials": {
                 "$ref": "#/components/schemas/SnmpCredentialMapping",
@@ -17185,14 +17189,14 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-02-07T04:22:55.817517Z",
-                  "id": "200885d9-21f4-4b52-908e-f82a8c19d3a9",
+                  "created_at": "2026-02-08T14:11:00.654642Z",
+                  "id": "6aa4a15a-c9d9-42dd-bf61-4083d12dce45",
                   "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-02-07T04:22:55.817517Z"
+                  "updated_at": "2026-02-08T14:11:00.654642Z"
                 }
               ],
               "created_at": "2026-01-15T10:30:00Z",
@@ -17201,7 +17205,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "NTP Server",
+              "service_definition": "Nest Thermostat",
               "source": {
                 "type": "Manual"
               },
@@ -19099,14 +19103,14 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-02-07T04:22:55.807712Z",
-                        "id": "6169d9f9-4b9c-4ee9-92ff-a18a3bd5facc",
+                        "created_at": "2026-02-08T14:11:00.644079Z",
+                        "id": "9e9384f9-3e62-49e7-9c31-68066faf2015",
                         "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-02-07T04:22:55.807712Z"
+                        "updated_at": "2026-02-08T14:11:00.644079Z"
                       }
                     ],
                     "created_at": "2026-01-15T10:30:00Z",
@@ -19115,7 +19119,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "NTP Server",
+                    "service_definition": "Nest Thermostat",
                     "source": {
                       "type": "Manual"
                     },
@@ -19192,14 +19196,14 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-02-07T04:22:55.828591Z",
-                    "id": "99502977-9948-4119-8c41-421d2ba22218",
+                    "created_at": "2026-02-08T14:11:00.665791Z",
+                    "id": "8ec38c38-1f85-49f3-ba56-5b9cc65a7ee0",
                     "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-02-07T04:22:55.828591Z"
+                    "updated_at": "2026-02-08T14:11:00.665791Z"
                   }
                 ],
                 "created_at": "2026-01-15T10:30:00Z",
@@ -19208,7 +19212,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "NTP Server",
+                "service_definition": "Nest Thermostat",
                 "source": {
                   "type": "Manual"
                 },
@@ -20196,14 +20200,14 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-02-07T04:22:55.817899Z",
-              "id": "921dfbf9-9826-4d41-8a59-a7f7c277cf28",
+              "created_at": "2026-02-08T14:11:00.655401Z",
+              "id": "7ee44626-9053-477c-8a5b-881d4777845a",
               "interface_id": "550e8400-e29b-41d4-a716-446655440005",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-02-07T04:22:55.817899Z"
+              "updated_at": "2026-02-08T14:11:00.655401Z"
             }
           ],
           "created_at": "2026-01-15T10:30:00Z",
@@ -20212,7 +20216,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "NTP Server",
+          "service_definition": "Nest Thermostat",
           "source": {
             "type": "Manual"
           },
