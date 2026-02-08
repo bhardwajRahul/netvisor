@@ -3,8 +3,8 @@ use crate::server::billing::types::api::{
     ChangePlanPreview, ChangePlanRequest, CreateCheckoutRequest, SetupPaymentMethodRequest,
 };
 use crate::server::billing::types::base::BillingPlan;
+use crate::server::brevo::types::CompanyAttributes;
 use crate::server::config::AppState;
-use crate::server::hubspot::types::{CompanyProperties, HubSpotFormContext, HubSpotFormField};
 use crate::server::shared::services::traits::CrudService;
 use crate::server::shared::types::ErrorCode;
 use crate::server::shared::types::api::{ApiError, ApiResult};
@@ -32,7 +32,7 @@ pub struct EnterpriseInquiryRequest {
     pub company: String,
     /// Team/company size: 1-10, 11-25, 26-50, 51-100, 101-250, 251-500, 501-1000, 1001+
     pub team_size: String,
-    /// Message/use case description (maps to HubSpot "message" field)
+    /// Message/use case description
     pub message: String,
     /// Urgency: immediately, 1-3 months, 3-6 months, exploring
     #[serde(default)]
@@ -43,9 +43,6 @@ pub struct EnterpriseInquiryRequest {
     /// Plan type being inquired about
     #[serde(default)]
     pub plan_type: Option<String>,
-    /// HubSpot tracking cookie (hutk) for linking form submission to visitor
-    #[serde(default)]
-    pub hutk: Option<String>,
 }
 
 pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
@@ -319,8 +316,9 @@ async fn create_portal_session(
 
 /// Submit enterprise plan inquiry
 ///
-/// Dual submission: Form API (for notifications) + CRM API (for Company properties).
-/// Requires authentication to link the inquiry to an organization.
+/// Updates Brevo contact/company with inquiry data, creates a deal, and
+/// tracks an event for automation triggers. Requires authentication to
+/// link the inquiry to an organization.
 #[utoipa::path(
     post,
     path = "/inquiry",
@@ -328,7 +326,7 @@ async fn create_portal_session(
     request_body = EnterpriseInquiryRequest,
     responses(
         (status = 200, description = "Inquiry submitted successfully", body = EmptyApiResponse),
-        (status = 400, description = "Invalid request or HubSpot not configured", body = ApiErrorResponse),
+        (status = 400, description = "Invalid request or Brevo not configured", body = ApiErrorResponse),
         (status = 401, description = "Authentication required", body = ApiErrorResponse),
     ),
     security(("user_api_key" = []), ("session" = []))
@@ -339,52 +337,23 @@ async fn submit_enterprise_inquiry(
     auth: Authorized<Viewer>,
     Json(request): Json<EnterpriseInquiryRequest>,
 ) -> ApiResult<Json<ApiResponse<()>>> {
-    // Get organization_id from auth context
     let organization_id = auth
         .organization_id()
         .ok_or_else(ApiError::organization_required)?;
 
-    // Validate required fields
     if request.email.is_empty() || request.name.is_empty() || request.company.is_empty() {
         return Err(ApiError::validation(ErrorCode::ValidationRequired {
             field: "email, name, company".to_string(),
         }));
     }
 
-    // Check if HubSpot is configured
-    let hubspot_service = state
+    let brevo_service = state
         .services
-        .hubspot_service
+        .brevo_service
         .as_ref()
         .ok_or_else(|| ApiError::bad_request("Enterprise inquiries are not enabled"))?;
 
-    // Build form context with tracking info
-    let form_context =
-        HubSpotFormContext::new("https://app.scanopy.net/billing", "Enterprise Inquiry")
-            .with_hutk(request.hutk.clone())
-            .with_ip_address(Some(ip.to_string()));
-
-    // 1. Submit to HubSpot Form (triggers notifications)
-    // Field names must match exactly what's configured in the HubSpot form
-    let fields = vec![
-        HubSpotFormField::new("email", &request.email),
-        HubSpotFormField::new("firstname", &request.name),
-        HubSpotFormField::new("company", &request.company),
-        HubSpotFormField::new("company_size", &request.team_size),
-        HubSpotFormField::new("message", &request.message),
-    ];
-
-    hubspot_service
-        .client
-        .submit_enterprise_inquiry_form(fields, form_context)
-        .await
-        .map_err(|e| {
-            tracing::error!(error = %e, "Failed to submit inquiry to HubSpot form");
-            ApiError::internal_error("Failed to submit inquiry")
-        })?;
-
-    // 2. Update Company via CRM API (sets inquiry-specific properties)
-    // Use stored company ID from organization
+    // 1. Update Company via CRM API (sets inquiry-specific properties)
     let org = state
         .services
         .organization_service
@@ -392,31 +361,85 @@ async fn submit_enterprise_inquiry(
         .await?
         .ok_or_else(ApiError::organization_required)?;
 
-    if let Some(company_id) = &org.base.hubspot_company_id {
-        let mut company_props = CompanyProperties::new().with_inquiry_date(Utc::now());
+    if let Some(company_id) = &org.base.brevo_company_id {
+        let mut company_attrs = CompanyAttributes::new().with_inquiry_date(Utc::now());
 
         if let Some(urgency) = &request.urgency {
-            company_props = company_props.with_inquiry_urgency(urgency);
+            company_attrs = company_attrs.with_inquiry_urgency(urgency);
         }
         if let Some(network_count) = request.network_count {
-            company_props = company_props.with_inquiry_network_count(network_count);
+            company_attrs = company_attrs.with_inquiry_network_count(network_count);
         }
         if let Some(plan_type) = &request.plan_type {
-            company_props = company_props.with_inquiry_plan_type(plan_type);
+            company_attrs = company_attrs.with_inquiry_plan_type(plan_type);
         }
 
-        // Best-effort CRM update - don't fail if this doesn't work
-        if let Err(e) = hubspot_service
+        if let Err(e) = brevo_service
             .client
-            .update_company(company_id, company_props)
+            .update_company(company_id, company_attrs)
             .await
         {
             tracing::warn!(
                 error = %e,
                 organization_id = %organization_id,
-                "Failed to update HubSpot company with inquiry properties"
+                "Failed to update Brevo company with inquiry properties"
             );
         }
+
+        // 2. Create a deal for the inquiry
+        let deal_name = format!("Enterprise Inquiry - {}", &request.company);
+        let mut deal_attrs = std::collections::HashMap::new();
+        deal_attrs.insert("message".to_string(), serde_json::json!(&request.message));
+        deal_attrs.insert(
+            "team_size".to_string(),
+            serde_json::json!(&request.team_size),
+        );
+        if let Some(plan_type) = &request.plan_type {
+            deal_attrs.insert("plan_type".to_string(), serde_json::json!(plan_type));
+        }
+
+        if let Err(e) = brevo_service
+            .client
+            .create_deal(
+                &deal_name,
+                Some(deal_attrs),
+                None,
+                Some(vec![company_id.clone()]),
+            )
+            .await
+        {
+            tracing::warn!(
+                error = %e,
+                organization_id = %organization_id,
+                "Failed to create Brevo deal for inquiry"
+            );
+        }
+    }
+
+    // 3. Track event for automation triggers (notifications)
+    let mut event_props = std::collections::HashMap::new();
+    event_props.insert("company".to_string(), serde_json::json!(&request.company));
+    event_props.insert(
+        "team_size".to_string(),
+        serde_json::json!(&request.team_size),
+    );
+    event_props.insert("message".to_string(), serde_json::json!(&request.message));
+    if let Some(urgency) = &request.urgency {
+        event_props.insert("urgency".to_string(), serde_json::json!(urgency));
+    }
+    if let Some(plan_type) = &request.plan_type {
+        event_props.insert("plan_type".to_string(), serde_json::json!(plan_type));
+    }
+
+    if let Err(e) = brevo_service
+        .client
+        .track_event("enterprise_inquiry", &request.email, Some(event_props))
+        .await
+    {
+        tracing::warn!(
+            error = %e,
+            "Failed to track enterprise_inquiry event in Brevo"
+        );
     }
 
     tracing::info!(
@@ -424,9 +447,8 @@ async fn submit_enterprise_inquiry(
         company = %request.company,
         organization_id = %organization_id,
         plan_type = ?request.plan_type,
-        hutk_present = request.hutk.is_some(),
         client_ip = %ip,
-        "Enterprise inquiry submitted to HubSpot"
+        "Enterprise inquiry submitted to Brevo"
     );
 
     Ok(Json(ApiResponse::success(())))

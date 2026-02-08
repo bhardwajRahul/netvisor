@@ -10,13 +10,6 @@
 	import { trackEvent } from '$lib/shared/utils/analytics';
 	import { billing_requestInfo, common_cancel, common_sending } from '$lib/paraglide/messages';
 	import { apiClient } from '$lib/api/client';
-	import { getCookie } from '$lib/shared/components/feedback/CookieConsent.svelte';
-
-	/** Get HubSpot tracking cookie (hutk) for form submission context */
-	function getHubspotCookie(): string | undefined {
-		const hutk = getCookie('hubspotutk');
-		return hutk ?? undefined;
-	}
 
 	interface Props {
 		isOpen?: boolean;
@@ -42,7 +35,6 @@
 	let status = $state<'idle' | 'success' | 'error'>('idle');
 	let submitError = $state('');
 
-	// HubSpot standard company size ranges
 	const teamSizeOptions = [
 		{ value: '', label: 'Select team size', disabled: true },
 		{ value: '1-10', label: '1-10 employees' },
@@ -91,8 +83,7 @@
 						message: value.message.trim(),
 						urgency: value.urgency || undefined,
 						network_count: value.networkCount ?? undefined,
-						plan_type: planType || undefined,
-						hutk: getHubspotCookie()
+						plan_type: planType || undefined
 					}
 				});
 

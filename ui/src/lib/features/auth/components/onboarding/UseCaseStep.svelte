@@ -46,7 +46,7 @@
 		{ value: 'other', label: 'Other' }
 	];
 
-	// Company size options (HubSpot standard ranges)
+	// Company size options
 	const companySizeOptions = [
 		{ value: '', label: 'Select company size', disabled: true },
 		{ value: '1-10', label: '1-10 employees' },

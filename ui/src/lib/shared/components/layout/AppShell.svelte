@@ -21,8 +21,7 @@
 	import type { PostHog } from 'posthog-js';
 	import { browser } from '$app/environment';
 	import CookieConsent, {
-		hasAnalyticsConsent,
-		hasMarketingConsent
+		hasAnalyticsConsent
 	} from '$lib/shared/components/feedback/CookieConsent.svelte';
 	import {
 		billing_subscriptionActivated,
@@ -64,7 +63,6 @@
 
 	let posthogInstance = $state<PostHog | null>(null);
 	let posthogInitStarted = false;
-	let hubspotInitStarted = false;
 
 	$effect(() => {
 		if (!configData) return;
@@ -95,25 +93,6 @@
 					}
 				});
 			});
-		}
-
-		// Load HubSpot tracking script if marketing consent is given
-		if (browser && hasMarketingConsent() && !hubspotInitStarted) {
-			hubspotInitStarted = true;
-
-			// Disable HubSpot's automatic form collection ("Collected Forms" feature)
-			// This prevents HubSpot from scraping login/registration forms
-			const hsq = ((window as unknown as { _hsq: unknown[] })._hsq =
-				(window as unknown as { _hsq: unknown[] })._hsq || []);
-			hsq.push(['setContentType', 'standard-page']);
-			hsq.push(['setCollectedForms', { enabled: false }]);
-
-			const script = document.createElement('script');
-			script.id = 'hs-script-loader';
-			script.src = 'https://js.hs-scripts.com/50956550.js';
-			script.async = true;
-			script.defer = true;
-			document.body.appendChild(script);
 		}
 	});
 

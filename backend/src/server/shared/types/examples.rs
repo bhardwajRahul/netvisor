@@ -336,7 +336,7 @@ pub fn organization() -> Organization {
             onboarding: vec![],
             has_payment_method: false,
             trial_end_date: None,
-            hubspot_company_id: None,
+            brevo_company_id: None,
         },
     }
 }

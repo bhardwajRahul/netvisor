@@ -420,13 +420,13 @@ pub enum TelemetryOperation {
     TrialEnded,
     SubscriptionCancelled,
 
-    // Activation milestones (HubSpot CRM tracking)
+    // Activation milestones (Brevo CRM tracking)
     FirstNetworkCreated,
     FirstDiscoveryCompleted,
     FirstHostDiscovered,
     SecondNetworkCreated,
 
-    // Engagement signals (HubSpot CRM tracking)
+    // Engagement signals (Brevo CRM tracking)
     FirstTagCreated,
     FirstUserApiKeyCreated,
     FirstSnmpCredentialCreated,

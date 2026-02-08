@@ -284,16 +284,16 @@ async fn main() -> anyhow::Result<()> {
         tracing::info!(target: LOG_TARGET, "  Billing service initialized");
     }
 
-    // Sync existing organizations to HubSpot if configured
-    if let Some(hubspot_service) = state.services.hubspot_service.clone() {
-        tracing::info!(target: LOG_TARGET, "  Spawning HubSpot organization sync task");
+    // Sync existing organizations to Brevo if configured
+    if let Some(brevo_service) = state.services.brevo_service.clone() {
+        tracing::info!(target: LOG_TARGET, "  Spawning Brevo organization sync task");
         tokio::spawn(async move {
-            if let Err(e) = hubspot_service.sync_existing_organizations().await {
-                tracing::error!(target: LOG_TARGET, error = %e, "Failed to sync existing organizations to HubSpot");
+            if let Err(e) = brevo_service.sync_existing_organizations().await {
+                tracing::error!(target: LOG_TARGET, error = %e, "Failed to sync existing organizations to Brevo");
             }
         });
     } else {
-        tracing::info!(target: LOG_TARGET, "  HubSpot service not configured, skipping org sync");
+        tracing::info!(target: LOG_TARGET, "  Brevo service not configured, skipping org sync");
     }
 
     // Configuration summary

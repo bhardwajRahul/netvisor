@@ -2,6 +2,7 @@ use crate::server::{
     auth::{oidc::OidcService, service::AuthService},
     billing::service::{BillingService, BillingServiceParams},
     bindings::service::BindingService,
+    brevo::service::BrevoService,
     config::ServerConfig,
     daemon_api_keys::service::DaemonApiKeyService,
     daemons::service::DaemonService,
@@ -9,7 +10,6 @@ use crate::server::{
     email::{plunk::PlunkEmailProvider, smtp::SmtpEmailProvider, traits::EmailService},
     groups::{group_bindings::GroupBindingStorage, service::GroupService},
     hosts::service::HostService,
-    hubspot::service::HubSpotService,
     if_entries::service::IfEntryService,
     interfaces::service::InterfaceService,
     invites::service::InviteService,
@@ -60,7 +60,7 @@ pub struct ServiceFactory {
     pub oidc_service: Option<Arc<OidcService>>,
     pub billing_service: Option<Arc<BillingService>>,
     pub email_service: Option<Arc<EmailService>>,
-    pub hubspot_service: Option<Arc<HubSpotService>>,
+    pub brevo_service: Option<Arc<BrevoService>>,
     pub event_bus: Arc<EventBus>,
     pub logging_service: Arc<LoggingService>,
     pub metrics_service: Arc<MetricsService>,
@@ -297,10 +297,10 @@ impl ServiceFactory {
             public_url,
         ));
 
-        // Create HubSpot service if API key is configured (before config is consumed)
-        let hubspot_service = config.as_ref().and_then(|c| {
-            c.hubspot_api_key.as_ref().map(|api_key| {
-                Arc::new(HubSpotService::new(
+        // Create Brevo service if API key is configured (before config is consumed)
+        let brevo_service = config.as_ref().and_then(|c| {
+            c.brevo_api_key.as_ref().map(|api_key| {
+                Arc::new(BrevoService::new(
                     api_key.clone(),
                     network_service.clone(),
                     host_service.clone(),
@@ -347,8 +347,8 @@ impl ServiceFactory {
             event_bus.register_subscriber(email_service).await;
         }
 
-        if let Some(hubspot_service) = hubspot_service.clone() {
-            event_bus.register_subscriber(hubspot_service).await;
+        if let Some(brevo_service) = brevo_service.clone() {
+            event_bus.register_subscriber(brevo_service).await;
         }
 
         event_bus.register_subscriber(daemon_service.clone()).await;
@@ -373,7 +373,7 @@ impl ServiceFactory {
             oidc_service,
             billing_service,
             email_service,
-            hubspot_service,
+            brevo_service,
             event_bus,
             logging_service,
             metrics_service,

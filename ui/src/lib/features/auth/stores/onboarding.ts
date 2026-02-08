@@ -15,7 +15,7 @@ export interface OnboardingState {
 	daemonSetups: Map<string, DaemonSetupState>; // keyed by network id
 	populateSeedData: boolean;
 	currentBlocker: BlockerType | null;
-	// HubSpot qualification data (company/msp only, not persisted to DB)
+	// CRM qualification data (company/msp only, not persisted to DB)
 	jobTitle: string | null;
 	companySize: string | null;
 }

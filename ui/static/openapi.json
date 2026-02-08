@@ -747,7 +747,7 @@
           "internal"
         ],
         "summary": "Submit enterprise plan inquiry",
-        "description": "Dual submission: Form API (for notifications) + CRM API (for Company properties).\nRequires authentication to link the inquiry to an organization.",
+        "description": "Updates Brevo contact/company with inquiry data, creates a deal, and\ntracks an event for automation triggers. Requires authentication to\nlink the inquiry to an organization.",
         "operationId": "submit_enterprise_inquiry",
         "requestBody": {
           "content": {
@@ -771,7 +771,7 @@
             }
           },
           "400": {
-            "description": "Invalid request or HubSpot not configured",
+            "description": "Invalid request or Brevo not configured",
             "content": {
               "application/json": {
                 "schema": {
@@ -16492,16 +16492,9 @@
             "type": "string",
             "description": "Contact email"
           },
-          "hutk": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "HubSpot tracking cookie (hutk) for linking form submission to visitor"
-          },
           "message": {
             "type": "string",
-            "description": "Message/use case description (maps to HubSpot \"message\" field)"
+            "description": "Message/use case description"
           },
           "name": {
             "type": "string",

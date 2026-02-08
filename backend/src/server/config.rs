@@ -102,7 +102,7 @@ pub struct ServerCli {
     pub metrics_token: Option<String>,
 
     #[arg(long)]
-    pub hubspot_api_key: Option<String>,
+    pub brevo_api_key: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -139,8 +139,8 @@ pub struct ServerConfig {
     // Metrics
     pub metrics_token: Option<String>,
 
-    // HubSpot CRM integration
-    pub hubspot_api_key: Option<String>,
+    // Brevo CRM integration
+    pub brevo_api_key: Option<String>,
 
     // External service IP restrictions
     // Maps service name (lowercase) to list of allowed IPs/CIDRs
@@ -199,7 +199,7 @@ impl Default for ServerConfig {
             posthog_key: None,
             enforce_billing_for_testing: false,
             metrics_token: None,
-            hubspot_api_key: None,
+            brevo_api_key: None,
             external_service_allowed_ips: HashMap::new(),
         }
     }
@@ -273,8 +273,8 @@ impl ServerConfig {
         if let Some(metrics_token) = cli_args.metrics_token {
             figment = figment.merge(("metrics_token", metrics_token));
         }
-        if let Some(hubspot_api_key) = cli_args.hubspot_api_key {
-            figment = figment.merge(("hubspot_api_key", hubspot_api_key));
+        if let Some(brevo_api_key) = cli_args.brevo_api_key {
+            figment = figment.merge(("brevo_api_key", brevo_api_key));
         }
 
         let mut config: ServerConfig = figment
@@ -402,7 +402,7 @@ pub async fn get_public_config(State(state): State<Arc<AppState>>) -> impl IntoR
             has_email_opt_in: state.config.plunk_secret.is_some(),
             posthog_key: state.config.posthog_key.clone(),
             needs_cookie_consent: state.config.posthog_key.is_some()
-                || state.config.hubspot_api_key.is_some(),
+                || state.config.brevo_api_key.is_some(),
             deployment_type,
             plunk_key: state.config.plunk_key.clone(),
         })),

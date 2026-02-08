@@ -121,12 +121,12 @@ impl<T: Storable> StorableFilter<T> {
         Self::new().unresolved_lldp_in_network(network_id)
     }
 
-    pub fn new_without_hubspot_company_id() -> Self {
-        Self::new().without_hubspot_company_id()
+    pub fn new_without_brevo_company_id() -> Self {
+        Self::new().without_brevo_company_id()
     }
 
-    pub fn new_with_hubspot_company_id() -> Self {
-        Self::new().with_hubspot_company_id()
+    pub fn new_with_brevo_company_id() -> Self {
+        Self::new().with_brevo_company_id()
     }
 
     pub fn new_with_expiry_before(timestamp: DateTime<Utc>) -> Self {
@@ -732,16 +732,16 @@ impl<T: Storable> StorableFilter<T> {
     // Organization filters
     // =========================================================================
 
-    /// Filter for organizations that haven't been synced to HubSpot yet
-    pub fn without_hubspot_company_id(mut self) -> Self {
-        let col = self.qualify_column("hubspot_company_id");
+    /// Filter for organizations that haven't been synced to Brevo yet
+    pub fn without_brevo_company_id(mut self) -> Self {
+        let col = self.qualify_column("brevo_company_id");
         self.conditions.push(format!("{} IS NULL", col));
         self
     }
 
-    /// Filter for organizations that have already been synced to HubSpot
-    pub fn with_hubspot_company_id(mut self) -> Self {
-        let col = self.qualify_column("hubspot_company_id");
+    /// Filter for organizations that have already been synced to Brevo
+    pub fn with_brevo_company_id(mut self) -> Self {
+        let col = self.qualify_column("brevo_company_id");
         self.conditions.push(format!("{} IS NOT NULL", col));
         self
     }
