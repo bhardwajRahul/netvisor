@@ -932,14 +932,10 @@ impl BillingService {
                 .and_then(|ts| chrono::DateTime::from_timestamp(ts, 0));
         }
 
-        // Sync payment method status from Stripe
-        // Only upgrade to true from subscription — payment methods may live on the customer
-        // rather than the subscription, so a missing default_payment_method doesn't mean
-        // the customer has no payment method. The checkout_completed handler handles the
-        // definitive sync. Never downgrade from true to false here.
-        if sub.default_payment_method.is_some() {
-            organization.base.has_payment_method = true;
-        }
+        // Note: has_payment_method is NOT synced from sub.default_payment_method here.
+        // That field only tracks subscription-level overrides, not customer-level payment methods.
+        // has_payment_method is set to true by handle_checkout_completed (when Checkout collects
+        // payment) and set to false by handle_subscription_deleted (on genuine cancellation).
 
         self.organization_service
             .update(&mut organization, AuthenticatedEntity::System)
@@ -1082,23 +1078,30 @@ impl BillingService {
         Ok(())
     }
 
-    /// Handle checkout.session.completed — detect setup mode to mark payment method added
+    /// Handle checkout.session.completed — mark payment method as collected.
+    ///
+    /// Fires for both setup mode (card collection without charge) and subscription mode
+    /// (new subscription via Checkout). Both mean the customer now has a payment method.
     async fn handle_checkout_completed(
         &self,
         session: stripe_checkout::CheckoutSession,
     ) -> Result<(), Error> {
-        // Only handle setup mode completions (payment method collection)
-        if session.mode != CheckoutSessionMode::Setup {
+        // Only handle setup and subscription modes (not one-time payments)
+        if session.mode != CheckoutSessionMode::Setup
+            && session.mode != CheckoutSessionMode::Subscription
+        {
             return Ok(());
         }
 
+        // Subscription-mode sessions store org_id in subscription_data.metadata,
+        // which is on the session's top-level metadata. Setup-mode uses session metadata directly.
         let metadata = session
             .metadata
             .as_ref()
-            .ok_or_else(|| anyhow!("No metadata in setup session"))?;
+            .ok_or_else(|| anyhow!("No metadata in checkout session"))?;
         let org_id = metadata
             .get("organization_id")
-            .ok_or_else(|| anyhow!("No organization_id in setup session metadata"))?;
+            .ok_or_else(|| anyhow!("No organization_id in checkout session metadata"))?;
         let org_id = Uuid::parse_str(org_id)?;
 
         let mut organization = self
@@ -1115,7 +1118,8 @@ impl BillingService {
 
         tracing::info!(
             organization_id = %org_id,
-            "Payment method added via setup checkout"
+            mode = ?session.mode,
+            "Payment method confirmed via checkout"
         );
 
         Ok(())
@@ -1142,7 +1146,7 @@ impl BillingService {
             return Ok(());
         }
 
-        let organization = self
+        let mut organization = self
             .organization_service
             .get_by_id(&org_id)
             .await?
@@ -1243,6 +1247,14 @@ impl BillingService {
 
         self.invite_service
             .revoke_org_invites(&organization.id)
+            .await?;
+
+        // Clear payment method flag so re-upgrades route through Stripe Checkout.
+        // The flag will be set back to true by handle_checkout_completed when
+        // the user completes payment collection.
+        organization.base.has_payment_method = false;
+        self.organization_service
+            .update(&mut organization, AuthenticatedEntity::System)
             .await?;
 
         // Create a Free subscription — the webhook will set the plan via handle_subscription_update
