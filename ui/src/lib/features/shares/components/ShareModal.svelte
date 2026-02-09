@@ -21,6 +21,7 @@
 	import Checkbox from '$lib/shared/components/forms/input/Checkbox.svelte';
 	import DateInput from '$lib/shared/components/forms/input/DateInput.svelte';
 	import InlineInfo from '$lib/shared/components/feedback/InlineInfo.svelte';
+	import UpgradeButton from '$lib/shared/components/UpgradeButton.svelte';
 	import InlineSuccess from '$lib/shared/components/feedback/InlineSuccess.svelte';
 	import CodeContainer from '$lib/shared/components/data/CodeContainer.svelte';
 	import { generateShareUrl, generateEmbedCode } from '../queries';
@@ -113,6 +114,12 @@
 		isEditing ? common_editName({ name: share?.name || '' }) : shares_shareTopology()
 	);
 	let saveLabel = $derived(isEditing ? common_save() : common_create());
+
+	let hasShareViews = $derived(
+		organization?.plan
+			? billingPlans.getMetadata(organization.plan.type).features.share_views
+			: true
+	);
 
 	let hasEmbedsFeature = $derived(
 		organization?.plan ? billingPlans.getMetadata(organization.plan.type).features.embeds : true
@@ -237,223 +244,250 @@
 		<ModalHeaderIcon Icon={Share2} color={entities.getColorHelper('Share').color} />
 	{/snippet}
 
-	<form
-		onsubmit={(e) => {
-			e.preventDefault();
-			e.stopPropagation();
-			if (!createdShare) handleSubmit();
-		}}
-		class="flex min-h-0 flex-1 flex-col"
-	>
-		<div class="flex-1 overflow-auto p-6" bind:this={scrollContainer}>
-			<div class="space-y-6">
-				{#if isEditing}
-					<InlineInfo
-						title={shares_cacheInfoTitle()}
-						body={shares_cacheInfoBody()}
-						dismissableKey="share-cache-info"
-					/>
-				{/if}
+	{#if !hasShareViews && !isEditing}
+		<div class="flex min-h-0 flex-1 flex-col items-center justify-center p-6">
+			<p class="text-secondary mb-2 text-lg">Sharing Not Available</p>
+			<p class="text-tertiary mb-6 text-center">
+				Upgrade your plan to share live network diagrams with others.
+			</p>
+			<UpgradeButton feature="sharing" />
+		</div>
+		<div class="modal-footer">
+			<div class="flex items-center justify-end">
+				<button type="button" onclick={handleClose} class="btn-secondary">
+					{common_cancel()}
+				</button>
+			</div>
+		</div>
+	{:else}
+		<form
+			onsubmit={(e) => {
+				e.preventDefault();
+				e.stopPropagation();
+				if (!createdShare) handleSubmit();
+			}}
+			class="flex min-h-0 flex-1 flex-col"
+		>
+			<div class="flex-1 overflow-auto p-6" bind:this={scrollContainer}>
+				<div class="space-y-6">
+					{#if isEditing}
+						<InlineInfo
+							title={shares_cacheInfoTitle()}
+							body={shares_cacheInfoBody()}
+							dismissableKey="share-cache-info"
+						/>
+					{/if}
 
-				<!-- Name -->
-				<div class="card card-static">
-					<form.Field
-						name="name"
-						validators={{
-							onBlur: ({ value }) => required(value) || max(100)(value)
-						}}
-					>
-						{#snippet children(field)}
-							<TextInput
-								label={common_name()}
-								id="share-name"
-								{field}
-								placeholder={shares_namePlaceholder()}
-								required
-								disabled={!!createdShare}
-							/>
-						{/snippet}
-					</form.Field>
-				</div>
-
-				<div class="card card-static space-y-3">
-					<span class="text-secondary text-m">{shares_accessControl()}</span>
-
-					<!-- Password -->
-					<form.Field name="password">
-						{#snippet children(field)}
-							<TextInput
-								label={common_password()}
-								id="share-password"
-								type="password"
-								{field}
-								placeholder={shares_passwordPlaceholder()}
-								disabled={!!createdShare}
-								helpText={isEditing ? shares_passwordHelpEdit() : shares_passwordHelpCreate()}
-							/>
-						{/snippet}
-					</form.Field>
-
-					<!-- Enabled & Expiration -->
-					<div class="grid grid-cols-2 gap-4">
-						<form.Field name="expires_at">
+					<!-- Name -->
+					<div class="card card-static">
+						<form.Field
+							name="name"
+							validators={{
+								onBlur: ({ value }) => required(value) || max(100)(value)
+							}}
+						>
 							{#snippet children(field)}
-								<DateInput
+								<TextInput
+									label={common_name()}
+									id="share-name"
 									{field}
-									label={shares_expirationDate()}
-									id="expires-at"
+									placeholder={shares_namePlaceholder()}
+									required
 									disabled={!!createdShare}
-									helpText={shares_expirationHelp()}
 								/>
 							{/snippet}
 						</form.Field>
-						<div class="flex items-center">
-							<form.Field name="is_enabled">
+					</div>
+
+					<div class="card card-static space-y-3">
+						<span class="text-secondary text-m">{shares_accessControl()}</span>
+
+						<!-- Password -->
+						<form.Field name="password">
+							{#snippet children(field)}
+								<TextInput
+									label={common_password()}
+									id="share-password"
+									type="password"
+									{field}
+									placeholder={shares_passwordPlaceholder()}
+									disabled={!!createdShare}
+									helpText={isEditing ? shares_passwordHelpEdit() : shares_passwordHelpCreate()}
+								/>
+							{/snippet}
+						</form.Field>
+
+						<!-- Enabled & Expiration -->
+						<div class="grid grid-cols-2 gap-4">
+							<form.Field name="expires_at">
 								{#snippet children(field)}
-									<Checkbox
-										label={common_enabled()}
-										id="is-enabled"
+									<DateInput
 										{field}
+										label={shares_expirationDate()}
+										id="expires-at"
 										disabled={!!createdShare}
-										helpText={shares_enabledHelp()}
+										helpText={shares_expirationHelp()}
+									/>
+								{/snippet}
+							</form.Field>
+							<div class="flex items-center">
+								<form.Field name="is_enabled">
+									{#snippet children(field)}
+										<Checkbox
+											label={common_enabled()}
+											id="is-enabled"
+											{field}
+											disabled={!!createdShare}
+											helpText={shares_enabledHelp()}
+										/>
+									{/snippet}
+								</form.Field>
+							</div>
+						</div>
+
+						<!-- Allowed Domains -->
+						<form.Field name="allowed_domains">
+							{#snippet children(field)}
+								<TextInput
+									label={shares_allowedEmbedDomains()}
+									id="allowed-domains"
+									{field}
+									placeholder={shares_allowedDomainsPlaceholder()}
+									disabled={!!createdShare}
+									helpText={shares_allowedDomainsHelp()}
+								/>
+							{/snippet}
+						</form.Field>
+					</div>
+
+					<div class="card card-static space-y-3">
+						<span class="text-secondary text-m">{shares_displayOptions()}</span>
+						<form.Field name="show_zoom_controls">
+							{#snippet children(field)}
+								<Checkbox
+									label={shares_showZoomControls()}
+									id="show-zoom-controls"
+									{field}
+									disabled={!!createdShare}
+								/>
+							{/snippet}
+						</form.Field>
+						<form.Field name="show_inspect_panel">
+							{#snippet children(field)}
+								<Checkbox
+									label={shares_showInspectPanel()}
+									id="show-inspect-panel"
+									{field}
+									disabled={!!createdShare}
+								/>
+							{/snippet}
+						</form.Field>
+						<form.Field name="show_export_button">
+							{#snippet children(field)}
+								<Checkbox
+									label={shares_showExportButton()}
+									id="show-export-button"
+									{field}
+									disabled={!!createdShare}
+								/>
+							{/snippet}
+						</form.Field>
+						<span class="block text-sm font-medium text-gray-300">{shares_embedDimensions()}</span>
+						<div class="grid grid-cols-2 gap-4">
+							<form.Field name="embed_width">
+								{#snippet children(field)}
+									<TextInput
+										label={common_width()}
+										id="embed-width"
+										type="number"
+										{field}
+										placeholder="800"
+									/>
+								{/snippet}
+							</form.Field>
+							<form.Field name="embed_height">
+								{#snippet children(field)}
+									<TextInput
+										label={common_height()}
+										id="embed-height"
+										type="number"
+										{field}
+										placeholder="600"
 									/>
 								{/snippet}
 							</form.Field>
 						</div>
 					</div>
 
-					<!-- Allowed Domains -->
-					<form.Field name="allowed_domains">
-						{#snippet children(field)}
-							<TextInput
-								label={shares_allowedEmbedDomains()}
-								id="allowed-domains"
-								{field}
-								placeholder={shares_allowedDomainsPlaceholder()}
-								disabled={!!createdShare}
-								helpText={shares_allowedDomainsHelp()}
-							/>
-						{/snippet}
-					</form.Field>
-				</div>
-
-				<div class="card card-static space-y-3">
-					<span class="text-secondary text-m">{shares_displayOptions()}</span>
-					<form.Field name="show_zoom_controls">
-						{#snippet children(field)}
-							<Checkbox
-								label={shares_showZoomControls()}
-								id="show-zoom-controls"
-								{field}
-								disabled={!!createdShare}
-							/>
-						{/snippet}
-					</form.Field>
-					<form.Field name="show_inspect_panel">
-						{#snippet children(field)}
-							<Checkbox
-								label={shares_showInspectPanel()}
-								id="show-inspect-panel"
-								{field}
-								disabled={!!createdShare}
-							/>
-						{/snippet}
-					</form.Field>
-					<form.Field name="show_export_button">
-						{#snippet children(field)}
-							<Checkbox
-								label={shares_showExportButton()}
-								id="show-export-button"
-								{field}
-								disabled={!!createdShare}
-							/>
-						{/snippet}
-					</form.Field>
-					<span class="block text-sm font-medium text-gray-300">{shares_embedDimensions()}</span>
-					<div class="grid grid-cols-2 gap-4">
-						<form.Field name="embed_width">
-							{#snippet children(field)}
-								<TextInput
-									label={common_width()}
-									id="embed-width"
-									type="number"
-									{field}
-									placeholder="800"
-								/>
-							{/snippet}
-						</form.Field>
-						<form.Field name="embed_height">
-							{#snippet children(field)}
-								<TextInput
-									label={common_height()}
-									id="embed-height"
-									type="number"
-									{field}
-									placeholder="600"
-								/>
-							{/snippet}
-						</form.Field>
-					</div>
-				</div>
-
-				<!-- Share URL / Embed Code (shown after creation or when editing) -->
-				{#if createdShare || isEditing}
-					<div class="space-y-4">
-						{#if createdShare}
-							<InlineSuccess title={shares_created()} body={shares_createdHelp()} />
-						{/if}
-						<div>
-							<span class="mb-1 block text-sm font-medium text-gray-300">{shares_shareUrl()}</span>
-							<CodeContainer language="bash" expandable={false} code={generateShareUrl(shareId)} />
-						</div>
-						<div class="space-y-2">
-							<span class="mb-1 block text-sm font-medium text-gray-300">{shares_embedCode()}</span>
-							{#if !hasEmbedsFeature}
-								<InlineInfo title={shares_embedsRequirePlan()} body={shares_upgradeForEmbeds()} />
-							{:else}
-								<CodeContainer
-									language="html"
-									expandable={false}
-									code={generateEmbedCode(shareId, embedWidth, embedHeight)}
-								/>
+					<!-- Share URL / Embed Code (shown after creation or when editing) -->
+					{#if createdShare || isEditing}
+						<div class="space-y-4">
+							{#if createdShare}
+								<InlineSuccess title={shares_created()} body={shares_createdHelp()} />
 							{/if}
+							<div>
+								<span class="mb-1 block text-sm font-medium text-gray-300">{shares_shareUrl()}</span
+								>
+								<CodeContainer
+									language="bash"
+									expandable={false}
+									code={generateShareUrl(shareId)}
+								/>
+							</div>
+							<div class="space-y-2">
+								<span class="mb-1 block text-sm font-medium text-gray-300"
+									>{shares_embedCode()}</span
+								>
+								{#if !hasEmbedsFeature}
+									<InlineInfo title={shares_embedsRequirePlan()} body={shares_upgradeForEmbeds()} />
+									<div class="mt-2">
+										<UpgradeButton feature="embeds" />
+									</div>
+								{:else}
+									<CodeContainer
+										language="html"
+										expandable={false}
+										code={generateEmbedCode(shareId, embedWidth, embedHeight)}
+									/>
+								{/if}
+							</div>
 						</div>
-					</div>
-				{/if}
+					{/if}
+				</div>
 			</div>
-		</div>
 
-		<!-- Footer -->
-		<div class="modal-footer">
-			<div class="flex items-center justify-between">
-				<div>
-					{#if isEditing}
+			<!-- Footer -->
+			<div class="modal-footer">
+				<div class="flex items-center justify-between">
+					<div>
+						{#if isEditing}
+							<button
+								type="button"
+								disabled={deleting || loading}
+								onclick={handleDelete}
+								class="btn-danger"
+							>
+								{deleting ? common_deleting() : common_delete()}
+							</button>
+						{/if}
+					</div>
+					<div class="flex items-center gap-3">
 						<button
 							type="button"
-							disabled={deleting || loading}
-							onclick={handleDelete}
-							class="btn-danger"
+							disabled={loading || deleting}
+							onclick={handleClose}
+							class="btn-secondary"
 						>
-							{deleting ? common_deleting() : common_delete()}
+							{createdShare ? common_done() : common_cancel()}
 						</button>
-					{/if}
-				</div>
-				<div class="flex items-center gap-3">
-					<button
-						type="button"
-						disabled={loading || deleting}
-						onclick={handleClose}
-						class="btn-secondary"
-					>
-						{createdShare ? common_done() : common_cancel()}
-					</button>
-					{#if !createdShare}
-						<button type="submit" disabled={loading || deleting} class="btn-primary">
-							{loading ? common_saving() : saveLabel}
-						</button>
-					{/if}
+						{#if !createdShare}
+							<button type="submit" disabled={loading || deleting} class="btn-primary">
+								{loading ? common_saving() : saveLabel}
+							</button>
+						{/if}
+					</div>
 				</div>
 			</div>
-		</div>
-	</form>
+		</form>
+	{/if}
 </GenericModal>

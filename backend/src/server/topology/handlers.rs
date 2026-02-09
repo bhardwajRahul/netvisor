@@ -412,9 +412,7 @@ async fn rebuild(
                     organization_id: entity.organization_id().expect("User should have org_id"),
                     operation: TelemetryOperation::FirstTopologyRebuild,
                     timestamp: Utc::now(),
-                    metadata: serde_json::json!({
-                        "is_onboarding_step": true
-                    }),
+                    metadata: serde_json::json!({}),
                     authentication: entity,
                 })
                 .await?;

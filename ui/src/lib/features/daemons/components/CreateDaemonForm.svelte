@@ -430,7 +430,7 @@
 										tags: needsUpgrade
 											? [
 													{
-														label: 'Upgrade Required',
+														label: 'Upgrade',
 														color: 'Yellow',
 														icon: ArrowUpCircle as unknown as Component
 													}

@@ -797,7 +797,6 @@ impl BillingService {
                     operation: TelemetryOperation::PlanSelected,
                     timestamp: Utc::now(),
                     metadata: serde_json::json!({
-                        "is_onboarding_step": true,
                         "plan": plan.to_string(),
                         "is_commercial": plan.is_commercial()
                     }),

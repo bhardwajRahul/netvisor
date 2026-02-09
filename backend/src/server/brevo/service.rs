@@ -78,9 +78,7 @@ impl BrevoService {
             Event::Discovery(discovery) => {
                 if discovery.phase
                     == crate::daemon::discovery::types::base::DiscoveryPhase::Scanning
-                    && let Some(org_id) = discovery.metadata.get("organization_id")
-                    && let Some(org_id_str) = org_id.as_str()
-                    && let Ok(org_id) = Uuid::parse_str(org_id_str)
+                    && let Some(org_id) = self.get_org_id_from_network(&discovery.network_id).await
                 {
                     self.update_company_last_discovery(org_id).await?;
                 }
@@ -109,6 +107,12 @@ impl BrevoService {
             }
             TelemetryOperation::SubscriptionCancelled => {
                 self.handle_subscription_cancelled(event).await?;
+            }
+            TelemetryOperation::TrialWillEnd => {
+                self.handle_trial_will_end(event).await?;
+            }
+            TelemetryOperation::PlanChanged => {
+                self.handle_plan_changed(event).await?;
             }
             TelemetryOperation::FirstDaemonRegistered => {
                 self.handle_first_daemon_registered(event).await?;
@@ -489,6 +493,58 @@ impl BrevoService {
         Ok(())
     }
 
+    async fn handle_trial_will_end(&self, event: &TelemetryEvent) -> Result<()> {
+        let company_attrs = CompanyAttributes::new().with_plan_status("trial_ending_soon");
+        self.update_company_by_org(event.organization_id, company_attrs)
+            .await?;
+
+        if let Some(email) = self.get_owner_email(event.organization_id).await
+            && let Err(e) = self
+                .client
+                .track_event("trial_will_end", &email, None)
+                .await
+        {
+            tracing::warn!(error = %e, "Failed to track trial_will_end event in Brevo");
+        }
+
+        tracing::debug!(
+            organization_id = %event.organization_id,
+            "Updated Brevo: trial ending soon"
+        );
+        Ok(())
+    }
+
+    async fn handle_plan_changed(&self, event: &TelemetryEvent) -> Result<()> {
+        let new_plan = event
+            .metadata
+            .get("new_plan")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown");
+
+        let company_attrs = CompanyAttributes::new().with_plan_type(new_plan);
+        self.update_company_by_org(event.organization_id, company_attrs)
+            .await?;
+
+        if let Some(email) = self.get_owner_email(event.organization_id).await {
+            let mut props = HashMap::new();
+            props.insert("new_plan".to_string(), serde_json::json!(new_plan));
+            if let Err(e) = self
+                .client
+                .track_event("plan_changed", &email, Some(props))
+                .await
+            {
+                tracing::warn!(error = %e, "Failed to track plan_changed event in Brevo");
+            }
+        }
+
+        tracing::debug!(
+            organization_id = %event.organization_id,
+            new_plan = %new_plan,
+            "Updated Brevo: plan changed"
+        );
+        Ok(())
+    }
+
     async fn handle_first_daemon_registered(&self, event: &TelemetryEvent) -> Result<()> {
         let company_attrs = CompanyAttributes::new().with_first_daemon_date(event.timestamp);
         self.update_company_by_org(event.organization_id, company_attrs)
@@ -775,7 +831,7 @@ impl BrevoService {
             attrs = attrs.with_first_api_key_date(first_api_key.created_at);
         }
 
-        let snmp_filter = StorableFilter::<SnmpCredential>::new_from_network_ids(&network_ids);
+        let snmp_filter = StorableFilter::<SnmpCredential>::new_from_org_id(&org_id);
         let snmp_creds = self.snmp_credential_service.get_all(snmp_filter).await?;
         if let Some(first_snmp) = snmp_creds.iter().min_by_key(|s| s.created_at) {
             attrs = attrs.with_first_snmp_credential_date(first_snmp.created_at);

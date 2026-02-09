@@ -11,6 +11,8 @@
 	import { isUser, type User, type UserOrInvite } from '../types';
 	import InviteModal from './InviteModal.svelte';
 	import { metadata, permissions } from '$lib/shared/stores/metadata';
+	import { useOrganizationQuery } from '$lib/features/organizations/queries';
+	import UpgradeButton from '$lib/shared/components/UpgradeButton.svelte';
 	import UserEditModal from './UserEditModal.svelte';
 	import { useCurrentUserQuery } from '$lib/features/auth/queries';
 	import { useUsersQuery, useBulkDeleteUsersMutation } from '../queries';
@@ -35,6 +37,13 @@
 	const currentUserQuery = useCurrentUserQuery();
 	let currentUser = $derived(currentUserQuery.data);
 
+	const organizationQuery = useOrganizationQuery();
+	let org = $derived(organizationQuery.data);
+	let seatLimit = $derived(org?.plan?.included_seats ?? null);
+	let canBuyMoreSeats = $derived(
+		org?.plan?.seat_cents !== undefined && org?.plan?.seat_cents !== null
+	);
+
 	const usersQuery = useUsersQuery();
 	const bulkDeleteUsersMutation = useBulkDeleteUsersMutation();
 	const invitesQuery = useInvitesQuery();
@@ -58,6 +67,9 @@
 		...usersData.map((user) => ({ type: 'user' as const, data: user, id: user.id })),
 		...invitesData.map((invite) => ({ type: 'invite' as const, data: invite, id: invite.id }))
 	] as UserOrInvite[]);
+
+	let userCount = $derived(combinedItems.filter(isUser).length);
+	let isAtSeatLimit = $derived(seatLimit !== null && userCount >= seatLimit && !canBuyMoreSeats);
 
 	async function handleCreateInvite() {
 		showInviteModal = true;
@@ -132,12 +144,23 @@
 	<!-- Header -->
 	<TabHeader title={common_users()} subtitle={users_subtitle()}>
 		<svelte:fragment slot="actions">
-			{#if canInviteUsers}
-				<button class="btn-primary flex items-center" onclick={handleCreateInvite}>
-					<UserPlus class="mr-2 h-5 w-5" />
-					{users_inviteUser()}
-				</button>
-			{/if}
+			<div class="flex items-center gap-3">
+				{#if seatLimit !== null}
+					<span class="text-sm {isAtSeatLimit ? 'text-amber-400' : 'text-tertiary'}">
+						{userCount} / {seatLimit}
+					</span>
+				{/if}
+				{#if canInviteUsers}
+					{#if isAtSeatLimit}
+						<UpgradeButton feature="more seats" />
+					{:else}
+						<button class="btn-primary flex items-center" onclick={handleCreateInvite}>
+							<UserPlus class="mr-2 h-5 w-5" />
+							{users_inviteUser()}
+						</button>
+					{/if}
+				{/if}
+			</div>
 		</svelte:fragment>
 	</TabHeader>
 

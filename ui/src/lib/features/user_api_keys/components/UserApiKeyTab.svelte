@@ -34,7 +34,7 @@
 	} from '$lib/paraglide/messages';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
 	import { billingPlans } from '$lib/shared/stores/metadata';
-	import { showBillingPlanModal } from '$lib/features/billing/stores';
+	import UpgradeButton from '$lib/shared/components/UpgradeButton.svelte';
 
 	let { isReadOnly = false }: TabProps = $props();
 
@@ -166,9 +166,9 @@
 		<EmptyState
 			title="API Access Not Available"
 			subtitle="Your current plan does not include API access. Upgrade to a plan with API access to create and manage API keys."
-			cta="View Plans"
-			onClick={() => showBillingPlanModal.set(true)}
-		/>
+		>
+			<UpgradeButton feature="API access" />
+		</EmptyState>
 	{:else if isLoading}
 		<Loading />
 	{:else if userApiKeysData.length === 0}

@@ -774,6 +774,29 @@ impl DaemonService {
             }
         }
 
+        // Emit FirstHostDiscovered telemetry if this is the org's first discovered host
+        if !created_hosts.is_empty()
+            && let Some((_, first_host)) = created_hosts.first()
+            && let Ok(Some(network)) = self.network_service.get_by_id(&first_host.network_id).await
+            && let Ok(Some(org)) = self
+                .organization_service
+                .get_by_id(&network.base.organization_id)
+                .await
+            && org.not_onboarded(&TelemetryOperation::FirstHostDiscovered)
+        {
+            let _ = self
+                .event_bus
+                .publish_telemetry(TelemetryEvent::new(
+                    Uuid::new_v4(),
+                    org.id,
+                    TelemetryOperation::FirstHostDiscovered,
+                    Utc::now(),
+                    AuthenticatedEntity::System,
+                    serde_json::json!({}),
+                ))
+                .await;
+        }
+
         // Process discovered subnets - continue on failure to avoid blocking entire batch
         for subnet in entities.subnets {
             let pending_id = subnet.id;
@@ -993,7 +1016,6 @@ impl DaemonService {
                     operation: TelemetryOperation::FirstDaemonRegistered,
                     timestamp: Utc::now(),
                     metadata: serde_json::json!({
-                        "is_onboarding_step": true,
                         "mode": "server_poll"
                     }),
                     authentication: AuthenticatedEntity::System,

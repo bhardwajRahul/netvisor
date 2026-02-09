@@ -4,9 +4,12 @@ use crate::server::auth::middleware::auth::AuthenticatedEntity;
 use crate::server::daemons::r#impl::api::DiscoveryUpdatePayload;
 use crate::server::discovery::r#impl::base::Discovery;
 use crate::server::discovery::r#impl::types::{DiscoveryType, RunType};
+use crate::server::networks::service::NetworkService;
+use crate::server::organizations::service::OrganizationService;
 use crate::server::shared::entities::{ChangeTriggersTopologyStaleness, EntityDiscriminants};
 use crate::server::shared::events::bus::EventBus;
 use crate::server::shared::events::types::{EntityEvent, EntityOperation};
+use crate::server::shared::events::types::{TelemetryEvent, TelemetryOperation};
 use crate::server::shared::services::traits::{CrudService, EventBusService};
 use crate::server::shared::storage::filter::StorableFilter;
 use crate::server::shared::storage::generic::GenericPostgresStorage;
@@ -35,6 +38,8 @@ pub struct DiscoveryService {
     event_bus: Arc<EventBus>,
     entity_tag_service: Arc<EntityTagService>,
     snmp_credential_service: Arc<SnmpCredentialService>,
+    network_service: Arc<NetworkService>,
+    organization_service: Arc<OrganizationService>,
 }
 
 impl EventBusService<Discovery> for DiscoveryService {
@@ -67,6 +72,8 @@ impl DiscoveryService {
         event_bus: Arc<EventBus>,
         entity_tag_service: Arc<EntityTagService>,
         snmp_credential_service: Arc<SnmpCredentialService>,
+        network_service: Arc<NetworkService>,
+        organization_service: Arc<OrganizationService>,
     ) -> Result<Arc<Self>> {
         let (tx, _rx) = broadcast::channel(100); // Buffer 100 messages
         let scheduler = JobScheduler::new().await?;
@@ -83,6 +90,8 @@ impl DiscoveryService {
             event_bus,
             entity_tag_service,
             snmp_credential_service,
+            network_service,
+            organization_service,
         }))
     }
 
@@ -685,6 +694,28 @@ impl DiscoveryService {
             self.event_bus()
                 .publish_discovery(session.into_discovery_event())
                 .await?;
+
+            // Emit FirstDiscoveryCompleted telemetry if this is the org's first completed discovery
+            if session.phase == DiscoveryPhase::Complete
+                && let Ok(Some(network)) = self.network_service.get_by_id(&network_id).await
+                && let Ok(Some(org)) = self
+                    .organization_service
+                    .get_by_id(&network.base.organization_id)
+                    .await
+                && org.not_onboarded(&TelemetryOperation::FirstDiscoveryCompleted)
+            {
+                let _ = self
+                    .event_bus
+                    .publish_telemetry(TelemetryEvent::new(
+                        Uuid::new_v4(),
+                        org.id,
+                        TelemetryOperation::FirstDiscoveryCompleted,
+                        Utc::now(),
+                        AuthenticatedEntity::System,
+                        serde_json::json!({}),
+                    ))
+                    .await;
+            }
 
             // If user cancelled session, but it finished before we could send cancellation, remove key so it doesn't cancel upcoming sessions
             self.pull_cancellation_for_daemon(&session.daemon_id).await;

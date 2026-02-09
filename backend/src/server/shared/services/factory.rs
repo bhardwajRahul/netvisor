@@ -191,6 +191,8 @@ impl ServiceFactory {
             event_bus.clone(),
             entity_tag_service.clone(),
             snmp_credential_service.clone(),
+            network_service.clone(),
+            organization_service.clone(),
         )
         .await?;
 

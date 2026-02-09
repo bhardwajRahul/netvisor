@@ -562,7 +562,6 @@ async fn apply_pending_setup(
             operation: TelemetryOperation::OnboardingModalCompleted,
             timestamp: Utc::now(),
             metadata: serde_json::json!({
-                "is_onboarding_step": true,
                 "pre_registration_setup": true,
                 "network_count": 1
             }),

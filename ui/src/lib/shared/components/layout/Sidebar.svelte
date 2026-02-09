@@ -8,10 +8,19 @@
 	import { entities } from '$lib/shared/stores/metadata';
 	import { showBillingPlanModal, reopenSettingsAfterBilling } from '$lib/features/billing/stores';
 	import type { IconComponent } from '$lib/shared/utils/types';
-	import { Menu, ChevronDown, History, Calendar, Settings, LifeBuoy } from 'lucide-svelte';
+	import {
+		Menu,
+		ChevronDown,
+		History,
+		Calendar,
+		Settings,
+		LifeBuoy,
+		ArrowUpCircle
+	} from 'lucide-svelte';
 	import { onMount } from 'svelte';
 	import type { Component } from 'svelte';
 	import type { UserOrgPermissions } from '$lib/features/users/types';
+	import { trackEvent } from '$lib/shared/utils/analytics';
 
 	// Import tab components
 	import TopologyTab from '$lib/features/topology/components/TopologyTab.svelte';
@@ -55,6 +64,9 @@
 	let userPermissions = $derived(currentUser?.permissions);
 	let isBillingEnabled = $derived(organization ? isBillingPlanActive(organization) : false);
 	let isDemoOrg = $derived(organization?.plan?.type === 'Demo');
+	let isFreePlan = $derived(organization?.plan?.type === 'Free');
+	let isOwner = $derived(userPermissions === 'Owner');
+	let showUpgradeButton = $derived(isFreePlan && isOwner && isBillingEnabled);
 	let isReadOnly = $derived(userPermissions === 'Viewer');
 
 	let showSettings = $state(false);
@@ -588,6 +600,24 @@
 	<!-- Bottom Navigation -->
 	<div class="flex-shrink-0 border-t border-gray-700 px-2 py-2">
 		<ul class="space-y-1">
+			{#if showUpgradeButton}
+				<li>
+					<button
+						class="{baseClasses} text-amber-400 hover:bg-amber-500/10"
+						style="height: 2.5rem; padding: 0.5rem 0.75rem;"
+						title={collapsed ? 'Upgrade' : ''}
+						onclick={() => {
+							trackEvent('upgrade_button_clicked', { feature: 'sidebar' });
+							showBillingPlanModal.set(true);
+						}}
+					>
+						<ArrowUpCircle class="h-5 w-5 flex-shrink-0" />
+						{#if !collapsed}
+							<span class="ml-3 truncate">Upgrade</span>
+						{/if}
+					</button>
+				</li>
+			{/if}
 			{#each bottomNavItems as item (item.id)}
 				{#if !isSection(item)}
 					<li>

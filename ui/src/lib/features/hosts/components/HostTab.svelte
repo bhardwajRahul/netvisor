@@ -16,7 +16,7 @@
 	import { Plus } from 'lucide-svelte';
 	import { useTagsQuery } from '$lib/features/tags/queries';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
-	import UpgradeBadge from '$lib/shared/components/UpgradeBadge.svelte';
+	import UpgradeButton from '$lib/shared/components/UpgradeButton.svelte';
 	import type { TabProps } from '$lib/shared/types';
 	import {
 		common_confirmDeleteName,
@@ -315,7 +315,7 @@
 				{/if}
 				{#if !isReadOnly}
 					{#if isAtHostLimit}
-						<UpgradeBadge feature="more hosts" />
+						<UpgradeButton feature="more hosts" />
 					{:else}
 						<button class="btn-primary flex items-center" onclick={handleCreateHost}
 							><Plus class="h-5 w-5" />{common_create()}</button

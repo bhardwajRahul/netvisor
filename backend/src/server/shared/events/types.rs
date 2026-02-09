@@ -234,7 +234,6 @@ pub enum AuthOperation {
     PasswordResetCompleted,
     PasswordChanged,
     EmailVerified,
-    SessionExpired,
     OidcLinked,
     OidcUnlinked,
     LoggedOut,
@@ -407,7 +406,9 @@ pub enum TelemetryOperation {
     OrgCreated,
     OnboardingModalCompleted,
     PlanSelected,
+    // Legacy: kept for DB compat, used as guard only
     PersonalPlanSelected,
+    // Legacy: kept for DB compat, used as guard only
     CommercialPlanSelected,
 
     // Billing lifecycle (for email automation)
@@ -431,8 +432,9 @@ pub enum TelemetryOperation {
     InviteSent,
     InviteAccepted,
 
-    // Deprecated
+    // Deprecated: kept for DB compat (stored in org onboarding arrays), never emitted
     FirstApiKeyCreated,
+    // Deprecated: kept for DB compat, never emitted
     FirstNetworkCreated,
 }
 
