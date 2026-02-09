@@ -1287,6 +1287,12 @@ impl BillingService {
             .revoke_org_invites(&organization.id)
             .await?;
 
+        // Update plan to Free immediately — don't rely solely on the Free subscription webhook
+        let free_plan = get_free_plan();
+        self.enforce_plan_restrictions(&org_id, &free_plan).await?;
+        organization.base.plan = Some(free_plan);
+        organization.base.plan_status = Some("active".to_string());
+
         // Clear payment method flag so re-upgrades route through Stripe Checkout.
         // The flag will be set back to true by handle_checkout_completed when
         // the user completes payment collection.
@@ -1295,8 +1301,7 @@ impl BillingService {
             .update(&mut organization, AuthenticatedEntity::System)
             .await?;
 
-        // Create a Free subscription — the webhook will set the plan via handle_subscription_update
-        let free_plan = get_free_plan();
+        // Create a Free subscription in Stripe for billing record continuity
         let free_price = self
             .get_price_from_lookup_key(free_plan.stripe_base_price_lookup_key())
             .await?

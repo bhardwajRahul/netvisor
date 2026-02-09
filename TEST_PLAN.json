@@ -6,28 +6,30 @@
       "category": "Billing",
       "description": "After subscription expires and auto-downgrades to Free, upgrading to a paid plan routes through Stripe Checkout and succeeds",
       "steps": [
-        "Open Settings > Billing > View Plans and select a paid plan (e.g., Team)",
+        "Open Settings > Billing and verify the org now shows the Free plan (not the old paid plan)",
+        "Click View Plans and select a paid plan (e.g., Team)",
         "Verify you are redirected to Stripe Checkout (not an instant switch or error)",
         "Complete Stripe Checkout with a test card",
         "Verify the app shows the paid plan as active with no errors",
         "Check Stripe dashboard — verify exactly one active subscription exists"
       ],
-      "setup": "Org needs to be in the state after an end-of-cycle auto-downgrade to Free. Simulate this: have the org on a paid plan, then cancel the subscription in Stripe dashboard (or use Stripe CLI to advance the clock past the period end). Wait for the webhook to fire and confirm the org is now on Free plan with has_payment_method = false in the database.",
-      "expected": "Upgrade routes through Stripe Checkout (collects payment). No 'resource_missing' or payment method errors. Plan activates successfully.",
+      "setup": "Org needs to be in the state after an end-of-cycle auto-downgrade to Free. Simulate this: have the org on a paid plan, then cancel the subscription in Stripe dashboard (or use Stripe CLI to advance the clock past the period end). Wait for the webhook to fire. The org should now show Free plan in the UI immediately (no page refresh needed after webhook fires). Verify has_payment_method = false in the database.",
+      "expected": "Org plan shows Free immediately after cancellation webhook. Upgrade routes through Stripe Checkout (collects payment). No 'resource_missing' or payment method errors. Plan activates successfully.",
       "status": null,
       "feedback": null
     },
     {
       "id": "payment-method-sync",
       "category": "Billing",
-      "description": "Payment method status syncs from Stripe on subscription updates",
+      "description": "Removing payment method in Stripe during trial causes 'Add Payment Method' tip to reappear",
       "steps": [
-        "Open Stripe dashboard and remove the default payment method from the customer",
-        "Trigger a subscription update (e.g., switch plans via the billing portal)",
-        "Open Settings > Billing — verify the 'Add Payment Method' card reappears"
+        "Open Settings > Billing and verify the payment method card does NOT show 'Add Payment Method'",
+        "In Stripe dashboard, detach/remove the default payment method from the customer",
+        "Wait a few seconds for the webhook, then refresh Settings > Billing",
+        "Verify the 'Add Payment Method' card/tip reappears"
       ],
-      "setup": "Org should be on a paid plan with has_payment_method = true and a payment method in Stripe.",
-      "expected": "Removing payment method in Stripe syncs to frontend state via webhook or portal action",
+      "setup": "Org should be on a trial or paid plan with has_payment_method = true and a payment method attached in Stripe. IMPORTANT: The Stripe webhook endpoint must be configured to send 'payment_method.attached' and 'payment_method.detached' events. If using 'stripe listen' for local dev, these are forwarded by default. If using a dashboard-configured webhook endpoint, verify these events are explicitly enabled in the webhook endpoint settings.",
+      "expected": "After removing the payment method in Stripe, the webhook fires and sets has_payment_method = false. The UI reflects this by showing the 'Add Payment Method' card/tip.",
       "status": null,
       "feedback": null
     }
