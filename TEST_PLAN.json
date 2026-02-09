@@ -7,11 +7,11 @@
       "description": "Backfill creates Brevo contacts and companies for all orgs",
       "setup": "Verify all organizations have a non-NULL brevo_company_id in the database, confirming the startup backfill has completed.",
       "steps": [
-        "In Brevo dashboard, go to Contacts and verify each org owner appears with correct attributes (SCANOPY_USER_ID, FIRSTNAME, LASTNAME)",
+        "In Brevo dashboard, go to Contacts and verify each org owner appears with correct attributes (SCANOPY_USER_ID, FIRSTNAME, LASTNAME, SCANOPY_LAST_LOGIN_DATE)",
         "Go to Companies and verify each org has a company with correct attributes (scanopy_org_id, scanopy_plan_type, entity counts)",
         "Click a company and verify the owner contact is linked to it"
       ],
-      "expected": "Each organization's owner exists as a Brevo contact with correct attributes. Each org has a corresponding company with matching attributes. Contact is linked to company.",
+      "expected": "Each organization's owner exists as a Brevo contact with correct attributes including SCANOPY_LAST_LOGIN_DATE set to signup time. Each org has a corresponding company with matching attributes. Contact is linked to company.",
       "status": null,
       "feedback": null
     },
@@ -24,7 +24,7 @@
         "Log in to Scanopy as the test user",
         "In Brevo dashboard, check the contact's SCANOPY_LAST_LOGIN_DATE attribute"
       ],
-      "expected": "Contact's SCANOPY_LAST_LOGIN_DATE is updated to approximately the current timestamp. For newly created contacts, this should already be set to the signup timestamp.",
+      "expected": "Contact's SCANOPY_LAST_LOGIN_DATE is updated to approximately the current login timestamp.",
       "status": null,
       "feedback": null
     },
@@ -48,17 +48,19 @@
     {
       "id": "brevo-enterprise-inquiry-happy-path",
       "category": "Enterprise Inquiry",
-      "description": "Submitting enterprise inquiry updates Brevo company and tracks event",
+      "description": "Submitting enterprise inquiry creates a deal in Brevo and tracks event",
       "setup": "Verify the test user's org has a non-NULL brevo_company_id in the database.",
       "steps": [
         "In Scanopy, navigate to Settings > Billing",
         "Open the enterprise inquiry modal",
         "Fill in all fields (company name, team size, use case, message, urgency, network count)",
         "Submit the form",
-        "In Brevo, check the company for updated inquiry attributes (scanopy_inquiry_date, scanopy_inquiry_urgency, scanopy_inquiry_network_count, scanopy_inquiry_plan_type)",
+        "In Brevo, go to Deals and verify a new deal named 'Enterprise Inquiry - <company>' was created in the Sales pipeline",
+        "Click the deal and verify it has the correct attributes (team_size, message, plan_type, urgency, network_count)",
+        "Verify the deal is linked to the org's company",
         "In Brevo, check for an enterprise_inquiry event on the contact"
       ],
-      "expected": "Form submits successfully with no errors. Company attributes updated with inquiry data. enterprise_inquiry event tracked with full details.",
+      "expected": "Form submits successfully with no errors. A new deal is created in the Sales pipeline with all inquiry fields as deal attributes, linked to the org's Brevo company. enterprise_inquiry event tracked with full details.",
       "status": null,
       "feedback": null
     },
