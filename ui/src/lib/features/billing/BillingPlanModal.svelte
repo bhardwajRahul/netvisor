@@ -45,7 +45,9 @@
 						seat_cents: p.metadata.seat_cents,
 						network_cents: p.metadata.network_cents,
 						included_seats: p.metadata.included_seats,
-						included_networks: p.metadata.included_networks
+						included_networks: p.metadata.included_networks,
+						host_cents: p.metadata.host_cents ?? null,
+						included_hosts: p.metadata.included_hosts ?? null
 					}) as BillingPlan
 			)
 			.filter((p) => {
@@ -115,7 +117,7 @@
 
 <GenericModal
 	{isOpen}
-	title="Choose a Plan"
+	title=""
 	onClose={dismissible ? onClose : null}
 	size="full"
 	preventCloseOnClickOutside={!dismissible}

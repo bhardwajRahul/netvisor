@@ -133,6 +133,8 @@
 		let result = plans;
 		if (planFilter !== 'all') {
 			result = result.filter((plan) => {
+				// Free plan appears on both Personal and Commercial toggles
+				if (plan.type === 'Free') return true;
 				const metadata = billingPlanHelpers.getMetadata(plan.type);
 				if (planFilter === 'commercial') return metadata.is_commercial;
 				if (planFilter === 'personal') return !metadata.is_commercial;
@@ -140,9 +142,17 @@
 			});
 		}
 		result = result.filter((plan) => {
+			// Free plan is always monthly (no yearly variant)
+			if (plan.type === 'Free') return true;
 			if (billingPeriod === 'monthly') return plan.rate === 'Month';
 			if (billingPeriod === 'yearly') return plan.rate === 'Year';
 			return true;
+		});
+		// Sort Free plan first
+		result = [...result].sort((a, b) => {
+			if (a.type === 'Free') return -1;
+			if (b.type === 'Free') return 1;
+			return 0;
 		});
 		return result;
 	});

@@ -130,69 +130,71 @@
 				? 'h-[calc(100vh-8rem)]'
 				: 'max-h-[calc(100vh-8rem)]'} flex flex-col"
 		>
-			<!-- Header -->
-			<div class="modal-header flex-col gap-0 {tabs.length > 0 ? 'pb-0' : ''}">
-				<!-- Title row -->
-				<div class="flex w-full items-center justify-between">
-					{#if centerTitle}
-						{@render headerIcon?.()}
-						<h2
-							id="modal-title"
-							class="text-primary absolute left-1/2 -translate-x-1/2 text-xl font-semibold"
-						>
-							{title}
-						</h2>
-					{:else}
-						<div class="flex items-center gap-3">
+			<!-- Header (hidden when no title, no close button, and no tabs) -->
+			{#if title || showCloseButton || tabs.length > 0}
+				<div class="modal-header flex-col gap-0 {tabs.length > 0 ? 'pb-0' : ''}">
+					<!-- Title row -->
+					<div class="flex w-full items-center justify-between">
+						{#if centerTitle}
 							{@render headerIcon?.()}
-							<h2 id="modal-title" class="text-primary text-xl font-semibold">
+							<h2
+								id="modal-title"
+								class="text-primary absolute left-1/2 -translate-x-1/2 text-xl font-semibold"
+							>
 								{title}
 							</h2>
-						</div>
-					{/if}
+						{:else}
+							<div class="flex items-center gap-3">
+								{@render headerIcon?.()}
+								<h2 id="modal-title" class="text-primary text-xl font-semibold">
+									{title}
+								</h2>
+							</div>
+						{/if}
 
-					{#if showCloseButton}
-						<button
-							type="button"
-							onclick={handleClose}
-							class="btn-icon"
-							aria-label={common_closeModal()}
-						>
-							<X class="h-5 w-5" />
-						</button>
-					{/if}
-				</div>
-
-				<!-- Tab navigation (if tabs provided) -->
-				{#if tabs.length > 0}
-					<nav class="flex w-full space-x-6 pt-4" aria-label="Modal tabs">
-						{#each tabs as tab (tab.id)}
+						{#if showCloseButton}
 							<button
 								type="button"
-								onclick={() => handleTabClick(tab.id)}
-								class="border-b-2 px-1 pb-3 text-sm font-medium transition-colors
-									{activeTab === tab.id
-									? 'text-primary border-blue-500'
-									: 'text-muted hover:text-secondary border-transparent'}"
-								aria-current={activeTab === tab.id ? 'page' : undefined}
+								onclick={handleClose}
+								class="btn-icon"
+								aria-label={common_closeModal()}
 							>
-								<div class="flex items-center gap-2">
-									{#if tab.icon}
-										<span class="relative">
-											<tab.icon class="h-4 w-4" />
-											{#if tab.notification}
-												<span class="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-blue-500"
-												></span>
-											{/if}
-										</span>
-									{/if}
-									{tab.label}
-								</div>
+								<X class="h-5 w-5" />
 							</button>
-						{/each}
-					</nav>
-				{/if}
-			</div>
+						{/if}
+					</div>
+
+					<!-- Tab navigation (if tabs provided) -->
+					{#if tabs.length > 0}
+						<nav class="flex w-full space-x-6 pt-4" aria-label="Modal tabs">
+							{#each tabs as tab (tab.id)}
+								<button
+									type="button"
+									onclick={() => handleTabClick(tab.id)}
+									class="border-b-2 px-1 pb-3 text-sm font-medium transition-colors
+									{activeTab === tab.id
+										? 'text-primary border-blue-500'
+										: 'text-muted hover:text-secondary border-transparent'}"
+									aria-current={activeTab === tab.id ? 'page' : undefined}
+								>
+									<div class="flex items-center gap-2">
+										{#if tab.icon}
+											<span class="relative">
+												<tab.icon class="h-4 w-4" />
+												{#if tab.notification}
+													<span class="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-amber-500"
+													></span>
+												{/if}
+											</span>
+										{/if}
+										{tab.label}
+									</div>
+								</button>
+							{/each}
+						</nav>
+					{/if}
+				</div>
+			{/if}
 
 			<!-- Content slot -->
 			<div class="modal-content">

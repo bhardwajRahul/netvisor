@@ -150,8 +150,10 @@ export function createEmptyDiscoveryFormData(daemon: Daemon | null): Discovery {
 			probe_raw_socket_ports: false
 		},
 		run_type: {
-			type: 'AdHoc',
-			last_run: null
+			type: 'Scheduled',
+			cron_schedule: '0 0 0 * * *',
+			last_run: null,
+			enabled: true
 		},
 		name: '',
 		daemon_id: daemon ? daemon.id : uuidv4Sentinel,

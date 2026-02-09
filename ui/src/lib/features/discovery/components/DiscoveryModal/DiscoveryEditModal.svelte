@@ -15,6 +15,8 @@
 	import { pushError } from '$lib/shared/stores/feedback';
 	import type { Daemon } from '$lib/features/daemons/types/base';
 	import type { Host } from '$lib/features/hosts/types/base';
+	import { useOrganizationQuery } from '$lib/features/organizations/queries';
+	import { billingPlans } from '$lib/shared/stores/metadata';
 	import {
 		common_cancel,
 		common_close,
@@ -54,6 +56,13 @@
 		onDelete = null
 	}: Props = $props();
 
+	const organizationQuery = useOrganizationQuery();
+	let org = $derived(organizationQuery.data);
+	let hasScheduledDiscovery = $derived.by(() => {
+		if (!org?.plan?.type) return true;
+		return billingPlans.getMetadata(org.plan.type).features.scheduled_discovery;
+	});
+
 	let loading = $state(false);
 	let deleting = $state(false);
 
@@ -87,6 +96,10 @@
 			empty.daemon_id = defaultDaemon.id;
 			empty.network_id = defaultDaemon.network_id;
 		}
+		// Default to AdHoc for plans without scheduled discovery (e.g. Free)
+		if (!hasScheduledDiscovery) {
+			empty.run_type = { type: 'AdHoc', last_run: null };
+		}
 		return empty;
 	}
 
@@ -95,7 +108,7 @@
 	const form = createForm(() => ({
 		defaultValues: {
 			name: '',
-			run_type_type: 'AdHoc' as 'AdHoc' | 'Scheduled',
+			run_type_type: (hasScheduledDiscovery ? 'Scheduled' : 'AdHoc') as 'AdHoc' | 'Scheduled',
 			discovery_type_type: 'Network' as 'Network' | 'Docker' | 'SelfReport',
 			host_naming_fallback: 'BestService' as 'BestService' | 'Ip',
 			probe_raw_socket_ports: false,

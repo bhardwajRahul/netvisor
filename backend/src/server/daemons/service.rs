@@ -682,11 +682,13 @@ impl DaemonService {
         }
 
         // Create default discovery jobs
+        let is_free_plan = matches!(org.base.plan, Some(BillingPlan::Free(_)));
         self.create_default_discovery_jobs(
             request.daemon_id,
             request.network_id,
             host_response.id,
             request.capabilities.has_docker_socket,
+            is_free_plan,
         )
         .await?;
 
@@ -870,14 +872,27 @@ impl DaemonService {
         network_id: Uuid,
         host_id: Uuid,
         has_docker_socket: bool,
+        is_free_plan: bool,
     ) -> Result<(), ApiError> {
         tracing::info!(
             daemon_id = %daemon_id,
             network_id = %network_id,
             host_id = %host_id,
             has_docker_socket,
+            is_free_plan,
             "Creating default discovery jobs for daemon"
         );
+
+        // Free plans use AdHoc (run once immediately), paid plans use Scheduled
+        let default_run_type = if is_free_plan {
+            RunType::AdHoc { last_run: None }
+        } else {
+            RunType::Scheduled {
+                cron_schedule: DAILY_MIDNIGHT_CRON.to_string(),
+                last_run: None,
+                enabled: true,
+            }
+        };
 
         // Create SelfReport discovery job
         let self_report_discovery_type = DiscoveryType::SelfReport { host_id };
@@ -886,11 +901,7 @@ impl DaemonService {
             .discovery_service
             .create_discovery(
                 Discovery::new(DiscoveryBase {
-                    run_type: RunType::Scheduled {
-                        cron_schedule: DAILY_MIDNIGHT_CRON.to_string(),
-                        last_run: None,
-                        enabled: true,
-                    },
+                    run_type: default_run_type.clone(),
                     discovery_type: self_report_discovery_type.clone(),
                     name: self_report_discovery_type.to_string(),
                     daemon_id,
@@ -916,11 +927,7 @@ impl DaemonService {
                 .discovery_service
                 .create_discovery(
                     Discovery::new(DiscoveryBase {
-                        run_type: RunType::Scheduled {
-                            cron_schedule: DAILY_MIDNIGHT_CRON.to_string(),
-                            last_run: None,
-                            enabled: true,
-                        },
+                        run_type: default_run_type.clone(),
                         discovery_type: docker_discovery_type.clone(),
                         name: docker_discovery_type.to_string(),
                         daemon_id,
@@ -948,11 +955,7 @@ impl DaemonService {
             .discovery_service
             .create_discovery(
                 Discovery::new(DiscoveryBase {
-                    run_type: RunType::Scheduled {
-                        cron_schedule: DAILY_MIDNIGHT_CRON.to_string(),
-                        last_run: None,
-                        enabled: true,
-                    },
+                    run_type: default_run_type.clone(),
                     discovery_type: network_discovery_type.clone(),
                     name: network_discovery_type.to_string(),
                     daemon_id,
@@ -1259,6 +1262,25 @@ impl DaemonService {
                 "First contact with ServerPoll daemon"
             );
 
+            // Determine if org is on Free plan for discovery defaults
+            let is_free_plan = if let Ok(Some(network)) = self
+                .network_service
+                .get_by_id(&daemon.base.network_id)
+                .await
+            {
+                if let Ok(Some(org)) = self
+                    .organization_service
+                    .get_by_id(&network.base.organization_id)
+                    .await
+                {
+                    matches!(org.base.plan, Some(BillingPlan::Free(_)))
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+
             // Create default discovery jobs
             if let Err(e) = self
                 .create_default_discovery_jobs(
@@ -1266,6 +1288,7 @@ impl DaemonService {
                     daemon.base.network_id,
                     daemon.base.host_id,
                     status.capabilities.has_docker_socket,
+                    is_free_plan,
                 )
                 .await
             {

@@ -348,33 +348,35 @@
 					</InfoCard>
 				{/if}
 
-				<!-- Free Plan - Upgrade CTA -->
-				{#if isFree}
-					<InfoCard>
-						<div class="flex items-center justify-between">
-							<div>
-								<p class="text-primary text-sm font-medium">Upgrade your plan</p>
-								<p class="text-secondary mt-1 text-xs">
-									Get scheduled discovery, DaemonPoll mode, and more hosts
-								</p>
-							</div>
-							<button
-								onclick={() => {
-									showBillingPlanModal.set(true);
-									onClose();
-								}}
-								class="btn-primary whitespace-nowrap text-sm"
-							>
-								View Plans
-							</button>
+				<!-- View Plans -->
+				<InfoCard>
+					<div class="flex items-center justify-between">
+						<div>
+							<p class="text-primary text-sm font-medium">
+								{isFree ? 'Upgrade your plan' : 'Change your plan'}
+							</p>
+							<p class="text-secondary mt-1 text-xs">
+								{isFree
+									? 'Get scheduled discovery, DaemonPoll mode, and more hosts'
+									: 'View available plans and upgrade or downgrade'}
+							</p>
 						</div>
-					</InfoCard>
-				{/if}
+						<button
+							onclick={() => {
+								showBillingPlanModal.set(true);
+								onClose();
+							}}
+							class="btn-primary whitespace-nowrap text-sm"
+						>
+							View Plans
+						</button>
+					</div>
+				</InfoCard>
 
 				<!-- Actions -->
 				<div class="space-y-3">
 					{#if !isFree}
-						<button onclick={handleManageSubscription} class="btn-primary w-full">
+						<button onclick={handleManageSubscription} class="btn-secondary w-full">
 							{settings_billing_manageSubscription()}
 						</button>
 					{/if}

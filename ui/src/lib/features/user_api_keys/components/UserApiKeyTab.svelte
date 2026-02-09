@@ -161,7 +161,12 @@
 		</svelte:fragment>
 	</TabHeader>
 
-	{#if isLoading}
+	{#if !hasApiAccess}
+		<EmptyState
+			title="API Access Not Available"
+			subtitle="Your current plan does not include API access. Upgrade to a plan with API access to create and manage API keys."
+		/>
+	{:else if isLoading}
 		<Loading />
 	{:else if userApiKeysData.length === 0}
 		<EmptyState
