@@ -156,7 +156,6 @@
 				</form.Field>
 
 				<div class="space-y-4">
-					<div class="card card-static">
 						<div class="flex items-center gap-2">
 							<div class="flex-1">
 								<form.Field
@@ -245,7 +244,6 @@
 								</div>
 							{/if}
 						</div>
-					</div>
 				</div>
 			</div>
 		</div>

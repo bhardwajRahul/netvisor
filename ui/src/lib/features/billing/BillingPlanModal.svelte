@@ -35,6 +35,7 @@
 		const seen = new Set<string>(); // eslint-disable-line svelte/prefer-svelte-reactivity
 		return billingPlansJson
 			.filter((p) => p.metadata.hosting !== 'SelfHosted')
+			.filter((p) => !(p.id === 'Free' && p.metadata.rate === 'Year'))
 			.map(
 				(p) =>
 					({
