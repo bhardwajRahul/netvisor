@@ -2,67 +2,29 @@
   "branch": "brevo-integration",
   "tests": [
     {
-      "id": "brevo-server-starts-without-api-key",
-      "category": "Configuration",
-      "description": "Server starts normally when SCANOPY_BREVO_API_KEY is not set",
-      "steps": [
-        "Ensure SCANOPY_BREVO_API_KEY is NOT set in your environment",
-        "Start the server with make dev-up",
-        "Check server logs for startup messages"
-      ],
-      "expected": "Server starts successfully. No errors related to Brevo.",
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "brevo-server-starts-with-api-key",
-      "category": "Configuration",
-      "description": "Server starts and triggers backfill when SCANOPY_BREVO_API_KEY is set",
-      "steps": [
-        "Set SCANOPY_BREVO_API_KEY to a valid Brevo API key in your environment",
-        "Start the server with make dev-up",
-        "Check server logs for Brevo backfill messages"
-      ],
-      "expected": "Server starts successfully. Logs show backfill progress messages like 'Backfilling org {name} (x/total)'. Server does not block on backfill (responds to requests during sync).",
-      "status": null,
-      "feedback": null
-    },
-    {
       "id": "brevo-backfill-creates-contacts-and-companies",
       "category": "Startup Backfill",
       "description": "Backfill creates Brevo contacts and companies for all orgs",
+      "setup": "Verify all organizations have a non-NULL brevo_company_id in the database, confirming the startup backfill has completed.",
       "steps": [
-        "Set SCANOPY_BREVO_API_KEY and start the server",
-        "Wait for backfill to complete (check logs)",
-        "Log into Brevo dashboard, go to Contacts",
-        "Check Companies in Brevo CRM"
+        "In Brevo dashboard, go to Contacts and verify each org owner appears with correct attributes (SCANOPY_USER_ID, FIRSTNAME, LASTNAME)",
+        "Go to Companies and verify each org has a company with correct attributes (scanopy_org_id, scanopy_plan_type, entity counts)",
+        "Click a company and verify the owner contact is linked to it"
       ],
-      "expected": "Each organization's owner appears as a contact in Brevo with correct attributes (email, name, scanopy_user_id). Each org has a corresponding company with correct attributes (name, scanopy_org_id, plan info, entity counts). Contact is linked to company.",
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "brevo-backfill-idempotent",
-      "category": "Startup Backfill",
-      "description": "Restarting server does not re-sync already-synced orgs",
-      "steps": [
-        "After initial backfill completes, restart the server",
-        "Check server logs for backfill messages"
-      ],
-      "expected": "No backfill messages appear (or log says 0 orgs to backfill). Already-synced orgs are skipped because brevo_company_id is not NULL.",
+      "expected": "Each organization's owner exists as a Brevo contact with correct attributes. Each org has a corresponding company with matching attributes. Contact is linked to company.",
       "status": null,
       "feedback": null
     },
     {
       "id": "brevo-syncs-all-orgs-no-filtering",
       "category": "Sync Behavior",
-      "description": "All organizations are synced regardless of plan type or email domain",
+      "description": "New org with free email domain is synced to Brevo without filtering",
       "steps": [
         "Register a new user with a free email domain (e.g., user@gmail.com)",
-        "Ensure the org has a free/trial plan",
-        "Check Brevo dashboard for the new contact and company"
+        "Complete onboarding",
+        "In Brevo dashboard, verify the new contact and company were created"
       ],
-      "expected": "Contact and company are created in Brevo. No filtering by commercial plan or work email domain.",
+      "expected": "Contact and company are created in Brevo immediately after registration. No filtering by commercial plan or work email domain.",
       "flow": "setup",
       "sequence": 31,
       "status": null,
@@ -71,13 +33,14 @@
     {
       "id": "brevo-org-created-event",
       "category": "Event Handling",
-      "description": "New org creation triggers Brevo contact + company creation and event tracking",
+      "description": "New org creation stores brevo_company_id and links contact to company",
+      "setup": "Verify the org created in the previous test has a non-NULL brevo_company_id in the database.",
       "steps": [
-        "After registering the new user (from previous test), check Brevo Contacts for the new user",
-        "Check Brevo Companies for the new org",
-        "Check database: SELECT brevo_company_id FROM organizations WHERE name = '<org name>';"
+        "In Brevo Contacts, verify the new user has correct attributes (SCANOPY_USER_ID, SCANOPY_SIGNUP_DATE)",
+        "In Brevo Companies, verify the new org has correct attributes (scanopy_org_id, scanopy_plan_type)",
+        "Verify the contact is linked to the company"
       ],
-      "expected": "Contact created with correct attributes. Company created and linked to contact. brevo_company_id stored on the org (non-NULL in DB).",
+      "expected": "Contact created with correct attributes. Company created and linked to contact. brevo_company_id stored on the org in the database.",
       "flow": "setup",
       "sequence": 32,
       "status": null,
@@ -87,41 +50,46 @@
       "id": "brevo-login-updates-last-login",
       "category": "Event Handling",
       "description": "Login event updates contact's last login date in Brevo",
+      "setup": "Verify the test user's org has a non-NULL brevo_company_id in the database.",
       "steps": [
-        "Ensure a user is synced to Brevo",
-        "Log in as that user",
-        "Check the contact in Brevo dashboard"
+        "Log in to Scanopy as the test user",
+        "In Brevo dashboard, check the contact's SCANOPY_LAST_LOGIN_DATE attribute"
       ],
-      "expected": "Contact's SCANOPY_LAST_LOGIN_DATE attribute is updated to the current login timestamp.",
+      "expected": "Contact's SCANOPY_LAST_LOGIN_DATE is updated to approximately the current timestamp.",
       "status": null,
       "feedback": null
     },
     {
       "id": "brevo-entity-metrics-sync",
       "category": "Event Handling",
-      "description": "Creating/deleting networks, hosts, or users updates company metrics in Brevo",
+      "description": "Creating/deleting entities updates company metrics in Brevo",
+      "setup": "Verify the test org has a non-NULL brevo_company_id in the database. Note the current scanopy_network_count and scanopy_host_count on the company in Brevo.",
       "steps": [
-        "Create a new network in an org that is synced to Brevo",
-        "Check the company in Brevo dashboard for updated network_count",
-        "Create a host, check host_count",
-        "Delete the host, check host_count again"
+        "In Scanopy, create a new network",
+        "In Brevo, verify the company's scanopy_network_count increased by 1",
+        "In Scanopy, create a host on the new network",
+        "In Brevo, verify scanopy_host_count increased by 1",
+        "In Scanopy, delete the host",
+        "In Brevo, verify scanopy_host_count decreased by 1"
       ],
-      "expected": "Company attributes (scanopy_network_count, scanopy_host_count, scanopy_user_count) reflect current DB counts after each change.",
+      "expected": "Company attributes (scanopy_network_count, scanopy_host_count) reflect current DB counts after each change. Updates may be debounced by up to 5 seconds.",
       "status": null,
       "feedback": null
     },
     {
       "id": "brevo-enterprise-inquiry-happy-path",
       "category": "Enterprise Inquiry",
-      "description": "Submitting enterprise inquiry sends data to Brevo instead of HubSpot",
+      "description": "Submitting enterprise inquiry updates Brevo company and tracks event",
+      "setup": "Verify the test user's org has a non-NULL brevo_company_id in the database.",
       "steps": [
-        "Log in as a user with a synced org",
-        "Navigate to billing and open the enterprise inquiry modal",
-        "Fill in all fields (company name, size, use case, message)",
+        "In Scanopy, navigate to Settings > Billing",
+        "Open the enterprise inquiry modal",
+        "Fill in all fields (company name, team size, use case, message, urgency, network count)",
         "Submit the form",
-        "Check Brevo company attributes and enterprise_inquiry event"
+        "In Brevo, check the company for updated inquiry attributes (scanopy_inquiry_date, scanopy_inquiry_urgency, scanopy_inquiry_network_count, scanopy_inquiry_plan_type)",
+        "In Brevo, check for an enterprise_inquiry event on the contact"
       ],
-      "expected": "Form submits successfully. Brevo company updated with inquiry properties (inquiry_date, inquiry_urgency, inquiry_network_count, inquiry_plan_type). enterprise_inquiry event tracked with full details (company, team_size, message, urgency, plan_type).",
+      "expected": "Form submits successfully with no errors. Company attributes updated with inquiry data. enterprise_inquiry event tracked with full details.",
       "status": null,
       "feedback": null
     },
@@ -130,24 +98,25 @@
       "category": "Frontend Cleanup",
       "description": "HubSpot tracking script is no longer loaded in the frontend",
       "steps": [
-        "Load the app in a browser",
-        "Open dev tools and check Network tab for any requests to hubspot.com or hs-scripts.com",
-        "Check Elements/Sources for any HubSpot script tags"
+        "Load the Scanopy app in a browser",
+        "Open dev tools Network tab and refresh the page",
+        "Verify no requests to hubspot.com or hs-scripts.com domains",
+        "Check Application > Cookies and verify no hubspotutk cookie"
       ],
-      "expected": "No requests to HubSpot domains. No HubSpot script tags in the DOM. No hubspotutk cookie set.",
+      "expected": "No requests to HubSpot domains. No HubSpot script tags in the DOM. No hubspotutk cookie.",
       "status": null,
       "feedback": null
     },
     {
       "id": "brevo-cookie-consent-with-brevo",
       "category": "Frontend Cleanup",
-      "description": "Cookie consent banner behavior with Brevo configured",
+      "description": "Cookie consent banner appears when Brevo is configured",
       "steps": [
-        "Set SCANOPY_BREVO_API_KEY",
-        "Load the app as a new user (clear cookies first)",
-        "Check if cookie consent banner appears"
+        "Clear all cookies for the Scanopy app",
+        "Load the app in a browser",
+        "Verify the cookie consent banner appears"
       ],
-      "expected": "Cookie consent banner appears when Brevo is configured (needs_cookie_consent returns true).",
+      "expected": "Cookie consent banner is displayed to new visitors when SCANOPY_BREVO_API_KEY is configured.",
       "status": null,
       "feedback": null
     }
