@@ -104,7 +104,13 @@
 			label: discovery_scheduled(),
 			disabled: !hasScheduledDiscovery,
 			tags: !hasScheduledDiscovery
-				? [{ label: 'Upgrade', color: 'Yellow', icon: ArrowUpCircle as unknown as Component }]
+				? [
+						{
+							label: 'Upgrade Required',
+							color: 'Yellow',
+							icon: ArrowUpCircle as unknown as Component
+						}
+					]
 				: []
 		}
 	]);

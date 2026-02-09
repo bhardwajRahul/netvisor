@@ -24,7 +24,8 @@
 
 <div class="inline-flex flex-shrink-0 items-center gap-1 whitespace-nowrap">
 	{#if icon}
-		<icon size={16} class={textColor}></icon>
+		{@const Icon = icon}
+		<Icon size={16} class={textColor} />
 	{/if}
 
 	<!-- Main content -->

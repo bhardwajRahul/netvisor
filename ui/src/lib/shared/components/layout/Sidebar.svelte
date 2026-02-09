@@ -6,6 +6,7 @@
 	import SettingsModal from '$lib/features/settings/SettingsModal.svelte';
 	import SupportModal from '$lib/features/support/SupportModal.svelte';
 	import { entities } from '$lib/shared/stores/metadata';
+	import { showBillingPlanModal, reopenSettingsAfterBilling } from '$lib/features/billing/stores';
 	import type { IconComponent } from '$lib/shared/utils/types';
 	import { Menu, ChevronDown, History, Calendar, Settings, LifeBuoy } from 'lucide-svelte';
 	import { onMount } from 'svelte';
@@ -66,6 +67,14 @@
 		const isTrialing = organization.plan_status === 'trialing';
 		const hasPayment = organization.has_payment_method ?? false;
 		return isTrialing && !hasPayment;
+	});
+
+	// Reopen settings modal when billing plan modal closes (if opened from settings)
+	$effect(() => {
+		if (!$showBillingPlanModal && $reopenSettingsAfterBilling) {
+			showSettings = true;
+			reopenSettingsAfterBilling.set(false);
+		}
 	});
 
 	interface NavItem {

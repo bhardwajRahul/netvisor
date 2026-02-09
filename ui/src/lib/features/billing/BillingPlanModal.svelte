@@ -129,7 +129,8 @@
 	onClose={dismissible ? onClose : null}
 	size="full"
 	preventCloseOnClickOutside={!dismissible}
-	showCloseButton={dismissible}
+	showCloseButton={false}
+	floatingCloseButton={dismissible}
 	borderless={true}
 >
 	<div class="flex min-h-0 flex-1 flex-col overflow-y-auto p-2">

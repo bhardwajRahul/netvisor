@@ -301,6 +301,8 @@
 									e.preventDefault();
 									e.stopPropagation();
 									if (isDisabled) {
+										isOpen = false;
+										filterText = '';
 										onDisabledClick?.(displayComponent.getId(option));
 									} else {
 										handleSelect(displayComponent.getId(option));
@@ -309,7 +311,7 @@
 								class="w-full px-3 py-3 text-left transition-colors
                        {isDisabled
 									? isClickableDisabled
-										? 'cursor-pointer opacity-80 hover:bg-gray-600'
+										? 'cursor-pointer hover:bg-gray-600'
 										: 'cursor-not-allowed opacity-60'
 									: 'hover:bg-gray-600'}
                        {!isLastInGroup || !isLastGroup ? 'border-b border-gray-600' : ''}"

@@ -27,6 +27,7 @@
 		showCloseButton = true,
 		showBackdrop = true,
 		borderless = false,
+		floatingCloseButton = false,
 		tabs = [],
 		activeTab = $bindable(''),
 		onTabChange = null,
@@ -45,6 +46,7 @@
 		showCloseButton?: boolean;
 		showBackdrop?: boolean;
 		borderless?: boolean;
+		floatingCloseButton?: boolean;
 		tabs?: ModalTab[];
 		activeTab?: string;
 		onTabChange?: ((tabId: string) => void) | null;
@@ -126,6 +128,18 @@
 		onkeydown={(e) => e.key === 'Escape' && handleClose()}
 		tabindex="-1"
 	>
+		<!-- Floating close button (absolute positioned, top-right of viewport) -->
+		{#if floatingCloseButton && onClose}
+			<button
+				type="button"
+				onclick={handleClose}
+				class="fixed right-6 top-6 z-50 rounded-full bg-gray-800/80 p-2 text-gray-400 transition-colors hover:bg-gray-700 hover:text-white"
+				aria-label={common_closeModal()}
+			>
+				<X class="h-5 w-5" />
+			</button>
+		{/if}
+
 		<!-- Modal content -->
 		<div
 			class="{borderless ? '' : 'modal-container'} {sizeClasses[size]} {size === 'full'

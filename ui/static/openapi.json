@@ -11966,14 +11966,14 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-02-09T01:18:27.245678Z",
-              "id": "7a1db85a-ca04-4a36-ab92-37e21f5ea044",
+              "created_at": "2026-02-09T05:39:19.819492Z",
+              "id": "2433bb8b-3d3f-4ae1-8702-adac06cee37e",
               "interface_id": "550e8400-e29b-41d4-a716-446655440005",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-02-09T01:18:27.245678Z"
+              "updated_at": "2026-02-09T05:39:19.819492Z"
             }
           },
           "error": {
@@ -12751,14 +12751,14 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-02-09T01:18:27.228576Z",
-                      "id": "4dadc2c8-8225-45db-99e8-2b63f5af62de",
+                      "created_at": "2026-02-09T05:39:19.806866Z",
+                      "id": "b3d4c8ef-3f25-478d-80c2-a72a95f784a9",
                       "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-02-09T01:18:27.228576Z"
+                      "updated_at": "2026-02-09T05:39:19.806866Z"
                     }
                   ],
                   "created_at": "2026-01-15T10:30:00Z",
@@ -12767,7 +12767,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "CheckMK Agent",
+                  "service_definition": "WordPress",
                   "source": {
                     "type": "Manual"
                   },
@@ -13583,14 +13583,14 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-02-09T01:18:27.241267Z",
-                  "id": "1cebf7d2-2599-4b7e-90a1-006b26e71dd8",
+                  "created_at": "2026-02-09T05:39:19.815581Z",
+                  "id": "411e70b3-5864-41d0-939c-5f6ca043ca7d",
                   "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-02-09T01:18:27.241267Z"
+                  "updated_at": "2026-02-09T05:39:19.815581Z"
                 }
               ],
               "created_at": "2026-01-15T10:30:00Z",
@@ -13599,7 +13599,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "CheckMK Agent",
+              "service_definition": "WordPress",
               "source": {
                 "type": "Manual"
               },
@@ -14801,14 +14801,14 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-02-09T01:18:27.228787Z",
-          "id": "2807d149-d060-4c66-ac43-6f15c1bfb4be",
+          "created_at": "2026-02-09T05:39:19.807098Z",
+          "id": "e3b28b52-8e2b-4aea-9a17-203b2a2bc5c0",
           "interface_id": "550e8400-e29b-41d4-a716-446655440005",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-02-09T01:18:27.228787Z"
+          "updated_at": "2026-02-09T05:39:19.807098Z"
         }
       },
       "BindingBase": {
@@ -15302,7 +15302,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "CheckMK Agent",
+              "service_definition": "WordPress",
               "tags": [],
               "virtualization": null
             }
@@ -17192,14 +17192,14 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-02-09T01:18:27.228284Z",
-                  "id": "49e52790-f4d9-4fea-8ec3-561f80cd74cd",
+                  "created_at": "2026-02-09T05:39:19.806530Z",
+                  "id": "e388855b-f8c1-4cc4-b1ab-d5c2af24b678",
                   "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-02-09T01:18:27.228284Z"
+                  "updated_at": "2026-02-09T05:39:19.806530Z"
                 }
               ],
               "created_at": "2026-01-15T10:30:00Z",
@@ -17208,7 +17208,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "CheckMK Agent",
+              "service_definition": "WordPress",
               "source": {
                 "type": "Manual"
               },
@@ -19134,14 +19134,14 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-02-09T01:18:27.215045Z",
-                        "id": "bd75d790-9bc7-4832-9ae4-e8555b71ffe2",
+                        "created_at": "2026-02-09T05:39:19.793716Z",
+                        "id": "eaa7bab1-5244-41ae-83ac-229935d39174",
                         "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-02-09T01:18:27.215045Z"
+                        "updated_at": "2026-02-09T05:39:19.793716Z"
                       }
                     ],
                     "created_at": "2026-01-15T10:30:00Z",
@@ -19150,7 +19150,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "CheckMK Agent",
+                    "service_definition": "WordPress",
                     "source": {
                       "type": "Manual"
                     },
@@ -19227,14 +19227,14 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-02-09T01:18:27.240189Z",
-                    "id": "b8a46769-3ae2-4668-8542-5605dc7f617f",
+                    "created_at": "2026-02-09T05:39:19.814402Z",
+                    "id": "1e46e150-2021-49b0-9e54-d6815e4620dc",
                     "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-02-09T01:18:27.240189Z"
+                    "updated_at": "2026-02-09T05:39:19.814402Z"
                   }
                 ],
                 "created_at": "2026-01-15T10:30:00Z",
@@ -19243,7 +19243,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "CheckMK Agent",
+                "service_definition": "WordPress",
                 "source": {
                   "type": "Manual"
                 },
@@ -20231,14 +20231,14 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-02-09T01:18:27.228716Z",
-              "id": "a205d5c4-23fe-437e-8ff5-9653b3b74545",
+              "created_at": "2026-02-09T05:39:19.807016Z",
+              "id": "d8406bf5-bfb7-41b6-8cdd-87c5ed9d7250",
               "interface_id": "550e8400-e29b-41d4-a716-446655440005",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-02-09T01:18:27.228716Z"
+              "updated_at": "2026-02-09T05:39:19.807016Z"
             }
           ],
           "created_at": "2026-01-15T10:30:00Z",
@@ -20247,7 +20247,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "CheckMK Agent",
+          "service_definition": "WordPress",
           "source": {
             "type": "Manual"
           },

@@ -2,73 +2,6 @@
   "branch": "billing-overhaul",
   "tests": [
     {
-      "id": "billing-modal-opens-no-plan",
-      "category": "Billing Modal",
-      "description": "New user sees non-dismissible borderless billing modal after onboarding (no daemon modal behind it)",
-      "steps": [
-        "After onboarding completes, verify the billing plan modal opens automatically",
-        "Verify the modal has no blue bounding box / border (borderless presentation)",
-        "Verify clicking outside does NOT close the modal and no close (X) button is shown",
-        "Verify the URL hash is NOT set to #daemons — daemon setup is suppressed until plan is selected",
-        "Verify no daemon creation modal appears on top of or behind the billing modal",
-        "Verify the Free plan is the leftmost column",
-        "Toggle between Personal and Commercial — verify Free plan appears on both",
-        "Scroll down in the billing plan grid — verify all feature rows are accessible",
-        "Verify each plan shows its included Hosts count (row between Networks and features)"
-      ],
-      "expected": "Borderless billing modal, no daemon modal interference, Free plan leftmost, scrollable, Hosts row visible",
-      "flow": "setup",
-      "sequence": 1,
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "free-plan-checkout",
-      "category": "Billing Modal",
-      "description": "Selecting Free plan completes $0 Stripe checkout without requiring a card",
-      "steps": [
-        "In the billing modal, click 'Get Started' on the Free plan",
-        "Verify redirect to Stripe checkout page",
-        "Complete the $0 checkout — no credit card should be required",
-        "Verify redirect back to the app",
-        "Verify the billing modal is gone and the app is accessible"
-      ],
-      "expected": "Stripe checkout completes without payment method, user returns to app with Free plan active, modal dismissed",
-      "flow": "setup",
-      "sequence": 2,
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "trial-offers-returning",
-      "category": "Billing Modal",
-      "description": "Trial badges hidden for orgs that have previously had a paid plan or trialed",
-      "steps": [
-        "Open Settings > Billing tab",
-        "Click 'View Plans'",
-        "Verify paid plans do NOT show trial day badges",
-        "Verify CTA buttons say 'Get Started' (not 'Start Free Trial')"
-      ],
-      "setup": "Set org to a non-Free plan (simulating a returning customer): UPDATE organizations SET plan = '{\"type\":\"Starter\",\"base_cents\":1500,\"rate\":\"Month\",\"trial_days\":7,\"seat_cents\":null,\"network_cents\":null,\"host_cents\":null,\"included_seats\":1,\"included_networks\":1,\"included_hosts\":100}', plan_status = 'active' WHERE id = '<org_id>'. Refresh the browser before testing.",
-      "expected": "No trial offers shown to returning customers, buttons say 'Get Started'",
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "trial-offers-returning-trialed",
-      "category": "Billing Modal",
-      "description": "Trial badges hidden for orgs with trial_end_date set (even if on Free plan now)",
-      "steps": [
-        "Open Settings > Billing tab",
-        "Click 'View Plans'",
-        "Verify paid plans do NOT show trial day badges"
-      ],
-      "setup": "Set trial_end_date on the org while on Free plan: UPDATE organizations SET plan = '{\"type\":\"Free\",\"base_cents\":0,\"rate\":\"Month\",\"trial_days\":0,\"seat_cents\":null,\"network_cents\":null,\"host_cents\":null,\"included_seats\":1,\"included_networks\":3,\"included_hosts\":25}', plan_status = 'active', trial_end_date = NOW() - INTERVAL '1 day' WHERE id = '<org_id>'. Refresh the browser before testing.",
-      "expected": "No trial offers shown — org has previously trialed",
-      "status": null,
-      "feedback": null
-    },
-    {
       "id": "settings-billing-notification-dot",
       "category": "Settings",
       "description": "Billing notification dot shown only when trialing without payment, with payment card above current plan",
@@ -77,90 +10,98 @@
         "Open the Settings modal",
         "Verify the Billing tab label has an amber notification dot",
         "Verify the 'Add Payment Method' card appears ABOVE the Current Plan card",
-        "Verify the 'Add Payment Method' card has a notification dot icon"
+        "Verify the 'Add Payment Method' card has a warning icon (AlertTriangle) but NO extra amber dot overlaying the icon",
+        "Click 'Add Payment Method' — verify redirect to Stripe setup checkout (no currency error)"
       ],
       "setup": "Set org to trialing status without a payment method: UPDATE organizations SET plan = '{\"type\":\"Starter\",\"base_cents\":1500,\"rate\":\"Month\",\"trial_days\":7,\"seat_cents\":null,\"network_cents\":null,\"host_cents\":null,\"included_seats\":1,\"included_networks\":1,\"included_hosts\":100}', plan_status = 'trialing', has_payment_method = false, trial_end_date = NOW() + INTERVAL '5 days' WHERE id = '<org_id>'. Refresh the browser before testing.",
-      "expected": "Amber notification dot on sidebar and billing tab, payment card above current plan with dot indicator",
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "notification-dot-not-shown-free",
-      "category": "Settings",
-      "description": "No notification dot shown for Free plan users (no action needed)",
-      "steps": [
-        "Verify the sidebar Settings icon does NOT have an amber notification dot",
-        "Open the Settings modal",
-        "Verify the Billing tab label does NOT have a notification dot"
-      ],
-      "setup": "Org should be on the Free plan with plan_status = 'active' (default state after setup flow).",
-      "expected": "No notification dot — Free plan users have no pending action",
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "notification-dot-clears-after-downgrade",
-      "category": "Settings",
-      "description": "Notification dot clears when downgrading from trial to Free plan",
-      "steps": [
-        "Verify the sidebar Settings icon has an amber notification dot (from trialing state)",
-        "Downgrade to Free plan via View Plans > Get Started on Free",
-        "Complete Stripe checkout for Free plan",
-        "After returning to the app, verify the notification dot is gone"
-      ],
-      "setup": "Set org to trialing without payment: UPDATE organizations SET plan = '{\"type\":\"Starter\",\"base_cents\":1500,\"rate\":\"Month\",\"trial_days\":7,\"seat_cents\":null,\"network_cents\":null,\"host_cents\":null,\"included_seats\":1,\"included_networks\":1,\"included_hosts\":100}', plan_status = 'trialing', has_payment_method = false, trial_end_date = NOW() + INTERVAL '5 days' WHERE id = '<org_id>'. Refresh the browser.",
-      "expected": "Notification dot disappears after downgrading to Free (no longer trialing)",
+      "expected": "Amber notification dot on sidebar and billing tab, payment card above current plan with warning icon only (no duplicate dot), Stripe setup checkout loads without error",
       "status": null,
       "feedback": null
     },
     {
       "id": "daemon-mode-richselect-upgrade",
       "category": "Daemon Creation",
-      "description": "Daemon mode dropdown: DaemonPoll upgrade tag is visually clickable, opens billing modal on top",
+      "description": "Daemon mode dropdown: DaemonPoll 'Upgrade Required' tag is clickable with no dimming, opens billing modal on top",
       "steps": [
         "Open the daemon creation modal",
         "Open the Mode dropdown",
         "Verify ServerPoll shows description text underneath the label",
-        "Verify DaemonPoll shows a yellow 'Upgrade' tag and description text",
-        "Verify DaemonPoll option is NOT heavily grayed out — it should look clickable (slight dim only)",
-        "Click on the DaemonPoll option — verify the billing plan modal opens ON TOP of the daemon modal",
-        "Close the billing plan modal and verify you're back on the daemon creation form"
+        "Verify DaemonPoll shows a yellow 'Upgrade Required' tag with an arrow-up-circle icon and description text",
+        "Verify DaemonPoll option has NO opacity dimming — it should look fully clickable, same brightness as other options",
+        "Click on the DaemonPoll option — verify the dropdown closes",
+        "Verify the billing plan modal opens ON TOP of the daemon modal",
+        "Verify the billing modal has NO header/title row and NO blue bounding box (borderless)",
+        "Verify a floating X close button appears in the upper-right corner of the screen",
+        "Click the X to close the billing modal — verify you're back on the daemon creation form"
       ],
       "setup": "Org should be on the Free plan. Ensure at least one network exists.",
-      "expected": "DaemonPoll has clickable appearance, billing modal opens on top of daemon modal, descriptions shown",
+      "expected": "DaemonPoll fully visible (no dimming), 'Upgrade Required' tag with icon, dropdown closes on click, borderless billing modal on top with floating X, returns to daemon form on close",
       "status": null,
       "feedback": null
     },
     {
       "id": "discovery-upgrade-tag-clickable",
       "category": "Discovery",
-      "description": "Scheduled discovery upgrade tag is visually clickable, opens billing modal on top",
+      "description": "Scheduled discovery 'Upgrade Required' tag is clickable with no dimming, opens billing modal on top",
       "steps": [
         "Open the discovery creation modal",
         "Open the Run Type dropdown",
-        "Verify the Scheduled option is NOT heavily grayed out — it should look clickable",
-        "Click on the Scheduled option — verify the billing plan modal opens ON TOP of the discovery modal",
-        "Close the billing plan modal and verify you're back on the discovery form"
+        "Verify the Scheduled option has NO opacity dimming and shows an 'Upgrade Required' yellow tag with icon",
+        "Click on the Scheduled option — verify the dropdown closes",
+        "Verify the billing plan modal opens ON TOP of the discovery modal with no header and a floating X",
+        "Click the X to close the billing modal — verify you're back on the discovery form"
       ],
       "setup": "Org should be on the Free plan. Ensure at least one daemon exists.",
-      "expected": "Scheduled option has clickable appearance, billing modal opens on top",
+      "expected": "Scheduled option fully visible (no dimming), 'Upgrade Required' tag with icon, dropdown closes, borderless billing modal on top with floating X",
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "billing-modal-settings-return",
+      "category": "Settings",
+      "description": "Closing billing modal from settings returns user to settings modal",
+      "steps": [
+        "Open Settings > Billing tab",
+        "Click 'View Plans' — verify the settings modal closes and the billing plan modal opens",
+        "Verify the billing modal has a floating X close button in the upper-right corner",
+        "Click the X to close the billing modal",
+        "Verify the Settings modal re-opens automatically (back to settings)"
+      ],
+      "setup": "Org should be on any plan with plan_status = 'active'.",
+      "expected": "Billing modal opens from settings, closing it returns to the settings modal",
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "change-plan-via-billing-modal",
+      "category": "Billing",
+      "description": "Changing plan (including to Free) updates Stripe subscription — webhook sets plan",
+      "steps": [
+        "Open Settings > Billing > View Plans",
+        "Select a different plan (e.g., switch from Starter to Free, or Free to Starter)",
+        "Complete the Stripe checkout if prompted",
+        "Return to the app and verify the plan updated in Settings > Billing",
+        "If downgraded to Free, verify DaemonPoll daemons go to standby and scheduled discoveries convert to ad-hoc"
+      ],
+      "setup": "Org should be on a paid plan with an active Stripe subscription and at least one DaemonPoll daemon and one scheduled discovery.",
+      "expected": "Plan change goes through Stripe for all plan types (including Free). Webhook sets the new plan and enforces restrictions.",
       "status": null,
       "feedback": null
     },
     {
       "id": "downgrade-to-free",
       "category": "Billing",
-      "description": "Downgrade from paid plan to Free via Manage Subscription (Stripe portal)",
+      "description": "Cancelling subscription via Stripe portal auto-creates Free subscription",
       "steps": [
         "Open Settings > Billing tab",
         "Verify current plan shows a paid plan (e.g., Starter)",
         "Click 'Manage Subscription' — verify redirect to Stripe customer portal",
         "In the portal, cancel the subscription",
         "Return to the app",
-        "Open Settings > Billing tab — verify plan status reflects the cancellation"
+        "Open Settings > Billing tab — verify plan is now Free with active status"
       ],
       "setup": "Org should be on a paid plan with an active Stripe subscription.",
-      "expected": "Stripe portal allows cancellation, app reflects canceled status after webhook processes",
+      "expected": "Stripe portal allows cancellation, webhook creates Free subscription, app shows Free plan as active",
       "status": null,
       "feedback": null
     },

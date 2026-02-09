@@ -31,6 +31,8 @@ use std::sync::Arc;
 use std::sync::OnceLock;
 use stripe::Client;
 use stripe_billing::billing_portal_session::CreateBillingPortalSession;
+use stripe_billing::subscription::CreateSubscription;
+use stripe_billing::subscription::CreateSubscriptionItems;
 use stripe_billing::subscription::ListSubscription;
 use stripe_billing::subscription::UpdateSubscription;
 use stripe_billing::subscription::UpdateSubscriptionItems;
@@ -866,36 +868,10 @@ impl BillingService {
             }
         }
 
-        let org_filter = StorableFilter::<Network>::new_from_org_id(&org_id);
-
-        // If they can't pay for networks, remove them
-        if let Some(included_networks) = plan.config().included_networks
-            && plan.config().network_cents.is_none()
-        {
-            let networks = self.network_service.get_all(org_filter.clone()).await?;
-            let keep_ids = networks
-                .iter()
-                .take(included_networks.try_into().unwrap_or(3))
-                .map(|n| n.id)
-                .collect::<Vec<Uuid>>();
-
-            for network in networks {
-                if !keep_ids.contains(&network.id) {
-                    self.network_service
-                        .delete(&network.id, AuthenticatedEntity::System)
-                        .await?;
-                    tracing::info!(
-                        organization_id = %org_id,
-                        network_id = %network.id,
-                        "Deleted network due to plan downgrade"
-                    );
-                }
-            }
-        }
-
-        // Note: We don't delete shares when embeds feature is removed.
-        // Instead, embed access is gated at the handler level, so existing shares
-        // remain accessible as links but not as embeds.
+        // Enforce all plan restrictions (network/host trimming, daemon standby, discovery conversion)
+        // Note: We don't delete shares when embeds feature is removed —
+        // embed access is gated at the handler level instead.
+        self.enforce_plan_restrictions(&org_id, &plan).await?;
 
         organization.base.plan_status = Some(sub.status.to_string());
         organization.base.plan = Some(plan);
@@ -1054,14 +1030,36 @@ impl BillingService {
             .revoke_org_invites(&organization.id)
             .await?;
 
-        // Downgrade to Free instead of clearing plan
-        self.downgrade_to_free(org_id, AuthenticatedEntity::System)
+        // Create a Free subscription — the webhook will set the plan via handle_subscription_update
+        let free_plan = get_free_plan();
+        let free_price = self
+            .get_price_from_lookup_key(free_plan.stripe_base_price_lookup_key())
+            .await?
+            .ok_or_else(|| anyhow!("Could not find price for Free plan"))?;
+
+        let customer_id = organization
+            .base
+            .stripe_customer_id
+            .clone()
+            .ok_or_else(|| anyhow!("No Stripe customer ID for organization"))?;
+
+        CreateSubscription::new(customer_id)
+            .items(vec![CreateSubscriptionItems {
+                price: Some(free_price.id.to_string()),
+                quantity: Some(1),
+                ..Default::default()
+            }])
+            .metadata([
+                ("plan".to_string(), serde_json::to_string(&free_plan)?),
+                ("organization_id".to_string(), org_id.to_string()),
+            ])
+            .send(&self.stripe)
             .await?;
 
         tracing::info!(
             organization_id = %org_id,
             subscription_id = %sub.id,
-            "Subscription canceled, downgraded to Free, invites revoked"
+            "Subscription canceled, created Free subscription, invites revoked"
         );
         Ok(())
     }
@@ -1083,6 +1081,7 @@ impl BillingService {
             .success_url(success_url)
             .cancel_url(cancel_url)
             .mode(CheckoutSessionMode::Setup)
+            .currency(stripe_types::Currency::USD)
             .metadata([("organization_id".to_string(), organization_id.to_string())])
             .send(&self.stripe)
             .await
@@ -1172,11 +1171,14 @@ impl BillingService {
     }
 
     /// Change the organization's billing plan
+    ///
+    /// Updates the Stripe subscription to the target plan's price.
+    /// The webhook handles setting the plan in our database.
     pub async fn change_plan(
         &self,
         organization_id: Uuid,
         target_plan: BillingPlan,
-        authentication: AuthenticatedEntity,
+        _authentication: AuthenticatedEntity,
     ) -> Result<String, Error> {
         let organization = self
             .organization_service
@@ -1190,32 +1192,6 @@ impl BillingService {
             .clone()
             .ok_or_else(|| anyhow!("No Stripe customer ID"))?;
 
-        // If target is Free, cancel Stripe subscription and downgrade
-        if target_plan.is_free() {
-            // Cancel active subscription
-            let org_subscriptions = ListSubscription::new()
-                .customer(CustomerId::from(customer_id))
-                .send(&self.stripe)
-                .await?;
-
-            if let Some(sub) = org_subscriptions.data.iter().find(|s| {
-                matches!(
-                    s.status,
-                    SubscriptionStatus::Active | SubscriptionStatus::Trialing
-                )
-            }) {
-                stripe_billing::subscription::CancelSubscription::new(&sub.id)
-                    .send(&self.stripe)
-                    .await?;
-            }
-
-            self.downgrade_to_free(organization_id, authentication)
-                .await?;
-
-            return Ok("Downgraded to Free plan".to_string());
-        }
-
-        // For paid plan changes, update Stripe subscription
         let base_price = self
             .get_price_from_lookup_key(target_plan.stripe_base_price_lookup_key())
             .await?
@@ -1266,116 +1242,129 @@ impl BillingService {
         }
     }
 
-    /// Downgrade organization to Free plan
+    /// Enforce all plan restrictions for an organization.
     ///
-    /// Called when trial expires without payment method, subscription cancelled, or explicit downgrade.
-    /// Converts scheduled discoveries to ad-hoc, sets standby on DaemonPoll daemons,
-    /// and trims hosts to the Free plan limit.
-    pub async fn downgrade_to_free(
+    /// Centralizes plan change side effects:
+    /// 1. Trims excess networks if plan limits them without overage pricing
+    /// 2. Sets DaemonPoll daemons to standby if plan doesn't support daemon_poll
+    /// 3. Converts scheduled discoveries to ad-hoc if plan doesn't support scheduled_discovery
+    /// 4. Trims excess hosts if plan limits them without overage pricing (preserves daemon hosts)
+    async fn enforce_plan_restrictions(
         &self,
-        organization_id: Uuid,
-        authentication: AuthenticatedEntity,
+        organization_id: &Uuid,
+        plan: &BillingPlan,
     ) -> Result<(), Error> {
         use crate::server::discovery::r#impl::types::RunType;
+        let config = plan.config();
+        let features = plan.features();
 
-        let free_plan = get_free_plan();
-        let host_limit = free_plan.config().included_hosts.unwrap_or(25);
-
-        let mut organization = self
-            .organization_service
-            .get_by_id(&organization_id)
-            .await?
-            .ok_or_else(|| anyhow!("Organization not found"))?;
-
-        // Get org networks
-        let org_filter = StorableFilter::<Network>::new_from_org_id(&organization_id);
+        // 1. Trim excess networks if plan limits them without overage pricing
+        let org_filter = StorableFilter::<Network>::new_from_org_id(organization_id);
         let networks = self.network_service.get_all(org_filter).await?;
-        let network_ids: Vec<Uuid> = networks.iter().map(|n| n.id).collect();
 
-        // 1. Convert Scheduled discoveries → AdHoc
-        let discovery_filter =
-            StorableFilter::<crate::server::discovery::r#impl::base::Discovery>::new_from_network_ids(
-                &network_ids,
-            );
-        let discoveries = self.discovery_service.get_all(discovery_filter).await?;
-        for mut discovery in discoveries {
-            if let RunType::Scheduled { last_run, .. } = discovery.base.run_type {
-                discovery.base.run_type = RunType::AdHoc { last_run };
-                self.discovery_service
-                    .update(&mut discovery, authentication.clone())
+        if let Some(included_networks) = config.included_networks
+            && config.network_cents.is_none()
+        {
+            let limit: usize = included_networks.try_into().unwrap_or(3);
+            for network in networks.iter().skip(limit) {
+                self.network_service
+                    .delete(&network.id, AuthenticatedEntity::System)
                     .await?;
                 tracing::info!(
-                    discovery_id = %discovery.id,
-                    "Converted scheduled discovery to ad-hoc on Free downgrade"
+                    organization_id = %organization_id,
+                    network_id = %network.id,
+                    "Deleted network exceeding plan limit"
                 );
             }
         }
 
-        // 2. Set standby on DaemonPoll daemons
+        // Recalculate network IDs (only remaining networks after trimming)
+        let network_ids: Vec<Uuid> = if let Some(included_networks) = config.included_networks
+            && config.network_cents.is_none()
+        {
+            let limit: usize = included_networks.try_into().unwrap_or(3);
+            networks.iter().take(limit).map(|n| n.id).collect()
+        } else {
+            networks.iter().map(|n| n.id).collect()
+        };
+
+        // 2. Set standby on DaemonPoll daemons if plan doesn't support it
         let daemon_filter =
             StorableFilter::<crate::server::daemons::r#impl::base::Daemon>::new_from_network_ids(
                 &network_ids,
             );
         let daemons = self.daemon_service.get_all(daemon_filter).await?;
         let daemon_host_ids: Vec<Uuid> = daemons.iter().map(|d| d.base.host_id).collect();
-        for mut daemon in daemons {
-            if daemon.base.mode == DaemonMode::DaemonPoll && !daemon.base.standby {
-                daemon.base.standby = true;
-                self.daemon_service
-                    .update(&mut daemon, authentication.clone())
-                    .await?;
-                tracing::info!(
-                    daemon_id = %daemon.id,
-                    "Set daemon to standby on Free downgrade"
-                );
-            }
-        }
 
-        // 3. Trim hosts to Free plan limit (keep most recent, preserve daemon hosts)
-        let host_filter = StorableFilter::<Host>::new_from_network_ids(&network_ids);
-        let mut hosts = self.host_service.get_all(host_filter).await?;
-        if hosts.len() as u64 > host_limit {
-            // Sort by updated_at descending (most recent first)
-            hosts.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
-
-            let mut kept = 0u64;
-            let mut to_delete = Vec::new();
-            for host in &hosts {
-                let is_daemon_host = daemon_host_ids.contains(&host.id);
-                if kept < host_limit || is_daemon_host {
-                    if !is_daemon_host {
-                        kept += 1;
-                    }
-                } else {
-                    to_delete.push(host.id);
+        if !features.daemon_poll {
+            for mut daemon in daemons {
+                if daemon.base.mode == DaemonMode::DaemonPoll && !daemon.base.standby {
+                    daemon.base.standby = true;
+                    self.daemon_service
+                        .update(&mut daemon, AuthenticatedEntity::System)
+                        .await?;
+                    tracing::info!(
+                        daemon_id = %daemon.id,
+                        "Set daemon to standby (plan lacks daemon_poll)"
+                    );
                 }
             }
-
-            for host_id in &to_delete {
-                self.host_service
-                    .delete(host_id, authentication.clone())
-                    .await?;
-            }
-
-            tracing::info!(
-                organization_id = %organization_id,
-                deleted_hosts = to_delete.len(),
-                "Trimmed excess hosts on Free downgrade"
-            );
         }
 
-        // 4. Update organization plan
-        organization.base.plan = Some(free_plan);
-        organization.base.plan_status = Some("active".to_string());
+        // 3. Convert scheduled discoveries to ad-hoc if plan doesn't support it
+        if !features.scheduled_discovery {
+            let discovery_filter = StorableFilter::<
+                crate::server::discovery::r#impl::base::Discovery,
+            >::new_from_network_ids(&network_ids);
+            let discoveries = self.discovery_service.get_all(discovery_filter).await?;
+            for mut discovery in discoveries {
+                if let RunType::Scheduled { last_run, .. } = discovery.base.run_type {
+                    discovery.base.run_type = RunType::AdHoc { last_run };
+                    self.discovery_service
+                        .update(&mut discovery, AuthenticatedEntity::System)
+                        .await?;
+                    tracing::info!(
+                        discovery_id = %discovery.id,
+                        "Converted scheduled discovery to ad-hoc (plan lacks scheduled_discovery)"
+                    );
+                }
+            }
+        }
 
-        self.organization_service
-            .update(&mut organization, authentication)
-            .await?;
-
-        tracing::info!(
-            organization_id = %organization_id,
-            "Organization downgraded to Free plan"
-        );
+        // 4. Trim excess hosts if plan limits them without overage pricing
+        if let Some(included_hosts) = config.included_hosts
+            && config.host_cents.is_none()
+        {
+            let host_filter = StorableFilter::<Host>::new_from_network_ids(&network_ids);
+            let mut hosts = self.host_service.get_all(host_filter).await?;
+            if hosts.len() as u64 > included_hosts {
+                hosts.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+                let mut kept = 0u64;
+                let mut to_delete = Vec::new();
+                for host in &hosts {
+                    let is_daemon_host = daemon_host_ids.contains(&host.id);
+                    if kept < included_hosts || is_daemon_host {
+                        if !is_daemon_host {
+                            kept += 1;
+                        }
+                    } else {
+                        to_delete.push(host.id);
+                    }
+                }
+                for host_id in &to_delete {
+                    self.host_service
+                        .delete(host_id, AuthenticatedEntity::System)
+                        .await?;
+                }
+                if !to_delete.is_empty() {
+                    tracing::info!(
+                        organization_id = %organization_id,
+                        deleted_hosts = to_delete.len(),
+                        "Trimmed excess hosts to plan limit"
+                    );
+                }
+            }
+        }
 
         Ok(())
     }

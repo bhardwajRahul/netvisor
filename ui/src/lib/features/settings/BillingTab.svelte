@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { CheckCircle, AlertCircle, CreditCard, AlertTriangle } from 'lucide-svelte';
-	import { showBillingPlanModal } from '$lib/features/billing/stores';
+	import { showBillingPlanModal, reopenSettingsAfterBilling } from '$lib/features/billing/stores';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
 	import { isBillingPlanActive } from '$lib/features/organizations/types';
 	import { billingPlans } from '$lib/shared/stores/metadata';
@@ -158,11 +158,7 @@
 					<InfoCard>
 						<div class="flex items-center justify-between">
 							<div class="flex items-center gap-3">
-								<span class="relative">
-									<AlertTriangle class="h-5 w-5 text-amber-500" />
-									<span class="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-amber-500"
-									></span>
-								</span>
+								<AlertTriangle class="h-5 w-5 text-amber-500" />
 								<div>
 									<p class="text-primary text-sm font-medium">
 										Trial ends in {trialDaysLeft} days
@@ -369,6 +365,7 @@
 						<button
 							onclick={() => {
 								showBillingPlanModal.set(true);
+								reopenSettingsAfterBilling.set(true);
 								onClose();
 							}}
 							class="btn-primary whitespace-nowrap text-sm"
