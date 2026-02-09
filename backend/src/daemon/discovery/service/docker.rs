@@ -519,7 +519,7 @@ impl DiscoveryRunner<DockerScanDiscovery> {
                 Some(open_ports.clone()),
                 None,
                 port_scan_batch_size,
-                false,
+                true,
             ))
             .await
             .map_err(|e| anyhow!("Scan task panicked: {}", e))?

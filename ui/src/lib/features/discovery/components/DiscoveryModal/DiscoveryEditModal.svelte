@@ -98,6 +98,7 @@
 			run_type_type: 'AdHoc' as 'AdHoc' | 'Scheduled',
 			discovery_type_type: 'Network' as 'Network' | 'Docker' | 'SelfReport',
 			host_naming_fallback: 'BestService' as 'BestService' | 'Ip',
+			probe_raw_socket_ports: false,
 			schedule_days: '1',
 			schedule_hours: '0'
 		},
@@ -145,11 +146,17 @@
 				? formData.discovery_type.host_naming_fallback
 				: 'BestService';
 
+		const probeRawSocketPorts =
+			formData.discovery_type.type === 'Network'
+				? (formData.discovery_type.probe_raw_socket_ports ?? false)
+				: false;
+
 		form.reset({
 			name: formData.name,
 			run_type_type: formData.run_type.type === 'Historical' ? 'AdHoc' : formData.run_type.type,
 			discovery_type_type: formData.discovery_type.type,
 			host_naming_fallback: hostNamingFallback,
+			probe_raw_socket_ports: probeRawSocketPorts,
 			schedule_days: scheduleDays,
 			schedule_hours: scheduleHours
 		});
