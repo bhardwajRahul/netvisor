@@ -1064,6 +1064,14 @@ impl DiscoveryService {
             }
         }
 
+        // Evict tombstones: last_updated entries for sessions that no longer exist
+        // in the sessions map and are older than the stall threshold. These are left
+        // behind after terminal processing to guard against redundant polls from old
+        // daemons (see update_session). Safe to clean up once enough time has passed.
+        last_updated.retain(|id, ts| {
+            sessions.contains_key(id) || now.signed_duration_since(*ts) < stall_threshold
+        });
+
         if stalled_count > 0 {
             tracing::info!("Cleaned up {} stalled discovery sessions", stalled_count);
         }
