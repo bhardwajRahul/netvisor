@@ -116,16 +116,45 @@ async fn create_checkout_session(
             }));
         }
 
-        // Check if org already has a plan — if so, update the existing subscription
-        // instead of creating a new checkout session (which would create duplicate subscriptions)
+        // Check if org already has a plan — route based on target plan and payment state
         let org = billing_service.get_organization(organization_id).await?;
 
         if org.base.plan.is_some() && org.base.stripe_customer_id.is_some() {
-            // Existing subscriber — update subscription directly
-            let result = billing_service
-                .change_plan(organization_id, request.plan, auth.into_entity())
-                .await?;
-            Ok(Json(ApiResponse::success(result)))
+            if request.plan.is_free() {
+                // Downgrade to Free — schedule cancellation at end of billing cycle
+                let result = billing_service
+                    .schedule_downgrade(organization_id, auth.into_entity())
+                    .await?;
+                Ok(Json(ApiResponse::success(result)))
+            } else {
+                // Paid target — check if we need checkout (no payment or trial-eligible)
+                let is_returning = org.base.trial_end_date.is_some()
+                    || org.base.plan.as_ref().is_some_and(|p| !p.is_free());
+                let is_trial_eligible = !is_returning && request.plan.config().trial_days > 0;
+                let needs_checkout = !org.base.has_payment_method || is_trial_eligible;
+
+                if needs_checkout {
+                    // Route through Stripe Checkout to collect payment / apply trial
+                    let success_url = format!("{}?session_id={{CHECKOUT_SESSION_ID}}", request.url);
+                    let cancel_url = request.url.clone();
+                    let session = billing_service
+                        .create_checkout_session(
+                            organization_id,
+                            request.plan,
+                            success_url,
+                            cancel_url,
+                            auth.into_entity(),
+                        )
+                        .await?;
+                    Ok(Json(ApiResponse::success(session.url.unwrap())))
+                } else {
+                    // Has payment, not trial-eligible — direct subscription update
+                    let result = billing_service
+                        .change_plan(organization_id, request.plan, auth.into_entity())
+                        .await?;
+                    Ok(Json(ApiResponse::success(result)))
+                }
+            }
         } else {
             // First-time subscriber — create Stripe checkout session
             let success_url = format!("{}?session_id={{CHECKOUT_SESSION_ID}}", request.url);

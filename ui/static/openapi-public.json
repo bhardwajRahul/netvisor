@@ -9282,14 +9282,14 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-02-09T14:07:05.598106Z",
-              "id": "7091bc33-3dd6-46d4-ab23-bc81f552831d",
+              "created_at": "2026-02-09T18:01:24.020822Z",
+              "id": "6a3a9c75-f4f7-4074-9b2b-d96a7f3b0099",
               "interface_id": "550e8400-e29b-41d4-a716-446655440005",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-02-09T14:07:05.598106Z"
+              "updated_at": "2026-02-09T18:01:24.020822Z"
             }
           },
           "error": {
@@ -10067,14 +10067,14 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-02-09T14:07:05.585025Z",
-                      "id": "a4446d54-1451-4d68-8a56-24ae1aa10b1d",
+                      "created_at": "2026-02-09T18:01:24.008962Z",
+                      "id": "4183a48e-a68b-4c81-9fc6-a66b129c18a0",
                       "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-02-09T14:07:05.585025Z"
+                      "updated_at": "2026-02-09T18:01:24.008962Z"
                     }
                   ],
                   "created_at": "2026-01-15T10:30:00Z",
@@ -10083,7 +10083,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Z-Wave JS",
+                  "service_definition": "Web Service",
                   "source": {
                     "type": "Manual"
                   },
@@ -10899,14 +10899,14 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-02-09T14:07:05.593901Z",
-                  "id": "235e425e-8012-4bf2-91e9-d594f57f1b9a",
+                  "created_at": "2026-02-09T18:01:24.017220Z",
+                  "id": "430a4f2e-f267-4180-907f-94d4fd574cac",
                   "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-02-09T14:07:05.593901Z"
+                  "updated_at": "2026-02-09T18:01:24.017220Z"
                 }
               ],
               "created_at": "2026-01-15T10:30:00Z",
@@ -10915,7 +10915,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Z-Wave JS",
+              "service_definition": "Web Service",
               "source": {
                 "type": "Manual"
               },
@@ -12117,14 +12117,14 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-02-09T14:07:05.585280Z",
-          "id": "77bee9c9-5361-4199-9e54-bd9a9a4f4d68",
+          "created_at": "2026-02-09T18:01:24.009218Z",
+          "id": "77bd0a5e-6b04-4dff-ac46-5506ebfc0ef4",
           "interface_id": "550e8400-e29b-41d4-a716-446655440005",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-02-09T14:07:05.585280Z"
+          "updated_at": "2026-02-09T18:01:24.009218Z"
         }
       },
       "BindingBase": {
@@ -12618,7 +12618,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Z-Wave JS",
+              "service_definition": "Web Service",
               "tags": [],
               "virtualization": null
             }
@@ -14509,14 +14509,14 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-02-09T14:07:05.584686Z",
-                  "id": "7a738959-7ef0-4662-ac88-dea44b0a7d84",
+                  "created_at": "2026-02-09T18:01:24.008607Z",
+                  "id": "96b9be99-1418-445f-8842-55a82bd92885",
                   "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-02-09T14:07:05.584686Z"
+                  "updated_at": "2026-02-09T18:01:24.008607Z"
                 }
               ],
               "created_at": "2026-01-15T10:30:00Z",
@@ -14525,7 +14525,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Z-Wave JS",
+              "service_definition": "Web Service",
               "source": {
                 "type": "Manual"
               },
@@ -16451,14 +16451,14 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-02-09T14:07:05.573408Z",
-                        "id": "84c604ae-b884-4d1f-bcd1-39ab12cd2c0e",
+                        "created_at": "2026-02-09T18:01:24.002637Z",
+                        "id": "b895e2b8-07e2-4144-a5b8-f153f5cc420e",
                         "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-02-09T14:07:05.573408Z"
+                        "updated_at": "2026-02-09T18:01:24.002637Z"
                       }
                     ],
                     "created_at": "2026-01-15T10:30:00Z",
@@ -16467,7 +16467,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Z-Wave JS",
+                    "service_definition": "Web Service",
                     "source": {
                       "type": "Manual"
                     },
@@ -16544,14 +16544,14 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-02-09T14:07:05.592769Z",
-                    "id": "107ce13f-cce3-4b13-af51-c53ad96aaa5d",
+                    "created_at": "2026-02-09T18:01:24.015980Z",
+                    "id": "b8804c5e-29da-4f11-b105-9902a241e792",
                     "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-02-09T14:07:05.592769Z"
+                    "updated_at": "2026-02-09T18:01:24.015980Z"
                   }
                 ],
                 "created_at": "2026-01-15T10:30:00Z",
@@ -16560,7 +16560,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Z-Wave JS",
+                "service_definition": "Web Service",
                 "source": {
                   "type": "Manual"
                 },
@@ -17548,14 +17548,14 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-02-09T14:07:05.585193Z",
-              "id": "29c7b2ab-45bf-416c-a2be-ffafb5d5de7a",
+              "created_at": "2026-02-09T18:01:24.009112Z",
+              "id": "fbf2632e-67ff-4a6c-a314-b5c555e2bf4a",
               "interface_id": "550e8400-e29b-41d4-a716-446655440005",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-02-09T14:07:05.585193Z"
+              "updated_at": "2026-02-09T18:01:24.009112Z"
             }
           ],
           "created_at": "2026-01-15T10:30:00Z",
@@ -17564,7 +17564,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Z-Wave JS",
+          "service_definition": "Web Service",
           "source": {
             "type": "Manual"
           },

@@ -81,6 +81,7 @@
 	let planActive = $derived(org ? isBillingPlanActive(org) : false);
 
 	function formatPlanStatus(status: string): string {
+		if (status === 'pending_cancellation') return 'Downgrading';
 		return status.charAt(0).toUpperCase() + status.slice(1);
 	}
 
@@ -93,6 +94,8 @@
 			case 'past_due':
 			case 'unpaid':
 				return 'text-red-400';
+			case 'pending_cancellation':
+				return 'text-amber-400';
 			case 'canceled':
 			case 'incomplete':
 				return 'text-yellow-400';
@@ -343,6 +346,14 @@
 									class="rounded-md border border-yellow-800 bg-yellow-900/30 p-3 text-sm text-yellow-300"
 								>
 									{settings_billing_canceled()}
+								</div>
+							{:else if org.plan_status === 'pending_cancellation'}
+								<div
+									class="rounded-md border border-amber-800 bg-amber-900/30 p-3 text-sm text-amber-300"
+								>
+									Your plan will change to Free at the end of your current billing cycle. To cancel
+									this change, upgrade to a paid plan or manage your subscription in the billing
+									portal.
 								</div>
 							{/if}
 						</div>

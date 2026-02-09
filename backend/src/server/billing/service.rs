@@ -31,6 +31,7 @@ use std::sync::Arc;
 use std::sync::OnceLock;
 use stripe::Client;
 use stripe_billing::billing_portal_session::CreateBillingPortalSession;
+use stripe_billing::subscription::CancelSubscription;
 use stripe_billing::subscription::CreateSubscription;
 use stripe_billing::subscription::CreateSubscriptionItems;
 use stripe_billing::subscription::ListSubscription;
@@ -778,6 +779,19 @@ impl BillingService {
             .get_organization_owners(&organization.id)
             .await?;
 
+        // Pending cancellation — user keeps current plan until period ends
+        if sub.cancel_at_period_end {
+            organization.base.plan_status = Some("pending_cancellation".to_string());
+            self.organization_service
+                .update(&mut organization, AuthenticatedEntity::System)
+                .await?;
+            tracing::info!(
+                organization_id = %org_id,
+                "Subscription marked as pending cancellation"
+            );
+            return Ok(());
+        }
+
         // First time signing up for a plan
         if let Some(owner) = owners.first()
             && organization.base.plan.is_none()
@@ -906,6 +920,42 @@ impl BillingService {
         self.organization_service
             .update(&mut organization, AuthenticatedEntity::System)
             .await?;
+
+        // Cancel duplicate subscriptions — when Stripe Checkout creates a new subscription
+        // for an existing customer, the old subscription still exists. Clean it up.
+        if let Some(customer_id) = &organization.base.stripe_customer_id {
+            let all_subs = ListSubscription::new()
+                .customer(CustomerId::from(customer_id.clone()))
+                .send(&self.stripe)
+                .await?;
+
+            let old_subs: Vec<_> = all_subs
+                .data
+                .iter()
+                .filter(|s| {
+                    s.id != sub.id
+                        && matches!(
+                            s.status,
+                            SubscriptionStatus::Active | SubscriptionStatus::Trialing
+                        )
+                })
+                .collect();
+
+            for old_sub in old_subs {
+                UpdateSubscription::new(&old_sub.id)
+                    .metadata([("cancel_reason".to_string(), "upgrade".to_string())])
+                    .send(&self.stripe)
+                    .await?;
+                CancelSubscription::new(&old_sub.id)
+                    .send(&self.stripe)
+                    .await?;
+                tracing::info!(
+                    old_subscription = %old_sub.id,
+                    new_subscription = %sub.id,
+                    "Cancelled duplicate subscription during upgrade"
+                );
+            }
+        }
 
         // Publish PlanChanged event if plan type actually changed (covers upgrades, downgrades, tier switches)
         if let Some(ref old_name) = old_plan_name {
@@ -1038,11 +1088,46 @@ impl BillingService {
             .ok_or_else(|| anyhow!("No organization_id in subscription metadata"))?;
         let org_id = Uuid::parse_str(org_id)?;
 
+        // Guard 1: Skip auto-Free if this cancellation was triggered by an upgrade
+        let is_upgrade = sub
+            .metadata
+            .get("cancel_reason")
+            .is_some_and(|r| r == "upgrade");
+        if is_upgrade {
+            tracing::info!(
+                organization_id = %org_id,
+                subscription_id = %sub.id,
+                "Subscription cancelled for upgrade — skipping auto-Free"
+            );
+            return Ok(());
+        }
+
         let organization = self
             .organization_service
             .get_by_id(&org_id)
             .await?
             .ok_or_else(|| anyhow!("Could not find organization to update subscriptions status"))?;
+
+        // Guard 2: Skip auto-Free if org has another active subscription (race condition safety)
+        if let Some(customer_id) = &organization.base.stripe_customer_id {
+            let all_subs = ListSubscription::new()
+                .customer(CustomerId::from(customer_id.clone()))
+                .send(&self.stripe)
+                .await?;
+            if all_subs.data.iter().any(|s| {
+                s.id != sub.id
+                    && matches!(
+                        s.status,
+                        SubscriptionStatus::Active | SubscriptionStatus::Trialing
+                    )
+            }) {
+                tracing::info!(
+                    organization_id = %org_id,
+                    "Org has another active subscription — skipping auto-Free"
+                );
+                return Ok(());
+            }
+        }
 
         // Publish subscription_cancelled event for email automation (before clearing plan)
         let owners = self
@@ -1201,6 +1286,50 @@ impl BillingService {
         Ok(session.url)
     }
 
+    /// Schedule a downgrade to Free at the end of the billing cycle.
+    ///
+    /// Sets `cancel_at_period_end: true` on the active subscription. Stripe keeps the
+    /// subscription active until the period ends, then fires `customer.subscription.deleted`
+    /// which triggers auto-Free creation via `handle_subscription_deleted`.
+    pub async fn schedule_downgrade(
+        &self,
+        organization_id: Uuid,
+        _authentication: AuthenticatedEntity,
+    ) -> Result<String, Error> {
+        let organization = self.get_organization(organization_id).await?;
+        let customer_id = organization
+            .base
+            .stripe_customer_id
+            .ok_or_else(|| anyhow!("No Stripe customer ID"))?;
+
+        let subs = ListSubscription::new()
+            .customer(CustomerId::from(customer_id))
+            .send(&self.stripe)
+            .await?;
+
+        if let Some(sub) = subs.data.iter().find(|s| {
+            matches!(
+                s.status,
+                SubscriptionStatus::Active | SubscriptionStatus::Trialing
+            )
+        }) {
+            UpdateSubscription::new(&sub.id)
+                .cancel_at_period_end(true)
+                .send(&self.stripe)
+                .await?;
+
+            tracing::info!(
+                organization_id = %organization_id,
+                subscription_id = %sub.id,
+                "Scheduled downgrade to Free at period end"
+            );
+
+            Ok("Your plan will change to Free at the end of your billing cycle.".to_string())
+        } else {
+            Err(anyhow!("No active subscription found"))
+        }
+    }
+
     /// Preview what would change when switching to a different plan
     pub async fn preview_plan_change(
         &self,
@@ -1300,7 +1429,8 @@ impl BillingService {
                     ("plan".to_string(), serde_json::to_string(&target_plan)?),
                     ("organization_id".to_string(), organization_id.to_string()),
                 ])
-                .proration_behavior(UpdateSubscriptionProrationBehavior::CreateProrations)
+                .proration_behavior(UpdateSubscriptionProrationBehavior::AlwaysInvoice)
+                .cancel_at_period_end(false) // Clear any pending cancellation
                 .send(&self.stripe)
                 .await?;
 
