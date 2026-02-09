@@ -138,6 +138,9 @@ pub struct CompanyAttributes {
     pub scanopy_first_snmp_credential_date: Option<String>,
     pub scanopy_first_invite_sent_date: Option<String>,
     pub scanopy_first_invite_accepted_date: Option<String>,
+    pub scanopy_first_discovery_completed_date: Option<String>,
+    pub scanopy_first_host_discovered_date: Option<String>,
+    pub scanopy_first_topology_rebuild_date: Option<String>,
 }
 
 impl CompanyAttributes {
@@ -220,13 +223,23 @@ impl CompanyAttributes {
         self
     }
 
+    pub fn with_first_discovery_completed_date(mut self, date: DateTime<Utc>) -> Self {
+        self.scanopy_first_discovery_completed_date = Some(date.to_rfc3339());
+        self
+    }
+
+    pub fn with_first_host_discovered_date(mut self, date: DateTime<Utc>) -> Self {
+        self.scanopy_first_host_discovered_date = Some(date.to_rfc3339());
+        self
+    }
+
     pub fn with_first_daemon_date(mut self, date: DateTime<Utc>) -> Self {
         self.scanopy_first_daemon_date = Some(date.to_rfc3339());
         self
     }
 
-    pub fn with_first_discovery_date(mut self, date: DateTime<Utc>) -> Self {
-        self.scanopy_first_discovery_date = Some(date.to_rfc3339());
+    pub fn with_first_topology_rebuild_date(mut self, date: DateTime<Utc>) -> Self {
+        self.scanopy_first_topology_rebuild_date = Some(date.to_rfc3339());
         self
     }
 

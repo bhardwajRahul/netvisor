@@ -581,16 +581,6 @@
 										{trial ? 'Start Free Trial' : 'Get Started'}
 									{/if}
 								</button>
-								{#if commercial && onPlanInquiry}
-									<button
-										type="button"
-										onclick={() => onPlanInquiry(plan)}
-										disabled={loadingPlanType !== null}
-										class="btn-secondary w-full whitespace-nowrap text-xs lg:text-sm"
-									>
-										Contact Us
-									</button>
-								{/if}
 							{:else if hosting === 'Self-Hosted'}
 								{#if commercial && onPlanInquiry}
 									<button

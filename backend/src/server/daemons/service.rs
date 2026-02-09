@@ -663,23 +663,11 @@ impl DaemonService {
 
         daemon.id = request.daemon_id;
 
-        let registered_daemon = self.create(daemon, auth.clone()).await?;
-
         // Send telemetry event if this is the organization's first daemon
-        if org.not_onboarded(&TelemetryOperation::FirstDaemonRegistered) {
-            self.event_bus
-                .publish_telemetry(TelemetryEvent {
-                    id: Uuid::new_v4(),
-                    organization_id: org.id,
-                    operation: TelemetryOperation::FirstDaemonRegistered,
-                    timestamp: Utc::now(),
-                    metadata: serde_json::json!({
-                        "is_onboarding_step": true
-                    }),
-                    authentication: auth.clone(),
-                })
-                .await?;
-        }
+        self.emit_first_daemon_telemetry(daemon.id, daemon.base.network_id)
+            .await?;
+
+        let registered_daemon = self.create(daemon, auth.clone()).await?;
 
         // Create default discovery jobs
         let is_free_plan = matches!(org.base.plan, Some(BillingPlan::Free(_)));

@@ -8,6 +8,7 @@ use crate::server::billing::types::features::Feature;
 use crate::server::daemons::r#impl::base::DaemonMode;
 use crate::server::daemons::service::DaemonService;
 use crate::server::discovery::service::DiscoveryService;
+use crate::server::email::traits::EmailService;
 use crate::server::hosts::r#impl::base::Host;
 use crate::server::hosts::service::HostService;
 use crate::server::invites::service::InviteService;
@@ -70,6 +71,7 @@ pub struct BillingService {
     pub daemon_service: Arc<DaemonService>,
     pub discovery_service: Arc<DiscoveryService>,
     pub share_service: Arc<ShareService>,
+    pub email_service: Option<Arc<EmailService>>,
     pub plans: OnceLock<Vec<BillingPlan>>,
     pub event_bus: Arc<EventBus>,
 }
@@ -90,6 +92,7 @@ pub struct BillingServiceParams {
     pub daemon_service: Arc<DaemonService>,
     pub discovery_service: Arc<DiscoveryService>,
     pub share_service: Arc<ShareService>,
+    pub email_service: Option<Arc<EmailService>>,
     pub event_bus: Arc<EventBus>,
 }
 
@@ -106,6 +109,7 @@ impl BillingService {
             daemon_service,
             discovery_service,
             share_service,
+            email_service,
             event_bus,
         } = params;
 
@@ -119,6 +123,7 @@ impl BillingService {
             daemon_service,
             discovery_service,
             share_service,
+            email_service,
             user_service,
             plans: OnceLock::new(),
             event_bus,
@@ -127,6 +132,13 @@ impl BillingService {
 
     pub fn get_plans(&self) -> Vec<BillingPlan> {
         self.plans.get().map(|v| v.to_vec()).unwrap_or_default()
+    }
+
+    pub async fn get_organization(&self, organization_id: Uuid) -> Result<Organization, Error> {
+        self.organization_service
+            .get_by_id(&organization_id)
+            .await?
+            .ok_or_else(|| anyhow!("Organization {} not found", organization_id))
     }
 
     pub async fn get_price_from_lookup_key(
@@ -825,6 +837,7 @@ impl BillingService {
 
                 // Trial started (if subscription is in trialing state)
                 if is_trialing {
+                    let trial_days = plan.config().trial_days;
                     self.event_bus
                         .publish_telemetry(TelemetryEvent::new(
                             Uuid::new_v4(),
@@ -837,10 +850,23 @@ impl BillingService {
                                 "plan_name": plan.name(),
                                 "is_commercial": plan.is_commercial(),
                                 "trial_end_date": trial_end_date,
+                                "trial_days": trial_days,
                                 "org_id": organization.id.to_string(),
                             }),
                         ))
                         .await?;
+
+                    if let Some(ref email_service) = self.email_service
+                        && let Err(e) = email_service
+                            .send_trial_started_email(
+                                owner.base.email.clone(),
+                                plan.name(),
+                                trial_days,
+                            )
+                            .await
+                    {
+                        tracing::warn!(error = %e, "Failed to send trial_started email");
+                    }
                 }
             }
 
@@ -868,22 +894,69 @@ impl BillingService {
             }
         }
 
+        // Detect plan changes for notification (capture old plan before overwriting)
+        let old_plan_name = organization
+            .base
+            .plan
+            .as_ref()
+            .map(|p| p.name().to_string());
+
         // Enforce all plan restrictions (network/host trimming, daemon standby, discovery conversion)
         // Note: We don't delete shares when embeds feature is removed —
         // embed access is gated at the handler level instead.
         self.enforce_plan_restrictions(&org_id, &plan).await?;
 
-        organization.base.plan_status = Some(sub.status.to_string());
         organization.base.plan = Some(plan);
 
-        // Store trial_end_date from subscription
-        organization.base.trial_end_date = sub
-            .trial_end
-            .and_then(|ts| chrono::DateTime::from_timestamp(ts, 0));
+        // Free plan has no trial — always active, but preserve trial_end_date
+        // to prevent trial abuse (is_returning_customer check uses trial_end_date)
+        if plan.is_free() {
+            organization.base.plan_status = Some("active".to_string());
+        } else {
+            organization.base.plan_status = Some(sub.status.to_string());
+            organization.base.trial_end_date = sub
+                .trial_end
+                .and_then(|ts| chrono::DateTime::from_timestamp(ts, 0));
+        }
+
+        // Sync payment method status from Stripe (source of truth)
+        organization.base.has_payment_method = sub.default_payment_method.is_some();
 
         self.organization_service
             .update(&mut organization, AuthenticatedEntity::System)
             .await?;
+
+        // Publish PlanChanged event if plan type actually changed (covers upgrades, downgrades, tier switches)
+        if let Some(ref old_name) = old_plan_name {
+            let new_name = plan.name();
+            if old_name != new_name
+                && let Some(owner) = owners.first()
+            {
+                self.event_bus
+                    .publish_telemetry(TelemetryEvent::new(
+                        Uuid::new_v4(),
+                        org_id,
+                        TelemetryOperation::PlanChanged,
+                        Utc::now(),
+                        owner.clone().into(),
+                        json!({
+                            "old_plan": old_name,
+                            "new_plan": new_name,
+                            "is_downgrade": plan.is_free(),
+                            "org_id": org_id.to_string(),
+                        }),
+                    ))
+                    .await?;
+
+                if let Some(ref email_service) = self.email_service
+                    && let Err(e) = email_service
+                        .send_plan_changed_email(owner.base.email.clone(), new_name)
+                        .await
+                {
+                    tracing::warn!(error = %e, "Failed to send plan_changed email");
+                }
+            }
+        }
 
         tracing::info!(
             "Updated organization {} subscription status to {}",
@@ -901,6 +974,12 @@ impl BillingService {
             .ok_or_else(|| anyhow!("No organization_id in subscription metadata"))?;
         let org_id = Uuid::parse_str(org_id)?;
 
+        let plan_str = sub
+            .metadata
+            .get("plan")
+            .ok_or_else(|| anyhow!("No plan in subscription metadata"))?;
+        let plan: BillingPlan = serde_json::from_str(plan_str)?;
+
         let organization = self
             .organization_service
             .get_by_id(&org_id)
@@ -913,7 +992,37 @@ impl BillingService {
             "Trial ending soon"
         );
 
-        // TODO: Send trial_ending email if !has_payment_method (Phase 6)
+        // Publish TrialWillEnd event for email automation
+        let owners = self
+            .user_service
+            .get_organization_owners(&organization.id)
+            .await?;
+
+        if let Some(owner) = owners.first() {
+            self.event_bus
+                .publish_telemetry(TelemetryEvent::new(
+                    Uuid::new_v4(),
+                    org_id,
+                    TelemetryOperation::TrialWillEnd,
+                    Utc::now(),
+                    owner.clone().into(),
+                    json!({
+                        "trial_status": "ending_soon",
+                        "plan_name": plan.name(),
+                        "org_id": org_id.to_string(),
+                        "has_payment_method": organization.base.has_payment_method,
+                    }),
+                ))
+                .await?;
+
+            if let Some(ref email_service) = self.email_service
+                && let Err(e) = email_service
+                    .send_trial_ending_email(owner.base.email.clone(), plan.name())
+                    .await
+            {
+                tracing::warn!(error = %e, "Failed to send trial_ending email");
+            }
+        }
 
         Ok(())
     }
@@ -1006,6 +1115,14 @@ impl BillingService {
                 ))
                 .await?;
 
+            if let Some(ref email_service) = self.email_service
+                && let Err(e) = email_service
+                    .send_subscription_cancelled_email(owner.base.email.clone())
+                    .await
+            {
+                tracing::warn!(error = %e, "Failed to send subscription_cancelled email");
+            }
+
             // If trial was cancelled (not converted), send trial_ended event
             if was_trialing {
                 self.event_bus
@@ -1023,6 +1140,14 @@ impl BillingService {
                         }),
                     ))
                     .await?;
+
+                if let Some(ref email_service) = self.email_service
+                    && let Err(e) = email_service
+                        .send_trial_expired_email(owner.base.email.clone(), &plan_name)
+                        .await
+                {
+                    tracing::warn!(error = %e, "Failed to send trial_expired email");
+                }
             }
         }
 
@@ -1306,6 +1431,20 @@ impl BillingService {
                     tracing::info!(
                         daemon_id = %daemon.id,
                         "Set daemon to standby (plan lacks daemon_poll)"
+                    );
+                }
+            }
+        } else {
+            // Plan supports daemon_poll — clear standby on any daemons that were previously restricted
+            for mut daemon in daemons {
+                if daemon.base.standby {
+                    daemon.base.standby = false;
+                    self.daemon_service
+                        .update(&mut daemon, AuthenticatedEntity::System)
+                        .await?;
+                    tracing::info!(
+                        daemon_id = %daemon.id,
+                        "Cleared daemon standby (plan supports daemon_poll)"
                     );
                 }
             }

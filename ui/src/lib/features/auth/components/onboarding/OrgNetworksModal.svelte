@@ -156,94 +156,91 @@
 				</form.Field>
 
 				<div class="space-y-4">
-						<div class="flex items-center gap-2">
-							<div class="flex-1">
-								<form.Field
-									name="network"
-									validators={{
-										onBlur: ({ value }: { value: string }) => required(value) || min(1)(value)
-									}}
-								>
-									{#snippet children(field: AnyFieldApi)}
-										<TextInput
-											label={useCaseConfig.networkLabel}
-											id="network-0"
-											{field}
-											required={true}
-											placeholder={useCaseConfig.networkPlaceholder}
-											helpText={useCase === 'msp' ? onboarding_mspNetworkHelp() : ''}
-										/>
-									{/snippet}
-								</form.Field>
-							</div>
-						</div>
-
-						<!-- SNMP Configuration -->
-						<div class="mt-4">
-							<form.Field name="snmp_enabled">
+					<div class="flex items-center gap-2">
+						<div class="flex-1">
+							<form.Field
+								name="network"
+								validators={{
+									onBlur: ({ value }: { value: string }) => required(value) || min(1)(value)
+								}}
+							>
 								{#snippet children(field: AnyFieldApi)}
-									<div class="flex items-center gap-2">
-										<input
-											type="checkbox"
-											id="snmp-enabled"
-											checked={snmpEnabled}
-											onchange={(e) => {
-												toggleSnmpEnabled(e.currentTarget.checked);
-												field.handleChange(e.currentTarget.checked);
-											}}
-											class="h-4 w-4 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-1 focus:ring-blue-500"
-										/>
-										<label
-											for="snmp-enabled"
-											class="text-secondary flex items-center gap-2 text-sm"
-										>
-											{snmp_enableForNetwork()}
-										</label>
-									</div>
+									<TextInput
+										label={useCaseConfig.networkLabel}
+										id="network-0"
+										{field}
+										required={true}
+										placeholder={useCaseConfig.networkPlaceholder}
+										helpText={useCase === 'msp' ? onboarding_mspNetworkHelp() : ''}
+									/>
 								{/snippet}
 							</form.Field>
-
-							{#if snmpEnabled}
-								<div class="mt-3 space-y-3 pl-6">
-									<div class="grid grid-cols-2 gap-3">
-										<form.Field name="snmp_version">
-											{#snippet children(field: AnyFieldApi)}
-												<SelectInput
-													label={common_version()}
-													id="snmp-version"
-													{field}
-													options={[
-														{ value: 'V2c', label: snmp_versionV2c() },
-														{ value: 'V3', label: snmp_versionV3ComingSoon(), disabled: true }
-													]}
-												/>
-											{/snippet}
-										</form.Field>
-
-										<form.Field
-											name="snmp_community"
-											validators={{
-												onBlur: ({ value }: { value: string }) =>
-													snmpEnabled ? required(value) || max(256)(value) : undefined
-											}}
-										>
-											{#snippet children(field: AnyFieldApi)}
-												<TextInput
-													label={snmp_communityString()}
-													id="snmp-community"
-													type="password"
-													{field}
-													placeholder={snmp_communityStringPlaceholder()}
-													required={snmpEnabled}
-												/>
-											{/snippet}
-										</form.Field>
-									</div>
-
-									<InlineInfo title={snmp_hostOverrideTitle()} body={snmp_hostOverrideBody()} />
-								</div>
-							{/if}
 						</div>
+					</div>
+
+					<!-- SNMP Configuration -->
+					<div class="mt-4">
+						<form.Field name="snmp_enabled">
+							{#snippet children(field: AnyFieldApi)}
+								<div class="flex items-center gap-2">
+									<input
+										type="checkbox"
+										id="snmp-enabled"
+										checked={snmpEnabled}
+										onchange={(e) => {
+											toggleSnmpEnabled(e.currentTarget.checked);
+											field.handleChange(e.currentTarget.checked);
+										}}
+										class="h-4 w-4 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-1 focus:ring-blue-500"
+									/>
+									<label for="snmp-enabled" class="text-secondary flex items-center gap-2 text-sm">
+										{snmp_enableForNetwork()}
+									</label>
+								</div>
+							{/snippet}
+						</form.Field>
+
+						{#if snmpEnabled}
+							<div class="mt-3 space-y-3 pl-6">
+								<div class="grid grid-cols-2 gap-3">
+									<form.Field name="snmp_version">
+										{#snippet children(field: AnyFieldApi)}
+											<SelectInput
+												label={common_version()}
+												id="snmp-version"
+												{field}
+												options={[
+													{ value: 'V2c', label: snmp_versionV2c() },
+													{ value: 'V3', label: snmp_versionV3ComingSoon(), disabled: true }
+												]}
+											/>
+										{/snippet}
+									</form.Field>
+
+									<form.Field
+										name="snmp_community"
+										validators={{
+											onBlur: ({ value }: { value: string }) =>
+												snmpEnabled ? required(value) || max(256)(value) : undefined
+										}}
+									>
+										{#snippet children(field: AnyFieldApi)}
+											<TextInput
+												label={snmp_communityString()}
+												id="snmp-community"
+												type="password"
+												{field}
+												placeholder={snmp_communityStringPlaceholder()}
+												required={snmpEnabled}
+											/>
+										{/snippet}
+									</form.Field>
+								</div>
+
+								<InlineInfo title={snmp_hostOverrideTitle()} body={snmp_hostOverrideBody()} />
+							</div>
+						{/if}
+					</div>
 				</div>
 			</div>
 		</div>

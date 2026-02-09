@@ -80,12 +80,7 @@ impl EmailProvider for BrevoEmailProvider {
         subject: String,
         body: String,
     ) -> Result<(), Error> {
-        self.send_transactional_email(
-            to,
-            subject,
-            body,
-        )
-        .await
+        self.send_transactional_email(to, subject, body).await
     }
 
     async fn send_invite(

@@ -17,6 +17,18 @@
 	// Read hash immediately during script initialization, before onMount
 	const initialHash = typeof window !== 'undefined' ? window.location.hash.substring(1) : '';
 
+	// After first billing checkout, trigger daemon setup
+	if (typeof window !== 'undefined') {
+		const params = new URLSearchParams(window.location.search);
+		if (params.has('session_id')) {
+			sessionStorage.setItem('showDaemonSetup', 'true');
+			// Clean up URL
+			const url = new URL(window.location.href);
+			url.searchParams.delete('session_id');
+			window.history.replaceState({}, '', url.toString());
+		}
+	}
+
 	// TanStack Query for current user
 	const currentUserQuery = useCurrentUserQuery();
 	let isAuthenticated = $derived(currentUserQuery.data != null);

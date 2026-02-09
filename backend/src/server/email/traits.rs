@@ -77,13 +77,55 @@ pub trait EmailProvider: Send + Sync {
         token: String,
     ) -> Result<(), Error>;
 
-    /// Send a billing lifecycle email (SMTP fallback for when Plunk is not configured)
+    /// Send a billing lifecycle email
     async fn send_billing_email(
         &self,
         to: EmailAddress,
         subject: String,
         body: String,
     ) -> Result<(), Error>;
+
+    async fn send_trial_started_email(
+        &self,
+        to: EmailAddress,
+        plan_name: &str,
+        trial_days: u32,
+    ) -> Result<(), Error> {
+        let (subject, body) = self.build_trial_started_email(plan_name, trial_days);
+        self.send_billing_email(to, subject, body).await
+    }
+
+    async fn send_trial_ending_email(
+        &self,
+        to: EmailAddress,
+        plan_name: &str,
+    ) -> Result<(), Error> {
+        let (subject, body) = self.build_trial_ending_email(plan_name);
+        self.send_billing_email(to, subject, body).await
+    }
+
+    async fn send_trial_expired_email(
+        &self,
+        to: EmailAddress,
+        plan_name: &str,
+    ) -> Result<(), Error> {
+        let (subject, body) = self.build_trial_expired_email(plan_name);
+        self.send_billing_email(to, subject, body).await
+    }
+
+    async fn send_plan_changed_email(
+        &self,
+        to: EmailAddress,
+        plan_name: &str,
+    ) -> Result<(), Error> {
+        let (subject, body) = self.build_plan_changed_email(plan_name);
+        self.send_billing_email(to, subject, body).await
+    }
+
+    async fn send_subscription_cancelled_email(&self, to: EmailAddress) -> Result<(), Error> {
+        let (subject, body) = self.build_subscription_cancelled_email();
+        self.send_billing_email(to, subject, body).await
+    }
 
     fn build_trial_started_email(&self, plan_name: &str, trial_days: u32) -> (String, String) {
         let body = self.build_email(
@@ -171,6 +213,33 @@ impl EmailService {
         body: String,
     ) -> Result<()> {
         self.provider.send_billing_email(to, subject, body).await
+    }
+
+    pub async fn send_trial_started_email(
+        &self,
+        to: EmailAddress,
+        plan_name: &str,
+        trial_days: u32,
+    ) -> Result<()> {
+        self.provider
+            .send_trial_started_email(to, plan_name, trial_days)
+            .await
+    }
+
+    pub async fn send_trial_ending_email(&self, to: EmailAddress, plan_name: &str) -> Result<()> {
+        self.provider.send_trial_ending_email(to, plan_name).await
+    }
+
+    pub async fn send_trial_expired_email(&self, to: EmailAddress, plan_name: &str) -> Result<()> {
+        self.provider.send_trial_expired_email(to, plan_name).await
+    }
+
+    pub async fn send_plan_changed_email(&self, to: EmailAddress, plan_name: &str) -> Result<()> {
+        self.provider.send_plan_changed_email(to, plan_name).await
+    }
+
+    pub async fn send_subscription_cancelled_email(&self, to: EmailAddress) -> Result<()> {
+        self.provider.send_subscription_cancelled_email(to).await
     }
 }
 

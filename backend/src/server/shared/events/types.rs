@@ -409,34 +409,49 @@ pub enum TelemetryOperation {
     PlanSelected,
     PersonalPlanSelected,
     CommercialPlanSelected,
-    FirstApiKeyCreated,
-    FirstDaemonRegistered,
-    FirstTopologyRebuild,
 
     // Billing lifecycle (for email automation)
     CheckoutStarted,
     CheckoutCompleted,
     TrialStarted,
     TrialEnded,
+    TrialWillEnd,
     SubscriptionCancelled,
+    PlanChanged,
 
-    // Activation milestones (Brevo CRM tracking)
-    FirstNetworkCreated,
+    // Engagement signals
+    FirstDaemonRegistered,
+    FirstTopologyRebuild,
     FirstDiscoveryCompleted,
     FirstHostDiscovered,
     SecondNetworkCreated,
-
-    // Engagement signals (Brevo CRM tracking)
     FirstTagCreated,
     FirstUserApiKeyCreated,
     FirstSnmpCredentialCreated,
     InviteSent,
     InviteAccepted,
+
+    // Deprecated
+    FirstApiKeyCreated,
+    FirstNetworkCreated,
 }
 
 impl TelemetryOperation {
     fn log_level(&self) -> EventLogLevel {
         EventLogLevel::Info
+    }
+
+    pub fn is_billing_operation(&self) -> bool {
+        matches!(
+            self,
+            TelemetryOperation::CheckoutStarted
+                | TelemetryOperation::CheckoutCompleted
+                | TelemetryOperation::TrialStarted
+                | TelemetryOperation::TrialEnded
+                | TelemetryOperation::TrialWillEnd
+                | TelemetryOperation::SubscriptionCancelled
+                | TelemetryOperation::PlanChanged
+        )
     }
 }
 

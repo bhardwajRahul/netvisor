@@ -116,8 +116,7 @@ impl BrevoService {
             TelemetryOperation::FirstTopologyRebuild => {
                 self.handle_first_topology_rebuild(event).await?;
             }
-            TelemetryOperation::FirstNetworkCreated
-            | TelemetryOperation::SecondNetworkCreated
+            TelemetryOperation::SecondNetworkCreated
             | TelemetryOperation::FirstDiscoveryCompleted
             | TelemetryOperation::FirstHostDiscovered
             | TelemetryOperation::FirstTagCreated
@@ -132,8 +131,49 @@ impl BrevoService {
         Ok(())
     }
 
+    async fn handle_engagement_event(&self, event: &TelemetryEvent) -> Result<()> {
+        let mut company_attrs = CompanyAttributes::new();
+
+        match &event.operation {
+            TelemetryOperation::SecondNetworkCreated => {
+                company_attrs = company_attrs.with_second_network_date(event.timestamp);
+            }
+            TelemetryOperation::FirstTagCreated => {
+                company_attrs = company_attrs.with_first_tag_date(event.timestamp);
+            }
+            TelemetryOperation::FirstUserApiKeyCreated => {
+                company_attrs = company_attrs.with_first_api_key_date(event.timestamp);
+            }
+            TelemetryOperation::FirstSnmpCredentialCreated => {
+                company_attrs = company_attrs.with_first_snmp_credential_date(event.timestamp);
+            }
+            TelemetryOperation::InviteSent => {
+                company_attrs = company_attrs.with_first_invite_sent_date(event.timestamp);
+            }
+            TelemetryOperation::InviteAccepted => {
+                company_attrs = company_attrs.with_first_invite_accepted_date(event.timestamp);
+            }
+            TelemetryOperation::FirstDiscoveryCompleted => {
+                company_attrs = company_attrs.with_first_discovery_completed_date(event.timestamp)
+            }
+            TelemetryOperation::FirstHostDiscovered => {
+                company_attrs = company_attrs.with_first_host_discovered_date(event.timestamp)
+            }
+            _ => return Ok(()),
+        }
+
+        self.update_company_by_org(event.organization_id, company_attrs)
+            .await?;
+
+        tracing::debug!(
+            organization_id = %event.organization_id,
+            operation = %event.operation,
+            "Updated Brevo company: engagement milestone"
+        );
+        Ok(())
+    }
+
     /// Handle org created - create contact and company, store company ID on org.
-    /// Syncs ALL orgs (no freemail filtering).
     async fn handle_org_created(&self, event: &TelemetryEvent) -> Result<()> {
         let (email, user_id) = match &event.authentication {
             AuthenticatedEntity::User { email, user_id, .. } => (email.clone(), *user_id),
@@ -462,7 +502,8 @@ impl BrevoService {
     }
 
     async fn handle_first_topology_rebuild(&self, event: &TelemetryEvent) -> Result<()> {
-        let company_attrs = CompanyAttributes::new().with_first_discovery_date(event.timestamp);
+        let company_attrs =
+            CompanyAttributes::new().with_first_topology_rebuild_date(event.timestamp);
         self.update_company_by_org(event.organization_id, company_attrs)
             .await?;
 
@@ -478,52 +519,6 @@ impl BrevoService {
         tracing::debug!(
             organization_id = %event.organization_id,
             "Updated Brevo: first discovery completed"
-        );
-        Ok(())
-    }
-
-    async fn handle_engagement_event(&self, event: &TelemetryEvent) -> Result<()> {
-        let mut company_attrs = CompanyAttributes::new();
-
-        match &event.operation {
-            TelemetryOperation::SecondNetworkCreated => {
-                company_attrs = company_attrs.with_second_network_date(event.timestamp);
-            }
-            TelemetryOperation::FirstTagCreated => {
-                company_attrs = company_attrs.with_first_tag_date(event.timestamp);
-            }
-            TelemetryOperation::FirstUserApiKeyCreated => {
-                company_attrs = company_attrs.with_first_api_key_date(event.timestamp);
-            }
-            TelemetryOperation::FirstSnmpCredentialCreated => {
-                company_attrs = company_attrs.with_first_snmp_credential_date(event.timestamp);
-            }
-            TelemetryOperation::InviteSent => {
-                company_attrs = company_attrs.with_first_invite_sent_date(event.timestamp);
-            }
-            TelemetryOperation::InviteAccepted => {
-                company_attrs = company_attrs.with_first_invite_accepted_date(event.timestamp);
-            }
-            TelemetryOperation::FirstNetworkCreated
-            | TelemetryOperation::FirstDiscoveryCompleted
-            | TelemetryOperation::FirstHostDiscovered => {
-                tracing::debug!(
-                    organization_id = %event.organization_id,
-                    operation = %event.operation,
-                    "Brevo: engagement event received (no dedicated property)"
-                );
-                return Ok(());
-            }
-            _ => return Ok(()),
-        }
-
-        self.update_company_by_org(event.organization_id, company_attrs)
-            .await?;
-
-        tracing::debug!(
-            organization_id = %event.organization_id,
-            operation = %event.operation,
-            "Updated Brevo company: engagement milestone"
         );
         Ok(())
     }

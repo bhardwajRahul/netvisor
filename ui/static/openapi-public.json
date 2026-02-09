@@ -9282,14 +9282,14 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-02-08T14:11:00.672216Z",
-              "id": "caeaaebb-69b0-48fe-9ae7-bd800db4ee33",
+              "created_at": "2026-02-09T15:37:58.461220Z",
+              "id": "84317725-56b2-4e41-b7bb-35b050b88634",
               "interface_id": "550e8400-e29b-41d4-a716-446655440005",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-02-08T14:11:00.672216Z"
+              "updated_at": "2026-02-09T15:37:58.461220Z"
             }
           },
           "error": {
@@ -9604,39 +9604,6 @@
               }
             ],
             "description": "Daemon response for UI including computed version status"
-          },
-          "error": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "meta": {
-            "$ref": "#/components/schemas/ApiMeta"
-          },
-          "success": {
-            "type": "boolean"
-          }
-        }
-      },
-      "ApiResponse_DaemonSetupResponse": {
-        "type": "object",
-        "required": [
-          "success",
-          "meta"
-        ],
-        "properties": {
-          "data": {
-            "type": "object",
-            "description": "Response from daemon setup endpoint",
-            "properties": {
-              "api_key": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              }
-            }
           },
           "error": {
             "type": [
@@ -10067,14 +10034,14 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-02-08T14:11:00.655069Z",
-                      "id": "71b4d400-5493-484d-a2ef-96effb8e242a",
+                      "created_at": "2026-02-09T15:37:58.448427Z",
+                      "id": "f6640bf1-8bc3-450d-a188-51a6347958e4",
                       "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-02-08T14:11:00.655069Z"
+                      "updated_at": "2026-02-09T15:37:58.448427Z"
                     }
                   ],
                   "created_at": "2026-01-15T10:30:00Z",
@@ -10083,7 +10050,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Nest Thermostat",
+                  "service_definition": "Traefik",
                   "source": {
                     "type": "Manual"
                   },
@@ -10461,32 +10428,25 @@
           "data": {
             "type": "object",
             "description": "Response from onboarding state endpoint",
-            "required": [
-              "networks",
-              "network_ids"
-            ],
             "properties": {
-              "daemon_setups": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/OnboardingDaemonSetupState"
-                },
-                "description": "Daemon setups (if any)"
+              "network": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/OnboardingNetworkState",
+                    "description": "Network from pending setup (with name and ID)"
+                  }
+                ]
               },
-              "network_ids": {
-                "type": "array",
-                "items": {
-                  "type": "string",
-                  "format": "uuid"
-                },
-                "description": "Network IDs from pending setup (if any) - kept for backwards compatibility"
-              },
-              "networks": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/OnboardingNetworkState"
-                },
-                "description": "Networks from pending setup (with names and IDs)"
+              "network_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "description": "Network ID from pending setup (if any)"
               },
               "org_name": {
                 "type": [
@@ -10730,12 +10690,6 @@
                   "$ref": "#/components/schemas/OidcProviderMetadata"
                 }
               },
-              "plunk_key": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
               "posthog_key": {
                 "type": [
                   "string",
@@ -10899,14 +10853,14 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-02-08T14:11:00.667242Z",
-                  "id": "50d75c53-83bc-4218-a7ec-05c6862ea50e",
+                  "created_at": "2026-02-09T15:37:58.457073Z",
+                  "id": "ed513187-6257-4718-a0b8-467da8e7a15e",
                   "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-02-08T14:11:00.667242Z"
+                  "updated_at": "2026-02-09T15:37:58.457073Z"
                 }
               ],
               "created_at": "2026-01-15T10:30:00Z",
@@ -10915,7 +10869,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Nest Thermostat",
+              "service_definition": "Traefik",
               "source": {
                 "type": "Manual"
               },
@@ -10949,15 +10903,12 @@
             "type": "object",
             "description": "Response from setup endpoint",
             "required": [
-              "network_ids"
+              "network_id"
             ],
             "properties": {
-              "network_ids": {
-                "type": "array",
-                "items": {
-                  "type": "string",
-                  "format": "uuid"
-                }
+              "network_id": {
+                "type": "string",
+                "format": "uuid"
               }
             }
           },
@@ -12117,14 +12068,14 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-02-08T14:11:00.655404Z",
-          "id": "7029dd28-c97b-4d48-85a7-9ed18d930723",
+          "created_at": "2026-02-09T15:37:58.448662Z",
+          "id": "74ce6b9a-e59d-4fb1-beb1-2861c7f10295",
           "interface_id": "550e8400-e29b-41d4-a716-446655440005",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-02-08T14:11:00.655404Z"
+          "updated_at": "2026-02-09T15:37:58.448662Z"
         }
       },
       "BindingBase": {
@@ -12618,7 +12569,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Nest Thermostat",
+              "service_definition": "Traefik",
               "tags": [],
               "virtualization": null
             }
@@ -12907,7 +12858,8 @@
           },
           "standby": {
             "type": "boolean",
-            "description": "Whether the daemon is on standby due to plan restrictions (DaemonPoll on Free plan)."
+            "description": "Whether the daemon is on standby due to plan restrictions (DaemonPoll on Free plan).",
+            "readOnly": true
           },
           "tags": {
             "type": "array",
@@ -13103,38 +13055,6 @@
           }
         ],
         "description": "Daemon response for UI including computed version status"
-      },
-      "DaemonSetupRequest": {
-        "type": "object",
-        "description": "Daemon setup request for pre-registration daemon configuration",
-        "required": [
-          "daemon_name",
-          "network_id"
-        ],
-        "properties": {
-          "daemon_name": {
-            "type": "string"
-          },
-          "install_later": {
-            "type": "boolean"
-          },
-          "network_id": {
-            "type": "string",
-            "format": "uuid"
-          }
-        }
-      },
-      "DaemonSetupResponse": {
-        "type": "object",
-        "description": "Response from daemon setup endpoint",
-        "properties": {
-          "api_key": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        }
       },
       "DaemonStartupRequest": {
         "type": "object",
@@ -14505,14 +14425,14 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-02-08T14:11:00.654582Z",
-                  "id": "9097e4bf-54a0-40dc-86b4-7b3c291722e7",
+                  "created_at": "2026-02-09T15:37:58.448127Z",
+                  "id": "cbadc50e-e004-483c-ad6e-97d4e9b610b9",
                   "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-02-08T14:11:00.654582Z"
+                  "updated_at": "2026-02-09T15:37:58.448127Z"
                 }
               ],
               "created_at": "2026-01-15T10:30:00Z",
@@ -14521,7 +14441,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Nest Thermostat",
+              "service_definition": "Traefik",
               "source": {
                 "type": "Manual"
               },
@@ -15803,32 +15723,6 @@
           }
         }
       },
-      "OnboardingDaemonSetupState": {
-        "type": "object",
-        "description": "Daemon setup data in onboarding state response",
-        "required": [
-          "network_id",
-          "daemon_name"
-        ],
-        "properties": {
-          "api_key": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "API key (only returned if user chose to install now)"
-          },
-          "daemon_name": {
-            "type": "string",
-            "description": "Daemon name"
-          },
-          "network_id": {
-            "type": "string",
-            "format": "uuid",
-            "description": "Network ID this daemon is for"
-          }
-        }
-      },
       "OnboardingNetworkState": {
         "type": "object",
         "description": "Network data in onboarding state response",
@@ -15871,32 +15765,25 @@
       "OnboardingStateResponse": {
         "type": "object",
         "description": "Response from onboarding state endpoint",
-        "required": [
-          "networks",
-          "network_ids"
-        ],
         "properties": {
-          "daemon_setups": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/OnboardingDaemonSetupState"
-            },
-            "description": "Daemon setups (if any)"
+          "network": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/OnboardingNetworkState",
+                "description": "Network from pending setup (with name and ID)"
+              }
+            ]
           },
-          "network_ids": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "description": "Network IDs from pending setup (if any) - kept for backwards compatibility"
-          },
-          "networks": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/OnboardingNetworkState"
-            },
-            "description": "Networks from pending setup (with names and IDs)"
+          "network_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Network ID from pending setup (if any)"
           },
           "org_name": {
             "type": [
@@ -15928,6 +15815,34 @@
           "step"
         ],
         "properties": {
+          "company_size": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Company size"
+          },
+          "job_title": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Job title/role"
+          },
+          "referral_source": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Referral source (how they heard about Scanopy)"
+          },
+          "referral_source_other": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Free-text referral source (when \"other\" is selected)"
+          },
           "step": {
             "type": "string"
           },
@@ -16419,14 +16334,14 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-02-08T14:11:00.644086Z",
-                        "id": "80e9082a-d482-4e74-a1ff-15f7b751e535",
+                        "created_at": "2026-02-09T15:37:58.439331Z",
+                        "id": "8169bd20-1394-449c-bae8-9ad13aaf938e",
                         "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-02-08T14:11:00.644086Z"
+                        "updated_at": "2026-02-09T15:37:58.439331Z"
                       }
                     ],
                     "created_at": "2026-01-15T10:30:00Z",
@@ -16435,7 +16350,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Nest Thermostat",
+                    "service_definition": "Traefik",
                     "source": {
                       "type": "Manual"
                     },
@@ -16512,14 +16427,14 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-02-08T14:11:00.665814Z",
-                    "id": "d3b0435f-061f-44a9-aa4a-701c1fcc52ee",
+                    "created_at": "2026-02-09T15:37:58.455961Z",
+                    "id": "ecfec5de-5cbe-4f2a-8aa2-366d09c2c6ee",
                     "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-02-08T14:11:00.665814Z"
+                    "updated_at": "2026-02-09T15:37:58.455961Z"
                   }
                 ],
                 "created_at": "2026-01-15T10:30:00Z",
@@ -16528,7 +16443,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Nest Thermostat",
+                "service_definition": "Traefik",
                 "source": {
                   "type": "Manual"
                 },
@@ -17280,12 +17195,6 @@
               "$ref": "#/components/schemas/OidcProviderMetadata"
             }
           },
-          "plunk_key": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
           "posthog_key": {
             "type": [
               "string",
@@ -17516,14 +17425,14 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-02-08T14:11:00.655292Z",
-              "id": "dff8aeed-c2b4-4cbb-a5c6-7c063c3a7f75",
+              "created_at": "2026-02-09T15:37:58.448589Z",
+              "id": "eb53f9f5-b909-4073-bb84-dfda1ed5bc57",
               "interface_id": "550e8400-e29b-41d4-a716-446655440005",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-02-08T14:11:00.655292Z"
+              "updated_at": "2026-02-09T15:37:58.448589Z"
             }
           ],
           "created_at": "2026-01-15T10:30:00Z",
@@ -17532,7 +17441,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Nest Thermostat",
+          "service_definition": "Traefik",
           "source": {
             "type": "Manual"
           },
@@ -17779,14 +17688,11 @@
         "description": "Setup request for pre-registration org/network configuration",
         "required": [
           "organization_name",
-          "networks"
+          "network"
         ],
         "properties": {
-          "networks": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/NetworkSetup"
-            }
+          "network": {
+            "$ref": "#/components/schemas/NetworkSetup"
           },
           "organization_name": {
             "type": "string"
@@ -17797,15 +17703,12 @@
         "type": "object",
         "description": "Response from setup endpoint",
         "required": [
-          "network_ids"
+          "network_id"
         ],
         "properties": {
-          "network_ids": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "format": "uuid"
-            }
+          "network_id": {
+            "type": "string",
+            "format": "uuid"
           }
         }
       },
@@ -18261,15 +18164,15 @@
           "PlanSelected",
           "PersonalPlanSelected",
           "CommercialPlanSelected",
-          "FirstApiKeyCreated",
-          "FirstDaemonRegistered",
-          "FirstTopologyRebuild",
           "CheckoutStarted",
           "CheckoutCompleted",
           "TrialStarted",
           "TrialEnded",
+          "TrialWillEnd",
           "SubscriptionCancelled",
-          "FirstNetworkCreated",
+          "PlanChanged",
+          "FirstDaemonRegistered",
+          "FirstTopologyRebuild",
           "FirstDiscoveryCompleted",
           "FirstHostDiscovered",
           "SecondNetworkCreated",
@@ -18277,7 +18180,9 @@
           "FirstUserApiKeyCreated",
           "FirstSnmpCredentialCreated",
           "InviteSent",
-          "InviteAccepted"
+          "InviteAccepted",
+          "FirstApiKeyCreated",
+          "FirstNetworkCreated"
         ]
       },
       "Topology": {

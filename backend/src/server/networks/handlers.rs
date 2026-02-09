@@ -79,7 +79,7 @@ async fn create_network(
             .create_organizational_subnets(network.id, entity.clone())
             .await?;
 
-        // Emit FirstNetworkCreated or SecondNetworkCreated telemetry event
+        // Emit SecondNetworkCreated telemetry event
         if let Some(organization_id) = organization_id {
             let organization = state
                 .services
@@ -88,25 +88,8 @@ async fn create_network(
                 .await?;
 
             if let Some(organization) = organization {
-                // Check for FirstNetworkCreated
-                if organization.not_onboarded(&TelemetryOperation::FirstNetworkCreated) {
-                    service
-                        .event_bus()
-                        .publish_telemetry(TelemetryEvent {
-                            id: Uuid::new_v4(),
-                            organization_id,
-                            operation: TelemetryOperation::FirstNetworkCreated,
-                            timestamp: Utc::now(),
-                            metadata: serde_json::json!({
-                                "network_id": network.id,
-                                "network_name": network.base.name
-                            }),
-                            authentication: entity.clone(),
-                        })
-                        .await?;
-                }
                 // Check for SecondNetworkCreated (if first is already onboarded but second is not)
-                else if organization.not_onboarded(&TelemetryOperation::SecondNetworkCreated) {
+                if organization.not_onboarded(&TelemetryOperation::SecondNetworkCreated) {
                     // Count networks to confirm this is actually the second+
                     let network_filter =
                         StorableFilter::<Network>::new_from_org_id(&organization_id);

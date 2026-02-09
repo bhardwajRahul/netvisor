@@ -102,10 +102,6 @@ async fn create_checkout_session(
         .organization_id()
         .ok_or_else(ApiError::organization_required)?;
 
-    // Build success/cancel URLs
-    let success_url = format!("{}?session_id={{CHECKOUT_SESSION_ID}}", request.url);
-    let cancel_url = request.url.clone();
-
     if let Some(billing_service) = state.services.billing_service.clone() {
         let current_plans = billing_service.get_plans();
 
@@ -115,17 +111,33 @@ async fn create_checkout_session(
             }));
         }
 
-        let session = billing_service
-            .create_checkout_session(
-                organization_id,
-                request.plan,
-                success_url,
-                cancel_url,
-                auth.into_entity(),
-            )
-            .await?;
+        // Check if org already has a plan — if so, update the existing subscription
+        // instead of creating a new checkout session (which would create duplicate subscriptions)
+        let org = billing_service.get_organization(organization_id).await?;
 
-        Ok(Json(ApiResponse::success(session.url.unwrap())))
+        if org.base.plan.is_some() && org.base.stripe_customer_id.is_some() {
+            // Existing subscriber — update subscription directly
+            let result = billing_service
+                .change_plan(organization_id, request.plan, auth.into_entity())
+                .await?;
+            Ok(Json(ApiResponse::success(result)))
+        } else {
+            // First-time subscriber — create Stripe checkout session
+            let success_url = format!("{}?session_id={{CHECKOUT_SESSION_ID}}", request.url);
+            let cancel_url = request.url.clone();
+
+            let session = billing_service
+                .create_checkout_session(
+                    organization_id,
+                    request.plan,
+                    success_url,
+                    cancel_url,
+                    auth.into_entity(),
+                )
+                .await?;
+
+            Ok(Json(ApiResponse::success(session.url.unwrap())))
+        }
     } else {
         Err(ApiError::billing_setup_incomplete())
     }

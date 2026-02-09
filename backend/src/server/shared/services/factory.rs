@@ -276,6 +276,7 @@ impl ServiceFactory {
                     daemon_service: daemon_service.clone(),
                     discovery_service: discovery_service.clone(),
                     share_service: share_service.clone(),
+                    email_service: email_service.clone(),
                     event_bus: event_bus.clone(),
                 })));
             }

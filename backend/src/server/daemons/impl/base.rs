@@ -51,6 +51,7 @@ pub struct DaemonBase {
     pub is_unreachable: bool,
     /// Whether the daemon is on standby due to plan restrictions (DaemonPoll on Free plan).
     #[serde(default)]
+    #[schema(read_only)]
     pub standby: bool,
 }
 
