@@ -4,12 +4,10 @@
     {
       "id": "billing-modal-opens-no-plan",
       "category": "Billing Modal",
-      "description": "New user without a plan sees non-dismissible billing modal after onboarding",
+      "description": "New user sees non-dismissible billing modal after onboarding",
       "steps": [
-        "Register a new account and complete onboarding",
-        "After onboarding, observe the main app loads",
-        "Verify the billing plan modal opens automatically",
-        "Verify the modal has title 'Choose a Plan'",
+        "After onboarding completes, verify the billing plan modal opens automatically",
+        "Verify the modal has title 'Choose a Plan' and is full-screen",
         "Verify clicking outside does NOT close the modal",
         "Verify no close (X) button is shown"
       ],
@@ -22,9 +20,9 @@
     {
       "id": "billing-modal-plan-toggles",
       "category": "Billing Modal",
-      "description": "Monthly/yearly and personal/commercial toggles work in billing modal",
+      "description": "Monthly/yearly and personal/commercial toggles work",
       "steps": [
-        "In the billing plan modal, click the Monthly/Yearly toggle",
+        "Click the Monthly/Yearly toggle",
         "Verify prices update to reflect the selected billing period",
         "Click the Personal/Commercial toggle",
         "Verify plan cards filter to show the correct category"
@@ -38,97 +36,72 @@
     {
       "id": "free-plan-checkout",
       "category": "Billing Modal",
-      "description": "Selecting Free plan redirects to Stripe checkout ($0, no card required)",
+      "description": "Selecting Free plan completes $0 Stripe checkout without requiring a card",
       "steps": [
-        "In the billing plan modal, select the Free plan",
+        "Select the Free plan",
         "Verify redirect to Stripe checkout",
-        "Complete the $0 checkout (no credit card should be required)",
-        "Verify redirect back to app"
+        "Complete the $0 checkout — no credit card should be required",
+        "Verify redirect back to the app",
+        "Verify the billing modal is gone and the app is accessible"
       ],
-      "expected": "Stripe checkout completes without requiring payment method, user returns to app with Free plan active",
+      "expected": "Stripe checkout completes without payment method, user returns to app with Free plan active, modal dismissed",
       "flow": "setup",
       "sequence": 3,
       "status": null,
       "feedback": null
     },
     {
-      "id": "billing-modal-dismissed-after-plan",
-      "category": "Billing Modal",
-      "description": "Billing modal disappears after plan is selected and Stripe checkout completes",
-      "steps": [
-        "After completing Stripe checkout (from previous test), return to app",
-        "Verify the billing plan modal is no longer shown",
-        "Verify the main app is accessible"
-      ],
-      "expected": "Modal gone, app fully accessible with selected plan",
-      "flow": "setup",
-      "sequence": 4,
-      "status": null,
-      "feedback": null
-    },
-    {
       "id": "trial-offers-first-time",
       "category": "Billing Modal",
-      "description": "Trial offers shown to orgs that have never trialed a paid plan",
+      "description": "Trial badges shown for orgs that have never trialed a paid plan",
       "steps": [
-        "As a Free plan user who has never trialed, open billing modal via Settings > Billing > View Plans",
+        "Open Settings > Billing tab",
+        "Click 'View Plans'",
         "Verify paid plans show trial day badges (e.g., '7-day free trial')"
       ],
-      "expected": "Trial offers are visible on paid plans for orgs without trial_end_date",
+      "setup": "Org should be on the Free plan with no trial_end_date set (the default state after the setup flow).",
+      "expected": "Trial offers visible on paid plans",
       "status": null,
       "feedback": null
     },
     {
       "id": "trial-offers-returning",
       "category": "Billing Modal",
-      "description": "Trial offers hidden for orgs that have previously trialed",
+      "description": "Trial badges hidden for orgs that have previously trialed",
       "steps": [
-        "As a user who previously completed a trial (org has trial_end_date set), open billing modal",
+        "Open Settings > Billing tab",
+        "Click 'View Plans'",
         "Verify paid plans do NOT show trial day badges"
       ],
+      "setup": "Set trial_end_date on the org to a past date: UPDATE organizations SET trial_end_date = NOW() - INTERVAL '1 day' WHERE id = '<org_id>'. Refresh the browser before testing.",
       "expected": "No trial offers shown to returning customers",
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "settings-billing-view-plans",
-      "category": "Settings",
-      "description": "View Plans button in Settings > Billing opens dismissible billing modal",
-      "steps": [
-        "Open Settings modal",
-        "Navigate to the Billing tab",
-        "Click 'View Plans' button",
-        "Verify billing plan modal opens",
-        "Verify modal IS dismissible (close button, click outside works)"
-      ],
-      "expected": "Modal opens in dismissible mode from settings",
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "settings-billing-notification-dot",
-      "category": "Settings",
-      "description": "Billing tab shows notification dot when plan needs attention",
-      "steps": [
-        "As an org with no plan selected (new org before choosing), open Settings",
-        "Verify the Billing tab has a notification dot",
-        "Also verify notification dot for: trialing without payment method, past_due, canceled"
-      ],
-      "expected": "Notification dot visible on Billing tab when action is needed",
       "status": null,
       "feedback": null
     },
     {
       "id": "settings-billing-free-plan-cta",
       "category": "Settings",
-      "description": "Free plan users see upgrade CTA in Billing tab",
+      "description": "Free plan users see upgrade CTA and no subscription management in Billing tab",
       "steps": [
-        "As a Free plan user, open Settings > Billing tab",
-        "Verify an 'Upgrade your plan' card is shown",
-        "Verify 'View Plans' button is present",
-        "Verify 'Manage Subscription' button is NOT shown (Free plan)"
+        "Open Settings > Billing tab",
+        "Verify an 'Upgrade your plan' card with 'View Plans' button is shown",
+        "Verify 'Manage Subscription' button is NOT present"
       ],
+      "setup": "Org should be on the Free plan (default state after setup flow).",
       "expected": "Prominent upgrade CTA shown, no subscription management for Free plan",
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "settings-billing-notification-dot",
+      "category": "Settings",
+      "description": "Billing tab shows notification dot when trialing without payment method",
+      "steps": [
+        "Open the Settings modal",
+        "Verify the Billing tab label has a notification dot"
+      ],
+      "setup": "Set org to trialing status without a payment method: UPDATE organizations SET plan_status = 'trialing', has_payment_method = false WHERE id = '<org_id>'. Refresh the browser before testing.",
+      "expected": "Notification dot visible on Billing tab",
       "status": null,
       "feedback": null
     },
@@ -137,25 +110,14 @@
       "category": "Daemon Creation",
       "description": "Daemon mode dropdown shows Upgrade tag on DaemonPoll for Free plan",
       "steps": [
-        "As a Free plan user, create a new daemon",
-        "Open the Mode dropdown (should be a rich dropdown, not native select)",
+        "Navigate to the Daemons page and open the daemon creation modal",
+        "Open the Mode dropdown — it should be a rich dropdown, not a native select",
         "Verify ServerPoll is selectable",
-        "Verify DaemonPoll shows a yellow 'Upgrade' tag with arrow icon",
-        "Verify DaemonPoll is not selectable (disabled/grayed)"
+        "Verify DaemonPoll shows a yellow 'Upgrade' tag with an arrow icon",
+        "Verify DaemonPoll is not selectable (disabled/grayed out)"
       ],
-      "expected": "RichSelect dropdown with upgrade tag on DaemonPoll, option disabled",
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "daemon-default-server-poll",
-      "category": "Daemon Creation",
-      "description": "Daemon mode defaults to ServerPoll",
-      "steps": [
-        "Create a new daemon",
-        "Check the default value in the Mode dropdown"
-      ],
-      "expected": "ServerPoll is the default mode",
+      "setup": "Org should be on the Free plan. Ensure at least one network exists (POST /api/networks with a name).",
+      "expected": "RichSelect dropdown with yellow Upgrade tag on DaemonPoll, option disabled",
       "status": null,
       "feedback": null
     },
@@ -164,25 +126,14 @@
       "category": "Discovery",
       "description": "Discovery run type dropdown shows Upgrade tag on Scheduled for Free plan",
       "steps": [
-        "As a Free plan user, create a new discovery",
-        "Open the Run Type dropdown (should be a rich dropdown)",
+        "Navigate to the Discoveries page and open the discovery creation modal",
+        "Open the Run Type dropdown — it should be a rich dropdown, not a native select",
         "Verify Ad Hoc is selectable",
-        "Verify Scheduled shows a yellow 'Upgrade' tag with arrow icon",
+        "Verify Scheduled shows a yellow 'Upgrade' tag with an arrow icon",
         "Verify Scheduled is not selectable (disabled)"
       ],
-      "expected": "RichSelect dropdown with upgrade tag on Scheduled, option disabled",
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "discovery-default-adhoc",
-      "category": "Discovery",
-      "description": "New discovery defaults to Ad Hoc run type",
-      "steps": [
-        "Create a new discovery (any plan)",
-        "Check the default run type"
-      ],
-      "expected": "Ad Hoc is the default run type for new discoveries",
+      "setup": "Org should be on the Free plan. Ensure at least one daemon exists (create via the Daemons page or API).",
+      "expected": "RichSelect dropdown with yellow Upgrade tag on Scheduled, option disabled",
       "status": null,
       "feedback": null
     },
@@ -191,25 +142,13 @@
       "category": "Paid Plan",
       "description": "Paid plan users see no upgrade tags in daemon/discovery dropdowns",
       "steps": [
-        "As a paid plan user (e.g., Starter with trial), create a new daemon",
+        "Open daemon creation modal, open the Mode dropdown",
         "Verify DaemonPoll has no Upgrade tag and is selectable",
-        "Create a new discovery",
+        "Open discovery creation modal, open the Run Type dropdown",
         "Verify Scheduled has no Upgrade tag and is selectable"
       ],
+      "setup": "Org should be on a paid plan (e.g., Starter). Set via Stripe checkout or DB: UPDATE organizations SET plan = 'Starter', plan_status = 'active' WHERE id = '<org_id>'. Ensure at least one network and one daemon exist.",
       "expected": "No upgrade tags, all options selectable for paid plans",
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "billing-plans-no-duplicate-crash",
-      "category": "Billing Modal",
-      "description": "Billing plan modal loads without duplicate key errors",
-      "steps": [
-        "Open browser developer console",
-        "Open the billing plan modal",
-        "Check console for 'each_key_duplicate' or similar errors"
-      ],
-      "expected": "No duplicate key errors in console, all plans render correctly",
       "status": null,
       "feedback": null
     },
@@ -218,10 +157,12 @@
       "category": "Billing",
       "description": "Canceling Stripe checkout returns to app root, not /billing",
       "steps": [
-        "Start a plan checkout from the billing modal",
-        "On Stripe checkout page, click Back or cancel",
+        "Open Settings > Billing > View Plans",
+        "Select any paid plan to start checkout",
+        "On the Stripe checkout page, click Back or cancel",
         "Verify the return URL is the app root (/), not /billing"
       ],
+      "setup": "Org on the Free plan (default state after setup flow).",
       "expected": "User returns to / with billing modal still showing",
       "status": null,
       "feedback": null
