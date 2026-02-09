@@ -106,8 +106,8 @@ pub async fn require_billing_for_users(
 
     // Check subscription status
     match organization.base.plan_status.as_deref() {
-        Some("active") | Some("trialing") => {
-            // Active subscription - allow request
+        Some("active") | Some("trialing") | Some("pending_cancellation") => {
+            // Active subscription (or scheduled downgrade) - allow request
             next.run(request).await
         }
         Some("past_due") => billing_error_response(

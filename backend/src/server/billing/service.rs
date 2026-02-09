@@ -932,8 +932,14 @@ impl BillingService {
                 .and_then(|ts| chrono::DateTime::from_timestamp(ts, 0));
         }
 
-        // Sync payment method status from Stripe (source of truth)
-        organization.base.has_payment_method = sub.default_payment_method.is_some();
+        // Sync payment method status from Stripe
+        // Only upgrade to true from subscription — payment methods may live on the customer
+        // rather than the subscription, so a missing default_payment_method doesn't mean
+        // the customer has no payment method. The checkout_completed handler handles the
+        // definitive sync. Never downgrade from true to false here.
+        if sub.default_payment_method.is_some() {
+            organization.base.has_payment_method = true;
+        }
 
         self.organization_service
             .update(&mut organization, AuthenticatedEntity::System)
