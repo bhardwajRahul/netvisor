@@ -1,0 +1,53 @@
+{
+  "branch": "daemon-connection-fix",
+  "tests": [
+    {
+      "id": "fresh-install-default-compose",
+      "category": "Fresh Install",
+      "description": "Integrated daemon connects on fresh install with default docker-compose.yml",
+      "setup": "Ensure clean state: run 'docker compose down -v' then 'docker compose up -d' with no .env overrides. Wait for all services to be running (server and postgres healthy, daemon started).",
+      "steps": [
+        "Open the Scanopy UI and complete the onboarding flow",
+        "Navigate to the Discovery tab",
+        "Verify the integrated daemon appears as connected"
+      ],
+      "expected": "Daemon shows as connected in the Discovery tab with a green/healthy status. No error banners or warnings about missing daemons.",
+      "flow": "setup",
+      "sequence": 41,
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "restart-recovery",
+      "category": "Startup Order",
+      "description": "Services recover after a full restart (daemon has saved credentials)",
+      "setup": "Run 'docker compose restart' and wait for all services to be back up (server responding on port 60072).",
+      "steps": [
+        "Refresh the Scanopy UI",
+        "Navigate to the Discovery tab",
+        "Verify the daemon is still connected"
+      ],
+      "expected": "Daemon appears connected in the Discovery tab after restart. No crash loops or connection errors visible in the UI.",
+      "flow": "setup",
+      "sequence": 42,
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "discovery-scan-completes",
+      "category": "End-to-End",
+      "description": "A discovery scan completes successfully through the integrated daemon",
+      "steps": [
+        "Navigate to the Discovery tab",
+        "Start a discovery scan on the default network",
+        "Wait for the scan to complete",
+        "Navigate to the topology or hosts view"
+      ],
+      "expected": "Scan starts and runs on the integrated daemon. Progress is visible in the UI. After completion, discovered hosts and/or services appear in the topology.",
+      "flow": "setup",
+      "sequence": 43,
+      "status": null,
+      "feedback": null
+    }
+  ]
+}
