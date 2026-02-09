@@ -194,6 +194,7 @@ impl BrevoService {
             .with_user_id(user_id)
             .with_role("owner")
             .with_signup_date(event.timestamp)
+            .with_last_login_date(event.timestamp)
             .with_marketing_opt_in(marketing_opt_in);
 
         if let Some(use_case) = &use_case {
@@ -699,7 +700,8 @@ impl BrevoService {
             .with_email(owner.base.email.to_string())
             .with_user_id(owner.id)
             .with_role("owner")
-            .with_signup_date(owner.created_at);
+            .with_signup_date(owner.created_at)
+            .with_last_login_date(owner.created_at);
 
         let mut company_attrs = CompanyAttributes::new()
             .with_name(&org.base.name)
