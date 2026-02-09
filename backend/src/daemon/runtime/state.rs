@@ -180,6 +180,13 @@ impl DaemonState {
         terminal.clone()
     }
 
+    /// Clear the terminal payload after the server has acknowledged it.
+    /// This prevents the daemon from resending the same terminal state on every poll.
+    pub async fn clear_terminal_payload(&self) {
+        let mut terminal = self.discovery_service.terminal_payload.write().await;
+        *terminal = None;
+    }
+
     /// Get pending buffered entities for sending to server.
     /// Returns pending hosts/subnets without clearing them from the buffer.
     ///

@@ -187,6 +187,14 @@ async fn get_discovery_poll(
     let progress = state.services.daemon_state.get_progress().await;
     let entities = state.services.daemon_state.get_pending_entities().await;
 
+    // Clear terminal payload after serving it so it's not resent on the next poll.
+    // The server only needs to receive the terminal state once.
+    if let Some(ref p) = progress
+        && p.phase.is_terminal()
+    {
+        state.services.daemon_state.clear_terminal_payload().await;
+    }
+
     Ok(Json(ApiResponse::success(DiscoveryPollResponse {
         progress,
         entities,

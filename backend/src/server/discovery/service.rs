@@ -627,11 +627,25 @@ impl DiscoveryService {
         let mut sessions = self.sessions.write().await;
 
         let mut last_updated = self.session_last_updated.write().await;
+        // Check if we've seen this session before (used as tombstone for completed sessions)
+        let already_seen = last_updated.contains_key(&update.session_id);
         // Track last update time
         last_updated.insert(update.session_id, Utc::now());
 
         // Auto-create session if it doesn't exist (handles server restarts during discovery)
         if let std::collections::hash_map::Entry::Vacant(e) = sessions.entry(update.session_id) {
+            // If we already tracked this session but it's no longer in the sessions map,
+            // it was already processed and removed. Skip redundant terminal updates from
+            // old daemons that don't clear their terminal payload after serving it.
+            if update.phase.is_terminal() && already_seen {
+                tracing::debug!(
+                    session_id = %update.session_id,
+                    phase = %update.phase,
+                    "Ignoring redundant terminal update (already processed)"
+                );
+                return Ok(());
+            }
+
             tracing::info!(
                 session_id = %update.session_id,
                 daemon_id = %update.daemon_id,
