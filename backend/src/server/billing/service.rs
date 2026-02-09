@@ -732,11 +732,19 @@ impl BillingService {
                 }
             }
             EventType::PaymentMethodDetached => {
-                if let EventObject::PaymentMethodDetached(pm) = event.data.object
-                    && let Some(customer) = pm.customer.as_ref()
-                {
-                    self.handle_payment_method_detached(customer.id().to_string())
-                        .await?;
+                // The PaymentMethod.customer field is null after detachment —
+                // extract the previous customer ID from the raw event payload.
+                if let EventObject::PaymentMethodDetached(_) = event.data.object {
+                    let raw: serde_json::Value = serde_json::from_str(payload)?;
+                    if let Some(customer_id) = raw
+                        .get("data")
+                        .and_then(|d| d.get("previous_attributes"))
+                        .and_then(|pa| pa.get("customer"))
+                        .and_then(|c| c.as_str())
+                    {
+                        self.handle_payment_method_detached(customer_id.to_string())
+                            .await?;
+                    }
                 }
             }
             _ => {
