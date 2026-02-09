@@ -15,7 +15,9 @@ const BILLING_LIFECYCLE_OPS: &[TelemetryOperation] = &[
     TelemetryOperation::CheckoutCompleted,
     TelemetryOperation::TrialStarted,
     TelemetryOperation::TrialEnded,
+    TelemetryOperation::TrialWillEnd,
     TelemetryOperation::SubscriptionCancelled,
+    TelemetryOperation::PlanChanged,
 ];
 
 #[async_trait]

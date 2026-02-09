@@ -2,7 +2,7 @@
  * TanStack Query hooks for Billing
  */
 
-import { createQuery, createMutation } from '@tanstack/svelte-query';
+import { createQuery, createMutation, useQueryClient } from '@tanstack/svelte-query';
 import { queryKeys } from '$lib/api/query-client';
 import { apiClient } from '$lib/api/client';
 import type { BillingPlan, BillingRate } from './types';
@@ -28,6 +28,7 @@ export function useBillingPlansQuery() {
  * Mutation hook for checkout
  */
 export function useCheckoutMutation() {
+	const queryClient = useQueryClient();
 	return createMutation(() => ({
 		mutationFn: async (plan: BillingPlan) => {
 			const { data } = await apiClient.POST('/api/billing/checkout', {
@@ -38,8 +39,16 @@ export function useCheckoutMutation() {
 			}
 			return data.data;
 		},
+		onSuccess: (data: string) => {
+			// Non-URL response means plan was changed directly (existing subscriber)
+			if (!data.startsWith('http')) {
+				pushSuccess(data);
+				// Invalidate org query so UI reflects the new plan
+				queryClient.invalidateQueries({ queryKey: queryKeys.organizations.all });
+			}
+		},
 		onError: (error: Error) => {
-			pushError(`Error getting checkout URL: ${error.message}. Please try again.`);
+			pushError(`Error changing plan: ${error.message}. Please try again.`);
 		}
 	}));
 }

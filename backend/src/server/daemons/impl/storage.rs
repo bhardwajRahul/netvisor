@@ -229,5 +229,7 @@ impl Entity for Daemon {
         self.base.last_seen = existing.base.last_seen;
         // capabilities are reported by the daemon, not user-editable
         self.base.capabilities = existing.base.capabilities.clone();
+        // standby is managed by billing plan restrictions, not user-editable
+        self.base.standby = existing.base.standby;
     }
 }

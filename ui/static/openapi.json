@@ -11966,14 +11966,14 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-02-09T05:39:19.819492Z",
-              "id": "2433bb8b-3d3f-4ae1-8702-adac06cee37e",
+              "created_at": "2026-02-09T14:07:05.598048Z",
+              "id": "10761d3e-19b2-4735-87dc-ba1abba6927b",
               "interface_id": "550e8400-e29b-41d4-a716-446655440005",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-02-09T05:39:19.819492Z"
+              "updated_at": "2026-02-09T14:07:05.598048Z"
             }
           },
           "error": {
@@ -12751,14 +12751,14 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-02-09T05:39:19.806866Z",
-                      "id": "b3d4c8ef-3f25-478d-80c2-a72a95f784a9",
+                      "created_at": "2026-02-09T14:07:05.585150Z",
+                      "id": "38532183-7ff0-4bdd-b563-0ea7d8e2011c",
                       "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-02-09T05:39:19.806866Z"
+                      "updated_at": "2026-02-09T14:07:05.585150Z"
                     }
                   ],
                   "created_at": "2026-01-15T10:30:00Z",
@@ -12767,7 +12767,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "WordPress",
+                  "service_definition": "Z-Wave JS",
                   "source": {
                     "type": "Manual"
                   },
@@ -13583,14 +13583,14 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-02-09T05:39:19.815581Z",
-                  "id": "411e70b3-5864-41d0-939c-5f6ca043ca7d",
+                  "created_at": "2026-02-09T14:07:05.593923Z",
+                  "id": "641a3e00-82d4-4fed-a02d-b341a2a2a3dc",
                   "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-02-09T05:39:19.815581Z"
+                  "updated_at": "2026-02-09T14:07:05.593923Z"
                 }
               ],
               "created_at": "2026-01-15T10:30:00Z",
@@ -13599,7 +13599,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "WordPress",
+              "service_definition": "Z-Wave JS",
               "source": {
                 "type": "Manual"
               },
@@ -14801,14 +14801,14 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-02-09T05:39:19.807098Z",
-          "id": "e3b28b52-8e2b-4aea-9a17-203b2a2bc5c0",
+          "created_at": "2026-02-09T14:07:05.585373Z",
+          "id": "9ac897f4-b84b-458f-ad23-76bf04b58483",
           "interface_id": "550e8400-e29b-41d4-a716-446655440005",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-02-09T05:39:19.807098Z"
+          "updated_at": "2026-02-09T14:07:05.585373Z"
         }
       },
       "BindingBase": {
@@ -15302,7 +15302,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "WordPress",
+              "service_definition": "Z-Wave JS",
               "tags": [],
               "virtualization": null
             }
@@ -15591,7 +15591,8 @@
           },
           "standby": {
             "type": "boolean",
-            "description": "Whether the daemon is on standby due to plan restrictions (DaemonPoll on Free plan)."
+            "description": "Whether the daemon is on standby due to plan restrictions (DaemonPoll on Free plan).",
+            "readOnly": true
           },
           "tags": {
             "type": "array",
@@ -17192,14 +17193,14 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-02-09T05:39:19.806530Z",
-                  "id": "e388855b-f8c1-4cc4-b1ab-d5c2af24b678",
+                  "created_at": "2026-02-09T14:07:05.584834Z",
+                  "id": "503acff1-5983-4645-ac5b-bb6c6f75f337",
                   "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-02-09T05:39:19.806530Z"
+                  "updated_at": "2026-02-09T14:07:05.584834Z"
                 }
               ],
               "created_at": "2026-01-15T10:30:00Z",
@@ -17208,7 +17209,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "WordPress",
+              "service_definition": "Z-Wave JS",
               "source": {
                 "type": "Manual"
               },
@@ -19134,14 +19135,14 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-02-09T05:39:19.793716Z",
-                        "id": "eaa7bab1-5244-41ae-83ac-229935d39174",
+                        "created_at": "2026-02-09T14:07:05.573561Z",
+                        "id": "7b4a07e4-2f4f-4893-879b-fe269ebb8b83",
                         "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-02-09T05:39:19.793716Z"
+                        "updated_at": "2026-02-09T14:07:05.573561Z"
                       }
                     ],
                     "created_at": "2026-01-15T10:30:00Z",
@@ -19150,7 +19151,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "WordPress",
+                    "service_definition": "Z-Wave JS",
                     "source": {
                       "type": "Manual"
                     },
@@ -19227,14 +19228,14 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-02-09T05:39:19.814402Z",
-                    "id": "1e46e150-2021-49b0-9e54-d6815e4620dc",
+                    "created_at": "2026-02-09T14:07:05.592772Z",
+                    "id": "3360df31-8abc-47cd-b8a2-2269d65e9610",
                     "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-02-09T05:39:19.814402Z"
+                    "updated_at": "2026-02-09T14:07:05.592772Z"
                   }
                 ],
                 "created_at": "2026-01-15T10:30:00Z",
@@ -19243,7 +19244,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "WordPress",
+                "service_definition": "Z-Wave JS",
                 "source": {
                   "type": "Manual"
                 },
@@ -20231,14 +20232,14 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-02-09T05:39:19.807016Z",
-              "id": "d8406bf5-bfb7-41b6-8cdd-87c5ed9d7250",
+              "created_at": "2026-02-09T14:07:05.585294Z",
+              "id": "47888eee-b787-4d0f-b428-251ae7090dc7",
               "interface_id": "550e8400-e29b-41d4-a716-446655440005",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-02-09T05:39:19.807016Z"
+              "updated_at": "2026-02-09T14:07:05.585294Z"
             }
           ],
           "created_at": "2026-01-15T10:30:00Z",
@@ -20247,7 +20248,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "WordPress",
+          "service_definition": "Z-Wave JS",
           "source": {
             "type": "Manual"
           },
@@ -20983,7 +20984,9 @@
           "CheckoutCompleted",
           "TrialStarted",
           "TrialEnded",
+          "TrialWillEnd",
           "SubscriptionCancelled",
+          "PlanChanged",
           "FirstNetworkCreated",
           "FirstDiscoveryCompleted",
           "FirstHostDiscovered",

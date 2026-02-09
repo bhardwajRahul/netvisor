@@ -103,10 +103,14 @@
 				is_commercial: metadata?.is_commercial ?? false
 			});
 
-			// All plans go through Stripe checkout (including Free)
-			const checkoutUrl = await checkoutMutation.mutateAsync(plan);
-			if (checkoutUrl) {
-				window.location.href = checkoutUrl;
+			// Backend decides: new subscriber → checkout URL, existing → plan change message
+			const result = await checkoutMutation.mutateAsync(plan);
+			if (result?.startsWith('http')) {
+				// First-time checkout: redirect to Stripe
+				window.location.href = result;
+			} else {
+				// Plan change: already done via subscription update, close modal
+				onClose();
 			}
 		} catch {
 			// Error handled by mutation

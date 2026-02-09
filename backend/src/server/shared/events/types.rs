@@ -418,7 +418,9 @@ pub enum TelemetryOperation {
     CheckoutCompleted,
     TrialStarted,
     TrialEnded,
+    TrialWillEnd,
     SubscriptionCancelled,
+    PlanChanged,
 
     // Activation milestones (HubSpot CRM tracking)
     FirstNetworkCreated,
