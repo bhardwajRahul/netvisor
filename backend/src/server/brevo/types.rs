@@ -17,7 +17,9 @@ pub struct ContactAttributes {
     pub scanopy_use_case: Option<String>,
     pub scanopy_signup_date: Option<String>,
     pub scanopy_last_login_date: Option<String>,
-    pub scanopy_marketing_opt_in: Option<bool>,
+    /// Brevo built-in field (not a custom attribute) — controls email campaign eligibility.
+    /// true = blocklisted from campaigns, false = can receive campaigns.
+    pub email_blacklisted: Option<bool>,
 }
 
 impl ContactAttributes {
@@ -65,8 +67,8 @@ impl ContactAttributes {
         self
     }
 
-    pub fn with_marketing_opt_in(mut self, opt_in: bool) -> Self {
-        self.scanopy_marketing_opt_in = Some(opt_in);
+    pub fn with_email_blacklisted(mut self, blacklisted: bool) -> Self {
+        self.email_blacklisted = Some(blacklisted);
         self
     }
 
@@ -101,10 +103,6 @@ impl ContactAttributes {
         if let Some(v) = &self.scanopy_last_login_date {
             attrs.insert("SCANOPY_LAST_LOGIN_DATE".to_string(), serde_json::json!(v));
         }
-        if let Some(v) = &self.scanopy_marketing_opt_in {
-            attrs.insert("SCANOPY_MARKETING_OPT_IN".to_string(), serde_json::json!(v));
-        }
-
         attrs
     }
 }
@@ -404,12 +402,17 @@ pub struct CreateContactRequest {
     pub email: String,
     pub attributes: HashMap<String, serde_json::Value>,
     pub update_enabled: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub email_blacklisted: Option<bool>,
 }
 
 /// PUT /contacts/{email} - update contact attributes
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UpdateContactRequest {
     pub attributes: HashMap<String, serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub email_blacklisted: Option<bool>,
 }
 
 /// Response from POST /contacts (201 on create)

@@ -29,7 +29,7 @@
 		? 'w-96'
 		: 'w-auto'}"
 >
-	<div class="card p-0 shadow-lg">
+	<div class="card card-static p-0 shadow-lg">
 		{#if $optionsPanelExpanded}
 			<!-- Header with tabs and collapse button -->
 			<div class="flex items-center border-b border-gray-700">

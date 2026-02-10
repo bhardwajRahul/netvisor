@@ -47,7 +47,7 @@
 	{#if sourceHost || sourceIfEntry}
 		<span class="text-secondary mb-2 block text-sm font-medium">Source</span>
 		{#if sourceHost}
-			<div class="card">
+			<div class="card card-static">
 				<EntityDisplayWrapper
 					context={{
 						services: topology?.services.filter((s) => s.host_id === sourceHost.id) ?? []
@@ -58,7 +58,7 @@
 			</div>
 		{/if}
 		{#if sourceIfEntry}
-			<div class="card">
+			<div class="card card-static">
 				<EntityDisplayWrapper
 					context={undefined}
 					item={sourceIfEntry}
@@ -71,7 +71,7 @@
 	{#if targetHost || targetIfEntry}
 		<span class="text-secondary mb-2 block text-sm font-medium">Target</span>
 		{#if targetHost}
-			<div class="card">
+			<div class="card card-static">
 				<EntityDisplayWrapper
 					context={{
 						services: topology?.services.filter((s) => s.host_id === targetHost.id) ?? []
@@ -82,7 +82,7 @@
 			</div>
 		{/if}
 		{#if targetIfEntry}
-			<div class="card">
+			<div class="card card-static">
 				<EntityDisplayWrapper
 					context={undefined}
 					item={targetIfEntry}

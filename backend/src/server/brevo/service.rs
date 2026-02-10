@@ -260,7 +260,7 @@ impl BrevoService {
             .with_role("owner")
             .with_signup_date(event.timestamp)
             .with_last_login_date(event.timestamp)
-            .with_marketing_opt_in(marketing_opt_in);
+            .with_email_blacklisted(!marketing_opt_in);
 
         if let Some(use_case) = &use_case {
             contact_attrs = contact_attrs.with_use_case(use_case);

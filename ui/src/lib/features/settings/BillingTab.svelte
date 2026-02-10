@@ -31,7 +31,6 @@
 		settings_billing_pastDue,
 		settings_billing_per,
 		settings_billing_trialActive,
-		settings_billing_trialDays,
 		settings_billing_unableToLoad
 	} from '$lib/paraglide/messages';
 	import InlineWarning from '$lib/shared/components/feedback/InlineWarning.svelte';
@@ -213,9 +212,13 @@
 										<p class="text-primary text-lg font-semibold">
 											{billingPlans.getName(org.plan.type || null)}
 										</p>
-										{#if org.plan.trial_days > 0 && org.plan_status === 'trialing'}
+										{#if org.plan_status === 'trialing' && trialEndDate}
 											<p class="text-secondary mt-1 text-xs">
-												{settings_billing_trialDays({ days: org.plan.trial_days })}
+												Trial ends on {trialEndDate.toLocaleDateString(undefined, {
+													month: 'long',
+													day: 'numeric',
+													year: 'numeric'
+												})}
 											</p>
 										{/if}
 									</div>

@@ -174,7 +174,7 @@
 	});
 
 	let cardClass = $derived(
-		`card ${isNodeSelected ? 'ring-2 ring-blue-500 hover:ring-2 hover:ring-blue-500' : ''} ${nodeRenderData?.isVirtualized ? `border-color: ${virtualizationColorHelper.border}` : ''}`
+		`card ${isNodeSelected ? 'card-selected' : ''} ${nodeRenderData?.isVirtualized ? `border-color: ${virtualizationColorHelper.border}` : ''}`
 	);
 
 	let handleStyle = $derived.by(() => {

@@ -96,19 +96,23 @@ export function trackEventOnce(event: string, properties?: Record<string, unknow
  * Safe to call multiple times - PostHog deduplicates.
  * Skips identification in demo mode.
  */
-export function identifyUser(userId: string, email: string, organizationId: string) {
+export function identifyUser(
+	userId: string,
+	email: string,
+	organization: Organization | null | undefined
+) {
 	if (isDemo()) return;
+	const traits: Record<string, unknown> = {
+		email,
+		organization_id: organization?.id ?? null,
+		plan_type: organization?.plan?.type ?? null,
+		plan_status: organization?.plan_status ?? null,
+		has_payment_method: organization?.has_payment_method ?? null
+	};
 	if (posthog.__loaded) {
-		posthog.identify(userId, {
-			email,
-			organization_id: organizationId
-		});
+		posthog.identify(userId, traits);
 	} else {
-		eventQueue.push({
-			type: 'identify',
-			userId,
-			traits: { email, organization_id: organizationId }
-		});
+		eventQueue.push({ type: 'identify', userId, traits });
 	}
 }
 

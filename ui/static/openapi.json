@@ -11924,14 +11924,14 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-02-10T01:38:08.926515Z",
-              "id": "e75e00c2-694a-4b13-abf3-609dfabb62fb",
+              "created_at": "2026-02-10T02:29:34.886088Z",
+              "id": "64689cb1-f588-4dfa-99f4-dcaa8762b5fe",
               "interface_id": "550e8400-e29b-41d4-a716-446655440005",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-02-10T01:38:08.926515Z"
+              "updated_at": "2026-02-10T02:29:34.886088Z"
             }
           },
           "error": {
@@ -12676,14 +12676,14 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-02-10T01:38:08.913853Z",
-                      "id": "982bdd27-eeb8-4298-85ef-0c9a2c8e6bf4",
+                      "created_at": "2026-02-10T02:29:34.872798Z",
+                      "id": "f5647fe7-4055-4e26-b1fc-a69ff6bb8b44",
                       "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-02-10T01:38:08.913853Z"
+                      "updated_at": "2026-02-10T02:29:34.872798Z"
                     }
                   ],
                   "created_at": "2026-01-15T10:30:00Z",
@@ -12692,7 +12692,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "FreshRSS",
+                  "service_definition": "Google Nest repeater",
                   "source": {
                     "type": "Manual"
                   },
@@ -13495,14 +13495,14 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-02-10T01:38:08.922838Z",
-                  "id": "e026fe81-64db-4e78-b6e3-bd29f8c76e78",
+                  "created_at": "2026-02-10T02:29:34.881396Z",
+                  "id": "f608b502-9819-4a5b-ab81-727ea63c5d50",
                   "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-02-10T01:38:08.922838Z"
+                  "updated_at": "2026-02-10T02:29:34.881396Z"
                 }
               ],
               "created_at": "2026-01-15T10:30:00Z",
@@ -13511,7 +13511,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "FreshRSS",
+              "service_definition": "Google Nest repeater",
               "source": {
                 "type": "Manual"
               },
@@ -14710,14 +14710,14 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-02-10T01:38:08.914057Z",
-          "id": "e67903a2-3974-4137-b202-3b7348e614c5",
+          "created_at": "2026-02-10T02:29:34.873010Z",
+          "id": "275b8eb7-ab13-43a7-a80f-022d2e36d5f0",
           "interface_id": "550e8400-e29b-41d4-a716-446655440005",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-02-10T01:38:08.914057Z"
+          "updated_at": "2026-02-10T02:29:34.873010Z"
         }
       },
       "BindingBase": {
@@ -15211,7 +15211,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "FreshRSS",
+              "service_definition": "Google Nest repeater",
               "tags": [],
               "virtualization": null
             }
@@ -17067,14 +17067,14 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-02-10T01:38:08.913569Z",
-                  "id": "1050d347-7282-47e3-86bf-87973a1b1b8b",
+                  "created_at": "2026-02-10T02:29:34.872492Z",
+                  "id": "84eff514-64d0-4582-b32f-9acc41b6dbe6",
                   "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-02-10T01:38:08.913569Z"
+                  "updated_at": "2026-02-10T02:29:34.872492Z"
                 }
               ],
               "created_at": "2026-01-15T10:30:00Z",
@@ -17083,7 +17083,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "FreshRSS",
+              "service_definition": "Google Nest repeater",
               "source": {
                 "type": "Manual"
               },
@@ -18976,14 +18976,14 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-02-10T01:38:08.906820Z",
-                        "id": "0cbc17d0-7f96-4511-aa93-c0e73c490cf4",
+                        "created_at": "2026-02-10T02:29:34.862918Z",
+                        "id": "d0b212af-f587-4365-8f77-d93e28f4945f",
                         "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-02-10T01:38:08.906820Z"
+                        "updated_at": "2026-02-10T02:29:34.862918Z"
                       }
                     ],
                     "created_at": "2026-01-15T10:30:00Z",
@@ -18992,7 +18992,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "FreshRSS",
+                    "service_definition": "Google Nest repeater",
                     "source": {
                       "type": "Manual"
                     },
@@ -19069,14 +19069,14 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-02-10T01:38:08.921413Z",
-                    "id": "975d4856-57f9-491e-8981-af96269bb029",
+                    "created_at": "2026-02-10T02:29:34.880233Z",
+                    "id": "9e5470bd-0ced-4cbe-bfe0-bbb78385e93e",
                     "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-02-10T01:38:08.921413Z"
+                    "updated_at": "2026-02-10T02:29:34.880233Z"
                   }
                 ],
                 "created_at": "2026-01-15T10:30:00Z",
@@ -19085,7 +19085,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "FreshRSS",
+                "service_definition": "Google Nest repeater",
                 "source": {
                   "type": "Manual"
                 },
@@ -20067,14 +20067,14 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-02-10T01:38:08.913988Z",
-              "id": "1384bfe3-6181-41c4-b58b-308a8043dba1",
+              "created_at": "2026-02-10T02:29:34.872936Z",
+              "id": "dfa13289-ed87-4aa1-9a6d-c1dbc2abe944",
               "interface_id": "550e8400-e29b-41d4-a716-446655440005",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-02-10T01:38:08.913988Z"
+              "updated_at": "2026-02-10T02:29:34.872936Z"
             }
           ],
           "created_at": "2026-01-15T10:30:00Z",
@@ -20083,7 +20083,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "FreshRSS",
+          "service_definition": "Google Nest repeater",
           "source": {
             "type": "Manual"
           },

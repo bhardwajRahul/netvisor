@@ -58,13 +58,15 @@
 	let showCreateDaemonModal = $state(false);
 	let daemon = $state<Daemon | null>(null);
 
-	// Auto-open modal after onboarding
+	// Auto-open modal after onboarding (only if no daemons exist yet)
 	$effect(() => {
-		if (typeof sessionStorage !== 'undefined') {
+		if (typeof sessionStorage !== 'undefined' && daemonsQuery.isSuccess) {
 			const shouldShow = sessionStorage.getItem('showDaemonSetup');
 			if (shouldShow === 'true') {
 				sessionStorage.removeItem('showDaemonSetup');
-				showCreateDaemonModal = true;
+				if (daemonsData.length === 0) {
+					showCreateDaemonModal = true;
+				}
 			}
 		}
 	});

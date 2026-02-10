@@ -101,7 +101,7 @@
 	// Identify user in PostHog when authenticated (skipped in demo mode by identifyUser)
 	$effect(() => {
 		if (posthogInstance && currentUser && organization !== undefined) {
-			identifyUser(currentUser.id, currentUser.email, currentUser.organization_id);
+			identifyUser(currentUser.id, currentUser.email, organization);
 		}
 	});
 

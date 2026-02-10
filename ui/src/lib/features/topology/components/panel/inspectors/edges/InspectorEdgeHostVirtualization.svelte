@@ -25,7 +25,7 @@
 <div class="space-y-3">
 	{#if vmService}
 		<span class="text-secondary mb-2 block text-sm font-medium">VM Service</span>
-		<div class="card">
+		<div class="card card-static">
 			<EntityDisplayWrapper
 				context={{ interfaceId: null }}
 				item={vmService}
@@ -36,7 +36,7 @@
 
 	{#if hypervisorHost}
 		<span class="text-secondary mb-2 block text-sm font-medium">Hypervisor Host</span>
-		<div class="card">
+		<div class="card card-static">
 			<EntityDisplayWrapper
 				context={{
 					services:

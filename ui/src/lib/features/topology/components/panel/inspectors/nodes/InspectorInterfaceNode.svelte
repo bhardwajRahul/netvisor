@@ -58,7 +58,7 @@
 	{#if thisInterface}
 		<div>
 			<span class="text-secondary mb-2 block text-sm font-medium">This Interface</span>
-			<div class="card">
+			<div class="card card-static">
 				<EntityDisplayWrapper
 					context={interfaceContext}
 					item={thisInterface}
@@ -76,7 +76,7 @@
 			</span>
 			<div class="space-y-1">
 				{#each servicesOnThisInterface as service (service.id)}
-					<div class="card">
+					<div class="card card-static">
 						<EntityDisplayWrapper
 							context={{ interfaceId: nodeData.interface_id ?? null }}
 							item={service}
@@ -92,7 +92,7 @@
 	{#if host}
 		<div>
 			<span class="text-secondary mb-2 block text-sm font-medium">Host</span>
-			<div class="card">
+			<div class="card card-static">
 				<EntityDisplayWrapper
 					context={{
 						services: topology?.services.filter((s) => host && s.host_id == host.id) ?? []
@@ -115,7 +115,7 @@
 			</span>
 			<div class="space-y-1">
 				{#each otherInterfaces as iface (iface.id)}
-					<div class="card">
+					<div class="card card-static">
 						<EntityDisplayWrapper
 							context={interfaceContext}
 							item={iface}

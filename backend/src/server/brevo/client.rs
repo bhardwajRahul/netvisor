@@ -54,6 +54,7 @@ impl BrevoClient {
             email: email.to_string(),
             attributes: attributes.to_attributes(),
             update_enabled: true,
+            email_blacklisted: attributes.email_blacklisted,
         };
 
         let operation = || async {
@@ -164,6 +165,7 @@ impl BrevoClient {
         let url = format!("{}/contacts/{}", BREVO_API_BASE, urlencoding::encode(email));
         let body = UpdateContactRequest {
             attributes: attributes.to_attributes(),
+            email_blacklisted: attributes.email_blacklisted,
         };
 
         let operation = || async {
