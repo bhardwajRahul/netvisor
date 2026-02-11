@@ -64,7 +64,7 @@ const DEMO_ONLY_HOST: &str = "demo.scanopy.net";
 
 fn is_demo_host(host: &str) -> bool {
     let hostname = host.split(':').next().unwrap_or(host);
-    DEMO_HOSTS.iter().any(|&h| h == hostname)
+    DEMO_HOSTS.contains(&hostname)
 }
 
 fn is_demo_only_host(host: &str) -> bool {

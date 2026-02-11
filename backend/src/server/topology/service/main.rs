@@ -129,7 +129,7 @@ impl CrudService<Topology> for TopologyService {
             if_entries,
             entity_tags,
             ports,
-            bindings
+            bindings,
         });
 
         topology.set_graph(nodes, edges);
