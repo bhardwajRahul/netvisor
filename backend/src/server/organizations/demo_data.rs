@@ -4,12 +4,17 @@
 //! company with MSP operations. The data includes multiple networks, subnets, hosts,
 //! services, daemons, API keys, tags, and groups.
 
+use crate::daemon::discovery::types::base::DiscoveryPhase;
 use crate::server::{
     bindings::r#impl::base::Binding,
     daemon_api_keys::r#impl::base::{DaemonApiKey, DaemonApiKeyBase},
     daemons::r#impl::{
-        api::DaemonCapabilities,
+        api::{DaemonCapabilities, DiscoveryUpdatePayload},
         base::{Daemon, DaemonBase, DaemonMode},
+    },
+    discovery::r#impl::{
+        base::{Discovery, DiscoveryBase},
+        types::{DiscoveryType, HostNamingFallback, RunType},
     },
     groups::r#impl::{
         base::{Group, GroupBase},
@@ -24,9 +29,16 @@ use crate::server::{
         definitions::ServiceDefinitionRegistry,
         r#impl::base::{Service, ServiceBase},
     },
-    shared::types::{Color, entities::EntitySource},
+    shared::{
+        api_key_common::{ApiKeyType, generate_api_key_for_storage},
+        types::{Color, entities::EntitySource},
+    },
+    shares::r#impl::base::{Share, ShareBase, ShareOptions},
     snmp_credentials::{
-        r#impl::base::{SnmpCredential, SnmpCredentialBase, SnmpVersion},
+        r#impl::{
+            base::{SnmpCredential, SnmpCredentialBase, SnmpVersion},
+            discovery::{SnmpCredentialMapping, SnmpQueryCredential},
+        },
         resolution::lldp::{LldpChassisId, LldpPortId},
     },
     subnets::r#impl::{
@@ -38,8 +50,10 @@ use crate::server::{
         base::{Topology, TopologyBase},
         edges::EdgeStyle,
     },
+    user_api_keys::r#impl::base::{UserApiKey, UserApiKeyBase},
+    users::r#impl::permissions::UserOrgPermissions,
 };
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use cidr::{IpCidr, Ipv4Cidr};
 use secrecy::SecretString;
 use semver::Version;
@@ -83,6 +97,9 @@ pub struct DemoData {
     pub api_keys: Vec<DaemonApiKey>,
     pub groups: Vec<Group>,
     pub topologies: Vec<Topology>,
+    pub discoveries: Vec<Discovery>,
+    pub shares: Vec<Share>,
+    pub user_api_keys: Vec<(UserApiKey, Vec<Uuid>)>,
 }
 
 impl DemoData {
@@ -95,9 +112,10 @@ impl DemoData {
         // Generate all entities in dependency order
         let tags = generate_tags(organization_id, now);
         let snmp_credentials = generate_snmp_credentials(organization_id, now);
-        let networks = generate_networks(organization_id, &tags, now);
+        let networks = generate_networks(organization_id, &tags, &snmp_credentials, now);
         let subnets = generate_subnets(&networks, &tags, now);
-        let hosts_with_services = generate_hosts_and_services(&networks, &subnets, &tags, now);
+        let hosts_with_services =
+            generate_hosts_and_services(&networks, &subnets, &tags, &snmp_credentials, now);
 
         // Collect hosts for daemon generation and if_entry generation
         let hosts: Vec<&Host> = hosts_with_services.iter().map(|h| &h.host).collect();
@@ -111,6 +129,16 @@ impl DemoData {
         let daemons = generate_daemons(&networks, &hosts, &subnets, now, user_id);
         let api_keys = generate_api_keys(&networks, now);
         let topologies = generate_topologies(&networks, now);
+        let discoveries = generate_discoveries(
+            &networks,
+            &subnets,
+            &daemons,
+            &hosts,
+            &snmp_credentials,
+            now,
+        );
+        let shares = generate_shares(&topologies, &networks, user_id, now);
+        let user_api_keys = generate_user_api_keys(&networks, organization_id, now);
 
         // Groups are empty - they'll be generated in the handler after services are created
         // This ensures group bindings reference actual service binding IDs
@@ -128,6 +156,9 @@ impl DemoData {
             api_keys,
             groups,
             topologies,
+            discoveries,
+            shares,
+            user_api_keys,
         }
     }
 }
@@ -219,7 +250,12 @@ fn generate_snmp_credentials(organization_id: Uuid, now: DateTime<Utc>) -> Vec<S
 // Networks
 // ============================================================================
 
-fn generate_networks(organization_id: Uuid, tags: &[Tag], now: DateTime<Utc>) -> Vec<Network> {
+fn generate_networks(
+    organization_id: Uuid,
+    tags: &[Tag],
+    snmp_credentials: &[SnmpCredential],
+    now: DateTime<Utc>,
+) -> Vec<Network> {
     let production_tag = tags
         .iter()
         .find(|t| t.base.name == "Production")
@@ -228,6 +264,15 @@ fn generate_networks(organization_id: Uuid, tags: &[Tag], now: DateTime<Utc>) ->
         .iter()
         .find(|t| t.base.name == "Managed Client")
         .map(|t| t.id);
+
+    let default_snmpv2c = snmp_credentials
+        .iter()
+        .find(|c| c.base.name == "Default SNMPv2c")
+        .map(|c| c.id);
+    let network_devices_cred = snmp_credentials
+        .iter()
+        .find(|c| c.base.name == "Network Devices")
+        .map(|c| c.id);
 
     // Stagger timestamps so networks sort in predictable order (Headquarters first)
     vec![
@@ -239,7 +284,7 @@ fn generate_networks(organization_id: Uuid, tags: &[Tag], now: DateTime<Utc>) ->
                 name: "Headquarters".to_string(),
                 organization_id,
                 tags: production_tag.into_iter().collect(),
-                snmp_credential_id: None,
+                snmp_credential_id: default_snmpv2c,
             },
         },
         Network {
@@ -261,7 +306,7 @@ fn generate_networks(organization_id: Uuid, tags: &[Tag], now: DateTime<Utc>) ->
                 name: "Remote Office - Denver".to_string(),
                 organization_id,
                 tags: vec![],
-                snmp_credential_id: None,
+                snmp_credential_id: default_snmpv2c,
             },
         },
         Network {
@@ -272,7 +317,7 @@ fn generate_networks(organization_id: Uuid, tags: &[Tag], now: DateTime<Utc>) ->
                 name: "Client: Riverside Medical".to_string(),
                 organization_id,
                 tags: managed_client_tag.into_iter().collect(),
-                snmp_credential_id: None,
+                snmp_credential_id: network_devices_cred,
             },
         },
     ]
@@ -497,6 +542,7 @@ fn create_host(
     subnet: &Subnet,
     ip: Ipv4Addr,
     tags: Vec<Uuid>,
+    snmp_credential_id: Option<Uuid>,
     now: DateTime<Utc>,
 ) -> (Host, Interface) {
     let host_id = Uuid::new_v4();
@@ -533,7 +579,7 @@ fn create_host(
             sys_contact: None,
             management_url: None,
             chassis_id: None,
-            snmp_credential_id: None,
+            snmp_credential_id,
         },
     };
     (host, interface)
@@ -608,6 +654,7 @@ fn generate_hosts_and_services(
     networks: &[Network],
     subnets: &[Subnet],
     tags: &[Tag],
+    snmp_credentials: &[SnmpCredential],
     now: DateTime<Utc>,
 ) -> Vec<HostWithServices> {
     let mut result = Vec::new();
@@ -621,6 +668,11 @@ fn generate_hosts_and_services(
     };
     let find_subnet = |name: &str| subnets.iter().find(|s| s.base.name.contains(name)).unwrap();
     let find_tag = |name: &str| tags.iter().find(|t| t.base.name == name).map(|t| t.id);
+
+    let network_devices_cred = snmp_credentials
+        .iter()
+        .find(|c| c.base.name == "Network Devices")
+        .map(|c| c.id);
 
     let critical_tag = find_tag("Critical");
     let production_tag = find_tag("Production");
@@ -648,6 +700,7 @@ fn generate_hosts_and_services(
             hq_mgmt,
             Ipv4Addr::new(10, 0, 1, 1),
             critical_tag.into_iter().collect(),
+            network_devices_cred,
             now
         ),
         now,
@@ -669,6 +722,7 @@ fn generate_hosts_and_services(
             hq_mgmt,
             Ipv4Addr::new(10, 0, 1, 10),
             vec![],
+            None,
             now
         ),
         now,
@@ -690,6 +744,7 @@ fn generate_hosts_and_services(
             hq_iot,
             Ipv4Addr::new(10, 0, 30, 100),
             iot_tag.into_iter().collect(),
+            None,
             now
         ),
         now,
@@ -711,6 +766,7 @@ fn generate_hosts_and_services(
             hq_mgmt,
             Ipv4Addr::new(10, 0, 1, 3),
             vec![],
+            network_devices_cred,
             now
         ),
         now,
@@ -727,6 +783,7 @@ fn generate_hosts_and_services(
             hq_servers,
             Ipv4Addr::new(10, 0, 20, 5),
             production_tag.into_iter().collect(),
+            None,
             now
         ),
         now,
@@ -747,6 +804,7 @@ fn generate_hosts_and_services(
             hq_servers,
             Ipv4Addr::new(10, 0, 20, 6),
             production_tag.into_iter().collect(),
+            None,
             now
         ),
         now,
@@ -768,6 +826,7 @@ fn generate_hosts_and_services(
             hq_servers,
             Ipv4Addr::new(10, 0, 20, 10),
             critical_tag.into_iter().chain(backup_tag).collect(),
+            None,
             now
         ),
         now,
@@ -789,6 +848,7 @@ fn generate_hosts_and_services(
             hq_servers,
             Ipv4Addr::new(10, 0, 20, 20),
             production_tag.into_iter().collect(),
+            None,
             now
         ),
         now,
@@ -811,6 +871,7 @@ fn generate_hosts_and_services(
             hq_servers,
             Ipv4Addr::new(10, 0, 20, 25),
             production_tag.into_iter().collect(),
+            None,
             now
         ),
         now,
@@ -832,6 +893,7 @@ fn generate_hosts_and_services(
             hq_servers,
             Ipv4Addr::new(10, 0, 20, 30),
             production_tag.into_iter().collect(),
+            None,
             now
         ),
         now,
@@ -853,6 +915,7 @@ fn generate_hosts_and_services(
             hq_mgmt,
             Ipv4Addr::new(10, 0, 1, 50),
             monitoring_tag.into_iter().collect(),
+            None,
             now
         ),
         now,
@@ -874,6 +937,7 @@ fn generate_hosts_and_services(
             hq_mgmt,
             Ipv4Addr::new(10, 0, 1, 51),
             monitoring_tag.into_iter().collect(),
+            None,
             now
         ),
         now,
@@ -895,6 +959,7 @@ fn generate_hosts_and_services(
             hq_mgmt,
             Ipv4Addr::new(10, 0, 1, 52),
             monitoring_tag.into_iter().collect(),
+            None,
             now
         ),
         now,
@@ -916,6 +981,7 @@ fn generate_hosts_and_services(
             hq_mgmt,
             Ipv4Addr::new(10, 0, 1, 5),
             vec![],
+            None,
             now
         ),
         now,
@@ -932,6 +998,7 @@ fn generate_hosts_and_services(
             hq_servers,
             Ipv4Addr::new(10, 0, 20, 35),
             critical_tag.into_iter().collect(),
+            None,
             now
         ),
         now,
@@ -953,6 +1020,7 @@ fn generate_hosts_and_services(
             hq_servers,
             Ipv4Addr::new(10, 0, 20, 40),
             production_tag.into_iter().collect(),
+            None,
             now
         ),
         now,
@@ -974,6 +1042,7 @@ fn generate_hosts_and_services(
             hq_iot,
             Ipv4Addr::new(10, 0, 30, 10),
             iot_tag.into_iter().collect(),
+            None,
             now
         ),
         now,
@@ -995,6 +1064,7 @@ fn generate_hosts_and_services(
             hq_iot,
             Ipv4Addr::new(10, 0, 30, 50),
             iot_tag.into_iter().collect(),
+            None,
             now
         ),
         now,
@@ -1016,6 +1086,7 @@ fn generate_hosts_and_services(
             hq_iot,
             Ipv4Addr::new(10, 0, 30, 60),
             iot_tag.into_iter().collect(),
+            None,
             now
         ),
         now,
@@ -1037,6 +1108,7 @@ fn generate_hosts_and_services(
             hq_lan,
             Ipv4Addr::new(10, 0, 10, 101),
             vec![],
+            None,
             now
         ),
         now,
@@ -1052,6 +1124,7 @@ fn generate_hosts_and_services(
             hq_lan,
             Ipv4Addr::new(10, 0, 10, 102),
             vec![],
+            None,
             now
         ),
         now,
@@ -1077,6 +1150,7 @@ fn generate_hosts_and_services(
                 .chain(critical_tag)
                 .chain(web_tier_tag)
                 .collect(),
+            None,
             now
         ),
         now,
@@ -1098,6 +1172,7 @@ fn generate_hosts_and_services(
             cloud_prod,
             Ipv4Addr::new(172, 16, 0, 20),
             production_tag.into_iter().chain(web_tier_tag).collect(),
+            None,
             now
         ),
         now,
@@ -1119,6 +1194,7 @@ fn generate_hosts_and_services(
             cloud_prod,
             Ipv4Addr::new(172, 16, 0, 21),
             production_tag.into_iter().chain(web_tier_tag).collect(),
+            None,
             now
         ),
         now,
@@ -1141,6 +1217,7 @@ fn generate_hosts_and_services(
             cloud_db,
             Ipv4Addr::new(172, 16, 1, 10),
             database_tag.into_iter().chain(critical_tag).collect(),
+            None,
             now
         ),
         now,
@@ -1162,6 +1239,7 @@ fn generate_hosts_and_services(
             cloud_db,
             Ipv4Addr::new(172, 16, 1, 11),
             database_tag.into_iter().collect(),
+            None,
             now
         ),
         now,
@@ -1183,6 +1261,7 @@ fn generate_hosts_and_services(
             cloud_db,
             Ipv4Addr::new(172, 16, 1, 20),
             database_tag.into_iter().collect(),
+            None,
             now
         ),
         now,
@@ -1204,6 +1283,7 @@ fn generate_hosts_and_services(
             cloud_db,
             Ipv4Addr::new(172, 16, 1, 30),
             database_tag.into_iter().collect(),
+            None,
             now
         ),
         now,
@@ -1225,6 +1305,7 @@ fn generate_hosts_and_services(
             cloud_prod,
             Ipv4Addr::new(172, 16, 0, 30),
             production_tag.into_iter().collect(),
+            None,
             now
         ),
         now,
@@ -1249,6 +1330,7 @@ fn generate_hosts_and_services(
             denver_lan,
             Ipv4Addr::new(192, 168, 50, 1),
             vec![],
+            network_devices_cred,
             now
         ),
         now,
@@ -1264,6 +1346,7 @@ fn generate_hosts_and_services(
             denver_lan,
             Ipv4Addr::new(192, 168, 50, 10),
             backup_tag.into_iter().collect(),
+            None,
             now
         ),
         now,
@@ -1284,6 +1367,7 @@ fn generate_hosts_and_services(
             denver_lan,
             Ipv4Addr::new(192, 168, 50, 50),
             iot_tag.into_iter().collect(),
+            None,
             now
         ),
         now,
@@ -1304,6 +1388,7 @@ fn generate_hosts_and_services(
             denver_lan,
             Ipv4Addr::new(192, 168, 50, 2),
             iot_tag.into_iter().collect(),
+            None,
             now
         ),
         now,
@@ -1326,6 +1411,7 @@ fn generate_hosts_and_services(
             denver_vpn,
             Ipv4Addr::new(10, 8, 0, 1),
             vec![],
+            None,
             now
         ),
         now,
@@ -1351,6 +1437,7 @@ fn generate_hosts_and_services(
             riverside_lan,
             Ipv4Addr::new(10, 100, 0, 1),
             managed_tag.into_iter().chain(critical_tag).collect(),
+            None,
             now
         ),
         now,
@@ -1371,6 +1458,7 @@ fn generate_hosts_and_services(
             riverside_lan,
             Ipv4Addr::new(10, 100, 0, 10),
             managed_tag.into_iter().chain(critical_tag).collect(),
+            None,
             now
         ),
         now,
@@ -1391,6 +1479,7 @@ fn generate_hosts_and_services(
             riverside_lan,
             Ipv4Addr::new(10, 100, 0, 20),
             managed_tag.into_iter().collect(),
+            None,
             now
         ),
         now,
@@ -1411,6 +1500,7 @@ fn generate_hosts_and_services(
             riverside_mgmt,
             Ipv4Addr::new(10, 100, 10, 5),
             managed_tag.into_iter().chain(backup_tag).collect(),
+            None,
             now
         ),
         now,
@@ -1431,6 +1521,7 @@ fn generate_hosts_and_services(
             riverside_lan,
             Ipv4Addr::new(10, 100, 0, 101),
             managed_tag.into_iter().collect(),
+            None,
             now
         ),
         now,
@@ -1451,6 +1542,7 @@ fn generate_hosts_and_services(
             riverside_lan,
             Ipv4Addr::new(10, 100, 0, 102),
             managed_tag.into_iter().collect(),
+            None,
             now
         ),
         now,
@@ -2160,6 +2252,370 @@ fn generate_api_keys(networks: &[Network], now: DateTime<Utc>) -> Vec<DaemonApiK
             },
         },
     ]
+}
+
+// ============================================================================
+// Discoveries
+// ============================================================================
+
+fn generate_discoveries(
+    networks: &[Network],
+    subnets: &[Subnet],
+    daemons: &[Daemon],
+    hosts: &[&Host],
+    snmp_credentials: &[SnmpCredential],
+    now: DateTime<Utc>,
+) -> Vec<Discovery> {
+    let find_network = |name: &str| {
+        networks
+            .iter()
+            .find(|n| n.base.name.contains(name))
+            .unwrap()
+    };
+    let find_daemon = |name: &str| daemons.iter().find(|d| d.base.name.contains(name));
+    let find_host = |name: &str| hosts.iter().find(|h| h.base.name == name).copied();
+    let find_subnets_for_network = |network_id: Uuid| -> Vec<Uuid> {
+        subnets
+            .iter()
+            .filter(|s| s.base.network_id == network_id)
+            .map(|s| s.id)
+            .collect()
+    };
+
+    let default_cred = snmp_credentials
+        .iter()
+        .find(|c| c.base.name == "Default SNMPv2c");
+
+    let mut discoveries = Vec::new();
+
+    // Ad-hoc discoveries (manual, run before but won't auto-run)
+    let hq = find_network("Headquarters");
+    if let Some(daemon) = find_daemon("HQ") {
+        let hq_subnet_ids = find_subnets_for_network(hq.id);
+        discoveries.push(Discovery {
+            id: Uuid::new_v4(),
+            created_at: now,
+            updated_at: now,
+            base: DiscoveryBase {
+                discovery_type: DiscoveryType::Network {
+                    subnet_ids: Some(hq_subnet_ids),
+                    host_naming_fallback: HostNamingFallback::BestService,
+                    snmp_credentials: SnmpCredentialMapping {
+                        default_credential: default_cred.map(|_| SnmpQueryCredential {
+                            version: SnmpVersion::V2c,
+                            community: "public".to_string(),
+                        }),
+                        ip_overrides: vec![],
+                    },
+                    probe_raw_socket_ports: false,
+                },
+                run_type: RunType::AdHoc {
+                    last_run: Some(now - Duration::days(2)),
+                },
+                name: "HQ Network Scan".to_string(),
+                daemon_id: daemon.id,
+                network_id: hq.id,
+                tags: vec![],
+            },
+        });
+
+        // Docker discovery on docker-prod01
+        if let Some(docker_host) = find_host("docker-prod01") {
+            discoveries.push(Discovery {
+                id: Uuid::new_v4(),
+                created_at: now,
+                updated_at: now,
+                base: DiscoveryBase {
+                    discovery_type: DiscoveryType::Docker {
+                        host_id: docker_host.id,
+                        host_naming_fallback: HostNamingFallback::BestService,
+                    },
+                    run_type: RunType::AdHoc {
+                        last_run: Some(now - Duration::days(5)),
+                    },
+                    name: "HQ Docker Discovery".to_string(),
+                    daemon_id: daemon.id,
+                    network_id: hq.id,
+                    tags: vec![],
+                },
+            });
+        }
+    }
+
+    let cloud = find_network("Cloud");
+    if let Some(daemon) = find_daemon("Cloud") {
+        let cloud_subnet_ids = find_subnets_for_network(cloud.id);
+        discoveries.push(Discovery {
+            id: Uuid::new_v4(),
+            created_at: now,
+            updated_at: now,
+            base: DiscoveryBase {
+                discovery_type: DiscoveryType::Network {
+                    subnet_ids: Some(cloud_subnet_ids),
+                    host_naming_fallback: HostNamingFallback::BestService,
+                    snmp_credentials: SnmpCredentialMapping {
+                        default_credential: None,
+                        ip_overrides: vec![],
+                    },
+                    probe_raw_socket_ports: false,
+                },
+                run_type: RunType::AdHoc {
+                    last_run: Some(now - Duration::days(3)),
+                },
+                name: "Cloud Infrastructure Scan".to_string(),
+                daemon_id: daemon.id,
+                network_id: cloud.id,
+                tags: vec![],
+            },
+        });
+    }
+
+    let denver = find_network("Denver");
+    if let Some(daemon) = find_daemon("Denver") {
+        let denver_subnet_ids = find_subnets_for_network(denver.id);
+        discoveries.push(Discovery {
+            id: Uuid::new_v4(),
+            created_at: now,
+            updated_at: now,
+            base: DiscoveryBase {
+                discovery_type: DiscoveryType::Network {
+                    subnet_ids: Some(denver_subnet_ids),
+                    host_naming_fallback: HostNamingFallback::BestService,
+                    snmp_credentials: SnmpCredentialMapping {
+                        default_credential: default_cred.map(|_| SnmpQueryCredential {
+                            version: SnmpVersion::V2c,
+                            community: "public".to_string(),
+                        }),
+                        ip_overrides: vec![],
+                    },
+                    probe_raw_socket_ports: false,
+                },
+                run_type: RunType::AdHoc {
+                    last_run: Some(now - Duration::days(7)),
+                },
+                name: "Denver Office Scan".to_string(),
+                daemon_id: daemon.id,
+                network_id: denver.id,
+                tags: vec![],
+            },
+        });
+    }
+
+    // Historical discoveries (completed past runs)
+    if let Some(daemon) = find_daemon("HQ") {
+        let hq_subnet_ids = find_subnets_for_network(hq.id);
+        let three_weeks_ago = now - Duration::weeks(3);
+        discoveries.push(Discovery {
+            id: Uuid::new_v4(),
+            created_at: three_weeks_ago,
+            updated_at: three_weeks_ago,
+            base: DiscoveryBase {
+                discovery_type: DiscoveryType::Network {
+                    subnet_ids: Some(hq_subnet_ids.clone()),
+                    host_naming_fallback: HostNamingFallback::BestService,
+                    snmp_credentials: SnmpCredentialMapping {
+                        default_credential: None,
+                        ip_overrides: vec![],
+                    },
+                    probe_raw_socket_ports: false,
+                },
+                run_type: RunType::Historical {
+                    results: DiscoveryUpdatePayload {
+                        session_id: Uuid::new_v4(),
+                        daemon_id: daemon.id,
+                        network_id: hq.id,
+                        phase: DiscoveryPhase::Complete,
+                        discovery_type: DiscoveryType::Network {
+                            subnet_ids: Some(hq_subnet_ids.clone()),
+                            host_naming_fallback: HostNamingFallback::BestService,
+                            snmp_credentials: SnmpCredentialMapping {
+                                default_credential: None,
+                                ip_overrides: vec![],
+                            },
+                            probe_raw_socket_ports: false,
+                        },
+                        progress: 100,
+                        error: None,
+                        started_at: Some(three_weeks_ago),
+                        finished_at: Some(three_weeks_ago + Duration::minutes(12)),
+                    },
+                },
+                name: "HQ Scan - Jan 15".to_string(),
+                daemon_id: daemon.id,
+                network_id: hq.id,
+                tags: vec![],
+            },
+        });
+
+        let one_week_ago = now - Duration::weeks(1);
+        discoveries.push(Discovery {
+            id: Uuid::new_v4(),
+            created_at: one_week_ago,
+            updated_at: one_week_ago,
+            base: DiscoveryBase {
+                discovery_type: DiscoveryType::Network {
+                    subnet_ids: Some(hq_subnet_ids.clone()),
+                    host_naming_fallback: HostNamingFallback::BestService,
+                    snmp_credentials: SnmpCredentialMapping {
+                        default_credential: None,
+                        ip_overrides: vec![],
+                    },
+                    probe_raw_socket_ports: false,
+                },
+                run_type: RunType::Historical {
+                    results: DiscoveryUpdatePayload {
+                        session_id: Uuid::new_v4(),
+                        daemon_id: daemon.id,
+                        network_id: hq.id,
+                        phase: DiscoveryPhase::Complete,
+                        discovery_type: DiscoveryType::Network {
+                            subnet_ids: Some(hq_subnet_ids),
+                            host_naming_fallback: HostNamingFallback::BestService,
+                            snmp_credentials: SnmpCredentialMapping {
+                                default_credential: None,
+                                ip_overrides: vec![],
+                            },
+                            probe_raw_socket_ports: false,
+                        },
+                        progress: 100,
+                        error: None,
+                        started_at: Some(one_week_ago),
+                        finished_at: Some(one_week_ago + Duration::minutes(8)),
+                    },
+                },
+                name: "HQ Scan - Jan 28".to_string(),
+                daemon_id: daemon.id,
+                network_id: hq.id,
+                tags: vec![],
+            },
+        });
+    }
+
+    if let Some(daemon) = find_daemon("Cloud") {
+        let cloud_subnet_ids = find_subnets_for_network(cloud.id);
+        let two_weeks_ago = now - Duration::weeks(2);
+        discoveries.push(Discovery {
+            id: Uuid::new_v4(),
+            created_at: two_weeks_ago,
+            updated_at: two_weeks_ago,
+            base: DiscoveryBase {
+                discovery_type: DiscoveryType::Network {
+                    subnet_ids: Some(cloud_subnet_ids.clone()),
+                    host_naming_fallback: HostNamingFallback::BestService,
+                    snmp_credentials: SnmpCredentialMapping {
+                        default_credential: None,
+                        ip_overrides: vec![],
+                    },
+                    probe_raw_socket_ports: false,
+                },
+                run_type: RunType::Historical {
+                    results: DiscoveryUpdatePayload {
+                        session_id: Uuid::new_v4(),
+                        daemon_id: daemon.id,
+                        network_id: cloud.id,
+                        phase: DiscoveryPhase::Failed,
+                        discovery_type: DiscoveryType::Network {
+                            subnet_ids: Some(cloud_subnet_ids),
+                            host_naming_fallback: HostNamingFallback::BestService,
+                            snmp_credentials: SnmpCredentialMapping {
+                                default_credential: None,
+                                ip_overrides: vec![],
+                            },
+                            probe_raw_socket_ports: false,
+                        },
+                        progress: 100,
+                        error: Some("Connection timeout: daemon lost connectivity to subnet 172.16.1.0/24 during scan".to_string()),
+                        started_at: Some(two_weeks_ago),
+                        finished_at: Some(two_weeks_ago + Duration::minutes(3)),
+                    },
+                },
+                name: "Cloud Scan - Jan 20".to_string(),
+                daemon_id: daemon.id,
+                network_id: cloud.id,
+                tags: vec![],
+            },
+        });
+    }
+
+    discoveries
+}
+
+// ============================================================================
+// Shares
+// ============================================================================
+
+fn generate_shares(
+    topologies: &[Topology],
+    networks: &[Network],
+    user_id: Uuid,
+    now: DateTime<Utc>,
+) -> Vec<Share> {
+    let hq_network = networks.iter().find(|n| n.base.name == "Headquarters");
+    let hq_topology =
+        hq_network.and_then(|net| topologies.iter().find(|t| t.base.network_id == net.id));
+
+    let mut shares = Vec::new();
+
+    if let (Some(network), Some(topology)) = (hq_network, hq_topology) {
+        shares.push(Share {
+            id: Uuid::new_v4(),
+            created_at: now,
+            updated_at: now,
+            base: ShareBase {
+                topology_id: topology.id,
+                network_id: network.id,
+                created_by: user_id,
+                name: "HQ Public View".to_string(),
+                is_enabled: true,
+                expires_at: None,
+                password_hash: None,
+                allowed_domains: None,
+                options: ShareOptions {
+                    show_inspect_panel: true,
+                    show_zoom_controls: true,
+                    show_export_button: false,
+                },
+            },
+        });
+    }
+
+    shares
+}
+
+// ============================================================================
+// User API Keys
+// ============================================================================
+
+fn generate_user_api_keys(
+    networks: &[Network],
+    organization_id: Uuid,
+    now: DateTime<Utc>,
+) -> Vec<(UserApiKey, Vec<Uuid>)> {
+    use super::handlers::DEMO_USER_ID;
+
+    let network_ids: Vec<Uuid> = networks.iter().map(|n| n.id).collect();
+    let (_plaintext, hashed) = generate_api_key_for_storage(ApiKeyType::User);
+
+    vec![(
+        UserApiKey {
+            id: Uuid::new_v4(),
+            created_at: now,
+            updated_at: now,
+            base: UserApiKeyBase {
+                key: hashed,
+                name: "Monitoring Integration Key".to_string(),
+                user_id: DEMO_USER_ID,
+                organization_id,
+                permissions: UserOrgPermissions::Member,
+                last_used: None,
+                expires_at: None,
+                is_enabled: true,
+                tags: vec![],
+                network_ids: vec![], // hydrated by create_with_networks
+            },
+        },
+        network_ids,
+    )]
 }
 
 // ============================================================================

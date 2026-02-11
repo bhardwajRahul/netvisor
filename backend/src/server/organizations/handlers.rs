@@ -201,7 +201,16 @@ pub async fn populate_demo_data(
         created_tags.push(created);
     }
 
-    // 2. Networks (depends on organization, tags) - keep track for group generation
+    // 2. SNMP Credentials (depends on organization — must precede networks)
+    for credential in demo_data.snmp_credentials {
+        state
+            .services
+            .snmp_credential_service
+            .create(credential, entity.clone())
+            .await?;
+    }
+
+    // 3. Networks (depends on organization, tags, snmp_credentials) - keep track for group generation
     let mut created_networks = Vec::new();
     for network in demo_data.networks {
         let created = state
@@ -212,7 +221,7 @@ pub async fn populate_demo_data(
         created_networks.push(created);
     }
 
-    // 3. Subnets (depends on networks)
+    // 4. Subnets (depends on networks)
     for subnet in demo_data.subnets {
         state
             .services
@@ -221,16 +230,7 @@ pub async fn populate_demo_data(
             .await?;
     }
 
-    // 3.5 SNMP Credentials (depends on organization)
-    for credential in demo_data.snmp_credentials {
-        state
-            .services
-            .snmp_credential_service
-            .create(credential, entity.clone())
-            .await?;
-    }
-
-    // 4. Hosts with Services - collect created services for group generation
+    // 5. Hosts with Services - collect created services for group generation
     let mut all_created_services: Vec<Service> = Vec::new();
     for host_with_services in demo_data.hosts_with_services {
         // Match if_entries for this host by host_id
@@ -358,7 +358,7 @@ pub async fn populate_demo_data(
             .await?;
     }
 
-    // 6. API Keys (depends on networks)
+    // 6. Daemon API Keys (depends on networks)
     for api_key in demo_data.api_keys {
         state
             .services
@@ -367,7 +367,17 @@ pub async fn populate_demo_data(
             .await?;
     }
 
-    // 7. Groups - generate with actual created services to get correct binding IDs
+    // 7. Discoveries (depends on daemons, networks, subnets)
+    for discovery in demo_data.discoveries {
+        state
+            .services
+            .discovery_service
+            .create_discovery(discovery, entity.clone())
+            .await
+            .map_err(|e| ApiError::internal_error(&e.to_string()))?;
+    }
+
+    // 8. Groups - generate with actual created services to get correct binding IDs
     let groups = generate_groups(&created_networks, &all_created_services, &created_tags);
     for group in groups {
         state
@@ -377,12 +387,21 @@ pub async fn populate_demo_data(
             .await?;
     }
 
-    // 8. Topologies (depends on networks)
+    // 9. Topologies (depends on networks)
     for topology in demo_data.topologies {
         state
             .services
             .topology_service
             .create(topology, entity.clone())
+            .await?;
+    }
+
+    // 10. Shares (depends on topologies)
+    for share in demo_data.shares {
+        state
+            .services
+            .share_service
+            .create(share, entity.clone())
             .await?;
     }
 
@@ -403,6 +422,16 @@ pub async fn populate_demo_data(
         .user_service
         .create(demo_admin, entity.clone())
         .await?;
+
+    // 11. User API Keys (depends on demo admin user)
+    for (api_key, network_ids) in demo_data.user_api_keys {
+        state
+            .services
+            .user_api_key_service
+            .create_with_networks(api_key, network_ids, entity.clone())
+            .await
+            .map_err(|e| ApiError::internal_error(&e.to_string()))?;
+    }
 
     Ok(Json(ApiResponse::success(())))
 }
@@ -425,21 +454,18 @@ async fn reset_organization_data(
 
     // Delete all data except org and owner user
     // Order matters due to foreign keys:
-    // 1. Groups depend on services
+    // 1. Shares depend on topologies/networks
     // 2. Discoveries depend on daemons/networks
     // 3. Daemons depend on hosts/networks
-    // 4. Services depend on hosts
-    // 5. Hosts depend on networks/subnets
-    // 6. Subnets depend on networks
-    // 7. API keys depend on networks
-    // 8. Tags (no dependencies, but referenced by other entities)
-
-    // Delete all data except org and owner user
-    // Order matters due to foreign keys:
-    // 1. Discoveries depend on daemons/networks
-    // 2. Daemons depend on hosts/networks
-    // 3. Hosts/services depend on networks
-    // 4. API keys depend on networks
+    // 4. Hosts/services depend on networks
+    // 5. Topologies depend on networks
+    // 6. API keys (daemon + user) depend on networks/users
+    // 7. Networks, credentials, tags, invites
+    state
+        .services
+        .share_service
+        .delete_all_for_org(organization_id, &network_ids, auth.clone())
+        .await?;
     state
         .services
         .discovery_service
@@ -463,6 +489,11 @@ async fn reset_organization_data(
     state
         .services
         .daemon_api_key_service
+        .delete_all_for_org(organization_id, &network_ids, auth.clone())
+        .await?;
+    state
+        .services
+        .user_api_key_service
         .delete_all_for_org(organization_id, &network_ids, auth.clone())
         .await?;
     state
