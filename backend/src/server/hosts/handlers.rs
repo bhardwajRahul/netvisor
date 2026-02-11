@@ -18,6 +18,7 @@ use crate::server::shared::services::{csv::build_csv, traits::CrudService};
 use crate::server::shared::storage::traits::Entity;
 use crate::server::shared::storage::{filter::StorableFilter, traits::Storable};
 use crate::server::shared::types::api::{ApiErrorResponse, EmptyApiResponse};
+use crate::server::shared::types::error_codes::ErrorCode;
 use crate::server::shared::validation::{validate_network_access, validate_read_access};
 use crate::server::{
     config::AppState,
@@ -31,6 +32,7 @@ use crate::server::{
 };
 use axum::body::Body;
 use axum::extract::{Path, State};
+use axum::http::StatusCode;
 use axum::http::{HeaderMap, HeaderValue, header};
 use axum::response::{IntoResponse, Json};
 use serde::{Deserialize, Serialize};
@@ -308,6 +310,7 @@ async fn create_host(
     Json(request): Json<HostCreateRequestBody>,
 ) -> ApiResult<Json<ApiResponse<HostCreateResponse>>> {
     let network_ids = auth.network_ids();
+    let organization_id = auth.organization_id();
     let entity = auth.into_entity();
     let host_service = &state.services.host_service;
 
@@ -331,6 +334,27 @@ async fn create_host(
                 .ok_or_else(|| {
                     ApiError::bad_request(&format!("Network {} not found", request.network_id))
                 })?;
+
+            // Check host limit on plan
+            if let Some(org_id) = organization_id
+                && let Some(org) = state
+                    .services
+                    .organization_service
+                    .get_by_id(&org_id)
+                    .await?
+                && let Some(plan) = &org.base.plan
+                && let Some(limit) = plan.host_limit()
+            {
+                let org_filter = StorableFilter::<Host>::new_from_network_ids(&network_ids);
+                let current_hosts =
+                    state.services.host_service.get_all(org_filter).await?.len() as u64;
+                if current_hosts >= limit {
+                    return Err(ApiError::coded(
+                        StatusCode::FORBIDDEN,
+                        ErrorCode::BillingHostLimitReached { limit },
+                    ));
+                }
+            }
 
             // Check interface subnets are on the same network
             for interface in &request.interfaces {
@@ -383,7 +407,7 @@ async fn create_host(
             } = discovery_request;
 
             let host_response = host_service
-                .discover_host(host, interfaces, ports, services, if_entries, entity)
+                .discover_host(host, interfaces, ports, services, if_entries, entity, None)
                 .await?;
 
             let legacy_response = LegacyHostWithServicesResponse::from_host_response(host_response);
@@ -520,7 +544,7 @@ async fn create_host_discovery(
     let created = state
         .services
         .daemon_service
-        .process_discovery_entities(entities, auth.into_entity())
+        .process_discovery_entities(entities, auth.into_entity(), None)
         .await?;
 
     let (_, host_response) = created

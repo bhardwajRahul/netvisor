@@ -3,7 +3,7 @@ use crate::server::shared::extractors::Query;
 use crate::server::shared::storage::traits::Entity;
 use crate::server::{
     auth::middleware::{
-        features::{ApiKeyFeature, BlockedInDemoMode, RequireFeature},
+        features::{ApiKeyFeature, RequireFeature},
         permissions::{Authorized, IsUser, Member, Viewer},
     },
     config::AppState,
@@ -123,7 +123,6 @@ pub async fn create_user_api_key(
     State(state): State<Arc<AppState>>,
     auth: Authorized<IsUser>,
     _feature: RequireFeature<ApiKeyFeature>,
-    _demo_check: RequireFeature<BlockedInDemoMode>,
     Json(mut api_key): Json<UserApiKey>,
 ) -> ApiResult<Json<ApiResponse<UserApiKeyResponse>>> {
     let user_id = auth.require_user_id()?;
@@ -216,7 +215,6 @@ pub async fn update_user_api_key(
     State(state): State<Arc<AppState>>,
     auth: Authorized<IsUser>,
     _feature: RequireFeature<ApiKeyFeature>,
-    _demo_check: RequireFeature<BlockedInDemoMode>,
     Path(id): Path<Uuid>,
     Json(mut request): Json<UserApiKey>,
 ) -> ApiResult<Json<ApiResponse<UserApiKey>>> {
@@ -283,7 +281,6 @@ pub async fn rotate_key_handler(
     State(state): State<Arc<AppState>>,
     auth: Authorized<IsUser>,
     _feature: RequireFeature<ApiKeyFeature>,
-    _demo_check: RequireFeature<BlockedInDemoMode>,
     ClientIp(ip): ClientIp,
     user_agent: Option<TypedHeader<UserAgent>>,
     Path(api_key_id): Path<Uuid>,
@@ -359,7 +356,6 @@ pub async fn delete(
     state: State<Arc<AppState>>,
     auth: Authorized<IsUser>,
     _feature: RequireFeature<ApiKeyFeature>,
-    _demo_check: RequireFeature<BlockedInDemoMode>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<ApiResponse<()>>> {
     let user_id = auth.user_id().unwrap_or(Uuid::nil());
@@ -393,7 +389,6 @@ pub async fn bulk_delete(
     state: State<Arc<AppState>>,
     auth: Authorized<IsUser>,
     _feature: RequireFeature<ApiKeyFeature>,
-    _demo_check: RequireFeature<BlockedInDemoMode>,
     Json(ids): Json<Vec<Uuid>>,
 ) -> ApiResult<Json<ApiResponse<BulkDeleteResponse>>> {
     let user_id = auth.user_id().unwrap_or(Uuid::nil());

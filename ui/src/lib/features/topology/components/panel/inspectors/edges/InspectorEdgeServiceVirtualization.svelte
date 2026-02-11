@@ -97,7 +97,7 @@
 <div class="space-y-3">
 	{#if containerizingHost}
 		<span class="text-secondary mb-2 block text-sm font-medium">Docker Host</span>
-		<div class="card">
+		<div class="card card-static">
 			<EntityDisplayWrapper
 				context={{
 					services:
@@ -112,7 +112,7 @@
 	{/if}
 	{#if containerizingService}
 		<span class="text-secondary mb-2 block text-sm font-medium">Docker Service</span>
-		<div class="card">
+		<div class="card card-static">
 			<EntityDisplayWrapper
 				context={{ interfaceId: null }}
 				item={containerizingService}
@@ -125,7 +125,7 @@
 		{isGrouped ? 'Containerized Services' : 'Containerized Service'}
 	</span>
 	{#each containerizedServices as service (service.id)}
-		<div class="card">
+		<div class="card card-static">
 			<EntityDisplayWrapper
 				context={{ interfaceId: null }}
 				item={service}
@@ -139,7 +139,7 @@
 			>Docker Bridge Subnet{allDockerSubnets.length > 1 ? 's' : ''}</span
 		>
 		{#each allDockerSubnets as subnet (subnet.id)}
-			<div class="card">
+			<div class="card card-static">
 				<EntityDisplayWrapper context={{}} item={subnet} displayComponent={SubnetDisplay} />
 			</div>
 		{/each}

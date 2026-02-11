@@ -4,19 +4,24 @@
 //! company with MSP operations. The data includes multiple networks, subnets, hosts,
 //! services, daemons, API keys, tags, and groups.
 
+use crate::daemon::discovery::types::base::DiscoveryPhase;
 use crate::server::{
     bindings::r#impl::base::Binding,
     daemon_api_keys::r#impl::base::{DaemonApiKey, DaemonApiKeyBase},
     daemons::r#impl::{
-        api::DaemonCapabilities,
+        api::{DaemonCapabilities, DiscoveryUpdatePayload},
         base::{Daemon, DaemonBase, DaemonMode},
+    },
+    discovery::r#impl::{
+        base::{Discovery, DiscoveryBase},
+        types::{DiscoveryType, HostNamingFallback, RunType},
     },
     groups::r#impl::{
         base::{Group, GroupBase},
         types::GroupType,
     },
     hosts::r#impl::base::{Host, HostBase},
-    if_entries::r#impl::base::{IfAdminStatus, IfEntry, IfEntryBase, IfOperStatus},
+    if_entries::r#impl::base::{IfAdminStatus, IfEntry, IfEntryBase, IfOperStatus, Neighbor},
     interfaces::r#impl::base::{Interface, InterfaceBase},
     networks::r#impl::{Network, NetworkBase},
     ports::r#impl::base::{Port, PortType},
@@ -24,8 +29,18 @@ use crate::server::{
         definitions::ServiceDefinitionRegistry,
         r#impl::base::{Service, ServiceBase},
     },
-    shared::types::{Color, entities::EntitySource},
-    snmp_credentials::r#impl::base::{SnmpCredential, SnmpCredentialBase, SnmpVersion},
+    shared::{
+        api_key_common::{ApiKeyType, generate_api_key_for_storage},
+        types::{Color, entities::EntitySource},
+    },
+    shares::r#impl::base::{Share, ShareBase, ShareOptions},
+    snmp_credentials::{
+        r#impl::{
+            base::{SnmpCredential, SnmpCredentialBase, SnmpVersion},
+            discovery::{SnmpCredentialMapping, SnmpQueryCredential},
+        },
+        resolution::lldp::{LldpChassisId, LldpPortId},
+    },
     subnets::r#impl::{
         base::{Subnet, SubnetBase},
         types::SubnetType,
@@ -35,8 +50,10 @@ use crate::server::{
         base::{Topology, TopologyBase},
         edges::EdgeStyle,
     },
+    user_api_keys::r#impl::base::{UserApiKey, UserApiKeyBase},
+    users::r#impl::permissions::UserOrgPermissions,
 };
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use cidr::{IpCidr, Ipv4Cidr};
 use secrecy::SecretString;
 use semver::Version;
@@ -55,6 +72,18 @@ pub struct HostWithServices {
     pub services: Vec<Service>,
 }
 
+/// Deferred neighbor update to apply after all if_entries exist.
+/// Uses host_name + if_index to identify entries (stable across creation)
+/// instead of pre-generated UUIDs (which may not be preserved by storage).
+pub struct NeighborUpdate {
+    /// Source if_entry identifier
+    pub source_host_name: String,
+    pub source_if_index: i32,
+    /// Target if_entry identifier (for IfEntry neighbors)
+    pub target_host_name: String,
+    pub target_if_index: i32,
+}
+
 /// Container for all demo data entities
 pub struct DemoData {
     pub tags: Vec<Tag>,
@@ -63,10 +92,14 @@ pub struct DemoData {
     pub subnets: Vec<Subnet>,
     pub hosts_with_services: Vec<HostWithServices>,
     pub if_entries: Vec<IfEntry>,
+    pub neighbor_updates: Vec<NeighborUpdate>,
     pub daemons: Vec<Daemon>,
     pub api_keys: Vec<DaemonApiKey>,
     pub groups: Vec<Group>,
     pub topologies: Vec<Topology>,
+    pub discoveries: Vec<Discovery>,
+    pub shares: Vec<Share>,
+    pub user_api_keys: Vec<(UserApiKey, Vec<Uuid>)>,
 }
 
 impl DemoData {
@@ -79,9 +112,10 @@ impl DemoData {
         // Generate all entities in dependency order
         let tags = generate_tags(organization_id, now);
         let snmp_credentials = generate_snmp_credentials(organization_id, now);
-        let networks = generate_networks(organization_id, &tags, now);
+        let networks = generate_networks(organization_id, &tags, &snmp_credentials, now);
         let subnets = generate_subnets(&networks, &tags, now);
-        let hosts_with_services = generate_hosts_and_services(&networks, &subnets, &tags, now);
+        let hosts_with_services =
+            generate_hosts_and_services(&networks, &subnets, &tags, &snmp_credentials, now);
 
         // Collect hosts for daemon generation and if_entry generation
         let hosts: Vec<&Host> = hosts_with_services.iter().map(|h| &h.host).collect();
@@ -90,10 +124,21 @@ impl DemoData {
             .flat_map(|h| h.interfaces.iter())
             .collect();
 
-        let if_entries = generate_if_entries(&networks, &hosts, &interfaces, now);
+        let (if_entries, neighbor_updates) =
+            generate_if_entries(&networks, &hosts, &interfaces, now);
         let daemons = generate_daemons(&networks, &hosts, &subnets, now, user_id);
         let api_keys = generate_api_keys(&networks, now);
         let topologies = generate_topologies(&networks, now);
+        let discoveries = generate_discoveries(
+            &networks,
+            &subnets,
+            &daemons,
+            &hosts,
+            &snmp_credentials,
+            now,
+        );
+        let shares = generate_shares(&topologies, &networks, user_id, now);
+        let user_api_keys = generate_user_api_keys(&networks, organization_id, now);
 
         // Groups are empty - they'll be generated in the handler after services are created
         // This ensures group bindings reference actual service binding IDs
@@ -106,10 +151,14 @@ impl DemoData {
             subnets,
             hosts_with_services,
             if_entries,
+            neighbor_updates,
             daemons,
             api_keys,
             groups,
             topologies,
+            discoveries,
+            shares,
+            user_api_keys,
         }
     }
 }
@@ -201,7 +250,12 @@ fn generate_snmp_credentials(organization_id: Uuid, now: DateTime<Utc>) -> Vec<S
 // Networks
 // ============================================================================
 
-fn generate_networks(organization_id: Uuid, tags: &[Tag], now: DateTime<Utc>) -> Vec<Network> {
+fn generate_networks(
+    organization_id: Uuid,
+    tags: &[Tag],
+    snmp_credentials: &[SnmpCredential],
+    now: DateTime<Utc>,
+) -> Vec<Network> {
     let production_tag = tags
         .iter()
         .find(|t| t.base.name == "Production")
@@ -211,6 +265,16 @@ fn generate_networks(organization_id: Uuid, tags: &[Tag], now: DateTime<Utc>) ->
         .find(|t| t.base.name == "Managed Client")
         .map(|t| t.id);
 
+    let default_snmpv2c = snmp_credentials
+        .iter()
+        .find(|c| c.base.name == "Default SNMPv2c")
+        .map(|c| c.id);
+    let network_devices_cred = snmp_credentials
+        .iter()
+        .find(|c| c.base.name == "Network Devices")
+        .map(|c| c.id);
+
+    // Stagger timestamps so networks sort in predictable order (Headquarters first)
     vec![
         Network {
             id: Uuid::new_v4(),
@@ -220,13 +284,13 @@ fn generate_networks(organization_id: Uuid, tags: &[Tag], now: DateTime<Utc>) ->
                 name: "Headquarters".to_string(),
                 organization_id,
                 tags: production_tag.into_iter().collect(),
-                snmp_credential_id: None,
+                snmp_credential_id: default_snmpv2c,
             },
         },
         Network {
             id: Uuid::new_v4(),
-            created_at: now,
-            updated_at: now,
+            created_at: now + chrono::Duration::seconds(1),
+            updated_at: now + chrono::Duration::seconds(1),
             base: NetworkBase {
                 name: "Cloud Infrastructure".to_string(),
                 organization_id,
@@ -236,24 +300,24 @@ fn generate_networks(organization_id: Uuid, tags: &[Tag], now: DateTime<Utc>) ->
         },
         Network {
             id: Uuid::new_v4(),
-            created_at: now,
-            updated_at: now,
+            created_at: now + chrono::Duration::seconds(2),
+            updated_at: now + chrono::Duration::seconds(2),
             base: NetworkBase {
                 name: "Remote Office - Denver".to_string(),
                 organization_id,
                 tags: vec![],
-                snmp_credential_id: None,
+                snmp_credential_id: default_snmpv2c,
             },
         },
         Network {
             id: Uuid::new_v4(),
-            created_at: now,
-            updated_at: now,
+            created_at: now + chrono::Duration::seconds(3),
+            updated_at: now + chrono::Duration::seconds(3),
             base: NetworkBase {
                 name: "Client: Riverside Medical".to_string(),
                 organization_id,
                 tags: managed_client_tag.into_iter().collect(),
-                snmp_credential_id: None,
+                snmp_credential_id: network_devices_cred,
             },
         },
     ]
@@ -478,6 +542,7 @@ fn create_host(
     subnet: &Subnet,
     ip: Ipv4Addr,
     tags: Vec<Uuid>,
+    snmp_credential_id: Option<Uuid>,
     now: DateTime<Utc>,
 ) -> (Host, Interface) {
     let host_id = Uuid::new_v4();
@@ -514,7 +579,7 @@ fn create_host(
             sys_contact: None,
             management_url: None,
             chassis_id: None,
-            snmp_credential_id: None,
+            snmp_credential_id,
         },
     };
     (host, interface)
@@ -589,6 +654,7 @@ fn generate_hosts_and_services(
     networks: &[Network],
     subnets: &[Subnet],
     tags: &[Tag],
+    snmp_credentials: &[SnmpCredential],
     now: DateTime<Utc>,
 ) -> Vec<HostWithServices> {
     let mut result = Vec::new();
@@ -602,6 +668,11 @@ fn generate_hosts_and_services(
     };
     let find_subnet = |name: &str| subnets.iter().find(|s| s.base.name.contains(name)).unwrap();
     let find_tag = |name: &str| tags.iter().find(|t| t.base.name == name).map(|t| t.id);
+
+    let network_devices_cred = snmp_credentials
+        .iter()
+        .find(|c| c.base.name == "Network Devices")
+        .map(|c| c.id);
 
     let critical_tag = find_tag("Critical");
     let production_tag = find_tag("Production");
@@ -629,6 +700,7 @@ fn generate_hosts_and_services(
             hq_mgmt,
             Ipv4Addr::new(10, 0, 1, 1),
             critical_tag.into_iter().collect(),
+            network_devices_cred,
             now
         ),
         now,
@@ -650,6 +722,7 @@ fn generate_hosts_and_services(
             hq_mgmt,
             Ipv4Addr::new(10, 0, 1, 10),
             vec![],
+            None,
             now
         ),
         now,
@@ -671,6 +744,7 @@ fn generate_hosts_and_services(
             hq_iot,
             Ipv4Addr::new(10, 0, 30, 100),
             iot_tag.into_iter().collect(),
+            None,
             now
         ),
         now,
@@ -680,6 +754,23 @@ fn generate_hosts_and_services(
             None,
             iot_tag.into_iter().collect()
         ),
+    ));
+
+    // -- UniFi Switch (core switch with LLDP neighbors) --
+    result.push(host_with_services!(
+        create_host(
+            "unifi-usw-24",
+            Some("switch.acme.local"),
+            Some("UniFi Switch 24 PoE"),
+            hq,
+            hq_mgmt,
+            Ipv4Addr::new(10, 0, 1, 3),
+            vec![],
+            network_devices_cred,
+            now
+        ),
+        now,
+        ("SNMP", "SNMP", Some(PortType::Snmp), vec![]),
     ));
 
     // -- Proxmox Hypervisors --
@@ -692,6 +783,7 @@ fn generate_hosts_and_services(
             hq_servers,
             Ipv4Addr::new(10, 0, 20, 5),
             production_tag.into_iter().collect(),
+            None,
             now
         ),
         now,
@@ -712,6 +804,7 @@ fn generate_hosts_and_services(
             hq_servers,
             Ipv4Addr::new(10, 0, 20, 6),
             production_tag.into_iter().collect(),
+            None,
             now
         ),
         now,
@@ -733,6 +826,7 @@ fn generate_hosts_and_services(
             hq_servers,
             Ipv4Addr::new(10, 0, 20, 10),
             critical_tag.into_iter().chain(backup_tag).collect(),
+            None,
             now
         ),
         now,
@@ -754,6 +848,7 @@ fn generate_hosts_and_services(
             hq_servers,
             Ipv4Addr::new(10, 0, 20, 20),
             production_tag.into_iter().collect(),
+            None,
             now
         ),
         now,
@@ -776,6 +871,7 @@ fn generate_hosts_and_services(
             hq_servers,
             Ipv4Addr::new(10, 0, 20, 25),
             production_tag.into_iter().collect(),
+            None,
             now
         ),
         now,
@@ -797,6 +893,7 @@ fn generate_hosts_and_services(
             hq_servers,
             Ipv4Addr::new(10, 0, 20, 30),
             production_tag.into_iter().collect(),
+            None,
             now
         ),
         now,
@@ -818,6 +915,7 @@ fn generate_hosts_and_services(
             hq_mgmt,
             Ipv4Addr::new(10, 0, 1, 50),
             monitoring_tag.into_iter().collect(),
+            None,
             now
         ),
         now,
@@ -839,6 +937,7 @@ fn generate_hosts_and_services(
             hq_mgmt,
             Ipv4Addr::new(10, 0, 1, 51),
             monitoring_tag.into_iter().collect(),
+            None,
             now
         ),
         now,
@@ -860,6 +959,7 @@ fn generate_hosts_and_services(
             hq_mgmt,
             Ipv4Addr::new(10, 0, 1, 52),
             monitoring_tag.into_iter().collect(),
+            None,
             now
         ),
         now,
@@ -881,6 +981,7 @@ fn generate_hosts_and_services(
             hq_mgmt,
             Ipv4Addr::new(10, 0, 1, 5),
             vec![],
+            None,
             now
         ),
         now,
@@ -897,6 +998,7 @@ fn generate_hosts_and_services(
             hq_servers,
             Ipv4Addr::new(10, 0, 20, 35),
             critical_tag.into_iter().collect(),
+            None,
             now
         ),
         now,
@@ -918,6 +1020,7 @@ fn generate_hosts_and_services(
             hq_servers,
             Ipv4Addr::new(10, 0, 20, 40),
             production_tag.into_iter().collect(),
+            None,
             now
         ),
         now,
@@ -939,6 +1042,7 @@ fn generate_hosts_and_services(
             hq_iot,
             Ipv4Addr::new(10, 0, 30, 10),
             iot_tag.into_iter().collect(),
+            None,
             now
         ),
         now,
@@ -960,6 +1064,7 @@ fn generate_hosts_and_services(
             hq_iot,
             Ipv4Addr::new(10, 0, 30, 50),
             iot_tag.into_iter().collect(),
+            None,
             now
         ),
         now,
@@ -981,6 +1086,7 @@ fn generate_hosts_and_services(
             hq_iot,
             Ipv4Addr::new(10, 0, 30, 60),
             iot_tag.into_iter().collect(),
+            None,
             now
         ),
         now,
@@ -1002,6 +1108,7 @@ fn generate_hosts_and_services(
             hq_lan,
             Ipv4Addr::new(10, 0, 10, 101),
             vec![],
+            None,
             now
         ),
         now,
@@ -1017,6 +1124,7 @@ fn generate_hosts_and_services(
             hq_lan,
             Ipv4Addr::new(10, 0, 10, 102),
             vec![],
+            None,
             now
         ),
         now,
@@ -1042,6 +1150,7 @@ fn generate_hosts_and_services(
                 .chain(critical_tag)
                 .chain(web_tier_tag)
                 .collect(),
+            None,
             now
         ),
         now,
@@ -1063,6 +1172,7 @@ fn generate_hosts_and_services(
             cloud_prod,
             Ipv4Addr::new(172, 16, 0, 20),
             production_tag.into_iter().chain(web_tier_tag).collect(),
+            None,
             now
         ),
         now,
@@ -1084,6 +1194,7 @@ fn generate_hosts_and_services(
             cloud_prod,
             Ipv4Addr::new(172, 16, 0, 21),
             production_tag.into_iter().chain(web_tier_tag).collect(),
+            None,
             now
         ),
         now,
@@ -1106,6 +1217,7 @@ fn generate_hosts_and_services(
             cloud_db,
             Ipv4Addr::new(172, 16, 1, 10),
             database_tag.into_iter().chain(critical_tag).collect(),
+            None,
             now
         ),
         now,
@@ -1127,6 +1239,7 @@ fn generate_hosts_and_services(
             cloud_db,
             Ipv4Addr::new(172, 16, 1, 11),
             database_tag.into_iter().collect(),
+            None,
             now
         ),
         now,
@@ -1148,6 +1261,7 @@ fn generate_hosts_and_services(
             cloud_db,
             Ipv4Addr::new(172, 16, 1, 20),
             database_tag.into_iter().collect(),
+            None,
             now
         ),
         now,
@@ -1169,6 +1283,7 @@ fn generate_hosts_and_services(
             cloud_db,
             Ipv4Addr::new(172, 16, 1, 30),
             database_tag.into_iter().collect(),
+            None,
             now
         ),
         now,
@@ -1190,6 +1305,7 @@ fn generate_hosts_and_services(
             cloud_prod,
             Ipv4Addr::new(172, 16, 0, 30),
             production_tag.into_iter().collect(),
+            None,
             now
         ),
         now,
@@ -1214,6 +1330,7 @@ fn generate_hosts_and_services(
             denver_lan,
             Ipv4Addr::new(192, 168, 50, 1),
             vec![],
+            network_devices_cred,
             now
         ),
         now,
@@ -1229,6 +1346,7 @@ fn generate_hosts_and_services(
             denver_lan,
             Ipv4Addr::new(192, 168, 50, 10),
             backup_tag.into_iter().collect(),
+            None,
             now
         ),
         now,
@@ -1249,6 +1367,7 @@ fn generate_hosts_and_services(
             denver_lan,
             Ipv4Addr::new(192, 168, 50, 50),
             iot_tag.into_iter().collect(),
+            None,
             now
         ),
         now,
@@ -1269,6 +1388,7 @@ fn generate_hosts_and_services(
             denver_lan,
             Ipv4Addr::new(192, 168, 50, 2),
             iot_tag.into_iter().collect(),
+            None,
             now
         ),
         now,
@@ -1277,6 +1397,29 @@ fn generate_hosts_and_services(
             "UniFi AP",
             None,
             iot_tag.into_iter().collect()
+        ),
+    ));
+
+    // -- Denver VPN Endpoint --
+    let denver_vpn = find_subnet("Denver VPN");
+    result.push(host_with_services!(
+        create_host(
+            "denver-vpn",
+            Some("vpn.denver.acme.local"),
+            Some("VPN endpoint to headquarters"),
+            denver,
+            denver_vpn,
+            Ipv4Addr::new(10, 8, 0, 1),
+            vec![],
+            None,
+            now
+        ),
+        now,
+        (
+            "WireGuard",
+            "WireGuard VPN",
+            Some(PortType::Wireguard),
+            vec![]
         ),
     ));
 
@@ -1294,6 +1437,7 @@ fn generate_hosts_and_services(
             riverside_lan,
             Ipv4Addr::new(10, 100, 0, 1),
             managed_tag.into_iter().chain(critical_tag).collect(),
+            None,
             now
         ),
         now,
@@ -1314,6 +1458,7 @@ fn generate_hosts_and_services(
             riverside_lan,
             Ipv4Addr::new(10, 100, 0, 10),
             managed_tag.into_iter().chain(critical_tag).collect(),
+            None,
             now
         ),
         now,
@@ -1334,6 +1479,7 @@ fn generate_hosts_and_services(
             riverside_lan,
             Ipv4Addr::new(10, 100, 0, 20),
             managed_tag.into_iter().collect(),
+            None,
             now
         ),
         now,
@@ -1354,6 +1500,7 @@ fn generate_hosts_and_services(
             riverside_mgmt,
             Ipv4Addr::new(10, 100, 10, 5),
             managed_tag.into_iter().chain(backup_tag).collect(),
+            None,
             now
         ),
         now,
@@ -1374,6 +1521,7 @@ fn generate_hosts_and_services(
             riverside_lan,
             Ipv4Addr::new(10, 100, 0, 101),
             managed_tag.into_iter().collect(),
+            None,
             now
         ),
         now,
@@ -1394,6 +1542,7 @@ fn generate_hosts_and_services(
             riverside_lan,
             Ipv4Addr::new(10, 100, 0, 102),
             managed_tag.into_iter().collect(),
+            None,
             now
         ),
         now,
@@ -1417,8 +1566,9 @@ fn generate_if_entries(
     hosts: &[&Host],
     interfaces: &[&Interface],
     now: DateTime<Utc>,
-) -> Vec<IfEntry> {
+) -> (Vec<IfEntry>, Vec<NeighborUpdate>) {
     let mut if_entries = Vec::new();
+    let mut neighbor_updates = Vec::new();
 
     // Find network devices that would have SNMP data
     let find_host = |name: &str| hosts.iter().find(|h| h.base.name == name).copied();
@@ -1428,6 +1578,18 @@ fn generate_if_entries(
             .find(|i| i.base.host_id == host_id)
             .copied()
     };
+
+    // Pre-generate IDs for bidirectional neighbor relationships
+    let pfsense_lan_id = Uuid::new_v4();
+    let truenas_lagg0_id = Uuid::new_v4();
+    let proxmox_eno1_id = Uuid::new_v4();
+    let switch_port1_id = Uuid::new_v4(); // connects to pfSense
+    let switch_port2_id = Uuid::new_v4(); // connects to TrueNAS
+    let switch_port3_id = Uuid::new_v4(); // connects to Proxmox
+    let switch_port4_id = Uuid::new_v4(); // connects to UniFi AP (partial - Host only)
+
+    // Switch MAC address (used as chassis ID)
+    let switch_mac = "78:45:c4:ab:cd:01";
 
     // pfSense firewall - multiple interfaces
     if let Some(host) = find_host("pfsense-fw01") {
@@ -1468,9 +1630,10 @@ fn generate_if_entries(
             },
         });
 
-        // LAN interface
+        // LAN interface - connected to switch port 1
+        // Defer the neighbor reference since switch ports are created later
         if_entries.push(IfEntry {
-            id: Uuid::new_v4(),
+            id: pfsense_lan_id,
             created_at: now,
             updated_at: now,
             base: IfEntryBase {
@@ -1485,18 +1648,24 @@ fn generate_if_entries(
                 oper_status: IfOperStatus::Up,
                 mac_address: None,
                 interface_id: interface.map(|i| i.id),
-                neighbor: None,
-                lldp_chassis_id: None,
-                lldp_port_id: None,
-                lldp_sys_name: None,
-                lldp_port_desc: None,
-                lldp_mgmt_addr: None,
-                lldp_sys_desc: None,
+                neighbor: None, // Deferred - switch port doesn't exist yet
+                lldp_chassis_id: Some(LldpChassisId::MacAddress(switch_mac.to_string())),
+                lldp_port_id: Some(LldpPortId::InterfaceName("Port 1/0/1".to_string())),
+                lldp_sys_name: Some("unifi-usw-24".to_string()),
+                lldp_port_desc: Some("Port 1 - pfSense uplink".to_string()),
+                lldp_mgmt_addr: Some(std::net::IpAddr::V4(std::net::Ipv4Addr::new(10, 0, 1, 3))),
+                lldp_sys_desc: Some("UniFi USW-24-PoE".to_string()),
                 cdp_device_id: None,
                 cdp_port_id: None,
                 cdp_platform: None,
                 cdp_address: None,
             },
+        });
+        neighbor_updates.push(NeighborUpdate {
+            source_host_name: "pfsense-fw01".to_string(),
+            source_if_index: 2, // igb1 LAN interface
+            target_host_name: "unifi-usw-24".to_string(),
+            target_if_index: 1, // Port 1/0/1
         });
 
         // OPT1 interface (disabled)
@@ -1531,7 +1700,7 @@ fn generate_if_entries(
         });
     }
 
-    // TrueNAS - bonded interfaces
+    // TrueNAS - bonded interfaces, connected to switch port 2
     if let Some(host) = find_host("truenas-primary") {
         let network = networks
             .iter()
@@ -1540,8 +1709,9 @@ fn generate_if_entries(
         let interface = find_interface(host.id);
 
         // Bond interface
+        // Defer the neighbor reference since switch ports are created later
         if_entries.push(IfEntry {
-            id: Uuid::new_v4(),
+            id: truenas_lagg0_id,
             created_at: now,
             updated_at: now,
             base: IfEntryBase {
@@ -1556,22 +1726,28 @@ fn generate_if_entries(
                 oper_status: IfOperStatus::Up,
                 mac_address: None,
                 interface_id: interface.map(|i| i.id),
-                neighbor: None,
-                lldp_chassis_id: None,
-                lldp_port_id: None,
-                lldp_sys_name: None,
-                lldp_port_desc: None,
-                lldp_mgmt_addr: None,
-                lldp_sys_desc: None,
+                neighbor: None, // Deferred - switch port doesn't exist yet
+                lldp_chassis_id: Some(LldpChassisId::MacAddress(switch_mac.to_string())),
+                lldp_port_id: Some(LldpPortId::InterfaceName("Port 1/0/2".to_string())),
+                lldp_sys_name: Some("unifi-usw-24".to_string()),
+                lldp_port_desc: Some("Port 2 - TrueNAS uplink".to_string()),
+                lldp_mgmt_addr: Some(std::net::IpAddr::V4(std::net::Ipv4Addr::new(10, 0, 1, 3))),
+                lldp_sys_desc: Some("UniFi USW-24-PoE".to_string()),
                 cdp_device_id: None,
                 cdp_port_id: None,
                 cdp_platform: None,
                 cdp_address: None,
             },
         });
+        neighbor_updates.push(NeighborUpdate {
+            source_host_name: "truenas-primary".to_string(),
+            source_if_index: 1, // lagg0
+            target_host_name: "unifi-usw-24".to_string(),
+            target_if_index: 2, // Port 1/0/2
+        });
     }
 
-    // Proxmox - with loopback
+    // Proxmox - with loopback, connected to switch port 3
     if let Some(host) = find_host("proxmox-hv01") {
         let network = networks
             .iter()
@@ -1580,8 +1756,9 @@ fn generate_if_entries(
         let interface = find_interface(host.id);
 
         // Primary interface
+        // Defer the neighbor reference since switch ports are created later
         if_entries.push(IfEntry {
-            id: Uuid::new_v4(),
+            id: proxmox_eno1_id,
             created_at: now,
             updated_at: now,
             base: IfEntryBase {
@@ -1596,18 +1773,24 @@ fn generate_if_entries(
                 oper_status: IfOperStatus::Up,
                 mac_address: None,
                 interface_id: interface.map(|i| i.id),
-                neighbor: None,
-                lldp_chassis_id: None,
-                lldp_port_id: None,
-                lldp_sys_name: None,
-                lldp_port_desc: None,
-                lldp_mgmt_addr: None,
-                lldp_sys_desc: None,
+                neighbor: None, // Deferred - switch port doesn't exist yet
+                lldp_chassis_id: Some(LldpChassisId::MacAddress(switch_mac.to_string())),
+                lldp_port_id: Some(LldpPortId::InterfaceName("Port 1/0/3".to_string())),
+                lldp_sys_name: Some("unifi-usw-24".to_string()),
+                lldp_port_desc: Some("Port 3 - Proxmox uplink".to_string()),
+                lldp_mgmt_addr: Some(std::net::IpAddr::V4(std::net::Ipv4Addr::new(10, 0, 1, 3))),
+                lldp_sys_desc: Some("UniFi USW-24-PoE".to_string()),
                 cdp_device_id: None,
                 cdp_port_id: None,
                 cdp_platform: None,
                 cdp_address: None,
             },
+        });
+        neighbor_updates.push(NeighborUpdate {
+            source_host_name: "proxmox-hv01".to_string(),
+            source_if_index: 1, // eno1
+            target_host_name: "unifi-usw-24".to_string(),
+            target_if_index: 3, // Port 1/0/3
         });
 
         // Loopback
@@ -1642,7 +1825,211 @@ fn generate_if_entries(
         });
     }
 
-    if_entries
+    // UniFi Switch - 24 port switch with LLDP neighbors
+    if let Some(host) = find_host("unifi-usw-24") {
+        let network = networks
+            .iter()
+            .find(|n| n.id == host.base.network_id)
+            .unwrap();
+        let interface = find_interface(host.id);
+
+        // Find hosts for neighbor references
+        let pfsense_host = find_host("pfsense-fw01");
+        let truenas_host = find_host("truenas-primary");
+        let proxmox_host = find_host("proxmox-hv01");
+        let ap_host = find_host("unifi-ap-lobby");
+
+        // Port 1 - connected to pfSense
+        // Defer neighbor reference - bidirectional link set up after all entries exist
+        if_entries.push(IfEntry {
+            id: switch_port1_id,
+            created_at: now,
+            updated_at: now,
+            base: IfEntryBase {
+                host_id: host.id,
+                network_id: network.id,
+                if_index: 1,
+                if_descr: "Port 1/0/1".to_string(),
+                if_alias: Some("pfSense uplink".to_string()),
+                if_type: 6,
+                speed_bps: Some(1_000_000_000),
+                admin_status: IfAdminStatus::Up,
+                oper_status: IfOperStatus::Up,
+                mac_address: None,
+                interface_id: if interface.is_some() {
+                    interface.map(|i| i.id)
+                } else {
+                    None
+                },
+                neighbor: None, // Deferred - bidirectional link
+                lldp_chassis_id: Some(LldpChassisId::MacAddress("00:0d:b9:4a:f2:01".to_string())),
+                lldp_port_id: Some(LldpPortId::InterfaceName("igb1".to_string())),
+                lldp_sys_name: Some("pfsense-fw01".to_string()),
+                lldp_port_desc: Some("LAN".to_string()),
+                lldp_mgmt_addr: pfsense_host
+                    .map(|_| std::net::IpAddr::V4(std::net::Ipv4Addr::new(10, 0, 1, 1))),
+                lldp_sys_desc: Some("pfSense 2.7.0-RELEASE".to_string()),
+                cdp_device_id: None,
+                cdp_port_id: None,
+                cdp_platform: None,
+                cdp_address: None,
+            },
+        });
+        neighbor_updates.push(NeighborUpdate {
+            source_host_name: "unifi-usw-24".to_string(),
+            source_if_index: 1, // Port 1/0/1
+            target_host_name: "pfsense-fw01".to_string(),
+            target_if_index: 2, // igb1 LAN interface
+        });
+
+        // Port 2 - connected to TrueNAS
+        // Defer neighbor reference - TrueNAS host created after switch
+        // interface_id is None - single-interface fallback will resolve it
+        if_entries.push(IfEntry {
+            id: switch_port2_id,
+            created_at: now,
+            updated_at: now,
+            base: IfEntryBase {
+                host_id: host.id,
+                network_id: network.id,
+                if_index: 2,
+                if_descr: "Port 1/0/2".to_string(),
+                if_alias: Some("TrueNAS uplink".to_string()),
+                if_type: 6,
+                speed_bps: Some(10_000_000_000),
+                admin_status: IfAdminStatus::Up,
+                oper_status: IfOperStatus::Up,
+                mac_address: None,
+                interface_id: None,
+                neighbor: None, // Deferred - TrueNAS doesn't exist yet
+                lldp_chassis_id: Some(LldpChassisId::MacAddress("3c:ec:ef:12:34:01".to_string())),
+                lldp_port_id: Some(LldpPortId::InterfaceName("lagg0".to_string())),
+                lldp_sys_name: Some("truenas-primary".to_string()),
+                lldp_port_desc: Some("LACP Bond".to_string()),
+                lldp_mgmt_addr: truenas_host
+                    .map(|_| std::net::IpAddr::V4(std::net::Ipv4Addr::new(10, 0, 20, 10))),
+                lldp_sys_desc: Some("TrueNAS SCALE".to_string()),
+                cdp_device_id: None,
+                cdp_port_id: None,
+                cdp_platform: None,
+                cdp_address: None,
+            },
+        });
+        neighbor_updates.push(NeighborUpdate {
+            source_host_name: "unifi-usw-24".to_string(),
+            source_if_index: 2, // Port 1/0/2
+            target_host_name: "truenas-primary".to_string(),
+            target_if_index: 1, // lagg0
+        });
+
+        // Port 3 - connected to Proxmox
+        // Defer neighbor reference - Proxmox host created after switch
+        // interface_id is None - single-interface fallback will resolve it
+        if_entries.push(IfEntry {
+            id: switch_port3_id,
+            created_at: now,
+            updated_at: now,
+            base: IfEntryBase {
+                host_id: host.id,
+                network_id: network.id,
+                if_index: 3,
+                if_descr: "Port 1/0/3".to_string(),
+                if_alias: Some("Proxmox uplink".to_string()),
+                if_type: 6,
+                speed_bps: Some(10_000_000_000),
+                admin_status: IfAdminStatus::Up,
+                oper_status: IfOperStatus::Up,
+                mac_address: None,
+                interface_id: None,
+                neighbor: None, // Deferred - Proxmox doesn't exist yet
+                lldp_chassis_id: Some(LldpChassisId::MacAddress("d4:be:d9:56:78:01".to_string())),
+                lldp_port_id: Some(LldpPortId::InterfaceName("eno1".to_string())),
+                lldp_sys_name: Some("proxmox-hv01".to_string()),
+                lldp_port_desc: Some("Primary NIC".to_string()),
+                lldp_mgmt_addr: proxmox_host
+                    .map(|_| std::net::IpAddr::V4(std::net::Ipv4Addr::new(10, 0, 20, 5))),
+                lldp_sys_desc: Some("Proxmox VE 8.1".to_string()),
+                cdp_device_id: None,
+                cdp_port_id: None,
+                cdp_platform: None,
+                cdp_address: None,
+            },
+        });
+        neighbor_updates.push(NeighborUpdate {
+            source_host_name: "unifi-usw-24".to_string(),
+            source_if_index: 3, // Port 1/0/3
+            target_host_name: "proxmox-hv01".to_string(),
+            target_if_index: 1, // eno1
+        });
+
+        // Port 4 - connected to UniFi AP (partial resolution - Host only since AP has no IfEntry)
+        if_entries.push(IfEntry {
+            id: switch_port4_id,
+            created_at: now,
+            updated_at: now,
+            base: IfEntryBase {
+                host_id: host.id,
+                network_id: network.id,
+                if_index: 4,
+                if_descr: "Port 1/0/4".to_string(),
+                if_alias: Some("UniFi AP".to_string()),
+                if_type: 6,
+                speed_bps: Some(1_000_000_000),
+                admin_status: IfAdminStatus::Up,
+                oper_status: IfOperStatus::Up,
+                mac_address: None,
+                interface_id: None,
+                // Partial resolution - only host known, no IfEntry for the AP
+                neighbor: ap_host.map(|h| Neighbor::Host(h.id)),
+                lldp_chassis_id: Some(LldpChassisId::MacAddress("fc:ec:da:aa:bb:01".to_string())),
+                lldp_port_id: Some(LldpPortId::InterfaceName("eth0".to_string())),
+                lldp_sys_name: Some("unifi-ap-lobby".to_string()),
+                lldp_port_desc: Some("Ethernet".to_string()),
+                lldp_mgmt_addr: ap_host
+                    .map(|_| std::net::IpAddr::V4(std::net::Ipv4Addr::new(10, 0, 30, 100))),
+                lldp_sys_desc: Some("UniFi AP U6-Pro".to_string()),
+                cdp_device_id: None,
+                cdp_port_id: None,
+                cdp_platform: None,
+                cdp_address: None,
+            },
+        });
+
+        // Ports 5-24 - empty ports (no neighbors)
+        for port_num in 5..=24 {
+            if_entries.push(IfEntry {
+                id: Uuid::new_v4(),
+                created_at: now,
+                updated_at: now,
+                base: IfEntryBase {
+                    host_id: host.id,
+                    network_id: network.id,
+                    if_index: port_num,
+                    if_descr: format!("Port 1/0/{}", port_num),
+                    if_alias: None,
+                    if_type: 6,
+                    speed_bps: Some(1_000_000_000),
+                    admin_status: IfAdminStatus::Up,
+                    oper_status: IfOperStatus::Down, // No link
+                    mac_address: None,
+                    interface_id: None,
+                    neighbor: None,
+                    lldp_chassis_id: None,
+                    lldp_port_id: None,
+                    lldp_sys_name: None,
+                    lldp_port_desc: None,
+                    lldp_mgmt_addr: None,
+                    lldp_sys_desc: None,
+                    cdp_device_id: None,
+                    cdp_port_id: None,
+                    cdp_platform: None,
+                    cdp_address: None,
+                },
+            });
+        }
+    }
+
+    (if_entries, neighbor_updates)
 }
 
 // ============================================================================
@@ -1683,7 +2070,7 @@ fn generate_daemons(
                     has_docker_socket: true,
                     interfaced_subnet_ids: vec![subnet.id],
                 },
-                mode: DaemonMode::ServerPoll,
+                mode: DaemonMode::DaemonPoll,
                 name: "HQ Daemon".to_string(),
                 tags: vec![],
                 version: Version::parse(env!("CARGO_PKG_VERSION"))
@@ -1692,6 +2079,7 @@ fn generate_daemons(
                 user_id,
                 api_key_id: None,
                 is_unreachable: false,
+                standby: false,
             },
         });
     }
@@ -1714,7 +2102,7 @@ fn generate_daemons(
                     has_docker_socket: true,
                     interfaced_subnet_ids: vec![subnet.id],
                 },
-                mode: DaemonMode::ServerPoll,
+                mode: DaemonMode::DaemonPoll,
                 name: "Cloud Daemon".to_string(),
                 tags: vec![],
                 version: Version::parse(env!("CARGO_PKG_VERSION"))
@@ -1723,6 +2111,7 @@ fn generate_daemons(
                 user_id,
                 api_key_id: None,
                 is_unreachable: false,
+                standby: false,
             },
         });
     }
@@ -1744,7 +2133,7 @@ fn generate_daemons(
                     has_docker_socket: false,
                     interfaced_subnet_ids: vec![subnet.id],
                 },
-                mode: DaemonMode::ServerPoll,
+                mode: DaemonMode::DaemonPoll,
                 name: "Denver Daemon".to_string(),
                 tags: vec![],
                 version: Version::parse(env!("CARGO_PKG_VERSION"))
@@ -1753,6 +2142,7 @@ fn generate_daemons(
                 user_id,
                 api_key_id: None,
                 is_unreachable: false,
+                standby: false,
             },
         });
     }
@@ -1773,13 +2163,14 @@ fn generate_daemons(
                     has_docker_socket: false,
                     interfaced_subnet_ids: vec![subnet.id],
                 },
-                mode: DaemonMode::ServerPoll,
+                mode: DaemonMode::DaemonPoll,
                 name: "Riverside Daemon".to_string(),
                 tags: vec![],
-                version: None,
+                version: Some(Version::new(0, 13, 5)),
                 user_id,
                 api_key_id: None,
                 is_unreachable: false,
+                standby: false,
             },
         });
     }
@@ -1864,6 +2255,370 @@ fn generate_api_keys(networks: &[Network], now: DateTime<Utc>) -> Vec<DaemonApiK
 }
 
 // ============================================================================
+// Discoveries
+// ============================================================================
+
+fn generate_discoveries(
+    networks: &[Network],
+    subnets: &[Subnet],
+    daemons: &[Daemon],
+    hosts: &[&Host],
+    snmp_credentials: &[SnmpCredential],
+    now: DateTime<Utc>,
+) -> Vec<Discovery> {
+    let find_network = |name: &str| {
+        networks
+            .iter()
+            .find(|n| n.base.name.contains(name))
+            .unwrap()
+    };
+    let find_daemon = |name: &str| daemons.iter().find(|d| d.base.name.contains(name));
+    let find_host = |name: &str| hosts.iter().find(|h| h.base.name == name).copied();
+    let find_subnets_for_network = |network_id: Uuid| -> Vec<Uuid> {
+        subnets
+            .iter()
+            .filter(|s| s.base.network_id == network_id)
+            .map(|s| s.id)
+            .collect()
+    };
+
+    let default_cred = snmp_credentials
+        .iter()
+        .find(|c| c.base.name == "Default SNMPv2c");
+
+    let mut discoveries = Vec::new();
+
+    // Ad-hoc discoveries (manual, run before but won't auto-run)
+    let hq = find_network("Headquarters");
+    if let Some(daemon) = find_daemon("HQ") {
+        let hq_subnet_ids = find_subnets_for_network(hq.id);
+        discoveries.push(Discovery {
+            id: Uuid::new_v4(),
+            created_at: now,
+            updated_at: now,
+            base: DiscoveryBase {
+                discovery_type: DiscoveryType::Network {
+                    subnet_ids: Some(hq_subnet_ids),
+                    host_naming_fallback: HostNamingFallback::BestService,
+                    snmp_credentials: SnmpCredentialMapping {
+                        default_credential: default_cred.map(|_| SnmpQueryCredential {
+                            version: SnmpVersion::V2c,
+                            community: "public".to_string(),
+                        }),
+                        ip_overrides: vec![],
+                    },
+                    probe_raw_socket_ports: false,
+                },
+                run_type: RunType::AdHoc {
+                    last_run: Some(now - Duration::days(2)),
+                },
+                name: "HQ Network Scan".to_string(),
+                daemon_id: daemon.id,
+                network_id: hq.id,
+                tags: vec![],
+            },
+        });
+
+        // Docker discovery on docker-prod01
+        if let Some(docker_host) = find_host("docker-prod01") {
+            discoveries.push(Discovery {
+                id: Uuid::new_v4(),
+                created_at: now,
+                updated_at: now,
+                base: DiscoveryBase {
+                    discovery_type: DiscoveryType::Docker {
+                        host_id: docker_host.id,
+                        host_naming_fallback: HostNamingFallback::BestService,
+                    },
+                    run_type: RunType::AdHoc {
+                        last_run: Some(now - Duration::days(5)),
+                    },
+                    name: "HQ Docker Discovery".to_string(),
+                    daemon_id: daemon.id,
+                    network_id: hq.id,
+                    tags: vec![],
+                },
+            });
+        }
+    }
+
+    let cloud = find_network("Cloud");
+    if let Some(daemon) = find_daemon("Cloud") {
+        let cloud_subnet_ids = find_subnets_for_network(cloud.id);
+        discoveries.push(Discovery {
+            id: Uuid::new_v4(),
+            created_at: now,
+            updated_at: now,
+            base: DiscoveryBase {
+                discovery_type: DiscoveryType::Network {
+                    subnet_ids: Some(cloud_subnet_ids),
+                    host_naming_fallback: HostNamingFallback::BestService,
+                    snmp_credentials: SnmpCredentialMapping {
+                        default_credential: None,
+                        ip_overrides: vec![],
+                    },
+                    probe_raw_socket_ports: false,
+                },
+                run_type: RunType::AdHoc {
+                    last_run: Some(now - Duration::days(3)),
+                },
+                name: "Cloud Infrastructure Scan".to_string(),
+                daemon_id: daemon.id,
+                network_id: cloud.id,
+                tags: vec![],
+            },
+        });
+    }
+
+    let denver = find_network("Denver");
+    if let Some(daemon) = find_daemon("Denver") {
+        let denver_subnet_ids = find_subnets_for_network(denver.id);
+        discoveries.push(Discovery {
+            id: Uuid::new_v4(),
+            created_at: now,
+            updated_at: now,
+            base: DiscoveryBase {
+                discovery_type: DiscoveryType::Network {
+                    subnet_ids: Some(denver_subnet_ids),
+                    host_naming_fallback: HostNamingFallback::BestService,
+                    snmp_credentials: SnmpCredentialMapping {
+                        default_credential: default_cred.map(|_| SnmpQueryCredential {
+                            version: SnmpVersion::V2c,
+                            community: "public".to_string(),
+                        }),
+                        ip_overrides: vec![],
+                    },
+                    probe_raw_socket_ports: false,
+                },
+                run_type: RunType::AdHoc {
+                    last_run: Some(now - Duration::days(7)),
+                },
+                name: "Denver Office Scan".to_string(),
+                daemon_id: daemon.id,
+                network_id: denver.id,
+                tags: vec![],
+            },
+        });
+    }
+
+    // Historical discoveries (completed past runs)
+    if let Some(daemon) = find_daemon("HQ") {
+        let hq_subnet_ids = find_subnets_for_network(hq.id);
+        let three_weeks_ago = now - Duration::weeks(3);
+        discoveries.push(Discovery {
+            id: Uuid::new_v4(),
+            created_at: three_weeks_ago,
+            updated_at: three_weeks_ago,
+            base: DiscoveryBase {
+                discovery_type: DiscoveryType::Network {
+                    subnet_ids: Some(hq_subnet_ids.clone()),
+                    host_naming_fallback: HostNamingFallback::BestService,
+                    snmp_credentials: SnmpCredentialMapping {
+                        default_credential: None,
+                        ip_overrides: vec![],
+                    },
+                    probe_raw_socket_ports: false,
+                },
+                run_type: RunType::Historical {
+                    results: DiscoveryUpdatePayload {
+                        session_id: Uuid::new_v4(),
+                        daemon_id: daemon.id,
+                        network_id: hq.id,
+                        phase: DiscoveryPhase::Complete,
+                        discovery_type: DiscoveryType::Network {
+                            subnet_ids: Some(hq_subnet_ids.clone()),
+                            host_naming_fallback: HostNamingFallback::BestService,
+                            snmp_credentials: SnmpCredentialMapping {
+                                default_credential: None,
+                                ip_overrides: vec![],
+                            },
+                            probe_raw_socket_ports: false,
+                        },
+                        progress: 100,
+                        error: None,
+                        started_at: Some(three_weeks_ago),
+                        finished_at: Some(three_weeks_ago + Duration::minutes(12)),
+                    },
+                },
+                name: "HQ Scan - Jan 15".to_string(),
+                daemon_id: daemon.id,
+                network_id: hq.id,
+                tags: vec![],
+            },
+        });
+
+        let one_week_ago = now - Duration::weeks(1);
+        discoveries.push(Discovery {
+            id: Uuid::new_v4(),
+            created_at: one_week_ago,
+            updated_at: one_week_ago,
+            base: DiscoveryBase {
+                discovery_type: DiscoveryType::Network {
+                    subnet_ids: Some(hq_subnet_ids.clone()),
+                    host_naming_fallback: HostNamingFallback::BestService,
+                    snmp_credentials: SnmpCredentialMapping {
+                        default_credential: None,
+                        ip_overrides: vec![],
+                    },
+                    probe_raw_socket_ports: false,
+                },
+                run_type: RunType::Historical {
+                    results: DiscoveryUpdatePayload {
+                        session_id: Uuid::new_v4(),
+                        daemon_id: daemon.id,
+                        network_id: hq.id,
+                        phase: DiscoveryPhase::Complete,
+                        discovery_type: DiscoveryType::Network {
+                            subnet_ids: Some(hq_subnet_ids),
+                            host_naming_fallback: HostNamingFallback::BestService,
+                            snmp_credentials: SnmpCredentialMapping {
+                                default_credential: None,
+                                ip_overrides: vec![],
+                            },
+                            probe_raw_socket_ports: false,
+                        },
+                        progress: 100,
+                        error: None,
+                        started_at: Some(one_week_ago),
+                        finished_at: Some(one_week_ago + Duration::minutes(8)),
+                    },
+                },
+                name: "HQ Scan - Jan 28".to_string(),
+                daemon_id: daemon.id,
+                network_id: hq.id,
+                tags: vec![],
+            },
+        });
+    }
+
+    if let Some(daemon) = find_daemon("Cloud") {
+        let cloud_subnet_ids = find_subnets_for_network(cloud.id);
+        let two_weeks_ago = now - Duration::weeks(2);
+        discoveries.push(Discovery {
+            id: Uuid::new_v4(),
+            created_at: two_weeks_ago,
+            updated_at: two_weeks_ago,
+            base: DiscoveryBase {
+                discovery_type: DiscoveryType::Network {
+                    subnet_ids: Some(cloud_subnet_ids.clone()),
+                    host_naming_fallback: HostNamingFallback::BestService,
+                    snmp_credentials: SnmpCredentialMapping {
+                        default_credential: None,
+                        ip_overrides: vec![],
+                    },
+                    probe_raw_socket_ports: false,
+                },
+                run_type: RunType::Historical {
+                    results: DiscoveryUpdatePayload {
+                        session_id: Uuid::new_v4(),
+                        daemon_id: daemon.id,
+                        network_id: cloud.id,
+                        phase: DiscoveryPhase::Failed,
+                        discovery_type: DiscoveryType::Network {
+                            subnet_ids: Some(cloud_subnet_ids),
+                            host_naming_fallback: HostNamingFallback::BestService,
+                            snmp_credentials: SnmpCredentialMapping {
+                                default_credential: None,
+                                ip_overrides: vec![],
+                            },
+                            probe_raw_socket_ports: false,
+                        },
+                        progress: 100,
+                        error: Some("Connection timeout: daemon lost connectivity to subnet 172.16.1.0/24 during scan".to_string()),
+                        started_at: Some(two_weeks_ago),
+                        finished_at: Some(two_weeks_ago + Duration::minutes(3)),
+                    },
+                },
+                name: "Cloud Scan - Jan 20".to_string(),
+                daemon_id: daemon.id,
+                network_id: cloud.id,
+                tags: vec![],
+            },
+        });
+    }
+
+    discoveries
+}
+
+// ============================================================================
+// Shares
+// ============================================================================
+
+fn generate_shares(
+    topologies: &[Topology],
+    networks: &[Network],
+    user_id: Uuid,
+    now: DateTime<Utc>,
+) -> Vec<Share> {
+    let hq_network = networks.iter().find(|n| n.base.name == "Headquarters");
+    let hq_topology =
+        hq_network.and_then(|net| topologies.iter().find(|t| t.base.network_id == net.id));
+
+    let mut shares = Vec::new();
+
+    if let (Some(network), Some(topology)) = (hq_network, hq_topology) {
+        shares.push(Share {
+            id: Uuid::new_v4(),
+            created_at: now,
+            updated_at: now,
+            base: ShareBase {
+                topology_id: topology.id,
+                network_id: network.id,
+                created_by: user_id,
+                name: "HQ Public View".to_string(),
+                is_enabled: true,
+                expires_at: None,
+                password_hash: None,
+                allowed_domains: None,
+                options: ShareOptions {
+                    show_inspect_panel: true,
+                    show_zoom_controls: true,
+                    show_export_button: false,
+                },
+            },
+        });
+    }
+
+    shares
+}
+
+// ============================================================================
+// User API Keys
+// ============================================================================
+
+fn generate_user_api_keys(
+    networks: &[Network],
+    organization_id: Uuid,
+    now: DateTime<Utc>,
+) -> Vec<(UserApiKey, Vec<Uuid>)> {
+    use super::handlers::DEMO_USER_ID;
+
+    let network_ids: Vec<Uuid> = networks.iter().map(|n| n.id).collect();
+    let (_plaintext, hashed) = generate_api_key_for_storage(ApiKeyType::User);
+
+    vec![(
+        UserApiKey {
+            id: Uuid::new_v4(),
+            created_at: now,
+            updated_at: now,
+            base: UserApiKeyBase {
+                key: hashed,
+                name: "Monitoring Integration Key".to_string(),
+                user_id: DEMO_USER_ID,
+                organization_id,
+                permissions: UserOrgPermissions::Member,
+                last_used: None,
+                expires_at: None,
+                is_enabled: true,
+                tags: vec![],
+                network_ids: vec![], // hydrated by create_with_networks
+            },
+        },
+        network_ids,
+    )]
+}
+
+// ============================================================================
 // Groups
 // ============================================================================
 
@@ -1879,10 +2634,22 @@ pub fn generate_groups(networks: &[Network], services: &[Service], tags: &[Tag])
         .iter()
         .find(|n| n.base.name == "Headquarters")
         .unwrap();
+    let denver = networks
+        .iter()
+        .find(|n| n.base.name.contains("Denver"))
+        .unwrap();
+    let riverside = networks
+        .iter()
+        .find(|n| n.base.name.contains("Riverside"))
+        .unwrap();
 
     let monitoring_tag = tags
         .iter()
         .find(|t| t.base.name == "Monitoring")
+        .map(|t| t.id);
+    let backup_tag = tags
+        .iter()
+        .find(|t| t.base.name == "Backup Target")
         .map(|t| t.id);
 
     // Find service bindings for groups
@@ -1969,6 +2736,78 @@ pub fn generate_groups(networks: &[Network], services: &[Service], tags: &[Tag])
                 color: Color::Green,
                 edge_style: EdgeStyle::SmoothStep,
                 tags: vec![],
+            },
+        });
+    }
+
+    // HQ Network Access Path: pfSense (Management) -> Portainer (Servers)
+    // Cross-subnet group spanning Management and Servers subnets
+    let pfsense_binding = find_service_binding("pfSense");
+    let portainer_binding = find_service_binding("Portainer");
+
+    if let (Some(pfsense), Some(portainer)) = (pfsense_binding, portainer_binding) {
+        groups.push(Group {
+            id: Uuid::new_v4(),
+            created_at: now,
+            updated_at: now,
+            base: GroupBase {
+                name: "Network Access Path".to_string(),
+                network_id: hq.id,
+                description: Some("Traffic path from firewall to application servers".to_string()),
+                group_type: GroupType::RequestPath,
+                binding_ids: vec![pfsense, portainer],
+                source: EntitySource::Manual,
+                color: Color::Cyan,
+                edge_style: EdgeStyle::Bezier,
+                tags: vec![],
+            },
+        });
+    }
+
+    // Denver VPN Connection: OPNsense (LAN) -> WireGuard (VPN Tunnel)
+    // Cross-subnet group spanning Office LAN and VPN Tunnel subnets
+    let opnsense_binding = find_service_binding("OPNsense");
+    let wireguard_binding = find_service_binding("WireGuard");
+
+    if let (Some(opnsense), Some(wireguard)) = (opnsense_binding, wireguard_binding) {
+        groups.push(Group {
+            id: Uuid::new_v4(),
+            created_at: now,
+            updated_at: now,
+            base: GroupBase {
+                name: "VPN Connection".to_string(),
+                network_id: denver.id,
+                description: Some("VPN tunnel connection to headquarters".to_string()),
+                group_type: GroupType::RequestPath,
+                binding_ids: vec![opnsense, wireguard],
+                source: EntitySource::Manual,
+                color: Color::Teal,
+                edge_style: EdgeStyle::Bezier,
+                tags: vec![],
+            },
+        });
+    }
+
+    // Riverside Backup Path: Active Directory (LAN) -> Veeam (Management)
+    // Cross-subnet group spanning LAN and Management subnets
+    let ad_binding = find_service_binding("Active Directory");
+    let veeam_binding = find_service_binding("Veeam");
+
+    if let (Some(ad), Some(veeam)) = (ad_binding, veeam_binding) {
+        groups.push(Group {
+            id: Uuid::new_v4(),
+            created_at: now,
+            updated_at: now,
+            base: GroupBase {
+                name: "Backup Path".to_string(),
+                network_id: riverside.id,
+                description: Some("Domain controller backup to Veeam server".to_string()),
+                group_type: GroupType::RequestPath,
+                binding_ids: vec![ad, veeam],
+                source: EntitySource::Manual,
+                color: Color::Green,
+                edge_style: EdgeStyle::SmoothStep,
+                tags: backup_tag.into_iter().collect(),
             },
         });
     }

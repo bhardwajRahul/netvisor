@@ -24,7 +24,7 @@
 	{#if subnet}
 		<div>
 			<span class="text-secondary mb-2 block text-sm font-medium">Subnet</span>
-			<div class="card">
+			<div class="card card-static">
 				<EntityDisplayWrapper context={{}} item={subnet} displayComponent={SubnetDisplay} />
 			</div>
 		</div>

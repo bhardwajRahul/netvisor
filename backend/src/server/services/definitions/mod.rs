@@ -252,6 +252,7 @@ pub mod proxmox_datacenter_manager;
 pub mod apc;
 pub mod beszel_agent;
 pub mod cadvisor;
+pub mod checkmk_agent;
 pub mod coolercontrol;
 pub mod elastic_apm;
 pub mod gatus;
@@ -314,6 +315,7 @@ pub mod tasmota;
 // Printer
 pub mod cups;
 pub mod hp_printer;
+pub mod jetdirect;
 pub mod print_server;
 
 // ============= UTILITIES & MISC =============

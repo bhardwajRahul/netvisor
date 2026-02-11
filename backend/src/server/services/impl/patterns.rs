@@ -886,6 +886,12 @@ impl Pattern<'_> {
         }
     }
 
+    /// Whether the pattern includes HTTP endpoint probes on raw-socket ports.
+    /// Used to flag services whose detection depends on the `probe_raw_socket_ports` toggle.
+    pub fn has_raw_socket_endpoint(&self) -> bool {
+        self.endpoints().iter().any(|e| e.port_type.is_raw_socket())
+    }
+
     /// Whether service uses IsGateway as a positive match signal -> service is_gateway = trues
     pub fn contains_gateway_ip_pattern(&self) -> bool {
         match self {
@@ -972,6 +978,7 @@ mod tests {
                     subnet_ids: None,
                     host_naming_fallback: HostNamingFallback::BestService,
                     snmp_credentials: SnmpCredentialMapping::default(),
+                    probe_raw_socket_ports: false,
                 },
                 gateway_ips: vec![],
                 endpoint_responses,

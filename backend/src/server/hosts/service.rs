@@ -518,6 +518,7 @@ impl HostService {
             if_entries,
             ConflictBehavior::Error,
             authentication,
+            None, // host limit checked in handler
         )
         .await
     }
@@ -553,12 +554,15 @@ impl HostService {
         if_entries: Vec<IfEntry>,
         conflict_behavior: ConflictBehavior,
         authentication: AuthenticatedEntity,
+        host_limit: Option<u64>,
     ) -> Result<HostResponse> {
         // Stage 1: Interface-based collision detection
         // Compares MAC addresses and subnet+IP to find hosts that represent the same physical machine
         let matching_result = self
             .find_matching_host_by_interfaces(&host.base.network_id, &interfaces)
             .await?;
+
+        let is_new_host = matching_result.is_none();
 
         if let Some((existing_host, _)) = matching_result {
             match conflict_behavior {
@@ -585,6 +589,19 @@ impl HostService {
                         host.id = existing_host.id;
                     }
                 }
+            }
+        }
+
+        // Check host limit for new hosts (not upserts)
+        if is_new_host && let Some(limit) = host_limit {
+            let filter = StorableFilter::<Host>::new_from_network_ids(&[host.base.network_id]);
+            let current_hosts = self.get_all(filter).await?.len() as u64;
+            if current_hosts >= limit {
+                return Err(anyhow!(
+                    "Host limit reached ({}/{}). Upgrade your plan for unlimited hosts.",
+                    current_hosts,
+                    limit
+                ));
             }
         }
 
@@ -1172,6 +1189,7 @@ impl HostService {
 
     /// Create or update a host from daemon discovery data.
     /// This handles interface/port matching for host deduplication and upserts on conflict.
+    #[allow(clippy::too_many_arguments)]
     pub async fn discover_host(
         &self,
         host: Host,
@@ -1180,6 +1198,7 @@ impl HostService {
         services: Vec<Service>,
         if_entries: Vec<crate::server::if_entries::r#impl::base::IfEntry>,
         authentication: AuthenticatedEntity,
+        host_limit: Option<u64>,
     ) -> Result<HostResponse> {
         let host_response = self
             .create_with_children(
@@ -1190,6 +1209,7 @@ impl HostService {
                 if_entries.clone(),
                 ConflictBehavior::Upsert,
                 authentication.clone(),
+                host_limit,
             )
             .await?;
 

@@ -81,12 +81,6 @@ pub struct ServerCli {
     #[arg(long)]
     public_url: Option<String>,
 
-    #[arg(long)]
-    pub plunk_secret: Option<String>,
-
-    #[arg(long)]
-    pub plunk_key: Option<String>,
-
     /// Configure what proxy (if any) is providing IP address for requests, ie in a reverse proxy setup, for accurate IP in auth event logging
     #[arg(long)]
     pub client_ip_source: Option<String>,
@@ -102,7 +96,7 @@ pub struct ServerCli {
     pub metrics_token: Option<String>,
 
     #[arg(long)]
-    pub hubspot_api_key: Option<String>,
+    pub brevo_api_key: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -125,8 +119,6 @@ pub struct ServerConfig {
     pub oidc_providers: Option<Vec<OidcProviderConfig>>,
 
     // Used in SaaS deployment
-    pub plunk_key: Option<String>,
-    pub plunk_secret: Option<String>,
     pub stripe_key: Option<String>,
     pub stripe_secret: Option<String>,
     pub stripe_webhook_secret: Option<String>,
@@ -139,8 +131,8 @@ pub struct ServerConfig {
     // Metrics
     pub metrics_token: Option<String>,
 
-    // HubSpot CRM integration
-    pub hubspot_api_key: Option<String>,
+    // Brevo CRM integration
+    pub brevo_api_key: Option<String>,
 
     // External service IP restrictions
     // Maps service name (lowercase) to list of allowed IPs/CIDRs
@@ -170,7 +162,6 @@ pub struct PublicConfigResponse {
     pub posthog_key: Option<String>,
     pub needs_cookie_consent: bool,
     pub deployment_type: DeploymentType,
-    pub plunk_key: Option<String>,
 }
 
 impl Default for ServerConfig {
@@ -192,14 +183,12 @@ impl Default for ServerConfig {
             smtp_password: None,
             smtp_email: None,
             smtp_relay: None,
-            plunk_secret: None,
-            plunk_key: None,
             client_ip_source: None,
             oidc_providers: None,
             posthog_key: None,
             enforce_billing_for_testing: false,
             metrics_token: None,
-            hubspot_api_key: None,
+            brevo_api_key: None,
             external_service_allowed_ips: HashMap::new(),
         }
     }
@@ -210,19 +199,7 @@ impl ServerConfig {
         // Standard configuration layering: Defaults → Env → CLI (highest priority)
         let mut figment = Figment::from(Serialized::defaults(ServerConfig::default()))
             .merge(Toml::file("../oidc.toml"))
-            .merge(Env::prefixed("NETVISOR_"))
             .merge(Env::prefixed("SCANOPY_"));
-
-        for (key, _) in std::env::vars() {
-            if key.starts_with("NETVISOR_") {
-                tracing::warn!(
-                    "Env vars prefixed with NETVISOR_ Will be deprecated in v0.13.0: {} - please migrate to SCANOPY_{}",
-                    key,
-                    key.trim_start_matches("NETVISOR_")
-                );
-                break; // Only warn once
-            }
-        }
 
         // Add CLI overrides (highest priority) - only if explicitly provided
         if let Some(server_port) = cli_args.server_port {
@@ -264,12 +241,6 @@ impl ServerConfig {
         if let Some(public_url) = cli_args.public_url {
             figment = figment.merge(("public_url", public_url));
         }
-        if let Some(plunk_secret) = cli_args.plunk_secret {
-            figment = figment.merge(("plunk_secret", plunk_secret));
-        }
-        if let Some(plunk_key) = cli_args.plunk_key {
-            figment = figment.merge(("plunk_key", plunk_key));
-        }
         if let Some(client_ip_source) = cli_args.client_ip_source {
             figment = figment.merge(("client_ip_source", client_ip_source));
         }
@@ -285,8 +256,8 @@ impl ServerConfig {
         if let Some(metrics_token) = cli_args.metrics_token {
             figment = figment.merge(("metrics_token", metrics_token));
         }
-        if let Some(hubspot_api_key) = cli_args.hubspot_api_key {
-            figment = figment.merge(("hubspot_api_key", hubspot_api_key));
+        if let Some(brevo_api_key) = cli_args.brevo_api_key {
+            figment = figment.merge(("brevo_api_key", brevo_api_key));
         }
 
         let mut config: ServerConfig = figment
@@ -405,17 +376,17 @@ pub async fn get_public_config(State(state): State<Arc<AppState>>) -> impl IntoR
             oidc_providers,
             billing_enabled: state.config.stripe_secret.is_some(),
             has_integrated_daemon: state.config.integrated_daemon_url.is_some(),
-            has_email_service: (state.config.smtp_password.is_some()
-                && state.config.smtp_username.is_some()
-                && state.config.smtp_email.is_some()
-                && state.config.smtp_relay.is_some())
-                || (state.config.plunk_secret.is_some() && state.config.plunk_key.is_some()),
+            has_email_service: state.config.brevo_api_key.is_some()
+                || (state.config.smtp_password.is_some()
+                    && state.config.smtp_username.is_some()
+                    && state.config.smtp_email.is_some()
+                    && state.config.smtp_relay.is_some()),
             public_url: state.config.public_url.clone(),
-            has_email_opt_in: state.config.plunk_secret.is_some(),
+            has_email_opt_in: state.config.brevo_api_key.is_some(),
             posthog_key: state.config.posthog_key.clone(),
-            needs_cookie_consent: state.config.posthog_key.is_some(),
+            needs_cookie_consent: state.config.posthog_key.is_some()
+                || state.config.brevo_api_key.is_some(),
             deployment_type,
-            plunk_key: state.config.plunk_key.clone(),
         })),
     )
 }

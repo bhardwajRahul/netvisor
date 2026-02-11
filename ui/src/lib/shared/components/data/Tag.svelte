@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { createColorHelper, type Color } from '$lib/shared/utils/styling';
-	import type { Component } from 'svelte';
+	import type { IconComponent } from '$lib/shared/utils/types';
 
 	let {
 		icon = null,
@@ -9,7 +9,7 @@
 		label,
 		badge = ''
 	}: {
-		icon?: Component | null;
+		icon?: IconComponent | null;
 		color?: Color;
 		disabled?: boolean;
 		label: string;
@@ -22,17 +22,18 @@
 	let textColor = $derived(colorHelper.text);
 </script>
 
-<div class="inline-flex flex-shrink-0 items-center gap-1 whitespace-nowrap">
-	{#if icon}
-		<icon size={16} class={textColor}></icon>
-	{/if}
-
+<div class="inline-flex flex-shrink-0 items-center gap-1 whitespace-nowrap rounded">
 	<!-- Main content -->
 	<span
 		class="inline-flex items-center gap-1 {!disabled ? bgColor : 'bg-gray-700/30'} {!disabled
 			? textColor
 			: 'text-tertiary'} rounded px-2 py-0.5 text-xs font-medium"
 	>
+		{#if icon}
+			{@const Icon = icon}
+			<Icon size={16} class={textColor} />
+		{/if}
+
 		<span class="truncate">{label}</span>
 		{#if badge.length > 0}
 			<span class="flex-shrink-0 {textColor}">{badge}</span>

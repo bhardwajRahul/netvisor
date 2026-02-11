@@ -2,26 +2,25 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Scanopy API",
-    "description": "\nNetwork topology discovery and visualization API.\n\n## Authentication\n\nTwo authentication methods are supported:\n\n| Method | Header | Use Case |\n|--------|--------|----------|\n| User API key | `Authorization: Bearer scp_u_...` | Programmatic access, integrations |\n| Session cookie | `Cookie: session_id=...` | Web UI (via `/api/auth/login`) |\n\nUser API keys require your organization to have API access enabled. Create keys at **Platform > API Keys**.\n\n## Rate Limiting\n\nLimit: 300 requests/minute\n\nBurst: 150\n\nResponse headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`\n\nWhen rate limited, you'll receive HTTP `429 Too Many Requests` with a `Retry-After` header.\n\n## Pagination\n\nList endpoints support pagination via query parameters:\n\n| Parameter | Type | Default | Description |\n|-----------|------|---------|-------------|\n| `limit` | integer | 50 | Maximum results to return (1-1000). Use 0 for no limit. |\n| `offset` | integer | 0 | Number of results to skip |\n\nExample: `GET /api/v1/hosts?limit=10&offset=20`\n\n## Response Format\n\nAll responses use a standard envelope:\n\n```json\n{\n  \"success\": true,\n  \"data\": { ... },\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.13.6\"\n  }\n}\n```\n\n**Paginated list responses** include pagination metadata:\n\n```json\n{\n  \"success\": true,\n  \"data\": [ ... ],\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.13.6\",\n    \"pagination\": {\n      \"total_count\": 142,\n      \"limit\": 50,\n      \"offset\": 0,\n      \"has_more\": true\n    }\n  }\n}\n```\n\n| Field | Description |\n|-------|-------------|\n| `total_count` | Total items matching your query (ignoring pagination) |\n| `limit` | Applied limit (your request or default) |\n| `offset` | Applied offset |\n| `has_more` | `true` if more results exist beyond this page |\n\n**Error responses** include an `error` field instead of `data`:\n\n```json\n{\n  \"success\": false,\n  \"error\": \"Resource not found\",\n  \"meta\": { ... }\n}\n```\n\n**Common status codes:** `400` validation error, `401` unauthorized, `403` forbidden, `404` not found, `409` conflict, `429` rate limited.\n\n## Versioning\n\nThe API version is an integer (`api_version: 1`) incremented only on breaking changes. API is versioned independently from the application. Endpoints are prefixed with `/api/v1/`. Check `GET /api/version` for current versions.\n\n## Multi-Tenancy\n\nResources are scoped to your **organization** and **network(s)**:\n\n- You can only access entities within your organization\n- Network-level entities (hosts, services, etc.) are filtered to networks you have access to\n- Use `?network_id=<UUID>` to filter list endpoints to a specific network\n- API keys can be scoped to a subset of your accessible networks\n",
+    "description": "\nNetwork topology discovery and visualization API.\n\n## Authentication\n\nTwo authentication methods are supported:\n\n| Method | Header | Use Case |\n|--------|--------|----------|\n| User API key | `Authorization: Bearer scp_u_...` | Programmatic access, integrations |\n| Session cookie | `Cookie: session_id=...` | Web UI (via `/api/auth/login`) |\n\nUser API keys require your organization to have API access enabled. Create keys at **Platform > API Keys**.\n\n## Rate Limiting\n\nLimit: 300 requests/minute\n\nBurst: 150\n\nResponse headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`\n\nWhen rate limited, you'll receive HTTP `429 Too Many Requests` with a `Retry-After` header.\n\n## Pagination\n\nList endpoints support pagination via query parameters:\n\n| Parameter | Type | Default | Description |\n|-----------|------|---------|-------------|\n| `limit` | integer | 50 | Maximum results to return (1-1000). Use 0 for no limit. |\n| `offset` | integer | 0 | Number of results to skip |\n\nExample: `GET /api/v1/hosts?limit=10&offset=20`\n\n## Response Format\n\nAll responses use a standard envelope:\n\n```json\n{\n  \"success\": true,\n  \"data\": { ... },\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.14.4\"\n  }\n}\n```\n\n**Paginated list responses** include pagination metadata:\n\n```json\n{\n  \"success\": true,\n  \"data\": [ ... ],\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.14.4\",\n    \"pagination\": {\n      \"total_count\": 142,\n      \"limit\": 50,\n      \"offset\": 0,\n      \"has_more\": true\n    }\n  }\n}\n```\n\n| Field | Description |\n|-------|-------------|\n| `total_count` | Total items matching your query (ignoring pagination) |\n| `limit` | Applied limit (your request or default) |\n| `offset` | Applied offset |\n| `has_more` | `true` if more results exist beyond this page |\n\n**Error responses** include an `error` field instead of `data`:\n\n```json\n{\n  \"success\": false,\n  \"error\": \"Resource not found\",\n  \"meta\": { ... }\n}\n```\n\n**Common status codes:** `400` validation error, `401` unauthorized, `403` forbidden, `404` not found, `409` conflict, `429` rate limited.\n\n## Versioning\n\nThe API version is an integer (`api_version: 1`) incremented only on breaking changes. API is versioned independently from the application. Endpoints are prefixed with `/api/v1/`. Check `GET /api/version` for current versions.\n\n## Multi-Tenancy\n\nResources are scoped to your **organization** and **network(s)**:\n\n- You can only access entities within your organization\n- Network-level entities (hosts, services, etc.) are filtered to networks you have access to\n- Use `?network_id=<UUID>` to filter list endpoints to a specific network\n- API keys can be scoped to a subset of your accessible networks\n",
     "license": {
       "name": "Dual (AGPL3.0, Commercial License Available)"
     },
     "version": "1"
   },
   "paths": {
-    "/api/auth/daemon-setup": {
+    "/api/auth/check-email": {
       "post": {
         "tags": [
           "auth",
           "internal"
         ],
-        "summary": "Store pre-registration daemon setup data in session and generate provisional API key\nSupports multiple calls to configure daemons for different networks",
-        "operationId": "daemon_setup",
+        "operationId": "check_email",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/DaemonSetupRequest"
+                "$ref": "#/components/schemas/CheckEmailRequest"
               }
             }
           },
@@ -29,17 +28,17 @@
         },
         "responses": {
           "200": {
-            "description": "Daemon setup data stored",
+            "description": "Email is available",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_DaemonSetupResponse"
+                  "$ref": "#/components/schemas/ApiResponse"
                 }
               }
             }
           },
-          "400": {
-            "description": "Invalid request",
+          "409": {
+            "description": "Email already in use",
             "content": {
               "application/json": {
                 "schema": {
@@ -588,6 +587,108 @@
         }
       }
     },
+    "/api/billing/change-plan": {
+      "post": {
+        "tags": [
+          "billing",
+          "internal"
+        ],
+        "summary": "Change billing plan",
+        "description": "Upgrades or downgrades the organization's billing plan.",
+        "operationId": "change_plan",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangePlanRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Plan change initiated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_String"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid plan or billing not enabled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "user_api_key": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/billing/change-plan/preview": {
+      "get": {
+        "tags": [
+          "billing",
+          "internal"
+        ],
+        "summary": "Preview plan change (shows overage counts)",
+        "operationId": "preview_plan_change",
+        "parameters": [
+          {
+            "name": "plan",
+            "in": "query",
+            "description": "Target plan (JSON)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Plan change preview",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_ChangePlanPreview"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Billing not enabled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "user_api_key": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
     "/api/billing/checkout": {
       "post": {
         "tags": [
@@ -645,7 +746,7 @@
           "internal"
         ],
         "summary": "Submit enterprise plan inquiry",
-        "description": "Dual submission: Form API (for notifications) + CRM API (for Company properties).\nRequires authentication to link the inquiry to an organization.",
+        "description": "Updates Brevo contact/company with inquiry data, creates a deal, and\ntracks an event for automation triggers. Requires authentication to\nlink the inquiry to an organization.",
         "operationId": "submit_enterprise_inquiry",
         "requestBody": {
           "content": {
@@ -669,7 +770,7 @@
             }
           },
           "400": {
-            "description": "Invalid request or HubSpot not configured",
+            "description": "Invalid request or Brevo not configured",
             "content": {
               "application/json": {
                 "schema": {
@@ -789,6 +890,56 @@
         ]
       }
     },
+    "/api/billing/setup-payment-method": {
+      "post": {
+        "tags": [
+          "billing",
+          "internal"
+        ],
+        "summary": "Setup payment method (collect card without charging)",
+        "operationId": "setup_payment_method",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetupPaymentMethodRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Setup session URL",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_String"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Billing not enabled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "user_api_key": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
     "/api/billing/webhooks": {
       "post": {
         "tags": [
@@ -877,6 +1028,67 @@
           },
           "403": {
             "description": "Daemon registration disabled in demo mode",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "daemon_api_key": []
+          }
+        ]
+      }
+    },
+    "/api/daemons/{id}/heartbeat": {
+      "post": {
+        "tags": [
+          "Daemons",
+          "internal",
+          "deprecated"
+        ],
+        "summary": "Receive daemon heartbeat (DEPRECATED - for backwards compatibility with pre-v0.14.0 daemons)",
+        "description": "Internal endpoint for legacy daemons to send periodic heartbeats.\nNew daemons (v0.14.0+) use the /request-work endpoint which includes heartbeat functionality.\nThis endpoint is kept for backwards compatibility and will be removed in a future version.",
+        "operationId": "receive_heartbeat",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Daemon ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DaemonHeartbeatPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Heartbeat received",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Daemon not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -11674,12 +11886,12 @@
           "server_version": {
             "type": "string",
             "description": "Server version (semver)",
-            "example": "0.13.6"
+            "example": "0.14.4"
           }
         },
         "example": {
           "api_version": 1,
-          "server_version": "0.13.6"
+          "server_version": "0.14.4"
         }
       },
       "ApiResponse": {
@@ -11753,14 +11965,14 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-02-01T14:46:58.963068Z",
-              "id": "f5f1f4e5-6b7e-4edf-81d0-cd33ae146e06",
+              "created_at": "2026-02-10T17:35:56.896659Z",
+              "id": "fed06837-4724-4cba-a4cf-8842758fc602",
               "interface_id": "550e8400-e29b-41d4-a716-446655440005",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-02-01T14:46:58.963068Z"
+              "updated_at": "2026-02-10T17:35:56.896659Z"
             }
           },
           "error": {
@@ -11832,6 +12044,52 @@
               "affected_count": {
                 "type": "integer",
                 "description": "Number of entities affected",
+                "minimum": 0
+              }
+            }
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ApiMeta"
+          },
+          "success": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ApiResponse_ChangePlanPreview": {
+        "type": "object",
+        "required": [
+          "success",
+          "meta"
+        ],
+        "properties": {
+          "data": {
+            "type": "object",
+            "required": [
+              "excess_hosts",
+              "excess_networks",
+              "excess_seats"
+            ],
+            "properties": {
+              "excess_hosts": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0
+              },
+              "excess_networks": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0
+              },
+              "excess_seats": {
+                "type": "integer",
+                "format": "int64",
                 "minimum": 0
               }
             }
@@ -12029,39 +12287,6 @@
               }
             ],
             "description": "Daemon response for UI including computed version status"
-          },
-          "error": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "meta": {
-            "$ref": "#/components/schemas/ApiMeta"
-          },
-          "success": {
-            "type": "boolean"
-          }
-        }
-      },
-      "ApiResponse_DaemonSetupResponse": {
-        "type": "object",
-        "required": [
-          "success",
-          "meta"
-        ],
-        "properties": {
-          "data": {
-            "type": "object",
-            "description": "Response from daemon setup endpoint",
-            "properties": {
-              "api_key": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              }
-            }
           },
           "error": {
             "type": [
@@ -12492,14 +12717,14 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-02-01T14:46:58.950507Z",
-                      "id": "2add4480-e5e6-4695-8513-1eede16485b2",
+                      "created_at": "2026-02-10T17:35:56.882048Z",
+                      "id": "60c71669-1a50-4ca9-b425-c4d661278809",
                       "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-02-01T14:46:58.950507Z"
+                      "updated_at": "2026-02-10T17:35:56.882048Z"
                     }
                   ],
                   "created_at": "2026-01-15T10:30:00Z",
@@ -12508,7 +12733,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Jellyfin",
+                  "service_definition": "ESPHome",
                   "source": {
                     "type": "Manual"
                   },
@@ -12886,32 +13111,25 @@
           "data": {
             "type": "object",
             "description": "Response from onboarding state endpoint",
-            "required": [
-              "networks",
-              "network_ids"
-            ],
             "properties": {
-              "daemon_setups": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/OnboardingDaemonSetupState"
-                },
-                "description": "Daemon setups (if any)"
+              "network": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/OnboardingNetworkState",
+                    "description": "Network from pending setup (with name and ID)"
+                  }
+                ]
               },
-              "network_ids": {
-                "type": "array",
-                "items": {
-                  "type": "string",
-                  "format": "uuid"
-                },
-                "description": "Network IDs from pending setup (if any) - kept for backwards compatibility"
-              },
-              "networks": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/OnboardingNetworkState"
-                },
-                "description": "Networks from pending setup (with names and IDs)"
+              "network_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "description": "Network ID from pending setup (if any)"
               },
               "org_name": {
                 "type": [
@@ -13155,12 +13373,6 @@
                   "$ref": "#/components/schemas/OidcProviderMetadata"
                 }
               },
-              "plunk_key": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
               "posthog_key": {
                 "type": [
                   "string",
@@ -13324,14 +13536,14 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-02-01T14:46:58.959322Z",
-                  "id": "8ea536b6-ee1c-4715-9134-241e3787cf3b",
+                  "created_at": "2026-02-10T17:35:56.892240Z",
+                  "id": "a7870fc9-787b-4e1d-bd10-eebcb498dd58",
                   "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-02-01T14:46:58.959322Z"
+                  "updated_at": "2026-02-10T17:35:56.892240Z"
                 }
               ],
               "created_at": "2026-01-15T10:30:00Z",
@@ -13340,7 +13552,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Jellyfin",
+              "service_definition": "ESPHome",
               "source": {
                 "type": "Manual"
               },
@@ -13374,15 +13586,12 @@
             "type": "object",
             "description": "Response from setup endpoint",
             "required": [
-              "network_ids"
+              "network_id"
             ],
             "properties": {
-              "network_ids": {
-                "type": "array",
-                "items": {
-                  "type": "string",
-                  "format": "uuid"
-                }
+              "network_id": {
+                "type": "string",
+                "format": "uuid"
               }
             }
           },
@@ -13902,6 +14111,27 @@
                         "type": {
                           "type": "string",
                           "enum": [
+                            "Free"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/PlanConfig"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "type"
+                      ],
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "enum": [
                             "Starter"
                           ]
                         }
@@ -14325,6 +14555,27 @@
                   "type": {
                     "type": "string",
                     "enum": [
+                      "Free"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PlanConfig"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
                       "Starter"
                     ]
                   }
@@ -14500,14 +14751,14 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-02-01T14:46:58.950717Z",
-          "id": "a3a303c2-ecc7-4c80-915a-59098174569d",
+          "created_at": "2026-02-10T17:35:56.882351Z",
+          "id": "c90795f5-1c4e-4cbf-aead-1e8ef2cc3158",
           "interface_id": "550e8400-e29b-41d4-a716-446655440005",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-02-01T14:46:58.950717Z"
+          "updated_at": "2026-02-10T17:35:56.882351Z"
         }
       },
       "BindingBase": {
@@ -14714,6 +14965,59 @@
             "type": "integer",
             "description": "Number of entities affected",
             "minimum": 0
+          }
+        }
+      },
+      "ChangePlanPreview": {
+        "type": "object",
+        "required": [
+          "excess_hosts",
+          "excess_networks",
+          "excess_seats"
+        ],
+        "properties": {
+          "excess_hosts": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "excess_networks": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "excess_seats": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "ChangePlanRequest": {
+        "type": "object",
+        "required": [
+          "plan",
+          "rate"
+        ],
+        "properties": {
+          "plan": {
+            "$ref": "#/components/schemas/BillingPlan"
+          },
+          "rate": {
+            "$ref": "#/components/schemas/BillingRate"
+          }
+        }
+      },
+      "CheckEmailRequest": {
+        "type": "object",
+        "description": "Check email availability request",
+        "required": [
+          "email"
+        ],
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email"
           }
         }
       },
@@ -14961,7 +15265,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Jellyfin",
+              "service_definition": "ESPHome",
               "tags": [],
               "virtualization": null
             }
@@ -15248,6 +15552,11 @@
             "type": "string",
             "format": "uuid"
           },
+          "standby": {
+            "type": "boolean",
+            "description": "Whether the daemon is on standby due to plan restrictions (DaemonPoll on Free plan).",
+            "readOnly": true
+          },
           "tags": {
             "type": "array",
             "items": {
@@ -15289,6 +15598,26 @@
               "type": "string",
               "format": "uuid"
             }
+          }
+        }
+      },
+      "DaemonHeartbeatPayload": {
+        "type": "object",
+        "description": "Legacy heartbeat payload for backwards compatibility with pre-v0.14.0 daemons.\nOld daemons call POST /api/daemons/{id}/heartbeat with this payload.",
+        "required": [
+          "url",
+          "name",
+          "mode"
+        ],
+        "properties": {
+          "mode": {
+            "$ref": "#/components/schemas/DaemonMode"
+          },
+          "name": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
           }
         }
       },
@@ -15422,38 +15751,6 @@
           }
         ],
         "description": "Daemon response for UI including computed version status"
-      },
-      "DaemonSetupRequest": {
-        "type": "object",
-        "description": "Daemon setup request for pre-registration daemon configuration",
-        "required": [
-          "daemon_name",
-          "network_id"
-        ],
-        "properties": {
-          "daemon_name": {
-            "type": "string"
-          },
-          "install_later": {
-            "type": "boolean"
-          },
-          "network_id": {
-            "type": "string",
-            "format": "uuid"
-          }
-        }
-      },
-      "DaemonSetupResponse": {
-        "type": "object",
-        "description": "Response from daemon setup endpoint",
-        "properties": {
-          "api_key": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        }
       },
       "DaemonStartupRequest": {
         "type": "object",
@@ -15747,6 +16044,10 @@
             "properties": {
               "host_naming_fallback": {
                 "$ref": "#/components/schemas/HostNamingFallback"
+              },
+              "probe_raw_socket_ports": {
+                "type": "boolean",
+                "description": "Whether to probe raw-socket ports (9100-9107) during endpoint scanning.\nDisabled by default to prevent ghost printing on JetDirect printers."
               },
               "snmp_credentials": {
                 "$ref": "#/components/schemas/SnmpCredentialMapping",
@@ -16127,16 +16428,9 @@
             "type": "string",
             "description": "Contact email"
           },
-          "hutk": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "HubSpot tracking cookie (hutk) for linking form submission to visitor"
-          },
           "message": {
             "type": "string",
-            "description": "Message/use case description (maps to HubSpot \"message\" field)"
+            "description": "Message/use case description"
           },
           "name": {
             "type": "string",
@@ -16827,14 +17121,14 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-02-01T14:46:58.950232Z",
-                  "id": "eefe0fd5-65f3-4c5e-8e62-025be1d35d87",
+                  "created_at": "2026-02-10T17:35:56.881692Z",
+                  "id": "077a0724-1d36-421d-8b85-0ed4344263dc",
                   "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-02-01T14:46:58.950232Z"
+                  "updated_at": "2026-02-10T17:35:56.881692Z"
                 }
               ],
               "created_at": "2026-01-15T10:30:00Z",
@@ -16843,7 +17137,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Jellyfin",
+              "service_definition": "ESPHome",
               "source": {
                 "type": "Manual"
               },
@@ -18125,32 +18419,6 @@
           }
         }
       },
-      "OnboardingDaemonSetupState": {
-        "type": "object",
-        "description": "Daemon setup data in onboarding state response",
-        "required": [
-          "network_id",
-          "daemon_name"
-        ],
-        "properties": {
-          "api_key": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "API key (only returned if user chose to install now)"
-          },
-          "daemon_name": {
-            "type": "string",
-            "description": "Daemon name"
-          },
-          "network_id": {
-            "type": "string",
-            "format": "uuid",
-            "description": "Network ID this daemon is for"
-          }
-        }
-      },
       "OnboardingNetworkState": {
         "type": "object",
         "description": "Network data in onboarding state response",
@@ -18193,32 +18461,25 @@
       "OnboardingStateResponse": {
         "type": "object",
         "description": "Response from onboarding state endpoint",
-        "required": [
-          "networks",
-          "network_ids"
-        ],
         "properties": {
-          "daemon_setups": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/OnboardingDaemonSetupState"
-            },
-            "description": "Daemon setups (if any)"
+          "network": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/OnboardingNetworkState",
+                "description": "Network from pending setup (with name and ID)"
+              }
+            ]
           },
-          "network_ids": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "description": "Network IDs from pending setup (if any) - kept for backwards compatibility"
-          },
-          "networks": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/OnboardingNetworkState"
-            },
-            "description": "Networks from pending setup (with names and IDs)"
+          "network_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Network ID from pending setup (if any)"
           },
           "org_name": {
             "type": [
@@ -18250,6 +18511,34 @@
           "step"
         ],
         "properties": {
+          "company_size": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Company size"
+          },
+          "job_title": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Job title/role"
+          },
+          "referral_source": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Referral source (how they heard about Scanopy)"
+          },
+          "referral_source_other": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Free-text referral source (when \"other\" is selected)"
+          },
           "step": {
             "type": "string"
           },
@@ -18311,6 +18600,10 @@
           "onboarding"
         ],
         "properties": {
+          "has_payment_method": {
+            "type": "boolean",
+            "readOnly": true
+          },
           "name": {
             "type": "string"
           },
@@ -18335,6 +18628,14 @@
               "string",
               "null"
             ],
+            "readOnly": true
+          },
+          "trial_end_date": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
             "readOnly": true
           }
         }
@@ -18361,7 +18662,7 @@
           "server_version": {
             "type": "string",
             "description": "Server version (semver)",
-            "example": "0.13.6"
+            "example": "0.14.4"
           }
         },
         "example": {
@@ -18372,7 +18673,7 @@
             "offset": 0,
             "total_count": 142
           },
-          "server_version": "0.13.6"
+          "server_version": "0.14.4"
         }
       },
       "PaginatedApiResponse_DaemonResponse": {
@@ -18729,14 +19030,14 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-02-01T14:46:58.943461Z",
-                        "id": "e4371098-3d42-4f49-880d-5c34e9da7ba6",
+                        "created_at": "2026-02-10T17:35:56.873903Z",
+                        "id": "800e9109-88c7-4573-aef6-ca8ddfda207b",
                         "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-02-01T14:46:58.943461Z"
+                        "updated_at": "2026-02-10T17:35:56.873903Z"
                       }
                     ],
                     "created_at": "2026-01-15T10:30:00Z",
@@ -18745,7 +19046,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Jellyfin",
+                    "service_definition": "ESPHome",
                     "source": {
                       "type": "Manual"
                     },
@@ -18822,14 +19123,14 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-02-01T14:46:58.958258Z",
-                    "id": "4766952b-6281-4640-8c1c-1b52cf70b17a",
+                    "created_at": "2026-02-10T17:35:56.891092Z",
+                    "id": "23af204e-d5c9-492d-9075-ec6e3d9da790",
                     "interface_id": "550e8400-e29b-41d4-a716-446655440005",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-02-01T14:46:58.958258Z"
+                    "updated_at": "2026-02-10T17:35:56.891092Z"
                   }
                 ],
                 "created_at": "2026-01-15T10:30:00Z",
@@ -18838,7 +19139,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Jellyfin",
+                "service_definition": "ESPHome",
                 "source": {
                   "type": "Manual"
                 },
@@ -19309,6 +19610,21 @@
             "type": "integer",
             "format": "int64"
           },
+          "host_cents": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "included_hosts": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
           "included_networks": {
             "type": [
               "integer",
@@ -19575,12 +19891,6 @@
               "$ref": "#/components/schemas/OidcProviderMetadata"
             }
           },
-          "plunk_key": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
           "posthog_key": {
             "type": [
               "string",
@@ -19634,6 +19944,9 @@
           "email": {
             "type": "string",
             "format": "email"
+          },
+          "marketing_opt_in": {
+            "type": "boolean"
           },
           "password": {
             "type": "string"
@@ -19808,14 +20121,14 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-02-01T14:46:58.950648Z",
-              "id": "3982e278-ebb7-4a23-86e2-af3657dc6cf4",
+              "created_at": "2026-02-10T17:35:56.882211Z",
+              "id": "a4ce273f-10d5-4fab-9215-2df40837d315",
               "interface_id": "550e8400-e29b-41d4-a716-446655440005",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-02-01T14:46:58.950648Z"
+              "updated_at": "2026-02-10T17:35:56.882211Z"
             }
           ],
           "created_at": "2026-01-15T10:30:00Z",
@@ -19824,7 +20137,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Jellyfin",
+          "service_definition": "ESPHome",
           "source": {
             "type": "Manual"
           },
@@ -20055,19 +20368,27 @@
           }
         }
       },
+      "SetupPaymentMethodRequest": {
+        "type": "object",
+        "required": [
+          "url"
+        ],
+        "properties": {
+          "url": {
+            "type": "string"
+          }
+        }
+      },
       "SetupRequest": {
         "type": "object",
         "description": "Setup request for pre-registration org/network configuration",
         "required": [
           "organization_name",
-          "networks"
+          "network"
         ],
         "properties": {
-          "networks": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/NetworkSetup"
-            }
+          "network": {
+            "$ref": "#/components/schemas/NetworkSetup"
           },
           "organization_name": {
             "type": "string"
@@ -20078,15 +20399,12 @@
         "type": "object",
         "description": "Response from setup endpoint",
         "required": [
-          "network_ids"
+          "network_id"
         ],
         "properties": {
-          "network_ids": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "format": "uuid"
-            }
+          "network_id": {
+            "type": "string",
+            "format": "uuid"
           }
         }
       },
@@ -20542,15 +20860,18 @@
           "PlanSelected",
           "PersonalPlanSelected",
           "CommercialPlanSelected",
-          "FirstApiKeyCreated",
-          "FirstDaemonRegistered",
-          "FirstTopologyRebuild",
           "CheckoutStarted",
           "CheckoutCompleted",
           "TrialStarted",
           "TrialEnded",
+          "TrialWillEnd",
           "SubscriptionCancelled",
-          "FirstNetworkCreated",
+          "PlanChanged",
+          "PaymentFailed",
+          "PaymentActionRequired",
+          "PaymentRecovered",
+          "FirstDaemonRegistered",
+          "FirstTopologyRebuild",
           "FirstDiscoveryCompleted",
           "FirstHostDiscovered",
           "SecondNetworkCreated",
@@ -20558,7 +20879,9 @@
           "FirstUserApiKeyCreated",
           "FirstSnmpCredentialCreated",
           "InviteSent",
-          "InviteAccepted"
+          "InviteAccepted",
+          "FirstApiKeyCreated",
+          "FirstNetworkCreated"
         ]
       },
       "Topology": {
@@ -20610,6 +20933,7 @@
           "services",
           "groups",
           "if_entries",
+          "entity_tags",
           "is_stale",
           "last_refreshed",
           "is_locked",
@@ -20633,6 +20957,12 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/Edge"
+            }
+          },
+          "entity_tags": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Tag"
             }
           },
           "groups": {
@@ -20842,6 +21172,9 @@
           },
           "no_fade_edges": {
             "type": "boolean"
+          },
+          "tag_filter": {
+            "$ref": "#/components/schemas/TopologyTagFilter"
           }
         }
       },
@@ -21009,6 +21342,36 @@
           },
           "show_gateway_in_left_zone": {
             "type": "boolean"
+          }
+        }
+      },
+      "TopologyTagFilter": {
+        "type": "object",
+        "description": "Filter settings for hiding entities by tag in topology visualization.",
+        "properties": {
+          "hidden_host_tag_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Host tag IDs to hide (hosts with these tags will fade out)"
+          },
+          "hidden_service_tag_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Service tag IDs to hide (services with these tags will be hidden from nodes)"
+          },
+          "hidden_subnet_tag_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Subnet tag IDs to hide (subnets with these tags will fade out)"
           }
         }
       },

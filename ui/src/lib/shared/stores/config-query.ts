@@ -26,7 +26,6 @@ export interface PublicServerConfig {
 	posthog_key: string | null;
 	needs_cookie_consent: boolean;
 	deployment_type: DeploymentType;
-	plunk_key: string | null;
 }
 
 // Helper functions for deployment type checks

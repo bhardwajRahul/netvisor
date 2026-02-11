@@ -30,7 +30,7 @@ use crate::server::daemons::r#impl::api::{
     DaemonCapabilities, DaemonDiscoveryRequest, DaemonRegistrationRequest,
     DaemonRegistrationResponse, DiscoveryUpdatePayload, FirstContactRequest, ServerCapabilities,
 };
-use crate::server::daemons::r#impl::base::{Daemon, DaemonBase};
+use crate::server::daemons::r#impl::base::{Daemon, DaemonBase, DaemonMode};
 use crate::server::daemons::r#impl::version::DaemonVersionPolicy;
 use crate::server::discovery::r#impl::base::{Discovery, DiscoveryBase};
 use crate::server::discovery::r#impl::types::{DiscoveryType, HostNamingFallback, RunType};
@@ -48,10 +48,12 @@ use crate::server::shared::storage::generic::GenericPostgresStorage;
 use crate::server::shared::storage::traits::Storable;
 use crate::server::shared::types::api::{ApiError, ApiResponse};
 use crate::server::shared::types::entities::EntitySource;
+use crate::server::shared::types::error_codes::ErrorCode;
 use crate::server::snmp_credentials::r#impl::discovery::SnmpCredentialMapping;
 use crate::server::subnets::service::SubnetService;
 use crate::server::tags::entity_tags::EntityTagService;
 use crate::server::users::service::UserService;
+use axum::http::StatusCode;
 
 /// Daily midnight cron schedule for default discovery jobs
 const DAILY_MIDNIGHT_CRON: &str = "0 0 0 * * *";
@@ -224,29 +226,34 @@ impl DaemonService {
         .await
     }
 
-    /// Send POST request to daemon with auth and retry.
+    /// Send POST request to daemon with optional auth and retry.
     /// Uses exponential backoff: 5 retries, 5-30s delays.
     /// Returns `Option<T>` - `Some(data)` if response contains data, `None` otherwise.
     /// For endpoints that don't return data, use `::<serde_json::Value>` and ignore result.
+    ///
+    /// If `api_key` is `None`, the request is sent without an Authorization header.
+    /// This is used for legacy daemons (< v0.14.0) that don't require authentication.
     async fn post_to_daemon<T: serde::de::DeserializeOwned>(
         &self,
         daemon: &Daemon,
-        api_key: &str,
+        api_key: Option<&str>,
         path: &str,
         body: &impl serde::Serialize,
     ) -> Result<Option<T>> {
         let url = format!("{}{}", daemon.base.url, path);
         let daemon_id = daemon.id;
         let body_json = serde_json::to_value(body)?;
+        let api_key_owned = api_key.map(|s| s.to_owned());
 
         (|| async {
-            let response = self
-                .client
-                .post(&url)
-                .header("Authorization", format!("Bearer {}", api_key))
-                .json(&body_json)
-                .send()
-                .await?;
+            let mut request = self.client.post(&url).json(&body_json);
+
+            // Only add auth header if API key provided (v0.14.0+ daemons)
+            if let Some(ref key) = api_key_owned {
+                request = request.header("Authorization", format!("Bearer {}", key));
+            }
+
+            let response = request.send().await?;
 
             if !response.status().is_success() {
                 anyhow::bail!("POST {} failed: HTTP {}", path, response.status());
@@ -317,7 +324,7 @@ impl DaemonService {
         let _: Option<serde_json::Value> = self
             .post_to_daemon(
                 daemon,
-                api_key,
+                Some(api_key),
                 "/api/discovery/entities-created",
                 &created_entities,
             )
@@ -333,11 +340,14 @@ impl DaemonService {
         Ok(())
     }
 
-    /// Send discovery request to daemon (HTTP only, no event publishing)
+    /// Send discovery request to daemon (HTTP only, no event publishing).
+    ///
+    /// If `api_key` is `None`, the request is sent without authentication.
+    /// This is used for legacy daemons (< v0.14.0) that don't require auth.
     pub async fn send_discovery_request_to_daemon(
         &self,
         daemon: &Daemon,
-        api_key: &str,
+        api_key: Option<&str>,
         request: DaemonDiscoveryRequest,
     ) -> Result<(), Error> {
         tracing::info!(
@@ -359,11 +369,14 @@ impl DaemonService {
         Ok(())
     }
 
-    /// Send discovery cancellation to daemon (HTTP only, no event publishing)
+    /// Send discovery cancellation to daemon (HTTP only, no event publishing).
+    ///
+    /// If `api_key` is `None`, the request is sent without authentication.
+    /// This is used for legacy daemons (< v0.14.0) that don't require auth.
     pub async fn send_discovery_cancellation_to_daemon(
         &self,
         daemon: &Daemon,
-        api_key: &str,
+        api_key: Option<&str>,
         session_id: Uuid,
     ) -> Result<(), Error> {
         let _: Option<serde_json::Value> = self
@@ -394,7 +407,7 @@ impl DaemonService {
             server_capabilities,
         };
 
-        self.post_to_daemon(daemon, api_key, "/api/first-contact", &request)
+        self.post_to_daemon(daemon, Some(api_key), "/api/first-contact", &request)
             .await?
             .ok_or_else(|| anyhow::anyhow!("First contact response missing daemon status"))
     }
@@ -527,6 +540,19 @@ impl DaemonService {
             return Err(ApiError::demo_mode_blocked());
         }
 
+        // Check DaemonPoll restriction
+        if request.mode == DaemonMode::DaemonPoll
+            && let Some(plan) = &org.base.plan
+            && !plan.features().daemon_poll
+        {
+            return Err(ApiError::coded(
+                StatusCode::FORBIDDEN,
+                ErrorCode::BillingFeatureNotAvailable {
+                    feature: "DaemonPoll".into(),
+                },
+            ));
+        }
+
         tracing::info!("{:?}", request);
 
         // Parse version early for use in server_capabilities
@@ -594,7 +620,15 @@ impl DaemonService {
         });
 
         let host_response = host_service
-            .discover_host(dummy_host, vec![], vec![], vec![], vec![], auth.clone())
+            .discover_host(
+                dummy_host,
+                vec![],
+                vec![],
+                vec![],
+                vec![],
+                auth.clone(),
+                None,
+            )
             .await?;
 
         // If user_id is nil (old daemon), fall back to org owner
@@ -624,34 +658,25 @@ impl DaemonService {
             user_id,
             api_key_id: None,
             is_unreachable: false,
+            standby: false,
         });
 
         daemon.id = request.daemon_id;
 
+        // Send telemetry event if this is the organization's first daemon
+        self.emit_first_daemon_telemetry(daemon.id, daemon.base.network_id)
+            .await?;
+
         let registered_daemon = self.create(daemon, auth.clone()).await?;
 
-        // Send telemetry event if this is the organization's first daemon
-        if org.not_onboarded(&TelemetryOperation::FirstDaemonRegistered) {
-            self.event_bus
-                .publish_telemetry(TelemetryEvent {
-                    id: Uuid::new_v4(),
-                    organization_id: org.id,
-                    operation: TelemetryOperation::FirstDaemonRegistered,
-                    timestamp: Utc::now(),
-                    metadata: serde_json::json!({
-                        "is_onboarding_step": true
-                    }),
-                    authentication: auth.clone(),
-                })
-                .await?;
-        }
-
         // Create default discovery jobs
+        let is_free_plan = matches!(org.base.plan, Some(BillingPlan::Free(_)));
         self.create_default_discovery_jobs(
             request.daemon_id,
             request.network_id,
             host_response.id,
             request.capabilities.has_docker_socket,
+            is_free_plan,
         )
         .await?;
 
@@ -706,6 +731,7 @@ impl DaemonService {
         &self,
         entities: BufferedEntities,
         auth: AuthenticatedEntity,
+        host_limit: Option<u64>,
     ) -> Result<CreatedEntitiesPayload, ApiError> {
         let host_service = self
             .host_service
@@ -729,6 +755,7 @@ impl DaemonService {
                     host_request.services,
                     host_request.if_entries,
                     auth.clone(),
+                    host_limit,
                 )
                 .await
             {
@@ -745,6 +772,29 @@ impl DaemonService {
                     );
                 }
             }
+        }
+
+        // Emit FirstHostDiscovered telemetry if this is the org's first discovered host
+        if !created_hosts.is_empty()
+            && let Some((_, first_host)) = created_hosts.first()
+            && let Ok(Some(network)) = self.network_service.get_by_id(&first_host.network_id).await
+            && let Ok(Some(org)) = self
+                .organization_service
+                .get_by_id(&network.base.organization_id)
+                .await
+            && org.not_onboarded(&TelemetryOperation::FirstHostDiscovered)
+        {
+            let _ = self
+                .event_bus
+                .publish_telemetry(TelemetryEvent::new(
+                    Uuid::new_v4(),
+                    org.id,
+                    TelemetryOperation::FirstHostDiscovered,
+                    Utc::now(),
+                    AuthenticatedEntity::System,
+                    serde_json::json!({}),
+                ))
+                .await;
         }
 
         // Process discovered subnets - continue on failure to avoid blocking entire batch
@@ -833,14 +883,27 @@ impl DaemonService {
         network_id: Uuid,
         host_id: Uuid,
         has_docker_socket: bool,
+        is_free_plan: bool,
     ) -> Result<(), ApiError> {
         tracing::info!(
             daemon_id = %daemon_id,
             network_id = %network_id,
             host_id = %host_id,
             has_docker_socket,
+            is_free_plan,
             "Creating default discovery jobs for daemon"
         );
+
+        // Free plans use AdHoc (run once immediately), paid plans use Scheduled
+        let default_run_type = if is_free_plan {
+            RunType::AdHoc { last_run: None }
+        } else {
+            RunType::Scheduled {
+                cron_schedule: DAILY_MIDNIGHT_CRON.to_string(),
+                last_run: None,
+                enabled: true,
+            }
+        };
 
         // Create SelfReport discovery job
         let self_report_discovery_type = DiscoveryType::SelfReport { host_id };
@@ -849,11 +912,7 @@ impl DaemonService {
             .discovery_service
             .create_discovery(
                 Discovery::new(DiscoveryBase {
-                    run_type: RunType::Scheduled {
-                        cron_schedule: DAILY_MIDNIGHT_CRON.to_string(),
-                        last_run: None,
-                        enabled: true,
-                    },
+                    run_type: default_run_type.clone(),
                     discovery_type: self_report_discovery_type.clone(),
                     name: self_report_discovery_type.to_string(),
                     daemon_id,
@@ -879,11 +938,7 @@ impl DaemonService {
                 .discovery_service
                 .create_discovery(
                     Discovery::new(DiscoveryBase {
-                        run_type: RunType::Scheduled {
-                            cron_schedule: DAILY_MIDNIGHT_CRON.to_string(),
-                            last_run: None,
-                            enabled: true,
-                        },
+                        run_type: default_run_type.clone(),
                         discovery_type: docker_discovery_type.clone(),
                         name: docker_discovery_type.to_string(),
                         daemon_id,
@@ -904,17 +959,14 @@ impl DaemonService {
             subnet_ids: None,
             host_naming_fallback: HostNamingFallback::BestService,
             snmp_credentials: SnmpCredentialMapping::default(),
+            probe_raw_socket_ports: false,
         };
 
         let network_discovery = self
             .discovery_service
             .create_discovery(
                 Discovery::new(DiscoveryBase {
-                    run_type: RunType::Scheduled {
-                        cron_schedule: DAILY_MIDNIGHT_CRON.to_string(),
-                        last_run: None,
-                        enabled: true,
-                    },
+                    run_type: default_run_type.clone(),
                     discovery_type: network_discovery_type.clone(),
                     name: network_discovery_type.to_string(),
                     daemon_id,
@@ -964,7 +1016,6 @@ impl DaemonService {
                     operation: TelemetryOperation::FirstDaemonRegistered,
                     timestamp: Utc::now(),
                     metadata: serde_json::json!({
-                        "is_onboarding_step": true,
                         "mode": "server_poll"
                     }),
                     authentication: AuthenticatedEntity::System,
@@ -1067,7 +1118,23 @@ impl DaemonService {
     /// Poll a single daemon for status and discovery data.
     /// Uses backon for retry with exponential backoff.
     /// Marks daemon unreachable after UNREACHABLE_THRESHOLD failures.
+    ///
+    /// Legacy daemons (< v0.14.0) are skipped entirely - they don't support
+    /// the polling endpoints (/api/status, /api/poll, /api/first-contact,
+    /// /api/discovery/entities-created). Legacy daemons stay alive via their
+    /// own heartbeat calls to the server's backward-compat endpoint.
     async fn poll_daemon(&self, daemon: &Daemon) -> Result<()> {
+        // Skip polling for legacy daemons - they don't have the new endpoints
+        if !daemon.supports_full_server_poll() {
+            tracing::debug!(
+                daemon_id = %daemon.id,
+                daemon_name = %daemon.base.name,
+                version = ?daemon.base.version,
+                "Skipping poll for legacy daemon (< v0.14.0) - polling endpoints not supported"
+            );
+            return Ok(());
+        }
+
         tracing::debug!(
             daemon_id = %daemon.id,
             daemon_name = %daemon.base.name,
@@ -1205,6 +1272,25 @@ impl DaemonService {
                 "First contact with ServerPoll daemon"
             );
 
+            // Determine if org is on Free plan for discovery defaults
+            let is_free_plan = if let Ok(Some(network)) = self
+                .network_service
+                .get_by_id(&daemon.base.network_id)
+                .await
+            {
+                if let Ok(Some(org)) = self
+                    .organization_service
+                    .get_by_id(&network.base.organization_id)
+                    .await
+                {
+                    matches!(org.base.plan, Some(BillingPlan::Free(_)))
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+
             // Create default discovery jobs
             if let Err(e) = self
                 .create_default_discovery_jobs(
@@ -1212,6 +1298,7 @@ impl DaemonService {
                     daemon.base.network_id,
                     daemon.base.host_id,
                     status.capabilities.has_docker_socket,
+                    is_free_plan,
                 )
                 .await
             {
@@ -1254,7 +1341,7 @@ impl DaemonService {
                 // Process entities if any
                 if !poll_response.entities.is_empty() {
                     match self
-                        .process_discovery_entities(poll_response.entities, auth.clone())
+                        .process_discovery_entities(poll_response.entities, auth.clone(), None)
                         .await
                     {
                         Ok(created_entities) => {
@@ -1296,7 +1383,7 @@ impl DaemonService {
                 discovery_type: work.discovery_type,
             };
             if let Err(e) = self
-                .send_discovery_request_to_daemon(daemon, &api_key, request)
+                .send_discovery_request_to_daemon(daemon, Some(&api_key), request)
                 .await
             {
                 tracing::warn!(

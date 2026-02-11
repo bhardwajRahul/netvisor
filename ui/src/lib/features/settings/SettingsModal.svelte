@@ -4,7 +4,7 @@
 	import { User, Building2, CreditCard, Settings } from 'lucide-svelte';
 	import { useCurrentUserQuery } from '$lib/features/auth/queries';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
-	import { isBillingPlanActive } from '$lib/features/organizations/types';
+	import { useConfigQuery } from '$lib/shared/stores/config-query';
 	import type { ModalTab } from '$lib/shared/components/layout/GenericModal.svelte';
 	import AccountTab from './AccountTab.svelte';
 	import OrganizationTab from './OrganizationTab.svelte';
@@ -18,10 +18,14 @@
 
 	let {
 		isOpen = false,
-		onClose
+		onClose,
+		initialTab = 'account',
+		dismissible = true
 	}: {
 		isOpen: boolean;
 		onClose: () => void;
+		initialTab?: string;
+		dismissible?: boolean;
 	} = $props();
 
 	// TanStack Query for current user and organization
@@ -31,8 +35,15 @@
 	let currentUser = $derived(currentUserQuery.data);
 	let org = $derived(organizationQuery.data);
 
+	const configQuery = useConfigQuery();
 	let isOwner = $derived(currentUser?.permissions === 'Owner');
-	let isBillingEnabled = $derived(org ? isBillingPlanActive(org) : false);
+	let isBillingEnabled = $derived(configQuery.data?.billing_enabled ?? false);
+	let billingNeedsAttention = $derived(
+		!org?.plan ||
+			org?.plan_status === 'past_due' ||
+			org?.plan_status === 'canceled' ||
+			(org?.plan_status === 'trialing' && !org?.has_payment_method)
+	);
 
 	// Tab and sub-view state
 	let activeTab = $state('account');
@@ -43,7 +54,12 @@
 	let baseTabs = $derived<ModalTab[]>([
 		{ id: 'account', label: common_account(), icon: User },
 		{ id: 'organization', label: common_organization(), icon: Building2 },
-		{ id: 'billing', label: common_billing(), icon: CreditCard }
+		{
+			id: 'billing',
+			label: common_billing(),
+			icon: CreditCard,
+			notification: billingNeedsAttention
+		}
 	]);
 
 	// Filter tabs based on permissions
@@ -57,7 +73,7 @@
 
 	// Reset sub-views when modal opens or tab changes
 	function handleOpen() {
-		activeTab = 'account';
+		activeTab = initialTab;
 		accountSubView = 'main';
 		orgSubView = 'main';
 	}
@@ -70,6 +86,7 @@
 	}
 
 	function handleClose() {
+		if (!dismissible) return;
 		// Reset sub-views on close
 		accountSubView = 'main';
 		orgSubView = 'main';
@@ -83,7 +100,8 @@
 	size="xl"
 	onClose={handleClose}
 	onOpen={handleOpen}
-	showCloseButton={true}
+	preventCloseOnClickOutside={!dismissible}
+	showCloseButton={dismissible}
 	tabs={visibleTabs}
 	{activeTab}
 	onTabChange={handleTabChange}
@@ -98,7 +116,7 @@
 		{:else if activeTab === 'organization'}
 			<OrganizationTab bind:subView={orgSubView} onClose={handleClose} />
 		{:else if activeTab === 'billing'}
-			<BillingTab {isOpen} onClose={handleClose} />
+			<BillingTab {isOpen} onClose={handleClose} {dismissible} />
 		{/if}
 	</div>
 </GenericModal>

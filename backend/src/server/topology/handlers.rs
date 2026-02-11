@@ -186,6 +186,8 @@ async fn create_topology(
         .get_service_data(topology.base.network_id, &topology.base.options)
         .await?;
 
+    let entity_tags = service.get_entity_tags(&hosts, &services, &subnets).await?;
+
     let (nodes, edges) = service.build_graph(BuildGraphParams {
         options: &topology.base.options,
         hosts: &hosts,
@@ -209,6 +211,7 @@ async fn create_topology(
         ports,
         bindings,
         if_entries,
+        entity_tags,
     });
 
     topology.set_graph(nodes, edges);
@@ -286,6 +289,8 @@ async fn refresh(
         .get_service_data(request.network_id, &topology.base.options)
         .await?;
 
+    let entity_tags = service.get_entity_tags(&hosts, &services, &subnets).await?;
+
     topology.set_entities(SetEntitiesParams {
         hosts,
         services,
@@ -295,6 +300,7 @@ async fn refresh(
         ports,
         bindings,
         if_entries,
+        entity_tags,
     });
 
     service.update(&mut topology, auth.into_entity()).await?;
@@ -351,6 +357,8 @@ async fn rebuild(
         .get_service_data(request.network_id, &topology.base.options)
         .await?;
 
+    let entity_tags = service.get_entity_tags(&hosts, &services, &subnets).await?;
+
     let (nodes, edges) = service.build_graph(BuildGraphParams {
         options: &topology.base.options,
         hosts: &hosts,
@@ -374,6 +382,7 @@ async fn rebuild(
         ports,
         bindings,
         if_entries,
+        entity_tags,
     });
 
     topology.set_graph(nodes, edges);
@@ -403,9 +412,7 @@ async fn rebuild(
                     organization_id: entity.organization_id().expect("User should have org_id"),
                     operation: TelemetryOperation::FirstTopologyRebuild,
                     timestamp: Utc::now(),
-                    metadata: serde_json::json!({
-                        "is_onboarding_step": true
-                    }),
+                    metadata: serde_json::json!({}),
                     authentication: entity,
                 })
                 .await?;

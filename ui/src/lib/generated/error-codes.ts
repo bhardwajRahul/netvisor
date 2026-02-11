@@ -50,11 +50,17 @@ export const ERROR_CODES = {
 	interface_ip_out_of_range: "IP address '{ip}' is not within subnet '{subnet}' range",
 	daemon_network_mismatch: 'Cannot send updates for a different network',
 	daemon_identity_mismatch: 'Cannot send updates for a different daemon',
+	daemon_standby:
+		'Your plan does not support DaemonPoll mode. The daemon is on standby. Upgrade your plan and restart the daemon to resume.',
 	user_email_in_use: "Email '{email}' is already in use",
 	billing_payment_required: 'Payment is required to continue',
 	billing_plan_limit_reached: "You've reached the limit of {limit} {resource} on your current plan",
 	billing_subscription_required: 'Active subscription required',
 	billing_setup_incomplete: 'Billing setup is incomplete',
+	billing_host_limit_reached:
+		"You've reached the limit of {limit} hosts on your current plan. Upgrade for unlimited hosts.",
+	billing_feature_not_available:
+		'Your current plan does not include {feature}. Upgrade your plan to access this feature.',
 	rate_limit_exceeded: 'Too many requests, please try again later',
 	external_service_error: 'Error from {service}: {reason}',
 	database_error: 'A database error occurred',
@@ -111,11 +117,14 @@ export interface ErrorParams {
 	interface_ip_out_of_range: { ip: string | number; subnet: string | number };
 	daemon_network_mismatch: Record<string, never>;
 	daemon_identity_mismatch: Record<string, never>;
+	daemon_standby: Record<string, never>;
 	user_email_in_use: { email: string | number };
 	billing_payment_required: Record<string, never>;
 	billing_plan_limit_reached: { limit: string | number; resource: string | number };
 	billing_subscription_required: Record<string, never>;
 	billing_setup_incomplete: Record<string, never>;
+	billing_host_limit_reached: { limit: string | number };
+	billing_feature_not_available: { feature: string | number };
 	rate_limit_exceeded: Record<string, never>;
 	external_service_error: { service: string | number; reason: string | number };
 	database_error: Record<string, never>;

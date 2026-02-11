@@ -151,6 +151,7 @@ impl TestClient {
             email: email.clone(),
             password: password.to_string(),
             terms_accepted: false,
+            marketing_opt_in: false,
         };
 
         let response = self
@@ -447,20 +448,17 @@ pub async fn setup_authenticated_user(client: &TestClient) -> Result<User, Strin
 
     let setup_request = SetupRequest {
         organization_name: "My Organization".to_string(),
-        networks: vec![NetworkSetup {
+        network: NetworkSetup {
             name: "My Network".to_string(),
             snmp_enabled: false,
             snmp_version: None,
             snmp_community: None,
-        }],
+        },
     };
 
     match client.setup(&setup_request).await {
         Ok(response) => {
-            println!(
-                "✅ Setup completed, network_ids: {:?}",
-                response.network_ids
-            );
+            println!("✅ Setup completed, network_id: {:?}", response.network_id);
         }
         Err(e) => {
             println!("⚠️  Setup failed (may already be registered): {}", e);
@@ -472,7 +470,7 @@ pub async fn setup_authenticated_user(client: &TestClient) -> Result<User, Strin
             println!("✅ Registered new user: {}", user.base.email);
             Ok(user)
         }
-        Err(e) if e.contains("already taken") => {
+        Err(e) if e.contains("already taken") || e.contains("already in use") => {
             println!("User already exists, logging in...");
             client.login(&test_email, TEST_PASSWORD).await
         }

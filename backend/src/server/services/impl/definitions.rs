@@ -99,6 +99,7 @@ pub trait ServiceDefinitionExt {
     fn is_gateway(&self) -> bool;
     fn is_open_ports(&self) -> bool;
     fn has_logo(&self) -> bool;
+    fn has_raw_socket_endpoint(&self) -> bool;
 }
 
 impl ServiceDefinitionExt for Box<dyn ServiceDefinition> {
@@ -130,6 +131,10 @@ impl ServiceDefinitionExt for Box<dyn ServiceDefinition> {
 
     fn has_logo(&self) -> bool {
         !self.logo_url().is_empty()
+    }
+
+    fn has_raw_socket_endpoint(&self) -> bool {
+        self.discovery_pattern().has_raw_socket_endpoint()
     }
 
     fn manages_virtualization(&self) -> Option<&'static str> {
@@ -170,6 +175,7 @@ impl TypeMetadataProvider for Box<dyn ServiceDefinition> {
             "has_logo": self.has_logo(),
             "logo_url": self.logo_url(),
             "logo_needs_white_background": self.logo_needs_white_background(),
+            "has_raw_socket_endpoint": self.has_raw_socket_endpoint(),
         })
     }
 }

@@ -36,6 +36,8 @@ export interface BillingPlanMetadata {
 		live_chat_support: boolean;
 		embeds: boolean;
 		email_support: boolean;
+		scheduled_discovery: boolean;
+		daemon_poll: boolean;
 	};
 	is_commercial: boolean;
 	hosting: string;
@@ -49,6 +51,7 @@ export interface ServicedDefinitionMetadata {
 	manages_virtualization: 'vms' | 'containers';
 	has_logo: boolean;
 	logo_url: string;
+	has_raw_socket_endpoint: boolean;
 }
 
 export interface PermissionsMetadata {

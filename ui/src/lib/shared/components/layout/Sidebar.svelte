@@ -6,11 +6,21 @@
 	import SettingsModal from '$lib/features/settings/SettingsModal.svelte';
 	import SupportModal from '$lib/features/support/SupportModal.svelte';
 	import { entities } from '$lib/shared/stores/metadata';
+	import { showBillingPlanModal, reopenSettingsAfterBilling } from '$lib/features/billing/stores';
 	import type { IconComponent } from '$lib/shared/utils/types';
-	import { Menu, ChevronDown, History, Calendar, Settings, LifeBuoy } from 'lucide-svelte';
+	import {
+		Menu,
+		ChevronDown,
+		History,
+		Calendar,
+		Settings,
+		LifeBuoy,
+		ArrowUpCircle
+	} from 'lucide-svelte';
 	import { onMount } from 'svelte';
 	import type { Component } from 'svelte';
 	import type { UserOrgPermissions } from '$lib/features/users/types';
+	import { trackEvent } from '$lib/shared/utils/analytics';
 
 	// Import tab components
 	import TopologyTab from '$lib/features/topology/components/TopologyTab.svelte';
@@ -35,12 +45,18 @@
 		activeTab = $bindable('topology'),
 		collapsed = $bindable(false),
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		allTabs = $bindable<Array<{ id: string; component: any; isReadOnly: boolean }>>([])
+		allTabs = $bindable<Array<{ id: string; component: any; isReadOnly: boolean }>>([]),
+		showSettings = $bindable(false),
+		settingsInitialTab = 'account',
+		settingsDismissible = true
 	}: {
 		activeTab?: string;
 		collapsed?: boolean;
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		allTabs?: Array<{ id: string; component: any; isReadOnly: boolean }>;
+		showSettings?: boolean;
+		settingsInitialTab?: string;
+		settingsDismissible?: boolean;
 	} = $props();
 
 	// TanStack Query for current user and organization
@@ -54,10 +70,30 @@
 	let userPermissions = $derived(currentUser?.permissions);
 	let isBillingEnabled = $derived(organization ? isBillingPlanActive(organization) : false);
 	let isDemoOrg = $derived(organization?.plan?.type === 'Demo');
+	let isFreePlan = $derived(organization?.plan?.type === 'Free');
+	let isOwner = $derived(userPermissions === 'Owner');
+	let showUpgradeButton = $derived(isFreePlan && isOwner && isBillingEnabled);
 	let isReadOnly = $derived(userPermissions === 'Viewer');
 
-	let showSettings = $state(false);
 	let showSupport = $state(false);
+
+	// Show notification on settings only when trialing without payment method
+	// Free plan users don't need a payment method, so no dot for them
+	let showBillingNotification = $derived.by(() => {
+		if (!organization) return false;
+		const isPastDue = organization.plan_status === 'past_due';
+		const isTrialing = organization.plan_status === 'trialing';
+		const hasPayment = organization.has_payment_method ?? false;
+		return isPastDue || (isTrialing && !hasPayment);
+	});
+
+	// Reopen settings modal when billing plan modal closes (if opened from settings)
+	$effect(() => {
+		if (!$showBillingPlanModal && $reopenSettingsAfterBilling) {
+			showSettings = true;
+			reopenSettingsAfterBilling.set(false);
+		}
+	});
 
 	interface NavItem {
 		id: string;
@@ -570,6 +606,24 @@
 	<!-- Bottom Navigation -->
 	<div class="flex-shrink-0 border-t border-gray-700 px-2 py-2">
 		<ul class="space-y-1">
+			{#if showUpgradeButton}
+				<li>
+					<button
+						class="{baseClasses} text-amber-400 hover:bg-amber-500/10"
+						style="height: 2.5rem; padding: 0.5rem 0.75rem;"
+						title={collapsed ? 'Upgrade' : ''}
+						onclick={() => {
+							trackEvent('upgrade_button_clicked', { feature: 'sidebar' });
+							showBillingPlanModal.set(true);
+						}}
+					>
+						<ArrowUpCircle class="h-5 w-5 flex-shrink-0" />
+						{#if !collapsed}
+							<span class="ml-3 truncate">Upgrade</span>
+						{/if}
+					</button>
+				</li>
+			{/if}
 			{#each bottomNavItems as item (item.id)}
 				{#if !isSection(item)}
 					<li>
@@ -582,7 +636,13 @@
 							style="height: 2.5rem; padding: 0.5rem 0.75rem;"
 							title={collapsed ? item.label : ''}
 						>
-							<item.icon class="h-5 w-5 flex-shrink-0" />
+							<span class="relative">
+								<item.icon class="h-5 w-5 flex-shrink-0" />
+								{#if item.id === 'settings' && showBillingNotification}
+									<span class="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-amber-500"
+									></span>
+								{/if}
+							</span>
 							{#if !collapsed}
 								<span class="ml-3 truncate">{item.label}</span>
 							{/if}
@@ -594,5 +654,10 @@
 	</div>
 </div>
 
-<SettingsModal isOpen={showSettings} onClose={() => (showSettings = false)} />
+<SettingsModal
+	isOpen={showSettings}
+	onClose={() => (showSettings = false)}
+	initialTab={settingsInitialTab}
+	dismissible={settingsDismissible}
+/>
 <SupportModal isOpen={showSupport} onClose={() => (showSupport = false)} />

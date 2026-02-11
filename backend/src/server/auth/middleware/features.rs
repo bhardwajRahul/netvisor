@@ -148,6 +148,22 @@ impl FeatureCheck for ApiKeyFeature {
 }
 
 #[derive(Default)]
+pub struct ShareViewsFeature;
+
+#[async_trait]
+impl FeatureCheck for ShareViewsFeature {
+    async fn check(&self, ctx: &FeatureCheckContext<'_>) -> FeatureCheckResult {
+        if !ctx.plan.features().share_views {
+            return FeatureCheckResult::payment_required(
+                "Your plan does not include sharing. Upgrade to share live network diagrams.",
+            );
+        }
+
+        FeatureCheckResult::Allowed
+    }
+}
+
+#[derive(Default)]
 pub struct CreateNetworkFeature;
 
 #[async_trait]
@@ -177,30 +193,5 @@ impl FeatureCheck for CreateNetworkFeature {
         }
 
         FeatureCheckResult::Allowed
-    }
-}
-
-/// Feature check that blocks non-owner users on demo organizations.
-///
-/// Demo mode allows users to explore the UI without making destructive changes.
-/// Owners of demo organizations retain full access to all features.
-#[derive(Default)]
-pub struct BlockedInDemoMode;
-
-#[async_trait]
-impl FeatureCheck for BlockedInDemoMode {
-    async fn check(&self, ctx: &FeatureCheckContext<'_>) -> FeatureCheckResult {
-        // Allow if not demo plan
-        if !matches!(ctx.plan, BillingPlan::Demo(_)) {
-            return FeatureCheckResult::Allowed;
-        }
-
-        // Allow owners full access
-        if ctx.permissions == UserOrgPermissions::Owner {
-            return FeatureCheckResult::Allowed;
-        }
-
-        // Block non-owners on demo plan
-        FeatureCheckResult::denied_with_error(ApiError::demo_mode_blocked())
     }
 }

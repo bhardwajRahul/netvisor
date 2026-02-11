@@ -1,6 +1,7 @@
 pub mod auth;
 pub mod billing;
 pub mod cache;
+pub mod demo_mode;
 pub mod features;
 pub mod fixture_capture;
 pub mod logging;

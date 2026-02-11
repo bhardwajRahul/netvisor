@@ -55,7 +55,11 @@
 		cookies_settingsDesc
 	} from '$lib/paraglide/messages';
 
-	const COOKIE_DOMAIN = dev ? '' : '.scanopy.net';
+	const COOKIE_DOMAIN = dev
+		? ''
+		: typeof window !== 'undefined' && window.location.hostname.endsWith('.scanopy.net')
+			? '.scanopy.net'
+			: '';
 	const COOKIE_DAYS = 365;
 
 	let preferences: CookiePreferences = $state({

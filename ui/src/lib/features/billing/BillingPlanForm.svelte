@@ -8,7 +8,6 @@
 	import { Check, X, ChevronDown, Loader2 } from 'lucide-svelte';
 	import Tag from '$lib/shared/components/data/Tag.svelte';
 	import ToggleGroup from './ToggleGroup.svelte';
-	import ScanProgressIndicator from '$lib/features/discovery/components/ScanProgressIndicator.svelte';
 	import { SvelteMap } from 'svelte/reactivity';
 	import type { BillingPlan } from './types';
 	import type { BillingPlanMetadata, FeatureMetadata } from '$lib/shared/stores/metadata';
@@ -68,7 +67,7 @@
 	let loadingPlanType = $state<string | null>(null);
 
 	type PlanFilter = 'all' | 'personal' | 'commercial';
-	let planFilter = $derived<PlanFilter>(initialPlanFilter);
+	let planFilter = $state<PlanFilter>(initialPlanFilter);
 
 	type BillingPeriod = 'monthly' | 'yearly';
 	let billingPeriod = $state<BillingPeriod>('monthly');
@@ -134,6 +133,8 @@
 		let result = plans;
 		if (planFilter !== 'all') {
 			result = result.filter((plan) => {
+				// Free plan appears on both Personal and Commercial toggles
+				if (plan.type === 'Free') return true;
 				const metadata = billingPlanHelpers.getMetadata(plan.type);
 				if (planFilter === 'commercial') return metadata.is_commercial;
 				if (planFilter === 'personal') return !metadata.is_commercial;
@@ -141,9 +142,17 @@
 			});
 		}
 		result = result.filter((plan) => {
+			// Free plan is always monthly (no yearly variant)
+			if (plan.type === 'Free') return true;
 			if (billingPeriod === 'monthly') return plan.rate === 'Month';
 			if (billingPeriod === 'yearly') return plan.rate === 'Year';
 			return true;
+		});
+		// Sort Free plan first
+		result = [...result].sort((a, b) => {
+			if (a.type === 'Free') return -1;
+			if (b.type === 'Free') return 1;
+			return 0;
 		});
 		return result;
 	});
@@ -220,6 +229,11 @@
 	function formatNetworkAddonPricing(plan: BillingPlan): string {
 		if (plan.network_cents)
 			return `+$${plan.network_cents / 100} / network / ${plan.rate.toLowerCase()}`;
+		return '';
+	}
+
+	function formatHostAddonPricing(plan: BillingPlan): string {
+		if (plan.host_cents) return `+$${plan.host_cents / 100} / host / ${plan.rate.toLowerCase()}`;
 		return '';
 	}
 
@@ -310,8 +324,6 @@
 		{#if showGithubStars}
 			<!-- <GithubStars /> -->
 		{/if}
-
-		<ScanProgressIndicator />
 
 		<ToggleGroup
 			options={planTypeOptions}
@@ -424,6 +436,25 @@
 							>
 							{#if plan.network_cents}
 								<span class="text-tertiary text-xs">{formatNetworkAddonPricing(plan)}</span>
+							{/if}
+						</div>
+					</div>
+				{/each}
+			</div>
+
+			<!-- Hosts Row -->
+			<div class="grid-row" style="grid-template-columns: {gridColumns}">
+				<div class="grid-cell label-cell">
+					<div class="text-xs font-medium lg:text-sm">Hosts</div>
+				</div>
+				{#each filteredPlans as plan (plan.type)}
+					<div class="grid-cell plan-cell text-center">
+						<div class="flex flex-col">
+							<span class="text-secondary text-xs lg:text-base"
+								>{plan.included_hosts == null ? 'Unlimited' : plan.included_hosts}</span
+							>
+							{#if plan.host_cents}
+								<span class="text-tertiary text-xs">{formatHostAddonPricing(plan)}</span>
 							{/if}
 						</div>
 					</div>
@@ -550,16 +581,6 @@
 										{trial ? 'Start Free Trial' : 'Get Started'}
 									{/if}
 								</button>
-								{#if commercial && onPlanInquiry}
-									<button
-										type="button"
-										onclick={() => onPlanInquiry(plan)}
-										disabled={loadingPlanType !== null}
-										class="btn-secondary w-full whitespace-nowrap text-xs lg:text-sm"
-									>
-										Contact Us
-									</button>
-								{/if}
 							{:else if hosting === 'Self-Hosted'}
 								{#if commercial && onPlanInquiry}
 									<button
@@ -614,7 +635,7 @@
 
 	/* Scrollable content area */
 	.content-scroll {
-		overflow-x: auto;
+		overflow: auto;
 	}
 
 	/* Sticky footer - sticks to bottom of viewport */

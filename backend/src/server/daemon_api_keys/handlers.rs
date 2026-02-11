@@ -1,15 +1,11 @@
 use crate::server::{
-    auth::middleware::{
-        features::{BlockedInDemoMode, RequireFeature},
-        permissions::{Authorized, Member},
-    },
+    auth::middleware::permissions::{Authorized, Member},
     config::AppState,
     daemon_api_keys::r#impl::{api::DaemonApiKeyResponse, base::DaemonApiKey},
     shared::{
         api_key_common::{ApiKeyService, ApiKeyType, generate_api_key_for_storage},
-        events::types::{TelemetryEvent, TelemetryOperation},
         handlers::traits::{CrudHandlers, update_handler},
-        services::traits::{CrudService, EventBusService},
+        services::traits::CrudService,
         storage::traits::Entity,
         types::api::{ApiError, ApiErrorResponse, ApiResponse, ApiResult},
         validation::validate_network_access,
@@ -21,7 +17,6 @@ use axum::{
 };
 use axum_client_ip::ClientIp;
 use axum_extra::{TypedHeader, headers::UserAgent};
-use chrono::Utc;
 use std::sync::Arc;
 use utoipa_axum::{router::OpenApiRouter, routes};
 use uuid::Uuid;
@@ -61,11 +56,10 @@ pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
 pub async fn create_daemon_api_key(
     State(state): State<Arc<AppState>>,
     auth: Authorized<Member>,
-    _demo_check: RequireFeature<BlockedInDemoMode>,
     Json(mut api_key): Json<DaemonApiKey>,
 ) -> ApiResult<Json<ApiResponse<DaemonApiKeyResponse>>> {
     let network_ids = auth.network_ids();
-    let organization_id = auth
+    let _ = auth
         .organization_id()
         .ok_or_else(ApiError::organization_required)?;
     let user_id = auth.user_id();
@@ -84,7 +78,7 @@ pub async fn create_daemon_api_key(
     let service = DaemonApiKey::get_service(&state);
     api_key.base.key = hashed;
     let entity = auth.into_entity();
-    let api_key = service.create(api_key, entity.clone()).await.map_err(|e| {
+    let api_key = service.create(api_key, entity).await.map_err(|e| {
         tracing::error!(
             error = %e,
             user_id = ?user_id,
@@ -92,30 +86,6 @@ pub async fn create_daemon_api_key(
         );
         ApiError::internal_error(&e.to_string())
     })?;
-
-    let organization = state
-        .services
-        .organization_service
-        .get_by_id(&organization_id)
-        .await?;
-
-    if let Some(organization) = organization
-        && organization.not_onboarded(&TelemetryOperation::FirstApiKeyCreated)
-    {
-        service
-            .event_bus()
-            .publish_telemetry(TelemetryEvent {
-                id: Uuid::new_v4(),
-                organization_id,
-                operation: TelemetryOperation::FirstApiKeyCreated,
-                timestamp: Utc::now(),
-                metadata: serde_json::json!({
-                    "is_onboarding_step": true
-                }),
-                authentication: entity,
-            })
-            .await?;
-    }
 
     Ok(Json(ApiResponse::success(DaemonApiKeyResponse {
         key: plaintext,
@@ -174,7 +144,6 @@ pub async fn update_daemon_api_key(
 pub async fn rotate_key_handler(
     State(state): State<Arc<AppState>>,
     auth: Authorized<Member>,
-    _demo_check: RequireFeature<BlockedInDemoMode>,
     ClientIp(ip): ClientIp,
     user_agent: Option<TypedHeader<UserAgent>>,
     Path(api_key_id): Path<Uuid>,

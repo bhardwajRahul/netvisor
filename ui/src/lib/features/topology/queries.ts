@@ -12,7 +12,6 @@ import type { Topology, TopologyOptions } from './types/base';
 import { uuidv4Sentinel, utcTimeZoneSentinel } from '$lib/shared/utils/formatting';
 import { BaseSSEManager, type SSEConfig } from '$lib/shared/utils/sse';
 import { writable, get } from 'svelte/store';
-import { trackEventOnce } from '$lib/shared/utils/analytics';
 
 // Default options for new topologies
 export const defaultTopologyOptions: TopologyOptions = {
@@ -20,7 +19,12 @@ export const defaultTopologyOptions: TopologyOptions = {
 		left_zone_title: 'Infrastructure',
 		hide_edge_types: [],
 		no_fade_edges: false,
-		hide_resize_handles: false
+		hide_resize_handles: false,
+		tag_filter: {
+			hidden_host_tag_ids: [],
+			hidden_service_tag_ids: [],
+			hidden_subnet_tag_ids: []
+		}
 	},
 	request: {
 		group_docker_bridges_by_host: true,
@@ -176,9 +180,6 @@ export function useRebuildTopologyMutation() {
 					edges: topology.edges
 				}
 			});
-
-			// Track first topology rebuild (once per browser)
-			trackEventOnce('first_topology_rebuild');
 
 			return topology.id;
 		}
@@ -399,7 +400,8 @@ export function createEmptyTopologyFormData(networkId: string): Topology {
 		locked_at: null,
 		locked_by: null,
 		parent_id: null,
-		tags: []
+		tags: [],
+		entity_tags: []
 	};
 }
 

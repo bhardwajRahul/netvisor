@@ -15,7 +15,10 @@ use axum::http::StatusCode;
 
 use crate::server::{
     auth::{
-        middleware::permissions::{Authorized, Member},
+        middleware::{
+            features::{RequireFeature, ShareViewsFeature},
+            permissions::{Authorized, Member},
+        },
         service::hash_password,
     },
     billing::types::base::BillingPlan,
@@ -99,6 +102,7 @@ pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
 )]
 async fn create_share(
     State(state): State<Arc<AppState>>,
+    _feature: RequireFeature<ShareViewsFeature>,
     auth: Authorized<Member>,
     Json(CreateUpdateShareRequest {
         mut share,

@@ -146,6 +146,8 @@ pub enum ErrorCode {
     DaemonNetworkMismatch,
     /// Cannot send updates for a different daemon
     DaemonIdentityMismatch,
+    /// Daemon is on standby due to plan restrictions
+    DaemonStandby,
 
     // === User ===
     /// Email is already in use
@@ -160,6 +162,10 @@ pub enum ErrorCode {
     BillingSubscriptionRequired,
     /// Billing setup is incomplete
     BillingSetupIncomplete,
+    /// Host limit reached on current plan
+    BillingHostLimitReached { limit: u64 },
+    /// Feature not available on current plan
+    BillingFeatureNotAvailable { feature: String },
 
     // === Rate Limiting ===
     /// Too many requests
@@ -265,6 +271,9 @@ impl ErrorCode {
             // Daemon
             Self::DaemonNetworkMismatch => "Cannot send updates for a different network",
             Self::DaemonIdentityMismatch => "Cannot send updates for a different daemon",
+            Self::DaemonStandby => {
+                "Your plan does not support DaemonPoll mode. The daemon is on standby. Upgrade your plan and restart the daemon to resume."
+            }
 
             // User
             Self::UserEmailInUse { .. } => "Email '{email}' is already in use",
@@ -276,6 +285,12 @@ impl ErrorCode {
             }
             Self::BillingSubscriptionRequired => "Active subscription required",
             Self::BillingSetupIncomplete => "Billing setup is incomplete",
+            Self::BillingHostLimitReached { .. } => {
+                "You've reached the limit of {limit} hosts on your current plan. Upgrade for unlimited hosts."
+            }
+            Self::BillingFeatureNotAvailable { .. } => {
+                "Your current plan does not include {feature}. Upgrade your plan to access this feature."
+            }
 
             // Rate Limiting
             Self::RateLimitExceeded => "Too many requests, please try again later",
@@ -317,6 +332,7 @@ impl ErrorCode {
             | Self::DiscoveryHistoricalReadOnly
             | Self::DaemonNetworkMismatch
             | Self::DaemonIdentityMismatch
+            | Self::DaemonStandby
             | Self::BillingPaymentRequired
             | Self::BillingSubscriptionRequired
             | Self::BillingSetupIncomplete
@@ -377,6 +393,10 @@ impl ErrorCode {
             Self::UserEmailInUse { email } => Some(json_map! { "email" => email }),
             Self::BillingPlanLimitReached { resource, limit } => {
                 Some(json_map! { "resource" => resource, "limit" => limit })
+            }
+            Self::BillingHostLimitReached { limit } => Some(json_map! { "limit" => limit }),
+            Self::BillingFeatureNotAvailable { feature } => {
+                Some(json_map! { "feature" => feature })
             }
             Self::ExternalServiceError { service, reason } => {
                 Some(json_map! { "service" => service, "reason" => reason })

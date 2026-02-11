@@ -149,6 +149,7 @@ where
             SqlValue::Services(v) => query.bind(serde_json::to_value(v)?),
             SqlValue::Groups(v) => query.bind(serde_json::to_value(v)?),
             SqlValue::IfEntries(v) => query.bind(serde_json::to_value(v)?),
+            SqlValue::Tags(v) => query.bind(serde_json::to_value(v)?),
             SqlValue::TelemetryOperation(v) => query.bind(serde_json::to_value(v)?),
             SqlValue::StringArray(v) => query.bind(v.clone()),
             SqlValue::OptionalStringArray(v) => query.bind(v.clone()),

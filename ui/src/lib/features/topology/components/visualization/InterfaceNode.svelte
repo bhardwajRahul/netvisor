@@ -15,7 +15,15 @@
 	} from '../../types/base';
 	import { type Writable, get } from 'svelte/store';
 	import { formatPort } from '$lib/shared/utils/formatting';
-	import { connectedNodeIds, isExporting } from '../../interactions';
+	import {
+		connectedNodeIds,
+		isExporting,
+		tagHiddenNodeIds,
+		tagHiddenServiceIds,
+		hoveredTag,
+		UNTAGGED_SENTINEL
+	} from '../../interactions';
+	import { createColorHelper } from '$lib/shared/utils/styling';
 	import { getContext } from 'svelte';
 	import type { Port } from '$lib/features/hosts/types/base';
 	import type { Node, Edge } from '@xyflow/svelte';
@@ -26,6 +34,23 @@
 	let isExportingValue = $state(get(isExporting));
 	isExporting.subscribe((value) => {
 		isExportingValue = value;
+	});
+
+	// Subscribe to tag filter stores for reactivity
+	let hiddenNodes = $state(get(tagHiddenNodeIds));
+	tagHiddenNodeIds.subscribe((value) => {
+		hiddenNodes = value;
+	});
+
+	let hiddenServices = $state(get(tagHiddenServiceIds));
+	tagHiddenServiceIds.subscribe((value) => {
+		hiddenServices = value;
+	});
+
+	// Subscribe to tag hover state
+	let currentHoveredTag = $state(get(hoveredTag));
+	hoveredTag.subscribe((value) => {
+		currentHoveredTag = value;
 	});
 
 	// Try to get topology from context (for share/embed pages), fallback to TanStack query
@@ -57,6 +82,9 @@
 		topology ? topology.services.filter((s) => s.host_id == nodeData.host_id) : []
 	);
 
+	// Filter out services hidden by tag filter
+	let visibleServicesForHost = $derived(servicesForHost.filter((s) => !hiddenServices.has(s.id)));
+
 	// Get the interface for this node from topology.interfaces
 	let iface = $derived(
 		topology ? topology.interfaces.find((i) => i.id === data.interface_id) : null
@@ -75,8 +103,9 @@
 	let nodeRenderData: NodeRenderData | null = $derived(
 		host && data.host_id
 			? (() => {
-					const servicesOnInterface = servicesForHost
-						? servicesForHost.filter((s) =>
+					// Use visibleServicesForHost to exclude services hidden by tag filter
+					const servicesOnInterface = visibleServicesForHost
+						? visibleServicesForHost.filter((s) =>
 								s.bindings.some(
 									(b) => b.interface_id == null || (iface && b.interface_id == iface.id)
 								)
@@ -111,9 +140,16 @@
 
 	let isNodeSelected = $derived(selectedNode?.id === nodeRenderData?.interface_id);
 
-	// Calculate if this node should fade out when another node is selected
+	// Calculate if this node should fade out when another node is selected or hidden by tag filter
 	let shouldFadeOut = $derived.by(() => {
 		if (isExportingValue) return false;
+
+		// Tag filter: fade if this node is hidden
+		if (nodeRenderData && hiddenNodes.has(nodeRenderData.interface_id)) {
+			return true;
+		}
+
+		// Selection-based fading
 		if (!selectedNode && !selectedEdge) return false;
 		if (!nodeRenderData) return false;
 
@@ -126,8 +162,19 @@
 	const hostColorHelper = entities.getColorHelper('Host');
 	const virtualizationColorHelper = concepts.getColorHelper('Virtualization');
 
+	// Check if this host should be highlighted by tag hover
+	let tagHoverRingStyle = $derived.by(() => {
+		if (!currentHoveredTag || currentHoveredTag.entityType !== 'host' || !host) return '';
+		const { tagId, color } = currentHoveredTag;
+		const isUntagged = host.tags.length === 0;
+		const hasTag = tagId === UNTAGGED_SENTINEL ? isUntagged : host.tags.includes(tagId);
+		if (!hasTag) return '';
+		const colorHelper = createColorHelper(color as Parameters<typeof createColorHelper>[0]);
+		return `box-shadow: 0 0 0 3px ${colorHelper.rgb};`;
+	});
+
 	let cardClass = $derived(
-		`card ${isNodeSelected ? 'ring-2 ring-blue-500 hover:ring-2 hover:ring-blue-500' : ''} ${nodeRenderData?.isVirtualized ? `border-color: ${virtualizationColorHelper.border}` : ''}`
+		`card ${isNodeSelected ? 'card-selected' : ''} ${nodeRenderData?.isVirtualized ? `border-color: ${virtualizationColorHelper.border}` : ''}`
 	);
 
 	let handleStyle = $derived.by(() => {
@@ -153,7 +200,7 @@
 {#if nodeRenderData}
 	<div
 		class={cardClass}
-		style={`width: ${width}px; height: ${height}px; display: flex; flex-direction: column; padding: 0; opacity: ${nodeOpacity}; transition: opacity 0.2s ease-in-out;`}
+		style={`width: ${width}px; height: ${height}px; display: flex; flex-direction: column; padding: 0; opacity: ${nodeOpacity}; transition: opacity 0.2s ease-in-out, box-shadow 0.15s ease-in-out; ${tagHoverRingStyle}`}
 	>
 		<!-- Rest of component stays the same -->
 		<!-- Header section with gradient transition to body -->
@@ -180,6 +227,18 @@
 				>
 					{#each nodeRenderData.services as service (service.id)}
 						{@const ServiceIcon = serviceDefinitions.getIconComponent(service.service_definition)}
+						{@const serviceTagUnderline = (() => {
+							if (!currentHoveredTag || currentHoveredTag.entityType !== 'service') return '';
+							const { tagId, color } = currentHoveredTag;
+							const isUntagged = service.tags.length === 0;
+							const hasTag =
+								tagId === UNTAGGED_SENTINEL ? isUntagged : service.tags.includes(tagId);
+							if (!hasTag) return '';
+							const colorHelper = createColorHelper(
+								color as Parameters<typeof createColorHelper>[0]
+							);
+							return `text-decoration: underline; text-decoration-color: ${colorHelper.rgb}; text-underline-offset: 2px;`;
+						})()}
 						<div
 							class="flex flex-1 flex-col items-center justify-center"
 							style="min-width: 0; max-width: 100%; width: 100%;"
@@ -190,7 +249,7 @@
 								title={service.name}
 							>
 								<ServiceIcon class="h-5 w-5 flex-shrink-0 {hostColorHelper.icon}" />
-								<span class="text-m text-secondary truncate">
+								<span class="text-m text-secondary truncate" style={serviceTagUnderline}>
 									{service.name}
 								</span>
 							</div>

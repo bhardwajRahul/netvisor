@@ -1,3 +1,4 @@
+import { writeFileSync } from 'fs';
 import { fieldDefs } from '../src/lib/features/daemons/config.ts';
 
 function toSnakeCase(s: string): string {
@@ -7,8 +8,22 @@ function toSnakeCase(s: string): string {
 		.replace(/^_/, '');
 }
 
+// Parse --output=<path> flag
+const outputArg = process.argv.find((a) => a.startsWith('--output='));
+const outputPath = outputArg ? outputArg.slice('--output='.length) : null;
+
+function output(json: string) {
+	if (outputPath) {
+		writeFileSync(outputPath, json + '\n');
+	} else {
+		console.log(json);
+	}
+}
+
 // Determine output format based on command line argument
-const format = process.argv[2] || 'test';
+const format =
+	process.argv.find((a) => !a.startsWith('--') && a !== process.argv[0] && a !== process.argv[1]) ||
+	'test';
 
 if (format === 'docs') {
 	// Full export for documentation website
@@ -22,7 +37,9 @@ if (format === 'docs') {
 			defaultDisplay = '_Required_';
 		} else if (f.type === 'number' && f.placeholder !== undefined) {
 			// For numbers, placeholder often represents the actual default
-			defaultDisplay = String(f.placeholder);
+			const placeholderValue =
+				typeof f.placeholder === 'function' ? f.placeholder() : f.placeholder;
+			defaultDisplay = String(placeholderValue);
 		}
 
 		return {
@@ -36,7 +53,7 @@ if (format === 'docs') {
 			docsOnly: f.docsOnly || false
 		};
 	});
-	console.log(JSON.stringify(exported, null, 2));
+	output(JSON.stringify(exported, null, 2));
 } else {
 	// Minimal export for Rust sync tests (original format)
 	const exported = fieldDefs
@@ -47,5 +64,5 @@ if (format === 'docs') {
 			envVar: f.envVar,
 			helpText: f.helpText() // Call i18n function to get English string
 		}));
-	console.log(JSON.stringify(exported, null, 2));
+	output(JSON.stringify(exported, null, 2));
 }

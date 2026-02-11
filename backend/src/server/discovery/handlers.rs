@@ -11,9 +11,13 @@ use crate::server::{
         handlers::traits::{create_handler, update_handler},
         services::traits::CrudService,
         storage::traits::Entity,
-        types::api::{ApiError, ApiErrorResponse, ApiResponse, ApiResult, EmptyApiResponse},
+        types::{
+            api::{ApiError, ApiErrorResponse, ApiResponse, ApiResult, EmptyApiResponse},
+            error_codes::ErrorCode,
+        },
     },
 };
+use axum::http::StatusCode;
 use axum::{
     extract::{Path, State},
     response::{
@@ -80,6 +84,25 @@ pub async fn create_discovery(
         return Err(ApiError::discovery_historical_read_only());
     }
 
+    // Check scheduled discovery restriction
+    if matches!(discovery.base.run_type, RunType::Scheduled { .. })
+        && let Some(org_id) = auth.organization_id()
+        && let Some(org) = state
+            .services
+            .organization_service
+            .get_by_id(&org_id)
+            .await?
+        && let Some(plan) = &org.base.plan
+        && !plan.features().scheduled_discovery
+    {
+        return Err(ApiError::coded(
+            StatusCode::FORBIDDEN,
+            ErrorCode::BillingFeatureNotAvailable {
+                feature: "Scheduled Discovery".into(),
+            },
+        ));
+    }
+
     // Custom validation: Check if any subnets aren't on the same network as the discovery
     #[allow(clippy::single_match)]
     match &discovery.base.discovery_type {
@@ -123,6 +146,25 @@ pub async fn update_discovery(
 ) -> ApiResult<Json<ApiResponse<Discovery>>> {
     if let RunType::Historical { .. } = discovery.base.run_type {
         return Err(ApiError::discovery_historical_read_only());
+    }
+
+    // Check scheduled discovery restriction
+    if matches!(discovery.base.run_type, RunType::Scheduled { .. })
+        && let Some(org_id) = auth.organization_id()
+        && let Some(org) = state
+            .services
+            .organization_service
+            .get_by_id(&org_id)
+            .await?
+        && let Some(plan) = &org.base.plan
+        && !plan.features().scheduled_discovery
+    {
+        return Err(ApiError::coded(
+            StatusCode::FORBIDDEN,
+            ErrorCode::BillingFeatureNotAvailable {
+                feature: "Scheduled Discovery".into(),
+            },
+        ));
     }
 
     update_handler::<Discovery>(state, auth, id, discovery).await

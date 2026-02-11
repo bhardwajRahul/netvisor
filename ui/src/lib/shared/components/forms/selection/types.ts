@@ -14,6 +14,7 @@ export interface EntityDisplayComponent<T, C> {
 	getIconColor?(item: T, context: C): string | null;
 	getTags?(item: T, context: C): TagProps[];
 	getCategory?(item: T, context: C): string | null;
+	getDisabled?(item: T, context: C): boolean;
 
 	// Inline editing support
 	supportsInlineEdit?: boolean;

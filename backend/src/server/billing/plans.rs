@@ -12,8 +12,10 @@ fn get_default_plans() -> Vec<BillingPlan> {
             trial_days: 7,
             seat_cents: None,
             network_cents: None,
+            host_cents: None,
             included_seats: Some(1),
             included_networks: Some(1),
+            included_hosts: None,
         }),
         BillingPlan::Pro(PlanConfig {
             base_cents: 2999,
@@ -21,8 +23,10 @@ fn get_default_plans() -> Vec<BillingPlan> {
             trial_days: 7,
             seat_cents: None,
             network_cents: None,
+            host_cents: None,
             included_seats: Some(1),
             included_networks: Some(3),
+            included_hosts: None,
         }),
         BillingPlan::Team(PlanConfig {
             base_cents: 8999,
@@ -30,8 +34,10 @@ fn get_default_plans() -> Vec<BillingPlan> {
             trial_days: 7,
             seat_cents: Some(1000),
             network_cents: Some(800),
+            host_cents: None,
             included_seats: Some(10),
             included_networks: Some(15),
+            included_hosts: None,
         }),
         BillingPlan::Business(PlanConfig {
             base_cents: 14999,
@@ -39,8 +45,10 @@ fn get_default_plans() -> Vec<BillingPlan> {
             trial_days: 14,
             seat_cents: Some(800),
             network_cents: Some(500),
+            host_cents: None,
             included_seats: Some(25),
             included_networks: Some(50),
+            included_hosts: None,
         }),
     ]
 }
@@ -52,8 +60,24 @@ pub fn get_enterprise_plan() -> BillingPlan {
         trial_days: 0,
         seat_cents: None,
         network_cents: None,
+        host_cents: None,
         included_seats: None,
         included_networks: None,
+        included_hosts: None,
+    })
+}
+
+pub fn get_free_plan() -> BillingPlan {
+    BillingPlan::Free(PlanConfig {
+        base_cents: 0,
+        rate: BillingRate::Month,
+        trial_days: 0,
+        seat_cents: None,
+        network_cents: None,
+        host_cents: None,
+        included_seats: Some(1),
+        included_networks: Some(1),
+        included_hosts: Some(25),
     })
 }
 
@@ -64,8 +88,10 @@ fn get_community_plan() -> BillingPlan {
         trial_days: 0,
         seat_cents: None,
         network_cents: None,
+        host_cents: None,
         included_seats: None,
         included_networks: None,
+        included_hosts: None,
     })
 }
 
@@ -76,12 +102,16 @@ fn get_commercial_self_hosted_plan() -> BillingPlan {
         trial_days: 0,
         seat_cents: None,
         network_cents: None,
+        host_cents: None,
         included_seats: None,
         included_networks: None,
+        included_hosts: None,
     })
 }
 
 pub fn get_website_fixture_plans() -> Vec<BillingPlan> {
+    // Free is already included via get_purchasable_plans(), so exclude it from
+    // non_saas_plans to avoid duplicate entries in the generated fixture.
     let non_saas_plans = [
         get_enterprise_plan(),
         get_community_plan(),
@@ -93,11 +123,13 @@ pub fn get_website_fixture_plans() -> Vec<BillingPlan> {
     let mut all_plans = get_purchasable_plans();
     all_plans.extend(non_saas_plans);
     all_plans.extend(non_saas_yearly);
+    // Add Free yearly variant (monthly Free is already in get_purchasable_plans)
+    all_plans.push(get_free_plan().to_yearly(YEARLY_DISCOUNT));
 
     all_plans
 }
 
-/// Returns both monthly and yearly versions of all plans.
+/// Returns both monthly and yearly versions of all plans, plus the Free plan.
 /// Yearly plans get a 20% discount.
 pub fn get_purchasable_plans() -> Vec<BillingPlan> {
     let monthly_plans = get_default_plans();
@@ -107,6 +139,9 @@ pub fn get_purchasable_plans() -> Vec<BillingPlan> {
     for plan in monthly_plans {
         all_plans.push(plan.to_yearly(YEARLY_DISCOUNT));
     }
+
+    // Free plan (no yearly variant needed)
+    all_plans.push(get_free_plan());
 
     all_plans
 }

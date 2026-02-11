@@ -9,8 +9,6 @@ import { pushError, pushSuccess } from '$lib/shared/stores/feedback';
 import { resetIdentity } from '$lib/shared/utils/analytics';
 import type { User } from '../users/types';
 import type {
-	DaemonSetupRequest,
-	DaemonSetupResponse,
 	ForgotPasswordRequest,
 	LoginRequest,
 	RegisterRequest,
@@ -70,6 +68,27 @@ export function useLoginMutation() {
 }
 
 /**
+ * Mutation hook for checking email availability
+ */
+export function useCheckEmailMutation() {
+	return createMutation(() => ({
+		mutationFn: async (request: { email: string }) => {
+			const { error } = await apiClient.POST('/api/auth/check-email', {
+				body: request,
+				silenceErrors: true
+			} as never);
+			if (error) {
+				const apiErr = error as unknown as Record<string, string>;
+				const err = new Error(apiErr?.error || 'Email check failed');
+				(err as Error & { code?: string }).code = apiErr?.code;
+				throw err;
+			}
+			return true;
+		}
+	}));
+}
+
+/**
  * Mutation hook for registering
  */
 export function useRegisterMutation() {
@@ -77,9 +96,19 @@ export function useRegisterMutation() {
 
 	return createMutation(() => ({
 		mutationFn: async (request: RegisterRequest) => {
-			const { data } = await apiClient.POST('/api/auth/register', { body: request });
+			const { data, error: apiError } = await apiClient.POST('/api/auth/register', {
+				body: request
+			});
 			if (!data?.success || !data.data) {
-				throw new Error(data?.error || 'Registration failed. Please try again.');
+				const err = new Error(
+					(apiError as Record<string, string> | undefined)?.error ||
+						data?.error ||
+						'Registration failed. Please try again.'
+				);
+				(err as Error & { code?: string }).code = (
+					apiError as Record<string, string> | undefined
+				)?.code;
+				throw err;
 			}
 			return data.data;
 		},
@@ -90,9 +119,6 @@ export function useRegisterMutation() {
 				localStorage.setItem('hasAccount', 'true');
 			}
 			pushSuccess(`Welcome, ${user.email}!`);
-		},
-		onError: (error: Error) => {
-			pushError(error.message);
 		}
 	}));
 }
@@ -190,24 +216,6 @@ export function useSetupMutation() {
 }
 
 /**
- * Mutation hook for pre-registration daemon setup
- */
-export function useDaemonSetupMutation() {
-	return createMutation(() => ({
-		mutationFn: async (request: DaemonSetupRequest) => {
-			const { data } = await apiClient.POST('/api/auth/daemon-setup', { body: request });
-			if (!data?.success || !data.data) {
-				throw new Error(data?.error || 'Failed to save daemon setup');
-			}
-			return data.data as DaemonSetupResponse;
-		},
-		onError: (error: Error) => {
-			pushError(error.message);
-		}
-	}));
-}
-
-/**
  * Mutation hook for verifying email
  */
 export function useVerifyEmailMutation() {
@@ -266,9 +274,23 @@ export function isAuthenticated(user: User | null | undefined): boolean {
  */
 export function useOnboardingStepMutation() {
 	return createMutation(() => ({
-		mutationFn: async (params: { step: string; use_case?: string }) => {
+		mutationFn: async (params: {
+			step: string;
+			use_case?: string;
+			job_title?: string;
+			company_size?: string;
+			referral_source?: string;
+			referral_source_other?: string;
+		}) => {
 			const { data } = await apiClient.POST('/api/auth/onboarding-step', {
-				body: { step: params.step, use_case: params.use_case }
+				body: {
+					step: params.step,
+					use_case: params.use_case,
+					job_title: params.job_title,
+					company_size: params.company_size,
+					referral_source: params.referral_source,
+					referral_source_other: params.referral_source_other
+				}
 			});
 			if (!data?.success) {
 				throw new Error(data?.error || 'Failed to save onboarding step');
@@ -287,7 +309,7 @@ export function useOnboardingStateQuery() {
 		queryFn: async () => {
 			const { data } = await apiClient.GET('/api/auth/onboarding-state', {});
 			if (!data?.success || !data.data) {
-				return { step: null, use_case: null, org_name: null, networks: [], network_ids: [] };
+				return { step: null, use_case: null, org_name: null, network: null, network_id: null };
 			}
 			return data.data;
 		},

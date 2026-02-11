@@ -5,10 +5,21 @@
 	import type { DockerDiscovery, NetworkDiscovery, SelfReportDiscovery } from '../../types/api';
 	import type { Discovery } from '../../types/base';
 	import InlineWarning from '$lib/shared/components/feedback/InlineWarning.svelte';
-	import { discoveryTypes, subnetTypes } from '$lib/shared/stores/metadata';
+	import { billingPlans, discoveryTypes, subnetTypes } from '$lib/shared/stores/metadata';
+	import { useOrganizationQuery } from '$lib/features/organizations/queries';
+	import { serviceDefinitions } from '$lib/shared/stores/metadata';
+	import { showBillingPlanModal } from '$lib/features/billing/stores';
+	import { ArrowUpCircle } from 'lucide-svelte';
+
+	import RichSelect from '$lib/shared/components/forms/selection/RichSelect.svelte';
+	import {
+		SimpleOptionDisplay,
+		type SimpleOption
+	} from '$lib/shared/components/forms/selection/display/SimpleOptionDisplay';
 	import type { Daemon } from '$lib/features/daemons/types/base';
 	import { generateCronSchedule } from '../../queries';
 	import type { AnyFieldApi } from '@tanstack/svelte-form';
+	import Checkbox from '$lib/shared/components/forms/input/Checkbox.svelte';
 	import SelectInput from '$lib/shared/components/forms/input/SelectInput.svelte';
 	import {
 		common_days,
@@ -60,6 +71,13 @@
 	let { form, formData = $bindable(), readOnly = false, daemonHostId, daemon }: Props = $props();
 
 	// Queries
+	const organizationQuery = useOrganizationQuery();
+	let org = $derived(organizationQuery.data);
+	let hasScheduledDiscovery = $derived.by(() => {
+		if (!org?.plan?.type) return true;
+		return billingPlans.getMetadata(org.plan.type).features.scheduled_discovery;
+	});
+
 	const subnetsQuery = useSubnetsQuery();
 
 	// Derived data
@@ -81,9 +99,22 @@
 		{ value: 'BestService', label: discovery_bestService() }
 	]);
 
-	let runTypeOptions = $derived([
+	let runTypeOptions: SimpleOption[] = $derived([
 		{ value: 'AdHoc', label: discovery_adHoc() },
-		{ value: 'Scheduled', label: discovery_scheduled() }
+		{
+			value: 'Scheduled',
+			label: discovery_scheduled(),
+			disabled: !hasScheduledDiscovery,
+			tags: !hasScheduledDiscovery
+				? [
+						{
+							label: 'Upgrade',
+							color: 'Yellow',
+							icon: ArrowUpCircle
+						}
+					]
+				: []
+		}
 	]);
 
 	// Handle run type changes - update formData when form field changes
@@ -109,7 +140,8 @@
 			formData.discovery_type = {
 				type: 'Network',
 				subnet_ids: daemon.capabilities.interfaced_subnet_ids,
-				host_naming_fallback: 'BestService'
+				host_naming_fallback: 'BestService',
+				probe_raw_socket_ports: false
 			} as NetworkDiscovery;
 		} else if (value === 'Docker' && formData.discovery_type.type !== 'Docker') {
 			formData.discovery_type = {
@@ -198,6 +230,24 @@
 		}
 	}
 
+	// Services affected by raw socket port filtering
+	let rawSocketServiceNames = $derived(
+		(serviceDefinitions.getItems() ?? [])
+			.filter((s) => s.metadata?.has_raw_socket_endpoint)
+			.map((s) => s.name)
+			.join(', ')
+	);
+
+	// Handle probe_raw_socket_ports toggle
+	function handleProbeRawSocketPortsChange(value: boolean) {
+		if (formData.discovery_type.type === 'Network') {
+			formData.discovery_type = {
+				...formData.discovery_type,
+				probe_raw_socket_ports: value
+			};
+		}
+	}
+
 	// Day and hour options for schedule
 	let dayOptions = $derived(
 		Array.from({ length: 31 }, (_, i) => ({
@@ -233,11 +283,13 @@
 				}}
 			>
 				{#snippet children(field: AnyFieldApi)}
-					<SelectInput
+					<RichSelect
 						label={discovery_runType()}
-						id="run_type"
+						selectedValue={field.state.value}
 						options={runTypeOptions}
-						{field}
+						onSelect={(value) => field.handleChange(value)}
+						onDisabledClick={() => showBillingPlanModal.set(true)}
+						displayComponent={SimpleOptionDisplay}
 						disabled={readOnly}
 					/>
 					<p class="text-tertiary mt-1 text-xs">
@@ -323,6 +375,24 @@
 						})}
 					/>
 				{/if}
+				<form.Field
+					name="probe_raw_socket_ports"
+					listeners={{
+						onChange: ({ value }: { value: boolean }) => handleProbeRawSocketPortsChange(value)
+					}}
+				>
+					{#snippet children(field: AnyFieldApi)}
+						<Checkbox
+							label="Probe raw socket ports (9100-9107)"
+							id="probe_raw_socket_ports"
+							{field}
+							disabled={readOnly}
+							helpText={rawSocketServiceNames
+								? `May cause ghost printing on JetDirect printers. Required to detect: ${rawSocketServiceNames}`
+								: 'May cause ghost printing on JetDirect printers'}
+						/>
+					{/snippet}
+				</form.Field>
 			{/if}
 		</div>
 	</div>

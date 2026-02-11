@@ -16,7 +16,7 @@ export type UserOrgPermissions = components['schemas']['UserOrgPermissions'];
 /**
  * Query hook for fetching all user API keys for the current user
  */
-export function useUserApiKeysQuery() {
+export function useUserApiKeysQuery(options?: { enabled?: () => boolean }) {
 	return createQuery(() => ({
 		queryKey: queryKeys.userApiKeys.all,
 		queryFn: async () => {
@@ -27,7 +27,8 @@ export function useUserApiKeysQuery() {
 				throw new Error(data?.error || 'Failed to fetch user API keys');
 			}
 			return data.data;
-		}
+		},
+		enabled: options?.enabled?.() ?? true
 	}));
 }
 

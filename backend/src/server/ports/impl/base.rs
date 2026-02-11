@@ -233,6 +233,7 @@ pub enum PortType {
     Wireguard,
     OpenVPN,
     BACnet,
+    JetDirect,
     Custom(PortConfig),
 }
 
@@ -356,6 +357,13 @@ impl PortType {
             self,
             PortType::Https | PortType::Https10443 | PortType::Https8443 | PortType::Https9443
         )
+    }
+
+    /// Ports with raw-socket protocols that interpret any TCP data as input.
+    /// HTTP probes on these ports cause unintended side effects (e.g. ghost printing).
+    /// Matches nmap's Exclude T:9100-9107.
+    pub fn is_raw_socket(&self) -> bool {
+        (9100..=9107).contains(&self.number())
     }
 
     pub fn config(&self) -> PortConfig {
@@ -573,6 +581,10 @@ impl PortType {
                 number: 47808,
                 protocol: TransportProtocol::Udp,
             },
+            PortType::JetDirect => PortConfig {
+                number: 9100,
+                protocol: TransportProtocol::Tcp,
+            },
         }
     }
 }
@@ -649,6 +661,7 @@ impl TypeMetadataProvider for PortType {
             PortType::Wireguard => "Wireguard",
             PortType::OpenVPN => "OpenVPN",
             PortType::BACnet => "BACnet",
+            PortType::JetDirect => "JetDirect",
         }
     }
 
@@ -708,6 +721,7 @@ impl TypeMetadataProvider for PortType {
             PortType::Wireguard => "Wireguard VPN",
             PortType::OpenVPN => "OpenVPN",
             PortType::BACnet => "Building Automation and Control Network",
+            PortType::JetDirect => "JetDirect RAW Printing",
         }
     }
 

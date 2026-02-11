@@ -51,6 +51,10 @@ pub async fn generate_fixtures() {
         .await
         .expect("Failed to generate entity metadata json");
 
+    merge_daemon_fixtures()
+        .await
+        .expect("Failed to merge daemon fixtures");
+
     // OpenAPI generation - public spec only (excludes internal endpoints)
     let openapi_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -59,6 +63,107 @@ pub async fn generate_fixtures() {
     super::openapi_gen::generate_public(&openapi_path).expect("Failed to generate OpenAPI spec");
 
     println!("✅ Generated test fixtures");
+}
+
+/// Merge mode-specific daemon fixture files into the canonical server_to_daemon.json.
+///
+/// Each daemon container (daemon_poll, server_poll) writes to its own file to avoid
+/// race conditions on the shared volume. This function merges them, deduplicating
+/// by method+path, preferring server_poll exchanges (the interesting ServerPoll protocol).
+async fn merge_daemon_fixtures() -> Result<(), Box<dyn std::error::Error>> {
+    use serde::{Deserialize, Serialize};
+    use std::collections::HashSet;
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    struct CapturedExchange {
+        method: String,
+        path: String,
+        request_body: serde_json::Value,
+        response_status: u16,
+        response_body: serde_json::Value,
+    }
+
+    #[derive(Debug, Serialize, Deserialize)]
+    struct FixtureManifest {
+        version: String,
+        exchanges: Vec<CapturedExchange>,
+    }
+
+    let fixtures_dir =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/integration/compat/fixtures");
+
+    if !fixtures_dir.exists() {
+        return Ok(());
+    }
+
+    // Find all version directories
+    for entry in std::fs::read_dir(&fixtures_dir)? {
+        let entry = entry?;
+        if !entry.path().is_dir() {
+            continue;
+        }
+
+        let version_dir = entry.path();
+        let server_poll_path = version_dir.join("server_to_server_poll.json");
+        let daemon_poll_path = version_dir.join("server_to_daemon_poll.json");
+
+        // Skip versions that don't have mode-specific files
+        if !server_poll_path.exists() && !daemon_poll_path.exists() {
+            continue;
+        }
+
+        let version_name = entry
+            .file_name()
+            .into_string()
+            .unwrap_or_default()
+            .trim_start_matches('v')
+            .to_string();
+
+        // Start with server_poll exchanges (preferred — these are the full ServerPoll protocol)
+        let mut merged: Vec<CapturedExchange> = Vec::new();
+        let mut seen: HashSet<(String, String)> = HashSet::new();
+
+        for path in [&server_poll_path, &daemon_poll_path] {
+            if !path.exists() {
+                continue;
+            }
+
+            let content = std::fs::read_to_string(path)?;
+            if let Ok(manifest) = serde_json::from_str::<FixtureManifest>(&content) {
+                for exchange in manifest.exchanges {
+                    let key = (exchange.method.clone(), exchange.path.clone());
+                    if seen.insert(key) {
+                        merged.push(exchange);
+                    }
+                }
+            }
+        }
+
+        if merged.is_empty() {
+            continue;
+        }
+
+        let manifest = FixtureManifest {
+            version: version_name.clone(),
+            exchanges: merged,
+        };
+
+        let merged_path = version_dir.join("server_to_daemon.json");
+        let json = serde_json::to_string_pretty(&manifest)?;
+        std::fs::write(&merged_path, json)?;
+
+        // Clean up mode-specific files
+        let _ = std::fs::remove_file(&server_poll_path);
+        let _ = std::fs::remove_file(&daemon_poll_path);
+
+        println!(
+            "✅ Merged daemon fixtures for v{} ({} exchanges)",
+            version_name,
+            manifest.exchanges.len()
+        );
+    }
+
+    Ok(())
 }
 
 async fn generate_db_fixture() -> Result<(), Box<dyn std::error::Error>> {

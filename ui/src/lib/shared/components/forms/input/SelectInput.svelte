@@ -18,15 +18,24 @@
 		options: SelectOption[];
 		helpText?: string;
 		disabled?: boolean;
+		required?: boolean;
 	}
 
-	let { label, field, id, options, helpText = '', disabled = false }: Props = $props();
+	let {
+		label,
+		field,
+		id,
+		options,
+		helpText = '',
+		disabled = false,
+		required = false
+	}: Props = $props();
 
 	let selectedOption = $derived(options.find((f) => f.value == field.state.value));
 	let description = $derived(selectedOption?.description ?? '');
 </script>
 
-<FormField {label} {field} {helpText} {id}>
+<FormField {label} {field} {helpText} {id} {required}>
 	<select
 		{id}
 		value={field.state.value}

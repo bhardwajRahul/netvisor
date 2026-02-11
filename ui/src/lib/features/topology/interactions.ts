@@ -17,6 +17,103 @@ export const edgeHoverState = writable<Map<string, boolean>>(new Map());
 export const connectedNodeIds = writable<Set<string>>(new Set());
 export const isExporting = writable(false);
 
+// Tag filter stores - nodes/services hidden by tag filter
+export const tagHiddenNodeIds = writable<Set<string>>(new Set());
+export const tagHiddenServiceIds = writable<Set<string>>(new Set());
+
+// Special sentinel value for "Untagged" pseudo-tag
+export const UNTAGGED_SENTINEL = '__untagged__';
+
+// Tag hover state for highlighting nodes with a specific tag
+export interface HoveredTag {
+	tagId: string;
+	color: string;
+	entityType: 'host' | 'service' | 'subnet';
+}
+export const hoveredTag = writable<HoveredTag | null>(null);
+
+interface TagFilter {
+	hidden_host_tag_ids?: string[];
+	hidden_service_tag_ids?: string[];
+	hidden_subnet_tag_ids?: string[];
+}
+
+/**
+ * Update hidden nodes/services based on tag filter settings.
+ * - Hosts with hidden tags -> their InterfaceNodes fade out
+ * - Services with hidden tags -> hidden from node display (node does NOT fade)
+ * - Subnets with hidden tags -> SubnetNodes fade out
+ * - UNTAGGED_SENTINEL in hidden arrays -> hide entities with no tags
+ */
+export function updateTagFilter(topology: Topology | undefined, tagFilter: TagFilter | undefined) {
+	if (!topology) {
+		tagHiddenNodeIds.set(new Set());
+		tagHiddenServiceIds.set(new Set());
+		return;
+	}
+
+	if (!tagFilter || isTagFilterEmpty(tagFilter)) {
+		tagHiddenNodeIds.set(new Set());
+		tagHiddenServiceIds.set(new Set());
+		return;
+	}
+
+	const hiddenHostTagIds = tagFilter.hidden_host_tag_ids ?? [];
+	const hiddenServiceTagIds = tagFilter.hidden_service_tag_ids ?? [];
+	const hiddenSubnetTagIds = tagFilter.hidden_subnet_tag_ids ?? [];
+
+	const hideUntaggedHosts = hiddenHostTagIds.includes(UNTAGGED_SENTINEL);
+	const hideUntaggedServices = hiddenServiceTagIds.includes(UNTAGGED_SENTINEL);
+	const hideUntaggedSubnets = hiddenSubnetTagIds.includes(UNTAGGED_SENTINEL);
+
+	const hiddenNodeIds = new Set<string>();
+	const hiddenServiceIds = new Set<string>();
+
+	// Host tags -> fade InterfaceNodes
+	for (const host of topology.hosts) {
+		const isUntagged = host.tags.length === 0;
+		const hostHasHiddenTag = host.tags.some((t) => hiddenHostTagIds.includes(t));
+		if (hostHasHiddenTag || (isUntagged && hideUntaggedHosts)) {
+			// Add all InterfaceNodes for this host to hidden set
+			const hostInterfaces = topology.interfaces.filter((i) => i.host_id === host.id);
+			hostInterfaces.forEach((i) => hiddenNodeIds.add(i.id));
+		}
+	}
+
+	// Service tags -> hide services from display (NOT fade the node)
+	for (const service of topology.services) {
+		const isUntagged = service.tags.length === 0;
+		const serviceHasHiddenTag = service.tags.some((t) => hiddenServiceTagIds.includes(t));
+		if (serviceHasHiddenTag || (isUntagged && hideUntaggedServices)) {
+			hiddenServiceIds.add(service.id);
+		}
+	}
+
+	// Subnet tags -> fade SubnetNodes
+	for (const subnet of topology.subnets) {
+		const isUntagged = subnet.tags.length === 0;
+		const subnetHasHiddenTag = subnet.tags.some((t) => hiddenSubnetTagIds.includes(t));
+		if (subnetHasHiddenTag || (isUntagged && hideUntaggedSubnets)) {
+			hiddenNodeIds.add(subnet.id);
+		}
+	}
+
+	tagHiddenNodeIds.set(hiddenNodeIds);
+	tagHiddenServiceIds.set(hiddenServiceIds);
+}
+
+function isTagFilterEmpty(filter: {
+	hidden_host_tag_ids?: string[];
+	hidden_service_tag_ids?: string[];
+	hidden_subnet_tag_ids?: string[];
+}): boolean {
+	return (
+		(filter.hidden_host_tag_ids?.length ?? 0) === 0 &&
+		(filter.hidden_service_tag_ids?.length ?? 0) === 0 &&
+		(filter.hidden_subnet_tag_ids?.length ?? 0) === 0
+	);
+}
+
 /**
  * Helper function to get all virtualized container interface IDs for a ServiceVirtualization edge
  * Returns the set of interface IDs for all containers on Docker bridge subnets

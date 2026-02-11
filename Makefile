@@ -1,4 +1,4 @@
-.PHONY: help build test clean format generate-schema generate-messages generate-fixtures seed-dev set-plan-community set-plan-starter set-plan-pro set-plan-team set-plan-business set-plan-enterprise
+.PHONY: help build test clean format generate-schema generate-messages generate-fixtures seed-dev set-plan-community set-plan-starter set-plan-pro set-plan-team set-plan-business set-plan-enterprise test-plan test-merge test-results
 
 help:
 	@echo "Scanopy Development Commands"
@@ -74,6 +74,92 @@ clean-daemon:
 dump-db:
 	docker exec -t scanopy-postgres pg_dump -U postgres -d scanopy > ~/dev/scanopy/scanopy.sql  
 
+dev-fresh:
+	make fresh-db
+	make migrate-db
+	@trap 'kill 0' EXIT; \
+	cd ui && npm run dev & \
+	export DATABASE_URL="postgresql://postgres:password@localhost:5432/scanopy" && \
+	cd backend && cargo run --bin server -- --log-level debug --public-url http://localhost:60072
+
+test-merge:
+	@if ! git diff --quiet || ! git diff --cached --quiet; then \
+		echo "Working tree is dirty. Commit or stash changes first."; \
+		echo "  git stash  OR  git add -A && git commit -m 'WIP'"; \
+		exit 1; \
+	fi
+	@current=$$(git branch --show-current); \
+	if [ "$$current" = "test" ]; then \
+		echo "Already on test branch. Reset first with: git checkout dev && git branch -D test"; \
+		exit 1; \
+	fi; \
+	branches=$$(git worktree list --porcelain | grep '^branch' | sed 's|branch refs/heads/||' | grep -v "$$current" | grep -v '^test$$'); \
+	if [ -z "$$branches" ]; then \
+		echo "No worktree branches found to merge."; \
+		exit 1; \
+	fi; \
+	echo "Creating test branch from $$current..."; \
+	echo "Branches to merge:"; \
+	for b in $$branches; do echo "  - $$b"; done; \
+	echo ""; \
+	git checkout -b test; \
+	for branch in $$branches; do \
+		echo "Merging $$branch..."; \
+		if git merge "$$branch" --no-edit; then \
+			echo "  ✓ $$branch merged"; \
+		else \
+			echo ""; \
+			echo "  ✗ $$branch has conflicts. Resolve, then:"; \
+			echo "    git add -A && git merge --continue"; \
+			remaining=""; \
+			skip=true; \
+			for b in $$branches; do \
+				if [ "$$skip" = false ]; then remaining="$$remaining $$b"; fi; \
+				if [ "$$b" = "$$branch" ]; then skip=false; fi; \
+			done; \
+			if [ -n "$$remaining" ]; then \
+				echo "  Then merge remaining branches:"; \
+				for b in $$remaining; do echo "    git merge $$b --no-edit"; done; \
+			fi; \
+			echo "  Then: make generate-types && make test-plan"; \
+			exit 1; \
+		fi; \
+	done; \
+	echo ""; \
+	echo "All branches merged. Run 'make generate-types && make test-plan' next."
+
+test-plan:
+	@echo "Collecting TEST_PLAN.json from worktrees..."
+	@echo "var TEST_PLANS = [" > tools/test-plans.js
+	@first=true; \
+	for f in $$(find .. -maxdepth 2 -name "TEST_PLAN.json" -path "*/scanopy-*/TEST_PLAN.json" 2>/dev/null); do \
+		if [ "$$first" = true ]; then first=false; else echo "," >> tools/test-plans.js; fi; \
+		cat "$$f" >> tools/test-plans.js; \
+		echo "  Found: $$f"; \
+	done
+	@echo "];" >> tools/test-plans.js
+	@echo "Opening test runner..."
+	@open tools/test-runner.html 2>/dev/null || xdg-open tools/test-runner.html 2>/dev/null || echo "Open tools/test-runner.html in your browser"
+
+test-results:
+	@if [ ! -f TEST_RESULTS.json ]; then \
+		echo "TEST_RESULTS.json not found. Export from test runner first."; \
+		exit 1; \
+	fi
+	@echo "Distributing results to worktrees..."
+	@for wt in $$(git worktree list --porcelain | grep '^worktree ' | sed 's/^worktree //'); do \
+		branch=$$(git -C "$$wt" branch --show-current 2>/dev/null); \
+		if [ -z "$$branch" ]; then continue; fi; \
+		if grep -q "\"$$branch\"" TEST_RESULTS.json 2>/dev/null; then \
+			node -e " \
+				const r = require('./TEST_RESULTS.json'); \
+				const d = r['$$branch']; \
+				if (d) { require('fs').writeFileSync('$$wt/TEST_RESULTS.json', JSON.stringify({'$$branch': d}, null, 2)); } \
+			" && echo "  $$branch -> $$wt/TEST_RESULTS.json"; \
+		fi; \
+	done
+	@echo "Done. Agents can read TEST_RESULTS.json in their worktree."
+
 dev-server:
 	@export DATABASE_URL="postgresql://postgres:password@localhost:5432/scanopy" && \
 	cd backend && cargo run --bin server -- --log-level debug --public-url http://localhost:60072
@@ -98,7 +184,7 @@ dev-down:
 	docker compose -f docker-compose.test.yml down --volumes --rmi local
 
 test:
-	cd ui && npx vite-node scripts/export-daemon-field-defs.ts 2>/dev/null | grep -v 'paraglide-js' > ../backend/src/tests/daemon-config-frontend-fields.json
+	cd ui && npx vite-node scripts/export-daemon-field-defs.ts --output=../backend/src/tests/daemon-config-frontend-fields.json 2>/dev/null
 	@echo "Running frontend tests..."
 	cd ui && npm test
 	@echo "Running backend tests..."

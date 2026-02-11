@@ -10,6 +10,9 @@
 	import { useTopologiesQuery } from '$lib/features/topology/queries';
 	import { useSharesQuery, useDeleteShareMutation, useBulkDeleteSharesMutation } from '../queries';
 	import { useNetworksQuery } from '$lib/features/networks/queries';
+	import { useOrganizationQuery } from '$lib/features/organizations/queries';
+	import { billingPlans } from '$lib/shared/stores/metadata';
+	import UpgradeButton from '$lib/shared/components/UpgradeButton.svelte';
 	import type { TabProps } from '$lib/shared/types';
 	import { downloadCsv } from '$lib/shared/utils/csvExport';
 	import {
@@ -31,6 +34,13 @@
 	let { isReadOnly = false }: TabProps = $props();
 
 	// Queries
+	const organizationQuery = useOrganizationQuery();
+	let hasShareViews = $derived.by(() => {
+		const org = organizationQuery.data;
+		if (!org?.plan) return true;
+		return billingPlans.getMetadata(org.plan.type).features.share_views;
+	});
+
 	const sharesQuery = useSharesQuery();
 	const networksQuery = useNetworksQuery();
 	const topologiesQuery = useTopologiesQuery();
@@ -127,8 +137,14 @@
 	<!-- Header -->
 	<TabHeader title={common_sharing()} />
 
-	<!-- Loading state -->
-	{#if isLoading}
+	{#if !hasShareViews}
+		<EmptyState
+			title="Sharing Not Available"
+			subtitle="Upgrade to share live network diagrams with others."
+		>
+			<UpgradeButton feature="sharing" />
+		</EmptyState>
+	{:else if isLoading}
 		<Loading />
 	{:else if sharesData.length === 0}
 		<!-- Empty state -->

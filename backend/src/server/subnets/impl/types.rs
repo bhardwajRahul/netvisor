@@ -170,6 +170,10 @@ impl SubnetType {
     pub fn is_docker_bridge(&self) -> bool {
         matches!(self, SubnetType::DockerBridge)
     }
+
+    pub fn is_vlan_network(&self) -> bool {
+        matches!(self, SubnetType::MacVlan | SubnetType::IpVlan)
+    }
 }
 
 impl HasId for SubnetType {

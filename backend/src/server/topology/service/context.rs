@@ -138,6 +138,25 @@ impl<'a> TopologyContext<'a> {
         self.if_entries.iter().find(|e| e.id == id)
     }
 
+    /// Resolve an interface ID from an IfEntry, with single-interface host fallback.
+    /// Returns Some(interface_id) if:
+    /// - The if_entry has interface_id set, OR
+    /// - The if_entry's host has exactly one interface
+    pub fn resolve_interface_for_if_entry(&self, if_entry: &IfEntry) -> Option<Uuid> {
+        // Direct resolution
+        if let Some(interface_id) = if_entry.base.interface_id {
+            return Some(interface_id);
+        }
+
+        // Single-interface host fallback
+        let host_interfaces = self.get_interfaces_for_host(if_entry.base.host_id);
+        if host_interfaces.len() == 1 {
+            return Some(host_interfaces[0].id);
+        }
+
+        None
+    }
+
     pub fn get_if_entries_for_host(&self, host_id: Uuid) -> Vec<&'a IfEntry> {
         self.if_entries
             .iter()

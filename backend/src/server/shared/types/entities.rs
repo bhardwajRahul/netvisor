@@ -67,6 +67,7 @@ impl Default for DiscoveryMetadata {
                 subnet_ids: None,
                 host_naming_fallback: HostNamingFallback::BestService,
                 snmp_credentials: SnmpCredentialMapping::default(),
+                probe_raw_socket_ports: false,
             },
             daemon_id: Uuid::new_v4(),
             date: Utc::now(),

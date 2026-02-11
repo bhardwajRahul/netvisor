@@ -59,7 +59,7 @@ async fn create_compat_test_api_key(network_id: Uuid) -> Result<String, String> 
 
 /// Cancel any active discovery sessions on the server.
 /// This should be called before daemon compat tests to ensure clean state.
-async fn cancel_server_discovery_sessions(client: &TestClient) -> Result<(), String> {
+pub async fn cancel_server_discovery_sessions(client: &TestClient) -> Result<(), String> {
     // Get active sessions from server
     // Note: TestClient.get() already unwraps ApiResponse, so we get Vec<T> directly
     let sessions: Vec<DiscoveryUpdatePayload> =

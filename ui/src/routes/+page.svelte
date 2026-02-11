@@ -8,10 +8,23 @@
 	import { getMetadata } from '$lib/shared/stores/metadata';
 	import { topologySSEManager } from '$lib/features/topology/queries';
 	import { useDaemonsQuery } from '$lib/features/daemons/queries';
+	import BillingPlanModal from '$lib/features/billing/BillingPlanModal.svelte';
+	import { useConfigQuery } from '$lib/shared/stores/config-query';
+	import { useOrganizationQuery } from '$lib/features/organizations/queries';
+	import { isBillingPlanActive } from '$lib/features/organizations/types';
+	import { showBillingPlanModal } from '$lib/features/billing/stores';
 
 	// Read hash immediately during script initialization, before onMount
 	const initialHash = typeof window !== 'undefined' ? window.location.hash.substring(1) : '';
-	const hadInitialHash = initialHash !== '';
+
+	// After first billing checkout, trigger daemon setup
+	// Don't clean billing_flow from URL here — AppShell needs it to fire billing_completed
+	if (typeof window !== 'undefined') {
+		const params = new URLSearchParams(window.location.search);
+		if (params.get('billing_flow') === 'checkout') {
+			sessionStorage.setItem('showDaemonSetup', 'true');
+		}
+	}
 
 	// TanStack Query for current user
 	const currentUserQuery = useCurrentUserQuery();
@@ -22,10 +35,22 @@
 	// Only fetch when authenticated to avoid 401 errors during onboarding
 	const daemonsQuery = useDaemonsQuery({ enabled: () => isAuthenticated });
 
+	// Billing modal: show when billing is enabled but user has no active plan
+	const configQuery = useConfigQuery();
+	const organizationQuery = useOrganizationQuery();
+	let billingEnabled = $derived(configQuery.data?.billing_enabled ?? false);
+	let organization = $derived(organizationQuery.data);
+	let needsPlanSelection = $derived(
+		billingEnabled && organization != null && !isBillingPlanActive(organization)
+	);
+	let showBillingModal = $derived(needsPlanSelection || $showBillingPlanModal);
+
 	let activeTab = $state(initialHash || 'topology');
 	let appInitialized = $state(false);
 	let sidebarCollapsed = $state(false);
 	let dataLoadingStarted = $state(false);
+	let showSettings = $state(false);
+	let isPastDue = $derived(organization?.plan_status === 'past_due');
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	let allTabs = $state<Array<{ id: string; component: any; isReadOnly: boolean }>>([]);
 
@@ -37,12 +62,23 @@
 	});
 
 	// Set initial tab based on daemons (only if no hash was specified in URL)
+	// Suppress when billing modal is showing — user must pick a plan first
 	let initialTabSet = $state(false);
 	$effect(() => {
-		if (!hadInitialHash && !initialTabSet && daemonsQuery.isSuccess) {
+		if (!initialHash && !initialTabSet && daemonsQuery.isSuccess && !showBillingModal) {
 			const hasDaemons = (daemonsQuery.data?.length ?? 0) > 0;
-			activeTab = hasDaemons ? 'topology' : 'daemons';
+			const wantsDaemonSetup =
+				typeof sessionStorage !== 'undefined' &&
+				sessionStorage.getItem('showDaemonSetup') === 'true';
+			activeTab = hasDaemons && !wantsDaemonSetup ? 'topology' : 'daemons';
 			initialTabSet = true;
+		}
+	});
+
+	// Auto-open settings modal to billing tab when past_due
+	$effect(() => {
+		if (isPastDue && appInitialized) {
+			showSettings = true;
 		}
 	});
 
@@ -101,7 +137,14 @@
 	<div class="flex h-screen">
 		<!-- Sidebar -->
 		<div class="flex-shrink-0">
-			<Sidebar bind:activeTab bind:collapsed={sidebarCollapsed} bind:allTabs />
+			<Sidebar
+				bind:activeTab
+				bind:collapsed={sidebarCollapsed}
+				bind:allTabs
+				bind:showSettings
+				settingsInitialTab={isPastDue ? 'billing' : 'account'}
+				settingsDismissible={!isPastDue}
+			/>
 		</div>
 
 		<!-- Main Content -->
@@ -122,6 +165,13 @@
 			<Toast />
 		</main>
 	</div>
+
+	<!-- Billing modal rendered last so it stacks on top of other modals -->
+	<BillingPlanModal
+		isOpen={showBillingModal}
+		dismissible={!needsPlanSelection}
+		onClose={() => showBillingPlanModal.set(false)}
+	/>
 {:else}
 	<!-- Data still loading -->
 	<Loading />

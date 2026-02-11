@@ -112,4 +112,13 @@ impl EmailProvider for SmtpEmailProvider {
         )
         .await
     }
+
+    async fn send_billing_email(
+        &self,
+        to: EmailAddress,
+        subject: String,
+        body: String,
+    ) -> Result<(), Error> {
+        self.send_email(to, subject, body).await
+    }
 }

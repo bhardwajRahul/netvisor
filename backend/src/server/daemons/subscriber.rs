@@ -45,17 +45,28 @@ impl EventSubscriber for DaemonService {
                     continue;
                 }
 
-                // Get the API key for this daemon
-                let api_key = match self.get_daemon_api_key(&daemon).await {
-                    Ok(key) => key,
-                    Err(e) => {
-                        tracing::error!(
-                            error = ?e,
-                            daemon_id = %discovery_event.daemon_id,
-                            "Failed to get API key for daemon, skipping event"
-                        );
-                        continue;
+                // Get the API key - optional for legacy daemons (< v0.14.0)
+                // Legacy daemons only have /api/discovery/initiate and /api/discovery/cancel
+                // and they don't require authentication
+                let api_key = if daemon.supports_full_server_poll() {
+                    match self.get_daemon_api_key(&daemon).await {
+                        Ok(key) => Some(key),
+                        Err(e) => {
+                            tracing::error!(
+                                error = ?e,
+                                daemon_id = %discovery_event.daemon_id,
+                                "Failed to get API key for daemon, skipping event"
+                            );
+                            continue;
+                        }
                     }
+                } else {
+                    tracing::debug!(
+                        daemon_id = %discovery_event.daemon_id,
+                        version = ?daemon.base.version,
+                        "Legacy daemon (< v0.14.0) - sending discovery command without auth"
+                    );
+                    None
                 };
 
                 match discovery_event.phase {
@@ -72,7 +83,7 @@ impl EventSubscriber for DaemonService {
                         };
 
                         if let Err(e) = self
-                            .send_discovery_request_to_daemon(&daemon, &api_key, request)
+                            .send_discovery_request_to_daemon(&daemon, api_key.as_deref(), request)
                             .await
                         {
                             tracing::error!(
@@ -93,7 +104,7 @@ impl EventSubscriber for DaemonService {
                         if let Err(e) = self
                             .send_discovery_cancellation_to_daemon(
                                 &daemon,
-                                &api_key,
+                                api_key.as_deref(),
                                 discovery_event.session_id,
                             )
                             .await

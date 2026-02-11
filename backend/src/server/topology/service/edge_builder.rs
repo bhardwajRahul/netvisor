@@ -406,10 +406,10 @@ impl EdgeBuilder {
                 }
                 processed_pairs.insert(pair_key);
 
-                // Both IfEntries must have interface_id to create a visible edge
-                let source_interface_id = source_entry.base.interface_id?;
+                // Resolve interface IDs with single-interface host fallback
+                let source_interface_id = ctx.resolve_interface_for_if_entry(source_entry)?;
                 let target_entry = ctx.get_if_entry_by_id(target_if_entry_id)?;
-                let target_interface_id = target_entry.base.interface_id?;
+                let target_interface_id = ctx.resolve_interface_for_if_entry(target_entry)?;
 
                 // Check that both interfaces will have nodes
                 if !ctx.interface_will_have_node(&source_interface_id)

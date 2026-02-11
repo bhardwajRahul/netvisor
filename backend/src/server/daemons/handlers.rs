@@ -2,7 +2,7 @@ use crate::daemon::runtime::state::DaemonStatus;
 use crate::server::auth::middleware::permissions::{Authorized, IsDaemon, Member, Viewer};
 use crate::server::daemon_api_keys::r#impl::base::{DaemonApiKey, DaemonApiKeyBase};
 use crate::server::daemons::r#impl::api::{
-    DaemonStatusPayload, ProvisionDaemonRequest, ProvisionDaemonResponse,
+    DaemonHeartbeatPayload, DaemonStatusPayload, ProvisionDaemonRequest, ProvisionDaemonResponse,
 };
 use crate::server::openapi::SERVER_VERSION;
 use crate::server::shared::api_key_common::{ApiKeyType, generate_api_key_for_storage};
@@ -16,6 +16,7 @@ use crate::server::shared::services::traits::CrudService;
 use crate::server::shared::storage::filter::StorableFilter;
 use crate::server::shared::storage::traits::{Entity, Storable};
 use crate::server::shared::types::api::ApiErrorResponse;
+use crate::server::shared::types::error_codes::ErrorCode;
 use crate::server::shared::validation::validate_network_access;
 use crate::server::{
     config::AppState,
@@ -33,6 +34,7 @@ use crate::server::{
         entities::EntitySource,
     },
 };
+use axum::http::StatusCode;
 use axum::{
     extract::{Path, State},
     response::Json,
@@ -160,6 +162,7 @@ pub fn create_internal_router() -> OpenApiRouter<Arc<AppState>> {
         .routes(routes!(daemon_startup))
         .routes(routes!(update_capabilities))
         .routes(routes!(receive_work_request))
+        .routes(routes!(receive_heartbeat))
 }
 
 /// Get all Daemons
@@ -451,6 +454,14 @@ async fn receive_work_request(
         return Err(ApiError::entity_access_denied::<Daemon>(daemon_id));
     }
 
+    // Reject work requests from daemons on standby (plan doesn't support DaemonPoll)
+    if daemon.base.standby {
+        return Err(ApiError::coded(
+            StatusCode::FORBIDDEN,
+            ErrorCode::DaemonStandby,
+        ));
+    }
+
     // Use processor for shared heartbeat logic
     let status = DaemonStatus {
         url: request.url,
@@ -490,6 +501,61 @@ async fn receive_work_request(
     }
 
     Ok(Json(ApiResponse::success((next_session, has_cancellation))))
+}
+
+/// Receive daemon heartbeat (DEPRECATED - for backwards compatibility with pre-v0.14.0 daemons)
+///
+/// Internal endpoint for legacy daemons to send periodic heartbeats.
+/// New daemons (v0.14.0+) use the /request-work endpoint which includes heartbeat functionality.
+/// This endpoint is kept for backwards compatibility and will be removed in a future version.
+#[utoipa::path(
+    post,
+    path = "/{id}/heartbeat",
+    tags = [Daemon::ENTITY_NAME_PLURAL, "internal", "deprecated"],
+    params(("id" = Uuid, Path, description = "Daemon ID")),
+    request_body = DaemonHeartbeatPayload,
+    responses(
+        (status = 200, description = "Heartbeat received", body = EmptyApiResponse),
+        (status = 404, description = "Daemon not found", body = ApiErrorResponse),
+    ),
+    security(("daemon_api_key" = []))
+)]
+async fn receive_heartbeat(
+    State(state): State<Arc<AppState>>,
+    auth: Authorized<IsDaemon>,
+    Path(id): Path<Uuid>,
+    Json(request): Json<DaemonHeartbeatPayload>,
+) -> ApiResult<Json<ApiResponse<()>>> {
+    let daemon_network_id = auth.network_ids()[0];
+
+    // Validate daemon exists and belongs to the authenticated daemon's network
+    let daemon = state
+        .services
+        .daemon_service
+        .get_by_id(&id)
+        .await
+        .map_err(|e| ApiError::internal_error(&format!("Failed to get daemon: {}", e)))?
+        .ok_or_else(|| ApiError::entity_not_found::<Daemon>(id))?;
+
+    if daemon.base.network_id != daemon_network_id {
+        return Err(ApiError::entity_access_denied::<Daemon>(id));
+    }
+
+    // Use processor for shared heartbeat logic (same as request-work)
+    let status = crate::daemon::runtime::state::DaemonStatus {
+        url: Some(request.url),
+        name: request.name,
+        mode: request.mode,
+        version: None, // Old daemons don't send version in heartbeat
+        capabilities: DaemonCapabilities::default(),
+    };
+    state
+        .services
+        .daemon_service
+        .process_status(id, status, auth.into_entity())
+        .await?;
+
+    Ok(Json(ApiResponse::success(())))
 }
 
 // ============================================================================
@@ -604,6 +670,7 @@ async fn provision_daemon(
         user_id,
         api_key_id: Some(created_api_key.id),
         is_unreachable: false,
+        standby: false,
     });
 
     let created_daemon = state

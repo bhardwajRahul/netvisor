@@ -47,6 +47,10 @@ pub enum DiscoveryType {
         /// Server builds this mapping before initiating discovery
         #[serde(default)]
         snmp_credentials: SnmpCredentialMapping,
+        /// Whether to probe raw-socket ports (9100-9107) during endpoint scanning.
+        /// Disabled by default to prevent ghost printing on JetDirect printers.
+        #[serde(default)]
+        probe_raw_socket_ports: bool,
     },
     #[schema(title = "Docker")]
     Docker {
@@ -75,10 +79,12 @@ impl DiscoveryType {
                 subnet_ids,
                 host_naming_fallback,
                 snmp_credentials,
+                probe_raw_socket_ports,
             } => DiscoveryType::Network {
                 subnet_ids: subnet_ids.clone(),
                 host_naming_fallback: *host_naming_fallback,
                 snmp_credentials: snmp_credentials.sanitized(),
+                probe_raw_socket_ports: *probe_raw_socket_ports,
             },
             other => other.clone(),
         }

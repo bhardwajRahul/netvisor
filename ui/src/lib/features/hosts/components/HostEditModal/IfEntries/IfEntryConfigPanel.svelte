@@ -134,8 +134,10 @@
 
 	<!-- LLDP Neighbor Info Section -->
 	<InfoCard title={hosts_ifEntries_lldpNeighbor()}>
-		<InfoRow label={hosts_ifEntries_chassisId()} mono>{ifEntry.lldp_chassis_id || '-'}</InfoRow>
-		<InfoRow label={hosts_ifEntries_portId()} mono>{ifEntry.lldp_port_id || '-'}</InfoRow>
+		<InfoRow label={hosts_ifEntries_chassisId()} mono
+			>{ifEntry.lldp_chassis_id?.value || '-'}</InfoRow
+		>
+		<InfoRow label={hosts_ifEntries_portId()} mono>{ifEntry.lldp_port_id?.value || '-'}</InfoRow>
 		<InfoRow label={hosts_ifEntries_remoteSystemName()}>{ifEntry.lldp_sys_name || '-'}</InfoRow>
 		<InfoRow label={hosts_ifEntries_remotePort()}>{ifEntry.lldp_port_desc || '-'}</InfoRow>
 		<InfoRow label={hosts_ifEntries_managementAddress()} mono

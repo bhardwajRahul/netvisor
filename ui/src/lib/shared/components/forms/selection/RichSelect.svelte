@@ -11,28 +11,44 @@
 		common_noOptionsMatch
 	} from '$lib/paraglide/messages';
 
-	export let label: string = '';
-	export let selectedValue: string | null = '';
-	export let options: V[] = [];
-	export let placeholder: string | undefined = undefined;
-	export let required: boolean = false;
-	export let disabled: boolean = false;
-	export let error: string | null = null;
-	export let onSelect: (value: string) => void;
-	export let showSearch: boolean = false;
-	export let displayComponent: EntityDisplayComponent<V, C>;
-	export let getOptionContext: (option: V, index: number) => C = () => new Object() as C;
+	let {
+		label = '',
+		selectedValue = '',
+		options = [],
+		placeholder = undefined,
+		required = false,
+		disabled = false,
+		error = null,
+		onSelect,
+		onDisabledClick = null,
+		showSearch = false,
+		displayComponent,
+		getOptionContext = () => new Object() as C
+	}: {
+		label?: string;
+		selectedValue?: string | null;
+		options?: V[];
+		placeholder?: string | undefined;
+		required?: boolean;
+		disabled?: boolean;
+		error?: string | null;
+		onSelect: (value: string) => void;
+		onDisabledClick?: ((value: string) => void) | null;
+		showSearch?: boolean;
+		displayComponent: EntityDisplayComponent<V, C>;
+		getOptionContext?: (option: V, index: number) => C;
+	} = $props();
 
-	let isOpen = false;
-	let dropdownElement: HTMLDivElement;
-	let triggerElement: HTMLButtonElement;
-	let inputElement: HTMLInputElement;
-	let dropdownPosition = { top: 0, left: 0, width: 0 };
-	let openUpward = false;
-	let filterText = '';
+	let isOpen = $state(false);
+	let dropdownElement: HTMLDivElement | undefined = $state();
+	let triggerElement: HTMLButtonElement | undefined = $state();
+	let inputElement: HTMLInputElement | undefined = $state();
+	let dropdownPosition = $state({ top: 0, left: 0, width: 0 });
+	let openUpward = $state(false);
+	let filterText = $state('');
 
 	// Portal container for escaping transform contexts (e.g., SvelteFlow)
-	let portalContainer: HTMLDivElement | null = null;
+	let portalContainer: HTMLDivElement | null = $state(null);
 
 	onMount(() => {
 		portalContainer = document.createElement('div');
@@ -48,6 +64,16 @@
 		};
 	});
 
+	// Lock body scroll when dropdown is open
+	$effect(() => {
+		if (isOpen) {
+			document.body.style.overflow = 'hidden';
+			return () => {
+				document.body.style.overflow = '';
+			};
+		}
+	});
+
 	// Portal action to move element to body, escaping any transform contexts
 	function portal(node: HTMLElement) {
 		if (portalContainer) {
@@ -61,29 +87,31 @@
 		};
 	}
 
-	$: selectedItem = options.find((i) => displayComponent.getId(i) === selectedValue);
+	let selectedItem = $derived(options.find((i) => displayComponent.getId(i) === selectedValue));
 
 	// Filter options based on search text
-	$: filteredOptions = options.filter((option, index) => {
-		if (!filterText.trim()) return true;
+	let filteredOptions = $derived(
+		options.filter((option, index) => {
+			if (!filterText.trim()) return true;
 
-		const context = getOptionContext(option, index);
+			const context = getOptionContext(option, index);
 
-		const searchTerm = filterText.toLowerCase();
-		const label = displayComponent.getLabel(option, context).toLowerCase();
-		const description = displayComponent.getDescription?.(option, context)?.toLowerCase() || '';
-		const tags = displayComponent.getTags?.(option, context) ?? [];
-		const tagLabels = tags.map((tag) => tag.label.toLowerCase()).join(' ');
+			const searchTerm = filterText.toLowerCase();
+			const label = displayComponent.getLabel(option, context).toLowerCase();
+			const description = displayComponent.getDescription?.(option, context)?.toLowerCase() || '';
+			const tags = displayComponent.getTags?.(option, context) ?? [];
+			const tagLabels = tags.map((tag) => tag.label.toLowerCase()).join(' ');
 
-		return (
-			label.includes(searchTerm) ||
-			description.includes(searchTerm) ||
-			tagLabels.includes(searchTerm)
-		);
-	});
+			return (
+				label.includes(searchTerm) ||
+				description.includes(searchTerm) ||
+				tagLabels.includes(searchTerm)
+			);
+		})
+	);
 
 	// Group filtered options by category when getCategory is provided
-	$: groupedOptions = (() => {
+	let groupedOptions = $derived.by(() => {
 		const optionsToGroup = filteredOptions;
 
 		if (!displayComponent.getCategory) {
@@ -109,7 +137,7 @@
 		});
 
 		return sortedEntries.map(([category, options]) => ({ category, options }));
-	})();
+	});
 
 	// Simple one-time positioning when dropdown opens
 	async function calculatePosition() {
@@ -195,7 +223,7 @@
 </script>
 
 <!-- Only handle outside clicks -->
-<svelte:window on:click={handleClickOutside} />
+<svelte:window onclick={handleClickOutside} />
 
 <div class="relative">
 	<!-- Label -->
@@ -212,7 +240,7 @@
 	<button
 		bind:this={triggerElement}
 		type="button"
-		on:click={handleToggle}
+		onclick={handleToggle}
 		class="text-primary flex w-full items-center justify-between rounded-md border border-gray-600
            bg-gray-700 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500
            {error ? 'border-red-500' : ''}
@@ -263,8 +291,8 @@
 					type="text"
 					placeholder={common_typeToFilter()}
 					class="text-primary w-full rounded border border-gray-600 bg-gray-800 px-2 py-1 text-sm placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
-					on:keydown={handleInputKeydown}
-					on:click|stopPropagation
+					onkeydown={handleInputKeydown}
+					onclick={(e) => e.stopPropagation()}
 				/>
 			</div>
 		{/if}
@@ -292,14 +320,27 @@
 							{@const context = getOptionContext(option, optionIndex)}
 							{@const isLastInGroup = optionIndex === group.options.length - 1}
 							{@const isLastGroup = groupIndex === groupedOptions.length - 1}
+							{@const isDisabled = displayComponent.getDisabled?.(option, context) ?? false}
+							{@const isClickableDisabled = isDisabled && onDisabledClick != null}
 							<button
 								type="button"
-								on:click={(e) => {
+								onclick={(e) => {
 									e.preventDefault();
 									e.stopPropagation();
-									handleSelect(displayComponent.getId(option));
+									if (isDisabled) {
+										isOpen = false;
+										filterText = '';
+										onDisabledClick?.(displayComponent.getId(option));
+									} else {
+										handleSelect(displayComponent.getId(option));
+									}
 								}}
-								class="w-full px-3 py-3 text-left transition-colors hover:bg-gray-600
+								class="w-full px-3 py-3 text-left transition-colors
+                       {isDisabled
+									? isClickableDisabled
+										? 'cursor-pointer hover:bg-gray-600'
+										: 'cursor-not-allowed opacity-60'
+									: 'hover:bg-gray-600'}
                        {!isLastInGroup || !isLastGroup ? 'border-b border-gray-600' : ''}"
 							>
 								<ListSelectItem {context} item={option} {displayComponent} />

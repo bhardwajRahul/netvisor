@@ -19,9 +19,14 @@ impl ServiceDefinition for Synology {
     }
 
     fn discovery_pattern(&self) -> Pattern<'_> {
-        Pattern::AllOf(vec![
-            Pattern::Endpoint(PortType::Http, "/", "synology", None),
-            Pattern::Port(PortType::Ftp),
+        Pattern::AnyOf(vec![
+            // Original pattern: HTTP with "synology" + FTP
+            Pattern::AllOf(vec![
+                Pattern::Endpoint(PortType::Http, "/", "synology", None),
+                Pattern::Port(PortType::Ftp),
+            ]),
+            // Alternative: HTTP with "Synology Web Station" (FTP may be disabled)
+            Pattern::Endpoint(PortType::Http, "/", "Synology Web Station", None),
         ])
     }
 

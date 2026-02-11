@@ -144,6 +144,15 @@ impl DiscoveryUpdatePayload {
     }
 }
 
+/// Legacy heartbeat payload for backwards compatibility with pre-v0.14.0 daemons.
+/// Old daemons call POST /api/daemons/{id}/heartbeat with this payload.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct DaemonHeartbeatPayload {
+    pub url: String,
+    pub name: String,
+    pub mode: DaemonMode,
+}
+
 /// Daemon status payload sent when polling for work or in heartbeats.
 /// Used by DaemonPoll mode to send status alongside work requests,
 /// and by ServerPoll mode when processing daemon status.

@@ -29,7 +29,7 @@ use crate::server::{
         },
     },
     subnets::{r#impl::base::Subnet, service::SubnetService},
-    tags::entity_tags::EntityTagService,
+    tags::{entity_tags::EntityTagService, r#impl::base::Tag, service::TagService},
     topology::{
         service::{
             context::TopologyContext, edge_builder::EdgeBuilder,
@@ -37,7 +37,7 @@ use crate::server::{
             planner::subnet_layout_planner::SubnetLayoutPlanner,
         },
         types::{
-            base::{Topology, TopologyOptions},
+            base::{SetEntitiesParams, Topology, TopologyOptions},
             edges::{Edge, EdgeHandle},
             nodes::Node,
         },
@@ -54,6 +54,7 @@ pub struct TopologyService {
     port_service: Arc<PortService>,
     binding_service: Arc<BindingService>,
     if_entry_service: Arc<IfEntryService>,
+    tag_service: Arc<TagService>,
     event_bus: Arc<EventBus>,
     pub staleness_tx: broadcast::Sender<Topology>,
 }
@@ -100,6 +101,9 @@ impl CrudService<Topology> for TopologyService {
             .get_service_data(topology.base.network_id, &topology.base.options)
             .await?;
 
+        // Fetch tag definitions for all tags used by entities
+        let entity_tags = self.get_entity_tags(&hosts, &services, &subnets).await?;
+
         let params = BuildGraphParams {
             hosts: &hosts,
             interfaces: &interfaces,
@@ -116,14 +120,19 @@ impl CrudService<Topology> for TopologyService {
 
         let (nodes, edges) = self.build_graph(params);
 
-        topology.base.edges = edges;
-        topology.base.nodes = nodes;
-        topology.base.hosts = hosts;
-        topology.base.interfaces = interfaces;
-        topology.base.services = services;
-        topology.base.subnets = subnets;
-        topology.base.groups = groups;
-        topology.base.if_entries = if_entries;
+        topology.set_entities(SetEntitiesParams {
+            hosts,
+            interfaces,
+            services,
+            subnets,
+            groups,
+            if_entries,
+            entity_tags,
+            ports,
+            bindings,
+        });
+
+        topology.set_graph(nodes, edges);
         topology.clear_stale();
 
         let created = self.storage().create(&topology).await?;
@@ -174,6 +183,7 @@ impl TopologyService {
         port_service: Arc<PortService>,
         binding_service: Arc<BindingService>,
         if_entry_service: Arc<IfEntryService>,
+        tag_service: Arc<TagService>,
         storage: Arc<GenericPostgresStorage<Topology>>,
         event_bus: Arc<EventBus>,
     ) -> Self {
@@ -188,6 +198,7 @@ impl TopologyService {
             port_service,
             binding_service,
             if_entry_service,
+            tag_service,
             event_bus,
             staleness_tx,
         }
@@ -278,6 +289,42 @@ impl TopologyService {
             })
             .cloned()
             .collect())
+    }
+
+    /// Fetch tag definitions for all tags used by hosts, services, and subnets.
+    pub async fn get_entity_tags(
+        &self,
+        hosts: &[Host],
+        services: &[Service],
+        subnets: &[Subnet],
+    ) -> Result<Vec<Tag>, Error> {
+        // Collect all unique tag IDs from entities
+        let mut tag_ids: Vec<Uuid> = Vec::new();
+        for host in hosts {
+            tag_ids.extend(&host.base.tags);
+        }
+        for service in services {
+            tag_ids.extend(&service.base.tags);
+        }
+        for subnet in subnets {
+            tag_ids.extend(&subnet.base.tags);
+        }
+
+        // Deduplicate
+        tag_ids.sort();
+        tag_ids.dedup();
+
+        if tag_ids.is_empty() {
+            return Ok(vec![]);
+        }
+
+        // Fetch the tag definitions
+        let tags = self
+            .tag_service
+            .get_all(StorableFilter::<Tag>::new_from_entity_ids(&tag_ids))
+            .await?;
+
+        Ok(tags)
     }
 
     pub fn build_graph(&self, params: BuildGraphParams) -> (Vec<Node>, Vec<Edge>) {

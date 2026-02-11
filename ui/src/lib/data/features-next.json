@@ -22,17 +22,6 @@
 		}
 	},
 	{
-		"id": "commercial_license",
-		"name": "Commercial License",
-		"description": "Use Scanopy under a commercial license",
-		"category": "Licensing",
-		"icon": "sparkle",
-		"color": "Gray",
-		"metadata": {
-			"is_coming_soon": false
-		}
-	},
-	{
 		"id": "audit_logs",
 		"name": "Audit Logs",
 		"description": "Comprehensive logs of all access and data modification actions performed in Scanopy",
@@ -165,9 +154,9 @@
 		}
 	},
 	{
-		"id": "unlimited_scans",
-		"name": "Unlimited Scans",
-		"description": "No limits on network discovery scans",
+		"id": "scheduled_discovery",
+		"name": "Scheduled Discovery",
+		"description": "Schedule automatic network discovery scans",
 		"category": "Core",
 		"icon": "sparkle",
 		"color": "Gray",
@@ -176,9 +165,9 @@
 		}
 	},
 	{
-		"id": "unlimited_hosts",
-		"name": "Unlimited Hosts",
-		"description": "Visualize as many hosts as your network has",
+		"id": "daemon_poll",
+		"name": "DaemonPoll Mode",
+		"description": "Daemon-initiated polling — no open ports required on the daemon",
 		"category": "Core",
 		"icon": "sparkle",
 		"color": "Gray",
@@ -201,6 +190,17 @@
 		"id": "docker_integration",
 		"name": "Docker Integration",
 		"description": "Automatic discovery of containerized services",
+		"category": "Core",
+		"icon": "sparkle",
+		"color": "Gray",
+		"metadata": {
+			"is_coming_soon": false
+		}
+	},
+	{
+		"id": "snmp_integration",
+		"name": "SNMP Integration",
+		"description": "Query network devices for interface and hardware details",
 		"category": "Core",
 		"icon": "sparkle",
 		"color": "Gray",

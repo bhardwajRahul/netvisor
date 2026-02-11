@@ -2,14 +2,14 @@ use crate::server::{
     auth::{oidc::OidcService, service::AuthService},
     billing::service::{BillingService, BillingServiceParams},
     bindings::service::BindingService,
+    brevo::service::BrevoService,
     config::ServerConfig,
     daemon_api_keys::service::DaemonApiKeyService,
     daemons::service::DaemonService,
     discovery::service::DiscoveryService,
-    email::{plunk::PlunkEmailProvider, smtp::SmtpEmailProvider, traits::EmailService},
+    email::{brevo::BrevoEmailProvider, smtp::SmtpEmailProvider, traits::EmailService},
     groups::{group_bindings::GroupBindingStorage, service::GroupService},
     hosts::service::HostService,
-    hubspot::service::HubSpotService,
     if_entries::service::IfEntryService,
     interfaces::service::InterfaceService,
     invites::service::InviteService,
@@ -18,6 +18,7 @@ use crate::server::{
     networks::service::NetworkService,
     organizations::service::OrganizationService,
     ports::service::PortService,
+    posthog::PosthogService,
     services::service::ServiceService,
     shared::{events::bus::EventBus, storage::factory::StorageFactory},
     shares::service::ShareService,
@@ -60,7 +61,8 @@ pub struct ServiceFactory {
     pub oidc_service: Option<Arc<OidcService>>,
     pub billing_service: Option<Arc<BillingService>>,
     pub email_service: Option<Arc<EmailService>>,
-    pub hubspot_service: Option<Arc<HubSpotService>>,
+    pub brevo_service: Option<Arc<BrevoService>>,
+    pub posthog_service: Option<Arc<PosthogService>>,
     pub event_bus: Arc<EventBus>,
     pub logging_service: Arc<LoggingService>,
     pub metrics_service: Arc<MetricsService>,
@@ -191,6 +193,8 @@ impl ServiceFactory {
             event_bus.clone(),
             entity_tag_service.clone(),
             snmp_credential_service.clone(),
+            network_service.clone(),
+            organization_service.clone(),
         )
         .await?;
 
@@ -233,16 +237,15 @@ impl ServiceFactory {
             port_service.clone(),
             binding_service.clone(),
             if_entry_service.clone(),
+            tag_service.clone(),
             storage.topologies.clone(),
             event_bus.clone(),
         ));
 
         let email_service = config.clone().and_then(|c| {
-            // Prefer Plunk if API key is provided
-            if let Some(plunk_secret) = c.plunk_secret
-                && let Some(plunk_key) = c.plunk_key
-            {
-                let provider = Box::new(PlunkEmailProvider::new(plunk_secret, plunk_key));
+            // Prefer Brevo if API key is provided
+            if let Some(ref brevo_api_key) = c.brevo_api_key {
+                let provider = Box::new(BrevoEmailProvider::new(brevo_api_key.clone()));
                 return Some(Arc::new(EmailService::new(provider, user_service.clone())));
             }
 
@@ -273,7 +276,11 @@ impl ServiceFactory {
                     invite_service: invite_service.clone(),
                     user_service: user_service.clone(),
                     network_service: network_service.clone(),
+                    host_service: host_service.clone(),
+                    daemon_service: daemon_service.clone(),
+                    discovery_service: discovery_service.clone(),
                     share_service: share_service.clone(),
+                    email_service: email_service.clone(),
                     event_bus: event_bus.clone(),
                 })));
             }
@@ -293,18 +300,32 @@ impl ServiceFactory {
             public_url,
         ));
 
-        // Create HubSpot service if API key is configured (before config is consumed)
-        let hubspot_service = config.as_ref().and_then(|c| {
-            c.hubspot_api_key.as_ref().map(|api_key| {
-                Arc::new(HubSpotService::new(
+        // Create Brevo service if API key is configured (before config is consumed)
+        let brevo_service = config.as_ref().and_then(|c| {
+            c.brevo_api_key.as_ref().map(|api_key| {
+                Arc::new(BrevoService::new(
                     api_key.clone(),
                     network_service.clone(),
                     host_service.clone(),
                     user_service.clone(),
                     organization_service.clone(),
+                    daemon_service.clone(),
+                    tag_service.clone(),
+                    user_api_key_service.clone(),
+                    snmp_credential_service.clone(),
                 ))
             })
         });
+
+        // Create PostHog service if API key is configured
+        let posthog_service =
+            if let Some(posthog_key) = config.as_ref().and_then(|c| c.posthog_key.clone()) {
+                Some(Arc::new(
+                    PosthogService::new(posthog_key, "https://ph.scanopy.net".to_string()).await,
+                ))
+            } else {
+                None
+            };
 
         let oidc_service = config.and_then(|c| {
             if let Some(oidc_providers) = c.oidc_providers {
@@ -335,12 +356,12 @@ impl ServiceFactory {
             event_bus.register_subscriber(billing_service).await;
         }
 
-        if let Some(email_service) = email_service.clone() {
-            event_bus.register_subscriber(email_service).await;
+        if let Some(brevo_service) = brevo_service.clone() {
+            event_bus.register_subscriber(brevo_service).await;
         }
 
-        if let Some(hubspot_service) = hubspot_service.clone() {
-            event_bus.register_subscriber(hubspot_service).await;
+        if let Some(posthog_service) = posthog_service.clone() {
+            event_bus.register_subscriber(posthog_service).await;
         }
 
         event_bus.register_subscriber(daemon_service.clone()).await;
@@ -365,7 +386,8 @@ impl ServiceFactory {
             oidc_service,
             billing_service,
             email_service,
-            hubspot_service,
+            brevo_service,
+            posthog_service,
             event_bus,
             logging_service,
             metrics_service,

@@ -3,5 +3,5 @@ pub mod service;
 pub mod subscriber;
 pub mod types;
 
-pub use client::HubSpotClient;
-pub use service::HubSpotService;
+pub use client::BrevoClient;
+pub use service::BrevoService;

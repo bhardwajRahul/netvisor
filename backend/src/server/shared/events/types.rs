@@ -234,7 +234,6 @@ pub enum AuthOperation {
     PasswordResetCompleted,
     PasswordChanged,
     EmailVerified,
-    SessionExpired,
     OidcLinked,
     OidcUnlinked,
     LoggedOut,
@@ -407,36 +406,60 @@ pub enum TelemetryOperation {
     OrgCreated,
     OnboardingModalCompleted,
     PlanSelected,
+    // Legacy: kept for DB compat, used as guard only
     PersonalPlanSelected,
+    // Legacy: kept for DB compat, used as guard only
     CommercialPlanSelected,
-    FirstApiKeyCreated,
-    FirstDaemonRegistered,
-    FirstTopologyRebuild,
 
     // Billing lifecycle (for email automation)
     CheckoutStarted,
     CheckoutCompleted,
     TrialStarted,
     TrialEnded,
+    TrialWillEnd,
     SubscriptionCancelled,
+    PlanChanged,
+    PaymentFailed,
+    PaymentActionRequired,
+    PaymentRecovered,
 
-    // Activation milestones (HubSpot CRM tracking)
-    FirstNetworkCreated,
+    // Engagement signals
+    FirstDaemonRegistered,
+    FirstTopologyRebuild,
     FirstDiscoveryCompleted,
     FirstHostDiscovered,
     SecondNetworkCreated,
-
-    // Engagement signals (HubSpot CRM tracking)
     FirstTagCreated,
     FirstUserApiKeyCreated,
     FirstSnmpCredentialCreated,
     InviteSent,
     InviteAccepted,
+
+    // Deprecated: kept for DB compat (stored in org onboarding arrays), never emitted
+    FirstApiKeyCreated,
+    // Deprecated: kept for DB compat, never emitted
+    FirstNetworkCreated,
 }
 
 impl TelemetryOperation {
     fn log_level(&self) -> EventLogLevel {
         EventLogLevel::Info
+    }
+
+    pub fn is_billing_operation(&self) -> bool {
+        matches!(
+            self,
+            TelemetryOperation::CheckoutStarted
+                | TelemetryOperation::CheckoutCompleted
+                | TelemetryOperation::TrialStarted
+                | TelemetryOperation::TrialEnded
+                | TelemetryOperation::TrialWillEnd
+                | TelemetryOperation::SubscriptionCancelled
+                | TelemetryOperation::PlanChanged
+                | TelemetryOperation::PaymentFailed
+                | TelemetryOperation::PaymentActionRequired
+                | TelemetryOperation::PaymentRecovered
+        )
     }
 }
 

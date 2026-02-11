@@ -89,6 +89,7 @@ impl Storable for Daemon {
                     user_id,
                     api_key_id,
                     is_unreachable,
+                    standby,
                 },
         } = self.clone();
 
@@ -108,6 +109,7 @@ impl Storable for Daemon {
                 "user_id",
                 "api_key_id",
                 "is_unreachable",
+                "standby",
             ],
             vec![
                 SqlValue::Uuid(id),
@@ -124,6 +126,7 @@ impl Storable for Daemon {
                 SqlValue::Uuid(user_id),
                 SqlValue::OptionalUuid(api_key_id),
                 SqlValue::Bool(is_unreachable),
+                SqlValue::Bool(standby),
             ],
         ))
     }
@@ -158,6 +161,7 @@ impl Storable for Daemon {
                 user_id: row.get("user_id"),
                 api_key_id: row.get("api_key_id"),
                 is_unreachable: row.get("is_unreachable"),
+                standby: row.get("standby"),
             },
         })
     }
@@ -225,5 +229,7 @@ impl Entity for Daemon {
         self.base.last_seen = existing.base.last_seen;
         // capabilities are reported by the daemon, not user-editable
         self.base.capabilities = existing.base.capabilities.clone();
+        // standby is managed by billing plan restrictions, not user-editable
+        self.base.standby = existing.base.standby;
     }
 }

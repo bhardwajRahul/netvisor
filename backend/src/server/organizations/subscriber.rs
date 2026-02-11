@@ -25,21 +25,14 @@ impl EventSubscriber for OrganizationService {
         }
 
         for event in events {
-            if let Event::Telemetry(event) = event {
-                let is_onboarding_step = event
-                    .metadata
-                    .get("is_onboarding_step")
-                    .and_then(|v| serde_json::from_value::<bool>(v.clone()).ok())
-                    .unwrap_or(false);
-
-                if let Some(mut organization) = self.get_by_id(&event.organization_id).await?
-                    && is_onboarding_step
-                    && organization.not_onboarded(&event.operation)
-                {
-                    organization.base.onboarding.push(event.operation);
-                    self.update(&mut organization, AuthenticatedEntity::System)
-                        .await?;
-                }
+            if let Event::Telemetry(event) = event
+                && !event.operation.is_billing_operation()
+                && let Some(mut organization) = self.get_by_id(&event.organization_id).await?
+                && organization.not_onboarded(&event.operation)
+            {
+                organization.base.onboarding.push(event.operation);
+                self.update(&mut organization, AuthenticatedEntity::System)
+                    .await?;
             }
         }
 

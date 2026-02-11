@@ -6,6 +6,7 @@ use crate::server::ports::r#impl::base::Port;
 use crate::server::services::r#impl::base::Service;
 use crate::server::shared::entities::EntityDiscriminants;
 use crate::server::subnets::r#impl::base::Subnet;
+use crate::server::tags::r#impl::base::Tag;
 use crate::server::{
     hosts::r#impl::base::Host,
     shared::{
@@ -113,6 +114,7 @@ impl Storable for Topology {
                     removed_if_entries,
                     parent_id,
                     tags,
+                    entity_tags,
                 },
         } = self.clone();
 
@@ -149,6 +151,7 @@ impl Storable for Topology {
                 "removed_if_entries",
                 "parent_id",
                 "tags",
+                "entity_tags",
             ],
             vec![
                 SqlValue::Uuid(id),
@@ -182,6 +185,7 @@ impl Storable for Topology {
                 SqlValue::UuidArray(removed_if_entries),
                 SqlValue::OptionalUuid(parent_id),
                 SqlValue::UuidArray(tags),
+                SqlValue::Tags(entity_tags),
             ],
         ))
     }
@@ -221,6 +225,10 @@ impl Storable for Topology {
             serde_json::from_value(row.get::<serde_json::Value, _>("if_entries"))
                 .map_err(|e| anyhow::anyhow!("Failed to deserialize if_entries: {}", e))?;
 
+        let entity_tags: Vec<Tag> =
+            serde_json::from_value(row.get::<serde_json::Value, _>("entity_tags"))
+                .map_err(|e| anyhow::anyhow!("Failed to deserialize entity_tags: {}", e))?;
+
         Ok(Topology {
             id: row.get("id"),
             created_at: row.get("created_at"),
@@ -254,6 +262,7 @@ impl Storable for Topology {
                 if_entries,
                 options,
                 tags: row.get("tags"),
+                entity_tags,
             },
         })
     }

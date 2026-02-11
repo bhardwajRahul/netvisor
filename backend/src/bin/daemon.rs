@@ -133,9 +133,14 @@ async fn async_main() -> anyhow::Result<()> {
             // DaemonPoll mode: Register with server and poll for work
             if let Some(network_id) = network_id {
                 if let Some(api_key) = api_key {
-                    runtime_service
+                    if let Err(e) = runtime_service
                         .initialize_services(network_id, api_key.clone())
-                        .await?;
+                        .await
+                    {
+                        tracing::warn!(
+                            "Could not connect to server during startup: {e}. Will retry during polling."
+                        );
+                    }
                 } else {
                     tracing::warn!(
                         "Daemon is missing an API key. Go to discovery tab in UI to generate an API key."

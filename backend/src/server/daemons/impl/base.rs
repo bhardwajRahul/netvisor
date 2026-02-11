@@ -49,6 +49,10 @@ pub struct DaemonBase {
     /// Set to true after repeated polling failures, reset via retry-connection endpoint.
     #[serde(default)]
     pub is_unreachable: bool,
+    /// Whether the daemon is on standby due to plan restrictions (DaemonPoll on Free plan).
+    #[serde(default)]
+    #[schema(read_only)]
+    pub standby: bool,
 }
 
 #[derive(
@@ -76,6 +80,23 @@ impl Daemon {
             && self.base.url == other.base.url
             && self.base.network_id == other.base.network_id
             && self.base.host_id == other.base.host_id
+    }
+
+    /// Check if daemon supports full ServerPoll mode (v0.14.0+).
+    ///
+    /// Legacy daemons (< v0.14.0) only support `/api/discovery/initiate` and
+    /// `/api/discovery/cancel` endpoints without authentication.
+    /// They don't support the newer endpoints: `/api/status`, `/api/poll`,
+    /// `/api/first-contact`, `/api/discovery/entities-created`.
+    ///
+    /// Returns `false` for daemons without a version (assume legacy).
+    pub fn supports_full_server_poll(&self) -> bool {
+        const SERVER_POLL_VERSION: Version = Version::new(0, 14, 0);
+        self.base
+            .version
+            .as_ref()
+            .map(|v| v >= &SERVER_POLL_VERSION)
+            .unwrap_or(false)
     }
 }
 
@@ -112,10 +133,12 @@ impl Display for Daemon {
 pub enum DaemonMode {
     /// Server polls daemon (daemon cannot make outbound connections)
     #[serde(alias = "push", alias = "Push")]
+    #[value(alias = "push")]
     ServerPoll,
     /// Daemon polls server (default, firewall-friendly)
     #[default]
     #[serde(alias = "pull", alias = "Pull")]
+    #[value(alias = "pull")]
     DaemonPoll,
 }
 

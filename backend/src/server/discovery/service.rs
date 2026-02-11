@@ -4,9 +4,12 @@ use crate::server::auth::middleware::auth::AuthenticatedEntity;
 use crate::server::daemons::r#impl::api::DiscoveryUpdatePayload;
 use crate::server::discovery::r#impl::base::Discovery;
 use crate::server::discovery::r#impl::types::{DiscoveryType, RunType};
+use crate::server::networks::service::NetworkService;
+use crate::server::organizations::service::OrganizationService;
 use crate::server::shared::entities::{ChangeTriggersTopologyStaleness, EntityDiscriminants};
 use crate::server::shared::events::bus::EventBus;
 use crate::server::shared::events::types::{EntityEvent, EntityOperation};
+use crate::server::shared::events::types::{TelemetryEvent, TelemetryOperation};
 use crate::server::shared::services::traits::{CrudService, EventBusService};
 use crate::server::shared::storage::filter::StorableFilter;
 use crate::server::shared::storage::generic::GenericPostgresStorage;
@@ -31,9 +34,12 @@ pub struct DiscoveryService {
     session_last_updated: RwLock<HashMap<Uuid, chrono::DateTime<Utc>>>,
     update_tx: broadcast::Sender<DiscoveryUpdatePayload>,
     scheduler: Option<Arc<RwLock<JobScheduler>>>,
+    job_ids: RwLock<HashMap<Uuid, Uuid>>, // discovery_id -> scheduler job_id mapping
     event_bus: Arc<EventBus>,
     entity_tag_service: Arc<EntityTagService>,
     snmp_credential_service: Arc<SnmpCredentialService>,
+    network_service: Arc<NetworkService>,
+    organization_service: Arc<OrganizationService>,
 }
 
 impl EventBusService<Discovery> for DiscoveryService {
@@ -66,6 +72,8 @@ impl DiscoveryService {
         event_bus: Arc<EventBus>,
         entity_tag_service: Arc<EntityTagService>,
         snmp_credential_service: Arc<SnmpCredentialService>,
+        network_service: Arc<NetworkService>,
+        organization_service: Arc<OrganizationService>,
     ) -> Result<Arc<Self>> {
         let (tx, _rx) = broadcast::channel(100); // Buffer 100 messages
         let scheduler = JobScheduler::new().await?;
@@ -78,9 +86,12 @@ impl DiscoveryService {
             session_last_updated: RwLock::new(HashMap::new()),
             update_tx: tx,
             scheduler: Some(Arc::new(RwLock::new(scheduler))),
+            job_ids: RwLock::new(HashMap::new()),
             event_bus,
             entity_tag_service,
             snmp_credential_service,
+            network_service,
+            organization_service,
         }))
     }
 
@@ -120,6 +131,29 @@ impl DiscoveryService {
             .filter_map(|session_id| all_sessions.get(session_id).cloned())
             .filter(|session| session.phase == DiscoveryPhase::Pending)
             .collect()
+    }
+
+    /// Clear all sessions for a daemon from in-memory state.
+    /// Used by tests to ensure clean state between phases.
+    pub async fn clear_sessions_for_daemon(&self, daemon_id: &Uuid) {
+        let mut sessions = self.sessions.write().await;
+        let mut daemon_sessions = self.daemon_sessions.write().await;
+        let mut session_last_updated = self.session_last_updated.write().await;
+        let mut daemon_pull_cancellations = self.daemon_pull_cancellations.write().await;
+
+        if let Some(session_ids) = daemon_sessions.remove(daemon_id) {
+            for session_id in &session_ids {
+                sessions.remove(session_id);
+                session_last_updated.remove(session_id);
+            }
+            tracing::debug!(
+                daemon_id = %daemon_id,
+                session_count = session_ids.len(),
+                "Cleared all sessions for daemon"
+            );
+        }
+
+        daemon_pull_cancellations.remove(daemon_id);
     }
 
     /// Check if daemon has an active (non-terminal, non-pending) discovery session.
@@ -255,9 +289,20 @@ impl DiscoveryService {
             } = &current.base.run_type
             && current_cron != new_cron
         {
-            // Remove old schedule first
-            if let Some(scheduler) = &self.scheduler {
-                let _ = scheduler.write().await.remove(&discovery.id).await;
+            // Remove old schedule first using the actual job_id
+            if let Some(scheduler) = &self.scheduler
+                && let Some(job_id) = self.job_ids.read().await.get(&discovery.id).copied()
+            {
+                if let Err(e) = scheduler.write().await.remove(&job_id).await {
+                    tracing::warn!(
+                        discovery_id = %discovery.id,
+                        job_id = %job_id,
+                        error = ?e,
+                        "Failed to remove old scheduled job"
+                    );
+                } else {
+                    self.job_ids.write().await.remove(&discovery.id);
+                }
             }
 
             // Update in DB first
@@ -329,11 +374,22 @@ impl DiscoveryService {
             .await?
             .ok_or_else(|| anyhow::anyhow!("Discovery not found"))?;
 
-        // If it's scheduled, remove from scheduler first
+        // If it's scheduled, remove from scheduler first using the actual job_id
         if matches!(discovery.base.run_type, RunType::Scheduled { .. })
             && let Some(scheduler) = &self.scheduler
         {
-            let _ = scheduler.write().await.remove(id).await;
+            if let Some(job_id) = self.job_ids.read().await.get(id).copied() {
+                if let Err(e) = scheduler.write().await.remove(&job_id).await {
+                    tracing::warn!(
+                        discovery_id = %id,
+                        job_id = %job_id,
+                        error = ?e,
+                        "Failed to remove scheduled job during deletion"
+                    );
+                } else {
+                    self.job_ids.write().await.remove(id);
+                }
+            }
             tracing::debug!("Removed scheduled job for discovery {}", id);
         }
 
@@ -373,6 +429,9 @@ impl DiscoveryService {
             .scheduler
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("Scheduler not initialized"))?;
+
+        // Clear any stale job_id mappings from previous runs
+        self.job_ids.write().await.clear();
 
         let filter = StorableFilter::<Discovery>::new_for_scheduled_discoveries();
 
@@ -481,9 +540,13 @@ impl DiscoveryService {
 
         let job_id = scheduler.write().await.add(job).await?;
 
+        // Store the mapping so we can remove the job later when the schedule is updated
+        service.job_ids.write().await.insert(discovery_id, job_id);
+
         tracing::debug!(
-            "Scheduled discovery {} with cron: {}",
+            "Scheduled discovery {} with job_id {} and cron: {}",
             discovery_id,
+            job_id,
             cron_schedule
         );
         Ok(job_id)
@@ -501,6 +564,7 @@ impl DiscoveryService {
         let discovery_type = if let DiscoveryType::Network {
             host_naming_fallback,
             subnet_ids,
+            probe_raw_socket_ports,
             ..
         } = discovery.base.discovery_type
         {
@@ -511,6 +575,7 @@ impl DiscoveryService {
                     .snmp_credential_service
                     .build_credentials_for_discovery(discovery.base.network_id)
                     .await?,
+                probe_raw_socket_ports,
             }
         } else {
             discovery.base.discovery_type
@@ -571,11 +636,25 @@ impl DiscoveryService {
         let mut sessions = self.sessions.write().await;
 
         let mut last_updated = self.session_last_updated.write().await;
+        // Check if we've seen this session before (used as tombstone for completed sessions)
+        let already_seen = last_updated.contains_key(&update.session_id);
         // Track last update time
         last_updated.insert(update.session_id, Utc::now());
 
         // Auto-create session if it doesn't exist (handles server restarts during discovery)
         if let std::collections::hash_map::Entry::Vacant(e) = sessions.entry(update.session_id) {
+            // If we already tracked this session but it's no longer in the sessions map,
+            // it was already processed and removed. Skip redundant terminal updates from
+            // old daemons that don't clear their terminal payload after serving it.
+            if update.phase.is_terminal() && already_seen {
+                tracing::debug!(
+                    session_id = %update.session_id,
+                    phase = %update.phase,
+                    "Ignoring redundant terminal update (already processed)"
+                );
+                return Ok(());
+            }
+
             tracing::info!(
                 session_id = %update.session_id,
                 daemon_id = %update.daemon_id,
@@ -615,6 +694,28 @@ impl DiscoveryService {
             self.event_bus()
                 .publish_discovery(session.into_discovery_event())
                 .await?;
+
+            // Emit FirstDiscoveryCompleted telemetry if this is the org's first completed discovery
+            if session.phase == DiscoveryPhase::Complete
+                && let Ok(Some(network)) = self.network_service.get_by_id(&network_id).await
+                && let Ok(Some(org)) = self
+                    .organization_service
+                    .get_by_id(&network.base.organization_id)
+                    .await
+                && org.not_onboarded(&TelemetryOperation::FirstDiscoveryCompleted)
+            {
+                let _ = self
+                    .event_bus
+                    .publish_telemetry(TelemetryEvent::new(
+                        Uuid::new_v4(),
+                        org.id,
+                        TelemetryOperation::FirstDiscoveryCompleted,
+                        Utc::now(),
+                        AuthenticatedEntity::System,
+                        serde_json::json!({}),
+                    ))
+                    .await;
+            }
 
             // If user cancelled session, but it finished before we could send cancellation, remove key so it doesn't cancel upcoming sessions
             self.pull_cancellation_for_daemon(&session.daemon_id).await;
@@ -995,6 +1096,14 @@ impl DiscoveryService {
                 stalled_count += 1;
             }
         }
+
+        // Evict tombstones: last_updated entries for sessions that no longer exist
+        // in the sessions map and are older than the stall threshold. These are left
+        // behind after terminal processing to guard against redundant polls from old
+        // daemons (see update_session). Safe to clean up once enough time has passed.
+        last_updated.retain(|id, ts| {
+            sessions.contains_key(id) || now.signed_duration_since(*ts) < stall_threshold
+        });
 
         if stalled_count > 0 {
             tracing::info!("Cleaned up {} stalled discovery sessions", stalled_count);

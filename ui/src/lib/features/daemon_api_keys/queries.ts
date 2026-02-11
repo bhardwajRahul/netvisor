@@ -8,7 +8,6 @@ import { queryKeys } from '$lib/api/query-client';
 import { apiClient } from '$lib/api/client';
 import type { ApiKey } from './types/base';
 import { utcTimeZoneSentinel, uuidv4Sentinel } from '$lib/shared/utils/formatting';
-import { trackEvent, hasCompletedOnboarding } from '$lib/shared/utils/analytics';
 
 /**
  * Query hook for fetching all daemon API keys
@@ -57,11 +56,6 @@ export function useCreateApiKeyMutation() {
 			queryClient.setQueryData<ApiKey[]>(queryKeys.apiKeys.all, (old) =>
 				old ? [...old, apiKey] : [apiKey]
 			);
-
-			// Track first API key creation
-			if (!hasCompletedOnboarding('FirstApiKeyCreated')) {
-				trackEvent('first_api_key_created');
-			}
 		}
 	}));
 }

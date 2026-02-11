@@ -62,8 +62,14 @@ impl EventSubscriber for BillingService {
 
                         let seat_count = self.user_service.get_all(user_filter).await?.len();
 
-                        // When user has just been created org won't yet have a billing plan
-                        if org.base.plan.is_none() {
+                        // Skip if org has no plan, or plan has no metered addons
+                        if let Some(ref plan) = org.base.plan {
+                            if plan.config().seat_cents.is_none()
+                                && plan.config().network_cents.is_none()
+                            {
+                                continue;
+                            }
+                        } else {
                             continue;
                         }
 

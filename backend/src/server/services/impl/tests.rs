@@ -594,9 +594,12 @@ fn test_service_definition_serialization() {
 }
 #[tokio::test]
 async fn test_service_definition_logo_urls_resolve() {
+    use backon::{ExponentialBuilder, Retryable};
+    use futures::stream::{self, StreamExt};
+
     let registry = ServiceDefinitionRegistry::all_service_definitions();
     let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(5))
+        .timeout(std::time::Duration::from_secs(10))
         .build()
         .expect("Failed to create HTTP client");
 
@@ -607,89 +610,126 @@ async fn test_service_definition_logo_urls_resolve() {
         "cdn.prod.website-files.com",
     ];
 
-    for service in registry {
-        let logo_url = service.logo_url();
+    // Collect services with external logo URLs to validate
+    let services_to_check: Vec<_> = registry
+        .into_iter()
+        .filter_map(|service| {
+            let logo_url = service.logo_url();
 
-        // Skip services without logo URLs
-        if logo_url.is_empty() {
-            continue;
-        }
-
-        // Check if it's a local file path or external URL
-        if logo_url.starts_with('/') {
-            // Local file path like /logos/scanopy-logo.png
-            assert!(
-                logo_url.starts_with("/logos/"),
-                "Service '{}' has local logo URL '{}' that doesn't start with /logos/",
-                ServiceDefinition::name(&service),
-                logo_url
-            );
-            // We can't verify local files exist in tests, so just validate the path format
-            continue;
-        }
-
-        // Must be a URL - parse it
-        let url = match reqwest::Url::parse(logo_url) {
-            Ok(url) => url,
-            Err(e) => {
-                panic!(
-                    "Service '{}' has invalid logo URL '{}': {}",
-                    ServiceDefinition::name(&service),
-                    logo_url,
-                    e
-                );
+            // Skip services without logo URLs
+            if logo_url.is_empty() {
+                return None;
             }
-        };
 
-        // Check domain is in allowed list
-        let domain = url.domain().unwrap_or("");
-        let is_allowed = ALLOWED_DOMAINS
-            .iter()
-            .any(|allowed| domain.ends_with(allowed));
-
-        assert!(
-            is_allowed,
-            "Service '{}' has logo URL '{}' from unauthorized domain '{}'. \
-             Allowed domains: {}",
-            ServiceDefinition::name(&service),
-            logo_url,
-            domain,
-            ALLOWED_DOMAINS.join(", ")
-        );
-
-        // Attempt to fetch the logo URL
-        match client.head(logo_url).send().await {
-            Ok(response) => {
+            // Check if it's a local file path
+            if logo_url.starts_with('/') {
+                // Local file path like /logos/scanopy-logo.png
                 assert!(
-                    response.status().is_success(),
-                    "Service '{}' has logo URL '{}' that returned status {}",
+                    logo_url.starts_with("/logos/"),
+                    "Service '{}' has local logo URL '{}' that doesn't start with /logos/",
                     ServiceDefinition::name(&service),
-                    logo_url,
-                    response.status()
+                    logo_url
                 );
+                return None;
+            }
 
-                // Verify Content-Type is an image
-                if let Some(content_type) = response.headers().get("content-type") {
-                    let content_type_str = content_type.to_str().unwrap_or("");
-                    assert!(
-                        content_type_str.starts_with("image/")
-                            || content_type_str.starts_with("text/plain"),
-                        "Service '{}' has logo URL '{}' with non-image Content-Type: {}",
+            // Must be a URL - parse it
+            let url = match reqwest::Url::parse(logo_url) {
+                Ok(url) => url,
+                Err(e) => {
+                    panic!(
+                        "Service '{}' has invalid logo URL '{}': {}",
                         ServiceDefinition::name(&service),
                         logo_url,
-                        content_type_str
+                        e
                     );
                 }
+            };
+
+            // Check domain is in allowed list
+            let domain = url.domain().unwrap_or("");
+            let is_allowed = ALLOWED_DOMAINS
+                .iter()
+                .any(|allowed| domain.ends_with(allowed));
+
+            assert!(
+                is_allowed,
+                "Service '{}' has logo URL '{}' from unauthorized domain '{}'. \
+                 Allowed domains: {}",
+                ServiceDefinition::name(&service),
+                logo_url,
+                domain,
+                ALLOWED_DOMAINS.join(", ")
+            );
+
+            Some((service.name().to_string(), logo_url.to_string()))
+        })
+        .collect();
+
+    // Fetch all logo URLs in parallel with retries
+    let results: Vec<Result<(), String>> = stream::iter(services_to_check)
+        .map(|(service_name, logo_url)| {
+            let client = client.clone();
+            async move {
+                let fetch_with_retry = || {
+                    let client = client.clone();
+                    let url = logo_url.clone();
+                    async move {
+                        let response = client
+                            .head(&url)
+                            .send()
+                            .await
+                            .map_err(|e| format!("request failed: {}", e))?;
+
+                        if response.status().is_success() {
+                            // Verify Content-Type is an image
+                            if let Some(content_type) = response.headers().get("content-type") {
+                                let content_type_str = content_type.to_str().unwrap_or("");
+                                if !content_type_str.starts_with("image/")
+                                    && !content_type_str.starts_with("text/plain")
+                                {
+                                    return Err(format!(
+                                        "non-image Content-Type: {}",
+                                        content_type_str
+                                    ));
+                                }
+                            }
+                            Ok(())
+                        } else {
+                            Err(format!("returned status {}", response.status()))
+                        }
+                    }
+                };
+
+                fetch_with_retry
+                    .retry(
+                        ExponentialBuilder::default()
+                            .with_max_times(3)
+                            .with_min_delay(std::time::Duration::from_millis(500))
+                            .with_max_delay(std::time::Duration::from_secs(5)),
+                    )
+                    .await
+                    .map_err(|e| {
+                        format!(
+                            "Service '{}' has logo URL '{}' that failed to resolve: {}",
+                            service_name, logo_url, e
+                        )
+                    })
             }
-            Err(e) => {
-                panic!(
-                    "Service '{}' has logo URL '{}' that failed to resolve: {}",
-                    ServiceDefinition::name(&service),
-                    logo_url,
-                    e
-                );
-            }
-        }
+        })
+        .buffer_unordered(10) // Run up to 10 requests in parallel
+        .collect()
+        .await;
+
+    // Collect all failures and report them together
+    let failures: Vec<_> = results.into_iter().filter_map(|r| r.err()).collect();
+
+    if !failures.is_empty() {
+        panic!(
+            "Logo URL validation failed for {} service(s):\n{}",
+            failures.len(),
+            failures.join("\n")
+        );
     }
 }
 

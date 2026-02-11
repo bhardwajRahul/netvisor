@@ -106,30 +106,16 @@ async fn integration_tests() {
     println!("✅ ServerPoll daemon provisioned: {}", serverpoll_daemon_id);
 
     // =========================================================================
-    // Phase 4: API Compatibility Tests
+    // Phase 4: ServerPoll Discovery
     // =========================================================================
+    // Run discovery BEFORE compat tests to ensure the daemon has clean state.
+    // Compat tests send fixture requests that can leave stale sessions in the
+    // server's daemon_sessions map, causing discovery to skip publishing events.
     println!("\n============================================================");
-    println!("Phase 4: API Compatibility Tests");
-    println!("============================================================");
-
-    compat::run_compat_tests(
-        daemon.id, // Use DaemonPoll daemon ID (like original)
-        network.id,
-        organization.id,
-        user.id,
-        &serverpoll_api_key,
-    )
-    .await
-    .expect("Compatibility tests failed");
-
-    // =========================================================================
-    // Phase 5: Full Integration Verification
-    // =========================================================================
-    println!("\n============================================================");
-    println!("Phase 5: Full Integration Verification");
+    println!("Phase 4: ServerPoll Discovery");
     println!("============================================================\n");
 
-    // Clear and run ServerPoll discovery
+    // Clear any leftover discovery data from previous test runs
     clear_discovery_data().expect("Failed to clear discovery data");
 
     // Trigger discovery for the ServerPoll daemon and get the session_id
@@ -162,7 +148,26 @@ async fn integration_tests() {
         .await
         .expect("Failed to create group");
 
-    println!("\n✅ ServerPoll integration flow completed!");
+    println!("\n✅ ServerPoll discovery completed!");
+
+    // =========================================================================
+    // Phase 5: API Compatibility Tests
+    // =========================================================================
+    // Runs after discovery so any stale sessions left by fixture playback
+    // don't affect the real discovery flow.
+    println!("\n============================================================");
+    println!("Phase 5: API Compatibility Tests");
+    println!("============================================================");
+
+    compat::run_compat_tests(
+        daemon.id, // Use DaemonPoll daemon ID (like original)
+        network.id,
+        organization.id,
+        user.id,
+        &serverpoll_api_key,
+    )
+    .await
+    .expect("Compatibility tests failed");
 
     // =========================================================================
     // Phase 6: CRUD Endpoint Tests

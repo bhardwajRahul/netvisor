@@ -120,7 +120,7 @@
 <div class="space-y-3">
 	{#if group && localGroup}
 		<span class="text-secondary mb-2 block text-sm font-medium">Group</span>
-		<div class="card">
+		<div class="card card-static">
 			<EntityDisplayWrapper context={{}} item={group} displayComponent={GroupDisplay} />
 		</div>
 
@@ -145,8 +145,8 @@
 			{#if bindingService && bindingHost && bindingData}
 				<div
 					class={isRequestPath
-						? `card ${binding == sourceBindingId || binding == targetBindingId ? 'ring-1 ring-gray-500' : ''}`
-						: `card ${binding == sourceBindingId ? `ring-1 ${groupColor.ring}` : binding == targetBindingId ? 'ring-1 ring-gray-500' : ''}`}
+						? `card card-static ${binding == sourceBindingId || binding == targetBindingId ? 'ring-1 ring-gray-500' : ''}`
+						: `card card-static ${binding == sourceBindingId ? `ring-1 ${groupColor.ring}` : binding == targetBindingId ? 'ring-1 ring-gray-500' : ''}`}
 				>
 					<EntityDisplayWrapper
 						context={bindingContext}

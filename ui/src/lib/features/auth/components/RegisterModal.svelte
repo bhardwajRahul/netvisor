@@ -3,7 +3,7 @@
 	import { submitForm } from '$lib/shared/components/forms/form-context';
 	import {
 		required,
-		email,
+		email as emailValidator,
 		password as passwordValidator,
 		confirmPasswordMatch
 	} from '$lib/shared/components/forms/validators';
@@ -11,25 +11,26 @@
 	import TextInput from '$lib/shared/components/forms/input/TextInput.svelte';
 	import Password from '$lib/shared/components/forms/input/Password.svelte';
 	import InlineInfo from '$lib/shared/components/feedback/InlineInfo.svelte';
-	import InlineSuccess from '$lib/shared/components/feedback/InlineSuccess.svelte';
+	import InlineDanger from '$lib/shared/components/feedback/InlineDanger.svelte';
 	import Checkbox from '$lib/shared/components/forms/input/Checkbox.svelte';
 	import { useConfigQuery } from '$lib/shared/stores/config-query';
-	import { onboardingStore } from '../stores/onboarding';
+	import { useCheckEmailMutation } from '../queries';
 	import type { RegisterRequest } from '../types/base';
 	import {
+		auth_createAccount,
 		auth_createAccountWith,
-		auth_createAccountWithEmail,
 		auth_createYourAccount,
 		auth_creatingAccount,
+		auth_emailAlreadyInUse,
 		auth_enterYourEmail,
 		auth_scanopyLogo,
+		auth_signInInstead,
 		auth_signUpForUpdates,
 		auth_termsAndPrivacy,
-		auth_youreAllSetBodyMultiple,
-		auth_youreAllSetBodySingle,
-		auth_youreAllSetTitle,
 		auth_youreInvitedBody,
 		auth_youreInvitedTitle,
+		common_change,
+		common_continue,
 		common_email,
 		common_or
 	} from '$lib/paraglide/messages';
@@ -39,16 +40,22 @@
 		invitedBy = null,
 		isOpen = false,
 		onRegister,
-		onClose
+		onClose,
+		onSwitchToLogin
 	}: {
 		orgName?: string | null;
 		invitedBy?: string | null;
 		isOpen?: boolean;
 		onRegister: (data: RegisterRequest, subscribed: boolean) => Promise<void> | void;
 		onClose: () => void;
+		onSwitchToLogin?: () => void;
 	} = $props();
 
 	let registering = $state(false);
+	let subStep = $state<'email' | 'password'>('email');
+	let emailValue = $state('');
+	let emailError = $state<'email_in_use' | null>(null);
+	let checkingEmail = $state(false);
 
 	const configQuery = useConfigQuery();
 	let configData = $derived(configQuery.data);
@@ -58,20 +65,7 @@
 	let enableEmailOptIn = $derived(configData?.has_email_opt_in ?? false);
 	let enableTermsCheckbox = $derived(configData?.billing_enabled ?? false);
 
-	// Get networks with daemon setups that will scan after registration
-	let networksWithDaemons = $derived.by(() => {
-		const networks = $onboardingStore.networks;
-		const daemonSetups = $onboardingStore.daemonSetups;
-
-		return networks.filter((n) => {
-			if (!n.id) return false;
-			const setup = daemonSetups.get(n.id);
-			return setup?.installNow === true;
-		});
-	});
-
-	let hasPendingDaemons = $derived(networksWithDaemons.length > 0);
-	let pendingNetworkNames = $derived(networksWithDaemons.map((n) => n.name).join(', '));
+	const checkEmailMutation = useCheckEmailMutation();
 
 	// Create form
 	const form = createForm(() => ({
@@ -79,7 +73,7 @@
 			email: '',
 			password: '',
 			confirmPassword: '',
-			subscribed: true,
+			subscribed: false,
 			terms_accepted: false
 		},
 		onSubmit: async ({ value }) => {
@@ -99,25 +93,58 @@
 		}
 	}));
 
-	// Reset form when modal opens
+	// Reset form and sub-step when modal opens
 	function handleOpen() {
 		form.reset({
 			email: '',
 			password: '',
 			confirmPassword: '',
-			subscribed: true,
+			subscribed: false,
 			terms_accepted: false
 		});
+		subStep = 'email';
+		emailValue = '';
+		emailError = null;
+	}
+
+	async function handleContinue() {
+		// Validate email field
+		const currentEmail = form.state.values.email.trim();
+		const emailValidationError = required(currentEmail) || emailValidator(currentEmail);
+		if (emailValidationError) {
+			// Trigger field validation to show error
+			form.getFieldMeta('email');
+			await form.validateField('email', 'blur');
+			return;
+		}
+
+		// Check email availability
+		checkingEmail = true;
+		emailError = null;
+		try {
+			await checkEmailMutation.mutateAsync({ email: currentEmail });
+			emailValue = currentEmail;
+			subStep = 'password';
+		} catch (err: unknown) {
+			const error = err as Error & { code?: string };
+			if (error.code === 'user_email_in_use') {
+				emailError = 'email_in_use';
+			} else {
+				emailError = 'email_in_use';
+			}
+		} finally {
+			checkingEmail = false;
+		}
+	}
+
+	function handleChangeEmail() {
+		subStep = 'email';
+		emailError = null;
 	}
 
 	function handleOidcRegister(providerSlug: string) {
-		// Store subscribed preference for post-registration Plunk tracking
-		if (form.state.values.subscribed) {
-			sessionStorage.setItem('pendingPlunkRegistration', 'true');
-		}
-
-		const returnUrl = encodeURIComponent(window.location.origin);
-		window.location.href = `/api/auth/oidc/${providerSlug}/authorize?flow=register&return_url=${returnUrl}&terms_accepted=${enableTermsCheckbox && form.state.values.terms_accepted}`;
+		const returnUrl = encodeURIComponent(window.location.href);
+		window.location.href = `/api/auth/oidc/${providerSlug}/authorize?flow=register&return_url=${returnUrl}&terms_accepted=${enableTermsCheckbox && form.state.values.terms_accepted}&marketing_opt_in=${form.state.values.subscribed}`;
 	}
 
 	async function handleSubmit() {
@@ -144,11 +171,15 @@
 		onsubmit={(e) => {
 			e.preventDefault();
 			e.stopPropagation();
-			handleSubmit();
+			if (subStep === 'email') {
+				handleContinue();
+			} else {
+				handleSubmit();
+			}
 		}}
 		class="flex min-h-0 flex-1 flex-col"
 	>
-		<div class="flex-1 overflow-auto p-6">
+		<div class="flex-1 overflow-auto p-4 sm:p-6">
 			{#if orgName && invitedBy}
 				<div class="mb-6">
 					<InlineInfo
@@ -158,57 +189,76 @@
 				</div>
 			{/if}
 
-			{#if hasPendingDaemons}
-				<div class="mb-6">
-					<InlineSuccess
-						title={auth_youreAllSetTitle()}
-						body={networksWithDaemons.length === 1
-							? auth_youreAllSetBodySingle({ networkNames: pendingNetworkNames })
-							: auth_youreAllSetBodyMultiple({ networkNames: pendingNetworkNames })}
-					/>
+			{#if subStep === 'email'}
+				<!-- Sub-step: Email -->
+				<div class="space-y-6">
+					<form.Field
+						name="email"
+						validators={{
+							onBlur: ({ value }) => required(value) || emailValidator(value)
+						}}
+					>
+						{#snippet children(field)}
+							<TextInput
+								label={common_email()}
+								id="email"
+								{field}
+								placeholder={auth_enterYourEmail()}
+								required
+							/>
+						{/snippet}
+					</form.Field>
+
+					{#if emailError === 'email_in_use'}
+						<InlineDanger title={auth_emailAlreadyInUse()} />
+						{#if onSwitchToLogin}
+							<button
+								type="button"
+								onclick={onSwitchToLogin}
+								class="text-link text-sm hover:underline"
+							>
+								{auth_signInInstead()}
+							</button>
+						{/if}
+					{/if}
+				</div>
+			{:else}
+				<!-- Sub-step: Password -->
+				<div class="space-y-6">
+					<div class="flex items-center justify-between rounded-lg bg-gray-800 px-4 py-3">
+						<span class="text-secondary text-sm">{emailValue}</span>
+						<button
+							type="button"
+							onclick={handleChangeEmail}
+							class="text-link text-sm hover:underline"
+						>
+							{common_change()}
+						</button>
+					</div>
+
+					<form.Field
+						name="password"
+						validators={{
+							onBlur: ({ value }) => required(value) || passwordValidator(value)
+						}}
+					>
+						{#snippet children(passwordField)}
+							<form.Field
+								name="confirmPassword"
+								validators={{
+									onBlur: ({ value, fieldApi }) =>
+										required(value) ||
+										confirmPasswordMatch(() => fieldApi.form.getFieldValue('password'))(value)
+								}}
+							>
+								{#snippet children(confirmPasswordField)}
+									<Password {passwordField} {confirmPasswordField} required={true} />
+								{/snippet}
+							</form.Field>
+						{/snippet}
+					</form.Field>
 				</div>
 			{/if}
-
-			<div class="space-y-6">
-				<form.Field
-					name="email"
-					validators={{
-						onBlur: ({ value }) => required(value) || email(value)
-					}}
-				>
-					{#snippet children(field)}
-						<TextInput
-							label={common_email()}
-							id="email"
-							{field}
-							placeholder={auth_enterYourEmail()}
-							required
-						/>
-					{/snippet}
-				</form.Field>
-
-				<form.Field
-					name="password"
-					validators={{
-						onBlur: ({ value }) => required(value) || passwordValidator(value)
-					}}
-				>
-					{#snippet children(passwordField)}
-						<form.Field
-							name="confirmPassword"
-							validators={{
-								onBlur: ({ value, fieldApi }) =>
-									required(value) ||
-									confirmPasswordMatch(() => fieldApi.form.getFieldValue('password'))(value)
-							}}
-						>
-							{#snippet children(confirmPasswordField)}
-								<Password {passwordField} {confirmPasswordField} required={true} />
-							{/snippet}
-						</form.Field>
-					{/snippet}
-				</form.Field>
-			</div>
 		</div>
 
 		<!-- Footer -->
@@ -216,60 +266,72 @@
 			<form.Subscribe selector={(state) => state.values.terms_accepted}>
 				{#snippet children(termsAccepted)}
 					<div class="flex w-full flex-col gap-4">
-						<div class="flex flex-grow flex-col items-center gap-2">
-							{#if enableTermsCheckbox}
-								<form.Field name="terms_accepted">
-									{#snippet children(field)}
-										<Checkbox label={auth_termsAndPrivacy()} helpText="" {field} id="terms" />
-									{/snippet}
-								</form.Field>
+						{#if subStep === 'email'}
+							<!-- Email sub-step footer -->
+							{#if enableTermsCheckbox || enableEmailOptIn}
+								<div class="flex flex-col gap-2">
+									{#if enableTermsCheckbox}
+										<form.Field name="terms_accepted">
+											{#snippet children(field)}
+												<Checkbox label={auth_termsAndPrivacy()} helpText="" {field} id="terms" />
+											{/snippet}
+										</form.Field>
+									{/if}
+									{#if enableEmailOptIn}
+										<form.Field name="subscribed">
+											{#snippet children(field)}
+												<Checkbox
+													{field}
+													label={auth_signUpForUpdates()}
+													id="subscribe"
+													helpText=""
+												/>
+											{/snippet}
+										</form.Field>
+									{/if}
+								</div>
 							{/if}
-						</div>
 
-						<button
-							type="submit"
-							disabled={registering || (enableTermsCheckbox && !termsAccepted)}
-							class="btn-primary w-full"
-						>
-							{registering ? auth_creatingAccount() : auth_createAccountWithEmail()}
-						</button>
+							<button
+								type="submit"
+								disabled={checkingEmail || (enableTermsCheckbox && !termsAccepted)}
+								class="btn-primary w-full"
+							>
+								{checkingEmail ? '...' : common_continue()}
+							</button>
 
-						{#if hasOidcProviders}
-							<div class="relative">
-								<div class="absolute inset-0 flex items-center">
-									<div class="w-full border-t border-gray-600"></div>
+							{#if hasOidcProviders}
+								<div class="relative">
+									<div class="absolute inset-0 flex items-center">
+										<div class="w-full border-t border-gray-600"></div>
+									</div>
+									<div class="relative flex justify-center text-sm">
+										<span class="bg-gray-900 px-2 text-gray-400">{common_or()}</span>
+									</div>
 								</div>
-								<div class="relative flex justify-center text-sm">
-									<span class="bg-gray-900 px-2 text-gray-400">{common_or()}</span>
-								</div>
-							</div>
 
-							<div class="space-y-2">
-								{#each oidcProviders as provider (provider.slug)}
-									<button
-										onclick={() => handleOidcRegister(provider.slug)}
-										disabled={enableTermsCheckbox && !termsAccepted}
-										type="button"
-										class="btn-secondary flex w-full items-center justify-center gap-3"
-									>
-										{#if provider.logo}
-											<img src={provider.logo} alt={provider.name} class="h-5 w-5" />
-										{/if}
-										{auth_createAccountWith({ provider: provider.name })}
-									</button>
-								{/each}
-							</div>
+								<div class="space-y-2">
+									{#each oidcProviders as provider (provider.slug)}
+										<button
+											onclick={() => handleOidcRegister(provider.slug)}
+											disabled={enableTermsCheckbox && !termsAccepted}
+											type="button"
+											class="btn-secondary flex w-full items-center justify-center gap-3"
+										>
+											{#if provider.logo}
+												<img src={provider.logo} alt={provider.name} class="h-5 w-5" />
+											{/if}
+											{auth_createAccountWith({ provider: provider.name })}
+										</button>
+									{/each}
+								</div>
+							{/if}
+						{:else}
+							<!-- Password sub-step footer -->
+							<button type="submit" disabled={registering} class="btn-primary w-full">
+								{registering ? auth_creatingAccount() : auth_createAccount()}
+							</button>
 						{/if}
-
-						<div class="flex flex-grow flex-col items-center gap-2">
-							{#if enableEmailOptIn}
-								<form.Field name="subscribed">
-									{#snippet children(field)}
-										<Checkbox {field} label={auth_signUpForUpdates()} id="subscribe" helpText="" />
-									{/snippet}
-								</form.Field>
-							{/if}
-						</div>
 					</div>
 				{/snippet}
 			</form.Subscribe>

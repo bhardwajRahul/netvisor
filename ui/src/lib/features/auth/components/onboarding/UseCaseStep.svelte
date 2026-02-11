@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tick } from 'svelte';
 	import { createForm } from '@tanstack/svelte-form';
 	import { AlertTriangle, Home, Building2, Users } from 'lucide-svelte';
 	import { type UseCase, USE_CASES } from '../../types/base';
@@ -7,33 +8,53 @@
 	import { trackEvent } from '$lib/shared/utils/analytics';
 	import GenericModal from '$lib/shared/components/layout/GenericModal.svelte';
 	import SelectInput from '$lib/shared/components/forms/input/SelectInput.svelte';
+	import TextInput from '$lib/shared/components/forms/input/TextInput.svelte';
 	import {
 		auth_scanopyLogo,
 		common_continue,
+		common_other,
+		common_reddit,
+		common_youtube,
 		onboarding_alreadyHaveAccount,
 		onboarding_commercialNoticeBody,
 		onboarding_commercialNoticeTitle,
 		onboarding_haveQuestionsFirst,
+		onboarding_howDidYouHear,
 		onboarding_howWillYouUse,
 		onboarding_logInHere,
 		onboarding_readyToScan,
+		onboarding_referralSource_blogArticle,
+		onboarding_referralSource_hackerNews,
+		onboarding_referralSource_otherPlaceholder,
+		onboarding_referralSource_searchEngine,
+		onboarding_referralSource_selfHosted,
+		onboarding_referralSource_socialMedia,
+		onboarding_referralSource_wordOfMouth,
 		onboarding_tailorSetup,
 		onboarding_understandContinue,
 		onboarding_yesLetsGo
 	} from '$lib/paraglide/messages';
 
+	let {
+		isOpen,
+		onNext,
+		onBlockerFlow,
+		onClose,
+		onSwitchToLogin = null
+	}: {
+		isOpen: boolean;
+		onNext: () => void;
+		onBlockerFlow: () => void;
+		onClose: () => void;
+		onSwitchToLogin?: (() => void) | null;
+	} = $props();
+
 	const configQuery = useConfigQuery();
-	// eslint-disable-next-line svelte/no-immutable-reactive-statements -- configQuery.data changes when query resolves
-	$: configData = configQuery.data;
+	let configData = $derived(configQuery.data);
 
-	export let isOpen: boolean;
-	export let onNext: () => void;
-	export let onBlockerFlow: () => void;
-	export let onClose: () => void;
-	export let onSwitchToLogin: (() => void) | null = null;
-
-	let selectedUseCase: UseCase | null = null;
-	let showLicenseWarning = false;
+	let selectedUseCase = $state<UseCase | null>(null);
+	let showLicenseWarning = $state(false);
+	let scrollContainerEl = $state<HTMLElement | undefined>(undefined);
 
 	// Role options
 	const roleOptions = [
@@ -46,7 +67,7 @@
 		{ value: 'other', label: 'Other' }
 	];
 
-	// Company size options (HubSpot standard ranges)
+	// Company size options
 	const companySizeOptions = [
 		{ value: '', label: 'Select company size', disabled: true },
 		{ value: '1-10', label: '1-10 employees' },
@@ -57,6 +78,20 @@
 		{ value: '251-500', label: '251-500 employees' },
 		{ value: '501-1000', label: '501-1000 employees' },
 		{ value: '1001+', label: '1001+ employees' }
+	];
+
+	// Referral source options
+	const referralSourceOptions = [
+		{ value: '', label: onboarding_howDidYouHear(), disabled: true },
+		{ value: 'search_engine', label: onboarding_referralSource_searchEngine() },
+		{ value: 'youtube', label: common_youtube() },
+		{ value: 'blog_article', label: onboarding_referralSource_blogArticle() },
+		{ value: 'reddit', label: common_reddit() },
+		{ value: 'hacker_news', label: onboarding_referralSource_hackerNews() },
+		{ value: 'social_media', label: onboarding_referralSource_socialMedia() },
+		{ value: 'word_of_mouth', label: onboarding_referralSource_wordOfMouth() },
+		{ value: 'self_hosted', label: onboarding_referralSource_selfHosted() },
+		{ value: 'other', label: common_other() }
 	];
 
 	// Icons for each use case (kept separate from types for flexibility)
@@ -70,22 +105,36 @@
 	const useCaseIds: UseCase[] = ['homelab', 'company', 'msp'];
 
 	// Show business fields for company/msp
-	$: showBusinessFields = selectedUseCase === 'company' || selectedUseCase === 'msp';
+	let showBusinessFields = $derived(selectedUseCase === 'company' || selectedUseCase === 'msp');
+
+	// Show Cloud-only qualification fields
+	let showCloudFields = $derived(configData && isCloud(configData));
 
 	// Form for business qualification fields
 	const form = createForm(() => ({
 		defaultValues: {
 			role: '',
-			companySize: ''
+			companySize: '',
+			referralSource: '',
+			referralSourceOther: ''
 		}
 	}));
+
+	// Track referral source value reactively for the "other" text field
+	// (form.state.values is NOT tracked by $derived)
+	let referralSourceValue = $state('');
+	$effect(() => {
+		return form.store.subscribe(() => {
+			referralSourceValue = form.state.values.referralSource;
+		});
+	});
 
 	function selectUseCase(useCase: UseCase) {
 		selectedUseCase = useCase;
 
 		// Reset business fields when switching to homelab
 		if (useCase === 'homelab') {
-			form.reset({ role: '', companySize: '' });
+			form.reset({ role: '', companySize: '', referralSource: '', referralSourceOther: '' });
 		}
 
 		// For Community self-hosted + Company/MSP: show license warning
@@ -94,6 +143,13 @@
 		} else {
 			showLicenseWarning = false;
 		}
+
+		// Auto-scroll to bottom of modal after DOM updates
+		tick().then(() => {
+			if (scrollContainerEl) {
+				scrollContainerEl.scrollTo({ top: scrollContainerEl.scrollHeight, behavior: 'smooth' });
+			}
+		});
 	}
 
 	function handleLicenseAcknowledge() {
@@ -101,10 +157,16 @@
 	}
 
 	function saveBusinessFields() {
+		const values = form.state.values;
 		if (showBusinessFields) {
-			const values = form.state.values;
 			onboardingStore.setJobTitle(values.role || null);
 			onboardingStore.setCompanySize(values.companySize || null);
+		}
+		if (showCloudFields) {
+			onboardingStore.setReferralSource(
+				values.referralSource || null,
+				values.referralSourceOther || null
+			);
 		}
 	}
 
@@ -112,6 +174,14 @@
 	function handleContinue() {
 		if (!selectedUseCase) return;
 		saveBusinessFields();
+		const values = form.state.values;
+		trackEvent('onboarding_use_case_selected', {
+			use_case: selectedUseCase,
+			role: values.role || undefined,
+			company_size: values.companySize || undefined,
+			referral_source: values.referralSource || undefined,
+			referral_source_other: values.referralSourceOther || undefined
+		});
 		onboardingStore.setUseCase(selectedUseCase);
 		onNext();
 	}
@@ -124,7 +194,9 @@
 		trackEvent('onboarding_use_case_selected', {
 			use_case: selectedUseCase,
 			role: values.role || undefined,
-			company_size: values.companySize || undefined
+			company_size: values.companySize || undefined,
+			referral_source: values.referralSource || undefined,
+			referral_source_other: values.referralSourceOther || undefined
 		});
 		trackEvent('onboarding_ready_to_scan', { ready: true, use_case: selectedUseCase });
 		onboardingStore.setUseCase(selectedUseCase);
@@ -139,7 +211,9 @@
 		trackEvent('onboarding_use_case_selected', {
 			use_case: selectedUseCase,
 			role: values.role || undefined,
-			company_size: values.companySize || undefined
+			company_size: values.companySize || undefined,
+			referral_source: values.referralSource || undefined,
+			referral_source_other: values.referralSourceOther || undefined
 		});
 		trackEvent('onboarding_ready_to_scan', { ready: false, use_case: selectedUseCase });
 		onboardingStore.setUseCase(selectedUseCase);
@@ -147,8 +221,8 @@
 		onBlockerFlow();
 	}
 
-	$: isCloudDeployment = configData && isCloud(configData);
-	$: canProceed = selectedUseCase !== null && !showLicenseWarning;
+	let isCloudDeployment = $derived(configData && isCloud(configData));
+	let canProceed = $derived(selectedUseCase !== null && !showLicenseWarning);
 </script>
 
 <GenericModal
@@ -166,7 +240,7 @@
 	{/snippet}
 
 	<div class="flex min-h-0 flex-1 flex-col">
-		<div class="flex-1 overflow-y-auto p-6">
+		<div class="flex-1 overflow-y-auto p-6" bind:this={scrollContainerEl}>
 			<div class="space-y-6">
 				<p class="text-secondary text-center text-sm">{onboarding_tailorSetup()}</p>
 
@@ -181,14 +255,14 @@
 							class="card flex items-center gap-4 p-4 text-left transition-all {isSelected
 								? `ring-2 ${useCaseConfig.colors.ring}`
 								: 'hover:bg-gray-800'}"
-							on:click={() => selectUseCase(useCaseId)}
+							onclick={() => selectUseCase(useCaseId)}
 						>
 							<div
 								class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg {isSelected
 									? `${useCaseConfig.colors.bg} ${useCaseConfig.colors.text}`
 									: 'bg-gray-700 text-gray-400'}"
 							>
-								<svelte:component this={Icon} class="h-5 w-5" />
+								<Icon class="h-5 w-5" />
 							</div>
 							<div>
 								<div class="text-primary font-medium">{useCaseConfig.label}</div>
@@ -198,30 +272,63 @@
 					{/each}
 				</div>
 
-				<!-- Business Qualification Fields (Company/MSP only) -->
-				{#if showBusinessFields}
-					<div class="card card-static">
-						<p class="text-secondary text-sm">Help us tailor your experience:</p>
+				<!-- Cloud-only qualification fields -->
+				{#if showCloudFields}
+					<!-- Business Qualification Fields (Company/MSP only) -->
+					{#if showBusinessFields}
+						<div class="card card-static">
+							<p class="text-secondary text-sm">Help us tailor your experience:</p>
 
-						<div class="grid gap-4 sm:grid-cols-2">
-							<form.Field name="role">
-								{#snippet children(field)}
-									<SelectInput label="Your role" id="role" {field} options={roleOptions} />
-								{/snippet}
-							</form.Field>
+							<div class="grid gap-4 sm:grid-cols-2">
+								<form.Field name="role">
+									{#snippet children(field)}
+										<SelectInput label="Your role" id="role" {field} options={roleOptions} />
+									{/snippet}
+								</form.Field>
 
-							<form.Field name="companySize">
+								<form.Field name="companySize">
+									{#snippet children(field)}
+										<SelectInput
+											label="Company size"
+											id="company-size"
+											{field}
+											options={companySizeOptions}
+										/>
+									{/snippet}
+								</form.Field>
+							</div>
+						</div>
+					{/if}
+
+					<!-- Referral Source (all use cases on Cloud) -->
+					{#if selectedUseCase}
+						<div class="card card-static">
+							<form.Field name="referralSource">
 								{#snippet children(field)}
 									<SelectInput
-										label="Company size"
-										id="company-size"
+										label={onboarding_howDidYouHear()}
+										id="referral-source"
 										{field}
-										options={companySizeOptions}
+										options={referralSourceOptions}
 									/>
+									{#if referralSourceValue === 'other'}
+										<div class="mt-3">
+											<form.Field name="referralSourceOther">
+												{#snippet children(otherField)}
+													<TextInput
+														label=""
+														id="referral-source-other"
+														field={otherField}
+														placeholder={onboarding_referralSource_otherPlaceholder()}
+													/>
+												{/snippet}
+											</form.Field>
+										</div>
+									{/if}
 								{/snippet}
 							</form.Field>
 						</div>
-					</div>
+					{/if}
 				{/if}
 
 				<!-- License Warning (Community + Company/MSP) -->
@@ -234,7 +341,7 @@
 								<p class="mt-1 text-sm text-warning">
 									{@html onboarding_commercialNoticeBody()}
 								</p>
-								<button type="button" class="btn-primary mt-4" on:click={handleLicenseAcknowledge}>
+								<button type="button" class="btn-primary mt-4" onclick={handleLicenseAcknowledge}>
 									{onboarding_understandContinue()}
 								</button>
 							</div>
@@ -256,7 +363,7 @@
 							type="button"
 							class="btn-secondary flex-1"
 							disabled={!canProceed}
-							on:click={handleReadyNo}
+							onclick={handleReadyNo}
 						>
 							{onboarding_haveQuestionsFirst()}
 						</button>
@@ -264,7 +371,7 @@
 							type="button"
 							class="btn-primary flex-1"
 							disabled={!canProceed}
-							on:click={handleReadyYes}
+							onclick={handleReadyYes}
 						>
 							{onboarding_yesLetsGo()}
 						</button>
@@ -276,7 +383,7 @@
 							type="button"
 							class="btn-primary"
 							disabled={!canProceed}
-							on:click={handleContinue}
+							onclick={handleContinue}
 						>
 							{common_continue()}
 						</button>
@@ -288,7 +395,7 @@
 						{onboarding_alreadyHaveAccount()}
 						<button
 							type="button"
-							on:click={onSwitchToLogin}
+							onclick={onSwitchToLogin}
 							class="font-medium text-blue-400 hover:text-blue-300"
 						>
 							{onboarding_logInHere()}

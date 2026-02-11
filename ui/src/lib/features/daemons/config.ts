@@ -74,7 +74,7 @@ export const fieldDefs: FieldDef[] = [
 		id: 'mode',
 		label: () => m.daemons_config_mode(),
 		type: 'select',
-		defaultValue: 'daemon_poll',
+		defaultValue: 'server_poll',
 		cliFlag: '--mode',
 		envVar: 'SCANOPY_MODE',
 		helpText: () => m.daemons_config_modeHelp(),

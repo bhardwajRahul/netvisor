@@ -12,16 +12,13 @@ services:
     network_mode: host
     privileged: true
     restart: unless-stopped
-    ports:
-      - "${SCANOPY_DAEMON_PORT:-60073}:${SCANOPY_DAEMON_PORT:-60073}"
     environment:
       <<: *scanopy-env
       SCANOPY_SERVER_URL: ${SCANOPY_SERVER_URL:-http://127.0.0.1:60072}
-      SCANOPY_PORT: ${SCANOPY_DAEMON_PORT:-60073}
       SCANOPY_BIND_ADDRESS: ${SCANOPY_BIND_ADDRESS:-0.0.0.0}
       SCANOPY_NAME: ${SCANOPY_NAME:-scanopy-daemon}
       SCANOPY_HEARTBEAT_INTERVAL: ${SCANOPY_HEARTBEAT_INTERVAL:-30}
-      SCANOPY_MODE: ${SCANOPY_MODE:-Push}
+      SCANOPY_MODE: ${SCANOPY_MODE:-daemon_poll}
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:${SCANOPY_DAEMON_PORT:-60073}/api/health || exit 1"]
       interval: 5s
@@ -58,16 +55,16 @@ services:
       SCANOPY_DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-password}@postgres:5432/scanopy
       SCANOPY_WEB_EXTERNAL_PATH: /app/static
       SCANOPY_PUBLIC_URL: ${SCANOPY_PUBLIC_URL:-http://localhost:${SCANOPY_SERVER_PORT:-60072}}
-      # How server reaches integrated daemon
-      # 172.17.0.1 is Docker's default bridge gateway. If your's is different, make sure to change it.
-      SCANOPY_INTEGRATED_DAEMON_URL: http://172.17.0.1:${SCANOPY_DAEMON_PORT:-60073}
+      SCANOPY_INTEGRATED_DAEMON_URL: http://host.docker.internal:${SCANOPY_DAEMON_PORT:-60073}
     volumes:
       - ./data:/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy
       daemon:
-        condition: service_healthy
+        condition: service_started
     restart: unless-stopped
     networks:
       - scanopy

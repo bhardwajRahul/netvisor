@@ -1,4 +1,3 @@
-use crate::server::auth::middleware::features::{BlockedInDemoMode, RequireFeature};
 use crate::server::auth::middleware::permissions::{Admin, Authorized, IsUser, Member};
 use crate::server::shared::extractors::Query;
 use crate::server::shared::handlers::query::{FilterQueryExtractor, NoFilterQuery};
@@ -181,7 +180,6 @@ pub async fn get_all_users(
 pub async fn delete_user(
     state: State<Arc<AppState>>,
     auth: Authorized<Admin>,
-    _demo_check: RequireFeature<BlockedInDemoMode>,
     id: Path<Uuid>,
 ) -> ApiResult<Json<ApiResponse<()>>> {
     let organization_id = auth
@@ -245,7 +243,6 @@ pub async fn delete_user(
 pub async fn update_user(
     State(state): State<Arc<AppState>>,
     auth: Authorized<IsUser>,
-    _demo_check: RequireFeature<BlockedInDemoMode>,
     Path(id): Path<Uuid>,
     Json(mut request): Json<User>,
 ) -> ApiResult<Json<ApiResponse<User>>> {
@@ -304,7 +301,6 @@ pub async fn update_user(
 async fn admin_update_user(
     State(state): State<Arc<AppState>>,
     auth: Authorized<Admin>,
-    _demo_check: RequireFeature<BlockedInDemoMode>,
     Path(id): Path<Uuid>,
     Json(mut request): Json<User>,
 ) -> ApiResult<Json<ApiResponse<User>>> {
@@ -393,7 +389,6 @@ async fn admin_update_user(
 pub async fn bulk_delete_users(
     State(state): State<Arc<AppState>>,
     auth: Authorized<Admin>,
-    _demo_check: RequireFeature<BlockedInDemoMode>,
     Json(ids): Json<Vec<Uuid>>,
 ) -> ApiResult<Json<ApiResponse<BulkDeleteResponse>>> {
     use crate::server::shared::handlers::traits::bulk_delete_handler;

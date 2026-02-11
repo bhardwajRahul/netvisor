@@ -388,6 +388,7 @@ pub async fn scan_ports_and_endpoints(
         Some(ports_to_check),
         Some(use_https_ports),
         port_scan_batch_size,
+        false,
     )
     .await?;
     endpoint_responses.extend(endpoints);
@@ -625,6 +626,7 @@ pub async fn scan_endpoints(
     filter_ports: Option<Vec<PortType>>,
     use_https_ports: Option<HashMap<u16, bool>>,
     batch_size: usize,
+    probe_raw_socket_ports: bool,
 ) -> Result<Vec<EndpointResponse>, Error> {
     use std::collections::HashMap;
 
@@ -637,6 +639,9 @@ pub async fn scan_endpoints(
     let all_endpoints: Vec<Endpoint> = Service::all_discovery_endpoints()
         .into_iter()
         .filter_map(|e| {
+            if !probe_raw_socket_ports && e.port_type.is_raw_socket() {
+                return None;
+            }
             if let Some(filter_ports) = &filter_ports {
                 if filter_ports.contains(&e.port_type) {
                     return Some(e);

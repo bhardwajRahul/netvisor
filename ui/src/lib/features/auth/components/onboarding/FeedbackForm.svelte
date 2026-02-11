@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { createForm } from '@tanstack/svelte-form';
-	import { useConfigQuery } from '$lib/shared/stores/config-query';
 	import { trackEvent } from '$lib/shared/utils/analytics';
 	import { pushSuccess, pushError } from '$lib/shared/stores/feedback';
 	import { email as emailValidator } from '$lib/shared/components/forms/validators';
@@ -30,9 +29,6 @@
 
 	let { blocker, showActions = true, onOtherIssue = null }: Props = $props();
 
-	const configQuery = useConfigQuery();
-	let configData = $derived(configQuery.data);
-
 	let isSubmitting = $state(false);
 	let hasSubmitted = $state(false);
 
@@ -51,26 +47,6 @@
 			isSubmitting = true;
 
 			try {
-				// Submit to Plunk if configured
-				if (configData?.plunk_key && email.trim()) {
-					await fetch('https://api.useplunk.com/v1/track', {
-						method: 'POST',
-						headers: {
-							'Content-Type': 'application/json',
-							Authorization: `Bearer ${configData.plunk_key}`
-						},
-						body: JSON.stringify({
-							event: 'onboarding_feedback',
-							email: email.trim(),
-							subscribed: value.subscribe,
-							data: {
-								blocker,
-								message: feedbackText.trim()
-							}
-						})
-					});
-				}
-
 				// Track analytics
 				trackEvent('onboarding_feedback_submitted', {
 					email_provided: !!email.trim(),

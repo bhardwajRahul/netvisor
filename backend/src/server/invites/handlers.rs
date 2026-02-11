@@ -1,7 +1,5 @@
 use crate::server::auth::middleware::auth::AuthenticatedEntity;
-use crate::server::auth::middleware::features::{
-    BlockedInDemoMode, InviteUsersFeature, RequireFeature,
-};
+use crate::server::auth::middleware::features::{InviteUsersFeature, RequireFeature};
 use crate::server::auth::middleware::permissions::{Admin, Authorized};
 use crate::server::config::AppState;
 use crate::server::invites::r#impl::base::Invite;
@@ -51,7 +49,6 @@ async fn create_invite(
     State(state): State<Arc<AppState>>,
     auth: Authorized<Admin>,
     RequireFeature { plan, .. }: RequireFeature<InviteUsersFeature>,
-    _demo_check: RequireFeature<BlockedInDemoMode>,
     Json(request): Json<CreateInviteRequest>,
 ) -> ApiResult<Json<ApiResponse<Invite>>> {
     let network_ids = auth.network_ids();
@@ -287,7 +284,6 @@ async fn get_invites(
 async fn revoke_invite(
     State(state): State<Arc<AppState>>,
     auth: Authorized<Admin>,
-    _demo_check: RequireFeature<BlockedInDemoMode>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<ApiResponse<()>>> {
     let organization_id = auth

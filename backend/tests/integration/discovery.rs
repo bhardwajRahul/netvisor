@@ -34,6 +34,7 @@ pub async fn trigger_discovery(
                 subnet_ids: None, // Discover all subnets on the network
                 host_naming_fallback: HostNamingFallback::BestService,
                 snmp_credentials: SnmpCredentialMapping::default(),
+                probe_raw_socket_ports: false,
             },
             run_type: RunType::AdHoc { last_run: None },
             name: "ServerPoll Integration Test Discovery".to_string(),

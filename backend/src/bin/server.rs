@@ -9,7 +9,10 @@ use axum_client_ip::ClientIpSource;
 use clap::Parser;
 use reqwest::header::{self, HeaderName};
 use scanopy::server::{
-    auth::middleware::{logging::request_logging_middleware, rate_limit::rate_limit_middleware},
+    auth::middleware::{
+        demo_mode::demo_mode_middleware, logging::request_logging_middleware,
+        rate_limit::rate_limit_middleware,
+    },
     billing::plans::get_purchasable_plans,
     config::{AppState, ServerCli, ServerConfig, get_deployment_type},
     shared::handlers::{cache::AppCache, factory::create_router},
@@ -219,6 +222,10 @@ async fn main() -> anyhow::Result<()> {
             ))
             .layer(middleware::from_fn_with_state(
                 state.clone(),
+                demo_mode_middleware,
+            ))
+            .layer(middleware::from_fn_with_state(
+                state.clone(),
                 request_logging_middleware,
             ))
             .layer(Extension(app_cache))
@@ -277,13 +284,16 @@ async fn main() -> anyhow::Result<()> {
         tracing::info!(target: LOG_TARGET, "  Billing service initialized");
     }
 
-    // Sync existing organizations to HubSpot if configured
-    if let Some(hubspot_service) = state.services.hubspot_service.clone() {
+    // Sync existing organizations to Brevo if configured
+    if let Some(brevo_service) = state.services.brevo_service.clone() {
+        tracing::info!(target: LOG_TARGET, "  Spawning Brevo organization sync task");
         tokio::spawn(async move {
-            if let Err(e) = hubspot_service.sync_existing_organizations().await {
-                tracing::error!(target: LOG_TARGET, error = %e, "Failed to sync existing organizations to HubSpot");
+            if let Err(e) = brevo_service.sync_existing_organizations().await {
+                tracing::error!(target: LOG_TARGET, error = %e, "Failed to sync existing organizations to Brevo");
             }
         });
+    } else {
+        tracing::info!(target: LOG_TARGET, "  Brevo service not configured, skipping org sync");
     }
 
     // Configuration summary

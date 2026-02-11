@@ -1,5 +1,5 @@
 export interface paths {
-    "/api/auth/daemon-setup": {
+    "/api/auth/check-email": {
         parameters: {
             query?: never;
             header?: never;
@@ -8,11 +8,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Store pre-registration daemon setup data in session and generate provisional API key
-         *     Supports multiple calls to configure daemons for different networks
-         */
-        post: operations["daemon_setup"];
+        post: operations["check_email"];
         delete?: never;
         options?: never;
         head?: never;
@@ -230,6 +226,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/billing/change-plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Change billing plan
+         * @description Upgrades or downgrades the organization's billing plan.
+         */
+        post: operations["change_plan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/billing/change-plan/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Preview plan change (shows overage counts) */
+        get: operations["preview_plan_change"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/billing/checkout": {
         parameters: {
             query?: never;
@@ -258,8 +291,9 @@ export interface paths {
         put?: never;
         /**
          * Submit enterprise plan inquiry
-         * @description Dual submission: Form API (for notifications) + CRM API (for Company properties).
-         *     Requires authentication to link the inquiry to an organization.
+         * @description Updates Brevo contact/company with inquiry data, creates a deal, and
+         *     tracks an event for automation triggers. Requires authentication to
+         *     link the inquiry to an organization.
          */
         post: operations["submit_enterprise_inquiry"];
         delete?: never;
@@ -296,6 +330,23 @@ export interface paths {
         put?: never;
         /** Create a billing portal session */
         post: operations["create_portal_session"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/billing/setup-payment-method": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Setup payment method (collect card without charging) */
+        post: operations["setup_payment_method"];
         delete?: never;
         options?: never;
         head?: never;
@@ -357,6 +408,28 @@ export interface paths {
          *     and sets up default discovery jobs for the daemon.
          */
         post: operations["register_daemon"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/daemons/{id}/heartbeat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Receive daemon heartbeat (DEPRECATED - for backwards compatibility with pre-v0.14.0 daemons)
+         * @description Internal endpoint for legacy daemons to send periodic heartbeats.
+         *     New daemons (v0.14.0+) use the /request-work endpoint which includes heartbeat functionality.
+         *     This endpoint is kept for backwards compatibility and will be removed in a future version.
+         */
+        post: operations["receive_heartbeat"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2615,7 +2688,7 @@ export interface components {
          * @description API metadata included in all responses
          * @example {
          *       "api_version": 1,
-         *       "server_version": "0.13.6"
+         *       "server_version": "0.14.4"
          *     }
          */
         ApiMeta: {
@@ -2626,7 +2699,7 @@ export interface components {
             api_version: number;
             /**
              * @description Server version (semver)
-             * @example 0.13.6
+             * @example 0.14.4
              */
             server_version: string;
         };
@@ -2640,14 +2713,14 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-02-01T14:46:58.963068Z",
-             *       "id": "f5f1f4e5-6b7e-4edf-81d0-cd33ae146e06",
+             *       "created_at": "2026-02-10T16:23:59.217459Z",
+             *       "id": "0a54ebd3-ca95-41c3-94c8-6ea83edff654",
              *       "interface_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-02-01T14:46:58.963068Z"
+             *       "updated_at": "2026-02-10T16:23:59.217459Z"
              *     }
              */
             data?: components["schemas"]["BindingBase"] & {
@@ -2676,6 +2749,19 @@ export interface components {
             data?: {
                 /** @description Number of entities affected */
                 affected_count: number;
+            };
+            error?: string | null;
+            meta: components["schemas"]["ApiMeta"];
+            success: boolean;
+        };
+        ApiResponse_ChangePlanPreview: {
+            data?: {
+                /** Format: int64 */
+                excess_hosts: number;
+                /** Format: int64 */
+                excess_networks: number;
+                /** Format: int64 */
+                excess_seats: number;
             };
             error?: string | null;
             meta: components["schemas"]["ApiMeta"];
@@ -2726,15 +2812,6 @@ export interface components {
                 updated_at: string;
                 /** @description Computed version status including health and warnings */
                 version_status: components["schemas"]["DaemonVersionStatus"];
-            };
-            error?: string | null;
-            meta: components["schemas"]["ApiMeta"];
-            success: boolean;
-        };
-        ApiResponse_DaemonSetupResponse: {
-            /** @description Response from daemon setup endpoint */
-            data?: {
-                api_key?: string | null;
             };
             error?: string | null;
             meta: components["schemas"]["ApiMeta"];
@@ -2878,14 +2955,14 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-02-01T14:46:58.950507Z",
-             *               "id": "2add4480-e5e6-4695-8513-1eede16485b2",
+             *               "created_at": "2026-02-10T16:23:59.196981Z",
+             *               "id": "3d5a7810-e4b4-4ce5-bd9e-fa263999c7b4",
              *               "interface_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-02-01T14:46:58.950507Z"
+             *               "updated_at": "2026-02-10T16:23:59.196981Z"
              *             }
              *           ],
              *           "created_at": "2026-01-15T10:30:00Z",
@@ -2894,7 +2971,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Jellyfin",
+             *           "service_definition": "NATS",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3042,12 +3119,12 @@ export interface components {
         ApiResponse_OnboardingStateResponse: {
             /** @description Response from onboarding state endpoint */
             data?: {
-                /** @description Daemon setups (if any) */
-                daemon_setups?: components["schemas"]["OnboardingDaemonSetupState"][];
-                /** @description Network IDs from pending setup (if any) - kept for backwards compatibility */
-                network_ids: string[];
-                /** @description Networks from pending setup (with names and IDs) */
-                networks: components["schemas"]["OnboardingNetworkState"][];
+                network?: null | components["schemas"]["OnboardingNetworkState"];
+                /**
+                 * Format: uuid
+                 * @description Network ID from pending setup (if any)
+                 */
+                network_id?: string | null;
                 /** @description Organization name from pending setup */
                 org_name?: string | null;
                 /** @description Current onboarding step (if any) */
@@ -3126,7 +3203,6 @@ export interface components {
                 has_integrated_daemon: boolean;
                 needs_cookie_consent: boolean;
                 oidc_providers: components["schemas"]["OidcProviderMetadata"][];
-                plunk_key?: string | null;
                 posthog_key?: string | null;
                 public_url: string;
                 /** Format: int32 */
@@ -3168,14 +3244,14 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-02-01T14:46:58.959322Z",
-             *           "id": "8ea536b6-ee1c-4715-9134-241e3787cf3b",
+             *           "created_at": "2026-02-10T16:23:59.213102Z",
+             *           "id": "4652f742-34cb-4359-a01f-ee44894f3fc3",
              *           "interface_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-02-01T14:46:58.959322Z"
+             *           "updated_at": "2026-02-10T16:23:59.213102Z"
              *         }
              *       ],
              *       "created_at": "2026-01-15T10:30:00Z",
@@ -3184,7 +3260,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Jellyfin",
+             *       "service_definition": "NATS",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -3208,7 +3284,8 @@ export interface components {
         ApiResponse_SetupResponse: {
             /** @description Response from setup endpoint */
             data?: {
-                network_ids: string[];
+                /** Format: uuid */
+                network_id: string;
             };
             error?: string | null;
             meta: components["schemas"]["ApiMeta"];
@@ -3358,6 +3435,9 @@ export interface components {
                 type: "Community";
             }) | (components["schemas"]["PlanConfig"] & {
                 /** @enum {string} */
+                type: "Free";
+            }) | (components["schemas"]["PlanConfig"] & {
+                /** @enum {string} */
                 type: "Starter";
             }) | (components["schemas"]["PlanConfig"] & {
                 /** @enum {string} */
@@ -3455,6 +3535,9 @@ export interface components {
             type: "Community";
         }) | (components["schemas"]["PlanConfig"] & {
             /** @enum {string} */
+            type: "Free";
+        }) | (components["schemas"]["PlanConfig"] & {
+            /** @enum {string} */
             type: "Starter";
         }) | (components["schemas"]["PlanConfig"] & {
             /** @enum {string} */
@@ -3480,14 +3563,14 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-02-01T14:46:58.950717Z",
-         *       "id": "a3a303c2-ecc7-4c80-915a-59098174569d",
+         *       "created_at": "2026-02-10T16:23:59.197187Z",
+         *       "id": "2133bb44-e4fe-4c74-a062-5590c4d658af",
          *       "interface_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-02-01T14:46:58.950717Z"
+         *       "updated_at": "2026-02-10T16:23:59.197187Z"
          *     }
          */
         Binding: components["schemas"]["BindingBase"] & {
@@ -3587,6 +3670,23 @@ export interface components {
             /** @description Number of entities affected */
             affected_count: number;
         };
+        ChangePlanPreview: {
+            /** Format: int64 */
+            excess_hosts: number;
+            /** Format: int64 */
+            excess_networks: number;
+            /** Format: int64 */
+            excess_seats: number;
+        };
+        ChangePlanRequest: {
+            plan: components["schemas"]["BillingPlan"];
+            rate: components["schemas"]["BillingRate"];
+        };
+        /** @description Check email availability request */
+        CheckEmailRequest: {
+            /** Format: email */
+            email: string;
+        };
         /** @enum {string} */
         Color: "Pink" | "Rose" | "Red" | "Orange" | "Green" | "Emerald" | "Teal" | "Cyan" | "Blue" | "Indigo" | "Purple" | "Gray" | "Yellow";
         /**
@@ -3652,7 +3752,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Jellyfin",
+         *           "service_definition": "NATS",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -3775,6 +3875,8 @@ export interface components {
             name: string;
             /** Format: uuid */
             network_id: string;
+            /** @description Whether the daemon is on standby due to plan restrictions (DaemonPoll on Free plan). */
+            readonly standby?: boolean;
             tags: string[];
             readonly url: string;
             /**
@@ -3789,6 +3891,15 @@ export interface components {
         DaemonCapabilities: {
             has_docker_socket?: boolean;
             interfaced_subnet_ids: string[];
+        };
+        /**
+         * @description Legacy heartbeat payload for backwards compatibility with pre-v0.14.0 daemons.
+         *     Old daemons call POST /api/daemons/{id}/heartbeat with this payload.
+         */
+        DaemonHeartbeatPayload: {
+            mode: components["schemas"]["DaemonMode"];
+            name: string;
+            url: string;
         };
         /**
          * @description Daemon operating mode that determines the communication pattern.
@@ -3847,17 +3958,6 @@ export interface components {
             updated_at: string;
             /** @description Computed version status including health and warnings */
             version_status: components["schemas"]["DaemonVersionStatus"];
-        };
-        /** @description Daemon setup request for pre-registration daemon configuration */
-        DaemonSetupRequest: {
-            daemon_name: string;
-            install_later?: boolean;
-            /** Format: uuid */
-            network_id: string;
-        };
-        /** @description Response from daemon setup endpoint */
-        DaemonSetupResponse: {
-            api_key?: string | null;
         };
         /** @description Sent by daemon on startup to report version */
         DaemonStartupRequest: {
@@ -3947,6 +4047,11 @@ export interface components {
             type: "SelfReport";
         } | {
             host_naming_fallback: components["schemas"]["HostNamingFallback"];
+            /**
+             * @description Whether to probe raw-socket ports (9100-9107) during endpoint scanning.
+             *     Disabled by default to prevent ghost printing on JetDirect printers.
+             */
+            probe_raw_socket_ports?: boolean;
             /**
              * @description SNMP credentials for querying devices during discovery
              *     Server builds this mapping before initiating discovery
@@ -4054,9 +4159,7 @@ export interface components {
             company: string;
             /** @description Contact email */
             email: string;
-            /** @description HubSpot tracking cookie (hutk) for linking form submission to visitor */
-            hutk?: string | null;
-            /** @description Message/use case description (maps to HubSpot "message" field) */
+            /** @description Message/use case description */
             message: string;
             /** @description Contact name */
             name: string;
@@ -4284,14 +4387,14 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-02-01T14:46:58.950232Z",
-         *               "id": "eefe0fd5-65f3-4c5e-8e62-025be1d35d87",
+         *               "created_at": "2026-02-10T16:23:59.196697Z",
+         *               "id": "c4f88351-a1ff-4c40-9597-39037f0959f9",
          *               "interface_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-02-01T14:46:58.950232Z"
+         *               "updated_at": "2026-02-10T16:23:59.196697Z"
          *             }
          *           ],
          *           "created_at": "2026-01-15T10:30:00Z",
@@ -4300,7 +4403,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Jellyfin",
+         *           "service_definition": "NATS",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -4759,18 +4862,6 @@ export interface components {
             name: string;
             slug: string;
         };
-        /** @description Daemon setup data in onboarding state response */
-        OnboardingDaemonSetupState: {
-            /** @description API key (only returned if user chose to install now) */
-            api_key?: string | null;
-            /** @description Daemon name */
-            daemon_name: string;
-            /**
-             * Format: uuid
-             * @description Network ID this daemon is for
-             */
-            network_id: string;
-        };
         /** @description Network data in onboarding state response */
         OnboardingNetworkState: {
             /**
@@ -4789,12 +4880,12 @@ export interface components {
         };
         /** @description Response from onboarding state endpoint */
         OnboardingStateResponse: {
-            /** @description Daemon setups (if any) */
-            daemon_setups?: components["schemas"]["OnboardingDaemonSetupState"][];
-            /** @description Network IDs from pending setup (if any) - kept for backwards compatibility */
-            network_ids: string[];
-            /** @description Networks from pending setup (with names and IDs) */
-            networks: components["schemas"]["OnboardingNetworkState"][];
+            network?: null | components["schemas"]["OnboardingNetworkState"];
+            /**
+             * Format: uuid
+             * @description Network ID from pending setup (if any)
+             */
+            network_id?: string | null;
             /** @description Organization name from pending setup */
             org_name?: string | null;
             /** @description Current onboarding step (if any) */
@@ -4804,6 +4895,14 @@ export interface components {
         };
         /** @description Request to save onboarding step */
         OnboardingStepRequest: {
+            /** @description Company size */
+            company_size?: string | null;
+            /** @description Job title/role */
+            job_title?: string | null;
+            /** @description Referral source (how they heard about Scanopy) */
+            referral_source?: string | null;
+            /** @description Free-text referral source (when "other" is selected) */
+            referral_source_other?: string | null;
             step: string;
             /** @description Use case selection (homelab, company, msp) */
             use_case?: string | null;
@@ -4822,10 +4921,13 @@ export interface components {
             readonly updated_at: string;
         };
         OrganizationBase: {
+            readonly has_payment_method?: boolean;
             name: string;
             onboarding: components["schemas"]["TelemetryOperation"][];
             plan: null | components["schemas"]["BillingPlan"];
             readonly plan_status: string | null;
+            /** Format: date-time */
+            readonly trial_end_date?: string | null;
         };
         /**
          * @description API metadata for paginated list responses (pagination is always present)
@@ -4837,7 +4939,7 @@ export interface components {
          *         "offset": 0,
          *         "total_count": 142
          *       },
-         *       "server_version": "0.13.6"
+         *       "server_version": "0.14.4"
          *     }
          */
         PaginatedApiMeta: {
@@ -4850,7 +4952,7 @@ export interface components {
             pagination: components["schemas"]["PaginationMeta"];
             /**
              * @description Server version (semver)
-             * @example 0.13.6
+             * @example 0.14.4
              */
             server_version: string;
         };
@@ -5071,6 +5173,10 @@ export interface components {
             /** Format: int64 */
             base_cents: number;
             /** Format: int64 */
+            host_cents?: number | null;
+            /** Format: int64 */
+            included_hosts?: number | null;
+            /** Format: int64 */
             included_networks?: number | null;
             /** Format: int64 */
             included_seats?: number | null;
@@ -5180,7 +5286,6 @@ export interface components {
             has_integrated_daemon: boolean;
             needs_cookie_consent: boolean;
             oidc_providers: components["schemas"]["OidcProviderMetadata"][];
-            plunk_key?: string | null;
             posthog_key?: string | null;
             public_url: string;
             /** Format: int32 */
@@ -5198,6 +5303,7 @@ export interface components {
         RegisterRequest: {
             /** Format: email */
             email: string;
+            marketing_opt_in?: boolean;
             password: string;
             terms_accepted: boolean;
         };
@@ -5240,14 +5346,14 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-02-01T14:46:58.950648Z",
-         *           "id": "3982e278-ebb7-4a23-86e2-af3657dc6cf4",
+         *           "created_at": "2026-02-10T16:23:59.197117Z",
+         *           "id": "ac39c9fd-6f29-4b26-bb5a-76c1b15de413",
          *           "interface_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-02-01T14:46:58.950648Z"
+         *           "updated_at": "2026-02-10T16:23:59.197117Z"
          *         }
          *       ],
          *       "created_at": "2026-01-15T10:30:00Z",
@@ -5256,7 +5362,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Jellyfin",
+         *       "service_definition": "NATS",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -5345,14 +5451,18 @@ export interface components {
             /** @description The new list of tag IDs */
             tag_ids: string[];
         };
+        SetupPaymentMethodRequest: {
+            url: string;
+        };
         /** @description Setup request for pre-registration org/network configuration */
         SetupRequest: {
-            networks: components["schemas"]["NetworkSetup"][];
+            network: components["schemas"]["NetworkSetup"];
             organization_name: string;
         };
         /** @description Response from setup endpoint */
         SetupResponse: {
-            network_ids: string[];
+            /** Format: uuid */
+            network_id: string;
         };
         Share: components["schemas"]["ShareBase"] & {
             /** Format: date-time */
@@ -5511,7 +5621,7 @@ export interface components {
          */
         TagOrderField: "created_at" | "name" | "color" | "updated_at";
         /** @enum {string} */
-        TelemetryOperation: "OrgCreated" | "OnboardingModalCompleted" | "PlanSelected" | "PersonalPlanSelected" | "CommercialPlanSelected" | "FirstApiKeyCreated" | "FirstDaemonRegistered" | "FirstTopologyRebuild" | "CheckoutStarted" | "CheckoutCompleted" | "TrialStarted" | "TrialEnded" | "SubscriptionCancelled" | "FirstNetworkCreated" | "FirstDiscoveryCompleted" | "FirstHostDiscovered" | "SecondNetworkCreated" | "FirstTagCreated" | "FirstUserApiKeyCreated" | "FirstSnmpCredentialCreated" | "InviteSent" | "InviteAccepted";
+        TelemetryOperation: "OrgCreated" | "OnboardingModalCompleted" | "PlanSelected" | "PersonalPlanSelected" | "CommercialPlanSelected" | "CheckoutStarted" | "CheckoutCompleted" | "TrialStarted" | "TrialEnded" | "TrialWillEnd" | "SubscriptionCancelled" | "PlanChanged" | "PaymentFailed" | "PaymentActionRequired" | "PaymentRecovered" | "FirstDaemonRegistered" | "FirstTopologyRebuild" | "FirstDiscoveryCompleted" | "FirstHostDiscovered" | "SecondNetworkCreated" | "FirstTagCreated" | "FirstUserApiKeyCreated" | "FirstSnmpCredentialCreated" | "InviteSent" | "InviteAccepted" | "FirstApiKeyCreated" | "FirstNetworkCreated";
         Topology: components["schemas"]["TopologyBase"] & {
             /** Format: date-time */
             readonly created_at: string;
@@ -5523,6 +5633,7 @@ export interface components {
         TopologyBase: {
             bindings: components["schemas"]["Binding"][];
             edges: components["schemas"]["Edge"][];
+            entity_tags: components["schemas"]["Tag"][];
             groups: components["schemas"]["Group"][];
             hosts: components["schemas"]["Host"][];
             if_entries: components["schemas"]["IfEntry"][];
@@ -5583,6 +5694,7 @@ export interface components {
             hide_resize_handles: boolean;
             left_zone_title: string;
             no_fade_edges: boolean;
+            tag_filter?: components["schemas"]["TopologyTagFilter"];
         };
         /**
          * @description Lightweight request type for updating topology metadata.
@@ -5681,6 +5793,15 @@ export interface components {
             hide_vm_title_on_docker_container: boolean;
             left_zone_service_categories: components["schemas"]["ServiceCategory"][];
             show_gateway_in_left_zone: boolean;
+        };
+        /** @description Filter settings for hiding entities by tag in topology visualization. */
+        TopologyTagFilter: {
+            /** @description Host tag IDs to hide (hosts with these tags will fade out) */
+            hidden_host_tag_ids?: string[];
+            /** @description Service tag IDs to hide (services with these tags will be hidden from nodes) */
+            hidden_service_tag_ids?: string[];
+            /** @description Subnet tag IDs to hide (subnets with these tags will fade out) */
+            hidden_subnet_tag_ids?: string[];
         };
         /** @enum {string} */
         TransportProtocol: "Udp" | "Tcp";
@@ -5832,7 +5953,7 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    daemon_setup: {
+    check_email: {
         parameters: {
             query?: never;
             header?: never;
@@ -5841,21 +5962,21 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["DaemonSetupRequest"];
+                "application/json": components["schemas"]["CheckEmailRequest"];
             };
         };
         responses: {
-            /** @description Daemon setup data stored */
+            /** @description Email is available */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ApiResponse_DaemonSetupResponse"];
+                    "application/json": components["schemas"]["ApiResponse"];
                 };
             };
-            /** @description Invalid request */
-            400: {
+            /** @description Email already in use */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -6308,6 +6429,71 @@ export interface operations {
             };
         };
     };
+    change_plan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangePlanRequest"];
+            };
+        };
+        responses: {
+            /** @description Plan change initiated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_String"];
+                };
+            };
+            /** @description Invalid plan or billing not enabled */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    preview_plan_change: {
+        parameters: {
+            query: {
+                /** @description Target plan (JSON) */
+                plan: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Plan change preview */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ChangePlanPreview"];
+                };
+            };
+            /** @description Billing not enabled */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
     create_checkout_session: {
         parameters: {
             query?: never;
@@ -6363,7 +6549,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiResponse"];
                 };
             };
-            /** @description Invalid request or HubSpot not configured */
+            /** @description Invalid request or Brevo not configured */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -6426,6 +6612,39 @@ export interface operations {
         };
         responses: {
             /** @description Portal session URL */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_String"];
+                };
+            };
+            /** @description Billing not enabled */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    setup_payment_method: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetupPaymentMethodRequest"];
+            };
+        };
+        responses: {
+            /** @description Setup session URL */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6518,6 +6737,42 @@ export interface operations {
             };
             /** @description Daemon registration disabled in demo mode */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    receive_heartbeat: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Daemon ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DaemonHeartbeatPayload"];
+            };
+        };
+        responses: {
+            /** @description Heartbeat received */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse"];
+                };
+            };
+            /** @description Daemon not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

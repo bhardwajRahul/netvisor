@@ -30,7 +30,7 @@
 <div class="space-y-3">
 	{#if host}
 		<span class="text-secondary mb-2 block text-sm font-medium">Host</span>
-		<div class="card">
+		<div class="card card-static">
 			<EntityDisplayWrapper
 				context={{ services: topology?.services.filter((s) => host && s.host_id == host.id) ?? [] }}
 				item={host}
@@ -40,7 +40,7 @@
 	{/if}
 	<span class="text-secondary mb-2 block text-sm font-medium">Interfaces</span>
 	{#if sourceInterface}
-		<div class="card">
+		<div class="card card-static">
 			<EntityDisplayWrapper
 				context={interfaceContext}
 				item={sourceInterface}
@@ -50,7 +50,7 @@
 	{/if}
 
 	{#if targetInterface}
-		<div class="card">
+		<div class="card card-static">
 			<EntityDisplayWrapper
 				context={interfaceContext}
 				item={targetInterface}

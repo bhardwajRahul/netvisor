@@ -8,6 +8,7 @@ use crate::server::services::r#impl::base::Service;
 use crate::server::services::r#impl::categories::ServiceCategory;
 use crate::server::shared::entities::ChangeTriggersTopologyStaleness;
 use crate::server::subnets::r#impl::base::Subnet;
+use crate::server::tags::r#impl::base::Tag;
 use crate::server::topology::types::edges::{Edge, EdgeHandle, EdgeTypeDiscriminants};
 use crate::server::topology::types::layout::{Ixy, Uxy};
 use crate::server::topology::types::nodes::Node;
@@ -27,6 +28,7 @@ pub struct SetEntitiesParams {
     pub bindings: Vec<Binding>,
     pub interfaces: Vec<Interface>,
     pub if_entries: Vec<IfEntry>,
+    pub entity_tags: Vec<Tag>,
 }
 
 #[derive(
@@ -82,6 +84,7 @@ impl Topology {
         self.base.bindings = params.bindings;
         self.base.interfaces = params.interfaces;
         self.base.if_entries = params.if_entries;
+        self.base.entity_tags = params.entity_tags;
     }
 
     pub fn set_graph(&mut self, nodes: Vec<Node>, edges: Vec<Edge>) {
@@ -116,6 +119,9 @@ pub struct TopologyBase {
     pub services: Vec<Service>,
     pub groups: Vec<Group>,
     pub if_entries: Vec<IfEntry>,
+
+    // Tag definitions for filtering
+    pub entity_tags: Vec<Tag>,
 
     // Build state
     pub is_stale: bool,
@@ -165,6 +171,7 @@ impl TopologyBase {
             removed_if_entries: vec![],
             parent_id: None,
             tags: vec![],
+            entity_tags: vec![],
         }
     }
 }
@@ -195,12 +202,28 @@ pub struct TopologyOptions {
     pub request: TopologyRequestOptions,
 }
 
+/// Filter settings for hiding entities by tag in topology visualization.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash, Default, ToSchema)]
+pub struct TopologyTagFilter {
+    /// Host tag IDs to hide (hosts with these tags will fade out)
+    #[serde(default)]
+    pub hidden_host_tag_ids: Vec<Uuid>,
+    /// Service tag IDs to hide (services with these tags will be hidden from nodes)
+    #[serde(default)]
+    pub hidden_service_tag_ids: Vec<Uuid>,
+    /// Subnet tag IDs to hide (subnets with these tags will fade out)
+    #[serde(default)]
+    pub hidden_subnet_tag_ids: Vec<Uuid>,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash, ToSchema)]
 pub struct TopologyLocalOptions {
     pub left_zone_title: String,
     pub no_fade_edges: bool,
     pub hide_resize_handles: bool,
     pub hide_edge_types: Vec<EdgeTypeDiscriminants>,
+    #[serde(default)]
+    pub tag_filter: TopologyTagFilter,
 }
 
 impl Default for TopologyLocalOptions {
@@ -210,6 +233,7 @@ impl Default for TopologyLocalOptions {
             no_fade_edges: false,
             hide_resize_handles: false,
             hide_edge_types: Vec::new(),
+            tag_filter: TopologyTagFilter::default(),
         }
     }
 }

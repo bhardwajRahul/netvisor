@@ -28,6 +28,14 @@ use crate::server::{
     users::{r#impl::base::User, service::UserService},
 };
 
+/// Result of OIDC register — distinguishes new registration from auto-login of existing user
+pub enum OidcRegisterResult {
+    /// Brand new user was created
+    NewUser(User),
+    /// Existing user was found and logged in (OIDC subject or email matched)
+    ExistingUser(User),
+}
+
 pub struct OidcService {
     providers: HashMap<String, Arc<OidcProvider>>,
     auth_service: Arc<AuthService>,
@@ -93,20 +101,21 @@ impl OidcService {
         self.providers.is_empty()
     }
 
-    /// Register new user via OIDC (fails if account already exists)
+    /// Register new user via OIDC, or auto-login if account already exists
     pub async fn register(
         &self,
         pending_auth: OidcPendingAuth,
         params: LoginRegisterParams,
         oidc_register_params: OidcRegisterParams<'_>,
         pending_setup: Option<PendingSetup>,
-    ) -> Result<User> {
+    ) -> Result<OidcRegisterResult> {
         let OidcRegisterParams {
             provider_slug,
             code,
             billing_enabled,
             terms_accepted_at,
             deployment_type,
+            marketing_opt_in,
         } = oidc_register_params;
 
         let provider = self
@@ -124,16 +133,32 @@ impl OidcService {
         // Exchange code for user info using provider
         let user_info = provider.exchange_code(code, &pending_auth).await?;
 
-        // Check if user already exists with this OIDC account
-        if let Some(_existing_user) = self
+        // If user already exists with this OIDC account, log them in
+        if let Some(existing_user) = self
             .user_service
             .get_user_by_oidc(&user_info.subject)
             .await?
         {
-            return Err(anyhow!(
-                "An account with this {} login already exists. Please use the login flow instead.",
-                provider.name
-            ));
+            let authentication: AuthenticatedEntity = existing_user.clone().into();
+            self.event_bus
+                .publish_auth(AuthEvent {
+                    id: Uuid::new_v4(),
+                    user_id: Some(existing_user.id),
+                    organization_id: Some(existing_user.base.organization_id),
+                    timestamp: Utc::now(),
+                    operation: AuthOperation::LoginSuccess,
+                    ip_address: ip,
+                    user_agent,
+                    metadata: serde_json::json!({
+                        "method": "oidc",
+                        "provider": provider.slug,
+                        "provider_name": provider.name,
+                        "via_register_flow": true
+                    }),
+                    authentication,
+                })
+                .await?;
+            return Ok(OidcRegisterResult::ExistingUser(existing_user));
         }
 
         // Parse or create fallback email
@@ -153,6 +178,66 @@ impl OidcService {
             ));
         }
 
+        // Check if email is already in use by another account
+        let existing = self
+            .user_service
+            .get_all(
+                crate::server::shared::storage::filter::StorableFilter::<User>::new_from_email(
+                    &email,
+                ),
+            )
+            .await?;
+        if !existing.is_empty() {
+            // Auto-link OIDC identity to existing account and log them in
+            let mut existing_user = existing.into_iter().next().unwrap();
+
+            // If already linked to a different OIDC provider, don't override
+            if let Some(existing_provider) = &existing_user.base.oidc_provider
+                && existing_provider != &provider.slug
+            {
+                let existing_provider_name = self
+                    .get_provider(existing_provider)
+                    .map(|p| p.name.as_str())
+                    .unwrap_or(existing_provider.as_str());
+                return Err(anyhow!(
+                    "This account is already linked to {}. Please sign in with {} or unlink it first.",
+                    existing_provider_name,
+                    existing_provider_name
+                ));
+            }
+
+            existing_user.base.oidc_provider = Some(provider.slug.clone());
+            existing_user.base.oidc_subject = Some(user_info.subject);
+            existing_user.base.oidc_linked_at = Some(chrono::Utc::now());
+
+            let authentication: AuthenticatedEntity = existing_user.clone().into();
+
+            self.event_bus
+                .publish_auth(AuthEvent {
+                    id: Uuid::new_v4(),
+                    user_id: Some(existing_user.id),
+                    organization_id: Some(existing_user.base.organization_id),
+                    timestamp: Utc::now(),
+                    operation: AuthOperation::OidcLinked,
+                    ip_address: ip,
+                    user_agent,
+                    metadata: serde_json::json!({
+                        "method": "oidc",
+                        "provider": provider.slug,
+                        "provider_name": provider.name,
+                        "auto_linked": true
+                    }),
+                    authentication: authentication.clone(),
+                })
+                .await?;
+
+            let updated = self
+                .user_service
+                .update(&mut existing_user, authentication)
+                .await?;
+            return Ok(OidcRegisterResult::ExistingUser(updated));
+        }
+
         // Register new user
         let user = self
             .auth_service
@@ -167,6 +252,7 @@ impl OidcService {
                     network_ids,
                     terms_accepted_at,
                     billing_enabled,
+                    marketing_opt_in,
                 },
                 pending_setup,
             )
@@ -193,7 +279,7 @@ impl OidcService {
             })
             .await?;
 
-        Ok(user)
+        Ok(OidcRegisterResult::NewUser(user))
     }
 
     /// Login existing user via OIDC (fails if account doesn't exist)

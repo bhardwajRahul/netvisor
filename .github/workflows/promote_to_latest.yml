@@ -114,7 +114,7 @@ jobs:
           cd ui && npm ci --ignore-scripts
           npx svelte-kit sync
           npx paraglide-js compile --outdir ./src/lib/paraglide --silent
-          npx vite-node scripts/export-daemon-field-defs.ts docs > ../website/src/lib/fixtures/daemon-config.json
+          npx vite-node scripts/export-daemon-field-defs.ts docs --output=../website/src/lib/fixtures/daemon-config.json 2>/dev/null
 
       - name: Get previous release tag
         id: prev_tag

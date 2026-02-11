@@ -146,12 +146,13 @@ export function createEmptyDiscoveryFormData(daemon: Daemon | null): Discovery {
 		discovery_type: {
 			type: 'Network',
 			subnet_ids: daemon ? daemon.capabilities.interfaced_subnet_ids : [],
-			host_naming_fallback: 'Ip'
+			host_naming_fallback: 'Ip',
+			probe_raw_socket_ports: false
 		},
 		run_type: {
 			type: 'Scheduled',
+			cron_schedule: '0 0 0 * * *',
 			last_run: null,
-			cron_schedule: '0 0 * * * *',
 			enabled: true
 		},
 		name: '',

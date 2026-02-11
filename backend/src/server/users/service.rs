@@ -70,7 +70,12 @@ impl CrudService<User> for UserService {
         // Capture network_ids before creating the user (since they're stored in junction table)
         let network_ids = user.base.network_ids.clone();
 
-        let created = self.user_storage.create(&User::new(user.base)).await?;
+        let user = if user.id() == Uuid::nil() {
+            User::new(user.base)
+        } else {
+            user
+        };
+        let created = self.user_storage.create(&user).await?;
 
         // Persist network_ids to the junction table
         if !network_ids.is_empty() {

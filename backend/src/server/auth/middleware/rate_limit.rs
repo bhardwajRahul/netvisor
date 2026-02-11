@@ -51,10 +51,10 @@ fn get_limiters() -> &'static RateLimiters {
                 Quota::per_minute(NonZeroU32::new(300).unwrap())
                     .allow_burst(NonZeroU32::new(150).unwrap()),
             )),
-            // Anonymous/unauthenticated: 20 requests per minute with burst of 5
+            // Anonymous/unauthenticated: 40 requests per minute with burst of 10
             anonymous: Arc::new(RateLimiter::keyed(
-                Quota::per_minute(NonZeroU32::new(20).unwrap())
-                    .allow_burst(NonZeroU32::new(5).unwrap()),
+                Quota::per_minute(NonZeroU32::new(40).unwrap())
+                    .allow_burst(NonZeroU32::new(10).unwrap()),
             )),
             // External services (Prometheus, etc.): 60 requests per minute with burst of 10
             // Sufficient for typical 15-30 second scrape intervals
@@ -160,8 +160,8 @@ fn check_anonymous(ip: IpAddr) -> Result<RateLimitInfo, RateLimitInfo> {
 
     match limiters.anonymous.check_key(&key) {
         Ok(_) => Ok(RateLimitInfo {
-            limit: 20,
-            remaining: 19,
+            limit: 40,
+            remaining: 39,
             reset_in_secs: 60,
         }),
         Err(not_until) => {
@@ -169,7 +169,7 @@ fn check_anonymous(ip: IpAddr) -> Result<RateLimitInfo, RateLimitInfo> {
                 .wait_time_from(DefaultClock::default().now())
                 .as_secs();
             Err(RateLimitInfo {
-                limit: 20,
+                limit: 40,
                 remaining: 0,
                 reset_in_secs: wait_time,
             })
@@ -217,7 +217,7 @@ pub async fn rate_limit_middleware(
     {
         let path = request.uri().path();
 
-        let exempt_paths = ["/api/billing/webhooks/", "/api/config", "/api/metadata"];
+        let exempt_paths = ["/api/billing/webhooks", "/api/config", "/api/metadata"];
 
         // Exempt static file serving, billing webhooks, config and metadata
         if !path.starts_with("/api/") || exempt_paths.contains(&path) {

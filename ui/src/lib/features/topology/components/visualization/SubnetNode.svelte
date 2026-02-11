@@ -22,7 +22,13 @@
 	import type { SubnetRenderData, Topology } from '../../types/base';
 	import { type Writable, get } from 'svelte/store';
 	import { getContext } from 'svelte';
-	import { connectedNodeIds, isExporting } from '../../interactions';
+	import {
+		connectedNodeIds,
+		isExporting,
+		tagHiddenNodeIds,
+		hoveredTag,
+		UNTAGGED_SENTINEL
+	} from '../../interactions';
 	import type { Node, Edge } from '@xyflow/svelte';
 
 	// Subscribe to connectedNodeIds for reactivity
@@ -35,6 +41,18 @@
 	let isExportingValue = $state(get(isExporting));
 	isExporting.subscribe((value) => {
 		isExportingValue = value;
+	});
+
+	// Subscribe to tag filter store for reactivity
+	let hiddenNodes = $state(get(tagHiddenNodeIds));
+	tagHiddenNodeIds.subscribe((value) => {
+		hiddenNodes = value;
+	});
+
+	// Subscribe to tag hover state
+	let currentHoveredTag = $state(get(hoveredTag));
+	hoveredTag.subscribe((value) => {
+		currentHoveredTag = value;
 	});
 
 	let { id, data, selected, width, height }: NodeProps = $props();
@@ -58,15 +76,33 @@
 		selectedEdgeContext ? $selectedEdgeContext : $globalSelectedEdge
 	) as Edge | null;
 
-	// Calculate if this node should fade out when another node is selected
+	// Calculate if this node should fade out when another node is selected or hidden by tag filter
 	let shouldFadeOut = $derived.by(() => {
 		if (isExportingValue) return false;
+
+		// Tag filter: fade if this subnet is hidden
+		if (hiddenNodes.has(id)) {
+			return true;
+		}
+
+		// Selection-based fading
 		if (!selectedNode && !selectedEdge) return false;
 		// Check if this node is in the connected set
 		return !connectedNodes.has(id);
 	});
 
 	let nodeOpacity = $derived(shouldFadeOut ? 0.3 : 1);
+
+	// Check if this subnet should be highlighted by tag hover
+	let tagHoverRingStyle = $derived.by(() => {
+		if (!currentHoveredTag || currentHoveredTag.entityType !== 'subnet' || !subnet) return '';
+		const { tagId, color } = currentHoveredTag;
+		const isUntagged = subnet.tags.length === 0;
+		const hasTag = tagId === UNTAGGED_SENTINEL ? isUntagged : subnet.tags.includes(tagId);
+		if (!hasTag) return '';
+		const colorHelper = createColorHelper(color as Parameters<typeof createColorHelper>[0]);
+		return `box-shadow: 0 0 0 3px ${colorHelper.rgb};`;
+	});
 
 	let leftZoneTitle = $derived($topologyOptions.local.left_zone_title);
 	let infra_width = $derived((data.infra_width as number) || 0);
@@ -155,7 +191,7 @@
 		<!-- Main container -->
 		<div
 			class="rounded-xl text-center text-sm font-semibold shadow-lg transition-all duration-200"
-			style="background: #1a1d29; width: 100%; height: 100%; position: relative; overflow: hidden;"
+			style="background: #1a1d29; width: 100%; height: 100%; position: relative; overflow: hidden; transition: box-shadow 0.15s ease-in-out; {tagHoverRingStyle}"
 		>
 			<!-- Infrastructure background area with gradient centered at infra_width -->
 			{#if hasInfra}

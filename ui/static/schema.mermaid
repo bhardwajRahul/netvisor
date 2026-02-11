@@ -139,6 +139,7 @@ erDiagram
   uuid user_id FK
   uuid api_key_id FK
   boolean is_unreachable
+  boolean standby
 }
 "public.services" {
   uuid id
@@ -183,7 +184,9 @@ erDiagram
   timestamp_with_time_zone created_at
   timestamp_with_time_zone updated_at
   jsonb onboarding
-  text hubspot_company_id
+  text brevo_company_id
+  boolean has_payment_method
+  timestamp_with_time_zone trial_end_date
 }
 "public.topologies" {
   uuid id
@@ -217,6 +220,7 @@ erDiagram
   uuid__ removed_bindings
   jsonb if_entries
   uuid__ removed_if_entries
+  jsonb entity_tags
 }
 "public.tags" {
   uuid id

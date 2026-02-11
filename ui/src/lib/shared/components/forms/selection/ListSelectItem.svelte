@@ -109,7 +109,7 @@
 			{#if tags.length > 0}
 				<div class="flex flex-shrink-0 items-center gap-1">
 					{#each visibleTags as tag, i (`${tag.label}-${i}`)}
-						<Tag label={tag.label} color={tag.color} />
+						<Tag label={tag.label} color={tag.color} icon={tag.icon ?? null} />
 					{/each}
 					{#if hiddenCount > 0}
 						<span class="text-tertiary whitespace-nowrap text-xs">+{hiddenCount} more</span>

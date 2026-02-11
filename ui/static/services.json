@@ -1,14 +1,5 @@
 [
   {
-    "category": "Virtualization",
-    "color": "Indigo",
-    "description": "Docker",
-    "discovery_pattern": "No match pattern provided",
-    "logo_needs_white_background": false,
-    "logo_url": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/docker.svg",
-    "name": "Docker"
-  },
-  {
     "category": "Media",
     "color": "Blue",
     "description": "User invitation and management system for Jellyfin, Plex, Emby etc",
@@ -250,6 +241,15 @@
     "logo_needs_white_background": false,
     "logo_url": "",
     "name": "Print Server"
+  },
+  {
+    "category": "Printer",
+    "color": "Gray",
+    "description": "HP JetDirect RAW printing protocol",
+    "discovery_pattern": "9100/tcp is open",
+    "logo_needs_white_background": false,
+    "logo_url": "",
+    "name": "JetDirect"
   },
   {
     "category": "Printer",
@@ -700,6 +700,15 @@
     "logo_needs_white_background": false,
     "logo_url": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/cooler-control.svg",
     "name": "CoolerControl"
+  },
+  {
+    "category": "Monitoring",
+    "color": "Orange",
+    "description": "Monitoring agent for CheckMK server",
+    "discovery_pattern": "6556/tcp is open",
+    "logo_needs_white_background": false,
+    "logo_url": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/checkmk.svg",
+    "name": "CheckMK Agent"
   },
   {
     "category": "Monitoring",
@@ -1325,6 +1334,15 @@
   {
     "category": "Virtualization",
     "color": "Indigo",
+    "description": "Docker",
+    "discovery_pattern": "No match pattern provided",
+    "logo_needs_white_background": false,
+    "logo_url": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/docker.svg",
+    "name": "Docker"
+  },
+  {
+    "category": "Virtualization",
+    "color": "Indigo",
     "description": "A generic docker container",
     "discovery_pattern": "All of: (Service is running in a docker container, A custom match pattern evaluated at runtime)",
     "logo_needs_white_background": false,
@@ -1578,7 +1596,7 @@
     "category": "Storage",
     "color": "Green",
     "description": "Synology DiskStation Manager NAS system",
-    "discovery_pattern": "All of: (Endpoint response body from <ip>:80/ contains \"synology\", 21/tcp is open)",
+    "discovery_pattern": "Any of: (All of: (Endpoint response body from <ip>:80/ contains \"synology\", 21/tcp is open), Endpoint response body from <ip>:80/ contains \"Synology Web Station\")",
     "logo_needs_white_background": false,
     "logo_url": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/synology.svg",
     "name": "Synology DSM"
@@ -1614,7 +1632,7 @@
     "category": "Storage",
     "color": "Green",
     "description": "QNAP network attached storage system",
-    "discovery_pattern": "All of: (21/tcp is open, Any of: (Endpoint response body from <ip>:80/ contains \"QNAP\", Endpoint response body from <ip>:8080/ contains \"QNAP\"))",
+    "discovery_pattern": "Any of: (All of: (21/tcp is open, Any of: (Endpoint response body from <ip>:80/ contains \"QNAP\", Endpoint response body from <ip>:8080/ contains \"QNAP\")), Endpoint response from <ip>:443 has header \"server\" with value \"http server\")",
     "logo_needs_white_background": false,
     "logo_url": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/qnap.svg",
     "name": "QNAP NAS"

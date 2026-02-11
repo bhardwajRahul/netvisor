@@ -24,7 +24,7 @@
 	import { downloadCsv } from '$lib/shared/utils/csvExport';
 	import {
 		common_confirmDeleteName,
-		common_schedule,
+		common_create,
 		common_tags,
 		discovery_confirmDeleteScheduled,
 		discovery_noScheduledSessions,
@@ -140,7 +140,7 @@
 		<svelte:fragment slot="actions">
 			{#if !isReadOnly}
 				<button class="btn-primary flex items-center" onclick={handleCreateDiscovery}
-					><Plus class="h-5 w-5" />{common_schedule()}</button
+					><Plus class="h-5 w-5" />{common_create()}</button
 				>
 			{/if}
 		</svelte:fragment>
@@ -154,7 +154,7 @@
 			title={discovery_noScheduledSessions()}
 			subtitle=""
 			onClick={isReadOnly ? undefined : handleCreateDiscovery}
-			cta={isReadOnly ? undefined : common_schedule()}
+			cta={isReadOnly ? undefined : common_create()}
 		/>
 	{:else}
 		<DataControls

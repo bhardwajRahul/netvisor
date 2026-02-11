@@ -7,6 +7,7 @@ use crate::server::shared::entities::EntityDiscriminants;
 use crate::server::shared::entity_metadata::EntityCategory;
 use crate::server::shared::events::types::TelemetryOperation;
 use crate::server::subnets::r#impl::base::Subnet;
+use crate::server::tags::r#impl::base::Tag;
 use crate::server::{
     billing::types::base::BillingPlan,
     daemons::r#impl::{api::DaemonCapabilities, base::DaemonMode},
@@ -227,4 +228,5 @@ pub enum SqlValue {
     MacAddress(MacAddress),
     OptionalMacAddress(Option<MacAddress>),
     IfEntries(Vec<IfEntry>),
+    Tags(Vec<Tag>),
 }

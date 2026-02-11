@@ -1,4 +1,3 @@
-use crate::server::auth::middleware::features::{BlockedInDemoMode, RequireFeature};
 use crate::server::auth::middleware::permissions::{Admin, Authorized, Viewer};
 use crate::server::shared::events::types::{TelemetryEvent, TelemetryOperation};
 use crate::server::shared::handlers::ordering::OrderField;
@@ -154,7 +153,6 @@ pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
 async fn update_snmp_credential(
     state: State<Arc<AppState>>,
     auth: Authorized<Admin>,
-    _demo_check: RequireFeature<BlockedInDemoMode>,
     id: axum::extract::Path<Uuid>,
     entity: Json<SnmpCredential>,
 ) -> ApiResult<Json<ApiResponse<SnmpCredential>>> {
@@ -184,7 +182,6 @@ async fn update_snmp_credential(
 async fn delete_snmp_credential(
     state: State<Arc<AppState>>,
     auth: Authorized<Admin>,
-    _demo_check: RequireFeature<BlockedInDemoMode>,
     id: axum::extract::Path<Uuid>,
 ) -> ApiResult<Json<ApiResponse<()>>> {
     delete_handler::<SnmpCredential>(
@@ -210,7 +207,6 @@ async fn delete_snmp_credential(
 async fn bulk_delete_snmp_credentials(
     state: State<Arc<AppState>>,
     auth: Authorized<Admin>,
-    _demo_check: RequireFeature<BlockedInDemoMode>,
     ids: Json<Vec<Uuid>>,
 ) -> ApiResult<Json<ApiResponse<BulkDeleteResponse>>> {
     bulk_delete_handler::<SnmpCredential>(
@@ -293,7 +289,6 @@ async fn get_all_snmp_credentials(
 pub async fn create_snmp_credential(
     State(state): State<Arc<AppState>>,
     auth: Authorized<Admin>,
-    _demo_check: RequireFeature<BlockedInDemoMode>,
     Json(credential): Json<SnmpCredential>,
 ) -> ApiResult<Json<ApiResponse<SnmpCredential>>> {
     let organization_id = auth

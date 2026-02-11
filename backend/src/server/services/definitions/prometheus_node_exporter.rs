@@ -19,7 +19,7 @@ impl ServiceDefinition for PrometheusNodeExporter {
     }
 
     fn discovery_pattern(&self) -> Pattern<'_> {
-        Pattern::Endpoint(PortType::new_tcp(9100), "/metrics", "node_exporter", None)
+        Pattern::Endpoint(PortType::JetDirect, "/metrics", "node_exporter", None)
     }
 
     fn logo_url(&self) -> &'static str {

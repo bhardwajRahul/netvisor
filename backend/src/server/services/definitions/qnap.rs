@@ -19,12 +19,17 @@ impl ServiceDefinition for QNAP {
     }
 
     fn discovery_pattern(&self) -> Pattern<'_> {
-        Pattern::AllOf(vec![
-            Pattern::Port(PortType::Ftp),
-            Pattern::AnyOf(vec![
-                Pattern::Endpoint(PortType::Http, "/", "QNAP", None),
-                Pattern::Endpoint(PortType::Http8080, "/", "QNAP", None),
+        Pattern::AnyOf(vec![
+            // Original pattern: FTP + HTTP/8080 with "QNAP"
+            Pattern::AllOf(vec![
+                Pattern::Port(PortType::Ftp),
+                Pattern::AnyOf(vec![
+                    Pattern::Endpoint(PortType::Http, "/", "QNAP", None),
+                    Pattern::Endpoint(PortType::Http8080, "/", "QNAP", None),
+                ]),
             ]),
+            // Alternative: QNAP's distinctive "http server" Server header (FTP may be disabled)
+            Pattern::Header(Some(PortType::Https), "server", "http server", None),
         ])
     }
 

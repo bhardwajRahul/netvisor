@@ -292,6 +292,7 @@ pub fn daemon() -> Daemon {
             user_id: ids::USER,
             api_key_id: None,
             is_unreachable: false,
+            standby: false,
         },
     }
 }
@@ -333,7 +334,9 @@ pub fn organization() -> Organization {
             plan: None,
             plan_status: None,
             onboarding: vec![],
-            hubspot_company_id: None,
+            has_payment_method: false,
+            trial_end_date: None,
+            brevo_company_id: None,
         },
     }
 }
@@ -352,6 +355,7 @@ pub fn discovery() -> Discovery {
                 subnet_ids: Some(vec![ids::SUBNET]),
                 host_naming_fallback: Default::default(),
                 snmp_credentials: SnmpCredentialMapping::default(),
+                probe_raw_socket_ports: false,
             },
             run_type: RunType::AdHoc {
                 last_run: Some(example_timestamp()),

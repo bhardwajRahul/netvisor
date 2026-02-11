@@ -1,11 +1,16 @@
 <script lang="ts">
-	import { topologyOptions } from '../../../queries';
+	import { topologyOptions, selectedTopologyId, useTopologiesQuery } from '../../../queries';
+	import { updateTagFilter } from '../../../interactions';
 	import { edgeTypes, serviceDefinitions } from '$lib/shared/stores/metadata';
 	import { ChevronDown, ChevronRight } from 'lucide-svelte';
+	import TagFilterGroup from './TagFilterGroup.svelte';
 	import {
 		common_categories,
 		common_docker,
+		common_hosts,
 		common_infrastructure,
+		common_services,
+		common_subnets,
 		common_title,
 		common_visual,
 		topology_dontFadeEdges,
@@ -28,8 +33,84 @@
 		topology_leftZoneTitleHelp,
 		topology_multiselectHelp,
 		topology_showGatewayInLeftZone,
-		topology_showGatewayInLeftZoneHelp
+		topology_showGatewayInLeftZoneHelp,
+		topology_tagFilter,
+		topology_tagFilterHelp
 	} from '$lib/paraglide/messages';
+
+	// Get topology for entity_tags
+	const topologiesQuery = useTopologiesQuery();
+	let topologiesData = $derived(topologiesQuery.data ?? []);
+	let topology = $derived(topologiesData.find((t) => t.id === $selectedTopologyId));
+
+	// Derive tags that are actually used per entity type
+	let hostTagIds = $derived(new Set(topology?.hosts.flatMap((h) => h.tags) ?? []));
+	let serviceTagIds = $derived(new Set(topology?.services.flatMap((s) => s.tags) ?? []));
+	let subnetTagIds = $derived(new Set(topology?.subnets.flatMap((s) => s.tags) ?? []));
+
+	// Filter entity_tags to only those used by each entity type
+	let hostTags = $derived(topology?.entity_tags?.filter((t) => hostTagIds.has(t.id)) ?? []);
+	let serviceTags = $derived(topology?.entity_tags?.filter((t) => serviceTagIds.has(t.id)) ?? []);
+	let subnetTags = $derived(topology?.entity_tags?.filter((t) => subnetTagIds.has(t.id)) ?? []);
+
+	// Check if there are any untagged entities
+	let hasUntaggedHosts = $derived(topology?.hosts.some((h) => h.tags.length === 0) ?? false);
+	let hasUntaggedServices = $derived(topology?.services.some((s) => s.tags.length === 0) ?? false);
+	let hasUntaggedSubnets = $derived(topology?.subnets.some((s) => s.tags.length === 0) ?? false);
+
+	// Toggle functions for tag filter
+	function toggleHostTag(tagId: string) {
+		topologyOptions.update((opts) => {
+			const currentFilter = opts.local.tag_filter;
+			const hiddenIds = currentFilter?.hidden_host_tag_ids ?? [];
+			const idx = hiddenIds.indexOf(tagId);
+			const newHiddenIds =
+				idx === -1 ? [...hiddenIds, tagId] : hiddenIds.filter((id) => id !== tagId);
+			opts.local.tag_filter = {
+				hidden_host_tag_ids: newHiddenIds,
+				hidden_service_tag_ids: currentFilter?.hidden_service_tag_ids ?? [],
+				hidden_subnet_tag_ids: currentFilter?.hidden_subnet_tag_ids ?? []
+			};
+			return opts;
+		});
+	}
+
+	function toggleServiceTag(tagId: string) {
+		topologyOptions.update((opts) => {
+			const currentFilter = opts.local.tag_filter;
+			const hiddenIds = currentFilter?.hidden_service_tag_ids ?? [];
+			const idx = hiddenIds.indexOf(tagId);
+			const newHiddenIds =
+				idx === -1 ? [...hiddenIds, tagId] : hiddenIds.filter((id) => id !== tagId);
+			opts.local.tag_filter = {
+				hidden_host_tag_ids: currentFilter?.hidden_host_tag_ids ?? [],
+				hidden_service_tag_ids: newHiddenIds,
+				hidden_subnet_tag_ids: currentFilter?.hidden_subnet_tag_ids ?? []
+			};
+			return opts;
+		});
+	}
+
+	function toggleSubnetTag(tagId: string) {
+		topologyOptions.update((opts) => {
+			const currentFilter = opts.local.tag_filter;
+			const hiddenIds = currentFilter?.hidden_subnet_tag_ids ?? [];
+			const idx = hiddenIds.indexOf(tagId);
+			const newHiddenIds =
+				idx === -1 ? [...hiddenIds, tagId] : hiddenIds.filter((id) => id !== tagId);
+			opts.local.tag_filter = {
+				hidden_host_tag_ids: currentFilter?.hidden_host_tag_ids ?? [],
+				hidden_service_tag_ids: currentFilter?.hidden_service_tag_ids ?? [],
+				hidden_subnet_tag_ids: newHiddenIds
+			};
+			return opts;
+		});
+	}
+
+	// Update tag filter stores when topology or options change
+	$effect(() => {
+		updateTagFilter(topology, $topologyOptions.local.tag_filter);
+	});
 
 	// Dynamic options loaded on mount
 	let serviceCategories: { value: string; label: string }[] = $derived.by(() => {
@@ -173,10 +254,13 @@
 	// Track expanded sections
 	let expandedSections = $state<Record<string, boolean>>(
 		Object.fromEntries(
-			[common_visual(), common_docker(), topology_leftZone(), topology_hideStuff()].map((name) => [
-				name,
-				true
-			])
+			[
+				common_visual(),
+				common_docker(),
+				topology_leftZone(),
+				topology_hideStuff(),
+				topology_tagFilter()
+			].map((name) => [name, true])
 		)
 	);
 
@@ -230,6 +314,55 @@
 		<p class="text-tertiary text-[10px] leading-tight">
 			{topology_multiselectHelp()}
 		</p>
+	</div>
+
+	<!-- Tag Filter Section -->
+	<div class="card card-static px-0 py-2">
+		<button
+			type="button"
+			class="text-secondary hover:text-primary flex w-full items-center gap-2 px-3 py-2 text-sm font-medium"
+			onclick={() => toggleSection(topology_tagFilter())}
+		>
+			{#if expandedSections[topology_tagFilter()]}
+				<ChevronDown class="h-4 w-4" />
+			{:else}
+				<ChevronRight class="h-4 w-4" />
+			{/if}
+			{topology_tagFilter()}
+		</button>
+
+		{#if expandedSections[topology_tagFilter()]}
+			<div class="space-y-4 px-3 pb-3">
+				<p class="text-tertiary text-xs">{topology_tagFilterHelp()}</p>
+
+				<TagFilterGroup
+					label={common_hosts()}
+					tags={hostTags}
+					hiddenTagIds={$topologyOptions.local.tag_filter?.hidden_host_tag_ids ?? []}
+					onToggle={toggleHostTag}
+					entityType="host"
+					hasUntagged={hasUntaggedHosts}
+				/>
+
+				<TagFilterGroup
+					label={common_services()}
+					tags={serviceTags}
+					hiddenTagIds={$topologyOptions.local.tag_filter?.hidden_service_tag_ids ?? []}
+					onToggle={toggleServiceTag}
+					entityType="service"
+					hasUntagged={hasUntaggedServices}
+				/>
+
+				<TagFilterGroup
+					label={common_subnets()}
+					tags={subnetTags}
+					hiddenTagIds={$topologyOptions.local.tag_filter?.hidden_subnet_tag_ids ?? []}
+					onToggle={toggleSubnetTag}
+					entityType="subnet"
+					hasUntagged={hasUntaggedSubnets}
+				/>
+			</div>
+		{/if}
 	</div>
 
 	{#each sections as section (section.name)}

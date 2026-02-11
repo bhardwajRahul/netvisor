@@ -117,6 +117,100 @@ pub const INVITE_LINK_BODY: &str = r#"                    <!-- Main Content -->
                     </tr>
 "#;
 
+// ============================================================================
+// Billing Templates
+// ============================================================================
+
+pub const TRIAL_STARTED_TITLE: &str = "Welcome to Scanopy - Your Trial Has Started";
+
+pub const TRIAL_STARTED_BODY: &str = r#"                    <!-- Main Content -->
+                    <tr>
+                        <td style="padding: 0 40px 20px 40px;">
+                            <h1 style="margin: 0 0 20px 0; font-size: 24px; font-weight: 600; color: #1a1a1a; text-align: center;">Welcome to Scanopy {plan_name}!</h1>
+                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 24px; color: #4a4a4a;">Hi there,</p>
+                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 24px; color: #4a4a4a;">Your trial of the {plan_name} plan has started. You have full access to all features for the next {trial_days} days.</p>
+                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 24px; color: #4a4a4a;">No credit card is required during the trial. Add a payment method anytime from your Settings page to continue after the trial ends.</p>
+                        </td>
+                    </tr>
+"#;
+
+pub const TRIAL_ENDING_TITLE: &str = "Your Scanopy Trial Ends in 3 Days";
+
+pub const TRIAL_ENDING_BODY_NO_PAYMENT: &str = r#"                    <!-- Main Content -->
+                    <tr>
+                        <td style="padding: 0 40px 20px 40px;">
+                            <h1 style="margin: 0 0 20px 0; font-size: 24px; font-weight: 600; color: #1a1a1a; text-align: center;">Your Trial Ends Soon</h1>
+                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 24px; color: #4a4a4a;">Hi there,</p>
+                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 24px; color: #4a4a4a;">Your {plan_name} trial ends in 3 days. To keep all your features and data, add a payment method before the trial expires.</p>
+                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 24px; color: #4a4a4a;">If no payment method is added, your account will be downgraded to the Free plan, which includes up to 25 hosts with manual discovery only.</p>
+                        </td>
+                    </tr>
+"#;
+
+pub const TRIAL_ENDING_BODY_HAS_PAYMENT: &str = r#"                    <!-- Main Content -->
+                    <tr>
+                        <td style="padding: 0 40px 20px 40px;">
+                            <h1 style="margin: 0 0 20px 0; font-size: 24px; font-weight: 600; color: #1a1a1a; text-align: center;">Your Trial Ends Soon</h1>
+                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 24px; color: #4a4a4a;">Hi there,</p>
+                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 24px; color: #4a4a4a;">Your {plan_name} trial ends in 3 days. The payment method you've added will be automatically billed at the end of the trial period.</p>
+                        </td>
+                    </tr>
+"#;
+
+pub const TRIAL_EXPIRED_TITLE: &str = "Your Scanopy Trial Has Ended";
+
+pub const TRIAL_EXPIRED_BODY: &str = r#"                    <!-- Main Content -->
+                    <tr>
+                        <td style="padding: 0 40px 20px 40px;">
+                            <h1 style="margin: 0 0 20px 0; font-size: 24px; font-weight: 600; color: #1a1a1a; text-align: center;">Your Trial Has Ended</h1>
+                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 24px; color: #4a4a4a;">Hi there,</p>
+                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 24px; color: #4a4a4a;">Your {plan_name} trial has ended and your account has been moved to the Free plan.</p>
+                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 24px; color: #4a4a4a;">You can still use Scanopy with up to 25 hosts and manual discovery. Upgrade anytime to restore scheduled discovery, DaemonPoll mode, and higher limits.</p>
+                        </td>
+                    </tr>
+"#;
+
+pub const PLAN_CHANGED_TITLE: &str = "Your Scanopy Plan Has Changed";
+
+pub const PLAN_CHANGED_BODY: &str = r#"                    <!-- Main Content -->
+                    <tr>
+                        <td style="padding: 0 40px 20px 40px;">
+                            <h1 style="margin: 0 0 20px 0; font-size: 24px; font-weight: 600; color: #1a1a1a; text-align: center;">Plan Updated</h1>
+                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 24px; color: #4a4a4a;">Hi there,</p>
+                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 24px; color: #4a4a4a;">Your Scanopy plan has been changed to {plan_name}. The change takes effect immediately.</p>
+                        </td>
+                    </tr>
+"#;
+
+pub const SUBSCRIPTION_CANCELLED_TITLE: &str = "Your Scanopy Subscription Has Been Cancelled";
+
+pub const SUBSCRIPTION_CANCELLED_BODY: &str = r#"                    <!-- Main Content -->
+                    <tr>
+                        <td style="padding: 0 40px 20px 40px;">
+                            <h1 style="margin: 0 0 20px 0; font-size: 24px; font-weight: 600; color: #1a1a1a; text-align: center;">Subscription Cancelled</h1>
+                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 24px; color: #4a4a4a;">Hi there,</p>
+                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 24px; color: #4a4a4a;">Your Scanopy subscription has been cancelled. Your account has been moved to the Free plan.</p>
+                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 24px; color: #4a4a4a;">You can continue using Scanopy with up to 25 hosts and manual discovery. Resubscribe anytime from your Settings page.</p>
+                        </td>
+                    </tr>
+"#;
+
+pub const PAYMENT_METHOD_ADDED_TITLE: &str = "Payment Method Added - Scanopy";
+
+pub const PAYMENT_METHOD_ADDED_BODY: &str = r#"                    <!-- Main Content -->
+                    <tr>
+                        <td style="padding: 0 40px 20px 40px;">
+                            <h1 style="margin: 0 0 20px 0; font-size: 24px; font-weight: 600; color: #1a1a1a; text-align: center;">Payment Method Added</h1>
+                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 24px; color: #4a4a4a;">Hi there,</p>
+                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 24px; color: #4a4a4a;">A payment method has been added to your Scanopy account. Your subscription will continue automatically when the trial ends.</p>
+                        </td>
+                    </tr>
+"#;
+
+// ============================================================================
+// Auth Templates
+// ============================================================================
+
 pub const EMAIL_VERIFICATION_TITLE: &str = "Verify Your Email - Scanopy";
 
 pub const EMAIL_VERIFICATION_BODY: &str = r#"                    <!-- Main Content -->

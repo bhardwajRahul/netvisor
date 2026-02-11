@@ -432,6 +432,7 @@ async fn test_discovery_crud(ctx: &TestContext) -> Result<(), String> {
                 subnet_ids: None,
                 host_naming_fallback: HostNamingFallback::BestService,
                 snmp_credentials: SnmpCredentialMapping::default(),
+                probe_raw_socket_ports: false,
             },
             run_type: RunType::AdHoc { last_run: None },
             name: "CRUD Test Discovery".to_string(),

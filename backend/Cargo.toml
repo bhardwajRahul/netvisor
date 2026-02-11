@@ -1,6 +1,6 @@
 [package]
 name = "scanopy-server"
-version = "0.14.0"
+version = "0.14.5"
 edition = "2024"
 description = "Scanopy HTTP API server"
 
@@ -153,7 +153,7 @@ password-hash = "0.5.0"
 lazy_static = "1.5.0"
 rand_core = "0.9.3"
 axum-extra = { version = "0.10.3", features = ["cookie", "query", "typed-header"] }
-time = "0.3.44"
+time = "0.3.47"
 tower-sessions-sqlx-store = { version = "0.15", features = ["postgres"] }
 sha2 = "0.10.9"
 hex = "0.4.3"
@@ -183,6 +183,7 @@ governor = "0.10.2"
 bad_email = "0.1.1"
 hickory-resolver = { version = "0.25.2" }
 const_format = "0.2.35"
+posthog-rs = "0.4"
 
 # === Platform-specific Dependencies ===
 [target.'cfg(target_os = "linux")'.dependencies]

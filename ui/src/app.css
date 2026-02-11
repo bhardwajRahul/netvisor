@@ -113,16 +113,15 @@
 	/* Card component */
 	.card {
 		@apply border border-gray-700 bg-gray-800/70 backdrop-blur-sm;
-		@apply hover:ring-1 hover:ring-gray-700;
 		@apply rounded-2xl p-6 shadow-xl transition-all duration-300 ease-in-out;
+	}
+
+	.card:not(.card-static):not(.card-selected) {
+		@apply hover:ring-1 hover:ring-gray-700;
 	}
 
 	.card-focused {
 		@apply bg-gray-700/50 hover:ring-gray-700;
-	}
-
-	.card-static {
-		@apply hover:ring-0;
 	}
 
 	.card-selected {
@@ -161,7 +160,7 @@
 		@apply bg-black/70 p-4 backdrop-blur-sm;
 	}
 	.modal-page {
-		@apply fixed inset-0 z-50 flex items-center justify-center overscroll-contain py-16;
+		@apply fixed inset-0 z-50 flex items-center justify-center overscroll-contain py-4 sm:py-16;
 	}
 
 	.modal-container {

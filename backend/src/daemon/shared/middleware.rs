@@ -30,13 +30,16 @@ pub async fn capture_fixtures_middleware(request: Request, next: Next) -> Respon
     static CAPTURED: Mutex<Vec<CapturedExchange>> = Mutex::new(Vec::new());
 
     fn fixtures_dir() -> PathBuf {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/tests/compat/fixtures")
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/integration/compat/fixtures")
     }
 
     fn manifest_path(version: &str) -> PathBuf {
-        fixtures_dir()
-            .join(format!("v{}", version))
-            .join("server_to_daemon.json")
+        // Use mode-specific filenames to avoid race conditions when multiple daemon
+        // containers (daemon_poll and server_poll) write to the same shared volume.
+        // These are merged into server_to_daemon.json during fixture generation.
+        let mode = std::env::var("SCANOPY_MODE").unwrap_or_else(|_| "daemon_poll".to_string());
+        let filename = format!("server_to_{}.json", mode);
+        fixtures_dir().join(format!("v{}", version)).join(filename)
     }
 
     fn save_fixtures(version: &str) {

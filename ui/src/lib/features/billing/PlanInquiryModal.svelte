@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { createForm } from '@tanstack/svelte-form';
 	import { submitForm } from '$lib/shared/components/forms/form-context';
-	import { email as emailValidatorFn, required } from '$lib/shared/components/forms/validators';
+	import { required } from '$lib/shared/components/forms/validators';
 	import GenericModal from '$lib/shared/components/layout/GenericModal.svelte';
 	import TextInput from '$lib/shared/components/forms/input/TextInput.svelte';
 	import TextArea from '$lib/shared/components/forms/input/TextArea.svelte';
@@ -10,13 +10,6 @@
 	import { trackEvent } from '$lib/shared/utils/analytics';
 	import { billing_requestInfo, common_cancel, common_sending } from '$lib/paraglide/messages';
 	import { apiClient } from '$lib/api/client';
-	import { getCookie } from '$lib/shared/components/feedback/CookieConsent.svelte';
-
-	/** Get HubSpot tracking cookie (hutk) for form submission context */
-	function getHubspotCookie(): string | undefined {
-		const hutk = getCookie('hubspotutk');
-		return hutk ?? undefined;
-	}
 
 	interface Props {
 		isOpen?: boolean;
@@ -42,7 +35,6 @@
 	let status = $state<'idle' | 'success' | 'error'>('idle');
 	let submitError = $state('');
 
-	// HubSpot standard company size ranges
 	const teamSizeOptions = [
 		{ value: '', label: 'Select team size', disabled: true },
 		{ value: '1-10', label: '1-10 employees' },
@@ -65,9 +57,7 @@
 
 	function getDefaultValues() {
 		return {
-			email: userEmail,
 			name: '',
-			company: orgName,
 			teamSize: companySize,
 			message: '',
 			urgency: '',
@@ -84,15 +74,14 @@
 			try {
 				const response = await apiClient.POST('/api/billing/inquiry', {
 					body: {
-						email: value.email.trim(),
+						email: userEmail,
 						name: value.name.trim(),
-						company: value.company.trim(),
+						company: orgName,
 						team_size: value.teamSize,
 						message: value.message.trim(),
 						urgency: value.urgency || undefined,
 						network_count: value.networkCount ?? undefined,
-						plan_type: planType || undefined,
-						hutk: getHubspotCookie()
+						plan_type: planType || undefined
 					}
 				});
 
@@ -164,23 +153,6 @@
 
 				<div class="space-y-4">
 					<form.Field
-						name="email"
-						validators={{
-							onBlur: ({ value }) => required(value) || emailValidatorFn(value)
-						}}
-					>
-						{#snippet children(field)}
-							<TextInput
-								label="Email"
-								id="inquiry-email"
-								{field}
-								placeholder="you@company.com"
-								required
-							/>
-						{/snippet}
-					</form.Field>
-
-					<form.Field
 						name="name"
 						validators={{
 							onBlur: ({ value }) => required(value)
@@ -188,23 +160,6 @@
 					>
 						{#snippet children(field)}
 							<TextInput label="Name" id="inquiry-name" {field} placeholder="Your name" required />
-						{/snippet}
-					</form.Field>
-
-					<form.Field
-						name="company"
-						validators={{
-							onBlur: ({ value }) => required(value)
-						}}
-					>
-						{#snippet children(field)}
-							<TextInput
-								label="Company"
-								id="inquiry-company"
-								{field}
-								placeholder="Your company"
-								required
-							/>
 						{/snippet}
 					</form.Field>
 
@@ -220,17 +175,24 @@
 								id="inquiry-team-size"
 								{field}
 								options={teamSizeOptions}
+								required
 							/>
 						{/snippet}
 					</form.Field>
 
-					<form.Field name="urgency">
+					<form.Field
+						name="urgency"
+						validators={{
+							onBlur: ({ value }) => required(value)
+						}}
+					>
 						{#snippet children(field)}
 							<SelectInput
 								label="How soon do you need a solution?"
 								id="inquiry-urgency"
 								{field}
 								options={urgencyOptions}
+								required
 							/>
 						{/snippet}
 					</form.Field>

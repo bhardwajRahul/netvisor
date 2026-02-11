@@ -15,6 +15,8 @@
 	import { defineFields } from '$lib/shared/components/data/types';
 	import { Plus } from 'lucide-svelte';
 	import { useTagsQuery } from '$lib/features/tags/queries';
+	import { useOrganizationQuery } from '$lib/features/organizations/queries';
+	import UpgradeButton from '$lib/shared/components/UpgradeButton.svelte';
 	import type { TabProps } from '$lib/shared/types';
 	import {
 		common_confirmDeleteName,
@@ -67,6 +69,10 @@
 	let tagIds = $state<string[]>([]);
 
 	// Queries
+	const organizationQuery = useOrganizationQuery();
+	let org = $derived(organizationQuery.data);
+	let hostLimit = $derived(org?.plan?.included_hosts ?? null);
+
 	const tagsQuery = useTagsQuery();
 	// Paginated hosts with server-side pagination, ordering, and tag filtering
 	const hostsQuery = useHostsQuery(
@@ -106,6 +112,13 @@
 	let networksData = $derived(networksQuery.data ?? []);
 	// Only show full loading on initial load (no data yet)
 	let isInitialLoading = $derived(hostsQuery.isPending && !hostsQuery.data);
+
+	// Host limit tracking
+	let totalHostCount = $derived(hostsPagination?.total_count ?? hostsData.length);
+	let isAtHostLimit = $derived(hostLimit !== null && totalHostCount >= hostLimit);
+	let isNearHostLimit = $derived(
+		hostLimit !== null && totalHostCount >= hostLimit - 5 && totalHostCount < hostLimit
+	);
 
 	// Page change handler for server-side pagination
 	function handlePageChange(page: number, newPageSize: number) {
@@ -288,11 +301,28 @@
 	<!-- Header -->
 	<TabHeader title={common_hosts()}>
 		<svelte:fragment slot="actions">
-			{#if !isReadOnly}
-				<button class="btn-primary flex items-center" onclick={handleCreateHost}
-					><Plus class="h-5 w-5" />{common_create()}</button
-				>
-			{/if}
+			<div class="flex items-center gap-3">
+				{#if hostLimit !== null}
+					<span
+						class="text-sm {isAtHostLimit
+							? 'text-amber-400'
+							: isNearHostLimit
+								? 'text-yellow-400'
+								: 'text-tertiary'}"
+					>
+						{totalHostCount} / {hostLimit}
+					</span>
+				{/if}
+				{#if !isReadOnly}
+					{#if isAtHostLimit}
+						<UpgradeButton feature="more hosts" />
+					{:else}
+						<button class="btn-primary flex items-center" onclick={handleCreateHost}
+							><Plus class="h-5 w-5" />{common_create()}</button
+						>
+					{/if}
+				{/if}
+			</div>
 		</svelte:fragment>
 	</TabHeader>
 

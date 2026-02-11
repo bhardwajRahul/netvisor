@@ -7,10 +7,19 @@
 	import TextInput from '$lib/shared/components/forms/input/TextInput.svelte';
 	import SelectInput from '$lib/shared/components/forms/input/SelectInput.svelte';
 	import Checkbox from '$lib/shared/components/forms/input/Checkbox.svelte';
-	import { ChevronDown, ChevronRight, RotateCcwKey } from 'lucide-svelte';
+	import { ArrowUpCircle, ChevronDown, ChevronRight, RotateCcwKey } from 'lucide-svelte';
+
 	import RadioGroup from '$lib/shared/components/forms/input/RadioGroup.svelte';
+	import RichSelect from '$lib/shared/components/forms/selection/RichSelect.svelte';
+	import {
+		SimpleOptionDisplay,
+		type SimpleOption
+	} from '$lib/shared/components/forms/selection/display/SimpleOptionDisplay';
 	import { useConfigQuery } from '$lib/shared/stores/config-query';
 	import { useCurrentUserQuery } from '$lib/features/auth/queries';
+	import { useOrganizationQuery } from '$lib/features/organizations/queries';
+	import { billingPlans } from '$lib/shared/stores/metadata';
+	import { showBillingPlanModal } from '$lib/features/billing/stores';
 	import { fieldDefs } from '../config';
 	import type { Daemon } from '../types/base';
 	import {
@@ -63,9 +72,16 @@
 
 	const configQuery = useConfigQuery();
 	const currentUserQuery = useCurrentUserQuery();
+	const organizationQuery = useOrganizationQuery();
 
 	// Get current user ID for user_id field
 	let currentUserId = $derived(currentUserQuery.data?.id ?? null);
+
+	let org = $derived(organizationQuery.data);
+	let hasDaemonPoll = $derived.by(() => {
+		if (!org?.plan?.type) return true;
+		return billingPlans.getMetadata(org.plan.type).features.daemon_poll;
+	});
 
 	// Separate field defs - conditionally exclude mode and daemonUrl if showModeSelect is false
 	// (daemonUrl depends on mode selection, so both should be hidden until Install Now)
@@ -397,14 +413,49 @@
 			{:else if def.type === 'select'}
 				<form.Field name={def.id}>
 					{#snippet children(field)}
-						<SelectInput
-							label={def.label()}
-							{field}
-							id={def.id}
-							options={(def.options ?? []).map((opt) => ({ value: opt.value, label: opt.label() }))}
-							helpText={def.helpText()}
-							disabled={def.disabled?.(isNewDaemon) ?? false}
-						/>
+						{#if def.id === 'mode'}
+							<RichSelect
+								label={def.label()}
+								selectedValue={String(field.state.value ?? '')}
+								options={(def.options ?? []).map((opt): SimpleOption => {
+									const needsUpgrade = opt.value === 'daemon_poll' && !hasDaemonPoll;
+									return {
+										value: opt.value,
+										label: opt.label(),
+										description:
+											opt.value === 'daemon_poll'
+												? 'Daemon connects to server; works behind NAT/firewall without opening ports'
+												: 'Server connects to daemon; requires providing Daemon URL',
+										disabled: needsUpgrade,
+										tags: needsUpgrade
+											? [
+													{
+														label: 'Upgrade',
+														color: 'Yellow',
+														icon: ArrowUpCircle
+													}
+												]
+											: []
+									};
+								})}
+								onSelect={(value) => field.handleChange(value)}
+								onDisabledClick={() => showBillingPlanModal.set(true)}
+								displayComponent={SimpleOptionDisplay}
+								disabled={def.disabled?.(isNewDaemon) ?? false}
+							/>
+						{:else}
+							<SelectInput
+								label={def.label()}
+								{field}
+								id={def.id}
+								options={(def.options ?? []).map((opt) => ({
+									value: opt.value,
+									label: opt.label()
+								}))}
+								helpText={def.helpText()}
+								disabled={def.disabled?.(isNewDaemon) ?? false}
+							/>
+						{/if}
 					{/snippet}
 				</form.Field>
 			{/if}

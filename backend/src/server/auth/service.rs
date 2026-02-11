@@ -130,6 +130,7 @@ impl AuthService {
                     network_ids,
                     terms_accepted_at,
                     billing_enabled,
+                    marketing_opt_in: request.marketing_opt_in,
                 },
                 pending_setup,
             )
@@ -190,6 +191,7 @@ impl AuthService {
             network_ids,
             terms_accepted_at,
             billing_enabled,
+            marketing_opt_in,
         } = params;
 
         let mut is_new_org = false;
@@ -213,11 +215,15 @@ impl AuthService {
                 vec![]
             };
 
-            // Set billing plan if billing is disabled (self-hosted)
-            let plan = if !billing_enabled {
-                Some(crate::server::billing::types::base::BillingPlan::default())
+            // Cloud: no plan until user selects one via billing modal → Stripe checkout → webhook
+            // Self-hosted: set default plan immediately
+            let (plan, plan_status) = if billing_enabled {
+                (None, None)
             } else {
-                None
+                (
+                    Some(crate::server::billing::types::base::BillingPlan::default()),
+                    None,
+                )
             };
 
             // Create new organization for this user
@@ -228,9 +234,11 @@ impl AuthService {
                         stripe_customer_id: None,
                         name: org_name,
                         plan,
-                        plan_status: None,
+                        plan_status,
                         onboarding,
-                        hubspot_company_id: None,
+                        has_payment_method: false,
+                        trial_end_date: None,
+                        brevo_company_id: None,
                     }),
                     AuthenticatedEntity::System,
                 )
@@ -284,7 +292,7 @@ impl AuthService {
         if is_new_org {
             let authentication: AuthenticatedEntity = user.clone().into();
 
-            // Include org_name and onboarding data in metadata for HubSpot sync
+            // Include org_name and onboarding data in metadata for Brevo sync
             let org_name = pending_setup
                 .as_ref()
                 .map(|s| s.org_name.clone())
@@ -292,9 +300,16 @@ impl AuthService {
             let use_case = pending_setup.as_ref().and_then(|s| s.use_case.clone());
             let company_size = pending_setup.as_ref().and_then(|s| s.company_size.clone());
             let job_title = pending_setup.as_ref().and_then(|s| s.job_title.clone());
+            let referral_source = pending_setup
+                .as_ref()
+                .and_then(|s| s.referral_source.clone());
+            let referral_source_other = pending_setup
+                .as_ref()
+                .and_then(|s| s.referral_source_other.clone());
 
             let mut metadata = serde_json::json!({
-                "org_name": org_name
+                "org_name": org_name,
+                "marketing_opt_in": marketing_opt_in
             });
             if let Some(use_case) = use_case {
                 metadata["use_case"] = serde_json::json!(use_case);
@@ -304,6 +319,12 @@ impl AuthService {
             }
             if let Some(job_title) = job_title {
                 metadata["job_title"] = serde_json::json!(job_title);
+            }
+            if let Some(referral_source) = referral_source {
+                metadata["referral_source"] = serde_json::json!(referral_source);
+            }
+            if let Some(referral_source_other) = referral_source_other {
+                metadata["referral_source_other"] = serde_json::json!(referral_source_other);
             }
 
             self.event_bus

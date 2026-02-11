@@ -3,11 +3,14 @@ use std::sync::Arc;
 use anyhow::{Error, Result};
 use async_trait::async_trait;
 use email_address::EmailAddress;
-use serde_json::Value;
 
 use crate::server::{
     email::templates::{
         EMAIL_FOOTER, EMAIL_HEADER, EMAIL_VERIFICATION_BODY, INVITE_LINK_BODY, PASSWORD_RESET_BODY,
+        PAYMENT_METHOD_ADDED_BODY, PAYMENT_METHOD_ADDED_TITLE, PLAN_CHANGED_BODY,
+        PLAN_CHANGED_TITLE, SUBSCRIPTION_CANCELLED_BODY, SUBSCRIPTION_CANCELLED_TITLE,
+        TRIAL_ENDING_BODY_HAS_PAYMENT, TRIAL_ENDING_BODY_NO_PAYMENT, TRIAL_ENDING_TITLE,
+        TRIAL_EXPIRED_BODY, TRIAL_EXPIRED_TITLE, TRIAL_STARTED_BODY, TRIAL_STARTED_TITLE,
     },
     users::service::UserService,
 };
@@ -74,16 +77,99 @@ pub trait EmailProvider: Send + Sync {
         token: String,
     ) -> Result<(), Error>;
 
-    /// Track an event with optional metadata (only for providers that support it)
-    async fn track_event(
+    /// Send a billing lifecycle email
+    async fn send_billing_email(
         &self,
-        event: String,
-        email: EmailAddress,
-        data: Option<Value>,
-    ) -> Result<()> {
-        // Default implementation does nothing
-        let _ = (event, email, data);
-        Ok(())
+        to: EmailAddress,
+        subject: String,
+        body: String,
+    ) -> Result<(), Error>;
+
+    async fn send_trial_started_email(
+        &self,
+        to: EmailAddress,
+        plan_name: &str,
+        trial_days: u32,
+    ) -> Result<(), Error> {
+        let (subject, body) = self.build_trial_started_email(plan_name, trial_days);
+        self.send_billing_email(to, subject, body).await
+    }
+
+    async fn send_trial_ending_email(
+        &self,
+        to: EmailAddress,
+        plan_name: &str,
+        has_payment: bool,
+    ) -> Result<(), Error> {
+        let (subject, body) = if has_payment {
+            self.build_trial_ending_email_has_payment(plan_name)
+        } else {
+            self.build_trial_ending_email_no_payment(plan_name)
+        };
+        self.send_billing_email(to, subject, body).await
+    }
+
+    async fn send_trial_expired_email(
+        &self,
+        to: EmailAddress,
+        plan_name: &str,
+    ) -> Result<(), Error> {
+        let (subject, body) = self.build_trial_expired_email(plan_name);
+        self.send_billing_email(to, subject, body).await
+    }
+
+    async fn send_plan_changed_email(
+        &self,
+        to: EmailAddress,
+        plan_name: &str,
+    ) -> Result<(), Error> {
+        let (subject, body) = self.build_plan_changed_email(plan_name);
+        self.send_billing_email(to, subject, body).await
+    }
+
+    async fn send_subscription_cancelled_email(&self, to: EmailAddress) -> Result<(), Error> {
+        let (subject, body) = self.build_subscription_cancelled_email();
+        self.send_billing_email(to, subject, body).await
+    }
+
+    fn build_trial_started_email(&self, plan_name: &str, trial_days: u32) -> (String, String) {
+        let body = self.build_email(
+            TRIAL_STARTED_BODY
+                .replace("{plan_name}", plan_name)
+                .replace("{trial_days}", &trial_days.to_string()),
+        );
+        (TRIAL_STARTED_TITLE.to_string(), body)
+    }
+
+    fn build_trial_ending_email_no_payment(&self, plan_name: &str) -> (String, String) {
+        let body = self.build_email(TRIAL_ENDING_BODY_NO_PAYMENT.replace("{plan_name}", plan_name));
+        (TRIAL_ENDING_TITLE.to_string(), body)
+    }
+
+    fn build_trial_ending_email_has_payment(&self, plan_name: &str) -> (String, String) {
+        let body =
+            self.build_email(TRIAL_ENDING_BODY_HAS_PAYMENT.replace("{plan_name}", plan_name));
+        (TRIAL_ENDING_TITLE.to_string(), body)
+    }
+
+    fn build_trial_expired_email(&self, plan_name: &str) -> (String, String) {
+        let body = self.build_email(TRIAL_EXPIRED_BODY.replace("{plan_name}", plan_name));
+        (TRIAL_EXPIRED_TITLE.to_string(), body)
+    }
+
+    fn build_plan_changed_email(&self, plan_name: &str) -> (String, String) {
+        let body = self.build_email(PLAN_CHANGED_BODY.replace("{plan_name}", plan_name));
+        (PLAN_CHANGED_TITLE.to_string(), body)
+    }
+
+    fn build_subscription_cancelled_email(&self) -> (String, String) {
+        let body = self.build_email(SUBSCRIPTION_CANCELLED_BODY.to_string());
+        (SUBSCRIPTION_CANCELLED_TITLE.to_string(), body)
+    }
+
+    fn build_payment_method_added_email(&self) -> (String, String) {
+        let body = self.build_email(PAYMENT_METHOD_ADDED_BODY.to_string());
+        (PAYMENT_METHOD_ADDED_TITLE.to_string(), body)
     }
 }
 
@@ -130,14 +216,48 @@ impl EmailService {
         self.provider.send_verification_email(to, url, token).await
     }
 
-    /// Track an event with optional metadata (delegates to provider)
-    pub async fn track_event(
+    /// Send billing lifecycle email
+    pub async fn send_billing_email(
         &self,
-        event: String,
-        email: EmailAddress,
-        data: Option<Value>,
+        to: EmailAddress,
+        subject: String,
+        body: String,
     ) -> Result<()> {
-        self.provider.track_event(event, email, data).await
+        self.provider.send_billing_email(to, subject, body).await
+    }
+
+    pub async fn send_trial_started_email(
+        &self,
+        to: EmailAddress,
+        plan_name: &str,
+        trial_days: u32,
+    ) -> Result<()> {
+        self.provider
+            .send_trial_started_email(to, plan_name, trial_days)
+            .await
+    }
+
+    pub async fn send_trial_ending_email(
+        &self,
+        to: EmailAddress,
+        plan_name: &str,
+        has_payment: bool,
+    ) -> Result<()> {
+        self.provider
+            .send_trial_ending_email(to, plan_name, has_payment)
+            .await
+    }
+
+    pub async fn send_trial_expired_email(&self, to: EmailAddress, plan_name: &str) -> Result<()> {
+        self.provider.send_trial_expired_email(to, plan_name).await
+    }
+
+    pub async fn send_plan_changed_email(&self, to: EmailAddress, plan_name: &str) -> Result<()> {
+        self.provider.send_plan_changed_email(to, plan_name).await
+    }
+
+    pub async fn send_subscription_cancelled_email(&self, to: EmailAddress) -> Result<()> {
+        self.provider.send_subscription_cancelled_email(to).await
     }
 }
 

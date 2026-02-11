@@ -32,12 +32,23 @@
 		userApiKeys_noApiKeysYet,
 		userApiKeys_subtitle
 	} from '$lib/paraglide/messages';
+	import { useOrganizationQuery } from '$lib/features/organizations/queries';
+	import { billingPlans } from '$lib/shared/stores/metadata';
+	import UpgradeButton from '$lib/shared/components/UpgradeButton.svelte';
 
 	let { isReadOnly = false }: TabProps = $props();
 
+	// Check if plan has api_access feature before querying
+	const organizationQuery = useOrganizationQuery();
+	let hasApiAccess = $derived.by(() => {
+		const org = organizationQuery.data;
+		if (!org?.plan) return false;
+		return billingPlans.getMetadata(org.plan.type).features.api_access;
+	});
+
 	// Queries
 	const tagsQuery = useTagsQuery();
-	const userApiKeysQuery = useUserApiKeysQuery();
+	const userApiKeysQuery = useUserApiKeysQuery({ enabled: () => hasApiAccess });
 	const networksQuery = useNetworksQuery();
 
 	// Mutations
@@ -143,7 +154,7 @@
 				dismissableKey="share-integration"
 				body="Creating an integration that you think others might benefit from? Scanopy will be adding an integration library in an upcoming release. Go to the <a class='underline hover:no-underline' target='_blank' href='https://github.com/scanopy/integrations'>Scanopy integrations GitHub</a> and create a PR to get started."
 			></InlineSuccess>
-			{#if !isReadOnly}
+			{#if !isReadOnly && hasApiAccess}
 				<button class="btn-primary flex items-center" onclick={handleCreate}>
 					<Plus class="h-5 w-5" />{common_create()}
 				</button>
@@ -151,7 +162,14 @@
 		</svelte:fragment>
 	</TabHeader>
 
-	{#if isLoading}
+	{#if !hasApiAccess}
+		<EmptyState
+			title="API Access Not Available"
+			subtitle="Your current plan does not include API access. Upgrade to a plan with API access to create and manage API keys."
+		>
+			<UpgradeButton feature="API access" />
+		</EmptyState>
+	{:else if isLoading}
 		<Loading />
 	{:else if userApiKeysData.length === 0}
 		<EmptyState

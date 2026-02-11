@@ -55,6 +55,7 @@ pub struct NetworkScanDiscovery {
     subnet_ids: Option<Vec<Uuid>>,
     host_naming_fallback: HostNamingFallback,
     snmp_credentials: SnmpCredentialMapping,
+    probe_raw_socket_ports: bool,
 }
 
 impl NetworkScanDiscovery {
@@ -62,11 +63,13 @@ impl NetworkScanDiscovery {
         subnet_ids: Option<Vec<Uuid>>,
         host_naming_fallback: HostNamingFallback,
         snmp_credentials: SnmpCredentialMapping,
+        probe_raw_socket_ports: bool,
     ) -> Self {
         Self {
             subnet_ids,
             host_naming_fallback,
             snmp_credentials,
+            probe_raw_socket_ports,
         }
     }
 }
@@ -90,6 +93,8 @@ pub struct DeepScanParams<'a> {
     snmp_credential: Option<SnmpQueryCredential>,
     /// Shared concurrency controller for graceful FD exhaustion handling
     scan_controller: Arc<ScanConcurrencyController>,
+    /// Whether to probe raw-socket ports (9100-9107) during endpoint scanning
+    probe_raw_socket_ports: bool,
 }
 
 impl CreatesDiscoveredEntities for DiscoveryRunner<NetworkScanDiscovery> {}
@@ -101,6 +106,7 @@ impl RunsDiscovery for DiscoveryRunner<NetworkScanDiscovery> {
             subnet_ids: self.domain.subnet_ids.clone(),
             host_naming_fallback: self.domain.host_naming_fallback,
             snmp_credentials: self.domain.snmp_credentials.clone(),
+            probe_raw_socket_ports: self.domain.probe_raw_socket_ports,
         }
     }
 
@@ -578,6 +584,7 @@ impl DiscoveryRunner<NetworkScanDiscovery> {
                                     total_batches.fetch_add(batches_per_host, Ordering::Relaxed);
                                 }
                                 let snmp_credential = self.domain.snmp_credentials.get_credential_for_ip(&ip);
+                                let probe_raw_socket_ports = self.domain.probe_raw_socket_ports;
                                 pending_scans.push(Box::pin(async move {
                                     let result = self
                                         .deep_scan_host(DeepScanParams {
@@ -593,6 +600,7 @@ impl DiscoveryRunner<NetworkScanDiscovery> {
                                             batches_per_host,
                                             snmp_credential,
                                             scan_controller,
+                                            probe_raw_socket_ports,
                                         })
                                         .await;
 
@@ -665,6 +673,7 @@ impl DiscoveryRunner<NetworkScanDiscovery> {
                         let total_batches = total_batches.clone();
                         let snmp_credential = self.domain.snmp_credentials.get_credential_for_ip(&ip);
                         let scan_controller = scan_controller.clone();
+                        let probe_raw_socket_ports = self.domain.probe_raw_socket_ports;
 
                         pending_scans.push(Box::pin(async move {
                             let result = self
@@ -681,6 +690,7 @@ impl DiscoveryRunner<NetworkScanDiscovery> {
                                     batches_per_host,
                                     snmp_credential,
                                     scan_controller,
+                                    probe_raw_socket_ports,
                                 })
                                 .await;
 
@@ -793,6 +803,7 @@ impl DiscoveryRunner<NetworkScanDiscovery> {
             batches_per_host,
             snmp_credential,
             scan_controller,
+            probe_raw_socket_ports,
         } = params;
 
         if cancel.is_cancelled() {
@@ -926,6 +937,7 @@ impl DiscoveryRunner<NetworkScanDiscovery> {
             Some(ports_to_check),
             Some(use_https_ports),
             effective_batch_size,
+            probe_raw_socket_ports,
         )
         .await?;
 
