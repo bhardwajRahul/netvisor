@@ -19,6 +19,7 @@ pub mod networks;
 pub mod openapi;
 pub mod organizations;
 pub mod ports;
+pub mod posthog;
 pub mod services;
 pub mod shared;
 pub mod shares;

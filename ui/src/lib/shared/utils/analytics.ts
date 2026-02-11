@@ -1,9 +1,6 @@
 import posthog from 'posthog-js';
 import { queryClient, queryKeys } from '$lib/api/query-client';
 import type { Organization } from '$lib/features/organizations/types';
-import type { components } from '$lib/api/schema';
-
-type TelemetryOperation = components['schemas']['TelemetryOperation'];
 
 // Event queue for events that fire before PostHog loads
 type QueuedEvent =
@@ -46,15 +43,6 @@ export function isDemo(): boolean {
 }
 
 /**
- * Check if an onboarding operation has already been completed.
- * Used to ensure "first_*" events only fire once.
- */
-export function hasCompletedOnboarding(operation: TelemetryOperation): boolean {
-	const org = queryClient.getQueryData<Organization | null>(queryKeys.organizations.current());
-	return org?.onboarding?.includes(operation) ?? false;
-}
-
-/**
  * Track an analytics event via PostHog.
  * PostHog is already initialized in +layout.svelte, this is just a helper.
  * In demo mode, events are tracked with a demo=true flag.
@@ -71,23 +59,6 @@ export function trackEvent(event: string, properties?: Record<string, unknown>) 
 	} else {
 		eventQueue.push({ type: 'capture', event, properties });
 	}
-}
-
-const ONCE_PREFIX = 'scanopy_tracked_';
-
-/**
- * Track an event only once per browser (persisted via localStorage).
- * Useful for "first_*" milestone events where the backend may have already
- * updated state by the time the frontend detects the condition.
- */
-export function trackEventOnce(event: string, properties?: Record<string, unknown>) {
-	if (typeof localStorage === 'undefined') return;
-
-	const key = `${ONCE_PREFIX}${event}`;
-	if (localStorage.getItem(key)) return;
-
-	trackEvent(event, properties);
-	localStorage.setItem(key, 'true');
 }
 
 /**

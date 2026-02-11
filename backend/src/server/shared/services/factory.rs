@@ -18,6 +18,7 @@ use crate::server::{
     networks::service::NetworkService,
     organizations::service::OrganizationService,
     ports::service::PortService,
+    posthog::PosthogService,
     services::service::ServiceService,
     shared::{events::bus::EventBus, storage::factory::StorageFactory},
     shares::service::ShareService,
@@ -61,6 +62,7 @@ pub struct ServiceFactory {
     pub billing_service: Option<Arc<BillingService>>,
     pub email_service: Option<Arc<EmailService>>,
     pub brevo_service: Option<Arc<BrevoService>>,
+    pub posthog_service: Option<Arc<PosthogService>>,
     pub event_bus: Arc<EventBus>,
     pub logging_service: Arc<LoggingService>,
     pub metrics_service: Arc<MetricsService>,
@@ -315,6 +317,16 @@ impl ServiceFactory {
             })
         });
 
+        // Create PostHog service if API key is configured
+        let posthog_service =
+            if let Some(posthog_key) = config.as_ref().and_then(|c| c.posthog_key.clone()) {
+                Some(Arc::new(
+                    PosthogService::new(posthog_key, "https://ph.scanopy.net".to_string()).await,
+                ))
+            } else {
+                None
+            };
+
         let oidc_service = config.and_then(|c| {
             if let Some(oidc_providers) = c.oidc_providers {
                 return Some(Arc::new(OidcService::new(
@@ -348,6 +360,10 @@ impl ServiceFactory {
             event_bus.register_subscriber(brevo_service).await;
         }
 
+        if let Some(posthog_service) = posthog_service.clone() {
+            event_bus.register_subscriber(posthog_service).await;
+        }
+
         event_bus.register_subscriber(daemon_service.clone()).await;
 
         Ok(Self {
@@ -371,6 +387,7 @@ impl ServiceFactory {
             billing_service,
             email_service,
             brevo_service,
+            posthog_service,
             event_bus,
             logging_service,
             metrics_service,
