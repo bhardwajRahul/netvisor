@@ -1467,6 +1467,8 @@ impl BillingService {
             .as_ref()
             .is_some_and(|s| s == "trialing");
         let customer_id = organization.base.stripe_customer_id.clone();
+        let (cancel_reason_code, cancel_feedback, cancel_comment) =
+            extract_cancellation_details(sub.cancellation_details.as_ref());
 
         let free_plan = get_free_plan();
         organization.base.plan = Some(free_plan);
@@ -1502,6 +1504,9 @@ impl BillingService {
                 was_trialing,
                 free_plan,
                 cancelled_plan,
+                cancel_reason_code,
+                cancel_feedback,
+                cancel_comment,
                 organization_service,
                 user_service,
                 invite_service,
@@ -1534,6 +1539,9 @@ impl BillingService {
         was_trialing: bool,
         free_plan: BillingPlan,
         cancelled_plan: Option<BillingPlan>,
+        cancel_reason_code: Option<&'static str>,
+        cancel_feedback: Option<&'static str>,
+        cancel_comment: Option<String>,
         organization_service: Arc<OrganizationService>,
         user_service: Arc<UserService>,
         invite_service: Arc<InviteService>,
@@ -1591,6 +1599,9 @@ impl BillingService {
                         "subscription_status": "cancelled",
                         "plan_name": &cancelled_plan_name,
                         "org_id": org_id.to_string(),
+                        "cancel_reason_code": cancel_reason_code,
+                        "cancel_feedback": cancel_feedback,
+                        "cancel_comment": cancel_comment,
                     }),
                 ))
                 .await?;
@@ -2100,6 +2111,15 @@ impl BillingService {
     }
 }
 
+fn extract_cancellation_details(
+    details: Option<&stripe_billing::CancellationDetails>,
+) -> (Option<&'static str>, Option<&'static str>, Option<String>) {
+    let reason = details.and_then(|d| d.reason).map(|r| r.as_str());
+    let feedback = details.and_then(|d| d.feedback).map(|f| f.as_str());
+    let comment = details.and_then(|d| d.comment.clone());
+    (reason, feedback, comment)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2186,5 +2206,40 @@ mod tests {
     fn paid_no_status_is_not_active() {
         let org = org_with(Some(pro_plan()), None);
         assert!(!BillingService::has_active_paid_subscription(&org));
+    }
+
+    #[test]
+    fn extract_cancellation_details_none_input() {
+        assert_eq!(extract_cancellation_details(None), (None, None, None));
+    }
+
+    #[test]
+    fn extract_cancellation_details_all_inner_none() {
+        let details = stripe_billing::CancellationDetails {
+            comment: None,
+            feedback: None,
+            reason: None,
+        };
+        assert_eq!(
+            extract_cancellation_details(Some(&details)),
+            (None, None, None)
+        );
+    }
+
+    #[test]
+    fn extract_cancellation_details_fully_populated() {
+        let details = stripe_billing::CancellationDetails {
+            comment: Some("too pricey for our team".to_string()),
+            feedback: Some(stripe_billing::CancellationDetailsFeedback::TooExpensive),
+            reason: Some(stripe_billing::CancellationDetailsReason::CancellationRequested),
+        };
+        assert_eq!(
+            extract_cancellation_details(Some(&details)),
+            (
+                Some("cancellation_requested"),
+                Some("too_expensive"),
+                Some("too pricey for our team".to_string()),
+            )
+        );
     }
 }
