@@ -694,6 +694,7 @@
 		triggerUpgrade({
 			feature,
 			source: 'export_modal',
+			surface: 'export_modal',
 			beforeModal: () => {
 				isOpen = false;
 			}

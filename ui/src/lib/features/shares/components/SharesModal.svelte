@@ -258,7 +258,7 @@
 	{#if !hasShareViews}
 		<div class="flex min-h-0 flex-1 flex-col items-center justify-center p-6">
 			<EmptyState title={shares_noSharesYet()} subtitle={shares_noSharesSubtitle()}>
-				<UpgradeButton feature="share_views" />
+				<UpgradeButton feature="share_views" surface="shares_modal" />
 			</EmptyState>
 		</div>
 	{:else}

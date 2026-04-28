@@ -5,7 +5,11 @@
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
 	import { isBillingPlanActive } from '$lib/features/organizations/types';
 	import { billingPlans } from '$lib/shared/stores/metadata';
-	import { trackEvent, storeEventForAfterRedirect } from '$lib/shared/utils/analytics';
+	import {
+		trackEvent,
+		storeEventForAfterRedirect,
+		trackOncePerSession
+	} from '$lib/shared/utils/analytics';
 	import {
 		useCustomerPortalMutation,
 		useSetupPaymentMethodMutation
@@ -135,6 +139,16 @@
 		}
 	});
 
+	// Trial-card impression: once per browser tab session
+	$effect(() => {
+		if (org?.plan_status === 'trialing' && trialDaysLeft !== null && !hasPaymentMethod) {
+			trackOncePerSession('trial_card_impression', 'trial_card_impression', {
+				trial_days_left: trialDaysLeft,
+				has_payment_method: hasPaymentMethod
+			});
+		}
+	});
+
 	async function handleManageSubscription() {
 		storeEventForAfterRedirect('billing_portal_opened', { plan_type: org?.plan?.type });
 		try {
@@ -148,6 +162,10 @@
 	}
 
 	async function handleSetupPayment() {
+		trackEvent('trial_card_cta_clicked', {
+			trial_days_left: trialDaysLeft,
+			has_payment_method: hasPaymentMethod
+		});
 		storeEventForAfterRedirect('payment_method_setup_initiated', {
 			plan_status: org?.plan_status,
 			trial_days_left: trialDaysLeft
@@ -169,7 +187,14 @@
 			<div class="space-y-6">
 				<!-- Trial Countdown (shown above current plan when trialing without payment) -->
 				{#if org.plan_status === 'trialing' && trialDaysLeft !== null && !hasPaymentMethod}
-					<InfoCard>
+					<InfoCard
+						dismissableKey="trial_card_dismissed"
+						onDismiss={() =>
+							trackEvent('trial_card_dismissed', {
+								trial_days_left: trialDaysLeft,
+								has_payment_method: hasPaymentMethod
+							})}
+					>
 						<div class="flex items-center justify-between">
 							<div class="flex items-center gap-3">
 								<AlertTriangle class="h-5 w-5 text-amber-500" />
@@ -381,6 +406,7 @@
 							onclick={() =>
 								triggerUpgrade({
 									source: 'settings_billing',
+									surface: 'billing_tab',
 									reopenSettings: true,
 									beforeModal: () => onClose()
 								})}

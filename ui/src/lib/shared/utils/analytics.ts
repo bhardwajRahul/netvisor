@@ -119,6 +119,26 @@ export function resetIdentity() {
 }
 
 /**
+ * Fire `event` at most once per browser tab session, keyed by `key`.
+ * Backed by sessionStorage; survives reloads in the same tab, resets on new tabs.
+ */
+const ONCE_PER_SESSION_PREFIX = 'analytics_seen:';
+export function trackOncePerSession(
+	event: string,
+	key: string,
+	properties?: Record<string, unknown>
+) {
+	if (typeof sessionStorage === 'undefined') {
+		trackEvent(event, properties);
+		return;
+	}
+	const sessionKey = ONCE_PER_SESSION_PREFIX + key;
+	if (sessionStorage.getItem(sessionKey)) return;
+	sessionStorage.setItem(sessionKey, '1');
+	trackEvent(event, properties);
+}
+
+/**
  * Store an event in sessionStorage to be flushed after a page redirect.
  * Use this instead of trackEvent() when a hard navigation (window.location.href)
  * follows immediately — PostHog batches capture() calls, and the redirect

@@ -751,7 +751,7 @@
 						class="{baseClasses} text-amber-400 hover:bg-amber-500/10"
 						style="height: 2rem; padding: 0.375rem 0.75rem;"
 						title={collapsed ? common_upgrade() : ''}
-						onclick={() => triggerUpgrade({ source: 'sidebar' })}
+						onclick={() => triggerUpgrade({ source: 'sidebar', surface: 'sidebar' })}
 					>
 						<ArrowUpCircle class="h-4 w-4 flex-shrink-0" />
 						{#if !collapsed}

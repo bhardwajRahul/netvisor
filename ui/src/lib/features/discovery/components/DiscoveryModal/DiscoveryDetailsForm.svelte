@@ -185,7 +185,11 @@
 				options={runTypeOptions}
 				onSelect={(value) => field.handleChange(value)}
 				onDisabledClick={() =>
-					triggerUpgrade({ feature: 'scheduled_discovery', source: 'discovery_form' })}
+					triggerUpgrade({
+						feature: 'scheduled_discovery',
+						source: 'discovery_form',
+						surface: 'discovery_form'
+					})}
 				displayComponent={SimpleOptionDisplay}
 				disabled={readOnly}
 			/>
