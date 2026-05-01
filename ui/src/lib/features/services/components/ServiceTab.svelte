@@ -36,7 +36,7 @@
 	import { serviceDefinitions } from '$lib/shared/stores/metadata';
 	import { hasDaemon } from '$lib/shared/onboarding/checklist';
 
-	type OnboardingOperation = components['schemas']['OnboardingOperation'];
+	type OnboardingOperation = components['schemas']['OnboardingOperationDiscriminants'];
 	type ServiceOrderField = components['schemas']['ServiceOrderField'];
 	type OrderDirection = components['schemas']['OrderDirection'];
 

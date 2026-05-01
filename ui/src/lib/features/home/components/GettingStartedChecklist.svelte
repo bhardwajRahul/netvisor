@@ -46,7 +46,7 @@
 		gettingStarted_whileYouWait
 	} from '$lib/paraglide/messages';
 
-	type OnboardingOperation = components['schemas']['OnboardingOperation'];
+	type OnboardingOperation = components['schemas']['OnboardingOperationDiscriminants'];
 
 	let {
 		onboarding,

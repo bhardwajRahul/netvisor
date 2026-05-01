@@ -19,7 +19,7 @@
 	import { openModal } from '$lib/shared/stores/modal-registry';
 	import { useConfigQuery, isCloud } from '$lib/shared/stores/config-query';
 	import { home_demoEmbedTitle, home_demoEmbedSubtitle } from '$lib/paraglide/messages';
-	type OnboardingOperation = components['schemas']['OnboardingOperation'];
+	type OnboardingOperation = components['schemas']['OnboardingOperationDiscriminants'];
 
 	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	let { isReadOnly = false, isActive = false }: TabProps = $props();

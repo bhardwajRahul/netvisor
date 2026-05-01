@@ -196,7 +196,7 @@
 	}));
 	let viewColorStyle = $derived(views.getColorHelper($activeView));
 
-	type OnboardingOperation = components['schemas']['OnboardingOperation'];
+	type OnboardingOperation = components['schemas']['OnboardingOperationDiscriminants'];
 	let onboarding = $derived((organizationQuery.data?.onboarding ?? []) as OnboardingOperation[]);
 	let hasCompletedFirstDiscovery = $derived(
 		onboarding.length === 0 || onboarding.includes('FirstDiscoveryCompleted')

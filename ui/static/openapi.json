@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Scanopy API",
-    "description": "\nNetwork topology discovery and visualization API.\n\n## Authentication\n\nTwo authentication methods are supported:\n\n| Method | Header | Use Case |\n|--------|--------|----------|\n| User API key | `Authorization: Bearer scp_u_...` | Programmatic access, integrations |\n| Session cookie | `Cookie: session_id=...` | Web UI (via `/api/auth/login`) |\n\nUser API keys require your organization to have API access enabled. Create keys at **Platform > API Keys**.\n\n## Rate Limiting\n\nLimit: 300 requests/minute\n\nBurst: 150\n\nResponse headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`\n\nWhen rate limited, you'll receive HTTP `429 Too Many Requests` with a `Retry-After` header.\n\n## Pagination\n\nList endpoints support pagination via query parameters:\n\n| Parameter | Type | Default | Description |\n|-----------|------|---------|-------------|\n| `limit` | integer | 50 | Maximum results to return (1-1000). Use 0 for no limit. |\n| `offset` | integer | 0 | Number of results to skip |\n\nExample: `GET /api/v1/hosts?limit=10&offset=20`\n\n## Response Format\n\nAll responses use a standard envelope:\n\n```json\n{\n  \"success\": true,\n  \"data\": { ... },\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.16.1\"\n  }\n}\n```\n\n**Paginated list responses** include pagination metadata:\n\n```json\n{\n  \"success\": true,\n  \"data\": [ ... ],\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.16.1\",\n    \"pagination\": {\n      \"total_count\": 142,\n      \"limit\": 50,\n      \"offset\": 0,\n      \"has_more\": true\n    }\n  }\n}\n```\n\n| Field | Description |\n|-------|-------------|\n| `total_count` | Total items matching your query (ignoring pagination) |\n| `limit` | Applied limit (your request or default) |\n| `offset` | Applied offset |\n| `has_more` | `true` if more results exist beyond this page |\n\n**Error responses** include an `error` field instead of `data`:\n\n```json\n{\n  \"success\": false,\n  \"error\": \"Resource not found\",\n  \"meta\": { ... }\n}\n```\n\n**Common status codes:** `400` validation error, `401` unauthorized, `403` forbidden, `404` not found, `409` conflict, `429` rate limited.\n\n## Versioning\n\nEndpoints are prefixed with `/api/v1/`. The API version is an integer (`api_version: 1`) returned in every response, versioned independently from the application. Check `GET /api/version` for current versions.\n\n**While Scanopy is pre-v1.0 (current: 0.16.1)**, the API should be considered unstable. Breaking changes may be introduced in any release without incrementing the API version. We recommend pinning to a specific Scanopy release if you depend on API stability, and reviewing the [changelog](/changelog) before upgrading. After Scanopy reaches v1.0, breaking API changes will only occur with an API version increment.\n\n## Multi-Tenancy\n\nResources are scoped to your **organization** and **network(s)**:\n\n- You can only access entities within your organization\n- Network-level entities (hosts, services, etc.) are filtered to networks you have access to\n- Use `?network_id=<UUID>` to filter list endpoints to a specific network\n- API keys can be scoped to a subset of your accessible networks\n",
+    "description": "\nNetwork topology discovery and visualization API.\n\n## Authentication\n\nTwo authentication methods are supported:\n\n| Method | Header | Use Case |\n|--------|--------|----------|\n| User API key | `Authorization: Bearer scp_u_...` | Programmatic access, integrations |\n| Session cookie | `Cookie: session_id=...` | Web UI (via `/api/auth/login`) |\n\nUser API keys require your organization to have API access enabled. Create keys at **Platform > API Keys**.\n\n## Rate Limiting\n\nLimit: 300 requests/minute\n\nBurst: 150\n\nResponse headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`\n\nWhen rate limited, you'll receive HTTP `429 Too Many Requests` with a `Retry-After` header.\n\n## Pagination\n\nList endpoints support pagination via query parameters:\n\n| Parameter | Type | Default | Description |\n|-----------|------|---------|-------------|\n| `limit` | integer | 50 | Maximum results to return (1-1000). Use 0 for no limit. |\n| `offset` | integer | 0 | Number of results to skip |\n\nExample: `GET /api/v1/hosts?limit=10&offset=20`\n\n## Response Format\n\nAll responses use a standard envelope:\n\n```json\n{\n  \"success\": true,\n  \"data\": { ... },\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.16.2\"\n  }\n}\n```\n\n**Paginated list responses** include pagination metadata:\n\n```json\n{\n  \"success\": true,\n  \"data\": [ ... ],\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.16.2\",\n    \"pagination\": {\n      \"total_count\": 142,\n      \"limit\": 50,\n      \"offset\": 0,\n      \"has_more\": true\n    }\n  }\n}\n```\n\n| Field | Description |\n|-------|-------------|\n| `total_count` | Total items matching your query (ignoring pagination) |\n| `limit` | Applied limit (your request or default) |\n| `offset` | Applied offset |\n| `has_more` | `true` if more results exist beyond this page |\n\n**Error responses** include an `error` field instead of `data`:\n\n```json\n{\n  \"success\": false,\n  \"error\": \"Resource not found\",\n  \"meta\": { ... }\n}\n```\n\n**Common status codes:** `400` validation error, `401` unauthorized, `403` forbidden, `404` not found, `409` conflict, `429` rate limited.\n\n## Versioning\n\nEndpoints are prefixed with `/api/v1/`. The API version is an integer (`api_version: 1`) returned in every response, versioned independently from the application. Check `GET /api/version` for current versions.\n\n**While Scanopy is pre-v1.0 (current: 0.16.2)**, the API should be considered unstable. Breaking changes may be introduced in any release without incrementing the API version. We recommend pinning to a specific Scanopy release if you depend on API stability, and reviewing the [changelog](/changelog) before upgrading. After Scanopy reaches v1.0, breaking API changes will only occur with an API version increment.\n\n## Multi-Tenancy\n\nResources are scoped to your **organization** and **network(s)**:\n\n- You can only access entities within your organization\n- Network-level entities (hosts, services, etc.) are filtered to networks you have access to\n- Use `?network_id=<UUID>` to filter list endpoints to a specific network\n- API keys can be scoped to a subset of your accessible networks\n",
     "license": {
       "name": "Dual (AGPL3.0, Commercial License Available)"
     },
@@ -638,6 +638,98 @@
         }
       }
     },
+    "/api/billing/cancel": {
+      "post": {
+        "tags": [
+          "billing",
+          "internal"
+        ],
+        "summary": "Cancel subscription",
+        "description": "In-app cancel modal endpoint. Sets Stripe `cancel_at_period_end`, stashes\nthe canonical Scanopy reason in subscription metadata, returns the period\nend so the modal can render the retention disclosure.",
+        "operationId": "cancel_subscription",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelSubscriptionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Cancellation initiated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_CancelSubscriptionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "No active subscription or billing not enabled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "user_api_key": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/billing/cancel/apply-discount": {
+      "post": {
+        "tags": [
+          "billing",
+          "internal"
+        ],
+        "summary": "Apply the discount save offer",
+        "description": "Applies the configured Stripe coupon to the subscription. Returns 400\nwhen `STRIPE_SAVE_OFFER_COUPON_ID` is unset.",
+        "operationId": "apply_discount_save_offer",
+        "responses": {
+          "200": {
+            "description": "Discount applied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_String"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Discount not configured or billing not enabled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "user_api_key": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
     "/api/billing/change-plan": {
       "post": {
         "tags": [
@@ -790,6 +882,46 @@
         ]
       }
     },
+    "/api/billing/extend-trial": {
+      "post": {
+        "tags": [
+          "billing",
+          "internal"
+        ],
+        "summary": "Self-serve trial extend (+7 days, once per org lifetime)",
+        "operationId": "extend_trial",
+        "responses": {
+          "200": {
+            "description": "Trial extended",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_String"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Ineligible or billing not enabled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "user_api_key": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
     "/api/billing/inquiry": {
       "post": {
         "tags": [
@@ -832,6 +964,57 @@
           },
           "401": {
             "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "user_api_key": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/billing/pause": {
+      "post": {
+        "tags": [
+          "billing",
+          "internal"
+        ],
+        "summary": "Pause subscription billing",
+        "description": "Pauses billing for a 30/60/90 day window. Eligibility: rolling 6-month\ncooldown anchored on the org's `last_paused_at`.",
+        "operationId": "pause_subscription",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PauseSubscriptionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Subscription paused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_String"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Ineligible or billing not enabled",
             "content": {
               "application/json": {
                 "schema": {
@@ -922,6 +1105,47 @@
           },
           "400": {
             "description": "Billing not enabled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "user_api_key": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/billing/resume": {
+      "post": {
+        "tags": [
+          "billing",
+          "internal"
+        ],
+        "summary": "Resume a paused subscription",
+        "description": "Clears Stripe pause collection and re-activates billing. Available while\n`plan_status === 'paused'`.",
+        "operationId": "resume_subscription",
+        "responses": {
+          "200": {
+            "description": "Subscription resumed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_String"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "No paused subscription or billing not enabled",
             "content": {
               "application/json": {
                 "schema": {
@@ -13037,12 +13261,12 @@
           "server_version": {
             "type": "string",
             "description": "Server version (semver)",
-            "example": "0.16.1"
+            "example": "0.16.2"
           }
         },
         "example": {
           "api_version": 1,
-          "server_version": "0.16.1"
+          "server_version": "0.16.2"
         }
       },
       "ApiResponse": {
@@ -13116,14 +13340,14 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-04-22T15:57:37.855455Z",
-              "id": "884790f4-3e17-4623-a93a-8a9928de57f7",
+              "created_at": "2026-05-01T19:08:39.709697Z",
+              "id": "100ce23b-6c43-44c4-8c99-171396c38567",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-04-22T15:57:37.855455Z"
+              "updated_at": "2026-05-01T19:08:39.709697Z"
             }
           },
           "error": {
@@ -13196,6 +13420,39 @@
                 "type": "integer",
                 "description": "Number of entities affected",
                 "minimum": 0
+              }
+            }
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ApiMeta"
+          },
+          "success": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ApiResponse_CancelSubscriptionResponse": {
+        "type": "object",
+        "required": [
+          "success",
+          "meta"
+        ],
+        "properties": {
+          "data": {
+            "type": "object",
+            "required": [
+              "period_end"
+            ],
+            "properties": {
+              "period_end": {
+                "type": "string",
+                "format": "date-time"
               }
             }
           },
@@ -14022,14 +14279,14 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-04-22T15:57:37.842909Z",
-                      "id": "00326136-141c-4cc4-bd84-88a80e4cd640",
+                      "created_at": "2026-05-01T19:08:39.689822Z",
+                      "id": "4327080e-4c44-4c2d-8f03-386571f5c39e",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-04-22T15:57:37.842909Z"
+                      "updated_at": "2026-05-01T19:08:39.689822Z"
                     }
                   ],
                   "created_at": "2026-01-15T10:30:00Z",
@@ -14038,7 +14295,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Portainer",
+                  "service_definition": "Plex Media Server",
                   "source": {
                     "type": "Manual"
                   },
@@ -14347,11 +14604,15 @@
                 "description": "Current onboarding step (if any)"
               },
               "use_case": {
-                "type": [
-                  "string",
-                  "null"
-                ],
-                "description": "Use case selection (homelab, company, msp)"
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/UseCase",
+                    "description": "Use case selection (homelab, company, msp)"
+                  }
+                ]
               }
             }
           },
@@ -14774,14 +15035,14 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-04-22T15:57:37.851712Z",
-                  "id": "c6fccd0d-a3b0-42cd-a038-5354a135769b",
+                  "created_at": "2026-05-01T19:08:39.703750Z",
+                  "id": "ff0382bf-5e5a-435f-b5b5-07116ed160ce",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-04-22T15:57:37.851712Z"
+                  "updated_at": "2026-05-01T19:08:39.703750Z"
                 }
               ],
               "created_at": "2026-01-15T10:30:00Z",
@@ -14790,7 +15051,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Portainer",
+              "service_definition": "Plex Media Server",
               "source": {
                 "type": "Manual"
               },
@@ -16169,14 +16430,14 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-04-22T15:57:37.843118Z",
-          "id": "1aa2632c-fd09-40b1-b2fa-94a09ab2befb",
+          "created_at": "2026-05-01T19:08:39.690239Z",
+          "id": "d4f17a47-8bee-4567-90eb-1c57731a8ed5",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-04-22T15:57:37.843118Z"
+          "updated_at": "2026-05-01T19:08:39.690239Z"
         }
       },
       "BindingBase": {
@@ -16383,6 +16644,65 @@
             "type": "integer",
             "description": "Number of entities affected",
             "minimum": 0
+          }
+        }
+      },
+      "CancelReason": {
+        "type": "string",
+        "description": "Cancellation reason captured in `SubscriptionCancelled` /\n`CancellationInitiated` events. Mirrors the values surfaced in the\nin-app cancel flow (Phase 5).",
+        "enum": [
+          "too_expensive",
+          "missing_features",
+          "switched_service",
+          "unused",
+          "customer_service",
+          "low_quality",
+          "too_complex",
+          "other"
+        ]
+      },
+      "CancelSubscriptionRequest": {
+        "type": "object",
+        "required": [
+          "reason_code"
+        ],
+        "properties": {
+          "comment": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reason_code": {
+            "$ref": "#/components/schemas/CancelReason"
+          },
+          "save_offer_redeemed": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SaveOffer"
+              }
+            ]
+          },
+          "save_offer_shown": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SaveOffer"
+            }
+          }
+        }
+      },
+      "CancelSubscriptionResponse": {
+        "type": "object",
+        "required": [
+          "period_end"
+        ],
+        "properties": {
+          "period_end": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       },
@@ -16706,7 +17026,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Portainer",
+              "service_definition": "Plex Media Server",
               "tags": [],
               "virtualization": null
             }
@@ -19230,14 +19550,14 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-04-22T15:57:37.842617Z",
-                  "id": "5dcf3f92-04de-4250-8a9f-69b634017f58",
+                  "created_at": "2026-05-01T19:08:39.689261Z",
+                  "id": "8f577b55-9801-4d3c-8680-fed2f833deba",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-04-22T15:57:37.842617Z"
+                  "updated_at": "2026-05-01T19:08:39.689261Z"
                 }
               ],
               "created_at": "2026-01-15T10:30:00Z",
@@ -19246,7 +19566,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Portainer",
+              "service_definition": "Plex Media Server",
               "source": {
                 "type": "Manual"
               },
@@ -20826,7 +21146,7 @@
           }
         }
       },
-      "OnboardingOperation": {
+      "OnboardingOperationDiscriminants": {
         "type": "string",
         "enum": [
           "OrgCreated",
@@ -20887,11 +21207,15 @@
             "description": "Current onboarding step (if any)"
           },
           "use_case": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Use case selection (homelab, company, msp)"
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/UseCase",
+                "description": "Use case selection (homelab, company, msp)"
+              }
+            ]
           }
         }
       },
@@ -20902,29 +21226,19 @@
           "step"
         ],
         "properties": {
-          "referral_source": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Referral source (how they heard about Scanopy)"
-          },
-          "referral_source_other": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Free-text referral source (when \"other\" is selected)"
-          },
           "step": {
             "type": "string"
           },
           "use_case": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Use case selection (homelab, company, msp)"
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/UseCase",
+                "description": "Use case selection (homelab, company, msp)"
+              }
+            ]
           }
         }
       },
@@ -20981,13 +21295,42 @@
             "type": "boolean",
             "readOnly": true
           },
+          "last_downgrade_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Most recent downgrade event timestamp (paid→cheaper, or paid→cancelled);\npowers the 14-day downgrade banner.",
+            "readOnly": true
+          },
+          "last_downgrade_from_plan": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/BillingPlan",
+                "description": "Plan downgraded from at `last_downgrade_at`; pairs with the timestamp\nso the banner can render \"you downgraded from Pro\"."
+              }
+            ]
+          },
+          "last_paused_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Most recent `Paused` billing event's timestamp; powers the 6-month\nrolling pause cooldown.",
+            "readOnly": true
+          },
           "name": {
             "type": "string"
           },
           "onboarding": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/OnboardingOperation"
+              "$ref": "#/components/schemas/OnboardingOperationDiscriminants"
             }
           },
           "plan": {
@@ -21013,6 +21356,11 @@
               "null"
             ],
             "format": "date-time",
+            "readOnly": true
+          },
+          "trial_extended_used": {
+            "type": "boolean",
+            "description": "Whether the org has used its one-time trial-extend perk.",
             "readOnly": true
           },
           "use_case": {
@@ -21043,7 +21391,7 @@
           "server_version": {
             "type": "string",
             "description": "Server version (semver)",
-            "example": "0.16.1"
+            "example": "0.16.2"
           }
         },
         "example": {
@@ -21054,7 +21402,7 @@
             "offset": 0,
             "total_count": 142
           },
-          "server_version": "0.16.1"
+          "server_version": "0.16.2"
         }
       },
       "PaginatedApiResponse_Credential": {
@@ -21473,14 +21821,14 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-04-22T15:57:37.836277Z",
-                        "id": "304f4abd-1864-4b3f-9bee-2595b8ecb429",
+                        "created_at": "2026-05-01T19:08:39.676274Z",
+                        "id": "db3d1689-8aee-4c6a-ab3d-da38d3ae165c",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-04-22T15:57:37.836277Z"
+                        "updated_at": "2026-05-01T19:08:39.676274Z"
                       }
                     ],
                     "created_at": "2026-01-15T10:30:00Z",
@@ -21489,7 +21837,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Portainer",
+                    "service_definition": "Plex Media Server",
                     "source": {
                       "type": "Manual"
                     },
@@ -21566,14 +21914,14 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-04-22T15:57:37.850695Z",
-                    "id": "31679246-99e8-452c-9ddf-2dbdf87e9182",
+                    "created_at": "2026-05-01T19:08:39.702272Z",
+                    "id": "af4503ba-959b-44ae-9f81-d8b6ca4f5903",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-04-22T15:57:37.850695Z"
+                    "updated_at": "2026-05-01T19:08:39.702272Z"
                   }
                 ],
                 "created_at": "2026-01-15T10:30:00Z",
@@ -21582,7 +21930,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Portainer",
+                "service_definition": "Plex Media Server",
                 "source": {
                   "type": "Manual"
                 },
@@ -22039,6 +22387,26 @@
             "format": "int32",
             "description": "Number of results to skip. Default: 0.",
             "minimum": 0
+          }
+        }
+      },
+      "PauseDuration": {
+        "type": "string",
+        "description": "Pause subscription duration. The cancel modal's `RadioGroup` posts\none of these enum variants verbatim — no integer parsing at the API\nboundary, the type is the contract.",
+        "enum": [
+          "days30",
+          "days60",
+          "days90"
+        ]
+      },
+      "PauseSubscriptionRequest": {
+        "type": "object",
+        "required": [
+          "duration_days"
+        ],
+        "properties": {
+          "duration_days": {
+            "$ref": "#/components/schemas/PauseDuration"
           }
         }
       },
@@ -22662,6 +23030,15 @@
           }
         ]
       },
+      "SaveOffer": {
+        "type": "string",
+        "description": "Save-offer choices presented during in-app cancellation (Phase 5).",
+        "enum": [
+          "pause",
+          "discount",
+          "downgrade"
+        ]
+      },
       "ScanSettings": {
         "type": "object",
         "description": "Scan performance settings. Lives on the discovery entity.\nNumeric fields are `Option<T>` — `None` means \"use daemon default\".\nThe daemon unwraps with defaults at point of use.",
@@ -22833,14 +23210,14 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-04-22T15:57:37.843045Z",
-              "id": "30177052-1c1c-4ab1-9772-5b24bafe1534",
+              "created_at": "2026-05-01T19:08:39.690100Z",
+              "id": "60400722-8ff8-4563-9ca9-258520ce6ba0",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-04-22T15:57:37.843045Z"
+              "updated_at": "2026-05-01T19:08:39.690100Z"
             }
           ],
           "created_at": "2026-01-15T10:30:00Z",
@@ -22849,7 +23226,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Portainer",
+          "service_definition": "Plex Media Server",
           "source": {
             "type": "Manual"
           },

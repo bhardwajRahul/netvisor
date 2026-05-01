@@ -242,6 +242,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/billing/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel subscription
+         * @description In-app cancel modal endpoint. Sets Stripe `cancel_at_period_end`, stashes
+         *     the canonical Scanopy reason in subscription metadata, returns the period
+         *     end so the modal can render the retention disclosure.
+         */
+        post: operations["cancel_subscription"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/billing/cancel/apply-discount": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply the discount save offer
+         * @description Applies the configured Stripe coupon to the subscription. Returns 400
+         *     when `STRIPE_SAVE_OFFER_COUPON_ID` is unset.
+         */
+        post: operations["apply_discount_save_offer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/billing/change-plan": {
         parameters: {
             query?: never;
@@ -296,6 +339,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/billing/extend-trial": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Self-serve trial extend (+7 days, once per org lifetime) */
+        post: operations["extend_trial"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/billing/inquiry": {
         parameters: {
             query?: never;
@@ -312,6 +372,27 @@ export interface paths {
          *     link the inquiry to an organization.
          */
         post: operations["submit_enterprise_inquiry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/billing/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pause subscription billing
+         * @description Pauses billing for a 30/60/90 day window. Eligibility: rolling 6-month
+         *     cooldown anchored on the org's `last_paused_at`.
+         */
+        post: operations["pause_subscription"];
         delete?: never;
         options?: never;
         head?: never;
@@ -346,6 +427,27 @@ export interface paths {
         put?: never;
         /** Create a billing portal session */
         post: operations["create_portal_session"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/billing/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume a paused subscription
+         * @description Clears Stripe pause collection and re-activates billing. Available while
+         *     `plan_status === 'paused'`.
+         */
+        post: operations["resume_subscription"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2943,7 +3045,7 @@ export interface components {
          * @description API metadata included in all responses
          * @example {
          *       "api_version": 1,
-         *       "server_version": "0.16.1"
+         *       "server_version": "0.16.2"
          *     }
          */
         ApiMeta: {
@@ -2954,7 +3056,7 @@ export interface components {
             api_version: number;
             /**
              * @description Server version (semver)
-             * @example 0.16.1
+             * @example 0.16.2
              */
             server_version: string;
         };
@@ -2968,14 +3070,14 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-04-22T15:57:37.855455Z",
-             *       "id": "884790f4-3e17-4623-a93a-8a9928de57f7",
+             *       "created_at": "2026-05-01T19:08:39.709697Z",
+             *       "id": "100ce23b-6c43-44c4-8c99-171396c38567",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-04-22T15:57:37.855455Z"
+             *       "updated_at": "2026-05-01T19:08:39.709697Z"
              *     }
              */
             data?: components["schemas"]["BindingBase"] & {
@@ -3004,6 +3106,15 @@ export interface components {
             data?: {
                 /** @description Number of entities affected */
                 affected_count: number;
+            };
+            error?: string | null;
+            meta: components["schemas"]["ApiMeta"];
+            success: boolean;
+        };
+        ApiResponse_CancelSubscriptionResponse: {
+            data?: {
+                /** Format: date-time */
+                period_end: string;
             };
             error?: string | null;
             meta: components["schemas"]["ApiMeta"];
@@ -3262,14 +3373,14 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-04-22T15:57:37.842909Z",
-             *               "id": "00326136-141c-4cc4-bd84-88a80e4cd640",
+             *               "created_at": "2026-05-01T19:08:39.689822Z",
+             *               "id": "4327080e-4c44-4c2d-8f03-386571f5c39e",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-04-22T15:57:37.842909Z"
+             *               "updated_at": "2026-05-01T19:08:39.689822Z"
              *             }
              *           ],
              *           "created_at": "2026-01-15T10:30:00Z",
@@ -3278,7 +3389,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Portainer",
+             *           "service_definition": "Plex Media Server",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3418,8 +3529,7 @@ export interface components {
                 org_name?: string | null;
                 /** @description Current onboarding step (if any) */
                 step?: string | null;
-                /** @description Use case selection (homelab, company, msp) */
-                use_case?: string | null;
+                use_case?: null | components["schemas"]["UseCase"];
             };
             error?: string | null;
             meta: components["schemas"]["ApiMeta"];
@@ -3557,14 +3667,14 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-04-22T15:57:37.851712Z",
-             *           "id": "c6fccd0d-a3b0-42cd-a038-5354a135769b",
+             *           "created_at": "2026-05-01T19:08:39.703750Z",
+             *           "id": "ff0382bf-5e5a-435f-b5b5-07116ed160ce",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-04-22T15:57:37.851712Z"
+             *           "updated_at": "2026-05-01T19:08:39.703750Z"
              *         }
              *       ],
              *       "created_at": "2026-01-15T10:30:00Z",
@@ -3573,7 +3683,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Portainer",
+             *       "service_definition": "Plex Media Server",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -3934,14 +4044,14 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-04-22T15:57:37.843118Z",
-         *       "id": "1aa2632c-fd09-40b1-b2fa-94a09ab2befb",
+         *       "created_at": "2026-05-01T19:08:39.690239Z",
+         *       "id": "d4f17a47-8bee-4567-90eb-1c57731a8ed5",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-04-22T15:57:37.843118Z"
+         *       "updated_at": "2026-05-01T19:08:39.690239Z"
          *     }
          */
         Binding: components["schemas"]["BindingBase"] & {
@@ -4041,6 +4151,23 @@ export interface components {
             /** @description Number of entities affected */
             affected_count: number;
         };
+        /**
+         * @description Cancellation reason captured in `SubscriptionCancelled` /
+         *     `CancellationInitiated` events. Mirrors the values surfaced in the
+         *     in-app cancel flow (Phase 5).
+         * @enum {string}
+         */
+        CancelReason: "too_expensive" | "missing_features" | "switched_service" | "unused" | "customer_service" | "low_quality" | "too_complex" | "other";
+        CancelSubscriptionRequest: {
+            comment?: string | null;
+            reason_code: components["schemas"]["CancelReason"];
+            save_offer_redeemed?: null | components["schemas"]["SaveOffer"];
+            save_offer_shown?: components["schemas"]["SaveOffer"][];
+        };
+        CancelSubscriptionResponse: {
+            /** Format: date-time */
+            period_end: string;
+        };
         ChangePlanPreview: {
             /** Format: int64 */
             excess_hosts: number;
@@ -4126,7 +4253,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Portainer",
+         *           "service_definition": "Plex Media Server",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -4995,14 +5122,14 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-04-22T15:57:37.842617Z",
-         *               "id": "5dcf3f92-04de-4250-8a9f-69b634017f58",
+         *               "created_at": "2026-05-01T19:08:39.689261Z",
+         *               "id": "8f577b55-9801-4d3c-8680-fed2f833deba",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-04-22T15:57:37.842617Z"
+         *               "updated_at": "2026-05-01T19:08:39.689261Z"
          *             }
          *           ],
          *           "created_at": "2026-01-15T10:30:00Z",
@@ -5011,7 +5138,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Portainer",
+         *           "service_definition": "Plex Media Server",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -5589,7 +5716,7 @@ export interface components {
             snmp_version?: string | null;
         };
         /** @enum {string} */
-        OnboardingOperation: "OrgCreated" | "OnboardingModalCompleted" | "PlanSelected" | "FirstDaemonRegistered" | "FirstTopologyRebuild" | "FirstDiscoveryCompleted" | "FirstHostDiscovered" | "SecondNetworkCreated" | "FirstTagCreated" | "FirstDependencyCreated" | "FirstUserApiKeyCreated" | "FirstSnmpCredentialCreated" | "FirstApplicationTagCreated" | "FirstCredentialCreated" | "InviteSent" | "InviteAccepted" | "ProfileCompleted" | "ReferralSourceCompleted";
+        OnboardingOperationDiscriminants: "OrgCreated" | "OnboardingModalCompleted" | "PlanSelected" | "FirstDaemonRegistered" | "FirstTopologyRebuild" | "FirstDiscoveryCompleted" | "FirstHostDiscovered" | "SecondNetworkCreated" | "FirstTagCreated" | "FirstDependencyCreated" | "FirstUserApiKeyCreated" | "FirstSnmpCredentialCreated" | "FirstApplicationTagCreated" | "FirstCredentialCreated" | "InviteSent" | "InviteAccepted" | "ProfileCompleted" | "ReferralSourceCompleted";
         /** @description Response from onboarding state endpoint */
         OnboardingStateResponse: {
             network?: null | components["schemas"]["OnboardingNetworkState"];
@@ -5602,18 +5729,12 @@ export interface components {
             org_name?: string | null;
             /** @description Current onboarding step (if any) */
             step?: string | null;
-            /** @description Use case selection (homelab, company, msp) */
-            use_case?: string | null;
+            use_case?: null | components["schemas"]["UseCase"];
         };
         /** @description Request to save onboarding step */
         OnboardingStepRequest: {
-            /** @description Referral source (how they heard about Scanopy) */
-            referral_source?: string | null;
-            /** @description Free-text referral source (when "other" is selected) */
-            referral_source_other?: string | null;
             step: string;
-            /** @description Use case selection (homelab, company, msp) */
-            use_case?: string | null;
+            use_case?: null | components["schemas"]["UseCase"];
         };
         /**
          * @description Direction for ORDER BY clauses.
@@ -5630,12 +5751,27 @@ export interface components {
         };
         OrganizationBase: {
             readonly has_payment_method?: boolean;
+            /**
+             * Format: date-time
+             * @description Most recent downgrade event timestamp (paid→cheaper, or paid→cancelled);
+             *     powers the 14-day downgrade banner.
+             */
+            readonly last_downgrade_at?: string | null;
+            last_downgrade_from_plan?: null | components["schemas"]["BillingPlan"];
+            /**
+             * Format: date-time
+             * @description Most recent `Paused` billing event's timestamp; powers the 6-month
+             *     rolling pause cooldown.
+             */
+            readonly last_paused_at?: string | null;
             name: string;
-            onboarding: components["schemas"]["OnboardingOperation"][];
+            onboarding: components["schemas"]["OnboardingOperationDiscriminants"][];
             plan: null | components["schemas"]["BillingPlan"];
             readonly plan_status: string | null;
             /** Format: date-time */
             readonly trial_end_date?: string | null;
+            /** @description Whether the org has used its one-time trial-extend perk. */
+            readonly trial_extended_used?: boolean;
             /** @description Use case selection (homelab, company, msp, other) */
             use_case?: components["schemas"]["UseCase"];
         };
@@ -5649,7 +5785,7 @@ export interface components {
          *         "offset": 0,
          *         "total_count": 142
          *       },
-         *       "server_version": "0.16.1"
+         *       "server_version": "0.16.2"
          *     }
          */
         PaginatedApiMeta: {
@@ -5662,7 +5798,7 @@ export interface components {
             pagination: components["schemas"]["PaginationMeta"];
             /**
              * @description Server version (semver)
-             * @example 0.16.1
+             * @example 0.16.2
              */
             server_version: string;
         };
@@ -5892,6 +6028,16 @@ export interface components {
              */
             offset?: number | null;
         };
+        /**
+         * @description Pause subscription duration. The cancel modal's `RadioGroup` posts
+         *     one of these enum variants verbatim — no integer parsing at the API
+         *     boundary, the type is the contract.
+         * @enum {string}
+         */
+        PauseDuration: "days30" | "days60" | "days90";
+        PauseSubscriptionRequest: {
+            duration_days: components["schemas"]["PauseDuration"];
+        };
         PlanConfig: {
             /** Format: int64 */
             base_cents: number;
@@ -6119,6 +6265,11 @@ export interface components {
             type: "AdHoc";
         };
         /**
+         * @description Save-offer choices presented during in-app cancellation (Phase 5).
+         * @enum {string}
+         */
+        SaveOffer: "pause" | "discount" | "downgrade";
+        /**
          * @description Scan performance settings. Lives on the discovery entity.
          *     Numeric fields are `Option<T>` — `None` means "use daemon default".
          *     The daemon unwraps with defaults at point of use.
@@ -6190,14 +6341,14 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-04-22T15:57:37.843045Z",
-         *           "id": "30177052-1c1c-4ab1-9772-5b24bafe1534",
+         *           "created_at": "2026-05-01T19:08:39.690100Z",
+         *           "id": "60400722-8ff8-4563-9ca9-258520ce6ba0",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-04-22T15:57:37.843045Z"
+         *           "updated_at": "2026-05-01T19:08:39.690100Z"
          *         }
          *       ],
          *       "created_at": "2026-01-15T10:30:00Z",
@@ -6206,7 +6357,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Portainer",
+         *       "service_definition": "Plex Media Server",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -7393,6 +7544,68 @@ export interface operations {
             };
         };
     };
+    cancel_subscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CancelSubscriptionRequest"];
+            };
+        };
+        responses: {
+            /** @description Cancellation initiated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_CancelSubscriptionResponse"];
+                };
+            };
+            /** @description No active subscription or billing not enabled */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    apply_discount_save_offer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Discount applied */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_String"];
+                };
+            };
+            /** @description Discount not configured or billing not enabled */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
     change_plan: {
         parameters: {
             query?: never;
@@ -7491,6 +7704,35 @@ export interface operations {
             };
         };
     };
+    extend_trial: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Trial extended */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_String"];
+                };
+            };
+            /** @description Ineligible or billing not enabled */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
     submit_enterprise_inquiry: {
         parameters: {
             query?: never;
@@ -7524,6 +7766,39 @@ export interface operations {
             };
             /** @description Authentication required */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    pause_subscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PauseSubscriptionRequest"];
+            };
+        };
+        responses: {
+            /** @description Subscription paused */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_String"];
+                };
+            };
+            /** @description Ineligible or billing not enabled */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -7585,6 +7860,35 @@ export interface operations {
                 };
             };
             /** @description Billing not enabled */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    resume_subscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Subscription resumed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_String"];
+                };
+            };
+            /** @description No paused subscription or billing not enabled */
             400: {
                 headers: {
                     [name: string]: unknown;

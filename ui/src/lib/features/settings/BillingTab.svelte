@@ -12,8 +12,11 @@
 	} from '$lib/shared/utils/analytics';
 	import {
 		useCustomerPortalMutation,
-		useSetupPaymentMethodMutation
+		useSetupPaymentMethodMutation,
+		useResumeSubscriptionMutation,
+		useExtendTrialMutation
 	} from '$lib/features/billing/queries';
+	import CancelSubscriptionModal from '$lib/features/billing/CancelSubscriptionModal.svelte';
 	import { useHostsQuery } from '$lib/features/hosts/queries';
 	import InfoCard from '$lib/shared/components/data/InfoCard.svelte';
 	import { useUsersQuery } from '$lib/features/users/queries';
@@ -34,6 +37,7 @@
 		settings_billing_manageSubscription,
 		settings_billing_needHelp,
 		settings_billing_pastDue,
+		settings_billing_paused_status,
 		settings_billing_per,
 		settings_billing_trialActive,
 		settings_billing_unableToLoad,
@@ -41,6 +45,10 @@
 		settings_billing_upgradePlanDescription,
 		settings_billing_changePlan,
 		settings_billing_changePlanDescription,
+		settings_billing_resume_button,
+		settings_billing_resume_confirmBody,
+		settings_billing_extendTrial_link,
+		settings_billing_extendTrial_confirmBody,
 		common_viewPlans
 	} from '$lib/paraglide/messages';
 	import InlineWarning from '$lib/shared/components/feedback/InlineWarning.svelte';
@@ -76,6 +84,11 @@
 	// Customer portal mutation
 	const customerPortalMutation = useCustomerPortalMutation();
 	const setupPaymentMutation = useSetupPaymentMethodMutation();
+	const resumeMutation = useResumeSubscriptionMutation();
+	const extendTrialMutation = useExtendTrialMutation();
+
+	// Cancel modal state. Replaces the legacy Stripe-Portal handoff.
+	let showCancelModal = $state(false);
 
 	let seatCount = $derived(usersData.length);
 	let networkCount = $derived(networksData.length);
@@ -111,6 +124,8 @@
 				return 'text-red-600 dark:text-red-400';
 			case 'pending_cancellation':
 				return 'text-amber-600 dark:text-amber-400';
+			case 'paused':
+				return 'text-orange-600 dark:text-orange-400';
 			case 'canceled':
 			case 'incomplete':
 				return 'text-yellow-600 dark:text-yellow-400';
@@ -158,6 +173,31 @@
 			}
 		} catch {
 			// Error handling is done by the mutation's onError
+		}
+	}
+
+	function openCancelModal() {
+		trackEvent('cancel_modal_opened', { plan_type: org?.plan?.type });
+		showCancelModal = true;
+	}
+
+	async function handleResume() {
+		if (!confirm(settings_billing_resume_confirmBody())) return;
+		try {
+			await resumeMutation.mutateAsync();
+			organizationQuery.refetch();
+		} catch {
+			// Mutation onError handles toast.
+		}
+	}
+
+	async function handleExtendTrial() {
+		if (!confirm(settings_billing_extendTrial_confirmBody())) return;
+		try {
+			await extendTrialMutation.mutateAsync();
+			organizationQuery.refetch();
+		} catch {
+			// Mutation onError handles toast.
 		}
 	}
 
@@ -218,6 +258,18 @@
 								Add Payment Method
 							</button>
 						</div>
+						{#if !org.trial_extended_used && trialDaysLeft !== null && trialDaysLeft <= 3}
+							<div class="mt-3 border-t pt-3" style="border-color: var(--color-border)">
+								<button
+									type="button"
+									onclick={handleExtendTrial}
+									class="text-link text-sm hover:underline disabled:opacity-50"
+									disabled={extendTrialMutation.isPending}
+								>
+									{settings_billing_extendTrial_link()}
+								</button>
+							</div>
+						{/if}
 					</InfoCard>
 				{/if}
 
@@ -375,15 +427,29 @@
 								<InlineWarning title={settings_billing_canceled()} />
 							{:else if org.plan_status === 'pending_cancellation'}
 								<InlineWarning title={settings_billing_downgrade_pending()} />
+							{:else if org.plan_status === 'paused'}
+								<InlineInfo title={settings_billing_paused_status()} />
 							{/if}
 
 							{#if !isFree}
-								<button
-									onclick={handleManageSubscription}
-									class="{org.plan_status === 'past_due' ? 'btn-primary' : 'btn-secondary'} w-full"
-								>
-									{settings_billing_manageSubscription()}
-								</button>
+								{#if org.plan_status === 'paused'}
+									<button
+										type="button"
+										onclick={handleResume}
+										class="btn-primary w-full"
+										disabled={resumeMutation.isPending}
+									>
+										{settings_billing_resume_button()}
+									</button>
+								{:else if org.plan_status === 'past_due'}
+									<button onclick={handleManageSubscription} class="btn-primary w-full">
+										{settings_billing_manageSubscription()}
+									</button>
+								{:else}
+									<button onclick={openCancelModal} class="btn-secondary w-full">
+										{settings_billing_manageSubscription()}
+									</button>
+								{/if}
 							{/if}
 						</div>
 					</svelte:fragment>
@@ -445,3 +511,10 @@
 		</div>
 	{/if}
 </div>
+
+<CancelSubscriptionModal
+	isOpen={showCancelModal}
+	onClose={() => (showCancelModal = false)}
+	lastPausedAt={org?.last_paused_at ?? null}
+	onSubscriptionChanged={() => organizationQuery.refetch()}
+/>

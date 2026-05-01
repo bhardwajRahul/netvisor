@@ -13,7 +13,7 @@
 	} from '$lib/shared/onboarding/checklist';
 	import DaemonTroubleshootingModal from './DaemonTroubleshootingModal.svelte';
 
-	type OnboardingOperation = components['schemas']['OnboardingOperation'];
+	type OnboardingOperation = components['schemas']['OnboardingOperationDiscriminants'];
 	type DaemonStatus = 'idle' | 'waiting' | 'connected' | 'trouble';
 
 	let {
