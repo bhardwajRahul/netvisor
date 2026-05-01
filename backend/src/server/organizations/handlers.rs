@@ -1,13 +1,12 @@
 use crate::server::auth::middleware::auth::AuthenticatedEntity;
 use crate::server::auth::middleware::permissions::{Authorized, IsUser, Member, Owner};
 use crate::server::auth::service::hash_password;
-use crate::server::billing::service::BillingService;
-use crate::server::billing::types::base::BillingPlan;
 use crate::server::bindings::r#impl::base::Binding;
 use crate::server::config::AppState;
 use crate::server::networks::r#impl::{Network, NetworkBase};
 use crate::server::organizations::r#impl::base::Organization;
-use crate::server::shared::events::types::{OnboardingEvent, OnboardingOperation};
+use crate::server::shared::events::traits::{Event, OrgScope};
+use crate::server::shared::events::types::{OnboardingOperation, OnboardingOperationDiscriminants};
 use crate::server::shared::handlers::traits::{CrudHandlers, update_handler};
 use crate::server::shared::services::traits::CrudService;
 use crate::server::shared::storage::filter::StorableFilter;
@@ -16,6 +15,7 @@ use crate::server::shared::types::api::ApiResponse;
 use crate::server::shared::types::api::ApiResult;
 use crate::server::shared::types::api::{ApiError, ApiErrorResponse, EmptyApiResponse};
 use crate::server::shared::types::error_codes::ErrorCode;
+use crate::server::tags::entity_tags::EntityTag;
 use crate::server::topology::types::base::Topology;
 use crate::server::users::r#impl::base::{User, UserBase};
 use crate::server::users::r#impl::permissions::UserOrgPermissions;
@@ -23,7 +23,6 @@ use anyhow::anyhow;
 use axum::Json;
 use axum::extract::Path;
 use axum::extract::State;
-use chrono::Utc;
 use email_address::EmailAddress;
 use serde::Deserialize;
 use std::sync::Arc;
@@ -137,17 +136,16 @@ async fn update_profile(
     state
         .services
         .event_bus
-        .publish_onboarding(OnboardingEvent {
-            id: Uuid::new_v4(),
-            organization_id: org_id,
-            operation: OnboardingOperation::ProfileCompleted,
-            timestamp: Utc::now(),
+        .publish(Event::new(
+            OrgScope {
+                organization_id: org_id,
+            },
+            OnboardingOperation::ProfileCompleted {
+                job_title: request.job_title,
+                company_size: request.company_size,
+            },
             authentication,
-            metadata: serde_json::json!({
-                "job_title": request.job_title,
-                "company_size": request.company_size,
-            }),
-        })
+        ))
         .await
         .map_err(|e| {
             ApiError::internal_error(&format!("Failed to publish profile event: {}", e))
@@ -184,17 +182,16 @@ async fn submit_referral_source(
     state
         .services
         .event_bus
-        .publish_onboarding(OnboardingEvent {
-            id: Uuid::new_v4(),
-            organization_id: org_id,
-            operation: OnboardingOperation::ReferralSourceCompleted,
-            timestamp: Utc::now(),
+        .publish(Event::new(
+            OrgScope {
+                organization_id: org_id,
+            },
+            OnboardingOperation::ReferralSourceCompleted {
+                referral_source: request.referral_source,
+                referral_source_other: request.referral_source_other,
+            },
             authentication,
-            metadata: serde_json::json!({
-                "referral_source": request.referral_source,
-                "referral_source_other": request.referral_source_other,
-            }),
-        })
+        ))
         .await
         .map_err(|e| {
             ApiError::internal_error(&format!("Failed to publish referral source event: {}", e))
@@ -311,14 +308,18 @@ pub async fn delete_organization(
         return Err(ApiError::permission_denied());
     }
 
-    if BillingService::has_active_paid_subscription(&org) {
+    let has_active_paid_sub = if let Some(billing) = &state.services.billing_service {
+        billing.has_active_paid_subscription(org.id).await?
+    } else {
+        false
+    };
+    if has_active_paid_sub {
         return Err(ApiError::coded(
             axum::http::StatusCode::CONFLICT,
             ErrorCode::OrganizationHasActiveSubscription,
         ));
     }
 
-    let initiator_user_id = auth.user_id();
     let entity: AuthenticatedEntity = auth.into_entity();
 
     // 1. Delete all child entities (reuse reset logic)
@@ -335,23 +336,9 @@ pub async fn delete_organization(
         .map(|u| u.id)
         .collect();
 
-    // Send the org-deleted confirmation email to the initiating owner before
-    // their user row disappears. Failure is logged but does not block deletion —
-    // the user already confirmed; failing the request because the mail provider
-    // is down would be worse than not sending the email.
-    if let Some(email_service) = &state.services.email_service
-        && let Some(user_id) = initiator_user_id
-        && let Ok(Some(user)) = state.services.user_service.get_by_id(&user_id).await
-        && let Err(e) = email_service
-            .send_organization_deleted_email(user.base.email.clone())
-            .await
-    {
-        tracing::warn!(
-            organization_id = %org.id,
-            error = %e,
-            "Failed to send organization-deleted email"
-        );
-    }
+    // Org-deleted confirmation email is dispatched by the email subscriber
+    // reacting to `EntityOperation::Deleted` for `Entity::Organization`. The
+    // event's `authentication` field carries the initiating user's email.
 
     if !all_user_ids.is_empty() {
         state
@@ -420,7 +407,11 @@ pub async fn populate_demo_data(
     }
 
     // Only available for demo organizations
-    if !matches!(org.base.plan, Some(BillingPlan::Demo(_))) {
+    let plan = org
+        .base
+        .plan
+        .unwrap_or_else(crate::server::billing::plans::get_free_plan);
+    if !plan.is_demo() {
         return Err(ApiError::forbidden(
             "Populate demo data is only available for demo organizations",
         ));
@@ -431,7 +422,7 @@ pub async fn populate_demo_data(
     // First, reset all existing data
     reset_organization_data(&state, &id, entity.clone()).await?;
 
-    org.base.onboarding = OnboardingOperation::iter().collect();
+    org.base.onboarding = OnboardingOperationDiscriminants::iter().collect();
 
     state
         .services
@@ -443,13 +434,10 @@ pub async fn populate_demo_data(
     let demo_data = DemoData::generate(id, user_id);
 
     // Collect all entity tags to bulk insert at the end (single INSERT).
-    let mut all_entity_tags: Vec<crate::server::tags::entity_tags::EntityTag> = Vec::new();
+    let mut all_entity_tags: Vec<EntityTag> = Vec::new();
 
     /// Collect EntityTag records from tagged entities into the accumulator.
-    fn collect_entity_tags<T: Entity>(
-        entities: &[T],
-        out: &mut Vec<crate::server::tags::entity_tags::EntityTag>,
-    ) {
+    fn collect_entity_tags<T: Entity>(entities: &[T], out: &mut Vec<EntityTag>) {
         use crate::server::tags::entity_tags::{EntityTag, EntityTagBase};
         for entity in entities {
             if let Some(tags) = entity.get_tags() {
@@ -707,6 +695,7 @@ pub async fn populate_demo_data(
     let password = hash_password("password123")?;
     let mut demo_admin = User::new(UserBase::new_password(
         EmailAddress::new_unchecked("demo@scanopy.net"),
+        true,
         password,
         org.id,
         UserOrgPermissions::Admin,

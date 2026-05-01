@@ -1,11 +1,9 @@
+use crate::server::shared::events::traits::{EntityEventFlags, EntityScope, Event};
 use crate::server::{
     auth::middleware::auth::AuthenticatedEntity,
     shared::{
         entities::ChangeTriggersTopologyStaleness,
-        events::{
-            bus::EventBus,
-            types::{EntityEvent, EntityOperation},
-        },
+        events::{bus::EventBus, types::EntityOperation},
         services::traits::{CrudService, EventBusService},
         storage::{
             filter::StorableFilter,
@@ -21,7 +19,6 @@ use crate::server::{
 use anyhow::Error;
 use anyhow::Result;
 use async_trait::async_trait;
-use chrono::Utc;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -84,24 +81,23 @@ impl CrudService<User> for UserService {
 
         let trigger_stale = created.triggers_staleness(None);
 
-        let metadata = serde_json::json!({
-            "trigger_stale": trigger_stale
-        });
-
-        self.event_bus()
-            .publish_entity(EntityEvent {
-                id: Uuid::new_v4(),
-                entity_id: created.id,
-                network_id: self.get_network_id(&created),
-                organization_id: self.get_organization_id(&created),
-                entity_type: created.clone().into(),
-                operation: EntityOperation::Created,
-                timestamp: Utc::now(),
-                metadata,
-
-                authentication,
-            })
-            .await?;
+        if let Some(scope) = EntityScope::from_ids(
+            created.id,
+            created.clone().into(),
+            self.get_network_id(&created),
+            self.get_organization_id(&created),
+        ) {
+            self.event_bus()
+                .publish(
+                    Event::new(scope, EntityOperation::Created, authentication).with_flags(
+                        EntityEventFlags {
+                            trigger_stale,
+                            ..Default::default()
+                        },
+                    ),
+                )
+                .await?;
+        }
 
         Ok(created)
     }

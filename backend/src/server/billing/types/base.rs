@@ -1,16 +1,73 @@
 use crate::server::{
     billing::types::features::Feature,
+    email::traits::format_cents,
     shared::types::{
         Color, Icon,
         metadata::{EntityMetadataProvider, HasId, TypeMetadataProvider},
     },
 };
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::hash::Hash;
 use stripe_product::price::CreatePriceRecurringInterval;
 use strum::{Display, EnumDiscriminants, EnumIter, IntoDiscriminant, IntoStaticStr, VariantNames};
 use utoipa::ToSchema;
+
+// ===========================================================================
+// Component enums for typed BillingOperation payloads
+// ===========================================================================
+
+/// Cancellation reason captured in `SubscriptionCancelled` /
+/// `CancellationInitiated` events. Mirrors the values surfaced in the
+/// in-app cancel flow (Phase 5).
+#[derive(
+    Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, Display, EnumIter, VariantNames,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum CancelReason {
+    TooExpensive,
+    MissingFeatures,
+    SwitchedService,
+    Unused,
+    CustomerService,
+    LowQuality,
+    TooComplex,
+    Other,
+}
+
+/// Save-offer choices presented during in-app cancellation (Phase 5).
+#[derive(
+    Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, Display, EnumIter, VariantNames,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum SaveOffer {
+    Pause,
+    Discount,
+    Downgrade,
+}
+
+/// Dimension hit when a `FeatureLimitHit` event fires.
+#[derive(
+    Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, Display, EnumIter, VariantNames,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum LimitType {
+    Networks,
+    Hosts,
+    Seats,
+}
+
+/// Origin of the request that triggered the limit hit. `Api` covers
+/// user-initiated requests; `Discovery` covers automated discovery flows.
+#[derive(
+    Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, Display, EnumIter, VariantNames,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum LimitSource {
+    Api,
+    Discovery,
+}
 
 #[derive(
     Debug,
@@ -123,6 +180,20 @@ impl BillingPlan {
     /// Round to nearest dollar, then subtract 1 cent so the price ends in .99.
     fn round_to_99(cents: f32) -> i64 {
         Self::round_to_dollar(cents) - 1
+    }
+
+    pub fn billing_period(&self) -> &str {
+        self.config().rate.billing_period()
+    }
+
+    /// Format a plan's base price for display in emails (e.g. "$14.99/mo")
+    pub fn base_price_formatted(&self) -> String {
+        let config = self.config();
+        let amount = format_cents(config.base_cents, "usd");
+        match config.rate {
+            BillingRate::Month => format!("{}/mo", amount),
+            BillingRate::Year => format!("{}/yr", amount),
+        }
     }
 }
 
@@ -891,5 +962,118 @@ impl TypeMetadataProvider for BillingPlan {
             "incremental_features": self.incremental_features(),
             "previous_tier": previous_tier
         })
+    }
+}
+
+/// Derived subscription status — our domain enum, never Stripe's raw status.
+/// Stripe webhook events map to typed `BillingOperation` variants at reception
+/// (in `billing/service.rs`); each variant deterministically implies a
+/// `PlanStatus` for downstream feature gates via
+/// `BillingOperation::implied_status`.
+#[derive(
+    Debug, Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq, Eq, Hash, strum::Display,
+)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
+pub enum PlanStatus {
+    Active,
+    Trialing,
+    PastDue,
+    Paused,
+    PendingCancellation,
+    Cancelled,
+}
+
+// ===========================================================================
+// Domain invoice snapshot — typed projection of `stripe_billing::Invoice` for
+// event payloads. Carries exactly the fields the usage-summary email needs to
+// render the line-item breakdown without reaching back into Stripe.
+// ===========================================================================
+
+#[derive(
+    Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, Display, VariantNames,
+)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
+pub enum BillingReason {
+    /// Recurring renewal — triggers the usage-summary email.
+    SubscriptionCycle,
+    /// Initial subscription creation invoice.
+    SubscriptionCreate,
+    /// Plan change / proration invoice.
+    SubscriptionUpdate,
+    /// Manually-issued invoice.
+    Manual,
+    /// Anything else Stripe sends us.
+    Other,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub struct BillingInvoiceLineItem {
+    pub description: Option<String>,
+    pub amount_cents: i64,
+    pub period_start: DateTime<Utc>,
+    pub period_end: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub struct BillingInvoice {
+    pub stripe_invoice_id: String,
+    pub amount_paid_cents: i64,
+    pub currency: String,
+    pub created_at: DateTime<Utc>,
+    pub period_start: DateTime<Utc>,
+    pub period_end: DateTime<Utc>,
+    pub billing_reason: BillingReason,
+    pub line_items: Vec<BillingInvoiceLineItem>,
+}
+
+// Stripe ships unix-epoch i64 timestamps; fall back to `Utc::now()` on a
+// malformed value rather than failing the event publish.
+fn ts_to_chrono(ts: i64) -> DateTime<Utc> {
+    DateTime::<Utc>::from_timestamp(ts, 0).unwrap_or_else(Utc::now)
+}
+
+impl From<&stripe_billing::Invoice> for BillingInvoice {
+    fn from(inv: &stripe_billing::Invoice) -> Self {
+        Self {
+            stripe_invoice_id: inv.id.as_ref().map(|id| id.to_string()).unwrap_or_default(),
+            amount_paid_cents: inv.amount_paid,
+            currency: inv.currency.to_string(),
+            created_at: ts_to_chrono(inv.created),
+            period_start: ts_to_chrono(inv.period_start),
+            period_end: ts_to_chrono(inv.period_end),
+            billing_reason: inv.billing_reason.into(),
+            line_items: inv
+                .lines
+                .data
+                .iter()
+                .map(BillingInvoiceLineItem::from)
+                .collect(),
+        }
+    }
+}
+
+impl From<&stripe_billing::InvoiceLineItem> for BillingInvoiceLineItem {
+    fn from(item: &stripe_billing::InvoiceLineItem) -> Self {
+        Self {
+            description: item.description.clone(),
+            amount_cents: item.amount,
+            period_start: ts_to_chrono(item.period.start),
+            period_end: ts_to_chrono(item.period.end),
+        }
+    }
+}
+
+impl From<Option<stripe_billing::InvoiceBillingReason>> for BillingReason {
+    fn from(reason: Option<stripe_billing::InvoiceBillingReason>) -> Self {
+        use stripe_billing::InvoiceBillingReason::*;
+        match reason {
+            Some(SubscriptionCycle) => Self::SubscriptionCycle,
+            Some(SubscriptionCreate) => Self::SubscriptionCreate,
+            Some(SubscriptionUpdate) => Self::SubscriptionUpdate,
+            Some(Manual) => Self::Manual,
+            _ => Self::Other,
+        }
     }
 }

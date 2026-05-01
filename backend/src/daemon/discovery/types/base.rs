@@ -2,12 +2,17 @@ use std::fmt::Display;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use strum::EnumIter;
+use strum_macros::EnumDiscriminants;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::server::discovery::r#impl::types::DiscoveryType;
 
-#[derive(Debug, Clone, Serialize, Deserialize, Copy, PartialEq, Eq, Hash, ToSchema)]
+#[derive(
+    Debug, Clone, Serialize, Deserialize, Copy, PartialEq, Eq, Hash, ToSchema, EnumDiscriminants,
+)]
+#[strum_discriminants(derive(Hash, EnumIter, strum::Display, Serialize, Deserialize))]
 pub enum DiscoveryPhase {
     Queued,   // Waiting in daemon queue behind another session
     Pending,  // Front of queue, eligible for dispatch. Clock ticking.
@@ -20,6 +25,14 @@ pub enum DiscoveryPhase {
 }
 
 impl DiscoveryPhase {
+    pub fn log_level(&self) -> crate::server::shared::events::types::EventLogLevel {
+        use crate::server::shared::events::types::EventLogLevel;
+        match self {
+            DiscoveryPhase::Failed => EventLogLevel::Warn,
+            _ => EventLogLevel::Info,
+        }
+    }
+
     pub fn is_terminal(&self) -> bool {
         matches!(
             self,

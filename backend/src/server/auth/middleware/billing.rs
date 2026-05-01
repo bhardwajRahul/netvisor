@@ -11,10 +11,7 @@
 //! - Self-hosted instances (no stripe_secret configured)
 
 use crate::server::{
-    auth::middleware::{
-        auth::AuthenticatedEntity,
-        cache::{CachedNetwork, CachedOrganization},
-    },
+    auth::middleware::{auth::AuthenticatedEntity, cache::CachedNetwork},
     billing::types::base::BillingPlan,
     config::AppState,
 };
@@ -79,41 +76,43 @@ pub async fn require_billing_for_users(
         return next.run(request).await;
     };
 
-    // Get organization using cache
+    // Cached organization for the request — used by both this middleware
+    // and any downstream feature checks.
     let organization =
-        match CachedOrganization::get_or_load(&mut parts, &state, &organization_id).await {
+        match super::cache::CachedOrganization::get_or_load(&mut parts, &state, &organization_id)
+            .await
+        {
             Ok(org) => org,
-            Err(e) => {
-                return e.into_response();
-            }
+            Err(e) => return e.into_response(),
         };
-
-    let plan = organization.base.plan.unwrap_or_default();
 
     // Reassemble request with cached entities in extensions
     let request = Request::from_parts(parts, body);
 
     // Check plan type - some plans are exempt from billing checks
-    match &plan {
-        BillingPlan::Community(_)
-        | BillingPlan::Free(_)
-        | BillingPlan::CommercialSelfHosted(_)
-        | BillingPlan::Demo(_) => {
-            return next.run(request).await;
-        }
-        _ => {}
+    if matches!(
+        organization.base.plan,
+        Some(
+            BillingPlan::Community(_)
+                | BillingPlan::Free(_)
+                | BillingPlan::CommercialSelfHosted(_)
+                | BillingPlan::Demo(_)
+        )
+    ) {
+        return next.run(request).await;
     }
 
-    // Check subscription status
+    // Check subscription status. None = no subscription yet (must select a
+    // plan); "cancelled" = revoke access; everything else allows the request
+    // through (Active / Trialing / PendingCancellation / PastDue / Paused all
+    // keep features available — Paused is a Stripe collection pause, not a
+    // feature lockout).
     match organization.base.plan_status.as_deref() {
-        Some("active") | Some("trialing") | Some("pending_cancellation") | Some("past_due") => {
-            // Active subscription (or scheduled downgrade / past due with retries) - allow request
-            next.run(request).await
-        }
-        Some("canceled") => {
+        Some("cancelled") => {
             billing_error_response("Your subscription has been canceled. Please renew to continue.")
         }
-        _ => billing_error_response("Active billing plan required. Please select a plan."),
+        Some(_) => next.run(request).await,
+        None => billing_error_response("Active billing plan required. Please select a plan."),
     }
 }
 

@@ -1,4 +1,5 @@
 use crate::server::shared::entities::EntityDiscriminants;
+use crate::server::shared::events::traits::{EntityEventFlags, EntityScope, Event};
 use crate::server::shared::storage::traits::{PaginatedResult, Storable};
 use crate::server::tags::entity_tags::EntityTagService;
 use crate::server::{
@@ -14,10 +15,7 @@ use crate::server::{
     services::r#impl::{base::Service, patterns::MatchDetails},
     shared::{
         entities::ChangeTriggersTopologyStaleness,
-        events::{
-            bus::EventBus,
-            types::{EntityEvent, EntityOperation},
-        },
+        events::{bus::EventBus, types::EntityOperation},
         position::next_position,
         services::traits::{ChildCrudService, CrudService, EventBusService},
         storage::{filter::StorableFilter, generic::GenericPostgresStorage, traits::Storage},
@@ -30,7 +28,6 @@ use crate::server::{
 use anyhow::anyhow;
 use anyhow::{Error, Result};
 use async_trait::async_trait;
-use chrono::Utc;
 use futures::lock::Mutex;
 use std::{
     collections::HashMap,
@@ -248,21 +245,23 @@ impl CrudService<Service> for ServiceService {
 
                 let trigger_stale = created.triggers_staleness(None);
 
-                self.event_bus()
-                    .publish_entity(EntityEvent {
-                        id: Uuid::new_v4(),
-                        entity_id: created.id,
-                        network_id: self.get_network_id(&created),
-                        organization_id: self.get_organization_id(&created),
-                        entity_type: created.clone().into(),
-                        operation: EntityOperation::Created,
-                        timestamp: Utc::now(),
-                        metadata: serde_json::json!({
-                            "trigger_stale": trigger_stale
-                        }),
-                        authentication,
-                    })
-                    .await?;
+                if let Some(scope) = EntityScope::from_ids(
+                    created.id,
+                    created.clone().into(),
+                    self.get_network_id(&created),
+                    self.get_organization_id(&created),
+                ) {
+                    self.event_bus()
+                        .publish(
+                            Event::new(scope, EntityOperation::Created, authentication).with_flags(
+                                EntityEventFlags {
+                                    trigger_stale,
+                                    ..Default::default()
+                                },
+                            ),
+                        )
+                        .await?;
+                }
 
                 created
             }
@@ -343,21 +342,23 @@ impl CrudService<Service> for ServiceService {
 
         let trigger_stale = updated.triggers_staleness(Some(current_service));
 
-        self.event_bus()
-            .publish_entity(EntityEvent {
-                id: Uuid::new_v4(),
-                entity_id: updated.id,
-                network_id: self.get_network_id(&updated),
-                organization_id: self.get_organization_id(&updated),
-                entity_type: updated.clone().into(),
-                operation: EntityOperation::Updated,
-                timestamp: Utc::now(),
-                metadata: serde_json::json!({
-                    "trigger_stale": trigger_stale
-                }),
-                authentication: authentication.clone(),
-            })
-            .await?;
+        if let Some(scope) = EntityScope::from_ids(
+            updated.id,
+            updated.clone().into(),
+            self.get_network_id(&updated),
+            self.get_organization_id(&updated),
+        ) {
+            self.event_bus()
+                .publish(
+                    Event::new(scope, EntityOperation::Updated, authentication.clone()).with_flags(
+                        EntityEventFlags {
+                            trigger_stale,
+                            ..Default::default()
+                        },
+                    ),
+                )
+                .await?;
+        }
 
         Ok(updated)
     }
@@ -385,21 +386,23 @@ impl CrudService<Service> for ServiceService {
 
         let trigger_stale = service.triggers_staleness(None);
 
-        self.event_bus()
-            .publish_entity(EntityEvent {
-                id: Uuid::new_v4(),
-                entity_id: service.id,
-                network_id: self.get_network_id(&service),
-                organization_id: self.get_organization_id(&service),
-                entity_type: service.into(),
-                operation: EntityOperation::Deleted,
-                timestamp: Utc::now(),
-                metadata: serde_json::json!({
-                    "trigger_stale": trigger_stale
-                }),
-                authentication,
-            })
-            .await?;
+        if let Some(scope) = EntityScope::from_ids(
+            service.id,
+            service.clone().into(),
+            self.get_network_id(&service),
+            self.get_organization_id(&service),
+        ) {
+            self.event_bus()
+                .publish(
+                    Event::new(scope, EntityOperation::Deleted, authentication).with_flags(
+                        EntityEventFlags {
+                            trigger_stale,
+                            ..Default::default()
+                        },
+                    ),
+                )
+                .await?;
+        }
         Ok(())
     }
 }
@@ -1095,21 +1098,23 @@ impl ServiceService {
         if !data.is_empty() {
             let trigger_stale = existing_service.triggers_staleness(Some(service_before_updates));
 
-            self.event_bus()
-                .publish_entity(EntityEvent {
-                    id: Uuid::new_v4(),
-                    entity_id: existing_service.id,
-                    network_id: self.get_network_id(&existing_service),
-                    organization_id: self.get_organization_id(&existing_service),
-                    entity_type: existing_service.clone().into(),
-                    operation: EntityOperation::Updated,
-                    timestamp: Utc::now(),
-                    metadata: serde_json::json!({
-                        "trigger_stale": trigger_stale
-                    }),
-                    authentication,
-                })
-                .await?;
+            if let Some(scope) = EntityScope::from_ids(
+                existing_service.id,
+                existing_service.clone().into(),
+                self.get_network_id(&existing_service),
+                self.get_organization_id(&existing_service),
+            ) {
+                self.event_bus()
+                    .publish(
+                        Event::new(scope, EntityOperation::Updated, authentication).with_flags(
+                            EntityEventFlags {
+                                trigger_stale,
+                                ..Default::default()
+                            },
+                        ),
+                    )
+                    .await?;
+            }
         } else {
             tracing::debug!(
                 service_id = %existing_service.id,

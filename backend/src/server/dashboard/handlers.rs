@@ -139,17 +139,15 @@ async fn get_dashboard_summary(
         .map_err(|e| ApiError::internal_error(&e.to_string()))?;
 
     // Plan usage
-    let org = state
+    let plan = state
         .services
         .organization_service
         .get_by_id(&organization_id)
         .await?
-        .ok_or_else(|| ApiError::not_found("Organization not found".to_string()))?;
-
-    let (host_limit, network_limit, seat_limit) = match &org.base.plan {
-        Some(plan) => (plan.host_limit(), plan.network_limit(), plan.seat_limit()),
-        None => (None, None, None),
-    };
+        .and_then(|o| o.base.plan)
+        .unwrap_or_else(crate::server::billing::plans::get_free_plan);
+    let (host_limit, network_limit, seat_limit) =
+        (plan.host_limit(), plan.network_limit(), plan.seat_limit());
 
     // Total host count across all networks
     let total_host_filter = StorableFilter::<Host>::new_from_network_ids(&network_ids).limit(0);

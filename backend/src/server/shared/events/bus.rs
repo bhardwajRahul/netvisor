@@ -1,332 +1,25 @@
-use std::{collections::HashMap, sync::Arc, time::Duration};
-
-use strum::IntoDiscriminant;
-use tokio::sync::RwLock;
+use std::sync::Arc;
 
 use anyhow::Result;
-use async_trait::async_trait;
-use tokio::sync::broadcast;
-use uuid::Uuid;
 
 use crate::{
-    daemon::{discovery::types::base::DiscoveryPhase, runtime::service::LOG_TARGET},
-    server::shared::{
-        entities::EntityDiscriminants,
-        events::types::{
-            AnalyticsEvent, AnalyticsOperation, AuthEvent, AuthOperation, BillingEvent,
-            BillingOperation, DiscoverySessionEvent, EntityEvent, EntityOperation, Event,
-            OnboardingEvent, OnboardingOperation,
+    daemon::discovery::types::base::DiscoveryPhase,
+    server::shared::events::{
+        traits::{Event, Operation, Subscriber, TypedChannel},
+        types::{
+            AnalyticsOperation, AuthOperation, BillingOperation, EntityOperation,
+            OnboardingOperation,
         },
     },
 };
 
-// Trait for event subscribers
-#[async_trait]
-pub trait EventSubscriber: Send + Sync {
-    /// Return the types of events this subscriber cares about
-    fn event_filter(&self) -> EventFilter;
-
-    /// Handle a batch of events (vec will have 1 element if debounce_window_ms = 0)
-    async fn handle_events(&self, events: Vec<Event>) -> Result<()>;
-
-    /// Optional: debounce window in milliseconds (default: 0 = no batching)
-    /// NOTE: Batching is global per-subscriber; per-org grouping happens in handle_events.
-    /// If we add more batching subscribers, consider moving grouping upstream to EventBus.
-    fn debounce_window_ms(&self) -> u64 {
-        0
-    }
-
-    /// Optional: subscriber name for debugging
-    fn name(&self) -> &str;
-}
-
-#[derive(Debug, Clone)]
-pub struct EventFilter {
-    // None = match all values (ignore as a filter)
-    pub entity_operations: Option<HashMap<EntityDiscriminants, Option<Vec<EntityOperation>>>>,
-    pub auth_operations: Option<Vec<AuthOperation>>,
-    pub billing_operations: Option<Vec<BillingOperation>>,
-    pub onboarding_operations: Option<Vec<OnboardingOperation>>,
-    pub discovery_phases: Option<Vec<DiscoveryPhase>>,
-    pub analytics_operations: Option<Vec<AnalyticsOperation>>,
-    pub network_ids: Option<Vec<Uuid>>,
-}
-
-impl EventFilter {
-    pub fn all() -> Self {
-        Self {
-            entity_operations: None,
-            auth_operations: None,
-            billing_operations: None,
-            onboarding_operations: None,
-            discovery_phases: None,
-            analytics_operations: None,
-            network_ids: None,
-        }
-    }
-
-    pub fn entity_only(
-        entity_operations: HashMap<EntityDiscriminants, Option<Vec<EntityOperation>>>,
-    ) -> Self {
-        Self {
-            entity_operations: Some(entity_operations),
-            auth_operations: Some(vec![]),
-            billing_operations: Some(vec![]),
-            onboarding_operations: Some(vec![]),
-            discovery_phases: Some(vec![]),
-            analytics_operations: Some(vec![]),
-            network_ids: None,
-        }
-    }
-
-    pub fn auth_only(auth_operations: Option<Vec<AuthOperation>>) -> Self {
-        Self {
-            entity_operations: Some(HashMap::new()),
-            billing_operations: Some(vec![]),
-            onboarding_operations: Some(vec![]),
-            auth_operations,
-            discovery_phases: Some(vec![]),
-            analytics_operations: Some(vec![]),
-            network_ids: Some(vec![]),
-        }
-    }
-
-    pub fn onboarding_only(onboarding_operations: Option<Vec<OnboardingOperation>>) -> Self {
-        Self {
-            entity_operations: Some(HashMap::new()),
-            billing_operations: Some(vec![]),
-            onboarding_operations,
-            auth_operations: Some(vec![]),
-            discovery_phases: Some(vec![]),
-            analytics_operations: Some(vec![]),
-            network_ids: Some(vec![]),
-        }
-    }
-
-    pub fn billing_only(billing_operations: Option<Vec<BillingOperation>>) -> Self {
-        Self {
-            entity_operations: Some(HashMap::new()),
-            billing_operations,
-            onboarding_operations: Some(vec![]),
-            auth_operations: Some(vec![]),
-            discovery_phases: Some(vec![]),
-            analytics_operations: Some(vec![]),
-            network_ids: Some(vec![]),
-        }
-    }
-
-    pub fn discovery_only(discovery_phases: Option<Vec<DiscoveryPhase>>) -> Self {
-        Self {
-            entity_operations: Some(HashMap::new()),
-            billing_operations: Some(vec![]),
-            onboarding_operations: Some(vec![]),
-            auth_operations: Some(vec![]),
-            discovery_phases,
-            analytics_operations: Some(vec![]),
-            network_ids: Some(vec![]),
-        }
-    }
-
-    pub fn matches(&self, event: &Event) -> bool {
-        match event {
-            Event::Entity(entity_event) => self.matches_entity(entity_event),
-            Event::Auth(auth_event) => self.matches_auth(auth_event),
-            Event::Billing(billing_event) => self.matches_billing(billing_event),
-            Event::Onboarding(onboarding_event) => self.matches_onboarding(onboarding_event),
-            Event::Discovery(discovery_event) => self.matches_discovery(discovery_event),
-            Event::Analytics(analytics_event) => self.matches_analytics(analytics_event),
-        }
-    }
-
-    fn matches_entity(&self, event: &EntityEvent) -> bool {
-        // Check network filter
-        if let Some(networks) = &self.network_ids
-            && let Some(network_id) = event.network_id
-            && !networks.contains(&network_id)
-        {
-            return false;
-        }
-
-        // Check entity operation filter
-        if let Some(entity_operations) = &self.entity_operations {
-            if let Some(operations) = entity_operations.get(&event.entity_type.discriminant()) {
-                if operations.is_none() {
-                    return true;
-                } else if let Some(operations) = operations
-                    && operations.contains(&event.operation)
-                {
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        true
-    }
-
-    fn matches_auth(&self, event: &AuthEvent) -> bool {
-        if let Some(auth_operations) = &self.auth_operations {
-            return auth_operations.contains(&event.operation);
-        }
-
-        true
-    }
-
-    fn matches_billing(&self, event: &BillingEvent) -> bool {
-        if let Some(billing_operations) = &self.billing_operations {
-            return billing_operations.contains(&event.operation);
-        }
-
-        true
-    }
-
-    fn matches_onboarding(&self, event: &OnboardingEvent) -> bool {
-        if let Some(onboarding_operations) = &self.onboarding_operations {
-            return onboarding_operations.contains(&event.operation);
-        }
-
-        true
-    }
-
-    fn matches_discovery(&self, event: &DiscoverySessionEvent) -> bool {
-        if let Some(discovery_phases) = &self.discovery_phases {
-            return discovery_phases.contains(&event.phase);
-        }
-
-        true
-    }
-
-    fn matches_analytics(&self, event: &AnalyticsEvent) -> bool {
-        if let Some(analytics_operations) = &self.analytics_operations {
-            return analytics_operations.contains(&event.operation);
-        }
-
-        true
-    }
-}
-
-/// Internal: Manages batching state for a subscriber
-struct SubscriberState {
-    subscriber: Arc<dyn EventSubscriber>,
-    pending_events: Arc<RwLock<Vec<Event>>>,
-}
-
-impl SubscriberState {
-    fn new(subscriber: Arc<dyn EventSubscriber>) -> Self {
-        let debounce_ms = subscriber.debounce_window_ms();
-        let pending = Arc::new(RwLock::new(Vec::new()));
-
-        if debounce_ms > 0 {
-            // Spawn background flush task for subscribers with batching
-            let pending_clone = pending.clone();
-            let subscriber_clone = subscriber.clone();
-            let debounce_window = Duration::from_millis(debounce_ms);
-
-            tokio::spawn(async move {
-                let mut interval = tokio::time::interval(debounce_window);
-                loop {
-                    interval.tick().await;
-                    Self::flush_batch(&subscriber_clone, &pending_clone).await;
-                }
-            });
-        }
-
-        Self {
-            subscriber,
-            pending_events: pending,
-        }
-    }
-
-    async fn flush_batch(subscriber: &Arc<dyn EventSubscriber>, pending: &Arc<RwLock<Vec<Event>>>) {
-        let events: Vec<Event> = {
-            let mut p = pending.write().await;
-            if p.is_empty() {
-                return;
-            }
-
-            // Deduplicate events (requires PartialEq on Event)
-            let mut unique_events = Vec::new();
-            for event in p.drain(..) {
-                if !unique_events.contains(&event) {
-                    unique_events.push(event);
-                }
-            }
-            unique_events
-        };
-
-        if events.is_empty() {
-            return;
-        }
-
-        // Count events per org before processing
-        let mut events_per_org: HashMap<Option<Uuid>, usize> = HashMap::new();
-        for event in &events {
-            let org_id = event.org_id();
-            *events_per_org.entry(org_id).or_default() += 1;
-        }
-
-        let batch_start = std::time::Instant::now();
-        let result = subscriber.handle_events(events).await;
-        let batch_duration = batch_start.elapsed();
-
-        // =============================================================================
-        // EVENT BATCH TELEMETRY SIGNALS
-        // =============================================================================
-        // Use these metrics to determine if per-org batching is needed:
-        //
-        // | Metric                        | Signal                              |
-        // |-------------------------------|-------------------------------------|
-        // | org_count consistently > 1    | Batches are mixing tenants          |
-        // | events_per_org skewed         | Noisy tenant problem                |
-        // | duration_ms grows w/ org_count| Head-of-line blocking matters       |
-        // | Per-network duration variance | Some tenants slower than others     |
-        // | Errors correlate with orgs    | Tenant-specific edge cases          |
-        //
-        // If multiple signals fire, refactor batching to group by org_id upstream.
-        // =============================================================================
-
-        tracing::debug!(
-            subscriber = %subscriber.name(),
-            batch_size = events_per_org.values().sum::<usize>(),
-            org_count = events_per_org.len(),
-            events_per_org = ?events_per_org,
-            duration_ms = batch_duration.as_millis(),
-            success = result.is_ok(),
-            "Event batch processed"
-        );
-
-        if let Err(e) = result {
-            tracing::error!(
-                subscriber = %subscriber.name(),
-                error = %e,
-                "Subscriber failed to handle batched events",
-            );
-        }
-    }
-
-    async fn add_event(&self, event: Event) {
-        let debounce_window = self.subscriber.debounce_window_ms();
-
-        if debounce_window == 0 {
-            // No batching - handle immediately
-            if let Err(e) = self.subscriber.handle_events(vec![event]).await {
-                tracing::error!(
-                    subscriber = %self.subscriber.name(),
-                    error = %e,
-                    "Subscriber failed to handle event",
-                );
-            }
-        } else {
-            // Add to batch
-            let mut pending = self.pending_events.write().await;
-            pending.push(event);
-        }
-    }
-}
-
 pub struct EventBus {
-    sender: broadcast::Sender<Event>,
-    subscribers: Arc<RwLock<Vec<SubscriberState>>>,
+    pub billing_channel: TypedChannel<BillingOperation>,
+    pub onboarding_channel: TypedChannel<OnboardingOperation>,
+    pub analytics_channel: TypedChannel<AnalyticsOperation>,
+    pub auth_channel: TypedChannel<AuthOperation>,
+    pub entity_channel: TypedChannel<EntityOperation>,
+    pub discovery_channel: TypedChannel<DiscoveryPhase>,
 }
 
 impl Default for EventBus {
@@ -337,76 +30,78 @@ impl Default for EventBus {
 
 impl EventBus {
     pub fn new() -> Self {
-        let (sender, _) = broadcast::channel(1000);
-
         Self {
-            sender,
-            subscribers: Arc::new(RwLock::new(Vec::new())),
+            billing_channel: TypedChannel::new(),
+            onboarding_channel: TypedChannel::new(),
+            analytics_channel: TypedChannel::new(),
+            auth_channel: TypedChannel::new(),
+            entity_channel: TypedChannel::new(),
+            discovery_channel: TypedChannel::new(),
         }
     }
 
-    /// Register a subscriber
-    pub async fn register_subscriber(&self, subscriber: Arc<dyn EventSubscriber>) {
-        let state = SubscriberState::new(subscriber.clone());
-        let mut subscribers = self.subscribers.write().await;
-        subscribers.push(state);
-
-        tracing::info!(
-            target: LOG_TARGET,
-            subscriber = %subscriber.name(),
-            debounce_ms = subscriber.debounce_window_ms(),
-            "Registered event subscriber",
-        );
+    /// Register a typed subscriber. Op is inferred from the subscriber's
+    /// `Subscriber<Op>` impl; the bus routes to the right channel via
+    /// `BusChannel<Op>`. `name` is the auto-generated identifier from the
+    /// `SubscriberRegistration` entry — used for diagnostic logging.
+    pub async fn register<Op>(&self, subscriber: Arc<dyn Subscriber<Op>>, name: &'static str)
+    where
+        Op: Operation,
+        Self: BusChannel<Op>,
+    {
+        self.channel().register(subscriber, name).await
     }
 
-    /// Publish an entity event
-    pub async fn publish_entity(&self, event: EntityEvent) -> Result<()> {
-        self.publish(Event::Entity(Box::new(event))).await
+    /// Publish a typed event. Op is inferred from the event's type; the bus
+    /// routes to the right channel via `BusChannel<Op>`.
+    pub async fn publish<Op>(&self, event: Event<Op>) -> Result<()>
+    where
+        Op: Operation,
+        Self: BusChannel<Op>,
+    {
+        self.channel().publish(event).await
     }
+}
 
-    /// Publish an auth event
-    pub async fn publish_auth(&self, event: AuthEvent) -> Result<()> {
-        self.publish(Event::Auth(event)).await
+/// Maps an `Operation` type to its corresponding channel on the bus. One impl
+/// per Op type — the only place the per-op-type plumbing knows about specific
+/// channel fields.
+pub trait BusChannel<Op: Operation> {
+    fn channel(&self) -> &TypedChannel<Op>;
+}
+
+impl BusChannel<BillingOperation> for EventBus {
+    fn channel(&self) -> &TypedChannel<BillingOperation> {
+        &self.billing_channel
     }
+}
 
-    /// Publish a billing event
-    pub async fn publish_billing(&self, event: BillingEvent) -> Result<()> {
-        self.publish(Event::Billing(event)).await
+impl BusChannel<OnboardingOperation> for EventBus {
+    fn channel(&self) -> &TypedChannel<OnboardingOperation> {
+        &self.onboarding_channel
     }
+}
 
-    /// Publish an onboarding event
-    pub async fn publish_onboarding(&self, event: OnboardingEvent) -> Result<()> {
-        self.publish(Event::Onboarding(event)).await
+impl BusChannel<AnalyticsOperation> for EventBus {
+    fn channel(&self) -> &TypedChannel<AnalyticsOperation> {
+        &self.analytics_channel
     }
+}
 
-    pub async fn publish_discovery(&self, event: DiscoverySessionEvent) -> Result<()> {
-        self.publish(Event::Discovery(event)).await
+impl BusChannel<AuthOperation> for EventBus {
+    fn channel(&self) -> &TypedChannel<AuthOperation> {
+        &self.auth_channel
     }
+}
 
-    /// Publish an analytics event
-    pub async fn publish_analytics(&self, event: AnalyticsEvent) -> Result<()> {
-        self.publish(Event::Analytics(event)).await
+impl BusChannel<EntityOperation> for EventBus {
+    fn channel(&self) -> &TypedChannel<EntityOperation> {
+        &self.entity_channel
     }
+}
 
-    /// Publish an event to all subscribers
-    async fn publish(&self, event: Event) -> Result<()> {
-        // Send to broadcast channel (non-blocking)
-        let _ = self.sender.send(event.clone());
-
-        // Notify subscribers
-        let subscribers = self.subscribers.read().await;
-
-        for state in subscribers.iter() {
-            if state.subscriber.event_filter().matches(&event) {
-                state.add_event(event.clone()).await;
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Get a receiver for raw event stream (useful for SSE)
-    pub fn subscribe_channel(&self) -> broadcast::Receiver<Event> {
-        self.sender.subscribe()
+impl BusChannel<DiscoveryPhase> for EventBus {
+    fn channel(&self) -> &TypedChannel<DiscoveryPhase> {
+        &self.discovery_channel
     }
 }

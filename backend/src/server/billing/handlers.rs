@@ -115,8 +115,9 @@ async fn create_checkout_session(
 
         // Check if org already has a plan — route based on target plan and payment state
         let org = billing_service.get_organization(organization_id).await?;
+        let plan_status = org.base.plan_status.clone();
 
-        if org.base.plan.is_some() && org.base.stripe_customer_id.is_some() {
+        if plan_status.is_some() && org.base.stripe_customer_id.is_some() {
             if request.plan.is_free() {
                 // Downgrade to Free — schedule cancellation at end of billing cycle
                 let result = billing_service
@@ -125,7 +126,7 @@ async fn create_checkout_session(
                 Ok(Json(ApiResponse::success(result)))
             } else {
                 // Paid target — check trial eligibility and payment state
-                let is_currently_trialing = org.base.plan_status.as_deref() == Some("trialing");
+                let is_currently_trialing = plan_status.as_deref() == Some("trialing");
 
                 if is_currently_trialing {
                     // Currently trialing — switch plan via subscription update (preserves trial)
@@ -135,8 +136,8 @@ async fn create_checkout_session(
                     return Ok(Json(ApiResponse::success(result)));
                 }
 
-                let is_returning = org.base.trial_end_date.is_some()
-                    || org.base.plan.as_ref().is_some_and(|p| !p.is_free());
+                let has_non_free_plan = org.base.plan.as_ref().is_some_and(|p| !p.is_free());
+                let is_returning = has_non_free_plan || org.base.trial_end_date.is_some();
                 let is_trial_eligible = !is_returning && request.plan.config().trial_days > 0;
 
                 if is_trial_eligible {

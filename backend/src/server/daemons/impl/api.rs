@@ -5,12 +5,14 @@ use crate::{
         DiscoveryPhase, DiscoverySessionInfo, DiscoverySessionUpdate,
     },
     server::{
+        auth::middleware::auth::AuthenticatedEntity,
         credentials::r#impl::mapping::{CredentialMapping, CredentialQueryPayload},
         daemons::r#impl::{
             base::{Daemon, DaemonBase, DaemonMode},
             version::{DaemonVersionStatus, DeprecationSeverity, DeprecationWarning},
         },
         discovery::r#impl::types::DiscoveryType,
+        shared::events::traits::{DiscoveryScope, Event},
     },
 };
 use chrono::{DateTime, Utc};
@@ -147,6 +149,28 @@ pub struct DiscoveryUpdatePayload {
 }
 
 impl DiscoveryUpdatePayload {
+    /// Construct a typed discovery event with `AuthenticatedEntity::System`.
+    pub fn into_discovery_event(&self) -> Event<DiscoveryPhase> {
+        self.into_discovery_event_with_auth(AuthenticatedEntity::System)
+    }
+
+    pub fn into_discovery_event_with_auth(
+        &self,
+        auth: AuthenticatedEntity,
+    ) -> Event<DiscoveryPhase> {
+        Event::new(
+            DiscoveryScope {
+                network_id: self.network_id,
+                session_id: self.session_id,
+                daemon_id: self.daemon_id,
+                discovery_type: self.discovery_type.clone(),
+                error_reason: self.error.clone(),
+            },
+            self.phase,
+            auth,
+        )
+    }
+
     pub fn new(
         session_id: Uuid,
         daemon_id: Uuid,

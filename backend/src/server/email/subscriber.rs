@@ -1,157 +1,361 @@
-use std::collections::HashMap;
+//! Email subscriber for entity (Host/Network/User Created/Deleted) and
+//! onboarding (FirstDaemonRegistered, FirstDiscoveryCompleted) events.
+//!
+//! Triggers transactional emails: plan-limit notifications on entity
+//! create/delete, and post-onboarding guides (discovery walkthrough,
+//! topology-ready notification).
 
 use anyhow::Error;
 use async_trait::async_trait;
+use std::collections::HashMap;
 
-use crate::{
-    daemon::discovery::types::base::DiscoveryPhase,
-    server::{
-        email::traits::EmailService,
-        shared::{
-            entities::EntityDiscriminants,
-            events::{
-                bus::{EventFilter, EventSubscriber},
-                types::{EntityOperation, Event, OnboardingOperation},
+use crate::server::{
+    auth::middleware::auth::AuthenticatedEntity,
+    billing::types::base::BillingReason,
+    discovery::r#impl::types::DiscoveryType,
+    email::traits::EmailService,
+    shared::{
+        entities::{Entity, EntityDiscriminants},
+        events::{
+            registry::SubscriberRegistration,
+            traits::{EntityEventFilter, Event, EventFilter, Subscriber},
+            types::{
+                AuthOperation, AuthOperationDiscriminants, BillingOperation,
+                BillingOperationDiscriminants, EntityOperation, EntityOperationDiscriminants,
+                OnboardingOperation, OnboardingOperationDiscriminants,
             },
-            services::traits::CrudService,
         },
+        services::traits::CrudService,
+        types::metadata::TypeMetadataProvider,
     },
 };
 
 #[async_trait]
-impl EventSubscriber for EmailService {
-    fn event_filter(&self) -> EventFilter {
-        EventFilter {
-            entity_operations: Some(HashMap::from([
-                (
-                    EntityDiscriminants::Host,
-                    Some(vec![EntityOperation::Created, EntityOperation::Deleted]),
-                ),
-                (
-                    EntityDiscriminants::Network,
-                    Some(vec![EntityOperation::Created, EntityOperation::Deleted]),
-                ),
-                (
-                    EntityDiscriminants::User,
-                    Some(vec![EntityOperation::Created, EntityOperation::Deleted]),
-                ),
-            ])),
-            billing_operations: Some(vec![]),
-            onboarding_operations: Some(vec![
-                OnboardingOperation::FirstDaemonRegistered,
-                OnboardingOperation::FirstDiscoveryCompleted,
-            ]),
-            auth_operations: Some(vec![]),
-            discovery_phases: Some(vec![DiscoveryPhase::Failed]),
-            analytics_operations: Some(vec![]),
-            network_ids: None,
-        }
+impl Subscriber<BillingOperation> for EmailService {
+    fn filter(&self) -> EventFilter<BillingOperation> {
+        EventFilter::ops(vec![
+            BillingOperationDiscriminants::TrialStarted,
+            BillingOperationDiscriminants::TrialEnded,
+            BillingOperationDiscriminants::TrialWillEnd,
+            BillingOperationDiscriminants::PlanChanged,
+            BillingOperationDiscriminants::SubscriptionCancelled,
+            BillingOperationDiscriminants::PaymentFailed,
+            BillingOperationDiscriminants::PaymentActionRequired,
+            BillingOperationDiscriminants::PaymentRecovered,
+            BillingOperationDiscriminants::PaymentSucceeded,
+            BillingOperationDiscriminants::PaymentMethodAdded,
+            BillingOperationDiscriminants::PaymentMethodRemoved,
+            BillingOperationDiscriminants::CancellationInitiated,
+            BillingOperationDiscriminants::CheckoutCompleted,
+        ])
     }
 
-    async fn handle_events(&self, events: Vec<Event>) -> Result<(), Error> {
-        if events.is_empty() {
-            return Ok(());
-        }
-
+    async fn handle(&self, events: Vec<Event<BillingOperation>>) -> Result<(), Error> {
         for event in events {
-            match event {
-                Event::Entity(e) => {
-                    tracing::debug!(
-                        entity_type = ?e.entity_type,
-                        operation = ?e.operation,
-                        entity_id = %e.entity_id,
-                        "Email subscriber received entity event"
+            // The filter narrows to discriminants that produce email; safe to
+            // load the owner email up front.
+            let org_owner = match self.get_owner_email(&event.scope.organization_id).await {
+                Ok(email) => email,
+                Err(e) => {
+                    tracing::warn!(
+                        organization_id = %event.scope.organization_id,
+                        error = %e,
+                        "Failed to resolve org owner email; skipping email for this event",
                     );
+                    continue;
+                }
+            };
 
-                    let org_id = if let Some(org_id) = e.organization_id {
-                        Some(org_id)
-                    } else if let Some(network_id) = e.network_id {
-                        self.network_service
-                            .get_by_id(&network_id)
-                            .await?
-                            .map(|n| n.base.organization_id)
+            match event.operation {
+                BillingOperation::TrialStarted {
+                    plan, trial_days, ..
+                } => {
+                    self.send_trial_started_email(
+                        org_owner,
+                        plan.name(),
+                        trial_days,
+                        plan.billing_period(),
+                        &plan.base_price_formatted(),
+                    )
+                    .await?;
+                }
+                BillingOperation::TrialEnded { plan, converted } => {
+                    if converted {
+                        self.send_trial_converted_email(
+                            org_owner,
+                            plan.name(),
+                            plan.billing_period(),
+                            &plan.base_price_formatted(),
+                        )
+                        .await?;
                     } else {
-                        None
-                    };
-
-                    if let Some(org_id) = org_id
-                        && let Err(e) = self
-                            .check_plan_limits(org_id, e.operation == EntityOperation::Deleted)
-                            .await
-                    {
-                        tracing::warn!(
-                            organization_id = %org_id,
-                            error = %e,
-                            "Failed to check plan limits"
-                        );
+                        self.send_trial_expired_email(
+                            org_owner,
+                            plan.name(),
+                            plan.billing_period(),
+                        )
+                        .await?;
                     }
                 }
-                Event::Onboarding(t) => {
-                    tracing::debug!(
-                        operation = ?t.operation,
-                        organization_id = %t.organization_id,
-                        "Email subscriber received onboarding event"
-                    );
-                    match t.operation {
-                        OnboardingOperation::FirstDaemonRegistered => {
-                            let daemon_name = t
-                                .metadata
-                                .get("daemon_name")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("your daemon");
-                            let network_name = t
-                                .metadata
-                                .get("network_name")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("your network");
-
-                            if let Err(e) = self
-                                .send_discovery_guide_for_org(
-                                    t.organization_id,
-                                    daemon_name,
-                                    network_name,
-                                )
-                                .await
-                            {
-                                tracing::warn!(
-                                    organization_id = %t.organization_id,
-                                    error = %e,
-                                    "Failed to send discovery guide email"
-                                );
-                            }
-                        }
-                        OnboardingOperation::FirstDiscoveryCompleted => {
-                            // Only send topology ready email for Network/Unified discoveries, not SelfReport
-                            let is_network = t
-                                .metadata
-                                .get("discovery_type")
-                                .and_then(|v| v.as_str())
-                                .map(|dt| dt.starts_with("Network") || dt.starts_with("Unified"))
-                                .unwrap_or(false);
-
-                            if is_network
-                                && let Err(e) =
-                                    self.send_topology_ready_for_org(t.organization_id).await
-                            {
-                                tracing::warn!(
-                                    organization_id = %t.organization_id,
-                                    error = %e,
-                                    "Failed to send topology ready email"
-                                );
-                            }
-                        }
-                        _ => {}
+                BillingOperation::PlanChanged { to, .. } => {
+                    self.send_plan_changed_email(org_owner, to.name()).await?;
+                }
+                BillingOperation::TrialWillEnd {
+                    plan,
+                    has_payment_method,
+                } => {
+                    self.send_trial_ending_email(
+                        org_owner,
+                        plan.name(),
+                        has_payment_method,
+                        plan.billing_period(),
+                        &plan.base_price_formatted(),
+                    )
+                    .await?;
+                }
+                BillingOperation::SubscriptionCancelled { .. } => {
+                    self.send_subscription_cancelled_email(org_owner).await?;
+                }
+                BillingOperation::PaymentFailed { .. } => {
+                    self.send_payment_failed_email(org_owner).await?;
+                }
+                BillingOperation::PaymentActionRequired { .. } => {
+                    self.send_payment_action_required_email(org_owner).await?;
+                }
+                BillingOperation::PaymentSucceeded { invoice } => {
+                    // Send usage summary for recurring billing cycles only
+                    // (skip the initial subscription invoice and one-off charges).
+                    if invoice.billing_reason == BillingReason::SubscriptionCycle {
+                        self.send_usage_summary_email(org_owner, &invoice).await?;
                     }
                 }
-                Event::Discovery(_) => {}
+                BillingOperation::PaymentMethodAdded => {
+                    self.send_payment_method_added_email(org_owner).await?;
+                }
+                BillingOperation::PaymentMethodRemoved => {
+                    self.send_payment_method_removed_email(org_owner).await?;
+                }
+                BillingOperation::PaymentRecovered { .. } => {
+                    self.send_payment_recovered_email(org_owner).await?;
+                }
+                BillingOperation::CancellationInitiated {
+                    planned_period_end, ..
+                } => {
+                    let period_end_str = planned_period_end.format("%B %-d, %Y").to_string();
+                    self.send_cancellation_initiated_email(org_owner, &period_end_str)
+                        .await?;
+                }
+                BillingOperation::CheckoutCompleted { plan, .. } => {
+                    self.send_checkout_completed_email(org_owner, plan.name())
+                        .await?;
+                }
                 _ => {}
             }
         }
 
         Ok(())
     }
+}
+inventory::submit!(SubscriberRegistration::new::<EmailService, BillingOperation>());
 
-    fn name(&self) -> &str {
-        "email_onboarding_and_plan_limits"
+#[async_trait]
+impl Subscriber<AuthOperation> for EmailService {
+    fn filter(&self) -> EventFilter<AuthOperation> {
+        EventFilter::ops(vec![
+            AuthOperationDiscriminants::Register,
+            AuthOperationDiscriminants::EmailChangeRequested,
+            AuthOperationDiscriminants::EmailVerificationRequested,
+            AuthOperationDiscriminants::EmailChanged,
+            AuthOperationDiscriminants::PasswordChanged,
+            AuthOperationDiscriminants::PasswordResetRequested,
+            AuthOperationDiscriminants::OidcLinked,
+            AuthOperationDiscriminants::OidcUnlinked,
+        ])
+    }
+
+    async fn handle(&self, events: Vec<Event<AuthOperation>>) -> Result<(), Error> {
+        for event in events {
+            match event.operation {
+                AuthOperation::Register {
+                    email_and_token: Some(params),
+                    ..
+                } => {
+                    self.send_verification_email(
+                        params.email,
+                        self.public_url.clone(),
+                        params.token,
+                    )
+                    .await?
+                }
+                AuthOperation::EmailChangeRequested { email_and_token } => {
+                    self.send_verification_email(
+                        email_and_token.email,
+                        self.public_url.clone(),
+                        email_and_token.token,
+                    )
+                    .await?
+                }
+                AuthOperation::EmailVerificationRequested { email_and_token } => {
+                    self.send_verification_email(
+                        email_and_token.email,
+                        self.public_url.clone(),
+                        email_and_token.token,
+                    )
+                    .await?
+                }
+                AuthOperation::EmailChanged {
+                    old_email,
+                    new_email,
+                } => {
+                    self.send_email_changed_old_email(old_email, new_email)
+                        .await?;
+                }
+                AuthOperation::PasswordChanged {
+                    email, timestamp, ..
+                } => {
+                    self.send_password_changed_email(
+                        email,
+                        &timestamp.format("%Y-%m-%d %H:%M UTC").to_string(),
+                    )
+                    .await?;
+                }
+                AuthOperation::PasswordResetRequested { email_and_token } => {
+                    self.send_password_reset(
+                        email_and_token.email,
+                        self.public_url.clone(),
+                        email_and_token.token,
+                    )
+                    .await?;
+                }
+                AuthOperation::OidcLinked { provider, email } => {
+                    self.send_oidc_linked_email(email, &provider.name).await?;
+                }
+                AuthOperation::OidcUnlinked { provider, email } => {
+                    self.send_oidc_unlinked_email(email, &provider.name).await?;
+                }
+                _ => {}
+            }
+        }
+
+        Ok(())
     }
 }
+inventory::submit!(SubscriberRegistration::new::<EmailService, AuthOperation>());
+
+#[async_trait]
+impl Subscriber<EntityOperation> for EmailService {
+    fn filter(&self) -> EntityEventFilter {
+        let create_or_delete = Some(vec![
+            EntityOperationDiscriminants::Created,
+            EntityOperationDiscriminants::Deleted,
+        ]);
+        EntityEventFilter::by_entity(HashMap::from([
+            (EntityDiscriminants::Host, create_or_delete.clone()),
+            (EntityDiscriminants::Network, create_or_delete.clone()),
+            (EntityDiscriminants::User, create_or_delete.clone()),
+            // Organization deletion sends a confirmation email to the
+            // initiating user.
+            (
+                EntityDiscriminants::Organization,
+                Some(vec![EntityOperationDiscriminants::Deleted]),
+            ),
+        ]))
+    }
+
+    async fn handle(&self, events: Vec<Event<EntityOperation>>) -> Result<(), Error> {
+        for event in events {
+            let org_id = if let Some(org_id) = event.scope.organization_id() {
+                Some(org_id)
+            } else if let Some(network_id) = event.scope.network_id() {
+                self.network_service
+                    .get_by_id(&network_id)
+                    .await?
+                    .map(|n| n.base.organization_id)
+            } else {
+                None
+            };
+
+            if let Some(org_id) = org_id
+                && let Err(e) = self
+                    .check_plan_limits(org_id, event.operation == EntityOperation::Deleted)
+                    .await
+            {
+                tracing::warn!(
+                    organization_id = %org_id,
+                    error = %e,
+                    "Failed to check plan limits"
+                );
+            }
+
+            // Org-deleted confirmation email to the initiator. Skipped for
+            // non-User auth (System / Anonymous have no recipient).
+            if matches!(event.scope.entity_type(), Entity::Organization(_))
+                && event.operation == EntityOperation::Deleted
+                && let AuthenticatedEntity::User { email, .. } = &event.authentication
+                && let Err(e) = self.send_organization_deleted_email(email.clone()).await
+            {
+                tracing::warn!(
+                    error = %e,
+                    "Failed to send organization-deleted email",
+                );
+            }
+        }
+        Ok(())
+    }
+}
+inventory::submit!(SubscriberRegistration::new::<EmailService, EntityOperation>());
+
+#[async_trait]
+impl Subscriber<OnboardingOperation> for EmailService {
+    fn filter(&self) -> EventFilter<OnboardingOperation> {
+        EventFilter::ops(vec![
+            OnboardingOperationDiscriminants::FirstDaemonRegistered,
+            OnboardingOperationDiscriminants::FirstDiscoveryCompleted,
+        ])
+    }
+
+    async fn handle(&self, events: Vec<Event<OnboardingOperation>>) -> Result<(), Error> {
+        for event in events {
+            let org_id = event.scope.organization_id;
+            match &event.operation {
+                OnboardingOperation::FirstDaemonRegistered {
+                    daemon_name,
+                    network_name,
+                } => {
+                    if let Err(e) = self
+                        .send_discovery_guide_for_org(org_id, daemon_name, network_name)
+                        .await
+                    {
+                        tracing::warn!(
+                            organization_id = %org_id,
+                            error = %e,
+                            "Failed to send discovery guide email"
+                        );
+                    }
+                }
+                OnboardingOperation::FirstDiscoveryCompleted { discovery_type } => {
+                    // Only send topology ready email for Network/Unified
+                    // discoveries, not SelfReport.
+                    let is_network = matches!(
+                        discovery_type,
+                        DiscoveryType::Network { .. } | DiscoveryType::Unified { .. }
+                    );
+
+                    if is_network && let Err(e) = self.send_topology_ready_for_org(org_id).await {
+                        tracing::warn!(
+                            organization_id = %org_id,
+                            error = %e,
+                            "Failed to send topology ready email"
+                        );
+                    }
+                }
+                _ => {}
+            }
+        }
+        Ok(())
+    }
+}
+inventory::submit!(SubscriberRegistration::new::<
+    EmailService,
+    OnboardingOperation,
+>());

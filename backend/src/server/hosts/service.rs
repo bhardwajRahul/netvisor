@@ -1,3 +1,4 @@
+use crate::server::shared::events::traits::{EntityEventFlags, EntityScope, Event};
 use crate::server::{
     auth::middleware::auth::AuthenticatedEntity,
     bindings::r#impl::base::{Binding, BindingType},
@@ -19,10 +20,7 @@ use crate::server::{
     },
     shared::{
         entities::{ChangeTriggersTopologyStaleness, EntityDiscriminants},
-        events::{
-            bus::EventBus,
-            types::{EntityEvent, EntityOperation},
-        },
+        events::{bus::EventBus, types::EntityOperation},
         position::resolve_and_validate_input_positions,
         services::traits::{ChildCrudService, CrudService, EventBusService},
         storage::{
@@ -36,8 +34,9 @@ use crate::server::{
         },
     },
     snmp::resolution::{lldp::LldpResolver, resolver::LldpResolverImpl},
-    subnets::service::SubnetService,
+    subnets::{r#impl::base::Subnet, service::SubnetService},
     tags::entity_tags::EntityTagService,
+    vlans::service::VlanService,
 };
 use anyhow::{Error, Result, anyhow};
 use async_trait::async_trait;
@@ -56,6 +55,7 @@ pub struct HostLimitContext {
     pub limit: u64,
     pub org_id: Uuid,
     pub org_network_ids: Vec<Uuid>,
+    pub plan: crate::server::billing::types::base::BillingPlan,
 }
 
 pub struct HostService {
@@ -67,7 +67,7 @@ pub struct HostService {
     pub daemon_service: Arc<DaemonService>,
     credential_service: Arc<CredentialService>,
     subnet_service: Arc<SubnetService>,
-    vlan_service: Arc<crate::server::vlans::service::VlanService>,
+    vlan_service: Arc<VlanService>,
     host_locks: Arc<Mutex<HashMap<Uuid, Arc<Mutex<()>>>>>,
     event_bus: Arc<EventBus>,
     entity_tag_service: Arc<EntityTagService>,
@@ -171,22 +171,23 @@ impl CrudService<Host> for HostService {
                 let created = self.storage().create(&host).await?;
                 let trigger_stale = created.triggers_staleness(None);
 
-                self.event_bus()
-                    .publish_entity(EntityEvent {
-                        id: Uuid::new_v4(),
-                        entity_id: created.id(),
-                        network_id: self.get_network_id(&created),
-                        organization_id: self.get_organization_id(&created),
-                        entity_type: created.into(),
-                        operation: EntityOperation::Created,
-                        timestamp: Utc::now(),
-                        metadata: serde_json::json!({
-                            "trigger_stale": trigger_stale
-                        }),
-
-                        authentication,
-                    })
-                    .await?;
+                if let Some(scope) = EntityScope::from_ids(
+                    created.id(),
+                    created.clone().into(),
+                    self.get_network_id(&created),
+                    self.get_organization_id(&created),
+                ) {
+                    self.event_bus()
+                        .publish(
+                            Event::new(scope, EntityOperation::Created, authentication).with_flags(
+                                EntityEventFlags {
+                                    trigger_stale,
+                                    ..Default::default()
+                                },
+                            ),
+                        )
+                        .await?;
+                }
 
                 host
             }
@@ -211,22 +212,23 @@ impl CrudService<Host> for HostService {
         let updated = self.storage().update(updates).await?;
         let trigger_stale = updated.triggers_staleness(Some(current_host));
 
-        self.event_bus()
-            .publish_entity(EntityEvent {
-                id: Uuid::new_v4(),
-                entity_id: updated.id(),
-                network_id: self.get_network_id(&updated),
-                organization_id: self.get_organization_id(&updated),
-                entity_type: updated.clone().into(),
-                operation: EntityOperation::Updated,
-                timestamp: Utc::now(),
-                metadata: serde_json::json!({
-                    "trigger_stale": trigger_stale
-                }),
-
-                authentication,
-            })
-            .await?;
+        if let Some(scope) = EntityScope::from_ids(
+            updated.id(),
+            updated.clone().into(),
+            self.get_network_id(&updated),
+            self.get_organization_id(&updated),
+        ) {
+            self.event_bus()
+                .publish(
+                    Event::new(scope, EntityOperation::Updated, authentication).with_flags(
+                        EntityEventFlags {
+                            trigger_stale,
+                            ..Default::default()
+                        },
+                    ),
+                )
+                .await?;
+        }
 
         Ok(updated)
     }
@@ -243,7 +245,7 @@ impl HostService {
         daemon_service: Arc<DaemonService>,
         credential_service: Arc<CredentialService>,
         subnet_service: Arc<SubnetService>,
-        vlan_service: Arc<crate::server::vlans::service::VlanService>,
+        vlan_service: Arc<VlanService>,
         event_bus: Arc<EventBus>,
         entity_tag_service: Arc<EntityTagService>,
     ) -> Self {
@@ -602,7 +604,7 @@ impl HostService {
         ports: Vec<Port>,
         services: Vec<Service>,
         interfaces: Vec<Interface>,
-        subnets: Vec<crate::server::subnets::r#impl::base::Subnet>,
+        subnets: Vec<Subnet>,
         conflict_behavior: ConflictBehavior,
         authentication: AuthenticatedEntity,
         limit_ctx: Option<&HostLimitContext>,
@@ -1723,7 +1725,7 @@ impl HostService {
         ports: Vec<Port>,
         services: Vec<Service>,
         interfaces: Vec<crate::server::interfaces::r#impl::base::Interface>,
-        subnets: Vec<crate::server::subnets::r#impl::base::Subnet>,
+        subnets: Vec<Subnet>,
         authentication: AuthenticatedEntity,
         limit_ctx: Option<&HostLimitContext>,
     ) -> Result<HostResponse> {
@@ -2141,22 +2143,23 @@ impl HostService {
 
             let trigger_stale = existing_host.triggers_staleness(Some(host_before_updates));
 
-            self.event_bus()
-                .publish_entity(EntityEvent {
-                    id: Uuid::new_v4(),
-                    entity_id: existing_host.id(),
-                    network_id: self.get_network_id(&existing_host),
-                    organization_id: self.get_organization_id(&existing_host),
-                    entity_type: existing_host.clone().into(),
-                    operation: EntityOperation::Updated,
-                    timestamp: Utc::now(),
-                    metadata: serde_json::json!({
-                        "trigger_stale": trigger_stale
-                    }),
-
-                    authentication,
-                })
-                .await?;
+            if let Some(scope) = EntityScope::from_ids(
+                existing_host.id(),
+                existing_host.clone().into(),
+                self.get_network_id(&existing_host),
+                self.get_organization_id(&existing_host),
+            ) {
+                self.event_bus()
+                    .publish(
+                        Event::new(scope, EntityOperation::Updated, authentication).with_flags(
+                            EntityEventFlags {
+                                trigger_stale,
+                                ..Default::default()
+                            },
+                        ),
+                    )
+                    .await?;
+            }
         } else {
             tracing::debug!(
                 "No new data to upsert from host {} to {}",
@@ -2719,22 +2722,23 @@ impl HostService {
 
         let trigger_stale = host.triggers_staleness(None);
 
-        self.event_bus()
-            .publish_entity(EntityEvent {
-                id: Uuid::new_v4(),
-                entity_id: host.id(),
-                network_id: self.get_network_id(&host),
-                organization_id: self.get_organization_id(&host),
-                entity_type: host.into(),
-                operation: EntityOperation::Deleted,
-                timestamp: Utc::now(),
-                metadata: serde_json::json!({
-                    "trigger_stale": trigger_stale
-                }),
-
-                authentication,
-            })
-            .await?;
+        if let Some(scope) = EntityScope::from_ids(
+            host.id(),
+            host.clone().into(),
+            self.get_network_id(&host),
+            self.get_organization_id(&host),
+        ) {
+            self.event_bus()
+                .publish(
+                    Event::new(scope, EntityOperation::Deleted, authentication).with_flags(
+                        EntityEventFlags {
+                            trigger_stale,
+                            ..Default::default()
+                        },
+                    ),
+                )
+                .await?;
+        }
 
         Ok(())
     }

@@ -4,6 +4,8 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::Validate;
 
+use crate::server::organizations::r#impl::base::UseCase;
+
 /// Login request from client
 #[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
 pub struct LoginRequest {
@@ -151,13 +153,7 @@ pub struct OnboardingStepRequest {
     pub step: String,
     /// Use case selection (homelab, company, msp)
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub use_case: Option<String>,
-    /// Referral source (how they heard about Scanopy)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub referral_source: Option<String>,
-    /// Free-text referral source (when "other" is selected)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub referral_source_other: Option<String>,
+    pub use_case: Option<UseCase>,
 }
 
 /// Network data in onboarding state response
@@ -184,7 +180,7 @@ pub struct OnboardingStateResponse {
     /// Current onboarding step (if any)
     pub step: Option<String>,
     /// Use case selection (homelab, company, msp)
-    pub use_case: Option<String>,
+    pub use_case: Option<UseCase>,
     /// Organization name from pending setup
     pub org_name: Option<String>,
     /// Network from pending setup (with name and ID)

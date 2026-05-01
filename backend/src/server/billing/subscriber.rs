@@ -1,16 +1,21 @@
-use std::collections::HashMap;
+//! Billing subscriber for Network/User Created/Deleted entity events.
+//!
+//! Drives billing-side bookkeeping when tenant resources change: seat counts,
+//! Stripe metered usage, plan-limit enforcement.
 
 use anyhow::Error;
 use async_trait::async_trait;
+use std::collections::HashMap;
 
 use crate::server::{
     billing::service::BillingService,
     networks::r#impl::Network,
     shared::{
-        entities::{Entity, EntityDiscriminants},
+        entities::EntityDiscriminants,
         events::{
-            bus::{EventFilter, EventSubscriber},
-            types::{EntityOperation, Event},
+            registry::SubscriberRegistration,
+            traits::{EntityEventFilter, Event, Subscriber},
+            types::{EntityOperation, EntityOperationDiscriminants},
         },
         services::traits::CrudService,
         storage::filter::StorableFilter,
@@ -19,72 +24,60 @@ use crate::server::{
 };
 
 #[async_trait]
-impl EventSubscriber for BillingService {
-    fn event_filter(&self) -> EventFilter {
-        EventFilter::entity_only(HashMap::from([
-            (
-                EntityDiscriminants::Network,
-                Some(vec![EntityOperation::Created, EntityOperation::Deleted]),
-            ),
-            (
-                EntityDiscriminants::User,
-                Some(vec![EntityOperation::Created, EntityOperation::Deleted]),
-            ),
+impl Subscriber<EntityOperation> for BillingService {
+    fn filter(&self) -> EntityEventFilter {
+        let create_or_delete = Some(vec![
+            EntityOperationDiscriminants::Created,
+            EntityOperationDiscriminants::Deleted,
+        ]);
+        EntityEventFilter::by_entity(HashMap::from([
+            (EntityDiscriminants::Network, create_or_delete.clone()),
+            (EntityDiscriminants::User, create_or_delete),
         ]))
     }
 
-    async fn handle_events(&self, events: Vec<Event>) -> Result<(), Error> {
+    async fn handle(&self, events: Vec<Event<EntityOperation>>) -> Result<(), Error> {
         if events.is_empty() {
             return Ok(());
         }
 
         for event in events {
-            if let Event::Entity(e) = event
-                && let Some(org_id) = if let Some(org_id) = e.organization_id {
-                    Some(org_id)
-                } else if let Some(network_id) = e.network_id {
-                    self.network_service
-                        .get_by_id(&network_id)
-                        .await?
-                        .map(|n| n.base.organization_id)
-                } else {
-                    None
+            // Resolve the org_id from the event scope (org-scoped entity) or
+            // from the network (network-scoped entity).
+            let org_id = if let Some(org_id) = event.scope.organization_id() {
+                org_id
+            } else if let Some(network_id) = event.scope.network_id() {
+                match self.network_service.get_by_id(&network_id).await? {
+                    Some(network) => network.base.organization_id,
+                    None => continue,
                 }
-                && let Some(org) = self.organization_service.get_by_id(&org_id).await?
-            {
-                match e.entity_type {
-                    Entity::Network(_) | Entity::User(_) => {
-                        let network_filter = StorableFilter::<Network>::new_from_org_id(&org_id);
-                        let user_filter = StorableFilter::<User>::new_from_org_id(&org_id);
+            } else {
+                continue;
+            };
 
-                        let network_count =
-                            self.network_service.get_all(network_filter).await?.len();
+            let Some(org) = self.organization_service.get_by_id(&org_id).await? else {
+                continue;
+            };
 
-                        let seat_count = self.user_service.get_all(user_filter).await?.len();
+            let network_filter = StorableFilter::<Network>::new_from_org_id(&org_id);
+            let user_filter = StorableFilter::<User>::new_from_org_id(&org_id);
 
-                        // Skip if org has no plan, or plan has no metered addons
-                        if let Some(ref plan) = org.base.plan {
-                            if plan.config().seat_cents.is_none()
-                                && plan.config().network_cents.is_none()
-                            {
-                                continue;
-                            }
-                        } else {
-                            continue;
-                        }
+            let network_count = self.network_service.get_all(network_filter).await?.len();
+            let seat_count = self.user_service.get_all(user_filter).await?.len();
 
-                        self.update_addon_prices(org, network_count as u64, seat_count as u64)
-                            .await?;
-                    }
-                    _ => (),
-                }
+            let plan = org
+                .base
+                .plan
+                .unwrap_or_else(crate::server::billing::plans::get_free_plan);
+            if plan.config().seat_cents.is_none() && plan.config().network_cents.is_none() {
+                continue;
             }
+
+            self.update_addon_prices(org, network_count as u64, seat_count as u64)
+                .await?;
         }
 
         Ok(())
     }
-
-    fn name(&self) -> &str {
-        "billing_quota_update"
-    }
 }
+inventory::submit!(SubscriberRegistration::new::<BillingService, EntityOperation>());

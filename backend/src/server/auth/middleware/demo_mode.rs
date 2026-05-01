@@ -8,10 +8,7 @@
 //! mutating operations since they don't have owner permissions.
 
 use crate::server::{
-    auth::middleware::{
-        auth::AuthenticatedEntity,
-        cache::{CachedNetwork, CachedOrganization},
-    },
+    auth::middleware::{auth::AuthenticatedEntity, cache::CachedNetwork},
     billing::types::base::BillingPlan,
     config::AppState,
     shared::types::api::ApiError,
@@ -88,13 +85,18 @@ pub async fn demo_mode_middleware(
 
     // Load organization (uses caching)
     let organization =
-        match CachedOrganization::get_or_load(&mut parts, &state, &organization_id).await {
+        match super::cache::CachedOrganization::get_or_load(&mut parts, &state, &organization_id)
+            .await
+        {
             Ok(org) => org,
             Err(e) => return e.into_response(),
         };
+    let plan = organization
+        .base
+        .plan
+        .unwrap_or_else(crate::server::billing::plans::get_free_plan);
 
     let request = Request::from_parts(parts, body);
-    let plan = organization.base.plan.unwrap_or_default();
 
     // Only block demo organizations
     if !matches!(plan, BillingPlan::Demo(_)) {

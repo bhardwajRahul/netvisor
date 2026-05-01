@@ -13,9 +13,6 @@ use utoipa::ToSchema;
 use utoipa_axum::{router::OpenApiRouter, routes};
 use uuid::Uuid;
 
-use chrono::Utc;
-use serde_json::json;
-
 use crate::server::{
     auth::{
         middleware::{
@@ -29,10 +26,12 @@ use crate::server::{
     config::AppState,
     credentials::r#impl::types::REDACTED_SECRET_SENTINEL,
     networks::r#impl::Network,
-    organizations::r#impl::base::Organization,
     shared::validation::validate_csp_domain,
     shared::{
-        events::types::{AnalyticsEvent, AnalyticsOperation},
+        events::{
+            traits::{Event, OrgScope},
+            types::AnalyticsOperation,
+        },
         handlers::traits::{CrudHandlers, create_handler, update_handler},
         services::traits::CrudService,
         storage::traits::{Entity, Storage},
@@ -247,16 +246,14 @@ async fn get_share_org_plan(state: &AppState, share: &Share) -> Result<BillingPl
         .map_err(|e| ApiError::internal_error(&e.to_string()))?
         .ok_or_else(|| ApiError::entity_not_found::<Network>(share.base.network_id))?;
 
-    // Get organization to find plan
-    let org = state
+    Ok(state
         .services
         .organization_service
         .get_by_id(&network.base.organization_id)
         .await
         .map_err(|e| ApiError::internal_error(&e.to_string()))?
-        .ok_or_else(|| ApiError::entity_not_found::<Organization>(network.base.organization_id))?;
-
-    Ok(org.base.plan.unwrap_or_default())
+        .and_then(|o| o.base.plan)
+        .unwrap_or_else(crate::server::billing::plans::get_free_plan))
 }
 
 /// Get share metadata
@@ -550,24 +547,27 @@ async fn get_share_topology(
             .map(|n| n.base.organization_id);
 
         if let Some(org_id) = org_id {
+            let has_password = share.requires_password();
             let operation = if query.embed {
-                AnalyticsOperation::TopologyEmbedViewed
+                AnalyticsOperation::TopologyEmbedViewed {
+                    share_id: id,
+                    has_password,
+                }
             } else {
-                AnalyticsOperation::TopologyShareViewed
+                AnalyticsOperation::TopologyShareViewed {
+                    share_id: id,
+                    has_password,
+                }
             };
             let _ = state
                 .services
                 .event_bus
-                .publish_analytics(AnalyticsEvent::new(
-                    Uuid::new_v4(),
-                    org_id,
+                .publish(Event::new(
+                    OrgScope {
+                        organization_id: org_id,
+                    },
                     operation,
-                    Utc::now(),
                     AuthenticatedEntity::System,
-                    json!({
-                        "share_id": id.to_string(),
-                        "has_password": share.requires_password(),
-                    }),
                 ))
                 .await;
         }

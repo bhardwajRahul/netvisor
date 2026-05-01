@@ -138,6 +138,7 @@ pub struct CompanyAttributes {
     pub scanopy_company_size: Option<String>,
     pub scanopy_plan_type: Option<String>,
     pub scanopy_plan_status: Option<String>,
+    pub scanopy_lifecycle_marker: Option<String>,
     pub scanopy_mrr: Option<i64>,
     pub scanopy_network_count: Option<i64>,
     pub scanopy_host_count: Option<i64>,
@@ -194,8 +195,21 @@ impl CompanyAttributes {
         self
     }
 
-    pub fn with_plan_status(mut self, status: impl Into<String>) -> Self {
-        self.scanopy_plan_status = Some(status.into());
+    /// Set the canonical plan status. Uses our domain `PlanStatus` enum;
+    /// Brevo receives the snake_case Display form.
+    pub fn with_plan_status(
+        mut self,
+        status: crate::server::billing::types::base::PlanStatus,
+    ) -> Self {
+        self.scanopy_plan_status = Some(status.to_string());
+        self
+    }
+
+    /// Funnel / lifecycle marker that doesn't correspond to a real subscription
+    /// status (e.g., `checkout_started`, `trial_ending_soon`). Stored in its
+    /// own Brevo field so it doesn't overwrite `plan_status`.
+    pub fn with_lifecycle_marker(mut self, marker: impl Into<String>) -> Self {
+        self.scanopy_lifecycle_marker = Some(marker.into());
         self
     }
 
@@ -337,6 +351,9 @@ impl CompanyAttributes {
         }
         if let Some(v) = &self.scanopy_plan_status {
             attrs.insert("scanopy_plan_status".to_string(), serde_json::json!(v));
+        }
+        if let Some(v) = &self.scanopy_lifecycle_marker {
+            attrs.insert("scanopy_lifecycle_marker".to_string(), serde_json::json!(v));
         }
         if let Some(v) = self.scanopy_mrr {
             attrs.insert("scanopy_mrr".to_string(), serde_json::json!(v));

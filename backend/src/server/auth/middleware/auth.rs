@@ -8,7 +8,10 @@ use crate::server::{
     networks::r#impl::Network,
     shared::{
         api_key_common::{ApiKeyCommon, ApiKeyType, check_key_validity, hash_api_key},
-        events::types::{AuthEvent, AuthOperation},
+        events::{
+            traits::{AuthScope, Event},
+            types::AuthOperation,
+        },
         services::traits::CrudService,
         storage::filter::StorableFilter,
         types::api::ApiError,
@@ -68,7 +71,7 @@ impl Display for AuthMethod {
 }
 
 /// Represents either an authenticated user, daemon, or user API key
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, strum::VariantNames)]
 pub enum AuthenticatedEntity {
     User {
         user_id: Uuid,
@@ -423,21 +426,19 @@ impl AuthenticatedEntity {
                             return Err(AuthError(e));
                         }
 
-                        let organization_has_api_access = app_state
-                            .services
-                            .organization_service
-                            .get_by_id(&organization_id)
-                            .await
-                            .unwrap_or_default()
-                            .map(|o| {
-                                o.base
-                                    .plan
-                                    .map(|p| p.features().api_access)
-                                    .unwrap_or(false)
-                            })
-                            .unwrap_or(false);
+                        let organization = super::cache::CachedOrganization::get_or_load(
+                            parts,
+                            app_state,
+                            &organization_id,
+                        )
+                        .await
+                        .map_err(AuthError)?;
+                        let plan = organization
+                            .base
+                            .plan
+                            .unwrap_or_else(crate::server::billing::plans::get_free_plan);
 
-                        if !organization_has_api_access {
+                        if !plan.features().api_access {
                             return Err(AuthError(ApiError::payment_required(
                                 "Your plan does not include api access",
                             )));
@@ -693,30 +694,25 @@ async fn publish_api_key_auth_failed(
     reason: &str,
     key_prefix: Option<&str>,
 ) {
-    let key_type_str: &str = key_type.into();
-
-    let metadata = serde_json::json!({
-        "key_type": key_type_str.to_lowercase(),
-        "reason": reason,
-        "key_prefix": key_prefix,
-    });
-
-    let event = AuthEvent::new(
-        Uuid::new_v4(),
-        None, // No user_id for failed auth
-        None, // No organization_id
-        AuthOperation::ApiKeyAuthFailed,
-        Utc::now(),
-        ip,
-        user_agent,
-        metadata,
+    let event = Event::new(
+        AuthScope {
+            user_id: None,
+            organization_id: None,
+            ip_address: ip,
+            user_agent,
+        },
+        AuthOperation::ApiKeyAuthFailed {
+            key_type,
+            reason: reason.to_string(),
+            key_prefix: key_prefix.map(|s| s.to_string()).unwrap_or_default(),
+        },
         AuthenticatedEntity::Anonymous,
     );
 
     // Fire and forget - don't block auth on event publishing
     let event_bus = app_state.services.event_bus.clone();
     tokio::spawn(async move {
-        if let Err(e) = event_bus.publish_auth(event).await {
+        if let Err(e) = event_bus.publish(event).await {
             tracing::warn!(error = %e, "Failed to publish API key auth failed event");
         }
     });

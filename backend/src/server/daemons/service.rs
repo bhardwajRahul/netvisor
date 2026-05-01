@@ -24,7 +24,7 @@ use crate::daemon::runtime::state::{
 };
 use crate::daemon::runtime::types::InitializeDaemonRequest;
 use crate::server::auth::middleware::auth::AuthenticatedEntity;
-use crate::server::billing::types::base::BillingPlan;
+use crate::server::billing::types::base::{LimitSource, LimitType};
 use crate::server::credentials::r#impl::types::CredentialAssignment;
 use crate::server::credentials::service::CredentialService;
 use crate::server::daemon_api_keys::service::DaemonApiKeyService;
@@ -40,6 +40,7 @@ use crate::server::discovery::r#impl::base::{Discovery, DiscoveryBase};
 use crate::server::discovery::r#impl::scan_settings::ScanSettings;
 use crate::server::discovery::r#impl::types::{DiscoveryType, HostNamingFallback, RunType};
 use crate::server::discovery::service::DiscoveryService;
+use crate::server::email::traits::EmailService;
 use crate::server::hosts::r#impl::base::{Host, HostBase};
 use crate::server::hosts::service::{HostLimitContext, HostService};
 use crate::server::networks::r#impl::Network;
@@ -47,9 +48,9 @@ use crate::server::networks::service::NetworkService;
 use crate::server::organizations::service::OrganizationService;
 use crate::server::shared::entities::ChangeTriggersTopologyStaleness;
 use crate::server::shared::events::bus::EventBus;
+use crate::server::shared::events::traits::{EntityEventFlags, EntityScope, Event, OrgScope};
 use crate::server::shared::events::types::{
-    BillingEvent, BillingOperation, EntityEvent, EntityOperation, OnboardingEvent,
-    OnboardingOperation,
+    BillingOperation, EntityOperation, OnboardingOperation, OnboardingOperationDiscriminants,
 };
 use crate::server::shared::legacy::rewrite_response_for_legacy_daemon;
 use crate::server::shared::services::traits::{CrudService, EventBusService};
@@ -172,22 +173,24 @@ impl CrudService<Daemon> for DaemonService {
                 .await?;
         }
 
-        self.event_bus()
-            .publish_entity(EntityEvent {
-                id: Uuid::new_v4(),
-                entity_id: *id,
-                network_id: self.get_network_id(&entity),
-                organization_id: self.get_organization_id(&entity),
-                entity_type: entity.into(),
-                operation: EntityOperation::Deleted,
-                timestamp: Utc::now(),
-                metadata: serde_json::json!({
-                    "trigger_stale": trigger_stale,
-                    "suppress_logs": suppress_logs
-                }),
-                authentication,
-            })
-            .await?;
+        if let Some(scope) = EntityScope::from_ids(
+            *id,
+            entity.clone().into(),
+            self.get_network_id(&entity),
+            self.get_organization_id(&entity),
+        ) {
+            self.event_bus()
+                .publish(
+                    Event::new(scope, EntityOperation::Deleted, authentication).with_flags(
+                        EntityEventFlags {
+                            trigger_stale,
+                            suppress_logs,
+                            ..Default::default()
+                        },
+                    ),
+                )
+                .await?;
+        }
 
         Ok(())
     }
@@ -734,12 +737,16 @@ impl DaemonService {
                 .get_by_id(&daemon.base.network_id)
                 .await?
                 .ok_or_else(|| ApiError::entity_not_found::<Network>(daemon.base.network_id))?;
-            let org = self
+            let organization = self
                 .organization_service
                 .get_by_id(&network.base.organization_id)
                 .await?
-                .ok_or_else(|| ApiError::not_found("Organization not found".to_string()))?;
-            let is_free_plan = matches!(org.base.plan, Some(BillingPlan::Free(_)));
+                .ok_or_else(|| {
+                    ApiError::entity_not_found::<
+                        crate::server::organizations::r#impl::base::Organization,
+                    >(network.base.organization_id)
+                })?;
+            let is_free_plan = organization.base.plan.map(|p| p.is_free()).unwrap_or(true);
             self.create_default_discovery_jobs(
                 daemon_id,
                 daemon.base.network_id,
@@ -777,13 +784,22 @@ impl DaemonService {
             .await?
             .ok_or_else(|| ApiError::entity_not_found::<Network>(request.network_id))?;
 
-        let org = self
-            .organization_service
-            .get_by_id(&network.base.organization_id)
-            .await?
-            .ok_or_else(|| ApiError::not_found("Organization not found".to_string()))?;
+        let org_id = network.base.organization_id;
+        let organization =
+            self.organization_service
+                .get_by_id(&org_id)
+                .await?
+                .ok_or_else(|| {
+                    ApiError::entity_not_found::<
+                        crate::server::organizations::r#impl::base::Organization,
+                    >(org_id)
+                })?;
+        let plan = organization
+            .base
+            .plan
+            .unwrap_or_else(crate::server::billing::plans::get_free_plan);
 
-        if matches!(org.base.plan, Some(BillingPlan::Demo(_))) {
+        if plan.is_demo() {
             return Err(ApiError::demo_mode_blocked());
         }
 
@@ -868,7 +884,7 @@ impl DaemonService {
         }
 
         // Check daemon limit for unverified orgs (allows 1st daemon)
-        self.check_unverified_daemon_limit(org.id).await?;
+        self.check_unverified_daemon_limit(org_id).await?;
 
         // New registration - create host and daemon
         let dummy_host = Host::new(HostBase {
@@ -954,7 +970,7 @@ impl DaemonService {
         // If user_id is nil (old daemon), fall back to org owner
         let user_id = if request.user_id.is_nil() {
             self.user_service
-                .get_organization_owners(&org.id)
+                .get_organization_owners(&org_id)
                 .await?
                 .first()
                 .map(|u| u.id)
@@ -991,7 +1007,7 @@ impl DaemonService {
             .await?;
 
         // Create default discovery jobs
-        let is_free_plan = matches!(org.base.plan, Some(BillingPlan::Free(_)));
+        let is_free_plan = plan.is_free();
         self.create_default_discovery_jobs(
             request.daemon_id,
             request.network_id,
@@ -1061,25 +1077,30 @@ impl DaemonService {
         // Compute host limit context from the first host's network → org → plan
         let limit_ctx = if let Some(first_host) = entities.hosts.first() {
             let network_id = first_host.host.base.network_id;
-            if let Ok(Some(network)) = self.network_service.get_by_id(&network_id).await
-                && let Ok(Some(org)) = self
+            if let Ok(Some(network)) = self.network_service.get_by_id(&network_id).await {
+                let org_id = network.base.organization_id;
+                let plan = self
                     .organization_service
-                    .get_by_id(&network.base.organization_id)
-                    .await
-                && let Some(plan) = &org.base.plan
-                && let Some(limit) = plan.host_limit()
-            {
-                let org_networks = self
-                    .network_service
-                    .get_all(StorableFilter::<Network>::new_from_org_id(&org.id))
-                    .await
-                    .unwrap_or_default();
-                let org_network_ids: Vec<Uuid> = org_networks.iter().map(|n| n.id).collect();
-                Some(HostLimitContext {
-                    limit,
-                    org_id: org.id,
-                    org_network_ids,
-                })
+                    .get_by_id(&org_id)
+                    .await?
+                    .and_then(|o| o.base.plan)
+                    .unwrap_or_else(crate::server::billing::plans::get_free_plan);
+                if let Some(limit) = plan.host_limit() {
+                    let org_networks = self
+                        .network_service
+                        .get_all(StorableFilter::<Network>::new_from_org_id(&org_id))
+                        .await
+                        .unwrap_or_default();
+                    let org_network_ids: Vec<Uuid> = org_networks.iter().map(|n| n.id).collect();
+                    Some(HostLimitContext {
+                        limit,
+                        org_id,
+                        org_network_ids,
+                        plan,
+                    })
+                } else {
+                    None
+                }
             } else {
                 None
             }
@@ -1141,18 +1162,18 @@ impl DaemonService {
                         billing_limit_reached = Some((ctx.limit, ctx.org_id));
                         let _ = self
                             .event_bus
-                            .publish_billing(BillingEvent::new(
-                                Uuid::new_v4(),
-                                ctx.org_id,
-                                BillingOperation::FeatureLimitHit,
-                                Utc::now(),
+                            .publish(Event::new(
+                                OrgScope {
+                                    organization_id: ctx.org_id,
+                                },
+                                BillingOperation::FeatureLimitHit {
+                                    limit_type: LimitType::Hosts,
+                                    current_count: ctx.limit,
+                                    limit: ctx.limit,
+                                    plan: ctx.plan,
+                                    source: LimitSource::Discovery,
+                                },
                                 auth.clone(),
-                                serde_json::json!({
-                                    "limit_type": "hosts",
-                                    "current_count": ctx.limit,
-                                    "limit": ctx.limit,
-                                    "source": "discovery",
-                                }),
                             ))
                             .await;
                     }
@@ -1175,17 +1196,16 @@ impl DaemonService {
                 .organization_service
                 .get_by_id(&network.base.organization_id)
                 .await
-            && org.not_onboarded(&OnboardingOperation::FirstHostDiscovered)
+            && org.not_onboarded(&OnboardingOperationDiscriminants::FirstHostDiscovered)
         {
             let _ = self
                 .event_bus
-                .publish_onboarding(OnboardingEvent::new(
-                    Uuid::new_v4(),
-                    org.id,
+                .publish(Event::new(
+                    OrgScope {
+                        organization_id: org.id,
+                    },
                     OnboardingOperation::FirstHostDiscovered,
-                    Utc::now(),
                     AuthenticatedEntity::System,
-                    serde_json::json!({}),
                 ))
                 .await;
         }
@@ -1448,7 +1468,7 @@ impl DaemonService {
             .await?
             .ok_or_else(|| ApiError::not_found("Organization not found".to_string()))?;
 
-        if org.not_onboarded(&OnboardingOperation::FirstDaemonRegistered) {
+        if org.not_onboarded(&OnboardingOperationDiscriminants::FirstDaemonRegistered) {
             let daemon_name = self
                 .get_by_id(&daemon_id)
                 .await?
@@ -1462,18 +1482,16 @@ impl DaemonService {
             );
 
             self.event_bus
-                .publish_onboarding(OnboardingEvent {
-                    id: Uuid::new_v4(),
-                    organization_id: org.id,
-                    operation: OnboardingOperation::FirstDaemonRegistered,
-                    timestamp: Utc::now(),
-                    metadata: serde_json::json!({
-                        "mode": "server_poll",
-                        "daemon_name": daemon_name,
-                        "network_name": network.base.name,
-                    }),
-                    authentication: AuthenticatedEntity::System,
-                })
+                .publish(Event::new(
+                    OrgScope {
+                        organization_id: org.id,
+                    },
+                    OnboardingOperation::FirstDaemonRegistered {
+                        daemon_name: daemon_name.to_string(),
+                        network_name: network.base.name.clone(),
+                    },
+                    AuthenticatedEntity::System,
+                ))
                 .await?;
         }
 
@@ -1485,10 +1503,7 @@ impl DaemonService {
     // ========================================================================
 
     /// Start the ServerPoll polling loop. Should be called once from main.
-    pub async fn start_polling_loop(
-        self: Arc<Self>,
-        email_service: Option<Arc<crate::server::email::traits::EmailService>>,
-    ) {
+    pub async fn start_polling_loop(self: Arc<Self>, email_service: Option<Arc<EmailService>>) {
         let poll_interval = Duration::from_secs(DEFAULT_POLL_INTERVAL_SECS);
         let mut interval = tokio::time::interval(poll_interval);
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -1504,10 +1519,7 @@ impl DaemonService {
 
     /// Poll all ServerPoll-mode daemons in parallel with semaphore-limited concurrency.
     /// Uses backon for per-daemon retries - daemon is marked unreachable after exhausting retries.
-    async fn poll_all_daemons(
-        &self,
-        email_service: Option<&crate::server::email::traits::EmailService>,
-    ) -> Result<()> {
+    async fn poll_all_daemons(&self, email_service: Option<&EmailService>) -> Result<()> {
         let daemons = self.get_server_poll_daemons().await?;
 
         if daemons.is_empty() {
@@ -1564,7 +1576,7 @@ impl DaemonService {
     async fn mark_daemon_unreachable(
         &self,
         daemon_id: Uuid,
-        email_service: Option<&crate::server::email::traits::EmailService>,
+        email_service: Option<&EmailService>,
     ) -> Result<()> {
         let mut daemon = self
             .get_by_id(&daemon_id)
@@ -1606,7 +1618,7 @@ impl DaemonService {
     async fn poll_daemon(
         &self,
         daemon: &Daemon,
-        email_service: Option<&crate::server::email::traits::EmailService>,
+        email_service: Option<&EmailService>,
     ) -> Result<()> {
         Self::warn_if_insecure_daemon_url(&daemon.base.url);
 
@@ -1769,15 +1781,14 @@ impl DaemonService {
                 .get_by_id(&daemon.base.network_id)
                 .await
             {
-                if let Ok(Some(org)) = self
-                    .organization_service
+                self.organization_service
                     .get_by_id(&network.base.organization_id)
                     .await
-                {
-                    matches!(org.base.plan, Some(BillingPlan::Free(_)))
-                } else {
-                    false
-                }
+                    .ok()
+                    .flatten()
+                    .and_then(|o| o.base.plan)
+                    .map(|p| p.is_free())
+                    .unwrap_or(true)
             } else {
                 false
             };
@@ -1933,7 +1944,7 @@ impl DaemonService {
     /// and put them on standby, sending notification emails if email service is available.
     pub async fn check_daemon_inactivity(
         &self,
-        email_service: Option<&crate::server::email::traits::EmailService>,
+        email_service: Option<&EmailService>,
     ) -> Result<()> {
         let cutoff = Utc::now() - chrono::Duration::days(30);
 
@@ -2006,7 +2017,7 @@ impl DaemonService {
     async fn send_standby_notification(
         &self,
         daemon: &Daemon,
-        email_service: &crate::server::email::traits::EmailService,
+        email_service: &EmailService,
     ) -> Result<()> {
         let network = self
             .network_service
@@ -2049,7 +2060,7 @@ impl DaemonService {
     async fn send_unreachable_notification(
         &self,
         daemon: &Daemon,
-        email_service: &crate::server::email::traits::EmailService,
+        email_service: &EmailService,
     ) -> Result<()> {
         let network = self
             .network_service

@@ -4,23 +4,23 @@ use crate::server::{
         cache::CachedOrganization,
         permissions::{Authorized, Viewer},
     },
-    billing::types::base::BillingPlan,
+    billing::types::base::{BillingPlan, LimitSource, LimitType},
     config::AppState,
     networks::r#impl::Network,
     organizations::r#impl::base::Organization,
     shared::{
-        events::types::{BillingEvent, BillingOperation},
+        events::{
+            traits::{Event, OrgScope},
+            types::BillingOperation,
+        },
         services::traits::CrudService,
         storage::filter::StorableFilter,
-        types::{api::ApiError, metadata::TypeMetadataProvider},
+        types::api::ApiError,
     },
     users::r#impl::permissions::UserOrgPermissions,
 };
 use async_trait::async_trait;
 use axum::{extract::FromRequestParts, http::request::Parts};
-use chrono::Utc;
-use serde_json::json;
-use uuid::Uuid;
 
 /// Context available for feature/quota checks
 pub struct FeatureCheckContext<'a> {
@@ -97,7 +97,11 @@ where
             .await
             .map_err(AuthError)?;
 
-        let plan = organization.base.plan.unwrap_or_default();
+        // Plan from the cached organization row.
+        let plan = organization
+            .base
+            .plan
+            .unwrap_or_else(crate::server::billing::plans::get_free_plan);
 
         let ctx = FeatureCheckContext {
             organization: &organization,
@@ -195,18 +199,18 @@ impl FeatureCheck for CreateNetworkFeature {
                     .app_state
                     .services
                     .event_bus
-                    .publish_billing(BillingEvent::new(
-                        Uuid::new_v4(),
-                        ctx.organization.id,
-                        BillingOperation::FeatureLimitHit,
-                        Utc::now(),
+                    .publish(Event::new(
+                        OrgScope {
+                            organization_id: ctx.organization.id,
+                        },
+                        BillingOperation::FeatureLimitHit {
+                            limit_type: LimitType::Networks,
+                            current_count: current_networks as u64,
+                            limit: max_networks,
+                            plan: ctx.plan,
+                            source: LimitSource::Api,
+                        },
                         AuthenticatedEntity::System,
-                        json!({
-                            "limit_type": "networks",
-                            "current_count": current_networks,
-                            "limit": max_networks,
-                            "plan_type": ctx.plan.name(),
-                        }),
                     ))
                     .await;
 
