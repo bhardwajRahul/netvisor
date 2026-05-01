@@ -153,8 +153,12 @@ pub trait EmailProvider: Send + Sync {
         self.send_billing_email(to, subject, body).await
     }
 
-    async fn send_subscription_cancelled_email(&self, to: EmailAddress) -> Result<(), Error> {
-        let (subject, body) = self.build_subscription_cancelled_email();
+    async fn send_subscription_cancelled_email(
+        &self,
+        to: EmailAddress,
+        period_end_date: &str,
+    ) -> Result<(), Error> {
+        let (subject, body) = self.build_subscription_cancelled_email(period_end_date);
         self.send_billing_email(to, subject, body).await
     }
 
@@ -173,8 +177,12 @@ pub trait EmailProvider: Send + Sync {
         self.send_billing_email(to, subject, body).await
     }
 
-    async fn send_payment_recovered_email(&self, to: EmailAddress) -> Result<(), Error> {
-        let (subject, body) = self.build_payment_recovered_email();
+    async fn send_payment_recovered_email(
+        &self,
+        to: EmailAddress,
+        amount: &str,
+    ) -> Result<(), Error> {
+        let (subject, body) = self.build_payment_recovered_email(amount);
         self.send_billing_email(to, subject, body).await
     }
 
@@ -257,8 +265,9 @@ pub trait EmailProvider: Send + Sync {
         (PLAN_CHANGED_TITLE.to_string(), body)
     }
 
-    fn build_subscription_cancelled_email(&self) -> (String, String) {
-        let body = self.build_email(SUBSCRIPTION_CANCELLED_BODY.to_string());
+    fn build_subscription_cancelled_email(&self, period_end_date: &str) -> (String, String) {
+        let body = self
+            .build_email(SUBSCRIPTION_CANCELLED_BODY.replace("{period_end_date}", period_end_date));
         (SUBSCRIPTION_CANCELLED_TITLE.to_string(), body)
     }
 
@@ -277,8 +286,8 @@ pub trait EmailProvider: Send + Sync {
         (PAYMENT_METHOD_REMOVED_TITLE.to_string(), body)
     }
 
-    fn build_payment_recovered_email(&self) -> (String, String) {
-        let body = self.build_email(PAYMENT_RECOVERED_BODY.to_string());
+    fn build_payment_recovered_email(&self, amount: &str) -> (String, String) {
+        let body = self.build_email(PAYMENT_RECOVERED_BODY.replace("{amount}", amount));
         (PAYMENT_RECOVERED_TITLE.to_string(), body)
     }
 
@@ -704,8 +713,14 @@ impl EmailService {
         self.provider.send_billing_email(to, subject, body).await
     }
 
-    pub async fn send_subscription_cancelled_email(&self, to: EmailAddress) -> Result<()> {
-        let (subject, body) = self.provider.build_subscription_cancelled_email();
+    pub async fn send_subscription_cancelled_email(
+        &self,
+        to: EmailAddress,
+        period_end_date: &str,
+    ) -> Result<()> {
+        let (subject, body) = self
+            .provider
+            .build_subscription_cancelled_email(period_end_date);
         let body = body.replace("{base_url}", &self.public_url);
         self.provider.send_billing_email(to, subject, body).await
     }
@@ -728,8 +743,8 @@ impl EmailService {
         self.provider.send_billing_email(to, subject, body).await
     }
 
-    pub async fn send_payment_recovered_email(&self, to: EmailAddress) -> Result<()> {
-        let (subject, body) = self.provider.build_payment_recovered_email();
+    pub async fn send_payment_recovered_email(&self, to: EmailAddress, amount: &str) -> Result<()> {
+        let (subject, body) = self.provider.build_payment_recovered_email(amount);
         let body = body.replace("{base_url}", &self.public_url);
         self.provider.send_billing_email(to, subject, body).await
     }

@@ -13,7 +13,7 @@ use crate::server::{
     auth::middleware::auth::AuthenticatedEntity,
     billing::types::base::BillingReason,
     discovery::r#impl::types::DiscoveryType,
-    email::traits::EmailService,
+    email::traits::{EmailService, format_cents},
     shared::{
         entities::{Entity, EntityDiscriminants},
         events::{
@@ -113,8 +113,10 @@ impl Subscriber<BillingOperation> for EmailService {
                     )
                     .await?;
                 }
-                BillingOperation::SubscriptionCancelled { .. } => {
-                    self.send_subscription_cancelled_email(org_owner).await?;
+                BillingOperation::SubscriptionCancelled { period_end, .. } => {
+                    let period_end_str = period_end.format("%B %-d, %Y").to_string();
+                    self.send_subscription_cancelled_email(org_owner, &period_end_str)
+                        .await?;
                 }
                 BillingOperation::PaymentFailed { .. } => {
                     self.send_payment_failed_email(org_owner).await?;
@@ -135,8 +137,10 @@ impl Subscriber<BillingOperation> for EmailService {
                 BillingOperation::PaymentMethodRemoved => {
                     self.send_payment_method_removed_email(org_owner).await?;
                 }
-                BillingOperation::PaymentRecovered { .. } => {
-                    self.send_payment_recovered_email(org_owner).await?;
+                BillingOperation::PaymentRecovered { amount_cents } => {
+                    let amount = format_cents(amount_cents, "usd");
+                    self.send_payment_recovered_email(org_owner, &amount)
+                        .await?;
                 }
                 BillingOperation::CancellationInitiated {
                     planned_period_end, ..
