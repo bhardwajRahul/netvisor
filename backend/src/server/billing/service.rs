@@ -52,6 +52,7 @@ use stripe_checkout::{
     CheckoutSessionPaymentMethodCollection,
 };
 use stripe_core::customer::CreateCustomer;
+use stripe_core::customer::DeleteCustomer;
 use stripe_core::customer::ListPaymentMethodsCustomer;
 use stripe_core::customer::UpdateCustomer;
 use stripe_core::customer::UpdateCustomerInvoiceSettings;
@@ -793,6 +794,16 @@ impl BillingService {
         Ok((organization, customer.id))
     }
 
+    /// Permanently delete the Stripe customer. Stripe auto-cancels active
+    /// subscriptions and retains invoices/charges as a deleted-customer
+    /// tombstone for accounting.
+    pub async fn delete_stripe_customer(&self, customer_id: &str) -> Result<(), Error> {
+        DeleteCustomer::new(CustomerId::from(customer_id.to_owned()))
+            .send(&self.stripe)
+            .await?;
+        Ok(())
+    }
+
     /// Handle webhook events
     pub async fn handle_webhook(&self, payload: &str, signature: &str) -> Result<(), Error> {
         let event = Webhook::construct_event(payload, signature, &self.webhook_secret)?;
@@ -1146,11 +1157,14 @@ impl BillingService {
             .ok_or_else(|| anyhow!("No plan in subscription metadata"))?;
         let plan: BillingPlan = serde_json::from_str(plan_str)?;
 
-        let organization = self
-            .organization_service
-            .get_by_id(&org_id)
-            .await?
-            .ok_or_else(|| anyhow!("Organization not found for trial_will_end"))?;
+        let Some(organization) = self.organization_service.get_by_id(&org_id).await? else {
+            tracing::warn!(
+                organization_id = %org_id,
+                event = "trial_will_end",
+                "Stripe webhook for deleted organization — skipping"
+            );
+            return Ok(());
+        };
 
         tracing::info!(
             organization_id = %org_id,
@@ -1219,11 +1233,14 @@ impl BillingService {
             .ok_or_else(|| anyhow!("No organization_id in checkout session metadata"))?;
         let org_id = Uuid::parse_str(org_id)?;
 
-        let mut organization = self
-            .organization_service
-            .get_by_id(&org_id)
-            .await?
-            .ok_or_else(|| anyhow!("Organization not found for checkout completed"))?;
+        let Some(mut organization) = self.organization_service.get_by_id(&org_id).await? else {
+            tracing::warn!(
+                organization_id = %org_id,
+                event = "checkout_session_completed",
+                "Stripe webhook for deleted organization — skipping"
+            );
+            return Ok(());
+        };
 
         organization.base.has_payment_method = true;
 
@@ -1355,11 +1372,15 @@ impl BillingService {
 
         // --- Synchronous phase: downgrade immediately, return 200 to Stripe ---
 
-        let mut organization = self
-            .organization_service
-            .get_by_id(&org_id)
-            .await?
-            .ok_or_else(|| anyhow!("Could not find organization to update subscriptions status"))?;
+        let Some(mut organization) = self.organization_service.get_by_id(&org_id).await? else {
+            tracing::warn!(
+                organization_id = %org_id,
+                subscription_id = %sub.id,
+                event = "subscription_deleted",
+                "Stripe webhook for deleted organization — skipping"
+            );
+            return Ok(());
+        };
 
         // Snapshot prior subscription state from the org row (before we
         // overwrite plan/status fields below).
