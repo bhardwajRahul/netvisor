@@ -134,6 +134,7 @@ impl UserBase {
 
     pub fn new_password(
         email: EmailAddress,
+        email_verified: bool,
         password_hash: String,
         organization_id: Uuid,
         permissions: UserOrgPermissions,
@@ -151,8 +152,7 @@ impl UserBase {
             oidc_subject: None,
             network_ids,
             terms_accepted_at,
-            // Email must be verified before login
-            email_verified: false,
+            email_verified,
             email_verification_token: None,
             email_verification_expires: None,
             password_reset_token: None,

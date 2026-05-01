@@ -8,7 +8,7 @@ use crate::server::{
                 ResendVerificationRequest, ResetPasswordRequest, SetupRequest, SetupResponse,
                 UpdatePasswordRequest, VerifyEmailRequest,
             },
-            base::{LoginRegisterParams, PendingNetworkSetup, PendingSetup},
+            base::{LoginRegisterParams, PendingNetworkSetup, PendingSetup, ProvisionOrg},
             oidc::{OidcFlow, OidcPendingAuth, OidcProviderMetadata, OidcRegisterParams},
         },
         middleware::{
@@ -25,14 +25,19 @@ use crate::server::{
     daemon_api_keys::r#impl::base::{DaemonApiKey, DaemonApiKeyBase},
     invites::handlers::process_pending_invite,
     networks::r#impl::{Network, NetworkBase},
-    shared::api_key_common::{ApiKeyType, generate_api_key_for_storage},
+    organizations::r#impl::base::UseCase,
     shared::{
-        events::types::{OnboardingEvent, OnboardingOperation},
+        api_key_common::{ApiKeyType, generate_api_key_for_storage},
+        events::{
+            traits::{Event, OrgScope},
+            types::OnboardingOperation,
+        },
         services::traits::CrudService,
-        storage::filter::StorableFilter,
-        storage::traits::Storable,
-        types::api::{ApiError, ApiErrorResponse, ApiResponse, ApiResult, EmptyApiResponse},
-        types::error_codes::ErrorCode,
+        storage::{filter::StorableFilter, traits::Storable},
+        types::{
+            api::{ApiError, ApiErrorResponse, ApiResponse, ApiResult, EmptyApiResponse},
+            error_codes::ErrorCode,
+        },
     },
     topology::types::base::{Topology, TopologyBase},
     users::r#impl::base::{User, UserBase},
@@ -175,7 +180,7 @@ async fn register(
         ));
     }
 
-    // Honeypot: hidden field filled = likely bot (cloud only — self-hosted has no public signup)
+    // Honeypot: hidden field filled = likely bot (cloud only)
     if get_deployment_type(state.clone()) == DeploymentType::Cloud
         && request.website.as_ref().is_some_and(|w| !w.is_empty())
     {
@@ -245,14 +250,24 @@ async fn register(
         }
     };
 
-    // Track if this is a new org (not an invite)
-    let is_new_org = org_id.is_none();
-
-    // Extract pending setup from session (only relevant for new orgs)
-    let pending_setup = if is_new_org {
-        extract_pending_setup(&session).await
+    let provision_org = if let Some(org_id) = org_id {
+        ProvisionOrg::Existing(org_id)
+    } else if let Ok(Some(mut pending_setup)) = session.get::<PendingSetup>("pending_setup").await {
+        // Read the latest use_case from session (set via /onboarding-step) so
+        // a frontend update after /setup is reflected at register time.
+        if let Some(use_case) = session
+            .get::<UseCase>("onboarding_use_case")
+            .await
+            .ok()
+            .flatten()
+        {
+            pending_setup.use_case = use_case;
+        }
+        ProvisionOrg::New(pending_setup)
     } else {
-        None
+        return Err(ApiError::internal_error(
+            "Organization setup information missing",
+        ));
     };
 
     let user = state
@@ -261,13 +276,12 @@ async fn register(
         .register(
             request,
             LoginRegisterParams {
-                org_id,
+                provision_org: provision_org.clone(),
                 permissions,
                 ip,
                 user_agent,
                 network_ids,
             },
-            pending_setup.clone(),
             billing_enabled,
         )
         .await?;
@@ -277,8 +291,8 @@ async fn register(
         .await
         .map_err(|e| ApiError::internal_error(&format!("Failed to save session: {}", e)))?;
 
-    // If this is a new org and setup was provided, create network/topology/daemon
-    if is_new_org && let Some(setup) = pending_setup {
+    // If this is a new org, create network/topology/daemon
+    if let ProvisionOrg::New(setup) = provision_org {
         // Apply setup: create network, seed data, topology
         apply_pending_setup(&state, &user, setup).await?;
 
@@ -354,13 +368,13 @@ async fn setup(
         snmp_community: request.network.snmp_community.clone(),
     };
 
-    // Store setup data in session
+    // Store setup data in session. `use_case` is read fresh from session at
+    // register time (not snapshotted here) so that subsequent calls to
+    // `/onboarding-step` can update it without `/setup` being re-called.
     let pending_setup = PendingSetup {
         org_name: request.organization_name.trim().to_string(),
         network,
-        use_case: None,              // Will be merged from onboarding step
-        referral_source: None,       // Will be merged from onboarding step
-        referral_source_other: None, // Will be merged from onboarding step
+        use_case: UseCase::Other,
     };
 
     session
@@ -371,43 +385,11 @@ async fn setup(
     Ok(Json(ApiResponse::success(SetupResponse { network_id })))
 }
 
-/// Extract pending setup data from session
-/// Also merges in use_case from the onboarding step if present
-pub async fn extract_pending_setup(session: &Session) -> Option<PendingSetup> {
-    let mut setup: PendingSetup = session.get("pending_setup").await.ok().flatten()?;
-
-    // Merge in use_case from onboarding step if not already set
-    if setup.use_case.is_none()
-        && let Ok(Some(use_case)) = session.get::<String>("onboarding_use_case").await
-    {
-        setup.use_case = Some(use_case);
-    }
-
-    if setup.referral_source.is_none()
-        && let Ok(Some(referral_source)) = session.get::<String>("onboarding_referral_source").await
-    {
-        setup.referral_source = Some(referral_source);
-    }
-    if setup.referral_source_other.is_none()
-        && let Ok(Some(referral_source_other)) = session
-            .get::<String>("onboarding_referral_source_other")
-            .await
-    {
-        setup.referral_source_other = Some(referral_source_other);
-    }
-
-    Some(setup)
-}
-
 /// Clear all pending setup data from session
 pub async fn clear_pending_setup(session: &Session) {
     let _ = session.remove::<PendingSetup>("pending_setup").await;
     let _ = session.remove::<String>("onboarding_step").await;
     let _ = session.remove::<String>("onboarding_use_case").await;
-    let _ = session.remove::<String>("onboarding_referral_source").await;
-    let _ = session
-        .remove::<String>("onboarding_referral_source_other")
-        .await;
 }
 
 /// Store onboarding step in session
@@ -439,29 +421,6 @@ async fn onboarding_step(
             })?;
     }
 
-    if let Some(referral_source) = request.referral_source {
-        session
-            .insert("onboarding_referral_source", referral_source)
-            .await
-            .map_err(|e| {
-                ApiError::internal_error(&format!(
-                    "Failed to save onboarding referral_source: {}",
-                    e
-                ))
-            })?;
-    }
-    if let Some(referral_source_other) = request.referral_source_other {
-        session
-            .insert("onboarding_referral_source_other", referral_source_other)
-            .await
-            .map_err(|e| {
-                ApiError::internal_error(&format!(
-                    "Failed to save onboarding referral_source_other: {}",
-                    e
-                ))
-            })?;
-    }
-
     Ok(Json(ApiResponse::success(())))
 }
 
@@ -478,7 +437,7 @@ async fn onboarding_state(
     session: Session,
 ) -> ApiResult<Json<ApiResponse<OnboardingStateResponse>>> {
     let step: Option<String> = session.get("onboarding_step").await.ok().flatten();
-    let use_case: Option<String> = session.get("onboarding_use_case").await.ok().flatten();
+    let use_case: Option<UseCase> = session.get("onboarding_use_case").await.ok().flatten();
 
     let (org_name, network, network_id) = if let Some(pending_setup) = session
         .get::<PendingSetup>("pending_setup")
@@ -629,17 +588,11 @@ async fn apply_pending_setup(
     state
         .services
         .event_bus
-        .publish_onboarding(OnboardingEvent {
-            id: Uuid::new_v4(),
-            organization_id,
-            operation: OnboardingOperation::OnboardingModalCompleted,
-            timestamp: Utc::now(),
-            metadata: serde_json::json!({
-                "pre_registration_setup": true,
-                "network_count": 1
-            }),
-            authentication: auth_entity,
-        })
+        .publish(Event::new(
+            OrgScope { organization_id },
+            OnboardingOperation::OnboardingModalCompleted,
+            auth_entity,
+        ))
         .await
         .map_err(|e| ApiError::internal_error(&format!("Failed to publish telemetry: {}", e)))?;
 
@@ -681,13 +634,14 @@ async fn login(
         .await?;
 
     // Check if user is trying to log into demo account on non-demo and visa versa
-    if let Some(organization) = state
-        .services
-        .organization_service
-        .get_by_id(&user.base.organization_id)
-        .await?
-        && let Some(plan) = organization.base.plan
     {
+        let plan = state
+            .services
+            .organization_service
+            .get_by_id(&user.base.organization_id)
+            .await?
+            .and_then(|o| o.base.plan)
+            .unwrap_or_else(crate::server::billing::plans::get_free_plan);
         if plan.is_demo() && !is_demo_host(&host) {
             return Err(ApiError::forbidden(
                 "You can't log in to the demo account on this instance.",
@@ -697,12 +651,6 @@ async fn login(
                 "You can only log in to the demo account on this instance.",
             ));
         }
-
-    // Couldn't get organization for some reason and user is on demo site - block login
-    } else if is_demo_only_host(&host) {
-        return Err(ApiError::forbidden(
-            "You can only log in to the demo account on this instance.",
-        ));
     }
 
     // Cycle session ID to prevent session fixation attacks
@@ -878,12 +826,7 @@ async fn forgot_password(
     state
         .services
         .auth_service
-        .initiate_password_reset(
-            &request.email,
-            state.config.public_url.clone(),
-            ip,
-            user_agent,
-        )
+        .initiate_password_reset(&request.email, ip, user_agent)
         .await?;
 
     Ok(Json(ApiResponse::success(())))
@@ -979,14 +922,19 @@ async fn verify_email(
         (status = 429, description = "Rate limited", body = ApiErrorResponse),
     )
 )]
+
 async fn resend_verification(
     State(state): State<Arc<AppState>>,
+    ClientIp(ip): ClientIp,
+    user_agent: Option<TypedHeader<UserAgent>>,
     Json(request): Json<ResendVerificationRequest>,
 ) -> ApiResult<Json<ApiResponse<()>>> {
+    let user_agent = user_agent.map(|u| u.to_string());
+
     state
         .services
         .auth_service
-        .resend_verification_email(&request.email)
+        .resend_verification_email(&request.email, ip, user_agent)
         .await?;
 
     Ok(Json(ApiResponse::success(())))
@@ -1371,13 +1319,16 @@ async fn handle_login_flow(
     {
         Ok(user) => {
             // Validate host matches user's org plan (same as regular login)
-            if let Ok(Some(organization)) = state
+            if let Ok(Some(org)) = state
                 .services
                 .organization_service
                 .get_by_id(&user.base.organization_id)
                 .await
-                && let Some(plan) = organization.base.plan
             {
+                let plan = org
+                    .base
+                    .plan
+                    .unwrap_or_else(crate::server::billing::plans::get_free_plan);
                 if plan.is_demo() && !is_demo_host(&host) {
                     return Err(Redirect::to(&format!(
                         "{}?error={}",
@@ -1475,14 +1426,26 @@ async fn handle_register_flow(
         }
     };
 
-    // Track if this is a new org (not an invite)
-    let is_new_org = org_id.is_none();
-
-    // Extract pending setup from session (only relevant for new orgs)
-    let pending_setup = if is_new_org {
-        extract_pending_setup(&session).await
+    let provision_org = if let Some(org_id) = org_id {
+        ProvisionOrg::Existing(org_id)
+    } else if let Ok(Some(mut pending_setup)) = session.get::<PendingSetup>("pending_setup").await {
+        // Read the latest use_case from session (set via /onboarding-step) so
+        // a frontend update after /setup is reflected at register time.
+        if let Some(use_case) = session
+            .get::<UseCase>("onboarding_use_case")
+            .await
+            .ok()
+            .flatten()
+        {
+            pending_setup.use_case = use_case;
+        }
+        ProvisionOrg::New(pending_setup)
     } else {
-        None
+        return Err(Redirect::to(&format!(
+            "{}?error={}&error_code=org_setup_info_missing",
+            return_url,
+            urlencoding::encode("Organization setup information missing")
+        )));
     };
 
     let billing_enabled = state.config.stripe_secret.is_some();
@@ -1492,7 +1455,7 @@ async fn handle_register_flow(
         .register(
             pending_auth,
             LoginRegisterParams {
-                org_id,
+                provision_org: provision_org.clone(),
                 permissions,
                 ip,
                 user_agent,
@@ -1506,14 +1469,13 @@ async fn handle_register_flow(
                 deployment_type: get_deployment_type(state.clone()),
                 marketing_opt_in,
             },
-            pending_setup.clone(),
         )
         .await
     {
         Ok(result) => {
-            let (user, is_new_user) = match result {
-                OidcRegisterResult::NewUser(user) => (user, true),
-                OidcRegisterResult::ExistingUser(user) => (user, false),
+            let user = match result {
+                OidcRegisterResult::NewUser(user) => user,
+                OidcRegisterResult::ExistingUser(user) => user,
                 OidcRegisterResult::EmailAlreadyExists => {
                     return Err(Redirect::to(&format!(
                         "{}?error={}&error_code=user_email_in_use",
@@ -1545,18 +1507,17 @@ async fn handle_register_flow(
                 )));
             }
 
-            // Only apply pending setup for new users in new orgs
-            if is_new_user
-                && is_new_org
-                && let Some(setup) = pending_setup
+            // If this is a new org, create network/topology
+            if let ProvisionOrg::New(setup) = provision_org
                 && let Err(e) = apply_pending_setup(&state, &user, setup).await
             {
                 tracing::error!("Failed to apply pending setup: {:?}", e);
-                // Don't fail registration, just log the error
-                // The user can complete onboarding manually
+                // Don't fail registration, just log the error — the user can
+                // complete onboarding manually.
             }
 
-            // Clear pending setup data from session
+            // Clear pending setup data from session (no-op if invite path took
+            // ProvisionOrg::Existing; the keys simply weren't set).
             clear_pending_setup(&session).await;
 
             Ok(Redirect::to(&format!(

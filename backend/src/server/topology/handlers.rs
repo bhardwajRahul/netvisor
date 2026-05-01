@@ -5,7 +5,10 @@ use crate::server::{
     auth::middleware::permissions::{Authorized, IsUser, Member, Viewer},
     config::AppState,
     shared::{
-        events::types::{OnboardingEvent, OnboardingOperation},
+        events::{
+            traits::{Event as TypedEvent, OrgScope},
+            types::{OnboardingOperation, OnboardingOperationDiscriminants},
+        },
         handlers::{
             query::{FilterQueryExtractor, NetworkFilterQuery},
             traits::{CrudHandlers, delete_handler, update_handler},
@@ -36,7 +39,6 @@ use axum::{
     },
     routing::get,
 };
-use chrono::Utc;
 use futures::{Stream, stream};
 use std::{convert::Infallible, sync::Arc};
 use utoipa_axum::{router::OpenApiRouter, routes};
@@ -497,20 +499,20 @@ async fn rebuild(
             .await?;
 
         if let Some(organization) = organization
-            && organization.not_onboarded(&OnboardingOperation::FirstTopologyRebuild)
-            && !organization.not_onboarded(&OnboardingOperation::FirstDiscoveryCompleted)
+            && organization.not_onboarded(&OnboardingOperationDiscriminants::FirstTopologyRebuild)
+            && !organization
+                .not_onboarded(&OnboardingOperationDiscriminants::FirstDiscoveryCompleted)
         {
             state
                 .services
                 .event_bus
-                .publish_onboarding(OnboardingEvent {
-                    id: Uuid::new_v4(),
-                    organization_id: entity.organization_id().expect("User should have org_id"),
-                    operation: OnboardingOperation::FirstTopologyRebuild,
-                    timestamp: Utc::now(),
-                    metadata: serde_json::json!({}),
-                    authentication: entity.clone(),
-                })
+                .publish(TypedEvent::new(
+                    OrgScope {
+                        organization_id: entity.organization_id().expect("User should have org_id"),
+                    },
+                    OnboardingOperation::FirstTopologyRebuild,
+                    entity.clone(),
+                ))
                 .await?;
         }
     }

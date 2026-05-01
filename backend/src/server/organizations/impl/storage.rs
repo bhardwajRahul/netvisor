@@ -10,7 +10,7 @@ use crate::server::{
     shared::{
         entities::EntityDiscriminants,
         entity_metadata::EntityCategory,
-        events::types::OnboardingOperation,
+        events::types::OnboardingOperationDiscriminants,
         storage::traits::{Entity, SqlValue, Storable},
     },
 };
@@ -61,6 +61,10 @@ impl Storable for Organization {
                     onboarding,
                     has_payment_method,
                     trial_end_date,
+                    last_paused_at,
+                    trial_extended_used,
+                    last_downgrade_at,
+                    last_downgrade_from_plan,
                     brevo_company_id,
                     plan_limit_notifications,
                     use_case,
@@ -79,6 +83,10 @@ impl Storable for Organization {
                 "onboarding",
                 "has_payment_method",
                 "trial_end_date",
+                "last_paused_at",
+                "trial_extended_used",
+                "last_downgrade_at",
+                "last_downgrade_from_plan",
                 "brevo_company_id",
                 "plan_limit_notifications",
                 "use_case",
@@ -94,6 +102,10 @@ impl Storable for Organization {
                 SqlValue::OnboardingOperation(onboarding),
                 SqlValue::Bool(has_payment_method),
                 SqlValue::OptionTimestamp(trial_end_date),
+                SqlValue::OptionTimestamp(last_paused_at),
+                SqlValue::Bool(trial_extended_used),
+                SqlValue::OptionTimestamp(last_downgrade_at),
+                SqlValue::OptionBillingPlan(last_downgrade_from_plan),
                 SqlValue::OptionalString(brevo_company_id),
                 SqlValue::PlanLimitNotifications(plan_limit_notifications),
                 SqlValue::OptionalString(Some(
@@ -115,10 +127,15 @@ impl Storable for Organization {
         let raw: Vec<serde_json::Value> =
             serde_json::from_value(row.get::<serde_json::Value, _>("onboarding"))
                 .map_err(|e| anyhow::anyhow!("Failed to deserialize onboarding: {}", e))?;
-        let onboarding: Vec<OnboardingOperation> = raw
+        let onboarding: Vec<OnboardingOperationDiscriminants> = raw
             .into_iter()
             .filter_map(|v| serde_json::from_value(v).ok())
             .collect();
+
+        let last_downgrade_from_plan: Option<BillingPlan> = row
+            .try_get::<Option<serde_json::Value>, _>("last_downgrade_from_plan")
+            .unwrap_or(None)
+            .and_then(|v| serde_json::from_value(v).ok());
 
         Ok(Organization {
             id: row.get("id"),
@@ -132,6 +149,10 @@ impl Storable for Organization {
                 onboarding,
                 has_payment_method: row.get("has_payment_method"),
                 trial_end_date: row.get("trial_end_date"),
+                last_paused_at: row.try_get("last_paused_at").unwrap_or(None),
+                trial_extended_used: row.try_get("trial_extended_used").unwrap_or(false),
+                last_downgrade_at: row.try_get("last_downgrade_at").unwrap_or(None),
+                last_downgrade_from_plan,
                 brevo_company_id: row.get("brevo_company_id"),
                 plan_limit_notifications: row
                     .try_get::<serde_json::Value, _>("plan_limit_notifications")

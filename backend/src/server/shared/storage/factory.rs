@@ -6,6 +6,11 @@ use std::sync::Arc;
 use tower_sessions::{Expiry, SessionManagerLayer};
 use tower_sessions_sqlx_store::PostgresStore;
 
+use crate::server::dependencies::dependency_members::DependencyMemberStorage;
+use crate::server::tags::entity_tags::EntityTagStorage;
+use crate::server::user_api_keys::r#impl::network_access::UserApiKeyNetworkAccessStorage;
+use crate::server::users::UserNetworkAccessStorage;
+use crate::server::vlans::r#impl::subnet_vlans::SubnetVlanStorage;
 use crate::server::{
     bindings::r#impl::base::Binding, credentials::r#impl::base::Credential,
     daemon_api_keys::r#impl::base::DaemonApiKey, daemons::r#impl::base::Daemon,
@@ -43,6 +48,12 @@ pub struct StorageFactory {
     pub credentials: Arc<GenericPostgresStorage<Credential>>,
     pub interfaces: Arc<GenericPostgresStorage<Interface>>,
     pub vlans: Arc<GenericPostgresStorage<Vlan>>,
+    // Junction tables
+    pub entity_tags: Arc<EntityTagStorage>,
+    pub user_api_key_network_access: Arc<UserApiKeyNetworkAccessStorage>,
+    pub user_network_access: Arc<UserNetworkAccessStorage>,
+    pub dependency_members: Arc<DependencyMemberStorage>,
+    pub subnet_vlan: Arc<SubnetVlanStorage>,
 }
 
 pub async fn create_session_store(
@@ -94,6 +105,14 @@ impl StorageFactory {
             credentials: Arc::new(GenericPostgresStorage::new(pool.clone())),
             interfaces: Arc::new(GenericPostgresStorage::new(pool.clone())),
             vlans: Arc::new(GenericPostgresStorage::new(pool.clone())),
+            // Junction tables
+            entity_tags: Arc::new(EntityTagStorage::new(pool.clone())),
+            user_api_key_network_access: Arc::new(UserApiKeyNetworkAccessStorage::new(
+                pool.clone(),
+            )),
+            dependency_members: Arc::new(DependencyMemberStorage::new(pool.clone())),
+            subnet_vlan: Arc::new(SubnetVlanStorage::new(pool.clone())),
+            user_network_access: Arc::new(UserNetworkAccessStorage::new(pool.clone())),
         })
     }
 }

@@ -1,9 +1,11 @@
 use crate::server::auth::middleware::auth::AuthenticatedEntity;
 use crate::server::auth::middleware::permissions::{Admin, Authorized, Member, Viewer};
-use crate::server::shared::entities::EntityDiscriminants;
+use crate::server::shared::entities::{Entity as EntityEnum, EntityDiscriminants};
+use crate::server::shared::events::traits::{EntityEventFlags, EntityScope, Event, OrgScope};
 use crate::server::shared::events::types::{
-    EntityEvent, EntityOperation, OnboardingEvent, OnboardingOperation,
+    EntityOperation, OnboardingOperation, OnboardingOperationDiscriminants,
 };
+use crate::server::shared::extractors::Query;
 use crate::server::shared::handlers::ordering::OrderField;
 use crate::server::shared::handlers::query::{
     FilterQueryExtractor, OrderDirection, PaginationParams,
@@ -19,7 +21,6 @@ use crate::server::{
     shared::types::api::{ApiResponse, ApiResult, EmptyApiResponse},
 };
 use axum::{extract::State, response::Json};
-use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
@@ -150,9 +151,7 @@ pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
 async fn get_all_tags(
     State(state): State<Arc<AppState>>,
     auth: Authorized<Viewer>,
-    crate::server::shared::extractors::Query(query): crate::server::shared::extractors::Query<
-        TagFilterQuery,
-    >,
+    Query(query): Query<TagFilterQuery>,
 ) -> ApiResult<Json<PaginatedApiResponse<Tag>>> {
     let organization_id = auth
         .organization_id()
@@ -242,37 +241,32 @@ pub async fn create_tag(
             .await?;
 
         if let Some(ref organization) = organization {
-            if organization.not_onboarded(&OnboardingOperation::FirstTagCreated) {
+            if organization.not_onboarded(&OnboardingOperationDiscriminants::FirstTagCreated) {
                 state
                     .services
                     .tag_service
                     .event_bus()
-                    .publish_onboarding(OnboardingEvent {
-                        id: Uuid::new_v4(),
-                        organization_id,
-                        operation: OnboardingOperation::FirstTagCreated,
-                        timestamp: Utc::now(),
-                        metadata: serde_json::json!({}),
-                        authentication: entity.clone(),
-                    })
+                    .publish(Event::new(
+                        OrgScope { organization_id },
+                        OnboardingOperation::FirstTagCreated,
+                        entity.clone(),
+                    ))
                     .await?;
             }
 
             if created_tag.base.is_application
-                && organization.not_onboarded(&OnboardingOperation::FirstApplicationTagCreated)
+                && organization
+                    .not_onboarded(&OnboardingOperationDiscriminants::FirstApplicationTagCreated)
             {
                 state
                     .services
                     .tag_service
                     .event_bus()
-                    .publish_onboarding(OnboardingEvent {
-                        id: Uuid::new_v4(),
-                        organization_id,
-                        operation: OnboardingOperation::FirstApplicationTagCreated,
-                        timestamp: Utc::now(),
-                        metadata: serde_json::json!({}),
-                        authentication: entity,
-                    })
+                    .publish(Event::new(
+                        OrgScope { organization_id },
+                        OnboardingOperation::FirstApplicationTagCreated,
+                        entity,
+                    ))
                     .await?;
             }
         }
@@ -288,7 +282,7 @@ async fn resolve_scope<T>(
 ) -> (Option<Uuid>, Option<Uuid>)
 where
     T: Entity
-        + Into<crate::server::shared::entities::Entity>
+        + Into<EntityEnum>
         + std::fmt::Display
         + crate::server::shared::entities::ChangeTriggersTopologyStaleness<T>,
 {
@@ -365,30 +359,32 @@ async fn emit_tag_change_events(
     entity_type: EntityDiscriminants,
     trigger_stale: bool,
 ) {
-    let default_entity: crate::server::shared::entities::Entity = entity_type.into();
+    let default_entity: EntityEnum = entity_type.into();
 
     for entity_id in entity_ids {
         let (network_id, organization_id) =
             resolve_entity_scope(state, entity_id, entity_type).await;
 
-        let _ = state
-            .services
-            .event_bus
-            .publish_entity(EntityEvent {
-                id: Uuid::new_v4(),
-                entity_id: *entity_id,
-                network_id,
-                organization_id: organization_id.or(auth.organization_id()),
-                entity_type: default_entity.clone(),
-                operation: EntityOperation::Updated,
-                timestamp: Utc::now(),
-                metadata: serde_json::json!({
-                    "trigger_stale": trigger_stale,
-                    "suppress_logs": true
-                }),
-                authentication: auth.clone(),
-            })
-            .await;
+        if let Some(scope) = EntityScope::from_ids(
+            *entity_id,
+            default_entity.clone(),
+            network_id,
+            organization_id.or(auth.organization_id()),
+        ) {
+            let _ = state
+                .services
+                .event_bus
+                .publish(
+                    Event::new(scope, EntityOperation::Updated, auth.clone()).with_flags(
+                        EntityEventFlags {
+                            trigger_stale,
+                            suppress_logs: true,
+                            ..Default::default()
+                        },
+                    ),
+                )
+                .await;
+        }
     }
 }
 

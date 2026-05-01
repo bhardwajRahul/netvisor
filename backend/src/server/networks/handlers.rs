@@ -15,7 +15,10 @@ use crate::server::{
         permissions::{Admin, Authorized, Member, Viewer},
     },
     shared::{
-        events::types::{OnboardingEvent, OnboardingOperation},
+        events::{
+            traits::{Event, OrgScope},
+            types::{OnboardingOperation, OnboardingOperationDiscriminants},
+        },
         types::api::{ApiError, ApiErrorResponse, EmptyApiResponse},
     },
 };
@@ -26,7 +29,6 @@ use crate::server::{
 };
 use axum::extract::{Path, State};
 use axum::response::Json;
-use chrono::Utc;
 use std::sync::Arc;
 use utoipa_axum::{router::OpenApiRouter, routes};
 use uuid::Uuid;
@@ -176,7 +178,9 @@ async fn create_network(
 
             if let Some(organization) = organization {
                 // Check for SecondNetworkCreated (if first is already onboarded but second is not)
-                if organization.not_onboarded(&OnboardingOperation::SecondNetworkCreated) {
+                if organization
+                    .not_onboarded(&OnboardingOperationDiscriminants::SecondNetworkCreated)
+                {
                     // Count networks to confirm this is actually the second+
                     let network_filter =
                         StorableFilter::<Network>::new_from_org_id(&organization_id);
@@ -186,18 +190,15 @@ async fn create_network(
                     if network_count >= 2 {
                         service
                             .event_bus()
-                            .publish_onboarding(OnboardingEvent {
-                                id: Uuid::new_v4(),
-                                organization_id,
-                                operation: OnboardingOperation::SecondNetworkCreated,
-                                timestamp: Utc::now(),
-                                metadata: serde_json::json!({
-                                    "network_id": network.id,
-                                    "network_name": network.base.name,
-                                    "total_networks": network_count
-                                }),
-                                authentication: entity,
-                            })
+                            .publish(Event::new(
+                                OrgScope { organization_id },
+                                OnboardingOperation::SecondNetworkCreated {
+                                    network_id: network.id,
+                                    network_name: network.base.name.clone(),
+                                    total_networks: network_count as u32,
+                                },
+                                entity,
+                            ))
                             .await?;
                     }
                 }

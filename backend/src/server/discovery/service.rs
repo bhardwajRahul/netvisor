@@ -3,16 +3,18 @@ use crate::daemon::discovery::types::base::DiscoveryPhase;
 use crate::daemon::runtime::service::LOG_TARGET;
 use crate::server::auth::middleware::auth::AuthenticatedEntity;
 use crate::server::credentials::service::CredentialService;
-use crate::server::daemons::r#impl::api::DiscoveryUpdatePayload;
+use crate::server::daemons::r#impl::api::{DaemonDiscoveryRequest, DiscoveryUpdatePayload};
 use crate::server::daemons::service::DaemonService;
-use crate::server::discovery::r#impl::base::Discovery;
+use crate::server::discovery::r#impl::base::{Discovery, DiscoveryBase};
 use crate::server::discovery::r#impl::types::{DiscoveryType, RunType};
 use crate::server::networks::service::NetworkService;
 use crate::server::organizations::service::OrganizationService;
 use crate::server::shared::entities::{ChangeTriggersTopologyStaleness, EntityDiscriminants};
 use crate::server::shared::events::bus::EventBus;
-use crate::server::shared::events::types::{EntityEvent, EntityOperation};
-use crate::server::shared::events::types::{OnboardingEvent, OnboardingOperation};
+use crate::server::shared::events::traits::{EntityEventFlags, EntityScope, Event, OrgScope};
+use crate::server::shared::events::types::{
+    EntityOperation, OnboardingOperation, OnboardingOperationDiscriminants,
+};
 use crate::server::shared::services::traits::{CrudService, EventBusService};
 use crate::server::shared::storage::filter::StorableFilter;
 use crate::server::shared::storage::generic::GenericPostgresStorage;
@@ -184,22 +186,24 @@ impl CrudService<Discovery> for DiscoveryService {
         let trigger_stale = updated.triggers_staleness(Some(current));
         let suppress_logs = self.suppress_logs(None, None);
 
-        self.event_bus()
-            .publish_entity(EntityEvent {
-                id: Uuid::new_v4(),
-                entity_id: updated.id(),
-                network_id: self.get_network_id(&updated),
-                organization_id: self.get_organization_id(&updated),
-                entity_type: updated.clone().into(),
-                operation: EntityOperation::Updated,
-                timestamp: Utc::now(),
-                metadata: serde_json::json!({
-                    "trigger_stale": trigger_stale,
-                    "suppress_logs": suppress_logs
-                }),
-                authentication,
-            })
-            .await?;
+        if let Some(scope) = EntityScope::from_ids(
+            updated.id(),
+            updated.clone().into(),
+            self.get_network_id(&updated),
+            self.get_organization_id(&updated),
+        ) {
+            self.event_bus()
+                .publish(
+                    Event::new(scope, EntityOperation::Updated, authentication).with_flags(
+                        EntityEventFlags {
+                            trigger_stale,
+                            suppress_logs,
+                            ..Default::default()
+                        },
+                    ),
+                )
+                .await?;
+        }
 
         Ok(updated)
     }
@@ -432,22 +436,23 @@ impl DiscoveryService {
 
         let trigger_stale = created_discovery.triggers_staleness(None);
 
-        self.event_bus()
-            .publish_entity(EntityEvent {
-                id: Uuid::new_v4(),
-                entity_id: created_discovery.id(),
-                network_id: self.get_network_id(&created_discovery),
-                organization_id: self.get_organization_id(&created_discovery),
-                entity_type: created_discovery.clone().into(),
-                operation: EntityOperation::Created,
-                timestamp: Utc::now(),
-                metadata: serde_json::json!({
-                    "trigger_stale": trigger_stale
-                }),
-
-                authentication,
-            })
-            .await?;
+        if let Some(scope) = EntityScope::from_ids(
+            created_discovery.id(),
+            created_discovery.clone().into(),
+            self.get_network_id(&created_discovery),
+            self.get_organization_id(&created_discovery),
+        ) {
+            self.event_bus()
+                .publish(
+                    Event::new(scope, EntityOperation::Created, authentication).with_flags(
+                        EntityEventFlags {
+                            trigger_stale,
+                            ..Default::default()
+                        },
+                    ),
+                )
+                .await?;
+        }
 
         Ok(created_discovery)
     }
@@ -480,22 +485,23 @@ impl DiscoveryService {
 
         let trigger_stale = discovery.triggers_staleness(None);
 
-        self.event_bus()
-            .publish_entity(EntityEvent {
-                id: Uuid::new_v4(),
-                entity_id: discovery.id(),
-                network_id: self.get_network_id(&discovery),
-                organization_id: self.get_organization_id(&discovery),
-                entity_type: discovery.into(),
-                operation: EntityOperation::Deleted,
-                timestamp: Utc::now(),
-                metadata: serde_json::json!({
-                    "trigger_stale": trigger_stale
-                }),
-
-                authentication,
-            })
-            .await?;
+        if let Some(scope) = EntityScope::from_ids(
+            discovery.id(),
+            discovery.clone().into(),
+            self.get_network_id(&discovery),
+            self.get_organization_id(&discovery),
+        ) {
+            self.event_bus()
+                .publish(
+                    Event::new(scope, EntityOperation::Deleted, authentication).with_flags(
+                        EntityEventFlags {
+                            trigger_stale,
+                            ..Default::default()
+                        },
+                    ),
+                )
+                .await?;
+        }
         Ok(())
     }
 
@@ -622,11 +628,15 @@ impl DiscoveryService {
                         .network_service
                         .get_by_id(&fresh.base.network_id)
                         .await
-                        && let Ok(Some(org)) = service
+                        && service
                             .organization_service
                             .get_by_id(&network.base.organization_id)
                             .await
-                        && org.base.plan.as_ref().is_some_and(|p| p.is_free())
+                            .ok()
+                            .flatten()
+                            .and_then(|o| o.base.plan)
+                            .map(|p| p.is_free())
+                            .unwrap_or(true)
                     {
                         tracing::debug!(
                             discovery_id = %discovery_id,
@@ -775,7 +785,7 @@ impl DiscoveryService {
         session: &DiscoveryUpdatePayload,
         network_id: Uuid,
         pending_credential_ids: &[Uuid],
-    ) -> Result<crate::server::daemons::r#impl::api::DaemonDiscoveryRequest, anyhow::Error> {
+    ) -> Result<DaemonDiscoveryRequest, anyhow::Error> {
         let credential_mappings = if matches!(session.discovery_type, DiscoveryType::Unified { .. })
         {
             self.credential_service
@@ -786,14 +796,12 @@ impl DiscoveryService {
             vec![]
         };
 
-        Ok(
-            crate::server::daemons::r#impl::api::DaemonDiscoveryRequest {
-                session_id: session.session_id,
-                discovery_id: session.discovery_id.unwrap_or_default(),
-                discovery_type: session.discovery_type.clone(),
-                credential_mappings,
-            },
-        )
+        Ok(DaemonDiscoveryRequest {
+            session_id: session.session_id,
+            discovery_id: session.discovery_id.unwrap_or_default(),
+            discovery_type: session.discovery_type.clone(),
+            credential_mappings,
+        })
     }
 
     /// Create a new discovery session
@@ -922,7 +930,7 @@ impl DiscoveryService {
         // DaemonService subscribes to this event and sends the request to the daemon.
         if !daemon_is_running_discovery {
             self.event_bus()
-                .publish_discovery(session_payload.into_discovery_event_with_auth(authentication))
+                .publish(session_payload.into_discovery_event_with_auth(authentication))
                 .await
                 .map_err(|e| ApiError::internal_error(&e.to_string()))?;
         }
@@ -1017,19 +1025,18 @@ impl DiscoveryService {
                 .organization_service
                 .get_by_id(&network.base.organization_id)
                 .await
-            && org.not_onboarded(&OnboardingOperation::FirstDiscoveryCompleted)
+            && org.not_onboarded(&OnboardingOperationDiscriminants::FirstDiscoveryCompleted)
         {
             let _ = self
                 .event_bus
-                .publish_onboarding(OnboardingEvent::new(
-                    Uuid::new_v4(),
-                    org.id,
-                    OnboardingOperation::FirstDiscoveryCompleted,
-                    Utc::now(),
+                .publish(Event::new(
+                    OrgScope {
+                        organization_id: org.id,
+                    },
+                    OnboardingOperation::FirstDiscoveryCompleted {
+                        discovery_type: update.discovery_type.clone(),
+                    },
                     AuthenticatedEntity::System,
-                    serde_json::json!({
-                        "discovery_type": update.discovery_type.to_string(),
-                    }),
                 ))
                 .await;
         }
@@ -1040,7 +1047,7 @@ impl DiscoveryService {
 
         if session.phase.is_terminal() {
             self.event_bus()
-                .publish_discovery(session.into_discovery_event())
+                .publish(session.into_discovery_event())
                 .await?;
 
             // If user cancelled session, but it finished before we could send cancellation, remove key so it doesn't cancel upcoming sessions
@@ -1056,7 +1063,7 @@ impl DiscoveryService {
                 id: Uuid::new_v4(),
                 created_at: session.started_at.unwrap_or(Utc::now()),
                 updated_at: Utc::now(),
-                base: crate::server::discovery::r#impl::base::DiscoveryBase {
+                base: DiscoveryBase {
                     daemon_id: session.daemon_id,
                     network_id: session.network_id,
                     name: if matches!(session.discovery_type, DiscoveryType::Unified { .. }) {
@@ -1112,19 +1119,17 @@ impl DiscoveryService {
                     session.session_id,
                     e
                 );
-            } else {
+            } else if let Some(scope) = EntityScope::from_ids(
+                historical_discovery.id(),
+                historical_discovery.clone().into(),
+                self.get_network_id(&historical_discovery),
+                self.get_organization_id(&historical_discovery),
+            ) {
                 self.event_bus()
-                    .publish_entity(EntityEvent {
-                        id: Uuid::new_v4(),
-                        entity_id: historical_discovery.id(),
-                        network_id: self.get_network_id(&historical_discovery),
-                        organization_id: self.get_organization_id(&historical_discovery),
-                        entity_type: historical_discovery.into(),
-                        operation: EntityOperation::Created,
-                        timestamp: Utc::now(),
-                        metadata: serde_json::json!({}),
-                        authentication: AuthenticatedEntity::System,
-                    })
+                    .publish(
+                        Event::new(scope, EntityOperation::Created, AuthenticatedEntity::System)
+                            .with_flags(EntityEventFlags::default()),
+                    )
                     .await?;
             }
 
@@ -1179,7 +1184,7 @@ impl DiscoveryService {
                 started_payload.phase = DiscoveryPhase::Pending;
 
                 self.event_bus()
-                    .publish_discovery(started_payload.into_discovery_event())
+                    .publish(started_payload.into_discovery_event())
                     .await?;
             }
         }
@@ -1276,9 +1281,7 @@ impl DiscoveryService {
             // 2. Set cancellation flag - DaemonPoll mode checks on next poll via request_work
             DiscoveryPhase::Started | DiscoveryPhase::Scanning => {
                 self.event_bus()
-                    .publish_discovery(
-                        cancelled_update.into_discovery_event_with_auth(authentication),
-                    )
+                    .publish(cancelled_update.into_discovery_event_with_auth(authentication))
                     .await?;
 
                 // Set cancellation flag for DaemonPoll mode (checked on next poll)
@@ -1418,7 +1421,7 @@ impl DiscoveryService {
 
             if let Err(e) = self
                 .event_bus()
-                .publish_discovery(cancelled_update.into_discovery_event())
+                .publish(cancelled_update.into_discovery_event())
                 .await
             {
                 tracing::warn!(
@@ -1530,7 +1533,7 @@ impl DiscoveryService {
                         id: Uuid::new_v4(),
                         created_at: session.started_at.unwrap_or(now),
                         updated_at: now,
-                        base: crate::server::discovery::r#impl::base::DiscoveryBase {
+                        base: DiscoveryBase {
                             daemon_id: session.daemon_id,
                             network_id: session.network_id,
                             tags: Vec::new(),

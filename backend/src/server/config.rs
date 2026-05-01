@@ -351,7 +351,7 @@ impl AppState {
     pub async fn new(config: ServerConfig) -> Result<Arc<Self>, Error> {
         let storage =
             StorageFactory::new(&config.database_url(), config.use_secure_session_cookies).await?;
-        let services = ServiceFactory::new(&storage, Some(config.clone())).await?;
+        let services = ServiceFactory::new(&storage, config.clone()).await?;
 
         let is_commercial = cfg!(feature = "commercial");
         let license_service = Arc::new(LicenseService::new(

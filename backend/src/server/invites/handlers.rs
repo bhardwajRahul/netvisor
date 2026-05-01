@@ -1,11 +1,13 @@
 use crate::server::auth::middleware::auth::AuthenticatedEntity;
 use crate::server::auth::middleware::features::{InviteUsersFeature, RequireFeature};
 use crate::server::auth::middleware::permissions::{Admin, Authorized, RequireVerified};
+use crate::server::billing::types::base::{LimitSource, LimitType};
 use crate::server::config::AppState;
 use crate::server::invites::r#impl::base::Invite;
 use crate::server::organizations::r#impl::api::CreateInviteRequest;
+use crate::server::shared::events::traits::{Event, OrgScope};
 use crate::server::shared::events::types::{
-    BillingEvent, BillingOperation, OnboardingEvent, OnboardingOperation,
+    BillingOperation, OnboardingOperation, OnboardingOperationDiscriminants,
 };
 use crate::server::shared::services::traits::{CrudService, EventBusService};
 use crate::server::shared::storage::filter::StorableFilter;
@@ -13,7 +15,6 @@ use crate::server::shared::storage::traits::Entity;
 use crate::server::shared::types::api::ApiResponse;
 use crate::server::shared::types::api::ApiResult;
 use crate::server::shared::types::api::{ApiError, ApiErrorResponse, EmptyApiResponse};
-use crate::server::shared::types::metadata::TypeMetadataProvider;
 use crate::server::users::r#impl::base::User;
 use crate::server::users::r#impl::permissions::UserOrgPermissions;
 use anyhow::Error;
@@ -22,7 +23,6 @@ use axum::extract::Path;
 use axum::extract::State;
 use axum::response::Redirect;
 use axum::routing::get;
-use chrono::Utc;
 use std::sync::Arc;
 use tower_sessions::Session;
 use utoipa_axum::{router::OpenApiRouter, routes};
@@ -110,18 +110,16 @@ async fn create_invite(
             let _ = state
                 .services
                 .event_bus
-                .publish_billing(BillingEvent::new(
-                    Uuid::new_v4(),
-                    organization_id,
-                    BillingOperation::FeatureLimitHit,
-                    Utc::now(),
+                .publish(Event::new(
+                    OrgScope { organization_id },
+                    BillingOperation::FeatureLimitHit {
+                        limit_type: LimitType::Seats,
+                        current_count: total_seats_used as u64,
+                        limit: max_seats,
+                        plan,
+                        source: LimitSource::Api,
+                    },
                     auth.entity.clone(),
-                    serde_json::json!({
-                        "limit_type": "seats",
-                        "current_count": total_seats_used,
-                        "limit": max_seats,
-                        "plan_type": plan.name(),
-                    }),
                 ))
                 .await;
 
@@ -177,20 +175,17 @@ async fn create_invite(
         .await?;
 
     if let Some(organization) = organization
-        && organization.not_onboarded(&OnboardingOperation::InviteSent)
+        && organization.not_onboarded(&OnboardingOperationDiscriminants::InviteSent)
     {
         state
             .services
             .invite_service
             .event_bus()
-            .publish_onboarding(OnboardingEvent {
-                id: Uuid::new_v4(),
-                organization_id,
-                operation: OnboardingOperation::InviteSent,
-                timestamp: Utc::now(),
-                metadata: serde_json::json!({}),
-                authentication: entity,
-            })
+            .publish(Event::new(
+                OrgScope { organization_id },
+                OnboardingOperation::InviteSent,
+                entity,
+            ))
             .await?;
     }
 
@@ -553,19 +548,18 @@ pub async fn process_pending_invite(
         .flatten();
 
     if let Some(organization) = organization
-        && organization.not_onboarded(&OnboardingOperation::InviteAccepted)
+        && organization.not_onboarded(&OnboardingOperationDiscriminants::InviteAccepted)
         && let Err(e) = state
             .services
             .invite_service
             .event_bus()
-            .publish_onboarding(OnboardingEvent {
-                id: Uuid::new_v4(),
-                organization_id: pending_org_id,
-                operation: OnboardingOperation::InviteAccepted,
-                timestamp: Utc::now(),
-                metadata: serde_json::json!({}),
-                authentication: AuthenticatedEntity::System,
-            })
+            .publish(Event::new(
+                OrgScope {
+                    organization_id: pending_org_id,
+                },
+                OnboardingOperation::InviteAccepted,
+                AuthenticatedEntity::System,
+            ))
             .await
     {
         tracing::warn!("Failed to emit InviteAccepted telemetry event: {}", e);

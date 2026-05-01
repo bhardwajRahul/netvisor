@@ -5,6 +5,7 @@ use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use rand::Rng;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use strum::IntoStaticStr;
 use uuid::Uuid;
@@ -17,7 +18,8 @@ use crate::server::{
         entities::{ChangeTriggersTopologyStaleness, Entity as EntityEnum},
         events::{
             bus::EventBus,
-            types::{AuthEvent, AuthOperation},
+            traits::{AuthScope, Event},
+            types::AuthOperation,
         },
         services::traits::{CrudService, EventBusService},
         storage::traits::Entity,
@@ -26,7 +28,19 @@ use crate::server::{
 };
 
 /// The type of API key, used for prefix generation and routing
-#[derive(Debug, Clone, Copy, PartialEq, Eq, IntoStaticStr)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    IntoStaticStr,
+    Serialize,
+    Deserialize,
+    strum::VariantNames,
+)]
+#[serde(rename_all = "snake_case")]
 pub enum ApiKeyType {
     Daemon,
     User,
@@ -199,20 +213,19 @@ pub trait ApiKeyService: CrudService<Self::Key> + EventBusService<Self::Key> {
 
         // Publish auth event for audit trail
         self.api_key_event_bus()
-            .publish_auth(AuthEvent {
-                id: Uuid::new_v4(),
-                user_id: entity.user_id(),
-                organization_id: entity.organization_id(),
-                operation: AuthOperation::RotateKey,
-                timestamp: Utc::now(),
-                ip_address,
-                user_agent,
-                metadata: serde_json::json!({
-                    "api_key_id": api_key_id,
-                    "key_type": format!("{:?}", Self::Key::KEY_TYPE),
-                }),
-                authentication: entity.clone(),
-            })
+            .publish(Event::new(
+                AuthScope {
+                    user_id: entity.user_id(),
+                    organization_id: entity.organization_id(),
+                    ip_address,
+                    user_agent,
+                },
+                AuthOperation::RotateKey {
+                    api_key_id,
+                    key_type: Self::Key::KEY_TYPE,
+                },
+                entity.clone(),
+            ))
             .await?;
 
         // Update the key in storage

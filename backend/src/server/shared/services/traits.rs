@@ -1,19 +1,16 @@
 use anyhow::{Error, anyhow};
 use async_trait::async_trait;
-use chrono::Utc;
 use std::{fmt::Display, sync::Arc};
 use uuid::Uuid;
 
 use std::collections::HashMap;
 
+use crate::server::shared::events::traits::{EntityEventFlags, EntityScope, Event as TypedEvent};
 use crate::server::{
     auth::middleware::auth::AuthenticatedEntity,
     shared::{
         entities::{ChangeTriggersTopologyStaleness, Entity as EntityEnum},
-        events::{
-            bus::EventBus,
-            types::{EntityEvent, EntityOperation},
-        },
+        events::{bus::EventBus, types::EntityOperation},
         storage::{
             child::ChildStorableEntity,
             filter::StorableFilter,
@@ -24,7 +21,7 @@ use crate::server::{
     tags::entity_tags::EntityTagService,
 };
 
-pub trait EventBusService<T: Into<EntityEnum> + Default> {
+pub trait EventBusService<T: Into<EntityEnum> + Default + Clone> {
     /// Event bus and helpers
     fn event_bus(&self) -> &Arc<EventBus>;
 
@@ -41,6 +38,27 @@ pub trait EventBusService<T: Into<EntityEnum> + Default> {
     fn suppress_logs(&self, _current: Option<&T>, _updated: Option<&T>) -> bool {
         false
     }
+}
+
+/// Build a typed entity event from the per-service identity helpers + entity.
+/// Returns `None` if neither network_id nor organization_id is available — in
+/// that case the publish should be skipped.
+fn build_entity_event<T, S>(
+    bus_service: &S,
+    entity: T,
+    entity_id: Uuid,
+    operation: EntityOperation,
+    flags: EntityEventFlags,
+    authentication: AuthenticatedEntity,
+) -> Option<TypedEvent<EntityOperation>>
+where
+    T: Into<EntityEnum> + Default + Clone,
+    S: EventBusService<T> + ?Sized,
+{
+    let network_id = bus_service.get_network_id(&entity);
+    let organization_id = bus_service.get_organization_id(&entity);
+    let scope = EntityScope::from_ids(entity_id, entity.into(), network_id, organization_id)?;
+    Some(TypedEvent::new(scope, operation, authentication).with_flags(flags))
 }
 
 /// Helper trait for services that use generic storage
@@ -154,22 +172,20 @@ where
                     .await?;
             }
 
-            self.event_bus()
-                .publish_entity(EntityEvent {
-                    id: Uuid::new_v4(),
-                    entity_id: *id,
-                    network_id: self.get_network_id(&entity),
-                    organization_id: self.get_organization_id(&entity),
-                    entity_type: entity.into(),
-                    operation: EntityOperation::Deleted,
-                    timestamp: Utc::now(),
-                    metadata: serde_json::json!({
-                        "trigger_stale": trigger_stale,
-                        "suppress_logs": suppress_logs
-                    }),
-                    authentication,
-                })
-                .await?;
+            if let Some(event) = build_entity_event(
+                self,
+                entity,
+                *id,
+                EntityOperation::Deleted,
+                EntityEventFlags {
+                    trigger_stale,
+                    suppress_logs,
+                    ..Default::default()
+                },
+                authentication,
+            ) {
+                self.event_bus().publish(event).await?;
+            }
 
             Ok(())
         } else {
@@ -207,22 +223,20 @@ where
                 .await?;
         }
 
-        self.event_bus()
-            .publish_entity(EntityEvent {
-                id: Uuid::new_v4(),
-                entity_id: created.id(),
-                network_id: self.get_network_id(&created),
-                organization_id: self.get_organization_id(&created),
-                entity_type: created.clone().into(),
-                operation: EntityOperation::Created,
-                timestamp: Utc::now(),
-                metadata: serde_json::json!({
-                    "trigger_stale": trigger_stale,
-                    "suppress_logs": suppress_logs
-                }),
-                authentication,
-            })
-            .await?;
+        if let Some(event) = build_entity_event(
+            self,
+            created.clone(),
+            created.id(),
+            EntityOperation::Created,
+            EntityEventFlags {
+                trigger_stale,
+                suppress_logs,
+                ..Default::default()
+            },
+            authentication,
+        ) {
+            self.event_bus().publish(event).await?;
+        }
 
         Ok(created)
     }
@@ -248,20 +262,16 @@ where
         let created = self.storage().create_many(entities).await?;
 
         for entity in &created {
-            let _ = self
-                .event_bus()
-                .publish_entity(EntityEvent {
-                    id: Uuid::new_v4(),
-                    entity_id: entity.id(),
-                    network_id: self.get_network_id(entity),
-                    organization_id: self.get_organization_id(entity),
-                    entity_type: entity.clone().into(),
-                    operation: EntityOperation::Created,
-                    timestamp: Utc::now(),
-                    metadata: serde_json::json!({}),
-                    authentication: authentication.clone(),
-                })
-                .await;
+            if let Some(event) = build_entity_event(
+                self,
+                entity.clone(),
+                entity.id(),
+                EntityOperation::Created,
+                EntityEventFlags::default(),
+                authentication.clone(),
+            ) {
+                let _ = self.event_bus().publish(event).await;
+            }
         }
 
         Ok(created)
@@ -291,22 +301,20 @@ where
                 .await?;
         }
 
-        self.event_bus()
-            .publish_entity(EntityEvent {
-                id: Uuid::new_v4(),
-                entity_id: updated.id(),
-                network_id: self.get_network_id(&updated),
-                organization_id: self.get_organization_id(&updated),
-                entity_type: updated.clone().into(),
-                operation: EntityOperation::Updated,
-                timestamp: Utc::now(),
-                metadata: serde_json::json!({
-                    "trigger_stale": trigger_stale,
-                    "suppress_logs": suppress_logs
-                }),
-                authentication,
-            })
-            .await?;
+        if let Some(event) = build_entity_event(
+            self,
+            updated.clone(),
+            updated.id(),
+            EntityOperation::Updated,
+            EntityEventFlags {
+                trigger_stale,
+                suppress_logs,
+                ..Default::default()
+            },
+            authentication,
+        ) {
+            self.event_bus().publish(event).await?;
+        }
 
         Ok(updated)
     }
@@ -332,22 +340,20 @@ where
                         .await?;
                 }
 
-                self.event_bus()
-                    .publish_entity(EntityEvent {
-                        id: Uuid::new_v4(),
-                        entity_id: *id,
-                        network_id: self.get_network_id(&entity),
-                        organization_id: self.get_organization_id(&entity),
-                        entity_type: entity.into(),
-                        operation: EntityOperation::Deleted,
-                        timestamp: Utc::now(),
-                        metadata: serde_json::json!({
-                            "trigger_stale": trigger_stale,
-                            "suppress_logs": suppress_logs
-                        }),
-                        authentication: authentication.clone(),
-                    })
-                    .await?;
+                if let Some(event) = build_entity_event(
+                    self,
+                    entity,
+                    *id,
+                    EntityOperation::Deleted,
+                    EntityEventFlags {
+                        trigger_stale,
+                        suppress_logs,
+                        ..Default::default()
+                    },
+                    authentication.clone(),
+                ) {
+                    self.event_bus().publish(event).await?;
+                }
             }
         }
 
@@ -383,22 +389,20 @@ where
                     .await?;
             }
 
-            self.event_bus()
-                .publish_entity(EntityEvent {
-                    id: Uuid::new_v4(),
-                    entity_id: entity.id(),
-                    network_id: self.get_network_id(entity),
-                    organization_id: self.get_organization_id(entity),
-                    entity_type: entity.clone().into(),
-                    operation: EntityOperation::Deleted,
-                    timestamp: Utc::now(),
-                    metadata: serde_json::json!({
-                        "trigger_stale": trigger_stale,
-                        "suppress_logs": suppress_logs
-                    }),
-                    authentication: authentication.clone(),
-                })
-                .await?;
+            if let Some(event) = build_entity_event(
+                self,
+                entity.clone(),
+                entity.id(),
+                EntityOperation::Deleted,
+                EntityEventFlags {
+                    trigger_stale,
+                    suppress_logs,
+                    ..Default::default()
+                },
+                authentication.clone(),
+            ) {
+                self.event_bus().publish(event).await?;
+            }
         }
 
         // Delete all matching entities
@@ -528,22 +532,21 @@ where
                     .await?;
             }
 
-            self.event_bus()
-                .publish_entity(EntityEvent {
-                    id: Uuid::new_v4(),
-                    entity_id: entity.id(),
-                    network_id: entity.network_id(),
-                    organization_id: entity.organization_id(),
-                    entity_type: entity.clone().into(),
-                    operation: EntityOperation::Deleted,
-                    timestamp: Utc::now(),
-                    metadata: serde_json::json!({
-                        "trigger_stale": trigger_stale,
-                        "suppress_logs": suppress_logs
-                    }),
-                    authentication: authentication.clone(),
-                })
-                .await?;
+            if let Some(scope) = EntityScope::from_ids(
+                entity.id(),
+                entity.clone().into(),
+                entity.network_id(),
+                entity.organization_id(),
+            ) {
+                let event =
+                    TypedEvent::new(scope, EntityOperation::Deleted, authentication.clone())
+                        .with_flags(EntityEventFlags {
+                            trigger_stale,
+                            suppress_logs,
+                            ..Default::default()
+                        });
+                self.event_bus().publish(event).await?;
+            }
         }
 
         self.storage().delete_by_filter(filter).await
