@@ -18,13 +18,20 @@
 		Settings,
 		LifeBuoy,
 		ArrowUpCircle,
+		Clock,
 		Home
 	} from 'lucide-svelte';
 	import { onMount } from 'svelte';
 	import type { Component } from 'svelte';
 	import type { UserOrgPermissions } from '$lib/features/users/types';
 	import type { SubTab } from '$lib/shared/components/layout/ContentSubTabs.svelte';
-	import { common_upgrade } from '$lib/paraglide/messages';
+	import {
+		common_upgrade,
+		billing_trialPill,
+		billing_trialPillOneDay,
+		billing_trialPillToday
+	} from '$lib/paraglide/messages';
+	import { getTrialDaysLeft, isTrialingWithoutPayment } from '$lib/shared/utils/trial';
 	import { daemonSetupState } from '$lib/features/daemons/stores/daemon-setup';
 	import { isAllComplete } from '$lib/shared/onboarding/checklist';
 	import SidebarChecklist from './SidebarChecklist.svelte';
@@ -98,7 +105,21 @@
 	let isDemoOrg = $derived(organization?.plan?.type === 'Demo');
 	let isFreePlan = $derived(organization?.plan?.type === 'Free');
 	let isOwner = $derived(userPermissions === 'Owner');
-	let showUpgradeButton = $derived(isFreePlan && isOwner && isBillingEnabled);
+	let trialDaysLeft = $derived(getTrialDaysLeft(organization));
+	let showTrialPill = $derived(
+		isOwner &&
+			isBillingEnabled &&
+			isTrialingWithoutPayment(organization) &&
+			trialDaysLeft !== null &&
+			trialDaysLeft <= 7
+	);
+	let showFreeUpgradeButton = $derived(isFreePlan && isOwner && isBillingEnabled);
+	let trialPillLabel = $derived.by(() => {
+		if (trialDaysLeft === null) return '';
+		if (trialDaysLeft <= 0) return billing_trialPillToday();
+		if (trialDaysLeft === 1) return billing_trialPillOneDay();
+		return billing_trialPill({ days: trialDaysLeft });
+	});
 	let isReadOnly = $derived(userPermissions === 'Viewer');
 
 	let showSupport = $state(false);
@@ -745,7 +766,21 @@
 	<!-- Bottom Navigation -->
 	<div class="flex-shrink-0 border-t px-2 py-2" style="border-color: var(--color-border)">
 		<ul class="space-y-1">
-			{#if showUpgradeButton}
+			{#if showTrialPill}
+				<li>
+					<button
+						class="{baseClasses} text-amber-400 hover:bg-amber-500/10"
+						style="height: 2rem; padding: 0.375rem 0.75rem;"
+						title={collapsed ? trialPillLabel : ''}
+						onclick={() => triggerUpgrade({ source: 'sidebar_trial_pill', surface: 'sidebar' })}
+					>
+						<Clock class="h-4 w-4 flex-shrink-0" />
+						{#if !collapsed}
+							<span class="ml-2.5 truncate">{trialPillLabel}</span>
+						{/if}
+					</button>
+				</li>
+			{:else if showFreeUpgradeButton}
 				<li>
 					<button
 						class="{baseClasses} text-amber-400 hover:bg-amber-500/10"

@@ -265,6 +265,7 @@ impl ServiceFactory {
                 host_service.clone(),
                 network_service.clone(),
                 service_service.clone(),
+                daemon_service.clone(),
                 public_url,
             )))
         } else if let (
@@ -288,6 +289,7 @@ impl ServiceFactory {
                     host_service.clone(),
                     network_service.clone(),
                     service_service.clone(),
+                    daemon_service.clone(),
                     public_url,
                 )))
             } else {

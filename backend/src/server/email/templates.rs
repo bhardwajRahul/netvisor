@@ -155,6 +155,26 @@ pub const TRIAL_ENDING_BODY_NO_PAYMENT: &str = r#"                    <!-- Main 
                         </td>
                     </tr>
 
+                    <!-- Trial Recap -->
+                    <tr>
+                        <td style="padding: 0 40px 20px 40px;">
+                            <h2 style="margin: 0 0 12px 0; font-size: 18px; font-weight: 600; color: #1a1a1a;">Here's what Scanopy found during your trial</h2>
+                            <table cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse: collapse;">
+                                <tr>
+                                    <td style="padding: 8px 0; font-size: 14px; color: #4a4a4a;"><strong>{hosts_discovered}</strong> hosts discovered</td>
+                                    <td style="padding: 8px 0; font-size: 14px; color: #4a4a4a;"><strong>{networks_mapped}</strong> networks mapped</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 8px 0; font-size: 14px; color: #4a4a4a;"><strong>{daemons_connected}</strong> daemons connected</td>
+                                    <td style="padding: 8px 0; font-size: 14px; color: #4a4a4a;"><strong>{services_identified}</strong> services identified</td>
+                                </tr>
+                                <tr>
+                                    <td colspan="2" style="padding: 8px 0; font-size: 14px; color: #4a4a4a;"><strong>{days_into_trial}</strong> days into your trial</td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+
                     <!-- CTA Button -->
                     <tr>
                         <td align="center" style="padding: 0 40px 30px 40px;">
@@ -170,6 +190,26 @@ pub const TRIAL_ENDING_BODY_HAS_PAYMENT: &str = r#"                    <!-- Main
                             <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 24px; color: #4a4a4a;">Hi there,</p>
                             <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 24px; color: #4a4a4a;">Your {plan_name} {billing_period} trial ends in 3 days. You'll be billed {base_price}* for your {plan_name} {billing_period} plan at the end of the trial period.</p>
                             <p style="margin: 0 0 20px 0; font-size: 12px; line-height: 18px; color: #9ca3af;">*Price excludes applicable taxes. Additional usage beyond included seats, networks, or hosts is billed separately.</p>
+                        </td>
+                    </tr>
+
+                    <!-- Trial Recap -->
+                    <tr>
+                        <td style="padding: 0 40px 20px 40px;">
+                            <h2 style="margin: 0 0 12px 0; font-size: 18px; font-weight: 600; color: #1a1a1a;">Here's what Scanopy found during your trial</h2>
+                            <table cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse: collapse;">
+                                <tr>
+                                    <td style="padding: 8px 0; font-size: 14px; color: #4a4a4a;"><strong>{hosts_discovered}</strong> hosts discovered</td>
+                                    <td style="padding: 8px 0; font-size: 14px; color: #4a4a4a;"><strong>{networks_mapped}</strong> networks mapped</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 8px 0; font-size: 14px; color: #4a4a4a;"><strong>{daemons_connected}</strong> daemons connected</td>
+                                    <td style="padding: 8px 0; font-size: 14px; color: #4a4a4a;"><strong>{services_identified}</strong> services identified</td>
+                                </tr>
+                                <tr>
+                                    <td colspan="2" style="padding: 8px 0; font-size: 14px; color: #4a4a4a;"><strong>{days_into_trial}</strong> days into your trial</td>
+                                </tr>
+                            </table>
                         </td>
                     </tr>
 

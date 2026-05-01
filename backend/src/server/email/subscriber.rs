@@ -106,6 +106,7 @@ impl Subscriber<BillingOperation> for EmailService {
                 } => {
                     self.send_trial_ending_email(
                         org_owner,
+                        event.scope.organization_id,
                         plan.name(),
                         has_payment_method,
                         plan.billing_period(),

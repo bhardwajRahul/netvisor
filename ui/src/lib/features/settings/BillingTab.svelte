@@ -46,6 +46,7 @@
 	import InlineWarning from '$lib/shared/components/feedback/InlineWarning.svelte';
 	import InlineInfo from '$lib/shared/components/feedback/InlineInfo.svelte';
 	import InlineDanger from '$lib/shared/components/feedback/InlineDanger.svelte';
+	import TrialValueRecapCard from './TrialValueRecapCard.svelte';
 
 	let {
 		isOpen = false,
@@ -219,6 +220,10 @@
 							</button>
 						</div>
 					</InfoCard>
+				{/if}
+
+				{#if org.plan_status === 'trialing'}
+					<TrialValueRecapCard {org} onCloseSettings={onClose} />
 				{/if}
 
 				<!-- Current Plan -->

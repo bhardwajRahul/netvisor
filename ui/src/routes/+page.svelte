@@ -7,6 +7,9 @@
 	import LicenseLockedBanner from '$lib/shared/components/feedback/LicenseLockedBanner.svelte';
 	import LicenseGraceBanner from '$lib/shared/components/feedback/LicenseGraceBanner.svelte';
 	import LicenseExpiringBanner from '$lib/shared/components/feedback/LicenseExpiringBanner.svelte';
+	import TrialEndingBanner from '$lib/shared/components/feedback/TrialEndingBanner.svelte';
+	import TrialExpiryModal from '$lib/shared/components/feedback/TrialExpiryModal.svelte';
+	import PostStripeWelcomeBanner from '$lib/shared/components/feedback/PostStripeWelcomeBanner.svelte';
 	import Sidebar from '$lib/shared/components/layout/Sidebar.svelte';
 	import { onDestroy, onMount } from 'svelte';
 	import { discoverySSEManager } from '$lib/features/discovery/queries';
@@ -225,6 +228,8 @@
 			{#if currentUserQuery.data && !currentUserQuery.data.email_verified}
 				<EmailVerificationBanner email={currentUserQuery.data.email} />
 			{/if}
+			<TrialEndingBanner />
+			<PostStripeWelcomeBanner />
 			{#if organization?.plan?.type === 'Demo'}
 				<DemoBanner />
 			{/if}
@@ -261,6 +266,8 @@
 			<Toast />
 		</main>
 	</div>
+
+	<TrialExpiryModal />
 
 	<!-- Billing modal rendered last so it stacks on top of other modals -->
 	<BillingPlanModal
