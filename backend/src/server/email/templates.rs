@@ -137,7 +137,7 @@ pub const TRIAL_STARTED_BODY: &str = r#"                    <!-- Main Content --
                     <!-- CTA Button -->
                     <tr>
                         <td align="center" style="padding: 0 40px 30px 40px;">
-                            <a href="{base_url}/?modal=settings&tab=billing" style="display: inline-block; padding: 14px 40px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 500;">Add Payment Method</a>
+                            <a href="{base_url}/?modal=settings&tab=billing&utm_source=email&utm_campaign=trial_started&utm_medium=lifecycle" style="display: inline-block; padding: 14px 40px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 500;">Add Payment Method</a>
                         </td>
                     </tr>
 "#;
@@ -158,7 +158,7 @@ pub const TRIAL_ENDING_BODY_NO_PAYMENT: &str = r#"                    <!-- Main 
                     <!-- CTA Button -->
                     <tr>
                         <td align="center" style="padding: 0 40px 30px 40px;">
-                            <a href="{base_url}/?modal=settings&tab=billing" style="display: inline-block; padding: 14px 40px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 500;">Add Payment Method</a>
+                            <a href="{base_url}/?modal=settings&tab=billing&utm_source=email&utm_campaign=trial_ending_no_payment&utm_medium=lifecycle" style="display: inline-block; padding: 14px 40px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 500;">Add Payment Method</a>
                         </td>
                     </tr>
 "#;
@@ -176,7 +176,7 @@ pub const TRIAL_ENDING_BODY_HAS_PAYMENT: &str = r#"                    <!-- Main
                     <!-- CTA Button -->
                     <tr>
                         <td align="center" style="padding: 0 40px 30px 40px;">
-                            <a href="{base_url}/?modal=settings&tab=billing" style="display: inline-block; padding: 14px 40px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 500;">View Billing</a>
+                            <a href="{base_url}/?modal=settings&tab=billing&utm_source=email&utm_campaign=trial_ending_has_payment&utm_medium=lifecycle" style="display: inline-block; padding: 14px 40px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 500;">View Billing</a>
                         </td>
                     </tr>
 "#;
@@ -196,7 +196,7 @@ pub const TRIAL_EXPIRED_BODY: &str = r#"                    <!-- Main Content --
                     <!-- CTA Button -->
                     <tr>
                         <td align="center" style="padding: 0 40px 30px 40px;">
-                            <a href="{base_url}/?modal=billing-plan" style="display: inline-block; padding: 14px 40px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 500;">Upgrade Plan</a>
+                            <a href="{base_url}/?modal=billing-plan&utm_source=email&utm_campaign=trial_expired&utm_medium=lifecycle" style="display: inline-block; padding: 14px 40px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 500;">Upgrade Plan</a>
                         </td>
                     </tr>
 "#;
@@ -215,7 +215,7 @@ pub const PLAN_CHANGED_BODY: &str = r#"                    <!-- Main Content -->
                     <!-- CTA Button -->
                     <tr>
                         <td align="center" style="padding: 0 40px 30px 40px;">
-                            <a href="{base_url}" style="display: inline-block; padding: 14px 40px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 500;">Open Scanopy</a>
+                            <a href="{base_url}/?utm_source=email&utm_campaign=plan_changed&utm_medium=lifecycle" style="display: inline-block; padding: 14px 40px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 500;">Open Scanopy</a>
                         </td>
                     </tr>
 "#;
@@ -235,7 +235,7 @@ pub const ORGANIZATION_DELETED_BODY: &str = r#"                    <!-- Main Con
                     <!-- CTA Button -->
                     <tr>
                         <td align="center" style="padding: 0 40px 30px 40px;">
-                            <a href="{base_url}" style="display: inline-block; padding: 14px 40px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 500;">Create a New Account</a>
+                            <a href="{base_url}/?utm_source=email&utm_campaign=organization_deleted&utm_medium=lifecycle" style="display: inline-block; padding: 14px 40px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 500;">Create a New Account</a>
                         </td>
                     </tr>
 "#;
@@ -255,7 +255,7 @@ pub const SUBSCRIPTION_CANCELLED_BODY: &str = r#"                    <!-- Main C
                     <!-- CTA Button -->
                     <tr>
                         <td align="center" style="padding: 0 40px 30px 40px;">
-                            <a href="{base_url}/?modal=billing-plan" style="display: inline-block; padding: 14px 40px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 500;">Resubscribe</a>
+                            <a href="{base_url}/?modal=billing-plan&utm_source=email&utm_campaign=subscription_cancelled&utm_medium=lifecycle" style="display: inline-block; padding: 14px 40px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 500;">Resubscribe</a>
                         </td>
                     </tr>
 "#;
@@ -287,7 +287,7 @@ pub const PAYMENT_METHOD_REMOVED_BODY: &str = r#"                    <!-- Main C
                     <!-- CTA Button -->
                     <tr>
                         <td align="center" style="padding: 0 40px 30px 40px;">
-                            <a href="{base_url}/?modal=billing-payment-method" style="display: inline-block; padding: 14px 40px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 500;">Manage Payment Method</a>
+                            <a href="{base_url}/?modal=billing-payment-method&utm_source=email&utm_campaign=payment_method_removed&utm_medium=lifecycle" style="display: inline-block; padding: 14px 40px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 500;">Manage Payment Method</a>
                         </td>
                     </tr>
 "#;
@@ -320,7 +320,7 @@ pub const CANCELLATION_INITIATED_BODY: &str = r#"                    <!-- Main C
                     <!-- CTA Button -->
                     <tr>
                         <td align="center" style="padding: 0 40px 30px 40px;">
-                            <a href="{base_url}/?modal=billing-plan" style="display: inline-block; padding: 14px 40px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 500;">Manage Subscription</a>
+                            <a href="{base_url}/?modal=billing-plan&utm_source=email&utm_campaign=cancellation_initiated&utm_medium=lifecycle" style="display: inline-block; padding: 14px 40px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 500;">Manage Subscription</a>
                         </td>
                     </tr>
 "#;
@@ -339,7 +339,7 @@ pub const CHECKOUT_COMPLETED_BODY: &str = r#"                    <!-- Main Conte
                     <!-- CTA Button -->
                     <tr>
                         <td align="center" style="padding: 0 40px 30px 40px;">
-                            <a href="{base_url}" style="display: inline-block; padding: 14px 40px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 500;">Open Scanopy</a>
+                            <a href="{base_url}/?utm_source=email&utm_campaign=checkout_completed&utm_medium=lifecycle" style="display: inline-block; padding: 14px 40px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 500;">Open Scanopy</a>
                         </td>
                     </tr>
 "#;
@@ -359,7 +359,7 @@ pub const TRIAL_CONVERTED_BODY: &str = r#"                    <!-- Main Content 
                     <!-- CTA Button -->
                     <tr>
                         <td align="center" style="padding: 0 40px 30px 40px;">
-                            <a href="{base_url}" style="display: inline-block; padding: 14px 40px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 500;">Open Scanopy</a>
+                            <a href="{base_url}/?utm_source=email&utm_campaign=trial_converted&utm_medium=lifecycle" style="display: inline-block; padding: 14px 40px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 500;">Open Scanopy</a>
                         </td>
                     </tr>
 "#;
@@ -393,7 +393,7 @@ pub const USAGE_SUMMARY_BODY: &str = r#"                    <!-- Main Content --
                     <!-- CTA Button -->
                     <tr>
                         <td align="center" style="padding: 0 40px 30px 40px;">
-                            <a href="{base_url}/?modal=settings&tab=billing" style="display: inline-block; padding: 14px 40px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 500;">View Billing</a>
+                            <a href="{base_url}/?modal=settings&tab=billing&utm_source=email&utm_campaign=usage_summary&utm_medium=lifecycle" style="display: inline-block; padding: 14px 40px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 500;">View Billing</a>
                         </td>
                     </tr>
 "#;
@@ -425,7 +425,7 @@ pub const DISCOVERY_GUIDE_FREE_BODY: &str = r#"                    <!-- Main Con
                     <!-- CTA Button -->
                     <tr>
                         <td align="center" style="padding: 0 40px 30px 40px;">
-                            <a href="{base_url}/?modal=billing-plan" style="display: inline-block; padding: 14px 40px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 500;">Explore Plans</a>
+                            <a href="{base_url}/?modal=billing-plan&utm_source=email&utm_campaign=discovery_guide_free&utm_medium=lifecycle" style="display: inline-block; padding: 14px 40px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 500;">Explore Plans</a>
                         </td>
                     </tr>
 "#;
@@ -452,7 +452,7 @@ pub const DISCOVERY_GUIDE_PAID_BODY: &str = r#"                    <!-- Main Con
                     <!-- CTA Button -->
                     <tr>
                         <td align="center" style="padding: 0 40px 30px 40px;">
-                            <a href="{base_url}" style="display: inline-block; padding: 14px 40px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 500;">Open Scanopy</a>
+                            <a href="{base_url}/?utm_source=email&utm_campaign=discovery_guide_paid&utm_medium=lifecycle" style="display: inline-block; padding: 14px 40px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 500;">Open Scanopy</a>
                         </td>
                     </tr>
 "#;
@@ -473,7 +473,7 @@ pub const TOPOLOGY_READY_BODY: &str = r#"                    <!-- Main Content -
                     <!-- CTA Button -->
                     <tr>
                         <td align="center" style="padding: 0 40px 30px 40px;">
-                            <a href="{base_url}/#topology" style="display: inline-block; padding: 14px 40px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 500;">View Topology</a>
+                            <a href="{base_url}/?utm_source=email&utm_campaign=topology_ready&utm_medium=lifecycle#topology" style="display: inline-block; padding: 14px 40px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 500;">View Topology</a>
                         </td>
                     </tr>
 "#;
@@ -493,7 +493,7 @@ pub const PLAN_LIMIT_APPROACHING_BODY: &str = r#"                    <!-- Main C
                     <!-- CTA Button -->
                     <tr>
                         <td align="center" style="padding: 0 40px 30px 40px;">
-                            <a href="{base_url}/?modal={cta_modal}" style="display: inline-block; padding: 14px 40px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 500;">{cta_label}</a>
+                            <a href="{base_url}/?modal={cta_modal}&utm_source=email&utm_campaign=plan_limit_approaching&utm_medium=lifecycle" style="display: inline-block; padding: 14px 40px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 500;">{cta_label}</a>
                         </td>
                     </tr>
 "#;
@@ -513,7 +513,7 @@ pub const PLAN_LIMIT_REACHED_BODY: &str = r#"                    <!-- Main Conte
                     <!-- CTA Button -->
                     <tr>
                         <td align="center" style="padding: 0 40px 30px 40px;">
-                            <a href="{base_url}/?modal={cta_modal}" style="display: inline-block; padding: 14px 40px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 500;">{cta_label}</a>
+                            <a href="{base_url}/?modal={cta_modal}&utm_source=email&utm_campaign=plan_limit_reached&utm_medium=lifecycle" style="display: inline-block; padding: 14px 40px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 500;">{cta_label}</a>
                         </td>
                     </tr>
 "#;
@@ -533,7 +533,7 @@ pub const PAYMENT_FAILED_BODY: &str = r#"                    <!-- Main Content -
                     <!-- CTA Button -->
                     <tr>
                         <td align="center" style="padding: 0 40px 30px 40px;">
-                            <a href="{base_url}/?modal=settings&tab=billing" style="display: inline-block; padding: 14px 40px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 500;">Update Payment Method</a>
+                            <a href="{base_url}/?modal=settings&tab=billing&utm_source=email&utm_campaign=payment_failed&utm_medium=lifecycle" style="display: inline-block; padding: 14px 40px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 500;">Update Payment Method</a>
                         </td>
                     </tr>
 "#;
@@ -552,7 +552,7 @@ pub const PAYMENT_ACTION_REQUIRED_BODY: &str = r#"                    <!-- Main 
                     <!-- CTA Button -->
                     <tr>
                         <td align="center" style="padding: 0 40px 30px 40px;">
-                            <a href="{base_url}/?modal=settings&tab=billing" style="display: inline-block; padding: 14px 40px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 500;">Complete Verification</a>
+                            <a href="{base_url}/?modal=settings&tab=billing&utm_source=email&utm_campaign=payment_action_required&utm_medium=lifecycle" style="display: inline-block; padding: 14px 40px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 500;">Complete Verification</a>
                         </td>
                     </tr>
 "#;
@@ -581,7 +581,7 @@ pub const DAEMON_STANDBY_BODY: &str = r#"                    <!-- Main Content -
                     <!-- CTA Button -->
                     <tr>
                         <td align="center" style="padding: 0 40px 30px 40px;">
-                            <a href="{base_url}/#discovery-scans" style="display: inline-block; padding: 14px 40px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 500;">Queue Discovery</a>
+                            <a href="{base_url}/?utm_source=email&utm_campaign=daemon_standby&utm_medium=lifecycle#discovery-scans" style="display: inline-block; padding: 14px 40px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 500;">Queue Discovery</a>
                         </td>
                     </tr>
 "#;
@@ -610,7 +610,7 @@ pub const DAEMON_UNREACHABLE_BODY: &str = r#"                    <!-- Main Conte
                     <!-- CTA Button -->
                     <tr>
                         <td align="center" style="padding: 0 40px 30px 40px;">
-                            <a href="{base_url}/#daemons" style="display: inline-block; padding: 14px 40px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 500;">View Daemons</a>
+                            <a href="{base_url}/?utm_source=email&utm_campaign=daemon_unreachable&utm_medium=lifecycle#daemons" style="display: inline-block; padding: 14px 40px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 500;">View Daemons</a>
                         </td>
                     </tr>
 "#;
@@ -731,7 +731,7 @@ pub const INSTALL_COMMAND_BODY: &str = r#"                    <!-- Main Content 
                     <!-- CTA Button -->
                     <tr>
                         <td align="center" style="padding: 0 40px 30px 40px;">
-                            <a href="{base_url}" style="display: inline-block; padding: 14px 40px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 500;">Open Scanopy</a>
+                            <a href="{base_url}/?utm_source=email&utm_campaign=install_command&utm_medium=lifecycle" style="display: inline-block; padding: 14px 40px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 500;">Open Scanopy</a>
                         </td>
                     </tr>
 "#;
