@@ -85,7 +85,7 @@
 		<div class="mb-3 flex items-center justify-between">
 			<h3 class="text-primary text-base font-semibold">Plan Usage</h3>
 			{#if showUpgrade}
-				<UpgradeButton feature="plan_usage" />
+				<UpgradeButton feature="plan_usage" surface="home_plan_usage" gate_type="limit_hit" />
 			{/if}
 		</div>
 		<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

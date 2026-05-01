@@ -371,10 +371,10 @@
 					{/if}
 					{#if !isReadOnly}
 						{#if isAtHostLimit}
-							<UpgradeButton feature="hosts" />
+							<UpgradeButton feature="hosts" surface="hosts_tab" gate_type="limit_hit" />
 						{:else}
 							{#if isNearHostLimit}
-								<UpgradeButton feature="hosts" />
+								<UpgradeButton feature="hosts" surface="hosts_tab" gate_type="limit_hit" />
 							{/if}
 							<button class="btn-primary flex items-center" onclick={handleCreateHost}
 								><Plus class="h-5 w-5" />{common_create()}</button
