@@ -166,14 +166,30 @@ impl Storable for Service {
 }
 
 impl Snapshotable for Service {
-    fn id_value(&self) -> Uuid { self.id }
-    fn set_id_value(&mut self, id: Uuid) { self.id = id; }
-    fn valid_from(&self) -> DateTime<Utc> { self.valid_from }
-    fn valid_to(&self) -> Option<DateTime<Utc>> { self.valid_to }
-    fn lineage_id(&self) -> Option<Uuid> { self.lineage_id }
-    fn set_valid_from(&mut self, t: DateTime<Utc>) { self.valid_from = t; }
-    fn set_valid_to(&mut self, t: Option<DateTime<Utc>>) { self.valid_to = t; }
-    fn set_lineage_id(&mut self, id: Option<Uuid>) { self.lineage_id = id; }
+    fn id_value(&self) -> Uuid {
+        self.id
+    }
+    fn set_id_value(&mut self, id: Uuid) {
+        self.id = id;
+    }
+    fn valid_from(&self) -> DateTime<Utc> {
+        self.valid_from
+    }
+    fn valid_to(&self) -> Option<DateTime<Utc>> {
+        self.valid_to
+    }
+    fn lineage_id(&self) -> Option<Uuid> {
+        self.lineage_id
+    }
+    fn set_valid_from(&mut self, t: DateTime<Utc>) {
+        self.valid_from = t;
+    }
+    fn set_valid_to(&mut self, t: Option<DateTime<Utc>>) {
+        self.valid_to = t;
+    }
+    fn set_lineage_id(&mut self, id: Option<Uuid>) {
+        self.lineage_id = id;
+    }
 
     fn remap_fks_for_clone(&mut self, maps: &FkMaps) {
         if let Some(closed) = maps.hosts.get(&self.base.host_id) {
@@ -183,17 +199,32 @@ impl Snapshotable for Service {
 }
 
 impl DiscoveryTracked for Service {
-    fn last_seen_at(&self) -> DateTime<Utc> { self.last_seen_at }
-    fn last_discovery_id(&self) -> Option<Uuid> { self.last_discovery_id }
-    fn first_discovery_id(&self) -> Option<Uuid> { self.first_discovery_id }
-    fn set_last_seen_at(&mut self, t: DateTime<Utc>) { self.last_seen_at = t; }
-    fn set_last_discovery_id(&mut self, id: Option<Uuid>) { self.last_discovery_id = id; }
-    fn set_first_discovery_id(&mut self, id: Option<Uuid>) { self.first_discovery_id = id; }
+    fn last_seen_at(&self) -> DateTime<Utc> {
+        self.last_seen_at
+    }
+    fn last_discovery_id(&self) -> Option<Uuid> {
+        self.last_discovery_id
+    }
+    fn first_discovery_id(&self) -> Option<Uuid> {
+        self.first_discovery_id
+    }
+    fn set_last_seen_at(&mut self, t: DateTime<Utc>) {
+        self.last_seen_at = t;
+    }
+    fn set_last_discovery_id(&mut self, id: Option<Uuid>) {
+        self.last_discovery_id = id;
+    }
+    fn set_first_discovery_id(&mut self, id: Option<Uuid>) {
+        self.first_discovery_id = id;
+    }
 
     fn scanned_in_session_filter(
         scanned: &crate::server::daemons::r#impl::api::ScannedEntityIds,
     ) -> crate::server::shared::storage::filter::StorableFilter<Self> {
-        crate::server::shared::storage::filter::StorableFilter::<Self>::new_from_uuids_column("id", &scanned.service_ids)
+        crate::server::shared::storage::filter::StorableFilter::<Self>::new_from_uuids_column(
+            "id",
+            &scanned.service_ids,
+        )
     }
 }
 

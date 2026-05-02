@@ -26,6 +26,7 @@ pub mod posthog;
 pub mod services;
 pub mod shared;
 pub mod shares;
+pub mod snapshots;
 pub mod snmp;
 pub mod subnets;
 pub mod tags;

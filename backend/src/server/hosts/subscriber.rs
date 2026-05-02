@@ -1,14 +1,25 @@
-//! Hosts subscriber for `DiscoveryPhase::Complete` events.
+//! Hosts subscriber for `DiscoveryPhase::Complete` events and the
+//! `EntityOperation::Created` event for the historical Discovery row.
 //!
-//! Reconciles host state after a discovery session finishes: marks unseen
-//! hosts and surfaces freshness so the UI can flag stale records.
+//! - `DiscoveryPhase::Complete`: reconciles host state after a session
+//!   finishes (LLDP/FDB neighbor resolution).
+//! - `EntityOperation::Created` (Discovery): pulls `ScannedEntityIds` from
+//!   the in-memory event scope and backfills `last_discovery_id` /
+//!   `first_discovery_id` on the host rows the daemon scanned.
+
+use std::collections::HashMap;
 
 use async_trait::async_trait;
 
 use crate::daemon::discovery::types::base::{DiscoveryPhase, DiscoveryPhaseDiscriminants};
 use crate::server::hosts::service::HostService;
+use crate::server::shared::entities::EntityDiscriminants;
 use crate::server::shared::events::registry::SubscriberRegistration;
-use crate::server::shared::events::traits::{Event, EventFilter, Subscriber};
+use crate::server::shared::events::traits::{EntityEventFilter, Event, EventFilter, Subscriber};
+use crate::server::shared::events::types::{EntityOperation, EntityOperationDiscriminants};
+use crate::server::shared::services::traits::{
+    DiscoveryFkUpdater, extract_scanned_from_discovery_event,
+};
 
 #[async_trait]
 impl Subscriber<DiscoveryPhase> for HostService {
@@ -47,3 +58,32 @@ impl Subscriber<DiscoveryPhase> for HostService {
     }
 }
 inventory::submit!(SubscriberRegistration::new::<HostService, DiscoveryPhase>());
+
+#[async_trait]
+impl Subscriber<EntityOperation> for HostService {
+    fn filter(&self) -> EntityEventFilter {
+        // Narrow to Created events on Discovery rows. The historical
+        // Discovery insert in DiscoveryService::update_session is the only
+        // publisher we care about here; Created events for other entity
+        // types are filtered out at the registry level.
+        EntityEventFilter::by_entity(HashMap::from([(
+            EntityDiscriminants::Discovery,
+            Some(vec![EntityOperationDiscriminants::Created]),
+        )]))
+    }
+
+    async fn handle(&self, events: Vec<Event<EntityOperation>>) -> anyhow::Result<()> {
+        for event in events {
+            if let Some((scanned, discovery_id)) = extract_scanned_from_discovery_event(&event) {
+                <Self as DiscoveryFkUpdater<crate::server::hosts::r#impl::base::Host>>::update_discovery_fks(
+                    self,
+                    scanned,
+                    discovery_id,
+                )
+                .await?;
+            }
+        }
+        Ok(())
+    }
+}
+inventory::submit!(SubscriberRegistration::new::<HostService, EntityOperation>());

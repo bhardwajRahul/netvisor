@@ -1,7 +1,6 @@
 use std::fmt::Display;
 use std::net::Ipv4Addr;
 
-use crate::server::discovery::r#impl::types::DiscoveryType;
 use crate::server::shared::entities::ChangeTriggersTopologyStaleness;
 use crate::server::shared::storage::traits::Storable;
 use crate::server::shared::types::api::deserialize_empty_string_as_none;
@@ -125,8 +124,6 @@ impl Subnet {
     pub fn from_discovery(
         interface_name: String,
         ip_network: &IpNetwork,
-        daemon_id: Uuid,
-        discovery_type: &DiscoveryType,
         network_id: Uuid,
     ) -> Option<Self> {
         let mut subnet_type = SubnetType::from_interface_name(&interface_name);
@@ -223,43 +220,20 @@ impl ChangeTriggersTopologyStaleness<Subnet> for Subnet {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::server::discovery::r#impl::types::DiscoveryType;
     use pnet::ipnetwork::IpNetwork;
     use std::str::FromStr;
-
-    fn test_discovery_type() -> DiscoveryType {
-        DiscoveryType::Unified {
-            host_id: Uuid::nil(),
-            subnet_ids: None,
-            host_naming_fallback:
-                crate::server::discovery::r#impl::types::HostNamingFallback::default(),
-            scan_settings: crate::server::discovery::r#impl::scan_settings::ScanSettings::default(),
-        }
-    }
 
     #[test]
     fn from_discovery_accepts_valid_prefix() {
         let ip = IpNetwork::from_str("192.168.1.0/24").unwrap();
-        let result = Subnet::from_discovery(
-            "eth0".to_string(),
-            &ip,
-            Uuid::nil(),
-            &test_discovery_type(),
-            Uuid::nil(),
-        );
+        let result = Subnet::from_discovery("eth0".to_string(), &ip, Uuid::nil());
         assert!(result.is_some(), "/24 prefix should be accepted");
     }
 
     #[test]
     fn from_discovery_accepts_prefix_2() {
         let ip = IpNetwork::from_str("10.0.0.0/2").unwrap();
-        let result = Subnet::from_discovery(
-            "eth0".to_string(),
-            &ip,
-            Uuid::nil(),
-            &test_discovery_type(),
-            Uuid::nil(),
-        );
+        let result = Subnet::from_discovery("eth0".to_string(), &ip, Uuid::nil());
         assert!(result.is_some(), "/2 prefix should be accepted");
     }
 }

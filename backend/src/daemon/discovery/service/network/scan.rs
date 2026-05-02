@@ -51,12 +51,7 @@ impl NetworkScan {
 
         let interface_filter = ops.config_store.get_interfaces().await?;
         let (_, _, subnet_cidr_to_mac) = utils
-            .get_own_interfaces(
-                ops.discovery_type.clone(),
-                session.info.daemon_id,
-                session.info.network_id,
-                &interface_filter,
-            )
+            .get_own_interfaces(session.info.network_id, &interface_filter)
             .await?;
 
         // Filter out loopback subnets — they are not scannable

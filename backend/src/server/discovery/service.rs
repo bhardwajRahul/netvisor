@@ -26,7 +26,7 @@ use anyhow::{Error, Result};
 use async_trait::async_trait;
 use chrono::Utc;
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::{Arc, Weak},
 };
 use tokio::sync::{RwLock, broadcast};
@@ -41,6 +41,12 @@ pub struct DiscoveryService {
     daemon_sessions: RwLock<HashMap<Uuid, Vec<Uuid>>>,       // daemon_id -> session_id mapping
     discovery_sessions: RwLock<HashMap<Uuid, Uuid>>, // discovery_id -> session_id mapping (enforces one active session per discovery)
     daemon_pull_cancellations: RwLock<HashMap<Uuid, (bool, Uuid)>>, // daemon_id -> (boolean, session_id) mapping for pull mode cancellations of current session on daemon
+    /// Network IDs with an in-flight network snapshot. While a network is in
+    /// this set, new sessions on it start in `AwaitingSnapshot` and are not
+    /// dispatched until `release_network_for_snapshot` clears the entry.
+    /// In-memory only — crash drops any in-flight manual-snapshot intent,
+    /// which is acceptable since callers retry.
+    running_snapshots: RwLock<HashSet<Uuid>>,
     session_last_updated: RwLock<HashMap<Uuid, chrono::DateTime<Utc>>>,
     update_tx: broadcast::Sender<DiscoveryUpdatePayload>,
     scheduler: Option<Arc<JobScheduler>>,
@@ -229,6 +235,7 @@ impl DiscoveryService {
             daemon_sessions: RwLock::new(HashMap::new()),
             discovery_sessions: RwLock::new(HashMap::new()),
             daemon_pull_cancellations: RwLock::new(HashMap::new()),
+            running_snapshots: RwLock::new(HashSet::new()),
             session_last_updated: RwLock::new(HashMap::new()),
             update_tx: tx,
             scheduler,
@@ -360,6 +367,133 @@ impl DiscoveryService {
                 session_id = %session_id,
                 "Transitioned session to Starting phase"
             );
+        }
+    }
+
+    /// Atomically reserve a network for snapshotting.
+    ///
+    /// Returns `true` iff the network has zero non-terminal sessions AND is
+    /// not already reserved. On success, the network is added to
+    /// `running_snapshots`; the caller MUST pair this with
+    /// `release_network_for_snapshot` (typically via the manual-snapshot
+    /// API handler's acquire → run → release sequence).
+    ///
+    /// Returns `false` if any non-terminal session exists on the network or
+    /// if another snapshot is already in progress for it.
+    pub async fn try_acquire_network_for_snapshot(&self, network_id: Uuid) -> bool {
+        // Lock order: running_snapshots → sessions. This matches start_session,
+        // which takes running_snapshots.read before sessions.write to decide
+        // AwaitingSnapshot vs Queued/Pending. With this consistent order, the
+        // "no non-terminal session" check and the insert into running_snapshots
+        // are atomic against any in-flight start_session for the same network:
+        // start_session is either fully visible (try_acquire returns false) or
+        // not started yet (start_session sees running_snapshots and goes
+        // AwaitingSnapshot).
+        let mut running = self.running_snapshots.write().await;
+        let sessions = self.sessions.read().await;
+
+        if running.contains(&network_id) {
+            return false;
+        }
+
+        let has_non_terminal_session = sessions
+            .values()
+            .any(|s| s.network_id == network_id && !s.phase.is_terminal());
+        if has_non_terminal_session {
+            return false;
+        }
+
+        running.insert(network_id);
+        true
+    }
+
+    /// Release a network from snapshotting and unblock any AwaitingSnapshot
+    /// sessions on it.
+    ///
+    /// For each session on this network whose phase is `AwaitingSnapshot`,
+    /// runs the same Queued/Pending decision that `start_session` uses: if
+    /// the daemon's queue would otherwise be empty after promotion, the
+    /// session is promoted to `Pending` and a discovery event published;
+    /// otherwise it stays `Queued`.
+    pub async fn release_network_for_snapshot(&self, network_id: Uuid) {
+        // Drop the running_snapshots entry up front so any subsequent
+        // start_session for this network goes through the normal path.
+        {
+            let mut running = self.running_snapshots.write().await;
+            running.remove(&network_id);
+        }
+
+        // Identify AwaitingSnapshot sessions on this network and decide
+        // their next phase. Walk daemons in turn so the Queued/Pending
+        // decision matches start_session's "promote only if daemon has no
+        // other dispatched sessions" rule.
+        let mut sessions = self.sessions.write().await;
+        let daemon_sessions = self.daemon_sessions.read().await;
+
+        let mut to_publish: Vec<DiscoveryUpdatePayload> = Vec::new();
+        let awaiting_session_ids: Vec<Uuid> = sessions
+            .values()
+            .filter(|s| s.network_id == network_id && s.phase == DiscoveryPhase::AwaitingSnapshot)
+            .map(|s| s.session_id)
+            .collect();
+
+        for session_id in awaiting_session_ids {
+            let daemon_id = match sessions.get(&session_id) {
+                Some(s) => s.daemon_id,
+                None => continue,
+            };
+
+            // Mirror start_session's check: is anything already at
+            // Pending/Started/Scanning on this daemon? Queued and
+            // AwaitingSnapshot don't count — they haven't been dispatched.
+            let daemon_has_active = if let Some(queue) = daemon_sessions.get(&daemon_id) {
+                queue.iter().any(|sid| {
+                    if *sid == session_id {
+                        return false;
+                    }
+                    sessions
+                        .get(sid)
+                        .map(|s| {
+                            !s.phase.is_terminal()
+                                && s.phase != DiscoveryPhase::Queued
+                                && s.phase != DiscoveryPhase::AwaitingSnapshot
+                        })
+                        .unwrap_or(false)
+                })
+            } else {
+                false
+            };
+
+            if let Some(session) = sessions.get_mut(&session_id) {
+                if daemon_has_active {
+                    session.phase = DiscoveryPhase::Queued;
+                } else {
+                    session.phase = DiscoveryPhase::Pending;
+                    self.session_last_updated
+                        .write()
+                        .await
+                        .insert(session_id, Utc::now());
+                    to_publish.push(session.clone());
+                }
+                let _ = self.update_tx.send(session.clone());
+            }
+        }
+
+        drop(daemon_sessions);
+        drop(sessions);
+
+        for payload in to_publish {
+            if let Err(e) = self
+                .event_bus()
+                .publish(payload.into_discovery_event())
+                .await
+            {
+                tracing::warn!(
+                    network_id = %network_id,
+                    error = %e,
+                    "Failed to publish discovery event after release_network_for_snapshot",
+                );
+            }
         }
     }
 
@@ -891,6 +1025,15 @@ impl DiscoveryService {
             .await
             .insert(discovery.id, session_id);
 
+        // Hold running_snapshots.read across the session insertion. This
+        // serializes against try_acquire_network_for_snapshot (which takes
+        // running_snapshots.write before reading sessions): the snapshot
+        // either sees this session and returns false, or this session sees
+        // the running_snapshots entry and starts in AwaitingSnapshot. Lock
+        // order: running_snapshots → sessions → daemon_sessions.
+        let snapshot_lock = self.running_snapshots.read().await;
+        let snapshot_blocked = snapshot_lock.contains(&discovery.base.network_id);
+
         // Check if daemon has any sessions running
         let daemon_is_running_discovery = if let Some(daemon_sessions) = self
             .daemon_sessions
@@ -903,8 +1046,15 @@ impl DiscoveryService {
             false
         };
 
-        // Promote Queued → Pending if daemon has no other sessions
-        if !daemon_is_running_discovery {
+        // Phase decision:
+        //   - snapshot in progress on this network → AwaitingSnapshot.
+        //     Daemon's queue is irrelevant; release_network_for_snapshot
+        //     will run the Queued/Pending decision when the snapshot finishes.
+        //   - daemon idle → Pending (front of queue, dispatch event published below).
+        //   - daemon busy → Queued (default; promoted later).
+        if snapshot_blocked {
+            session_payload.phase = DiscoveryPhase::AwaitingSnapshot;
+        } else if !daemon_is_running_discovery {
             session_payload.phase = DiscoveryPhase::Pending;
             self.session_last_updated
                 .write()
@@ -926,9 +1076,16 @@ impl DiscoveryService {
             .or_default()
             .push(session_id);
 
-        // Publish event if no other sessions are running for daemon
-        // DaemonService subscribes to this event and sends the request to the daemon.
-        if !daemon_is_running_discovery {
+        // Drop the running_snapshots guard before any awaits that may take
+        // running_snapshots.write (e.g. release_network_for_snapshot fired
+        // by another task observing our session via the published event).
+        drop(snapshot_lock);
+
+        // Publish event only if the session is dispatchable now: not blocked
+        // by a snapshot, and the daemon is otherwise idle. AwaitingSnapshot
+        // and Queued sessions are published later by release_network_for_snapshot
+        // or the existing terminal-completion promotion path.
+        if !snapshot_blocked && !daemon_is_running_discovery {
             self.event_bus()
                 .publish(session_payload.into_discovery_event_with_auth(authentication))
                 .await
@@ -1232,9 +1389,7 @@ impl DiscoveryService {
             // AwaitingSnapshot is treated like Queued for cancellation — the
             // session has not yet been dispatched to the daemon, so cleanup
             // is just a queue removal.
-            DiscoveryPhase::Queued
-            | DiscoveryPhase::Pending
-            | DiscoveryPhase::AwaitingSnapshot => {
+            DiscoveryPhase::Queued | DiscoveryPhase::Pending | DiscoveryPhase::AwaitingSnapshot => {
                 let mut sessions = self.sessions.write().await;
                 let mut daemon_sessions = self.daemon_sessions.write().await;
 

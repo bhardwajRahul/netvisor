@@ -76,16 +76,17 @@ ALTER TABLE vlans
     ADD COLUMN last_discovery_id  UUID        NULL,
     ADD COLUMN first_discovery_id UUID        NULL;
 
+-- Snapshotable-only tables (5): just SCD2 columns. No discovery FK columns —
+-- dependencies/dependency_members/tags/entity_tags are user-managed; subnet_vlans
+-- is a derived junction whose per-link freshness isn't worth tracking
+-- separately (subnet and vlan endpoints carry their own DiscoveryTracked
+-- columns; soft-close on `unlink` answers "when did the link stop existing"
+-- via valid_to).
 ALTER TABLE subnet_vlans
-    ADD COLUMN valid_from         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    ADD COLUMN valid_to           TIMESTAMPTZ NULL,
-    ADD COLUMN lineage_id         UUID        NULL,
-    ADD COLUMN last_seen_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    ADD COLUMN last_discovery_id  UUID        NULL,
-    ADD COLUMN first_discovery_id UUID        NULL;
+    ADD COLUMN valid_from TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    ADD COLUMN valid_to   TIMESTAMPTZ NULL,
+    ADD COLUMN lineage_id UUID        NULL;
 
--- Snapshotable-only tables (4): just SCD2 columns. No discovery FK columns
--- because these aren't scanned by daemon discovery (user-managed).
 ALTER TABLE dependencies
     ADD COLUMN valid_from TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     ADD COLUMN valid_to   TIMESTAMPTZ NULL,

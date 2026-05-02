@@ -681,7 +681,6 @@ impl HostResponse {
         // The to_host() method is only used in legacy compat paths; round-tripping
         // a HostResponse → Host loses temporal info that can be reconstructed
         // from the live row's values via from_row.
-        let now = chrono::Utc::now();
         Host {
             id: *id,
             created_at: *created_at,

@@ -54,7 +54,10 @@ impl CrudService<Subnet> for SubnetService {
         subnet: Subnet,
         authentication: AuthenticatedEntity,
     ) -> Result<Subnet, anyhow::Error> {
-        let filter = StorableFilter::<Subnet>::new_from_network_ids(&[subnet.base.network_id]);
+        // SCD2: natural-key match (CIDR + virtualization) runs against live
+        // subnets only; closed historical copies must not match.
+        let filter =
+            StorableFilter::<Subnet>::new_from_network_ids(&[subnet.base.network_id]).live();
         let all_subnets = self.storage.get_all(filter).await?;
 
         let subnet = if subnet.id == Uuid::nil() {
@@ -114,12 +117,30 @@ impl CrudService<Subnet> for SubnetService {
                     new_subnet_id = %subnet.id,
                     new_subnet_name = %subnet.base.name,
                     subnet_cidr = %subnet.base.cidr,
-                    "Duplicate subnet found, returning existing"
+                    "Duplicate subnet found, refreshing last_seen_at and returning existing"
                 );
-                existing_subnet.clone()
+                // SCD2 semantics: every successful natural-key match advances
+                // last_seen_at, even when no field changes. Otherwise
+                // unchanged subnets falsely look stale to (future) staleness
+                // consumers. The incoming `subnet` was pre-stamped by
+                // `HostService::discover_host` when called via discovery (see
+                // `ScanContext`) so all entities in one submission share one
+                // timestamp; for non-discovery callers the value is whatever
+                // they put on the entity.
+                let mut refreshed = existing_subnet.clone();
+                refreshed.last_seen_at = subnet.last_seen_at;
+                self.storage.update(&mut refreshed).await?;
+                refreshed
             }
             // If there's no existing subnet, create a new one
             None => {
+                // SCD2 origin: this row is being inserted for the first
+                // time. Stamp created_at + valid_from to the entity's
+                // already-refreshed `last_seen_at`. See
+                // `DiscoveryTracked::originate_scan_timestamps`.
+                use crate::server::shared::storage::snapshot::DiscoveryTracked;
+                let mut subnet = subnet;
+                subnet.originate_scan_timestamps(subnet.last_seen_at);
                 let mut created = self.storage.create(&subnet).await?;
 
                 // Save tags to junction table
@@ -187,7 +208,9 @@ impl SubnetService {
     ) -> Result<()> {
         use crate::server::subnets::r#impl::virtualization::SubnetVirtualization;
 
-        let filter = StorableFilter::<Subnet>::new_from_network_ids(&[*network_id]);
+        // SCD2: only patch live subnets; closed historical copies retain
+        // their as-of state.
+        let filter = StorableFilter::<Subnet>::new_from_network_ids(&[*network_id]).live();
         let subnets = self.storage.get_all(filter).await?;
 
         for mut subnet in subnets {

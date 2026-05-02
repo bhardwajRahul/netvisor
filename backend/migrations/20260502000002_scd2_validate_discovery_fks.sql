@@ -30,5 +30,4 @@ ALTER TABLE subnets VALIDATE CONSTRAINT subnets_first_discovery_fk;
 ALTER TABLE vlans VALIDATE CONSTRAINT vlans_last_discovery_fk;
 ALTER TABLE vlans VALIDATE CONSTRAINT vlans_first_discovery_fk;
 
-ALTER TABLE subnet_vlans VALIDATE CONSTRAINT subnet_vlans_last_discovery_fk;
-ALTER TABLE subnet_vlans VALIDATE CONSTRAINT subnet_vlans_first_discovery_fk;
+-- subnet_vlans intentionally omitted: see scd2_add_discovery_fks_not_valid.sql.

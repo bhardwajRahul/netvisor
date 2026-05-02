@@ -69,8 +69,10 @@ impl VlanService {
         vlan_number: u16,
         name: String,
     ) -> Result<Vlan> {
+        // SCD2: natural-key match (network_id + vlan_number) against live rows.
         let filter = StorableFilter::<Vlan>::new_from_uuid_column("network_id", &network_id)
-            .u16_column("vlan_number", vlan_number);
+            .u16_column("vlan_number", vlan_number)
+            .live();
 
         if let Some(existing) = self.storage.get_one(filter).await? {
             if existing.base.name != name {

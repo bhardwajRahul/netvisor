@@ -30,6 +30,14 @@ where
         }
     }
 
+    /// Access the underlying connection pool. Lets callers (e.g.
+    /// `SnapshotService`) open one transaction and run multi-table
+    /// operations through the static `*_in_tx` methods on the typed
+    /// `GenericPostgresStorage<T>` namespaces.
+    pub fn pool(&self) -> &PgPool {
+        &self.pool
+    }
+
     /// Generate INSERT query dynamically
     fn build_insert_query(columns: &[&str]) -> String {
         let placeholders: Vec<String> = (1..=columns.len()).map(|i| format!("${}", i)).collect();
@@ -164,9 +172,8 @@ where
                 // subscribers reading the entity off the EntityScope still see
                 // the populated scanned.
                 let mut rt_for_storage = v.clone();
-                if let crate::server::discovery::r#impl::types::RunType::Historical {
-                    results,
-                } = &mut rt_for_storage
+                if let crate::server::discovery::r#impl::types::RunType::Historical { results } =
+                    &mut rt_for_storage
                 {
                     results.scanned = None;
                 }
@@ -372,6 +379,103 @@ where
             tx,
             _phantom: PhantomData,
         })
+    }
+
+    /// Fetch all rows matching `filter` within an externally-owned
+    /// `sqlx::Transaction`. Mirrors the public `Storage::get_all` shape
+    /// (default `created_at ASC` order) but lets `SnapshotService` share
+    /// one transaction across many entity types.
+    pub async fn get_all_in_tx(
+        filter: StorableFilter<T>,
+        tx: &mut sqlx::Transaction<'_, Postgres>,
+    ) -> Result<Vec<T>, anyhow::Error> {
+        let pagination_clause = filter.to_pagination_clause();
+        let join_clause = filter.to_join_clause();
+
+        let select = if filter.has_joins() {
+            format!("{}.*", T::table_name())
+        } else {
+            "*".to_string()
+        };
+
+        let query_str = format!(
+            "SELECT {} FROM {} {} {} ORDER BY created_at ASC {}",
+            select,
+            T::table_name(),
+            join_clause,
+            filter.to_where_clause(),
+            pagination_clause
+        );
+
+        let mut query = sqlx::query(&query_str);
+        for value in filter.values() {
+            query = Self::bind_value(query, value)?;
+        }
+
+        let rows = query.fetch_all(&mut **tx).await?;
+        rows.into_iter().map(|r| T::from_row(&r)).collect()
+    }
+
+    /// Bulk INSERT mirroring `create_many_with_executor`'s shape but bound
+    /// to an externally-owned `sqlx::Transaction`. Same chunking around
+    /// `MAX_BIND_PARAMS`. Used by `SnapshotService` so close-and-clone is
+    /// atomic across all 12 network-scoped entity types.
+    pub async fn create_many_in_tx(
+        entities: &[T],
+        tx: &mut sqlx::Transaction<'_, Postgres>,
+    ) -> Result<Vec<T>, anyhow::Error> {
+        if entities.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let (columns, _) = entities[0].to_params()?;
+        let cols_per_row = columns.len();
+        let chunk_size = Self::MAX_BIND_PARAMS / cols_per_row.max(1);
+
+        for chunk in entities.chunks(chunk_size) {
+            let all_params: Vec<(Vec<&'static str>, Vec<SqlValue>)> = chunk
+                .iter()
+                .map(|e| e.to_params())
+                .collect::<Result<_, _>>()?;
+
+            let query_str = Self::build_bulk_insert_query(&all_params[0].0, chunk.len());
+            let mut query = sqlx::query(&query_str);
+
+            for (_, values) in &all_params {
+                for value in values {
+                    query = Self::bind_value(query, value)?;
+                }
+            }
+
+            query.execute(&mut **tx).await?;
+        }
+
+        Ok(entities.to_vec())
+    }
+
+    /// Bulk UPDATE within an externally-owned transaction. Same per-entity
+    /// `to_params` → `UPDATE ... WHERE id = $1` shape as the public
+    /// `Storage::update_many`. All updates run inside the supplied
+    /// transaction; commit/rollback is the caller's responsibility.
+    pub async fn update_many_in_tx(
+        entities: &[T],
+        tx: &mut sqlx::Transaction<'_, Postgres>,
+    ) -> Result<Vec<T>, anyhow::Error> {
+        if entities.is_empty() {
+            return Ok(vec![]);
+        }
+
+        for entity in entities {
+            let (columns, values) = entity.to_params()?;
+            let query_str = Self::build_update_query(&columns);
+            let mut query = sqlx::query(&query_str);
+            for value in &values {
+                query = Self::bind_value(query, value)?;
+            }
+            query.execute(&mut **tx).await?;
+        }
+
+        Ok(entities.to_vec())
     }
 }
 

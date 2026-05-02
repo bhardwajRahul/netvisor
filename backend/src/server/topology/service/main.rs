@@ -286,47 +286,44 @@ impl TopologyService {
         ),
         Error,
     > {
-        // Fetch all data - each service needs its own properly typed filter
+        // Fetch all data — each service needs its own properly typed filter.
+        // SCD2: current-state topology renders only live rows (`valid_to IS NULL`).
+        // The as-of variant (`get_topology_data_as_of`) substitutes `.live()` with
+        // `.as_of(t)` to read historical state at a snapshot timestamp.
         let hosts = self
             .host_service
-            .get_all(StorableFilter::<Host>::new_from_network_ids(&[network_id]).hidden_is(false))
+            .get_all(
+                StorableFilter::<Host>::new_from_network_ids(&[network_id])
+                    .hidden_is(false)
+                    .live(),
+            )
             .await?;
 
         let ip_addresses = self
             .ip_address_service
-            .get_all(StorableFilter::<IPAddress>::new_from_network_ids(&[
-                network_id,
-            ]))
+            .get_all(StorableFilter::<IPAddress>::new_from_network_ids(&[network_id]).live())
             .await?;
         let subnets = self
             .subnet_service
-            .get_all(StorableFilter::<Subnet>::new_from_network_ids(&[
-                network_id,
-            ]))
+            .get_all(StorableFilter::<Subnet>::new_from_network_ids(&[network_id]).live())
             .await?;
         let dependencies = self
             .dependency_service
-            .get_all(StorableFilter::<Dependency>::new_from_network_ids(&[
-                network_id,
-            ]))
+            .get_all(StorableFilter::<Dependency>::new_from_network_ids(&[network_id]).live())
             .await?;
 
         let ports = self
             .port_service
-            .get_all(StorableFilter::<Port>::new_from_network_ids(&[network_id]))
+            .get_all(StorableFilter::<Port>::new_from_network_ids(&[network_id]).live())
             .await?;
         let bindings = self
             .binding_service
-            .get_all(StorableFilter::<Binding>::new_from_network_ids(&[
-                network_id,
-            ]))
+            .get_all(StorableFilter::<Binding>::new_from_network_ids(&[network_id]).live())
             .await?;
 
         let interfaces = self
             .interface_service
-            .get_all(StorableFilter::<Interface>::new_from_network_ids(&[
-                network_id,
-            ]))
+            .get_all(StorableFilter::<Interface>::new_from_network_ids(&[network_id]).live())
             .await?;
 
         Ok((
@@ -341,10 +338,9 @@ impl TopologyService {
     }
 
     pub async fn get_service_data(&self, network_id: Uuid) -> Result<Vec<Service>, Error> {
+        // SCD2: live services only for current-state topology rendering.
         self.service_service
-            .get_all(StorableFilter::<Service>::new_from_network_ids(&[
-                network_id,
-            ]))
+            .get_all(StorableFilter::<Service>::new_from_network_ids(&[network_id]).live())
             .await
     }
 

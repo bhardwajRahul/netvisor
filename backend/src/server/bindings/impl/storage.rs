@@ -140,14 +140,30 @@ impl Storable for Binding {
 }
 
 impl Snapshotable for Binding {
-    fn id_value(&self) -> Uuid { self.id }
-    fn set_id_value(&mut self, id: Uuid) { self.id = id; }
-    fn valid_from(&self) -> DateTime<Utc> { self.valid_from }
-    fn valid_to(&self) -> Option<DateTime<Utc>> { self.valid_to }
-    fn lineage_id(&self) -> Option<Uuid> { self.lineage_id }
-    fn set_valid_from(&mut self, t: DateTime<Utc>) { self.valid_from = t; }
-    fn set_valid_to(&mut self, t: Option<DateTime<Utc>>) { self.valid_to = t; }
-    fn set_lineage_id(&mut self, id: Option<Uuid>) { self.lineage_id = id; }
+    fn id_value(&self) -> Uuid {
+        self.id
+    }
+    fn set_id_value(&mut self, id: Uuid) {
+        self.id = id;
+    }
+    fn valid_from(&self) -> DateTime<Utc> {
+        self.valid_from
+    }
+    fn valid_to(&self) -> Option<DateTime<Utc>> {
+        self.valid_to
+    }
+    fn lineage_id(&self) -> Option<Uuid> {
+        self.lineage_id
+    }
+    fn set_valid_from(&mut self, t: DateTime<Utc>) {
+        self.valid_from = t;
+    }
+    fn set_valid_to(&mut self, t: Option<DateTime<Utc>>) {
+        self.valid_to = t;
+    }
+    fn set_lineage_id(&mut self, id: Option<Uuid>) {
+        self.lineage_id = id;
+    }
 
     fn remap_fks_for_clone(&mut self, maps: &FkMaps) {
         if let Some(closed) = maps.services.get(&self.base.service_id) {
@@ -160,14 +176,17 @@ impl Snapshotable for Binding {
                     *ip_address_id = *closed;
                 }
             }
-            BindingType::Port { port_id, ip_address_id } => {
+            BindingType::Port {
+                port_id,
+                ip_address_id,
+            } => {
                 if let Some(closed) = maps.ports.get(port_id) {
                     *port_id = *closed;
                 }
-                if let Some(ip) = ip_address_id {
-                    if let Some(closed) = maps.ip_addresses.get(ip) {
-                        *ip_address_id = Some(*closed);
-                    }
+                if let Some(ip) = ip_address_id
+                    && let Some(closed) = maps.ip_addresses.get(ip)
+                {
+                    *ip_address_id = Some(*closed);
                 }
             }
         }
@@ -175,17 +194,32 @@ impl Snapshotable for Binding {
 }
 
 impl DiscoveryTracked for Binding {
-    fn last_seen_at(&self) -> DateTime<Utc> { self.last_seen_at }
-    fn last_discovery_id(&self) -> Option<Uuid> { self.last_discovery_id }
-    fn first_discovery_id(&self) -> Option<Uuid> { self.first_discovery_id }
-    fn set_last_seen_at(&mut self, t: DateTime<Utc>) { self.last_seen_at = t; }
-    fn set_last_discovery_id(&mut self, id: Option<Uuid>) { self.last_discovery_id = id; }
-    fn set_first_discovery_id(&mut self, id: Option<Uuid>) { self.first_discovery_id = id; }
+    fn last_seen_at(&self) -> DateTime<Utc> {
+        self.last_seen_at
+    }
+    fn last_discovery_id(&self) -> Option<Uuid> {
+        self.last_discovery_id
+    }
+    fn first_discovery_id(&self) -> Option<Uuid> {
+        self.first_discovery_id
+    }
+    fn set_last_seen_at(&mut self, t: DateTime<Utc>) {
+        self.last_seen_at = t;
+    }
+    fn set_last_discovery_id(&mut self, id: Option<Uuid>) {
+        self.last_discovery_id = id;
+    }
+    fn set_first_discovery_id(&mut self, id: Option<Uuid>) {
+        self.first_discovery_id = id;
+    }
 
     fn scanned_in_session_filter(
         scanned: &crate::server::daemons::r#impl::api::ScannedEntityIds,
     ) -> crate::server::shared::storage::filter::StorableFilter<Self> {
-        crate::server::shared::storage::filter::StorableFilter::<Self>::new_from_uuids_column("id", &scanned.binding_ids)
+        crate::server::shared::storage::filter::StorableFilter::<Self>::new_from_uuids_column(
+            "id",
+            &scanned.binding_ids,
+        )
     }
 }
 

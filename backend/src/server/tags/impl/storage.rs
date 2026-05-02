@@ -122,14 +122,30 @@ impl Storable for Tag {
 }
 
 impl Snapshotable for Tag {
-    fn id_value(&self) -> Uuid { self.id }
-    fn set_id_value(&mut self, id: Uuid) { self.id = id; }
-    fn valid_from(&self) -> DateTime<Utc> { self.valid_from }
-    fn valid_to(&self) -> Option<DateTime<Utc>> { self.valid_to }
-    fn lineage_id(&self) -> Option<Uuid> { self.lineage_id }
-    fn set_valid_from(&mut self, t: DateTime<Utc>) { self.valid_from = t; }
-    fn set_valid_to(&mut self, t: Option<DateTime<Utc>>) { self.valid_to = t; }
-    fn set_lineage_id(&mut self, id: Option<Uuid>) { self.lineage_id = id; }
+    fn id_value(&self) -> Uuid {
+        self.id
+    }
+    fn set_id_value(&mut self, id: Uuid) {
+        self.id = id;
+    }
+    fn valid_from(&self) -> DateTime<Utc> {
+        self.valid_from
+    }
+    fn valid_to(&self) -> Option<DateTime<Utc>> {
+        self.valid_to
+    }
+    fn lineage_id(&self) -> Option<Uuid> {
+        self.lineage_id
+    }
+    fn set_valid_from(&mut self, t: DateTime<Utc>) {
+        self.valid_from = t;
+    }
+    fn set_valid_to(&mut self, t: Option<DateTime<Utc>>) {
+        self.valid_to = t;
+    }
+    fn set_lineage_id(&mut self, id: Option<Uuid>) {
+        self.lineage_id = id;
+    }
     // Tag is org-scoped — no within-tracked-set FKs to remap.
     // Lifecycle: per-action close-and-clone on rename via TagService::update.
 }

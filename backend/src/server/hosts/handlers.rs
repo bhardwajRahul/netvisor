@@ -469,6 +469,10 @@ async fn create_host(
                 subnets,
             } = discovery_request;
 
+            // Capture one scan_time for the whole submission so all entities
+            // share consistent SCD2 timestamps. See ScanContext for rationale.
+            let scan_ctx =
+                crate::server::shared::services::scan_context::ScanContext::new(*daemon_id);
             let host_response = host_service
                 .discover_host(
                     host,
@@ -477,6 +481,7 @@ async fn create_host(
                     services,
                     interfaces,
                     subnets,
+                    Some(&scan_ctx),
                     entity,
                     None,
                 )

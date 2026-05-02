@@ -66,9 +66,18 @@ pub trait Snapshotable: Storable {
 ///
 /// `last_seen_at` advances on every successful natural-key match by daemon
 /// discovery. `last_discovery_id` and `first_discovery_id` are populated
-/// post-terminal by per-entity-service subscribers on the
-/// `DiscoveryProcessed` event.
-pub trait DiscoveryTracked: Snapshotable {
+/// post-terminal by per-entity-service subscribers on the in-memory
+/// `EntityOperation::Created` event published for the historical Discovery
+/// row, whose scope carries the full `Entity::Discovery(...)` struct
+/// including `run_type::Historical { results: { scanned, .. } }`.
+///
+/// The `Entity` supertrait bound exists so the default `stamp_for_scan`
+/// can call `set_created_at` / `set_updated_at`. Every type that's
+/// `DiscoveryTracked` in this codebase is also a user-visible `Entity`
+/// (Host, IPAddress, Port, Service, Interface, Binding, Subnet, Vlan).
+/// Junction tables (SubnetVlan, EntityTag, DependencyMember) are
+/// `Snapshotable` but never `DiscoveryTracked`.
+pub trait DiscoveryTracked: Snapshotable + crate::server::shared::storage::traits::Entity {
     fn last_seen_at(&self) -> DateTime<Utc>;
     fn last_discovery_id(&self) -> Option<Uuid>;
     fn first_discovery_id(&self) -> Option<Uuid>;
@@ -76,6 +85,33 @@ pub trait DiscoveryTracked: Snapshotable {
     fn set_last_seen_at(&mut self, t: DateTime<Utc>);
     fn set_last_discovery_id(&mut self, id: Option<Uuid>);
     fn set_first_discovery_id(&mut self, id: Option<Uuid>);
+
+    /// Refresh-style timestamps that advance on **every** observation of
+    /// this entity (whether new insert or upsert). Sets `last_seen_at` and
+    /// `updated_at` to `scan_time`. Always safe to call; the upsert logic
+    /// reads `last_seen_at` from the incoming entity to refresh the
+    /// existing live row's freshness signal.
+    fn refresh_scan_timestamps(&mut self, scan_time: DateTime<Utc>) {
+        self.set_last_seen_at(scan_time);
+        self.set_updated_at(scan_time);
+    }
+
+    /// Origin-style timestamps that anchor a row's lifecycle when it is
+    /// first inserted. Sets `created_at` and `valid_from` to `scan_time`.
+    ///
+    /// Conceptually one-shot: a row's "when it became live" only happens
+    /// once. The discovery handler calls this on incoming entities even
+    /// though only the new-insert branch should observe it — the upsert
+    /// branch explicitly preserves the existing row's `created_at` /
+    /// `valid_from` (it never copies these from the incoming entity), so
+    /// stamping here is harmless in the matched case and correct in the
+    /// new-insert case. Future changes to the upsert logic must continue
+    /// to preserve these on the existing row; the method-level split here
+    /// is the documentation that flags this.
+    fn originate_scan_timestamps(&mut self, scan_time: DateTime<Utc>) {
+        self.set_created_at(scan_time);
+        self.set_valid_from(scan_time);
+    }
 
     /// Returns a filter for "which of my rows did this discovery scan?"
     /// Top-level entities (Host/Subnet/Vlan) filter by `id IN
@@ -100,6 +136,13 @@ pub struct FkMaps {
     pub ip_addresses: HashMap<Uuid, Uuid>,
     pub ports: HashMap<Uuid, Uuid>,
     pub interfaces: HashMap<Uuid, Uuid>,
+    /// Live-binding-id → closed-binding-id. Populated when bindings are
+    /// cloned (BINDINGS comes before DEPENDENCY_MEMBERS in CLONE_ORDER) so
+    /// `DependencyMemberRecord::remap_fks_for_clone` can rewrite the
+    /// optional `binding_id` to point at the closed binding's id rather
+    /// than the live binding (whose state has moved on after `valid_from`
+    /// advances).
+    pub bindings: HashMap<Uuid, Uuid>,
     pub dependencies: HashMap<Uuid, Uuid>,
 }
 
@@ -121,5 +164,197 @@ impl FkMaps {
             EntityDiscriminants::Dependency => self.dependencies.get(&live_id).copied(),
             _ => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod fk_maps_tests {
+    use super::*;
+
+    #[test]
+    fn lookup_returns_closed_id_for_network_scoped_entity_types() {
+        let mut maps = FkMaps::default();
+        let live_host = Uuid::new_v4();
+        let closed_host = Uuid::new_v4();
+        let live_svc = Uuid::new_v4();
+        let closed_svc = Uuid::new_v4();
+        let live_subnet = Uuid::new_v4();
+        let closed_subnet = Uuid::new_v4();
+        let live_dep = Uuid::new_v4();
+        let closed_dep = Uuid::new_v4();
+
+        maps.hosts.insert(live_host, closed_host);
+        maps.services.insert(live_svc, closed_svc);
+        maps.subnets.insert(live_subnet, closed_subnet);
+        maps.dependencies.insert(live_dep, closed_dep);
+
+        assert_eq!(
+            maps.lookup_by_entity_type(EntityDiscriminants::Host, live_host),
+            Some(closed_host)
+        );
+        assert_eq!(
+            maps.lookup_by_entity_type(EntityDiscriminants::Service, live_svc),
+            Some(closed_svc)
+        );
+        assert_eq!(
+            maps.lookup_by_entity_type(EntityDiscriminants::Subnet, live_subnet),
+            Some(closed_subnet)
+        );
+        assert_eq!(
+            maps.lookup_by_entity_type(EntityDiscriminants::Dependency, live_dep),
+            Some(closed_dep)
+        );
+    }
+
+    #[test]
+    fn lookup_returns_none_for_org_scoped_entity_types() {
+        // Org-scoped variants (Daemon, User, …) aren't cloned at network
+        // snapshot, so lookup never has an entry for them.
+        let maps = FkMaps::default();
+        let some_id = Uuid::new_v4();
+        assert!(
+            maps.lookup_by_entity_type(EntityDiscriminants::Daemon, some_id)
+                .is_none()
+        );
+        assert!(
+            maps.lookup_by_entity_type(EntityDiscriminants::User, some_id)
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn lookup_returns_none_for_unknown_live_id() {
+        let mut maps = FkMaps::default();
+        maps.hosts.insert(Uuid::new_v4(), Uuid::new_v4());
+        assert!(
+            maps.lookup_by_entity_type(EntityDiscriminants::Host, Uuid::new_v4())
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn fk_maps_includes_bindings_field_for_dep_member_remap() {
+        // Regression for the gotcha #1 in STATE.md / plan: dep_member's
+        // optional binding_id remap requires `bindings` to be a sub-map.
+        let mut maps = FkMaps::default();
+        let live = Uuid::new_v4();
+        let closed = Uuid::new_v4();
+        maps.bindings.insert(live, closed);
+        assert_eq!(maps.bindings.get(&live).copied(), Some(closed));
+    }
+}
+
+#[cfg(test)]
+mod discovery_tracked_stamping_tests {
+    use chrono::TimeZone;
+    use uuid::Uuid;
+
+    use super::DiscoveryTracked;
+    use crate::server::hosts::r#impl::base::{Host, HostBase};
+
+    fn fresh_host() -> Host {
+        Host::new(HostBase {
+            name: "test".to_string(),
+            network_id: Uuid::new_v4(),
+            ..Default::default()
+        })
+    }
+
+    #[test]
+    fn refresh_scan_timestamps_only_touches_seen_and_updated() {
+        let mut h = fresh_host();
+        let original_created = h.created_at;
+        let original_valid_from = h.valid_from;
+        let scan_time = chrono::Utc.with_ymd_and_hms(2030, 1, 1, 12, 0, 0).unwrap();
+
+        h.refresh_scan_timestamps(scan_time);
+
+        assert_eq!(h.last_seen_at, scan_time, "last_seen_at refreshed");
+        assert_eq!(h.updated_at, scan_time, "updated_at refreshed");
+        assert_eq!(
+            h.created_at, original_created,
+            "created_at preserved (origin field)"
+        );
+        assert_eq!(
+            h.valid_from, original_valid_from,
+            "valid_from preserved (origin field)"
+        );
+    }
+
+    #[test]
+    fn originate_scan_timestamps_only_touches_created_and_valid_from() {
+        let mut h = fresh_host();
+        let original_seen = h.last_seen_at;
+        let original_updated = h.updated_at;
+        let scan_time = chrono::Utc.with_ymd_and_hms(2030, 1, 1, 12, 0, 0).unwrap();
+
+        h.originate_scan_timestamps(scan_time);
+
+        assert_eq!(h.created_at, scan_time, "created_at set");
+        assert_eq!(h.valid_from, scan_time, "valid_from set");
+        assert_eq!(
+            h.last_seen_at, original_seen,
+            "last_seen_at preserved (refresh field)"
+        );
+        assert_eq!(
+            h.updated_at, original_updated,
+            "updated_at preserved (refresh field)"
+        );
+    }
+
+    #[test]
+    fn refresh_then_originate_yields_all_four_at_scan_time() {
+        let mut h = fresh_host();
+        let scan_time = chrono::Utc.with_ymd_and_hms(2030, 1, 1, 12, 0, 0).unwrap();
+
+        h.refresh_scan_timestamps(scan_time);
+        h.originate_scan_timestamps(scan_time);
+
+        assert_eq!(h.created_at, scan_time);
+        assert_eq!(h.updated_at, scan_time);
+        assert_eq!(h.valid_from, scan_time);
+        assert_eq!(h.last_seen_at, scan_time);
+    }
+}
+
+#[cfg(test)]
+mod snapshotable_tests {
+    use super::*;
+    use crate::server::tags::entity_tags::{EntityTag, EntityTagBase};
+
+    #[test]
+    fn make_closed_copy_sets_lineage_to_live_id() {
+        let live = EntityTag::new(EntityTagBase::new(
+            Uuid::new_v4(),
+            EntityDiscriminants::Host,
+            Uuid::new_v4(),
+        ));
+        let live_id = live.id_value();
+
+        let closed_at = chrono::Utc::now();
+        let closed = live.make_closed_copy(closed_at);
+
+        assert_eq!(closed.lineage_id(), Some(live_id));
+        assert_eq!(closed.valid_to(), Some(closed_at));
+        // valid_from is preserved — closed row covers [valid_from, close_at]
+        assert_eq!(closed.valid_from(), live.valid_from());
+        // The id is unchanged on the copy itself; the SnapshotService
+        // assigns a new uuid via set_id_value before INSERT.
+        assert_eq!(closed.id_value(), live_id);
+    }
+
+    #[test]
+    fn make_closed_copy_preserves_payload_fields() {
+        let entity_id = Uuid::new_v4();
+        let tag_id = Uuid::new_v4();
+        let live = EntityTag::new(EntityTagBase::new(
+            entity_id,
+            EntityDiscriminants::Service,
+            tag_id,
+        ));
+        let closed = live.make_closed_copy(chrono::Utc::now());
+        assert_eq!(closed.base.entity_id, entity_id);
+        assert_eq!(closed.base.entity_type, EntityDiscriminants::Service);
+        assert_eq!(closed.base.tag_id, tag_id);
     }
 }

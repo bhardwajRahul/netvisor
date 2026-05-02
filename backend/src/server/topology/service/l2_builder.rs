@@ -242,6 +242,7 @@ mod tests {
                 name: name.to_string(),
                 ..Default::default()
             },
+            ..Default::default()
         }
     }
 
@@ -265,6 +266,7 @@ mod tests {
                 neighbor,
                 ..Default::default()
             },
+            ..Default::default()
         }
     }
 

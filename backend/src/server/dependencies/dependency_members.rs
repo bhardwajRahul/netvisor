@@ -164,14 +164,30 @@ impl Storable for DependencyMemberRecord {
 }
 
 impl crate::server::shared::storage::snapshot::Snapshotable for DependencyMemberRecord {
-    fn id_value(&self) -> Uuid { self.id }
-    fn set_id_value(&mut self, id: Uuid) { self.id = id; }
-    fn valid_from(&self) -> DateTime<Utc> { self.valid_from }
-    fn valid_to(&self) -> Option<DateTime<Utc>> { self.valid_to }
-    fn lineage_id(&self) -> Option<Uuid> { self.lineage_id }
-    fn set_valid_from(&mut self, t: DateTime<Utc>) { self.valid_from = t; }
-    fn set_valid_to(&mut self, t: Option<DateTime<Utc>>) { self.valid_to = t; }
-    fn set_lineage_id(&mut self, id: Option<Uuid>) { self.lineage_id = id; }
+    fn id_value(&self) -> Uuid {
+        self.id
+    }
+    fn set_id_value(&mut self, id: Uuid) {
+        self.id = id;
+    }
+    fn valid_from(&self) -> DateTime<Utc> {
+        self.valid_from
+    }
+    fn valid_to(&self) -> Option<DateTime<Utc>> {
+        self.valid_to
+    }
+    fn lineage_id(&self) -> Option<Uuid> {
+        self.lineage_id
+    }
+    fn set_valid_from(&mut self, t: DateTime<Utc>) {
+        self.valid_from = t;
+    }
+    fn set_valid_to(&mut self, t: Option<DateTime<Utc>>) {
+        self.valid_to = t;
+    }
+    fn set_lineage_id(&mut self, id: Option<Uuid>) {
+        self.lineage_id = id;
+    }
 
     fn remap_fks_for_clone(&mut self, maps: &crate::server::shared::storage::snapshot::FkMaps) {
         if let Some(closed) = maps.dependencies.get(&self.base.dependency_id) {
@@ -180,13 +196,15 @@ impl crate::server::shared::storage::snapshot::Snapshotable for DependencyMember
         if let Some(closed) = maps.services.get(&self.base.service_id) {
             self.base.service_id = *closed;
         }
-        // binding_id is optional and points to bindings table (snapshotted).
-        // Bindings are remapped under the same FkMaps.
-        // (Note: FkMaps doesn't currently include a bindings sub-map; if needed,
-        // it can be added. dependency_members.binding_id is set by the user via
-        // dependency-creation flow and is optional, so leave as-is for now —
-        // closed copies reference live binding ids, resolved at as-of via OR-join
-        // pattern if the consumer needs them.)
+        // Bindings are snapshotted earlier in CLONE_ORDER, so the closed-id
+        // is in the map. Without this remap, an as-of-T join through the
+        // closed dep_member would land on the live binding row whose state
+        // has moved past T.
+        if let Some(binding_id) = self.base.binding_id
+            && let Some(closed) = maps.bindings.get(&binding_id)
+        {
+            self.base.binding_id = Some(*closed);
+        }
     }
 }
 

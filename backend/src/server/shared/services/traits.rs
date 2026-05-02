@@ -604,8 +604,40 @@ where
     }
 }
 
+/// Pull the in-memory `ScannedEntityIds` payload off an
+/// `EntityOperation::Created` event for the historical Discovery row, plus
+/// the row's id (used as `last_discovery_id` / `first_discovery_id`).
+///
+/// Returns `None` when the event isn't for a Discovery, isn't a
+/// `RunType::Historical`, or carries `scanned: None` (which happens for
+/// rows read back from the DB after the strip in
+/// `SqlValue::RunType::bind_value`). Per-entity subscribers iterate events
+/// and skip on `None`.
+pub fn extract_scanned_from_discovery_event(
+    event: &crate::server::shared::events::traits::Event<
+        crate::server::shared::events::types::EntityOperation,
+    >,
+) -> Option<(&crate::server::daemons::r#impl::api::ScannedEntityIds, Uuid)> {
+    use crate::server::discovery::r#impl::types::RunType;
+    use crate::server::shared::entities::{Entity, EntityDiscriminants};
+
+    if event.scope.entity_discriminant() != EntityDiscriminants::Discovery {
+        return None;
+    }
+    let Entity::Discovery(discovery) = event.scope.entity_type() else {
+        return None;
+    };
+    let RunType::Historical { results } = &discovery.base.run_type else {
+        return None;
+    };
+    let scanned = results.scanned.as_ref()?;
+    Some((scanned, event.scope.entity_id()))
+}
+
 /// Subscriber-driven post-terminal FK update for `DiscoveryTracked` entities.
-/// Called from per-entity-service subscribers on `DiscoveryProcessed` events
+/// Called from per-entity-service subscribers on the `EntityOperation::Created`
+/// event published for the historical Discovery row (whose scope carries
+/// `Entity::Discovery(...)` with `run_type::Historical { results: { scanned, .. } }`)
 /// to set `last_discovery_id` (always) and `first_discovery_id` (only when
 /// currently NULL).
 #[async_trait]

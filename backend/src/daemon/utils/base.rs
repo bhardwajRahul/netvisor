@@ -1,4 +1,3 @@
-use crate::server::discovery::r#impl::types::DiscoveryType;
 use crate::server::ip_addresses::r#impl::base::{IPAddress, IPAddressBase};
 use crate::server::shared::storage::traits::Storable;
 use crate::server::shared::types::entities::EntitySource;
@@ -65,8 +64,6 @@ pub trait DaemonUtils {
 
     async fn get_own_interfaces(
         &self,
-        discovery_type: DiscoveryType,
-        daemon_id: Uuid,
         network_id: Uuid,
         interface_filter: &[String],
     ) -> Result<
@@ -162,13 +159,7 @@ pub trait DaemonUtils {
         let mut subnet_map: HashMap<IpCidr, Subnet> = HashMap::new();
 
         for (interface_name, ip_network) in potential_subnets {
-            if let Some(subnet) = Subnet::from_discovery(
-                interface_name,
-                &ip_network,
-                daemon_id,
-                &discovery_type,
-                network_id,
-            ) {
+            if let Some(subnet) = Subnet::from_discovery(interface_name, &ip_network, network_id) {
                 subnet_map.entry(subnet.base.cidr).or_insert(subnet);
             }
         }
@@ -306,10 +297,8 @@ pub trait DaemonUtils {
 
     async fn get_subnets_from_docker_networks(
         &self,
-        daemon_id: Uuid,
         network_id: Uuid,
         client: &Docker,
-        discovery_type: DiscoveryType,
         docker_service_id: Uuid,
     ) -> Result<Vec<Subnet>, Error> {
         let subnets: Vec<Subnet> = client

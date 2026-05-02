@@ -5,7 +5,6 @@ use tokio_util::sync::CancellationToken;
 
 use crate::daemon::discovery::service::ops::DiscoveryOps;
 use crate::daemon::utils::base::{DaemonUtils, PlatformDaemonUtils};
-use crate::server::discovery::r#impl::types::DiscoveryType;
 use crate::server::subnets::r#impl::base::Subnet;
 use crate::server::subnets::r#impl::types::SubnetTypeDiscriminants;
 
@@ -19,10 +18,8 @@ impl NetworkScan {
         &self,
         ops: &DiscoveryOps,
         utils: &PlatformDaemonUtils,
-        discovery_type: DiscoveryType,
         cancel: &CancellationToken,
     ) -> Result<Vec<Subnet>, Error> {
-        let daemon_id = ops.config_store.get_id().await?;
         let network_id = ops
             .config_store
             .get_network_id()
@@ -44,7 +41,7 @@ impl NetworkScan {
         } else {
             let interface_filter = ops.config_store.get_interfaces().await?;
             let (_, subnets, _) = utils
-                .get_own_interfaces(discovery_type, daemon_id, network_id, &interface_filter)
+                .get_own_interfaces(network_id, &interface_filter)
                 .await?;
 
             // Filter out docker bridge subnets (handled in docker discovery).

@@ -375,8 +375,6 @@ impl DiscoveryIntegration for SnmpIntegration {
 
         // --- Discover remote subnets from ipAddrTable ---
         let scanning_subnet = ctx.scanning_subnet;
-        let daemon_id = ctx.ops.daemon_id().await?;
-        let discovery_type = &ctx.ops.discovery_type;
         let mut discovered_subnets: Vec<Subnet> = Vec::new();
 
         for (entry_ip, entry) in &ip_addr_table {
@@ -426,9 +424,7 @@ impl DiscoveryIntegration for SnmpIntegration {
                 .and_then(|e| e.if_name.clone())
                 .unwrap_or_default();
 
-            if let Some(new_subnet) =
-                Subnet::from_discovery(if_name, &ip_network, daemon_id, discovery_type, network_id)
-            {
+            if let Some(new_subnet) = Subnet::from_discovery(if_name, &ip_network, network_id) {
                 tracing::info!(
                     ip = %ip,
                     cidr = %new_subnet.base.cidr,
@@ -477,8 +473,6 @@ impl DiscoveryIntegration for SnmpIntegration {
                 &ipnetwork::IpNetwork::V4(
                     ipnetwork::Ipv4Network::new(std::net::Ipv4Addr::new(127, 0, 0, 1), 8).unwrap(),
                 ),
-                daemon_id,
-                discovery_type,
                 network_id,
             );
             if let Some(loopback_subnet) = loopback_subnet {

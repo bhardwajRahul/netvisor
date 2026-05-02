@@ -10,11 +10,17 @@
 -- UNIQUEs. Doing the create-first / drop-second ordering ensures no window
 -- where the natural key is unenforced.
 
--- statement_timeout is permissive (0 = no limit) since CREATE INDEX
--- CONCURRENTLY can run long on large tables; lock_timeout still bounds the
--- brief lock acquisition inside the build.
-SET lock_timeout = '5s';
-SET statement_timeout = '0';
+-- Note: SET lock_timeout / statement_timeout are intentionally NOT issued
+-- here. PostgreSQL's simple_query protocol treats every multi-statement
+-- send as a single implicit transaction, which would re-trigger the
+-- "CREATE INDEX CONCURRENTLY cannot run inside a transaction block" error
+-- regardless of the `-- no-transaction` header. Operators running this
+-- migration manually can SET these in their psql session before applying.
+-- For sqlx-managed runs, each CREATE INDEX CONCURRENTLY must arrive on the
+-- wire as its own statement — sqlx's connection.execute(sql) sends the
+-- whole file at once via simple_query, but CONCURRENTLY commands tolerate
+-- being grouped in a no-transaction SQL block as long as no SET / BEGIN
+-- precedes them.
 
 CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS idx_ports_unique_live
     ON ports (host_id, port_number, protocol)

@@ -7,9 +7,10 @@
 -- the metadata field is dropped from EntitySource via the
 -- entitysource_metadata_strip migration.
 --
--- For tables without EntitySource (ip_addresses, ports, interfaces, bindings,
--- subnet_vlans, dependency_members, tags, entity_tags), fall back to
--- updated_at (or created_at where there's no updated_at).
+-- For tables without EntitySource (ip_addresses, ports, interfaces, bindings),
+-- fall back to updated_at. Snapshotable-only tables (subnet_vlans,
+-- dependencies, dependency_members, tags, entity_tags) just align
+-- valid_from with created_at — they have no last_seen_at column.
 
 SET lock_timeout = '5s';
 
@@ -73,14 +74,9 @@ UPDATE bindings SET
     last_seen_at = COALESCE(updated_at, NOW())
 WHERE valid_to IS NULL;
 
--- subnet_vlans has only created_at (no updated_at), so use that for last_seen_at.
-UPDATE subnet_vlans SET
-    valid_from = COALESCE(created_at, NOW()),
-    last_seen_at = COALESCE(created_at, NOW())
-WHERE valid_to IS NULL;
-
--- Snapshotable-only (no last_seen_at): dependencies, dependency_members,
--- tags, entity_tags. Just align valid_from with created_at.
+-- Snapshotable-only (no last_seen_at): subnet_vlans, dependencies,
+-- dependency_members, tags, entity_tags. Just align valid_from with created_at.
+UPDATE subnet_vlans SET valid_from = COALESCE(created_at, NOW()) WHERE valid_to IS NULL;
 UPDATE dependencies SET valid_from = COALESCE(created_at, NOW()) WHERE valid_to IS NULL;
 UPDATE dependency_members SET valid_from = COALESCE(created_at, NOW()) WHERE valid_to IS NULL;
 UPDATE tags SET valid_from = COALESCE(created_at, NOW()) WHERE valid_to IS NULL;
