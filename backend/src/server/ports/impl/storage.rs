@@ -169,6 +169,12 @@ impl DiscoveryTracked for Port {
     fn set_last_seen_at(&mut self, t: DateTime<Utc>) { self.last_seen_at = t; }
     fn set_last_discovery_id(&mut self, id: Option<Uuid>) { self.last_discovery_id = id; }
     fn set_first_discovery_id(&mut self, id: Option<Uuid>) { self.first_discovery_id = id; }
+
+    fn scanned_in_session_filter(
+        scanned: &crate::server::daemons::r#impl::api::ScannedEntityIds,
+    ) -> crate::server::shared::storage::filter::StorableFilter<Self> {
+        crate::server::shared::storage::filter::StorableFilter::<Self>::new_from_uuids_column("id", &scanned.port_ids)
+    }
 }
 
 impl Entity for Port {

@@ -76,6 +76,16 @@ pub trait DiscoveryTracked: Snapshotable {
     fn set_last_seen_at(&mut self, t: DateTime<Utc>);
     fn set_last_discovery_id(&mut self, id: Option<Uuid>);
     fn set_first_discovery_id(&mut self, id: Option<Uuid>);
+
+    /// Returns a filter for "which of my rows did this discovery scan?"
+    /// Top-level entities (Host/Subnet/Vlan) filter by `id IN
+    /// scanned.<entity>_ids`; child entities (IPAddress/Port/Service/
+    /// Interface/Binding) and the SubnetVlan junction filter by their
+    /// own `id IN scanned.<entity>_ids` lists. The daemon populates the
+    /// list authoritatively (server tracks no derived sets).
+    fn scanned_in_session_filter(
+        scanned: &crate::server::daemons::r#impl::api::ScannedEntityIds,
+    ) -> crate::server::shared::storage::filter::StorableFilter<Self>;
 }
 
 /// Per-entity-type live-id → closed-id mappings populated parents-first

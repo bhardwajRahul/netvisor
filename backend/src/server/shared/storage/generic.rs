@@ -391,6 +391,35 @@ where
         GenericPostgresStorage::<T>::create_with_executor(entity, &mut *self.tx).await
     }
 
+    /// Get entity by ID within the transaction (sees uncommitted writes
+    /// from this transaction).
+    pub async fn get_by_id(&mut self, id: &Uuid) -> Result<Option<T>, anyhow::Error> {
+        let filter = StorableFilter::<T>::new_from_entity_id(id);
+        let query_str = format!(
+            "SELECT * FROM {} {}",
+            T::table_name(),
+            filter.to_where_clause()
+        );
+        let mut query = sqlx::query(&query_str);
+        for value in filter.values() {
+            query = GenericPostgresStorage::<T>::bind_value(query, value)?;
+        }
+        let row = query.fetch_optional(&mut *self.tx).await?;
+        row.map(|r| T::from_row(&r)).transpose()
+    }
+
+    /// Update an entity within the transaction
+    pub async fn update(&mut self, entity: &mut T) -> Result<T, anyhow::Error> {
+        let (columns, values) = entity.to_params()?;
+        let query_str = GenericPostgresStorage::<T>::build_update_query(&columns);
+        let mut query = sqlx::query(&query_str);
+        for value in &values {
+            query = GenericPostgresStorage::<T>::bind_value(query, value)?;
+        }
+        query.execute(&mut *self.tx).await?;
+        Ok(entity.clone())
+    }
+
     /// Delete entities matching the filter within the transaction
     pub async fn delete_by_filter(
         &mut self,
