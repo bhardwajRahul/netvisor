@@ -216,6 +216,9 @@ pub fn dependency() -> Dependency {
         id: ids::GROUP,
         created_at: example_timestamp(),
         updated_at: example_timestamp(),
+        valid_from: example_timestamp(),
+        valid_to: None,
+        lineage_id: None,
         base: DependencyBase {
             name: "Web Services".to_string(),
             description: Some("HTTP/HTTPS services dependency".to_string()),
@@ -270,6 +273,9 @@ pub fn tag() -> Tag {
         id: ids::TAG,
         created_at: example_timestamp(),
         updated_at: example_timestamp(),
+        valid_from: example_timestamp(),
+        valid_to: None,
+        lineage_id: None,
         base: TagBase {
             name: "production".to_string(),
             description: Some("Production environment resources".to_string()),

@@ -228,10 +228,18 @@ pub struct LegacyBinding {
 impl LegacyBinding {
     /// Convert to new Binding format, filling in service_id and network_id.
     pub fn into_binding(self, service_id: Uuid, network_id: Uuid) -> Binding {
+        let created = self.created_at.unwrap_or_else(Utc::now);
+        let updated = self.updated_at.unwrap_or_else(Utc::now);
         Binding {
             id: self.id,
-            created_at: self.created_at.unwrap_or_else(Utc::now),
-            updated_at: self.updated_at.unwrap_or_else(Utc::now),
+            created_at: created,
+            updated_at: updated,
+            valid_from: created,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: updated,
+            last_discovery_id: None,
+            first_discovery_id: None,
             base: BindingBase {
                 service_id,
                 network_id,

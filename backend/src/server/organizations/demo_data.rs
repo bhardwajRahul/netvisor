@@ -331,6 +331,9 @@ fn generate_tags(organization_id: Uuid, now: DateTime<Utc>) -> Vec<Tag> {
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
             base: TagBase {
                 name: name.to_string(),
                 description: Some(description.to_string()),
@@ -5050,6 +5053,9 @@ fn generate_dependencies(
 
     // 1. Monitoring Stack: Prometheus (hub) ↔ Grafana, Uptime Kuma (spokes)
     dependencies.push(Dependency {
+        valid_from: now,
+        valid_to: None,
+        lineage_id: None,
         id: Uuid::new_v4(),
         created_at: now,
         updated_at: now,
@@ -5076,6 +5082,9 @@ fn generate_dependencies(
 
     // 2. Backup Flow: Proxmox VE (hv01) → TrueNAS
     dependencies.push(Dependency {
+        valid_from: now,
+        valid_to: None,
+        lineage_id: None,
         id: Uuid::new_v4(),
         created_at: now,
         updated_at: now,
@@ -5096,6 +5105,9 @@ fn generate_dependencies(
 
     // 3. Reverse Proxy Path: Traefik → Gitea
     dependencies.push(Dependency {
+        valid_from: now,
+        valid_to: None,
+        lineage_id: None,
         id: Uuid::new_v4(),
         created_at: now,
         updated_at: now,
@@ -5118,6 +5130,9 @@ fn generate_dependencies(
 
     // 4. Web Traffic Flow: HAProxy → Tomcat → MariaDB
     dependencies.push(Dependency {
+        valid_from: now,
+        valid_to: None,
+        lineage_id: None,
         id: Uuid::new_v4(),
         created_at: now,
         updated_at: now,
@@ -5145,6 +5160,9 @@ fn generate_dependencies(
 
     // 5. Observability Stack: Prometheus (container) → Grafana (container), Jaeger (container)
     dependencies.push(Dependency {
+        valid_from: now,
+        valid_to: None,
+        lineage_id: None,
         id: Uuid::new_v4(),
         created_at: now,
         updated_at: now,
@@ -5167,6 +5185,9 @@ fn generate_dependencies(
 
     // 6. Storage Tier: MinIO → Ceph, Elasticsearch
     dependencies.push(Dependency {
+        valid_from: now,
+        valid_to: None,
+        lineage_id: None,
         id: Uuid::new_v4(),
         created_at: now,
         updated_at: now,

@@ -15,6 +15,7 @@ use uuid::Uuid;
 use crate::server::shared::storage::{
     filter::StorableFilter,
     generic::GenericPostgresStorage,
+    snapshot::{DiscoveryTracked, FkMaps, Snapshotable},
     traits::{SqlValue, Storable, Storage},
 };
 
@@ -36,14 +37,33 @@ impl SubnetVlanRecordBase {
 pub struct SubnetVlanRecord {
     pub id: Uuid,
     pub created_at: DateTime<Utc>,
+    #[serde(default)]
+    pub valid_from: DateTime<Utc>,
+    #[serde(default)]
+    pub valid_to: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub lineage_id: Option<Uuid>,
+    #[serde(default)]
+    pub last_seen_at: DateTime<Utc>,
+    #[serde(default)]
+    pub last_discovery_id: Option<Uuid>,
+    #[serde(default)]
+    pub first_discovery_id: Option<Uuid>,
     pub base: SubnetVlanRecordBase,
 }
 
 impl SubnetVlanRecord {
     pub fn new(base: SubnetVlanRecordBase) -> Self {
+        let now = Utc::now();
         Self {
             id: Uuid::new_v4(),
-            created_at: Utc::now(),
+            created_at: now,
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             base,
         }
     }
@@ -84,12 +104,29 @@ impl Storable for SubnetVlanRecord {
 
     fn to_params(&self) -> Result<(Vec<&'static str>, Vec<SqlValue>)> {
         Ok((
-            vec!["id", "subnet_id", "vlan_id", "created_at"],
+            vec![
+                "id",
+                "subnet_id",
+                "vlan_id",
+                "created_at",
+                "valid_from",
+                "valid_to",
+                "lineage_id",
+                "last_seen_at",
+                "last_discovery_id",
+                "first_discovery_id",
+            ],
             vec![
                 SqlValue::Uuid(self.id),
                 SqlValue::Uuid(self.base.subnet_id),
                 SqlValue::Uuid(self.base.vlan_id),
                 SqlValue::Timestamp(self.created_at),
+                SqlValue::Timestamp(self.valid_from),
+                SqlValue::OptionTimestamp(self.valid_to),
+                SqlValue::OptionalUuid(self.lineage_id),
+                SqlValue::Timestamp(self.last_seen_at),
+                SqlValue::OptionalUuid(self.last_discovery_id),
+                SqlValue::OptionalUuid(self.first_discovery_id),
             ],
         ))
     }
@@ -98,12 +135,47 @@ impl Storable for SubnetVlanRecord {
         Ok(SubnetVlanRecord {
             id: row.get("id"),
             created_at: row.get("created_at"),
+            valid_from: row.get("valid_from"),
+            valid_to: row.get("valid_to"),
+            lineage_id: row.get("lineage_id"),
+            last_seen_at: row.get("last_seen_at"),
+            last_discovery_id: row.get("last_discovery_id"),
+            first_discovery_id: row.get("first_discovery_id"),
             base: SubnetVlanRecordBase {
                 subnet_id: row.get("subnet_id"),
                 vlan_id: row.get("vlan_id"),
             },
         })
     }
+}
+
+impl Snapshotable for SubnetVlanRecord {
+    fn id_value(&self) -> Uuid { self.id }
+    fn set_id_value(&mut self, id: Uuid) { self.id = id; }
+    fn valid_from(&self) -> DateTime<Utc> { self.valid_from }
+    fn valid_to(&self) -> Option<DateTime<Utc>> { self.valid_to }
+    fn lineage_id(&self) -> Option<Uuid> { self.lineage_id }
+    fn set_valid_from(&mut self, t: DateTime<Utc>) { self.valid_from = t; }
+    fn set_valid_to(&mut self, t: Option<DateTime<Utc>>) { self.valid_to = t; }
+    fn set_lineage_id(&mut self, id: Option<Uuid>) { self.lineage_id = id; }
+
+    fn remap_fks_for_clone(&mut self, maps: &FkMaps) {
+        if let Some(closed) = maps.subnets.get(&self.base.subnet_id) {
+            self.base.subnet_id = *closed;
+        }
+        if let Some(closed) = maps.vlans.get(&self.base.vlan_id) {
+            self.base.vlan_id = *closed;
+        }
+    }
+}
+
+impl DiscoveryTracked for SubnetVlanRecord {
+    fn last_seen_at(&self) -> DateTime<Utc> { self.last_seen_at }
+    fn last_discovery_id(&self) -> Option<Uuid> { self.last_discovery_id }
+    fn first_discovery_id(&self) -> Option<Uuid> { self.first_discovery_id }
+    fn set_last_seen_at(&mut self, t: DateTime<Utc>) { self.last_seen_at = t; }
+    fn set_last_discovery_id(&mut self, id: Option<Uuid>) { self.last_discovery_id = id; }
+    fn set_first_discovery_id(&mut self, id: Option<Uuid>) { self.first_discovery_id = id; }
 }
 
 /// Storage operations for subnet_vlans junction table.

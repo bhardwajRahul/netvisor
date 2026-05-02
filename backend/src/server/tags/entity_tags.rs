@@ -15,6 +15,7 @@ use crate::server::shared::entities::EntityDiscriminants;
 use crate::server::shared::storage::{
     filter::StorableFilter,
     generic::GenericPostgresStorage,
+    snapshot::{FkMaps, Snapshotable},
     traits::{Entity, SqlValue, Storable, Storage},
 };
 use crate::server::shared::types::api::ApiError;
@@ -47,14 +48,24 @@ impl EntityTagBase {
 pub struct EntityTag {
     pub id: Uuid,
     pub created_at: DateTime<Utc>,
+    #[serde(default)]
+    pub valid_from: DateTime<Utc>,
+    #[serde(default)]
+    pub valid_to: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub lineage_id: Option<Uuid>,
     pub base: EntityTagBase,
 }
 
 impl EntityTag {
     pub fn new(base: EntityTagBase) -> Self {
+        let now = Utc::now();
         Self {
             id: Uuid::new_v4(),
-            created_at: Utc::now(),
+            created_at: now,
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
             base,
         }
     }
@@ -87,13 +98,25 @@ impl Storable for EntityTag {
 
     fn to_params(&self) -> Result<(Vec<&'static str>, Vec<SqlValue>)> {
         Ok((
-            vec!["id", "entity_id", "entity_type", "tag_id", "created_at"],
+            vec![
+                "id",
+                "entity_id",
+                "entity_type",
+                "tag_id",
+                "created_at",
+                "valid_from",
+                "valid_to",
+                "lineage_id",
+            ],
             vec![
                 SqlValue::Uuid(self.id),
                 SqlValue::Uuid(self.base.entity_id),
                 SqlValue::EntityDiscriminant(self.base.entity_type),
                 SqlValue::Uuid(self.base.tag_id),
                 SqlValue::Timestamp(self.created_at),
+                SqlValue::Timestamp(self.valid_from),
+                SqlValue::OptionTimestamp(self.valid_to),
+                SqlValue::OptionalUuid(self.lineage_id),
             ],
         ))
     }
@@ -106,12 +129,38 @@ impl Storable for EntityTag {
         Ok(EntityTag {
             id: row.get("id"),
             created_at: row.get("created_at"),
+            valid_from: row.get("valid_from"),
+            valid_to: row.get("valid_to"),
+            lineage_id: row.get("lineage_id"),
             base: EntityTagBase {
                 entity_id: row.get("entity_id"),
                 entity_type,
                 tag_id: row.get("tag_id"),
             },
         })
+    }
+}
+
+impl Snapshotable for EntityTag {
+    fn id_value(&self) -> Uuid { self.id }
+    fn set_id_value(&mut self, id: Uuid) { self.id = id; }
+    fn valid_from(&self) -> DateTime<Utc> { self.valid_from }
+    fn valid_to(&self) -> Option<DateTime<Utc>> { self.valid_to }
+    fn lineage_id(&self) -> Option<Uuid> { self.lineage_id }
+    fn set_valid_from(&mut self, t: DateTime<Utc>) { self.valid_from = t; }
+    fn set_valid_to(&mut self, t: Option<DateTime<Utc>>) { self.valid_to = t; }
+    fn set_lineage_id(&mut self, id: Option<Uuid>) { self.lineage_id = id; }
+
+    fn remap_fks_for_clone(&mut self, maps: &FkMaps) {
+        // Only remap entity_id when the row's entity_type is one of the
+        // network-scoped entities cloned at network snapshot. Org-scoped
+        // entity_types (Daemon, User, DaemonApiKey, UserApiKey, etc.) are
+        // filtered out at fetch time by SnapshotService — those rows aren't
+        // cloned. tag_id stays pointing at the live tag (tags follow per-
+        // action lifecycle, not network-snapshot lifecycle).
+        if let Some(closed) = maps.lookup_by_entity_type(self.base.entity_type, self.base.entity_id) {
+            self.base.entity_id = closed;
+        }
     }
 }
 
