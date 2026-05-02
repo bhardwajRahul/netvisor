@@ -14,6 +14,11 @@ use crate::server::discovery::r#impl::types::DiscoveryType;
 )]
 #[strum_discriminants(derive(Hash, EnumIter, strum::Display, Serialize, Deserialize))]
 pub enum DiscoveryPhase {
+    /// Blocked: a network snapshot is in progress on this network. The session
+    /// can't enter the normal Queued/Pending decision until
+    /// `release_network_for_snapshot` clears the block. Daemons polling for
+    /// work do NOT see AwaitingSnapshot sessions.
+    AwaitingSnapshot,
     Queued,   // Waiting in daemon queue behind another session
     Pending,  // Front of queue, eligible for dispatch. Clock ticking.
     Starting, // get_pending_work() picked it up, dispatching to daemon
@@ -91,6 +96,9 @@ impl DiscoverySessionUpdate {
 impl std::fmt::Display for DiscoveryPhase {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            DiscoveryPhase::AwaitingSnapshot => {
+                write!(f, "Waiting for network snapshot to complete")
+            }
             DiscoveryPhase::Queued => write!(f, "Waiting in queue behind another session"),
             DiscoveryPhase::Pending => {
                 write!(f, "Session created, waiting for daemon availability")

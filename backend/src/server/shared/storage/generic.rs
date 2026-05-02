@@ -155,7 +155,22 @@ where
                 let network = v.map(IpNetwork::from);
                 query.bind(network)
             }
-            SqlValue::RunType(v) => query.bind(serde_json::to_value(v)?),
+            SqlValue::RunType(v) => {
+                // Transient `scanned: ScannedEntityIds` rides the wire (daemon →
+                // server) and the in-memory DiscoveryProcessed event payload,
+                // but never persists. Clear it on a typed clone before serializing
+                // so the persisted JSONB never contains `scanned`. Callers that
+                // need the field intact (events, response serialization) bypass
+                // this code path entirely.
+                let mut rt_for_storage = v.clone();
+                if let crate::server::discovery::r#impl::types::RunType::Historical {
+                    results,
+                } = &mut rt_for_storage
+                {
+                    results.scanned = None;
+                }
+                query.bind(serde_json::to_value(&rt_for_storage)?)
+            }
             SqlValue::DiscoveryType(v) => query.bind(serde_json::to_value(v)?),
             SqlValue::Email(v) => query.bind(v.as_str()),
             SqlValue::UserOrgPermissions(v) => query.bind(v.as_str()),
@@ -408,6 +423,29 @@ where
 
     async fn create_many(&self, entities: &[T]) -> Result<Vec<T>, anyhow::Error> {
         Self::create_many_with_executor(entities, &self.pool).await
+    }
+
+    /// Bulk UPDATE matching `create_many`'s shape. Each entity's `to_params`
+    /// drives one UPDATE WHERE id = $1; all run in a single transaction so
+    /// the operation is atomic. Slower than a single multi-row VALUES UPDATE
+    /// but type-flexible across the heterogeneous column sets we have.
+    async fn update_many(&self, entities: &[T]) -> Result<Vec<T>, anyhow::Error> {
+        if entities.is_empty() {
+            return Ok(vec![]);
+        }
+        let mut tx = self.pool.begin().await?;
+        for entity in entities {
+            let (columns, values) = entity.to_params()?;
+            let query_str = Self::build_update_query(&columns);
+            let mut query = sqlx::query(&query_str);
+            for value in &values {
+                query = Self::bind_value(query, value)?;
+            }
+            query.execute(&mut *tx).await?;
+        }
+        tx.commit().await?;
+        tracing::trace!("Bulk updated {} {}s", entities.len(), T::table_name());
+        Ok(entities.to_vec())
     }
 
     async fn get_by_id(&self, id: &Uuid) -> Result<Option<T>, anyhow::Error> {

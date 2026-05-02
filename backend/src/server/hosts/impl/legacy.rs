@@ -320,6 +320,12 @@ impl LegacyHostWithServicesRequest {
             id: host.id,
             created_at: host.created_at,
             updated_at: host.updated_at,
+            valid_from: host.created_at,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: host.updated_at,
+            last_discovery_id: None,
+            first_discovery_id: None,
             base: crate::server::hosts::r#impl::base::HostBase {
                 name: host.name,
                 network_id: host.network_id,

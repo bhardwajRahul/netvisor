@@ -1223,12 +1223,18 @@ impl DiscoveryService {
             hosts_discovered: None,
             estimated_remaining_secs: None,
             discovery_id,
+            scanned: None,
         };
 
         // Handle based on current phase
         match phase {
-            // Queued/Pending sessions: just remove from queue
-            DiscoveryPhase::Queued | DiscoveryPhase::Pending => {
+            // Queued/Pending/AwaitingSnapshot sessions: just remove from queue.
+            // AwaitingSnapshot is treated like Queued for cancellation — the
+            // session has not yet been dispatched to the daemon, so cleanup
+            // is just a queue removal.
+            DiscoveryPhase::Queued
+            | DiscoveryPhase::Pending
+            | DiscoveryPhase::AwaitingSnapshot => {
                 let mut sessions = self.sessions.write().await;
                 let mut daemon_sessions = self.daemon_sessions.write().await;
 
@@ -1417,6 +1423,7 @@ impl DiscoveryService {
                 hosts_discovered: None,
                 estimated_remaining_secs: None,
                 discovery_id,
+                scanned: None,
             };
 
             if let Err(e) = self

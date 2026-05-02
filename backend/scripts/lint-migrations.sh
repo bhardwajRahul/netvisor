@@ -14,7 +14,8 @@ if [ ! -d "$MIGRATIONS_DIR" ]; then
     exit 1
 fi
 
-files=()
+in_tx_files=()
+no_tx_files=()
 for f in "$MIGRATIONS_DIR"/*.sql; do
     [ -e "$f" ] || continue
     name="$(basename "$f")"
@@ -24,11 +25,19 @@ for f in "$MIGRATIONS_DIR"/*.sql; do
         *) continue ;;
     esac
     if [[ "$prefix" > "$CUTOFF" ]] || [[ "$prefix" == "$CUTOFF" ]]; then
-        files+=("$f")
+        # sqlx skips the per-migration transaction wrapper for files that start
+        # with a `-- no-transaction` comment. Mirror that for squawk so its
+        # ban-concurrent-index-creation-in-transaction rule doesn't false-positive
+        # on CONCURRENTLY-using migrations.
+        if [ "$(head -n 1 "$f")" = "-- no-transaction" ]; then
+            no_tx_files+=("$f")
+        else
+            in_tx_files+=("$f")
+        fi
     fi
 done
 
-if [ ${#files[@]} -eq 0 ]; then
+if [ ${#in_tx_files[@]} -eq 0 ] && [ ${#no_tx_files[@]} -eq 0 ]; then
     echo "No post-$CUTOFF migrations to lint."
     exit 0
 fi
@@ -38,4 +47,11 @@ if ! command -v squawk >/dev/null 2>&1; then
     exit 1
 fi
 
-exec squawk --config "$CONFIG_PATH" "${files[@]}"
+status=0
+if [ ${#in_tx_files[@]} -gt 0 ]; then
+    squawk --config "$CONFIG_PATH" "${in_tx_files[@]}" || status=$?
+fi
+if [ ${#no_tx_files[@]} -gt 0 ]; then
+    squawk --config "$CONFIG_PATH" --no-assume-in-transaction "${no_tx_files[@]}" || status=$?
+fi
+exit "$status"

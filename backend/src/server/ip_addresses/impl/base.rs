@@ -75,6 +75,24 @@ pub struct IPAddress {
     #[serde(default)]
     #[schema(read_only, required)]
     pub updated_at: DateTime<Utc>,
+    #[serde(default)]
+    #[schema(read_only)]
+    pub valid_from: DateTime<Utc>,
+    #[serde(default)]
+    #[schema(read_only)]
+    pub valid_to: Option<DateTime<Utc>>,
+    #[serde(default)]
+    #[schema(read_only)]
+    pub lineage_id: Option<Uuid>,
+    #[serde(default)]
+    #[schema(read_only)]
+    pub last_seen_at: DateTime<Utc>,
+    #[serde(default)]
+    #[schema(read_only)]
+    pub last_discovery_id: Option<Uuid>,
+    #[serde(default)]
+    #[schema(read_only)]
+    pub first_discovery_id: Option<Uuid>,
     #[serde(flatten)]
     #[validate(nested)]
     pub base: IPAddressBase,

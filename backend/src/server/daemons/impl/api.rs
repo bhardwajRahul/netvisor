@@ -126,6 +126,40 @@ pub struct DaemonDiscoveryResponse {
     pub session_id: Uuid,
 }
 
+/// Canonical IDs of entities scanned in a discovery session.
+///
+/// Populated daemon-side at terminal phase from `EntityBuffer`'s `Created`
+/// entries. Travels with the terminal `DiscoveryUpdatePayload` to the server,
+/// rides the `DiscoveryProcessed` EventBus event for FK-update subscribers,
+/// then is stripped before persisting into the historical Discovery row's
+/// JSONB (see the SqlValue::RunType bind_value handler in
+/// `backend/src/server/shared/storage/generic.rs`).
+///
+/// Naming: `scanned_*` because the daemon scans entities — some submissions
+/// match existing rows (refresh), others insert new rows. Both populate the
+/// EntityBuffer with canonical (server-assigned) IDs.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq, Hash, ToSchema)]
+pub struct ScannedEntityIds {
+    #[serde(default)]
+    pub host_ids: Vec<Uuid>,
+    #[serde(default)]
+    pub subnet_ids: Vec<Uuid>,
+    #[serde(default)]
+    pub vlan_ids: Vec<Uuid>,
+    #[serde(default)]
+    pub ip_address_ids: Vec<Uuid>,
+    #[serde(default)]
+    pub port_ids: Vec<Uuid>,
+    #[serde(default)]
+    pub service_ids: Vec<Uuid>,
+    #[serde(default)]
+    pub interface_ids: Vec<Uuid>,
+    #[serde(default)]
+    pub binding_ids: Vec<Uuid>,
+    #[serde(default)]
+    pub subnet_vlan_ids: Vec<Uuid>,
+}
+
 /// Progress update from daemon to server during discovery
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, ToSchema)]
 pub struct DiscoveryUpdatePayload {
@@ -146,6 +180,17 @@ pub struct DiscoveryUpdatePayload {
     /// Always enriched server-side; daemons do not send this field.
     #[serde(default)]
     pub discovery_id: Option<Uuid>,
+    /// Canonical IDs of entities scanned in this session, populated daemon-
+    /// side at terminal. **Transient**: stripped at SqlValue::RunType bind
+    /// time so it doesn't persist into the historical Discovery row's JSONB.
+    /// Available in-memory through the DiscoveryProcessed event for
+    /// FK-update subscribers.
+    ///
+    /// `Some(...)` when the daemon is sending the terminal payload over the
+    /// wire. `None` when read back from a persisted historical row, or when
+    /// not yet set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scanned: Option<ScannedEntityIds>,
 }
 
 impl DiscoveryUpdatePayload {
@@ -191,6 +236,7 @@ impl DiscoveryUpdatePayload {
             hosts_discovered: None,
             estimated_remaining_secs: None,
             discovery_id,
+            scanned: None,
         }
     }
 
@@ -212,6 +258,7 @@ impl DiscoveryUpdatePayload {
             hosts_discovered: None,
             estimated_remaining_secs: None,
             discovery_id: Some(info.discovery_id),
+            scanned: None,
         }
     }
 

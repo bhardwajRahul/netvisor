@@ -1430,6 +1430,12 @@ impl HostService {
             id,
             created_at: existing.created_at,
             updated_at: Utc::now(),
+            valid_from: existing.valid_from,
+            valid_to: existing.valid_to,
+            lineage_id: existing.lineage_id,
+            last_seen_at: existing.last_seen_at,
+            last_discovery_id: existing.last_discovery_id,
+            first_discovery_id: existing.first_discovery_id,
             base: HostBase {
                 name,
                 network_id,

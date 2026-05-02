@@ -742,6 +742,12 @@ fn create_host(
         },
     };
     let host = Host {
+        valid_from: now,
+        valid_to: None,
+        lineage_id: None,
+        last_seen_at: now,
+        last_discovery_id: None,
+        first_discovery_id: None,
         id: host_id,
         created_at: now,
         updated_at: now,
@@ -1554,6 +1560,12 @@ fn generate_hosts_and_services(
             },
         };
         let host = Host {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: host_id,
             created_at: now,
             updated_at: now,
@@ -2621,6 +2633,12 @@ fn generate_hosts_and_services(
             },
         };
         let host = Host {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: host_id,
             created_at: now,
             updated_at: now,
@@ -4495,6 +4513,7 @@ fn generate_discoveries(
                         hosts_discovered: None,
                         estimated_remaining_secs: None,
                         discovery_id: None,
+                        scanned: None,
                     }),
                 },
                 name: "Discovery".to_string(),
@@ -4529,6 +4548,7 @@ fn generate_discoveries(
                         hosts_discovered: None,
                         estimated_remaining_secs: None,
                         discovery_id: None,
+                        scanned: None,
                     }),
                 },
                 name: "Discovery".to_string(),
@@ -4588,6 +4608,7 @@ fn generate_discoveries(
                         hosts_discovered: None,
                         estimated_remaining_secs: None,
                         discovery_id: None,
+                        scanned: None,
                     }),
                 },
                 name: "Discovery".to_string(),

@@ -646,10 +646,21 @@ impl HostResponse {
             interfaces: _,
         } = self;
 
+        // SCD2 fields aren't in HostResponse yet; defaults are filled in here.
+        // The to_host() method is only used in legacy compat paths; round-tripping
+        // a HostResponse → Host loses temporal info that can be reconstructed
+        // from the live row's values via from_row.
+        let now = chrono::Utc::now();
         Host {
             id: *id,
             created_at: *created_at,
             updated_at: *updated_at,
+            valid_from: *created_at,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: *updated_at,
+            last_discovery_id: None,
+            first_discovery_id: None,
             base: HostBase {
                 name: name.clone(),
                 network_id: *network_id,
@@ -688,6 +699,15 @@ impl HostResponse {
             id,
             created_at,
             updated_at,
+            // SCD2/audit fields are intentionally dropped here — not part
+            // of the API response shape. Audit-trail UX worktree may surface
+            // them later via the historical Discovery row + lineage queries.
+            valid_from: _,
+            valid_to: _,
+            lineage_id: _,
+            last_seen_at: _,
+            last_discovery_id: _,
+            first_discovery_id: _,
             base,
         } = host;
 

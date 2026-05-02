@@ -72,6 +72,7 @@ pub trait Storage<T: Storable>: Send + Sync {
     async fn update(&self, entity: &mut T) -> Result<T, anyhow::Error>;
     async fn delete(&self, id: &Uuid) -> Result<(), anyhow::Error>;
     async fn create_many(&self, entities: &[T]) -> Result<Vec<T>, anyhow::Error>;
+    async fn update_many(&self, entities: &[T]) -> Result<Vec<T>, anyhow::Error>;
     async fn delete_many(&self, ids: &[Uuid]) -> Result<usize, anyhow::Error>;
     async fn delete_by_filter(&self, filter: StorableFilter<T>) -> Result<usize, anyhow::Error>;
 }

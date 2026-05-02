@@ -111,6 +111,12 @@ pub fn host() -> Host {
         id: ids::HOST,
         created_at: example_timestamp(),
         updated_at: example_timestamp(),
+        valid_from: example_timestamp(),
+        valid_to: None,
+        lineage_id: None,
+        last_seen_at: example_timestamp(),
+        last_discovery_id: None,
+        first_discovery_id: None,
         base: HostBase {
             name: "web-server-01".to_string(),
             hostname: Some("web-server-01.local".to_string()),

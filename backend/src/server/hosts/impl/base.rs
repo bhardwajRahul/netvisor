@@ -108,6 +108,39 @@ pub struct Host {
     #[serde(default)]
     #[schema(read_only, required)]
     pub updated_at: DateTime<Utc>,
+    /// SCD2: when this row version became live. Equal to `created_at` for
+    /// rows that have never ridden a snapshot; advanced to the snapshot's
+    /// `taken_at` for live rows after a network snapshot fires.
+    #[serde(default)]
+    #[schema(read_only)]
+    pub valid_from: DateTime<Utc>,
+    /// SCD2: when this row was closed by a snapshot. NULL = currently live.
+    #[serde(default)]
+    #[schema(read_only)]
+    pub valid_to: Option<DateTime<Utc>>,
+    /// Lineage pointer on closed historical rows back to the live row whose
+    /// state they capture. NULL on live rows.
+    #[serde(default)]
+    #[schema(read_only)]
+    pub lineage_id: Option<Uuid>,
+    /// Last successful natural-key match by daemon discovery against this
+    /// live row. Refreshed every scan, regardless of field changes.
+    #[serde(default)]
+    #[schema(read_only)]
+    pub last_seen_at: DateTime<Utc>,
+    /// Discovery (historical row) that last touched this entity. Populated
+    /// post-terminal by the per-entity-service subscriber on
+    /// `DiscoveryProcessed`. NULL until the first successful discovery
+    /// session terminates after this row was created.
+    #[serde(default)]
+    #[schema(read_only)]
+    pub last_discovery_id: Option<Uuid>,
+    /// Discovery (historical row) that first observed this entity. Set once
+    /// (post-terminal); immutable thereafter via the `IS NULL` guard in
+    /// `update_discovery_fks`.
+    #[serde(default)]
+    #[schema(read_only)]
+    pub first_discovery_id: Option<Uuid>,
     #[serde(flatten)]
     #[validate(nested)]
     pub base: HostBase,
@@ -138,6 +171,12 @@ impl Host {
             id: uuid::Uuid::new_v4(),
             created_at: now,
             updated_at: now,
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             base,
         }
     }
