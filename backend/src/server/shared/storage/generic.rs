@@ -157,11 +157,12 @@ where
             }
             SqlValue::RunType(v) => {
                 // Transient `scanned: ScannedEntityIds` rides the wire (daemon →
-                // server) and the in-memory DiscoveryProcessed event payload,
-                // but never persists. Clear it on a typed clone before serializing
-                // so the persisted JSONB never contains `scanned`. Callers that
-                // need the field intact (events, response serialization) bypass
-                // this code path entirely.
+                // server) and the in-memory entity carried by EntityOperation::
+                // Created event scope, but never persists. Clear it on a typed
+                // clone before serializing so the persisted JSONB never contains
+                // `scanned`. The in-memory struct held by callers is unchanged —
+                // subscribers reading the entity off the EntityScope still see
+                // the populated scanned.
                 let mut rt_for_storage = v.clone();
                 if let crate::server::discovery::r#impl::types::RunType::Historical {
                     results,
