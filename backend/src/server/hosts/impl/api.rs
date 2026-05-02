@@ -450,6 +450,12 @@ impl InterfaceInput {
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             base: InterfaceBase {
                 host_id,
                 network_id,

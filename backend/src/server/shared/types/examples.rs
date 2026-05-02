@@ -413,6 +413,12 @@ pub fn interface() -> Interface {
         id: ids::IF_ENTRY,
         created_at: example_timestamp(),
         updated_at: example_timestamp(),
+        valid_from: example_timestamp(),
+        valid_to: None,
+        lineage_id: None,
+        last_seen_at: example_timestamp(),
+        last_discovery_id: None,
+        first_discovery_id: None,
         base: InterfaceBase {
             host_id: ids::HOST,
             network_id: ids::NETWORK,
