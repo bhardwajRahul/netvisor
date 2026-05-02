@@ -5,7 +5,7 @@ use crate::server::discovery::r#impl::types::DiscoveryType;
 use crate::server::shared::entities::ChangeTriggersTopologyStaleness;
 use crate::server::shared::storage::traits::Storable;
 use crate::server::shared::types::api::deserialize_empty_string_as_none;
-use crate::server::shared::types::entities::{DiscoveryMetadata, EntitySource};
+use crate::server::shared::types::entities::EntitySource;
 use crate::server::subnets::r#impl::types::SubnetType;
 use crate::server::subnets::r#impl::virtualization::SubnetVirtualization;
 use chrono::{DateTime, Utc};
@@ -164,9 +164,7 @@ impl Subnet {
                     name: cidr.to_string(),
                     subnet_type,
                     virtualization: None,
-                    source: EntitySource::Discovery {
-                        metadata: vec![DiscoveryMetadata::new(discovery_type.clone(), daemon_id)],
-                    },
+                    source: EntitySource::Discovery,
                 }))
             }
         }

@@ -498,7 +498,7 @@ impl NetworkScan {
                                     let host = Host::new(HostBase {
                                         name: ip.to_string(),
                                         network_id: early_subnet.base.network_id,
-                                        source: EntitySource::Discovery { metadata: vec![] },
+                                        source: EntitySource::Discovery,
                                         ..Default::default()
                                     });
                                     let host_id = host.id;

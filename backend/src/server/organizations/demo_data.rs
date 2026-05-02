@@ -3225,7 +3225,7 @@ fn generate_vlans(networks: &[Network], organization_id: Uuid, now: DateTime<Utc
                     description: None,
                     network_id: network.id,
                     organization_id,
-                    source: EntitySource::Discovery { metadata: vec![] },
+                    source: EntitySource::Discovery,
                 },
             });
         }

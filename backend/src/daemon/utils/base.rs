@@ -1,7 +1,7 @@
 use crate::server::discovery::r#impl::types::DiscoveryType;
 use crate::server::ip_addresses::r#impl::base::{IPAddress, IPAddressBase};
 use crate::server::shared::storage::traits::Storable;
-use crate::server::shared::types::entities::{DiscoveryMetadata, EntitySource};
+use crate::server::shared::types::entities::EntitySource;
 use crate::server::subnets::r#impl::base::{Subnet, SubnetBase};
 use crate::server::subnets::r#impl::types::SubnetType;
 use crate::server::subnets::r#impl::virtualization::{
@@ -362,12 +362,7 @@ pub trait DaemonUtils {
                                 name: network_name.clone(),
                                 subnet_type,
                                 virtualization,
-                                source: EntitySource::Discovery {
-                                    metadata: vec![DiscoveryMetadata::new(
-                                        discovery_type.clone(),
-                                        daemon_id,
-                                    )],
-                                },
+                                source: EntitySource::Discovery,
                             }));
                         }
                         None

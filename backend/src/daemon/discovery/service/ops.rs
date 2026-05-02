@@ -53,7 +53,7 @@ use crate::{
         },
         shared::{
             types::api::ApiErrorResponse,
-            types::entities::{DiscoveryMetadata, EntitySource},
+            types::entities::EntitySource,
             types::metadata::HasId,
         },
         subnets::r#impl::base::Subnet,
@@ -893,12 +893,7 @@ impl DiscoveryOps {
             tags: Vec::new(),
             network_id,
             description: None,
-            source: EntitySource::Discovery {
-                metadata: vec![DiscoveryMetadata::new(
-                    self.discovery_type.clone(),
-                    daemon_id,
-                )],
-            },
+            source: EntitySource::Discovery,
             virtualization: None,
             hidden: false,
             sys_descr: None,

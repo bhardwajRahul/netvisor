@@ -21,7 +21,7 @@ use crate::server::{
         storage::{filter::StorableFilter, generic::GenericPostgresStorage, traits::Storage},
         types::{
             api::ValidationError,
-            entities::{EntitySource, MAX_DISCOVERY_METADATA_ENTRIES},
+            entities::EntitySource,
         },
     },
 };
@@ -1014,55 +1014,38 @@ impl ServiceService {
             existing_service.base.source,
             new_service_data.base.source.clone(),
         ) {
-            // Add latest discovery metadata to vec, update details to summarize what was discovered + highest confidence
+            // Both DiscoveryWithMatch: keep highest confidence and the better
+            // match reason. Discovery metadata (date/daemon/discovery_type) used
+            // to be appended here; that's now tracked via FK on the entity row
+            // (last_discovery_id / first_discovery_id) post-terminal.
             (
                 EntitySource::DiscoveryWithMatch {
-                    metadata: existing_service_metadata,
                     details: existing_service_details,
                 },
                 EntitySource::DiscoveryWithMatch {
-                    metadata: new_service_metadata,
                     details: new_service_details,
                 },
             ) => {
-                let mut new_metadata = [
-                    new_service_metadata.clone(),
-                    existing_service_metadata.clone(),
-                ]
-                .concat();
-                new_metadata.truncate(MAX_DISCOVERY_METADATA_ENTRIES);
-
-                // Max confidence
                 let confidence = existing_service_details
                     .confidence
                     .max(new_service_details.confidence);
-
                 let reason = if new_service_details.confidence > existing_service_details.confidence
                 {
-                    new_service_details.reason // Use the better match reason
+                    new_service_details.reason
                 } else {
-                    existing_service_details.reason // Keep existing reason
+                    existing_service_details.reason
                 };
-
                 EntitySource::DiscoveryWithMatch {
-                    metadata: new_metadata,
                     details: MatchDetails { confidence, reason },
                 }
             }
 
-            // Less-likely scenario: new service data is upserted to a manually or system-created record
-            (
-                _,
-                EntitySource::DiscoveryWithMatch {
-                    metadata: new_service_metadata,
-                    details: new_service_details,
-                },
-            ) => EntitySource::DiscoveryWithMatch {
-                metadata: new_service_metadata,
-                details: new_service_details,
-            },
+            // New service data upserted to a manually or system-created record
+            (_, EntitySource::DiscoveryWithMatch { details }) => {
+                EntitySource::DiscoveryWithMatch { details }
+            }
 
-            // The following case shouldn't be possible since upsert only happens from discovered services, but cover with something reasonable just in case
+            // Shouldn't happen during normal discovery; keep existing source.
             (existing_source, _) => existing_source,
         };
 

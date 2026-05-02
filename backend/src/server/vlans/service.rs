@@ -90,7 +90,7 @@ impl VlanService {
             description: None,
             network_id,
             organization_id,
-            source: EntitySource::Discovery { metadata: vec![] },
+            source: EntitySource::Discovery,
         });
         self.storage.create(&vlan).await?;
         Ok(vlan)

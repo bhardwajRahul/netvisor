@@ -892,7 +892,7 @@ impl DaemonService {
             name: request.name.clone(),
             hostname: None,
             description: None,
-            source: EntitySource::Discovery { metadata: vec![] },
+            source: EntitySource::Discovery,
             virtualization: None,
             hidden: false,
             tags: Vec::new(),

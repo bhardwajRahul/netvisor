@@ -532,7 +532,7 @@ impl DiscoveryIntegration for SnmpIntegration {
 
                 let arp_host = Host::new(HostBase {
                     network_id,
-                    source: EntitySource::Discovery { metadata: vec![] },
+                    source: EntitySource::Discovery,
                     ..Default::default()
                 });
 

@@ -23,7 +23,7 @@ use crate::server::services::r#impl::base::{Service, ServiceBase};
 use crate::server::services::r#impl::definitions::ServiceDefinition;
 use crate::server::services::r#impl::patterns::MatchDetails;
 use crate::server::shared::storage::traits::Storable;
-use crate::server::shared::types::entities::{DiscoveryMetadata, EntitySource};
+use crate::server::shared::types::entities::EntitySource;
 use crate::server::subnets::r#impl::base::Subnet;
 
 impl DiscoveryRunner {
@@ -107,9 +107,7 @@ impl DiscoveryRunner {
             network_id,
             description: Some("Scanopy daemon".to_string()),
             tags: Vec::new(),
-            source: EntitySource::Discovery {
-                metadata: vec![DiscoveryMetadata::new(DiscoveryType::from(self), daemon_id)],
-            },
+            source: EntitySource::Discovery,
             hidden: false,
             virtualization: None,
             sys_descr: None,
@@ -146,7 +144,6 @@ impl DiscoveryRunner {
             host_id: host.id,
             virtualization: None,
             source: EntitySource::DiscoveryWithMatch {
-                metadata: vec![DiscoveryMetadata::new(DiscoveryType::from(self), daemon_id)],
                 details: MatchDetails::new_certain("Scanopy Daemon self-report"),
             },
             position: 0,

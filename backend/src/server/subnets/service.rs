@@ -71,15 +71,6 @@ impl CrudService<Subnet> for SubnetService {
             "Creating subnet"
         );
 
-        // Validate discovery metadata upfront — a discovered subnet must have at least one metadata entry
-        if let EntitySource::Discovery { metadata } = &subnet.base.source
-            && metadata.is_empty()
-        {
-            return Err(anyhow::anyhow!(
-                "Error comparing discovered subnets during creation: subnet missing discovery metadata"
-            ));
-        }
-
         let subnet_from_storage = match all_subnets.iter().find(|existing_subnet| {
             // CIDR must match first
             if !subnet.eq(existing_subnet) {
@@ -88,41 +79,30 @@ impl CrudService<Subnet> for SubnetService {
 
             // Docker will default to the same subnet range for bridge networks, so we need a way
             // to distinguish docker bridge subnets with the same CIDR but which originate from
-            // different hosts. This returns true for docker bridge subnets created from the same
-            // host (same service_id), and true for all other sources provided CIDRs match.
+            // different hosts. The dedup uses subnet virtualization (which carries service_id
+            // for Docker bridges); discovery metadata used to live on EntitySource but moved to
+            // FK columns post-terminal.
             match (&existing_subnet.base.source, &subnet.base.source) {
-                (
-                    EntitySource::Discovery {
-                        metadata: existing_metadata,
-                    },
-                    EntitySource::Discovery { .. },
-                ) => {
-                    existing_metadata.iter().any(|_other_m| {
-                        use crate::server::subnets::r#impl::virtualization::SubnetVirtualization;
+                (EntitySource::Discovery, EntitySource::Discovery) => {
+                    use crate::server::subnets::r#impl::virtualization::SubnetVirtualization;
 
-                        // Docker bridge subnets need per-service dedup: same CIDR on
-                        // different Docker daemons are distinct subnets.
-                        if subnet.base.subnet_type.is_docker_bridge()
-                            && existing_subnet.base.subnet_type.is_docker_bridge()
-                        {
-                            match (
-                                &subnet.base.virtualization,
-                                &existing_subnet.base.virtualization,
-                            ) {
-                                (
-                                    Some(SubnetVirtualization::Docker(a)),
-                                    Some(SubnetVirtualization::Docker(b)),
-                                ) => a.service_id == b.service_id,
-                                // One or both missing virtualization — treat as same
-                                _ => true,
-                            }
-                        } else {
-                            // Non-DockerBridge: always deduplicate by CIDR
-                            true
+                    if subnet.base.subnet_type.is_docker_bridge()
+                        && existing_subnet.base.subnet_type.is_docker_bridge()
+                    {
+                        match (
+                            &subnet.base.virtualization,
+                            &existing_subnet.base.virtualization,
+                        ) {
+                            (
+                                Some(SubnetVirtualization::Docker(a)),
+                                Some(SubnetVirtualization::Docker(b)),
+                            ) => a.service_id == b.service_id,
+                            _ => true,
                         }
-                    })
+                    } else {
+                        true
+                    }
                 }
-                // System subnets are never going to be upserted to or from
                 (EntitySource::System, _) | (_, EntitySource::System) => false,
                 _ => true,
             }

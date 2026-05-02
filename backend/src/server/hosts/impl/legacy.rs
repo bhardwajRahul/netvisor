@@ -308,7 +308,7 @@ impl LegacyService {
                 name: self.name,
                 bindings,
                 virtualization: None, // Old virtualization format ignored
-                source: EntitySource::Discovery { metadata: vec![] },
+                source: EntitySource::Discovery,
                 tags: self.tags,
                 position: 0,
             },
@@ -363,9 +363,7 @@ impl LegacyHostWithServicesRequest {
                 network_id: host.network_id,
                 hostname: host.hostname,
                 description: host.description,
-                source: crate::server::shared::types::entities::EntitySource::Discovery {
-                    metadata: vec![],
-                },
+                source: crate::server::shared::types::entities::EntitySource::Discovery,
                 virtualization: None,
                 hidden: host.hidden,
                 tags: host.tags,

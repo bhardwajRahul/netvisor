@@ -1172,7 +1172,7 @@ impl HostService {
                 name: "Unclaimed Open Ports".to_string(),
                 bindings: orphaned_bindings,
                 virtualization: None,
-                source: EntitySource::Discovery { metadata: vec![] },
+                source: EntitySource::Discovery,
                 tags: Vec::new(),
                 position: 0,
             });
@@ -2114,32 +2114,18 @@ impl HostService {
             existing_host.base.serial_number = new_host_data.base.serial_number;
         }
 
-        // Merge entity source metadata
+        // EntitySource merge: previously concatenated discovery metadata vecs
+        // here. With the metadata field removed, source is just the variant
+        // discriminant — propagate the new value if it's Discovery, else keep
+        // existing. Discovery context is now tracked via FK columns
+        // (last_discovery_id / first_discovery_id) populated post-terminal.
         existing_host.base.source = match (existing_host.base.source, new_host_data.base.source) {
-            (
-                EntitySource::Discovery {
-                    metadata: existing_metadata,
-                },
-                EntitySource::Discovery {
-                    metadata: new_metadata,
-                },
-            ) => {
-                has_updates = true;
-                EntitySource::Discovery {
-                    metadata: [new_metadata, existing_metadata].concat(),
-                }
-                .cap_metadata()
+            (EntitySource::Discovery, EntitySource::Discovery) => {
+                EntitySource::Discovery
             }
-            (
-                _,
-                EntitySource::Discovery {
-                    metadata: new_metadata,
-                },
-            ) => {
+            (_, EntitySource::Discovery) => {
                 has_updates = true;
-                EntitySource::Discovery {
-                    metadata: new_metadata,
-                }
+                EntitySource::Discovery
             }
             (existing_source, _) => existing_source,
         };
