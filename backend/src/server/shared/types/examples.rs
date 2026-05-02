@@ -166,6 +166,12 @@ pub fn ip_address() -> IPAddress {
         id: ids::INTERFACE,
         created_at: example_timestamp(),
         updated_at: example_timestamp(),
+        valid_from: example_timestamp(),
+        valid_to: None,
+        lineage_id: None,
+        last_seen_at: example_timestamp(),
+        last_discovery_id: None,
+        first_discovery_id: None,
         base: IPAddressBase {
             network_id: ids::NETWORK,
             host_id: ids::HOST,

@@ -728,6 +728,12 @@ fn create_host(
 ) -> (Host, IPAddress) {
     let host_id = Uuid::new_v4();
     let ip_address = IPAddress {
+        valid_from: now,
+        valid_to: None,
+        lineage_id: None,
+        last_seen_at: now,
+        last_discovery_id: None,
+        first_discovery_id: None,
         id: Uuid::new_v4(),
         created_at: now,
         updated_at: now,
@@ -1532,6 +1538,12 @@ fn generate_hosts_and_services(
     {
         let host_id = Uuid::new_v4();
         let eth0 = IPAddress {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -1546,6 +1558,12 @@ fn generate_hosts_and_services(
             },
         };
         let docker0 = IPAddress {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -2605,6 +2623,12 @@ fn generate_hosts_and_services(
     {
         let host_id = Uuid::new_v4();
         let eth0 = IPAddress {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -2619,6 +2643,12 @@ fn generate_hosts_and_services(
             },
         };
         let docker0 = IPAddress {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,

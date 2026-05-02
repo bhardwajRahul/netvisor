@@ -111,10 +111,18 @@ pub struct LegacyIPAddress {
 impl LegacyIPAddress {
     /// Convert to new IPAddress format, filling in missing fields.
     pub fn into_ip_address(self, network_id: Uuid, host_id: Uuid) -> IPAddress {
+        let created = self.created_at.unwrap_or_else(Utc::now);
+        let updated = self.updated_at.unwrap_or_else(Utc::now);
         IPAddress {
             id: self.id,
-            created_at: self.created_at.unwrap_or_else(Utc::now),
-            updated_at: self.updated_at.unwrap_or_else(Utc::now),
+            created_at: created,
+            updated_at: updated,
+            valid_from: created,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: updated,
+            last_discovery_id: None,
+            first_discovery_id: None,
             base: IPAddressBase {
                 network_id,
                 host_id,
