@@ -508,6 +508,12 @@ fn generate_subnets(networks: &[Network], tags: &[Tag], now: DateTime<Utc>) -> V
     vec![
         // ===== Headquarters subnets (7) =====
         Subnet {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -523,6 +529,12 @@ fn generate_subnets(networks: &[Network], tags: &[Tag], now: DateTime<Utc>) -> V
             },
         },
         Subnet {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -538,6 +550,12 @@ fn generate_subnets(networks: &[Network], tags: &[Tag], now: DateTime<Utc>) -> V
             },
         },
         Subnet {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -553,6 +571,12 @@ fn generate_subnets(networks: &[Network], tags: &[Tag], now: DateTime<Utc>) -> V
             },
         },
         Subnet {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -568,6 +592,12 @@ fn generate_subnets(networks: &[Network], tags: &[Tag], now: DateTime<Utc>) -> V
             },
         },
         Subnet {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -583,6 +613,12 @@ fn generate_subnets(networks: &[Network], tags: &[Tag], now: DateTime<Utc>) -> V
             },
         },
         Subnet {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -598,6 +634,12 @@ fn generate_subnets(networks: &[Network], tags: &[Tag], now: DateTime<Utc>) -> V
             },
         },
         Subnet {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -614,6 +656,12 @@ fn generate_subnets(networks: &[Network], tags: &[Tag], now: DateTime<Utc>) -> V
         },
         // ===== Data Center subnets (6) =====
         Subnet {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -629,6 +677,12 @@ fn generate_subnets(networks: &[Network], tags: &[Tag], now: DateTime<Utc>) -> V
             },
         },
         Subnet {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -644,6 +698,12 @@ fn generate_subnets(networks: &[Network], tags: &[Tag], now: DateTime<Utc>) -> V
             },
         },
         Subnet {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -659,6 +719,12 @@ fn generate_subnets(networks: &[Network], tags: &[Tag], now: DateTime<Utc>) -> V
             },
         },
         Subnet {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -674,6 +740,12 @@ fn generate_subnets(networks: &[Network], tags: &[Tag], now: DateTime<Utc>) -> V
             },
         },
         Subnet {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -689,6 +761,12 @@ fn generate_subnets(networks: &[Network], tags: &[Tag], now: DateTime<Utc>) -> V
             },
         },
         Subnet {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -829,6 +907,12 @@ fn create_service(
 
     Some((
         Service {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -875,6 +959,12 @@ fn create_service_with_id(
 
     Some((
         Service {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: service_id,
             created_at: now,
             updated_at: now,
@@ -922,6 +1012,12 @@ fn create_container_service(
 
     Some((
         Service {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,

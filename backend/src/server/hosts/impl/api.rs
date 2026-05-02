@@ -244,6 +244,12 @@ impl PortInput {
             id: self.id,
             created_at: now,
             updated_at: now,
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             base: PortBase {
                 host_id,
                 network_id,
@@ -299,6 +305,12 @@ impl ServiceInput {
             .collect();
 
         Service {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: self.id,
             created_at: now,
             updated_at: now,

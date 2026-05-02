@@ -161,10 +161,18 @@ impl LegacyPort {
             PortType::new_tcp(self.number)
         };
 
+        let created = self.created_at.unwrap_or_else(Utc::now);
+        let updated = self.updated_at.unwrap_or_else(Utc::now);
         Port {
             id: self.id,
-            created_at: self.created_at.unwrap_or_else(Utc::now),
-            updated_at: self.updated_at.unwrap_or_else(Utc::now),
+            created_at: created,
+            updated_at: updated,
+            valid_from: created,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: updated,
+            last_discovery_id: None,
+            first_discovery_id: None,
             base: PortBase {
                 network_id,
                 host_id,
@@ -273,10 +281,18 @@ impl LegacyService {
         let service_definition = ServiceDefinitionRegistry::find_by_id(&self.service_definition)
             .unwrap_or_else(|| Box::new(DefaultServiceDefinition));
 
+        let created = self.created_at.unwrap_or_else(Utc::now);
+        let updated = self.updated_at.unwrap_or_else(Utc::now);
         Service {
             id: self.id,
-            created_at: self.created_at.unwrap_or_else(Utc::now),
-            updated_at: self.updated_at.unwrap_or_else(Utc::now),
+            created_at: created,
+            updated_at: updated,
+            valid_from: created,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: updated,
+            last_discovery_id: None,
+            first_discovery_id: None,
             base: ServiceBase {
                 host_id: self.host_id,
                 network_id: self.network_id,
