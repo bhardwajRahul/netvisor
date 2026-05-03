@@ -2,7 +2,7 @@
 //! and integration tests.
 
 use crate::server::billing::plans::get_website_fixture_plans;
-use crate::server::billing::types::base::BillingPlan;
+use crate::server::billing::types::base::{BillingPlan, CancelReason, SaveOffer};
 use crate::server::billing::types::features::Feature;
 use crate::server::credentials::r#impl::types::CredentialTypeDiscriminants;
 use crate::server::dependencies::r#impl::types::DependencyType;
@@ -126,6 +126,12 @@ pub fn generate_ui_data_fixtures(output_dir: &Path) {
     let service_categories: Vec<TypeMetadata> =
         ServiceCategory::iter().map(|c| c.to_metadata()).collect();
     write_fixture(&service_categories, output_dir, "service-categories.json");
+
+    let cancel_reasons: Vec<TypeMetadata> = CancelReason::iter().map(|r| r.to_metadata()).collect();
+    write_fixture(&cancel_reasons, output_dir, "cancel-reasons.json");
+
+    let save_offers: Vec<TypeMetadata> = SaveOffer::iter().map(|o| o.to_metadata()).collect();
+    write_fixture(&save_offers, output_dir, "save-offers.json");
 
     println!("Done! Generated all metadata fixtures.");
 }

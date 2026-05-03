@@ -22,7 +22,7 @@
 	} from '$lib/paraglide/messages';
 
 	type Organization = components['schemas']['Organization'];
-	type OnboardingOperation = components['schemas']['OnboardingOperation'];
+	type OnboardingOperation = components['schemas']['OnboardingOperationDiscriminants'];
 
 	let {
 		organization,

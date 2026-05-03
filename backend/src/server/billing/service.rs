@@ -2,8 +2,10 @@ use crate::server::auth::middleware::auth::AuthenticatedEntity;
 use crate::server::billing::plans::YEARLY_DISCOUNT;
 use crate::server::billing::plans::get_enterprise_plan;
 use crate::server::billing::plans::get_free_plan;
-use crate::server::billing::types::api::ChangePlanPreview;
-use crate::server::billing::types::base::{BillingInvoice, BillingPlan};
+use crate::server::billing::types::api::{
+    CancelSubscriptionRequest, CancelSubscriptionResponse, ChangePlanPreview, PauseDuration,
+};
+use crate::server::billing::types::base::{BillingInvoice, BillingPlan, CancelReason};
 use crate::server::billing::types::features::Feature;
 use crate::server::hosts::r#impl::base::Host;
 use crate::server::hosts::service::HostService;
@@ -34,10 +36,16 @@ use stripe_billing::subscription::CreateSubscriptionItems;
 use stripe_billing::subscription::CreateSubscriptionTrialSettings;
 use stripe_billing::subscription::CreateSubscriptionTrialSettingsEndBehavior;
 use stripe_billing::subscription::CreateSubscriptionTrialSettingsEndBehaviorMissingPaymentMethod;
+use stripe_billing::subscription::DiscountsDataParam;
 use stripe_billing::subscription::ListSubscription;
 use stripe_billing::subscription::UpdateSubscription;
+use stripe_billing::subscription::UpdateSubscriptionCancellationDetails;
+use stripe_billing::subscription::UpdateSubscriptionCancellationDetailsFeedback;
 use stripe_billing::subscription::UpdateSubscriptionItems;
+use stripe_billing::subscription::UpdateSubscriptionPauseCollection;
+use stripe_billing::subscription::UpdateSubscriptionPauseCollectionBehavior;
 use stripe_billing::subscription::UpdateSubscriptionProrationBehavior;
+use stripe_billing::subscription::UpdateSubscriptionTrialEnd;
 use stripe_billing::{Subscription, SubscriptionStatus};
 use stripe_checkout::checkout_session::CreateCheckoutSessionCustomerUpdate;
 use stripe_checkout::checkout_session::CreateCheckoutSessionCustomerUpdateAddress;
@@ -1129,6 +1137,26 @@ impl BillingService {
                 .await?;
         }
 
+        // Reflect Stripe-side pause collection clearing as a `Resumed` event.
+        // Our /resume endpoint emits this directly, but Stripe also fires
+        // subscription.updated when a `pause_collection.resumes_at` deadline
+        // elapses and Stripe clears the pause itself. The webhook is the
+        // only signal for that auto-resume case.
+        if prior_status_str.as_deref() == Some("paused")
+            && sub.pause_collection.is_none()
+            && let Some(owner) = owners.first()
+        {
+            self.event_bus
+                .publish(Event::new(
+                    OrgScope {
+                        organization_id: org_id,
+                    },
+                    BillingOperation::Resumed { was_early: false },
+                    owner.clone().into(),
+                ))
+                .await?;
+        }
+
         tracing::info!(
             "Updated organization {} subscription status to {}",
             org_id,
@@ -1357,6 +1385,19 @@ impl BillingService {
             .get("organization_id")
             .ok_or_else(|| anyhow!("No organization_id in subscription metadata"))?;
         let org_id = Uuid::parse_str(org_id)?;
+
+        // Guard: this handler is bound to both `customer.subscription.paused`
+        // and `customer.subscription.deleted`. A paused sub is not deleted —
+        // our /pause endpoint already emitted `BillingOperation::Paused`,
+        // so the webhook is a no-op here.
+        if sub.pause_collection.is_some() {
+            tracing::info!(
+                organization_id = %org_id,
+                subscription_id = %sub.id,
+                "Subscription is paused, not deleted — skipping auto-Free"
+            );
+            return Ok(());
+        }
 
         // Guard 1: Skip auto-Free if this cancellation was triggered by an upgrade
         let is_upgrade = sub
@@ -1960,6 +2001,262 @@ impl BillingService {
         Ok(())
     }
 
+    /// Find the active / trialing / paused subscription for an org. Used by
+    /// pause/resume/extend-trial/cancel — all operate on the org's current
+    /// Stripe subscription regardless of state.
+    async fn find_current_subscription(
+        &self,
+        organization: &Organization,
+    ) -> Result<Subscription, Error> {
+        let customer_id = organization
+            .base
+            .stripe_customer_id
+            .clone()
+            .ok_or_else(|| anyhow!("No Stripe customer ID"))?;
+
+        let subs = ListSubscription::new()
+            .customer(CustomerId::from(customer_id))
+            .send(&self.stripe)
+            .await?;
+
+        subs.data
+            .into_iter()
+            .find(|s| {
+                matches!(
+                    s.status,
+                    SubscriptionStatus::Active
+                        | SubscriptionStatus::Trialing
+                        | SubscriptionStatus::Paused
+                        | SubscriptionStatus::PastDue
+                )
+            })
+            .ok_or_else(|| anyhow!("No active subscription found"))
+    }
+
+    /// Pause subscription billing for the requested duration. Eligibility:
+    /// rolling 6-month cooldown anchored on `last_paused_at`. Emits
+    /// `BillingOperation::Paused`; subscriber sets `last_paused_at` and
+    /// flips `plan_status` to `paused`.
+    pub async fn pause_subscription(
+        &self,
+        organization_id: Uuid,
+        duration: PauseDuration,
+        authentication: AuthenticatedEntity,
+    ) -> Result<String, Error> {
+        let organization = self.get_organization(organization_id).await?;
+
+        if let Some(last) = organization.base.last_paused_at {
+            let cooldown_end = last + chrono::Duration::days(180);
+            if cooldown_end > Utc::now() {
+                return Err(anyhow!(
+                    "You can pause again on {}",
+                    cooldown_end.format("%B %-d, %Y")
+                ));
+            }
+        }
+
+        let plan = organization
+            .base
+            .plan
+            .ok_or_else(|| anyhow!("Organization has no plan"))?;
+
+        let sub = self.find_current_subscription(&organization).await?;
+        let resumes_at = Utc::now() + chrono::Duration::days(duration.days() as i64);
+
+        UpdateSubscription::new(&sub.id)
+            .pause_collection(UpdateSubscriptionPauseCollection {
+                behavior: UpdateSubscriptionPauseCollectionBehavior::KeepAsDraft,
+                resumes_at: Some(resumes_at.timestamp()),
+            })
+            .send(&self.stripe)
+            .await?;
+
+        self.event_bus
+            .publish(Event::new(
+                OrgScope { organization_id },
+                BillingOperation::Paused {
+                    plan,
+                    duration_days: duration.days(),
+                    resumes_at,
+                },
+                authentication,
+            ))
+            .await?;
+
+        Ok(format!(
+            "Subscription paused until {}.",
+            resumes_at.format("%B %-d, %Y")
+        ))
+    }
+
+    /// Resume a paused subscription. Uses Stripe's dedicated resume endpoint
+    /// (`POST /subscriptions/:id/resume`) which clears `pause_collection`
+    /// and re-activates billing. `was_early` is true when the user resumes
+    /// before the scheduled `resumes_at` timestamp.
+    pub async fn resume_subscription(
+        &self,
+        organization_id: Uuid,
+        authentication: AuthenticatedEntity,
+    ) -> Result<String, Error> {
+        let organization = self.get_organization(organization_id).await?;
+        let sub = self.find_current_subscription(&organization).await?;
+
+        let was_early = sub
+            .pause_collection
+            .as_ref()
+            .and_then(|p| p.resumes_at)
+            .is_some_and(|t| t > Utc::now().timestamp());
+
+        stripe_billing::subscription::ResumeSubscription::new(&sub.id)
+            .send(&self.stripe)
+            .await?;
+
+        self.event_bus
+            .publish(Event::new(
+                OrgScope { organization_id },
+                BillingOperation::Resumed { was_early },
+                authentication,
+            ))
+            .await?;
+
+        Ok("Subscription resumed.".to_string())
+    }
+
+    /// Self-serve trial extend (+7 days, once per org lifetime). Eligibility:
+    /// `trial_extended_used` must be false and the org must currently be
+    /// trialing. Emits `BillingOperation::TrialExtended`; subscriber flips
+    /// `trial_extended_used` to true.
+    pub async fn extend_trial(
+        &self,
+        organization_id: Uuid,
+        authentication: AuthenticatedEntity,
+    ) -> Result<String, Error> {
+        let organization = self.get_organization(organization_id).await?;
+
+        if organization.base.trial_extended_used {
+            return Err(anyhow!("Trial has already been extended."));
+        }
+        if organization.base.plan_status.as_deref() != Some("trialing") {
+            return Err(anyhow!("Trial extend is only available during a trial."));
+        }
+        let current_trial_end = organization
+            .base
+            .trial_end_date
+            .ok_or_else(|| anyhow!("Organization has no trial end date"))?;
+
+        let new_trial_end = current_trial_end + chrono::Duration::days(7);
+        let sub = self.find_current_subscription(&organization).await?;
+
+        UpdateSubscription::new(&sub.id)
+            .trial_end(UpdateSubscriptionTrialEnd::Timestamp(
+                new_trial_end.timestamp(),
+            ))
+            .send(&self.stripe)
+            .await?;
+
+        self.event_bus
+            .publish(Event::new(
+                OrgScope { organization_id },
+                BillingOperation::TrialExtended {
+                    days_added: 7,
+                    new_trial_end,
+                },
+                authentication,
+            ))
+            .await?;
+
+        Ok(format!(
+            "Trial extended to {}.",
+            new_trial_end.format("%B %-d, %Y")
+        ))
+    }
+
+    /// In-app subscription cancellation. Sets Stripe `cancel_at_period_end`,
+    /// stashes the canonical Scanopy reason in subscription metadata, and
+    /// emits `BillingOperation::CancellationInitiated`. The subscriber's
+    /// `implied_status()` arm flips `plan_status` to `pending_cancellation`.
+    /// Returns the period end so the modal can render the retention
+    /// disclosure inline.
+    pub async fn cancel_subscription(
+        &self,
+        organization_id: Uuid,
+        request: CancelSubscriptionRequest,
+        authentication: AuthenticatedEntity,
+    ) -> Result<CancelSubscriptionResponse, Error> {
+        let organization = self.get_organization(organization_id).await?;
+        let sub = self.find_current_subscription(&organization).await?;
+
+        let stripe_feedback: Option<UpdateSubscriptionCancellationDetailsFeedback> =
+            map_cancel_reason_to_stripe(request.reason_code);
+
+        let mut cancellation_details = UpdateSubscriptionCancellationDetails::new();
+        cancellation_details.feedback = stripe_feedback;
+        cancellation_details.comment = request.comment.clone();
+
+        let updated = UpdateSubscription::new(&sub.id)
+            .cancel_at_period_end(true)
+            .cancellation_details(cancellation_details)
+            .metadata([(
+                "scanopy_cancel_reason".to_string(),
+                request.reason_code.to_string(),
+            )])
+            .send(&self.stripe)
+            .await?;
+
+        // Period end: prefer cancel_at (Stripe writes it when cancel_at_period_end
+        // is set), fall back to the first item's current_period_end.
+        let period_end_ts = updated
+            .cancel_at
+            .or_else(|| updated.items.data.first().map(|i| i.current_period_end))
+            .ok_or_else(|| anyhow!("Stripe did not return a period end"))?;
+        let period_end = chrono::DateTime::<Utc>::from_timestamp(period_end_ts, 0)
+            .ok_or_else(|| anyhow!("Invalid period_end timestamp from Stripe"))?;
+
+        self.event_bus
+            .publish(Event::new(
+                OrgScope { organization_id },
+                BillingOperation::CancellationInitiated {
+                    reason_code: request.reason_code,
+                    stripe_feedback: stripe_feedback.map(stripe_to_shared_feedback),
+                    comment: request.comment,
+                    save_offer_shown: request.save_offer_shown,
+                    save_offer_redeemed: request.save_offer_redeemed,
+                    planned_period_end: period_end,
+                },
+                authentication,
+            ))
+            .await?;
+
+        Ok(CancelSubscriptionResponse { period_end })
+    }
+
+    /// Apply the discount save offer. Reads coupon ID from
+    /// `STRIPE_SAVE_OFFER_COUPON_ID` env var. The cancel modal hides the
+    /// discount panel when the env var is unset; this guard is
+    /// defense-in-depth.
+    pub async fn apply_discount_save_offer(
+        &self,
+        organization_id: Uuid,
+        _authentication: AuthenticatedEntity,
+    ) -> Result<String, Error> {
+        let coupon_id = std::env::var("STRIPE_SAVE_OFFER_COUPON_ID")
+            .map_err(|_| anyhow!("Discount save offer is not configured"))?;
+
+        let organization = self.get_organization(organization_id).await?;
+        let sub = self.find_current_subscription(&organization).await?;
+
+        UpdateSubscription::new(&sub.id)
+            .discounts(vec![DiscountsDataParam {
+                coupon: Some(coupon_id),
+                discount: None,
+                promotion_code: None,
+            }])
+            .send(&self.stripe)
+            .await?;
+
+        Ok("Discount applied to your subscription.".to_string())
+    }
+
     async fn handle_invoice_paid(&self, invoice: stripe_billing::Invoice) -> Result<(), Error> {
         let Some(organization) = self.get_org_from_invoice(&invoice).await? else {
             tracing::debug!("No org found for invoice.paid — ignoring");
@@ -2043,6 +2340,44 @@ fn mrr_from_subscription(sub: &stripe_billing::Subscription) -> i64 {
         .sum()
 }
 
+/// Map our canonical `CancelReason` to the Stripe-side feedback enum.
+/// Variant names match by string identity in both crates.
+fn map_cancel_reason_to_stripe(
+    reason: CancelReason,
+) -> Option<UpdateSubscriptionCancellationDetailsFeedback> {
+    use UpdateSubscriptionCancellationDetailsFeedback as F;
+    Some(match reason {
+        CancelReason::TooExpensive => F::TooExpensive,
+        CancelReason::MissingFeatures => F::MissingFeatures,
+        CancelReason::SwitchedService => F::SwitchedService,
+        CancelReason::Unused => F::Unused,
+        CancelReason::CustomerService => F::CustomerService,
+        CancelReason::LowQuality => F::LowQuality,
+        CancelReason::TooComplex => F::TooComplex,
+        CancelReason::Other => F::Other,
+    })
+}
+
+/// Stripe has two parallel feedback enums (request + response).
+/// Translate request-side back to the shared response-side enum so the
+/// emitted `CancellationInitiated` event carries the same canonical
+/// `CancellationDetailsFeedback` already used in `SubscriptionCancelled`.
+fn stripe_to_shared_feedback(
+    feedback: UpdateSubscriptionCancellationDetailsFeedback,
+) -> CancellationDetailsFeedback {
+    use UpdateSubscriptionCancellationDetailsFeedback as F;
+    match feedback {
+        F::TooExpensive => CancellationDetailsFeedback::TooExpensive,
+        F::MissingFeatures => CancellationDetailsFeedback::MissingFeatures,
+        F::SwitchedService => CancellationDetailsFeedback::SwitchedService,
+        F::Unused => CancellationDetailsFeedback::Unused,
+        F::CustomerService => CancellationDetailsFeedback::CustomerService,
+        F::LowQuality => CancellationDetailsFeedback::LowQuality,
+        F::TooComplex => CancellationDetailsFeedback::TooComplex,
+        F::Other => CancellationDetailsFeedback::Other,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2103,5 +2438,57 @@ mod tests {
         assert_eq!(line_monthly_cents(None, Some(3), false), 0);
         assert_eq!(line_monthly_cents(Some(500), None, false), 0);
         assert_eq!(line_monthly_cents(None, None, true), 0);
+    }
+
+    #[test]
+    fn pause_duration_days_mapping() {
+        assert_eq!(PauseDuration::Days30.days(), 30);
+        assert_eq!(PauseDuration::Days60.days(), 60);
+        assert_eq!(PauseDuration::Days90.days(), 90);
+    }
+
+    #[test]
+    fn cancel_reason_maps_to_stripe_feedback() {
+        use UpdateSubscriptionCancellationDetailsFeedback as F;
+        let cases = [
+            (CancelReason::TooExpensive, F::TooExpensive),
+            (CancelReason::MissingFeatures, F::MissingFeatures),
+            (CancelReason::SwitchedService, F::SwitchedService),
+            (CancelReason::Unused, F::Unused),
+            (CancelReason::CustomerService, F::CustomerService),
+            (CancelReason::LowQuality, F::LowQuality),
+            (CancelReason::TooComplex, F::TooComplex),
+            (CancelReason::Other, F::Other),
+        ];
+        for (reason, expected) in cases {
+            assert_eq!(map_cancel_reason_to_stripe(reason), Some(expected));
+        }
+    }
+
+    #[test]
+    fn stripe_request_feedback_round_trips_to_shared_feedback() {
+        use UpdateSubscriptionCancellationDetailsFeedback as F;
+        let cases = [
+            (F::TooExpensive, CancellationDetailsFeedback::TooExpensive),
+            (
+                F::MissingFeatures,
+                CancellationDetailsFeedback::MissingFeatures,
+            ),
+            (
+                F::SwitchedService,
+                CancellationDetailsFeedback::SwitchedService,
+            ),
+            (F::Unused, CancellationDetailsFeedback::Unused),
+            (
+                F::CustomerService,
+                CancellationDetailsFeedback::CustomerService,
+            ),
+            (F::LowQuality, CancellationDetailsFeedback::LowQuality),
+            (F::TooComplex, CancellationDetailsFeedback::TooComplex),
+            (F::Other, CancellationDetailsFeedback::Other),
+        ];
+        for (request_feedback, expected) in cases {
+            assert_eq!(stripe_to_shared_feedback(request_feedback), expected);
+        }
     }
 }

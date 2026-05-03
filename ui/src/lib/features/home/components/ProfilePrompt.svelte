@@ -7,7 +7,7 @@
 	import SelectInput from '$lib/shared/components/forms/input/SelectInput.svelte';
 
 	type Organization = components['schemas']['Organization'];
-	type OnboardingOperation = components['schemas']['OnboardingOperation'];
+	type OnboardingOperation = components['schemas']['OnboardingOperationDiscriminants'];
 
 	let {
 		organization,

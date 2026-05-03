@@ -6,7 +6,12 @@ import { createQuery, createMutation } from '@tanstack/svelte-query';
 import { queryKeys } from '$lib/api/query-client';
 import { apiClient } from '$lib/api/client';
 import type { BillingPlan, BillingRate } from './types';
+import type { components } from '$lib/api/schema';
 import { pushError, pushSuccess } from '$lib/shared/stores/feedback';
+
+type PauseDuration = components['schemas']['PauseDuration'];
+type CancelSubscriptionRequest = components['schemas']['CancelSubscriptionRequest'];
+type CancelSubscriptionResponse = components['schemas']['CancelSubscriptionResponse'];
 
 /**
  * Query hook for fetching current billing plans
@@ -109,6 +114,113 @@ export function useChangePlanMutation() {
 		},
 		onError: (error: Error) => {
 			pushError(`Error changing plan: ${error.message}. Please try again.`);
+		}
+	}));
+}
+
+/**
+ * Mutation hook for pausing the subscription
+ */
+export function usePauseSubscriptionMutation() {
+	return createMutation(() => ({
+		mutationFn: async (duration_days: PauseDuration) => {
+			const { data } = await apiClient.POST('/api/billing/pause', {
+				body: { duration_days }
+			});
+			if (!data?.success || !data.data) {
+				throw new Error(data?.error || 'Failed to pause subscription');
+			}
+			return data.data;
+		},
+		onSuccess: (data: string) => {
+			pushSuccess(data);
+		},
+		onError: (error: Error) => {
+			pushError(`Error pausing subscription: ${error.message}. Please try again.`);
+		}
+	}));
+}
+
+/**
+ * Mutation hook for resuming a paused subscription
+ */
+export function useResumeSubscriptionMutation() {
+	return createMutation(() => ({
+		mutationFn: async () => {
+			const { data } = await apiClient.POST('/api/billing/resume', {});
+			if (!data?.success || !data.data) {
+				throw new Error(data?.error || 'Failed to resume subscription');
+			}
+			return data.data;
+		},
+		onSuccess: (data: string) => {
+			pushSuccess(data);
+		},
+		onError: (error: Error) => {
+			pushError(`Error resuming subscription: ${error.message}. Please try again.`);
+		}
+	}));
+}
+
+/**
+ * Mutation hook for self-serve trial extend (+7 days, once per lifetime)
+ */
+export function useExtendTrialMutation() {
+	return createMutation(() => ({
+		mutationFn: async () => {
+			const { data } = await apiClient.POST('/api/billing/extend-trial', {});
+			if (!data?.success || !data.data) {
+				throw new Error(data?.error || 'Failed to extend trial');
+			}
+			return data.data;
+		},
+		onSuccess: (data: string) => {
+			pushSuccess(data);
+		},
+		onError: (error: Error) => {
+			pushError(`Error extending trial: ${error.message}. Please try again.`);
+		}
+	}));
+}
+
+/**
+ * Mutation hook for in-app subscription cancel.
+ * Returns the period_end so the modal can render the retention disclosure.
+ */
+export function useCancelSubscriptionMutation() {
+	return createMutation(() => ({
+		mutationFn: async (request: CancelSubscriptionRequest): Promise<CancelSubscriptionResponse> => {
+			const { data } = await apiClient.POST('/api/billing/cancel', { body: request });
+			if (!data?.success || !data.data) {
+				throw new Error(data?.error || 'Failed to cancel subscription');
+			}
+			return data.data;
+		},
+		onError: (error: Error) => {
+			pushError(`Error cancelling subscription: ${error.message}. Please try again.`);
+		}
+	}));
+}
+
+/**
+ * Mutation hook for the discount save offer.
+ * Server returns 400 with a clear message when STRIPE_SAVE_OFFER_COUPON_ID
+ * is unset; the auto-toast pipeline surfaces the error.
+ */
+export function useApplyDiscountSaveOfferMutation() {
+	return createMutation(() => ({
+		mutationFn: async () => {
+			const { data } = await apiClient.POST('/api/billing/cancel/apply-discount', {});
+			if (!data?.success || !data.data) {
+				throw new Error(data?.error || 'Failed to apply discount');
+			}
+			return data.data;
+		},
+		onSuccess: (data: string) => {
+			pushSuccess(data);
+		},
+		onError: (error: Error) => {
+			pushError(`Error applying discount: ${error.message}. Please try again.`);
 		}
 	}));
 }

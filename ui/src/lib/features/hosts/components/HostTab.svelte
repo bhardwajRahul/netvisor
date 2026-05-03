@@ -59,7 +59,7 @@
 	import type { components } from '$lib/api/schema';
 	import { hasDaemon } from '$lib/shared/onboarding/checklist';
 
-	type OnboardingOperation = components['schemas']['OnboardingOperation'];
+	type OnboardingOperation = components['schemas']['OnboardingOperationDiscriminants'];
 	type HostOrderField = components['schemas']['HostOrderField'];
 	type OrderDirection = components['schemas']['OrderDirection'];
 

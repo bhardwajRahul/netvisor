@@ -55,7 +55,7 @@
 
 	import HomeTab from '$lib/features/home/components/HomeTab.svelte';
 
-	type OnboardingOperation = components['schemas']['OnboardingOperation'];
+	type OnboardingOperation = components['schemas']['OnboardingOperationDiscriminants'];
 
 	let {
 		activeTab = $bindable('topology'),
