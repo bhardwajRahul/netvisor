@@ -12,13 +12,14 @@
 --           "all versions of entity X" lineage exploration query. Filtered
 --           on closed rows since live rows have lineage_id = NULL.
 
--- Note: SET lock_timeout / statement_timeout are intentionally NOT issued
--- here. PostgreSQL's simple_query protocol treats every multi-statement
--- send as a single implicit transaction, which conflicts with CREATE
--- INDEX CONCURRENTLY's "cannot run inside a transaction block" rule
--- regardless of the `-- no-transaction` header. Operators running this
--- migration manually can SET these in their psql session before applying.
---
+-- Each statement below runs as its own PG simple_query via the custom
+-- migration runner (see server/shared/storage/migration_runner.rs).
+-- SET commands persist on the connection for subsequent CREATE INDEX
+-- CONCURRENTLY statements.
+SET lock_timeout = '5s';
+
+SET statement_timeout = '0';
+
 -- DiscoveryTracked tables — most are network-scoped.
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_hosts_live ON hosts (network_id) WHERE valid_to IS NULL;
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_hosts_as_of ON hosts (network_id, valid_from, valid_to);

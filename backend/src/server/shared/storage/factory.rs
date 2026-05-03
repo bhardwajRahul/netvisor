@@ -77,7 +77,11 @@ impl StorageFactory {
         let connect_options = PgConnectOptions::from_str(database_url)?.statement_cache_capacity(0);
         let pool = PgPoolOptions::new().connect_with(connect_options).await?;
 
-        sqlx::migrate!("./migrations").run(&pool).await?;
+        crate::server::shared::storage::migration_runner::apply_migrations(
+            &pool,
+            std::path::Path::new("./migrations"),
+        )
+        .await?;
 
         let sessions = create_session_store(pool.clone(), use_secure_session_cookies).await?;
 
