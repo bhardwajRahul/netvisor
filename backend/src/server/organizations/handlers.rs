@@ -322,6 +322,22 @@ pub async fn delete_organization(
 
     let entity: AuthenticatedEntity = auth.into_entity();
 
+    // Best-effort Stripe teardown. Stripe auto-cancels active subscriptions
+    // on customer-delete; failures here don't block deletion — the webhook
+    // handlers no-op on missing org if Stripe still fires events afterwards.
+    if let (Some(customer_id), Some(billing)) = (
+        org.base.stripe_customer_id.as_deref(),
+        state.services.billing_service.as_ref(),
+    ) && let Err(e) = billing.delete_stripe_customer(customer_id).await
+    {
+        tracing::error!(
+            organization_id = %org.id,
+            stripe_customer_id = %customer_id,
+            error = %e,
+            "Failed to delete Stripe customer during org deletion — proceeding"
+        );
+    }
+
     // 1. Delete all child entities (reuse reset logic)
     reset_organization_data(&state, &org.id, entity).await?;
 
