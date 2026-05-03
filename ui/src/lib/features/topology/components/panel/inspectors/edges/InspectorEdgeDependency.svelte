@@ -23,12 +23,8 @@
 	} from '$lib/paraglide/messages';
 	import { createColorHelper } from '$lib/shared/utils/styling';
 	import type { Dependency } from '$lib/features/dependencies/types/base';
-	import {
-		autoRebuild,
-		editingDependencyId,
-		selectedNodes,
-		selectedEdge
-	} from '$lib/features/topology/queries';
+	import type { EnrichedTopology } from '$lib/features/topology/types/base';
+	import { editingDependencyId, selectedNodes, selectedEdge } from '$lib/features/topology/queries';
 	import { useTopology, selectedTopologyId } from '$lib/features/topology/context';
 	import { getTopologyEditState } from '$lib/features/topology/state';
 	import { clearSelection } from '$lib/features/topology/selection';
@@ -56,10 +52,14 @@
 	const topoStore = topo.fromContext ? topo.store : null;
 	let isReadonly = topo.isReadonly;
 	let topology = $derived(
-		topoStore ? $topoStore : topo.query?.data?.find((t) => t.id === $selectedTopologyId)
+		topoStore
+			? $topoStore
+			: (topo.query?.data?.find((t) => t.id === $selectedTopologyId) as
+					| EnrichedTopology
+					| undefined)
 	);
 
-	let editState = $derived(getTopologyEditState(topology, $autoRebuild, isReadonly));
+	let editState = $derived(getTopologyEditState(topology, false, isReadonly));
 
 	// TanStack Query mutations for updating/deleting dependencies
 	const updateDependencyMutation = useUpdateDependencyMutation();

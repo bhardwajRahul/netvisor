@@ -134,7 +134,7 @@ where
         .ok_or_else(ApiError::organization_required)?;
     let user_id = auth.user_id();
 
-    let base_filter = if T::is_network_keyed() {
+    let mut base_filter = if T::is_network_keyed() {
         StorableFilter::<T>::new_from_network_ids(&network_ids)
     } else if T::table_name() == "networks" {
         // Networks are org-scoped but should be filtered to only those the user has access to
@@ -142,6 +142,11 @@ where
     } else {
         StorableFilter::<T>::new_from_org_id(&organization_id)
     };
+
+    // SCD2 entities: hide closed historical copies from frontend-facing GETs.
+    if T::HAS_SCD2 {
+        base_filter = base_filter.live();
+    }
 
     // Apply entity-specific filters
     let filter = query.apply_to_filter(base_filter, &network_ids, organization_id);
@@ -221,6 +226,12 @@ where
         &network_ids,
         organization_id,
     )?;
+
+    // SCD2: closed historical copies are not addressable from frontend-facing
+    // endpoints. Return 404 to match the live-only model.
+    if T::HAS_SCD2 && !entity.is_live_row() {
+        return Err(ApiError::entity_not_found::<T>(&id));
+    }
 
     Ok(Json(ApiResponse::success(entity)))
 }

@@ -41,6 +41,12 @@ impl<T: Storable> StorableFilter<T> {
         Self::new().organization_id(org_id)
     }
 
+    /// Empty filter (no WHERE conditions). Useful for chaining ad-hoc helper
+    /// methods like `id_or_lineage_in` + `as_of` without an initial scope.
+    pub fn new_unfiltered() -> Self {
+        Self::new()
+    }
+
     pub fn new_from_network_ids(network_ids: &[Uuid]) -> Self {
         Self::new().network_ids(network_ids)
     }
@@ -357,6 +363,39 @@ impl<T: Storable> StorableFilter<T> {
         self.conditions
             .push(format!("{} = ${}", col, self.values.len() + 1));
         self.values.push(SqlValue::Uuid(*id));
+        self
+    }
+
+    /// Match rows whose `id` or `lineage_id` is in the supplied set. Used by
+    /// the as-of tag-name resolver: when a tag was close-and-cloned, the live
+    /// id and the closed id both refer to the same logical tag — a single
+    /// `id IN (...)` check would miss the closed copies. The OR-join keeps the
+    /// caller's id list compact (no need to expand into the lineage set first).
+    pub fn id_or_lineage_in(mut self, ids: &[Uuid]) -> Self {
+        if ids.is_empty() {
+            self.conditions.push("FALSE".to_string());
+            return self;
+        }
+        let id_col = self.qualify_column("id");
+        let lineage_col = self.qualify_column("lineage_id");
+        let id_idx = self.values.len() + 1;
+        let lineage_idx = self.values.len() + 2;
+        self.conditions.push(format!(
+            "({} = ANY(${}) OR {} = ANY(${}))",
+            id_col, id_idx, lineage_col, lineage_idx
+        ));
+        self.values.push(SqlValue::UuidArray(ids.to_vec()));
+        self.values.push(SqlValue::UuidArray(ids.to_vec()));
+        self
+    }
+
+    /// Filter snapshots / similar timestamped rows by `taken_at < t`. Used by
+    /// the daily retention task to identify rows past the retention window.
+    pub fn taken_at_lt(mut self, t: DateTime<Utc>) -> Self {
+        let col = self.qualify_column("taken_at");
+        self.conditions
+            .push(format!("{} < ${}", col, self.values.len() + 1));
+        self.values.push(SqlValue::Timestamp(t));
         self
     }
 
@@ -916,5 +955,98 @@ impl<T: Storable> StorableFilter<T> {
         let col = self.qualify_column("target_ips");
         self.conditions.push(format!("{} IS NOT NULL", col));
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::server::snapshots::types::base::Snapshot;
+    use crate::server::tags::r#impl::base::Tag;
+
+    #[test]
+    fn id_or_lineage_in_emits_or_clause() {
+        let ids = vec![Uuid::new_v4(), Uuid::new_v4()];
+        let filter = StorableFilter::<Tag>::new_unfiltered().id_or_lineage_in(&ids);
+
+        let where_clause = filter.to_where_clause();
+        assert!(
+            where_clause.contains("tags.id = ANY($1)"),
+            "expected id ANY clause in: {}",
+            where_clause
+        );
+        assert!(
+            where_clause.contains("tags.lineage_id = ANY($2)"),
+            "expected lineage_id ANY clause in: {}",
+            where_clause
+        );
+        assert!(
+            where_clause.contains(" OR "),
+            "expected OR-join in: {}",
+            where_clause
+        );
+        assert_eq!(
+            filter.values().len(),
+            2,
+            "expected two array params (id_set, lineage_set)"
+        );
+    }
+
+    #[test]
+    fn id_or_lineage_in_empty_input_matches_nothing() {
+        let filter = StorableFilter::<Tag>::new_unfiltered().id_or_lineage_in(&[]);
+        let where_clause = filter.to_where_clause();
+        assert!(
+            where_clause.contains("FALSE"),
+            "empty id list should produce FALSE: {}",
+            where_clause
+        );
+        assert_eq!(
+            filter.values().len(),
+            0,
+            "no params should be bound for empty input"
+        );
+    }
+
+    #[test]
+    fn taken_at_lt_emits_less_than_clause() {
+        let cutoff = chrono::Utc::now();
+        let filter = StorableFilter::<Snapshot>::new_unfiltered().taken_at_lt(cutoff);
+
+        let where_clause = filter.to_where_clause();
+        assert!(
+            where_clause.contains("snapshots.taken_at < $1"),
+            "expected `taken_at < $N` in: {}",
+            where_clause
+        );
+        assert_eq!(filter.values().len(), 1);
+    }
+
+    #[test]
+    fn live_filter_emits_valid_to_is_null() {
+        let filter = StorableFilter::<Tag>::new_unfiltered().live();
+        let where_clause = filter.to_where_clause();
+        assert!(
+            where_clause.contains("tags.valid_to IS NULL"),
+            "expected `valid_to IS NULL` in: {}",
+            where_clause
+        );
+    }
+
+    #[test]
+    fn as_of_filter_emits_window_predicate() {
+        let t = chrono::Utc::now();
+        let filter = StorableFilter::<Tag>::new_unfiltered().as_of(t);
+        let where_clause = filter.to_where_clause();
+        assert!(
+            where_clause.contains("tags.valid_from <= $1"),
+            "expected lower bound in: {}",
+            where_clause
+        );
+        assert!(
+            where_clause.contains("tags.valid_to IS NULL OR tags.valid_to > $2"),
+            "expected upper bound in: {}",
+            where_clause
+        );
     }
 }

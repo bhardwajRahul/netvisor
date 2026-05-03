@@ -15,7 +15,7 @@
 		dependencies_noServicesError
 	} from '$lib/paraglide/messages';
 	import type { DependencyTarget } from '../../../../resolvers';
-	import type { Topology } from '../../../../types/base';
+	import type { EnrichedTopology } from '../../../../types/base';
 
 	let {
 		form,
@@ -26,7 +26,7 @@
 	}: {
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		form: any;
-		topology: Topology;
+		topology: EnrichedTopology;
 		target: DependencyTarget;
 		flatIndex: number;
 		/** Remove this card's target from the dep (and the canvas selection in create mode). */

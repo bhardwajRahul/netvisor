@@ -451,68 +451,40 @@ async fn get_share_topology(
         )));
     }
 
-    // If requested view differs from stored view, do an ephemeral rebuild
+    // Load entity data for the topology. Today shares only target live-view
+    // topologies; snapshot-pinned shares are deferred until the snapshots
+    // service is fully wired into AppState.
+    let service = &state.services.topology_service;
+    let network_id = topology.base.network_id;
+    let data = service
+        .get_topology_data(network_id, None)
+        .await
+        .map_err(|e| ApiError::internal_error(&e.to_string()))?;
+
+    // If requested view differs from stored view, rebuild graph ephemerally.
     let stored_view = topology.base.options.request.view;
     if stored_view != body.view {
-        let service = &state.services.topology_service;
-        let network_id = topology.base.network_id;
-
-        let (hosts, ip_addresses, subnets, dependencies, ports, bindings, interfaces) = service
-            .get_entity_data(network_id)
-            .await
-            .map_err(|e| ApiError::internal_error(&e.to_string()))?;
-
-        let services = service
-            .get_service_data(network_id)
-            .await
-            .map_err(|e| ApiError::internal_error(&e.to_string()))?;
-
-        let entity_tags = service
-            .get_entity_tags(
-                &hosts,
-                &services,
-                &subnets,
-                &topology.base.options.request.element_rules,
-            )
-            .await
-            .map_err(|e| ApiError::internal_error(&e.to_string()))?;
-
-        let vlans = service.get_vlans(network_id).await.unwrap_or_default();
-
-        // Build graph with requested view
         let mut options = topology.base.options.clone();
         options.request.view = body.view;
 
         let (nodes, edges) =
             service.build_graph(crate::server::topology::service::main::BuildGraphParams {
                 options: &options,
-                hosts: &hosts,
-                ip_addresses: &ip_addresses,
-                subnets: &subnets,
-                services: &services,
-                dependencies: &dependencies,
-                ports: &ports,
-                bindings: &bindings,
-                interfaces: &interfaces,
-                entity_tags: &entity_tags,
-                vlans: &vlans,
+                hosts: &data.hosts,
+                ip_addresses: &data.ip_addresses,
+                subnets: &data.subnets,
+                services: &data.services,
+                dependencies: &data.dependencies,
+                ports: &data.ports,
+                bindings: &data.bindings,
+                interfaces: &data.interfaces,
+                entity_tags: &data.tags,
+                vlans: &data.vlans,
                 old_nodes: &[],
                 old_edges: &[],
                 old_view: Some(stored_view),
             });
 
-        topology.set_entities(crate::server::topology::types::base::SetEntitiesParams {
-            hosts,
-            ip_addresses,
-            services,
-            subnets,
-            dependencies,
-            ports,
-            bindings,
-            interfaces,
-            entity_tags,
-            vlans,
-        });
         topology.set_graph(nodes, edges);
         topology.base.options = options;
     }
@@ -527,10 +499,67 @@ async fn get_share_topology(
         remove_created_with: plan_features.remove_created_with,
     };
 
+    // Topology entity blobs are no longer part of the slim Topology struct;
+    // re-merge the loaded TopologyData into the topology JSON so the existing
+    // share frontend keeps working without a wire-protocol change.
+    let mut topology_value =
+        serde_json::to_value(&topology).map_err(|e| ApiError::internal_error(&e.to_string()))?;
+    if let Some(obj) = topology_value.as_object_mut() {
+        obj.insert(
+            "hosts".to_string(),
+            serde_json::to_value(&data.hosts)
+                .map_err(|e| ApiError::internal_error(&e.to_string()))?,
+        );
+        obj.insert(
+            "ip_addresses".to_string(),
+            serde_json::to_value(&data.ip_addresses)
+                .map_err(|e| ApiError::internal_error(&e.to_string()))?,
+        );
+        obj.insert(
+            "subnets".to_string(),
+            serde_json::to_value(&data.subnets)
+                .map_err(|e| ApiError::internal_error(&e.to_string()))?,
+        );
+        obj.insert(
+            "services".to_string(),
+            serde_json::to_value(&data.services)
+                .map_err(|e| ApiError::internal_error(&e.to_string()))?,
+        );
+        obj.insert(
+            "dependencies".to_string(),
+            serde_json::to_value(&data.dependencies)
+                .map_err(|e| ApiError::internal_error(&e.to_string()))?,
+        );
+        obj.insert(
+            "ports".to_string(),
+            serde_json::to_value(&data.ports)
+                .map_err(|e| ApiError::internal_error(&e.to_string()))?,
+        );
+        obj.insert(
+            "bindings".to_string(),
+            serde_json::to_value(&data.bindings)
+                .map_err(|e| ApiError::internal_error(&e.to_string()))?,
+        );
+        obj.insert(
+            "interfaces".to_string(),
+            serde_json::to_value(&data.interfaces)
+                .map_err(|e| ApiError::internal_error(&e.to_string()))?,
+        );
+        obj.insert(
+            "vlans".to_string(),
+            serde_json::to_value(&data.vlans)
+                .map_err(|e| ApiError::internal_error(&e.to_string()))?,
+        );
+        obj.insert(
+            "entity_tags".to_string(),
+            serde_json::to_value(&data.tags)
+                .map_err(|e| ApiError::internal_error(&e.to_string()))?,
+        );
+    }
+
     let response_data = ShareWithTopology {
         share: PublicShareMetadata::new(&share, enabled_views),
-        topology: serde_json::to_value(&topology)
-            .map_err(|e| ApiError::internal_error(&e.to_string()))?,
+        topology: topology_value,
         export_features,
     };
 

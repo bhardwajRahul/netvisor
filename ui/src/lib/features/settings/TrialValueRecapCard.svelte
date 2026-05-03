@@ -27,7 +27,7 @@
 	import type { Organization } from '$lib/features/organizations/types';
 	import type { components } from '$lib/api/schema';
 
-	type OnboardingOperation = components['schemas']['OnboardingOperation'];
+	type OnboardingOperation = components['schemas']['OnboardingOperationDiscriminants'];
 
 	let { org, onCloseSettings }: { org: Organization; onCloseSettings: () => void } = $props();
 

@@ -99,6 +99,7 @@ export const entityUIConfig: Record<EntityDiscriminants, EntityUIConfig | null> 
 	Tag: { tabId: 'tags', modalName: 'tag-editor' },
 	Share: { tabId: 'shares', modalName: 'share-editor' },
 	Topology: { tabId: 'topology', modalName: 'topology-editor', displayComponent: TopologyDisplay },
+	Snapshot: { tabId: 'topology' },
 	User: { tabId: 'users', modalName: 'user-editor' },
 	UserApiKey: { tabId: 'api-keys', modalName: 'user-api-key' },
 	Organization: null,

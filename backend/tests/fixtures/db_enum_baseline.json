@@ -79,6 +79,7 @@
     "Vlan",
     "Dependency",
     "Topology",
+    "Snapshot",
     "Unknown"
   ],
   "EntitySource": [

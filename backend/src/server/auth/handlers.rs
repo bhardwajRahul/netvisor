@@ -502,8 +502,8 @@ async fn apply_pending_setup(
         .await
         .map_err(|e| ApiError::internal_error(&format!("Failed to seed data: {}", e)))?;
 
-    // Create default topology
-    let topology = Topology::new(TopologyBase::new("My Topology".to_string(), network.id));
+    // Create default topology (live view, snapshot_id = None)
+    let topology = Topology::new(TopologyBase::new(network.id));
     state
         .services
         .topology_service

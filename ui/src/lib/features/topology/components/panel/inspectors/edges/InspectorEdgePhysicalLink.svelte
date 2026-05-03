@@ -4,6 +4,7 @@
 	import { InterfaceDisplay } from '$lib/shared/components/forms/selection/display/InterfaceDisplay.svelte';
 	import { useTopology, selectedTopologyId } from '$lib/features/topology/context';
 	import Tag from '$lib/shared/components/data/Tag.svelte';
+	import type { EnrichedTopology } from '$lib/features/topology/types/base';
 
 	let {
 		sourceEntityId,
@@ -18,7 +19,11 @@
 	const topo = useTopology();
 	const topoStore = topo.fromContext ? topo.store : null;
 	let topology = $derived(
-		topoStore ? $topoStore : topo.query?.data?.find((t) => t.id === $selectedTopologyId)
+		topoStore
+			? $topoStore
+			: (topo.query?.data?.find((t) => t.id === $selectedTopologyId) as
+					| EnrichedTopology
+					| undefined)
 	);
 
 	// Derive Interface and Host data

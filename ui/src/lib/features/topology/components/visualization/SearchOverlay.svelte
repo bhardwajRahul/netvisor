@@ -13,6 +13,7 @@
 	} from '../../interactions';
 	import { collapsedContainers } from '../../collapse';
 	import { useTopology, selectedTopologyId } from '../../context';
+	import type { EnrichedTopology } from '../../types/base';
 	import { activeView } from '../../queries';
 	import {
 		topology_searchPlaceholder,
@@ -25,7 +26,11 @@
 	const topo = useTopology();
 	const topoStore = topo.fromContext ? topo.store : null;
 	let topology = $derived(
-		topoStore ? $topoStore : topo.query?.data?.find((t) => t.id === $selectedTopologyId)
+		topoStore
+			? $topoStore
+			: (topo.query?.data?.find((t) => t.id === $selectedTopologyId) as
+					| EnrichedTopology
+					| undefined)
 	);
 
 	let query = $state('');

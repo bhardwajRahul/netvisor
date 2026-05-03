@@ -287,6 +287,12 @@ pub async fn discovery_upsert_vlans(
         ));
     }
 
+    // Capture one scan_time for the whole submission so all VLANs share
+    // consistent SCD2 origination timestamps. See ScanContext for rationale.
+    let scan_ctx = auth.daemon_id().map(|daemon_id| {
+        crate::server::shared::services::scan_context::ScanContext::new(daemon_id)
+    });
+
     let mut response_items = Vec::with_capacity(request.vlans.len());
 
     for item in request.vlans {
@@ -298,6 +304,7 @@ pub async fn discovery_upsert_vlans(
                 organization_id,
                 item.vlan_number,
                 item.name,
+                scan_ctx.as_ref(),
             )
             .await
             .map_err(|e| ApiError::internal_error(&format!("Failed to upsert VLAN: {}", e)))?;

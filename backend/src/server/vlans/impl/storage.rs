@@ -37,6 +37,12 @@ impl Storable for Vlan {
         "vlans"
     }
 
+    const HAS_SCD2: bool = true;
+
+    fn is_live_row(&self) -> bool {
+        self.valid_to.is_none()
+    }
+
     fn new(base: Self::BaseData) -> Self {
         let now = chrono::Utc::now();
 

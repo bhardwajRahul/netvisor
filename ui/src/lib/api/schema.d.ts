@@ -2319,6 +2319,51 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/snapshots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List snapshots for a network, sorted by `taken_at` DESC. */
+        get: operations["get_all_snapshots"];
+        put?: never;
+        /**
+         * Take a snapshot of the current live topology + entity state for a network.
+         *     Acquires the discovery snapshot lock, creates the snapshots row, runs
+         *     close-and-clone to stamp every Snapshotable entity row with `snapshot_id`
+         *     and close them. The topology subscriber inserts the snapshot's topology
+         *     row off the back of the `Snapshot::Created` event.
+         */
+        post: operations["create_snapshot"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/snapshots/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a snapshot by ID. */
+        get: operations["get_snapshot_by_id"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete a snapshot. The cascade FK on closed entity rows + topology rows
+         *     reaps everything tied to this snapshot automatically.
+         */
+        delete: operations["delete_snapshot"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/subnets": {
         parameters: {
             query?: never;
@@ -2573,11 +2618,15 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get all topologies */
+        /**
+         * Get all topologies for the authenticated user's networks.
+         * @description Returns both live-view rows (`snapshot_id IS NULL`) and snapshot-pinned
+         *     rows. The frontend renders the live one by default and renders snapshot
+         *     rows when the user picks one from the snapshots dropdown.
+         */
         get: operations["get_all_topologies"];
         put?: never;
-        /** Create topology */
-        post: operations["create_topology"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2615,11 +2664,7 @@ export interface paths {
         get: operations["get_topology_by_id"];
         put: operations["update_topology"];
         post?: never;
-        /**
-         * Delete a topology
-         * @description Prevents deletion of the last topology on a network.
-         */
-        delete: operations["delete_topology"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -2634,12 +2679,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Update an edge's handles
-         * @description Lightweight endpoint for edge reconnect operations. Instead of sending the entire
-         *     topology, only sends the edge ID and new handle positions.
-         *     Fixes HTTP 413 errors on edge reconnect operations for large topologies.
-         */
+        /** Update an edge's handles */
         post: operations["update_edge_handles"];
         delete?: never;
         options?: never;
@@ -2681,46 +2721,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/topology/{id}/lock": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Lock a topology */
-        post: operations["lock"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/topology/{id}/metadata": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Update topology metadata
-         * @description Lightweight endpoint for editing topology name and parent. Instead of sending
-         *     the entire topology (which includes all hosts, ip_addresses, services, etc.),
-         *     only sends the metadata fields.
-         *     Fixes HTTP 413 errors on metadata edit operations for large topologies.
-         */
-        post: operations["update_metadata"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/topology/{id}/node-position": {
         parameters: {
             query?: never;
@@ -2730,12 +2730,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Update a single node's position
-         * @description Lightweight endpoint for drag operations. Instead of sending the entire topology
-         *     (which can be several megabytes), only sends the node ID and new position.
-         *     Fixes HTTP 413 errors on drag operations for large topologies.
-         */
+        /** Update a single node's position */
         post: operations["update_node_position"];
         delete?: never;
         options?: never;
@@ -2752,64 +2747,8 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Update a node's size and position
-         * @description Lightweight endpoint for subnet resize operations. Instead of sending the entire
-         *     topology, only sends the node ID, new size, and new position.
-         *     Fixes HTTP 413 errors on resize operations for large topologies.
-         */
+        /** Update a node's size and position */
         post: operations["update_node_resize"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/topology/{id}/rebuild": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Rebuild topology layout */
-        post: operations["rebuild"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/topology/{id}/refresh": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Refresh topology data */
-        post: operations["refresh"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/topology/{id}/unlock": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Unlock a topology */
-        post: operations["unlock"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3070,23 +3009,41 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-05-01T19:08:39.709697Z",
-             *       "id": "100ce23b-6c43-44c4-8c99-171396c38567",
+             *       "created_at": "2026-05-03T04:33:55.425045Z",
+             *       "first_discovery_id": null,
+             *       "id": "d7f7a6c3-3043-41ca-835d-a48b27e8244b",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
+             *       "last_discovery_id": null,
+             *       "last_seen_at": "2026-05-03T04:33:55.425045Z",
+             *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-05-01T19:08:39.709697Z"
+             *       "updated_at": "2026-05-03T04:33:55.425045Z",
+             *       "valid_from": "2026-05-03T04:33:55.425045Z",
+             *       "valid_to": null
              *     }
              */
             data?: components["schemas"]["BindingBase"] & {
                 /** Format: date-time */
                 readonly created_at: string;
                 /** Format: uuid */
+                readonly first_discovery_id?: string | null;
+                /** Format: uuid */
                 readonly id: string;
+                /** Format: uuid */
+                readonly last_discovery_id?: string | null;
+                /** Format: date-time */
+                readonly last_seen_at?: string;
+                /** Format: uuid */
+                readonly lineage_id?: string | null;
                 /** Format: date-time */
                 readonly updated_at: string;
+                /** Format: date-time */
+                readonly valid_from?: string;
+                /** Format: date-time */
+                readonly valid_to?: string | null;
             };
             error?: string | null;
             meta: components["schemas"]["ApiMeta"];
@@ -3217,6 +3174,7 @@ export interface components {
              *       "description": "HTTP/HTTPS services dependency",
              *       "edge_style": "Bezier",
              *       "id": "550e8400-e29b-41d4-a716-446655440008",
+             *       "lineage_id": null,
              *       "members": {
              *         "service_ids": [],
              *         "type": "Services"
@@ -3227,7 +3185,9 @@ export interface components {
              *         "type": "Manual"
              *       },
              *       "tags": [],
-             *       "updated_at": "2026-01-15T10:30:00Z"
+             *       "updated_at": "2026-01-15T10:30:00Z",
+             *       "valid_from": "2026-01-15T10:30:00Z",
+             *       "valid_to": null
              *     }
              */
             data?: components["schemas"]["DependencyBase"] & {
@@ -3235,8 +3195,14 @@ export interface components {
                 readonly created_at: string;
                 /** Format: uuid */
                 readonly id: string;
+                /** Format: uuid */
+                readonly lineage_id?: string | null;
                 /** Format: date-time */
                 readonly updated_at: string;
+                /** Format: date-time */
+                readonly valid_from?: string;
+                /** Format: date-time */
+                readonly valid_to?: string | null;
             };
             error?: string | null;
             meta: components["schemas"]["ApiMeta"];
@@ -3291,6 +3257,7 @@ export interface components {
                 phase: components["schemas"]["DiscoveryPhase"];
                 /** Format: int32 */
                 progress: number;
+                scanned?: null | components["schemas"]["ScannedEntityIds"];
                 /** Format: uuid */
                 session_id: string;
                 /** Format: date-time */
@@ -3319,6 +3286,7 @@ export interface components {
              *           "cdp_platform": null,
              *           "cdp_port_id": null,
              *           "created_at": "2026-01-15T10:30:00Z",
+             *           "first_discovery_id": null,
              *           "host_id": "550e8400-e29b-41d4-a716-446655440003",
              *           "id": "550e8400-e29b-41d4-a716-44665544000f",
              *           "if_alias": "Uplink to Core Switch",
@@ -3327,6 +3295,9 @@ export interface components {
              *           "if_name": "Gi0/1",
              *           "if_type": 6,
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
+             *           "last_discovery_id": null,
+             *           "last_seen_at": "2026-01-15T10:30:00Z",
+             *           "lineage_id": null,
              *           "lldp_chassis_id": null,
              *           "lldp_mgmt_addr": null,
              *           "lldp_port_desc": null,
@@ -3338,21 +3309,29 @@ export interface components {
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "oper_status": "Up",
              *           "speed_bps": 1000000000,
-             *           "updated_at": "2026-01-15T10:30:00Z"
+             *           "updated_at": "2026-01-15T10:30:00Z",
+             *           "valid_from": "2026-01-15T10:30:00Z",
+             *           "valid_to": null
              *         }
              *       ],
              *       "ip_addresses": [
              *         {
              *           "created_at": "2026-01-15T10:30:00Z",
+             *           "first_discovery_id": null,
              *           "host_id": "550e8400-e29b-41d4-a716-446655440003",
              *           "id": "550e8400-e29b-41d4-a716-446655440005",
              *           "ip_address": "192.168.1.100",
+             *           "last_discovery_id": null,
+             *           "last_seen_at": "2026-01-15T10:30:00Z",
+             *           "lineage_id": null,
              *           "mac_address": "DE:AD:BE:EF:CA:FE",
              *           "name": "eth0",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
              *           "subnet_id": "550e8400-e29b-41d4-a716-446655440004",
-             *           "updated_at": "2026-01-15T10:30:00Z"
+             *           "updated_at": "2026-01-15T10:30:00Z",
+             *           "valid_from": "2026-01-15T10:30:00Z",
+             *           "valid_to": null
              *         }
              *       ],
              *       "name": "web-server-01",
@@ -3360,41 +3339,59 @@ export interface components {
              *       "ports": [
              *         {
              *           "created_at": "2026-01-15T10:30:00Z",
+             *           "first_discovery_id": null,
              *           "host_id": "550e8400-e29b-41d4-a716-446655440003",
              *           "id": "550e8400-e29b-41d4-a716-446655440006",
+             *           "last_discovery_id": null,
+             *           "last_seen_at": "2026-01-15T10:30:00Z",
+             *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "number": 80,
              *           "protocol": "Tcp",
              *           "type": "Http",
-             *           "updated_at": "2026-01-15T10:30:00Z"
+             *           "updated_at": "2026-01-15T10:30:00Z",
+             *           "valid_from": "2026-01-15T10:30:00Z",
+             *           "valid_to": null
              *         }
              *       ],
              *       "services": [
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-05-01T19:08:39.689822Z",
-             *               "id": "4327080e-4c44-4c2d-8f03-386571f5c39e",
+             *               "created_at": "2026-05-03T04:33:55.408742Z",
+             *               "first_discovery_id": null,
+             *               "id": "980035a9-e1b0-42e0-9c1e-b882341bbe35",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
+             *               "last_discovery_id": null,
+             *               "last_seen_at": "2026-05-03T04:33:55.408742Z",
+             *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-05-01T19:08:39.689822Z"
+             *               "updated_at": "2026-05-03T04:33:55.408742Z",
+             *               "valid_from": "2026-05-03T04:33:55.408742Z",
+             *               "valid_to": null
              *             }
              *           ],
              *           "created_at": "2026-01-15T10:30:00Z",
+             *           "first_discovery_id": null,
              *           "host_id": "550e8400-e29b-41d4-a716-446655440003",
              *           "id": "550e8400-e29b-41d4-a716-446655440007",
+             *           "last_discovery_id": null,
+             *           "last_seen_at": "2026-01-15T10:30:00Z",
+             *           "lineage_id": null,
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Plex Media Server",
+             *           "service_definition": "Nest Thermostat",
              *           "source": {
              *             "type": "Manual"
              *           },
              *           "tags": [],
              *           "updated_at": "2026-01-15T10:30:00Z",
+             *           "valid_from": "2026-01-15T10:30:00Z",
+             *           "valid_to": null,
              *           "virtualization": null
              *         }
              *       ],
@@ -3443,24 +3440,42 @@ export interface components {
             /**
              * @example {
              *       "created_at": "2026-01-15T10:30:00Z",
+             *       "first_discovery_id": null,
              *       "host_id": "550e8400-e29b-41d4-a716-446655440003",
              *       "id": "550e8400-e29b-41d4-a716-446655440005",
              *       "ip_address": "192.168.1.100",
+             *       "last_discovery_id": null,
+             *       "last_seen_at": "2026-01-15T10:30:00Z",
+             *       "lineage_id": null,
              *       "mac_address": "DE:AD:BE:EF:CA:FE",
              *       "name": "eth0",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
              *       "subnet_id": "550e8400-e29b-41d4-a716-446655440004",
-             *       "updated_at": "2026-01-15T10:30:00Z"
+             *       "updated_at": "2026-01-15T10:30:00Z",
+             *       "valid_from": "2026-01-15T10:30:00Z",
+             *       "valid_to": null
              *     }
              */
             data?: components["schemas"]["IPAddressBase"] & {
                 /** Format: date-time */
                 readonly created_at: string;
                 /** Format: uuid */
+                readonly first_discovery_id?: string | null;
+                /** Format: uuid */
                 readonly id: string;
+                /** Format: uuid */
+                readonly last_discovery_id?: string | null;
+                /** Format: date-time */
+                readonly last_seen_at?: string;
+                /** Format: uuid */
+                readonly lineage_id?: string | null;
                 /** Format: date-time */
                 readonly updated_at: string;
+                /** Format: date-time */
+                readonly valid_from?: string;
+                /** Format: date-time */
+                readonly valid_to?: string | null;
             };
             error?: string | null;
             meta: components["schemas"]["ApiMeta"];
@@ -3471,9 +3486,21 @@ export interface components {
                 /** Format: date-time */
                 readonly created_at: string;
                 /** Format: uuid */
+                readonly first_discovery_id?: string | null;
+                /** Format: uuid */
                 readonly id: string;
+                /** Format: uuid */
+                readonly last_discovery_id?: string | null;
+                /** Format: date-time */
+                readonly last_seen_at?: string;
+                /** Format: uuid */
+                readonly lineage_id?: string | null;
                 /** Format: date-time */
                 readonly updated_at: string;
+                /** Format: date-time */
+                readonly valid_from?: string;
+                /** Format: date-time */
+                readonly valid_to?: string | null;
             };
             error?: string | null;
             meta: components["schemas"]["ApiMeta"];
@@ -3553,22 +3580,40 @@ export interface components {
              * @description Port entity with custom serialization that flattens PortType fields.
              * @example {
              *       "created_at": "2026-01-15T10:30:00Z",
+             *       "first_discovery_id": null,
              *       "host_id": "550e8400-e29b-41d4-a716-446655440003",
              *       "id": "550e8400-e29b-41d4-a716-446655440006",
+             *       "last_discovery_id": null,
+             *       "last_seen_at": "2026-01-15T10:30:00Z",
+             *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "number": 80,
              *       "protocol": "Tcp",
              *       "type": "Http",
-             *       "updated_at": "2026-01-15T10:30:00Z"
+             *       "updated_at": "2026-01-15T10:30:00Z",
+             *       "valid_from": "2026-01-15T10:30:00Z",
+             *       "valid_to": null
              *     }
              */
             data?: components["schemas"]["PortBase"] & {
                 /** Format: date-time */
                 readonly created_at: string;
                 /** Format: uuid */
+                readonly first_discovery_id?: string | null;
+                /** Format: uuid */
                 readonly id: string;
+                /** Format: uuid */
+                readonly last_discovery_id?: string | null;
+                /** Format: date-time */
+                readonly last_seen_at?: string;
+                /** Format: uuid */
+                readonly lineage_id?: string | null;
                 /** Format: date-time */
                 readonly updated_at: string;
+                /** Format: date-time */
+                readonly valid_from?: string;
+                /** Format: date-time */
+                readonly valid_to?: string | null;
             };
             error?: string | null;
             meta: components["schemas"]["ApiMeta"];
@@ -3667,28 +3712,40 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-05-01T19:08:39.703750Z",
-             *           "id": "ff0382bf-5e5a-435f-b5b5-07116ed160ce",
+             *           "created_at": "2026-05-03T04:33:55.419448Z",
+             *           "first_discovery_id": null,
+             *           "id": "ddc2271a-e7cf-4391-bc9b-ccd398f212e6",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
+             *           "last_discovery_id": null,
+             *           "last_seen_at": "2026-05-03T04:33:55.419448Z",
+             *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-05-01T19:08:39.703750Z"
+             *           "updated_at": "2026-05-03T04:33:55.419448Z",
+             *           "valid_from": "2026-05-03T04:33:55.419448Z",
+             *           "valid_to": null
              *         }
              *       ],
              *       "created_at": "2026-01-15T10:30:00Z",
+             *       "first_discovery_id": null,
              *       "host_id": "550e8400-e29b-41d4-a716-446655440003",
              *       "id": "550e8400-e29b-41d4-a716-446655440007",
+             *       "last_discovery_id": null,
+             *       "last_seen_at": "2026-01-15T10:30:00Z",
+             *       "lineage_id": null,
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Plex Media Server",
+             *       "service_definition": "Nest Thermostat",
              *       "source": {
              *         "type": "Manual"
              *       },
              *       "tags": [],
              *       "updated_at": "2026-01-15T10:30:00Z",
+             *       "valid_from": "2026-01-15T10:30:00Z",
+             *       "valid_to": null,
              *       "virtualization": null
              *     }
              */
@@ -3696,9 +3753,21 @@ export interface components {
                 /** Format: date-time */
                 readonly created_at: string;
                 /** Format: uuid */
+                readonly first_discovery_id?: string | null;
+                /** Format: uuid */
                 readonly id: string;
+                /** Format: uuid */
+                readonly last_discovery_id?: string | null;
+                /** Format: date-time */
+                readonly last_seen_at?: string;
+                /** Format: uuid */
+                readonly lineage_id?: string | null;
                 /** Format: date-time */
                 readonly updated_at: string;
+                /** Format: date-time */
+                readonly valid_from?: string;
+                /** Format: date-time */
+                readonly valid_to?: string | null;
             };
             error?: string | null;
             meta: components["schemas"]["ApiMeta"];
@@ -3743,6 +3812,19 @@ export interface components {
             meta: components["schemas"]["ApiMeta"];
             success: boolean;
         };
+        ApiResponse_Snapshot: {
+            data?: components["schemas"]["SnapshotBase"] & {
+                /** Format: date-time */
+                readonly created_at: string;
+                /** Format: uuid */
+                readonly id: string;
+                /** Format: date-time */
+                readonly updated_at: string;
+            };
+            error?: string | null;
+            meta: components["schemas"]["ApiMeta"];
+            success: boolean;
+        };
         ApiResponse_String: {
             data?: string;
             error?: string | null;
@@ -3755,7 +3837,11 @@ export interface components {
              *       "cidr": "192.168.1.0/24",
              *       "created_at": "2026-01-15T10:30:00Z",
              *       "description": "Local area network",
+             *       "first_discovery_id": null,
              *       "id": "550e8400-e29b-41d4-a716-446655440004",
+             *       "last_discovery_id": null,
+             *       "last_seen_at": "2026-01-15T10:30:00Z",
+             *       "lineage_id": null,
              *       "name": "LAN",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "source": {
@@ -3763,16 +3849,30 @@ export interface components {
              *       },
              *       "subnet_type": "Lan",
              *       "tags": [],
-             *       "updated_at": "2026-01-15T10:30:00Z"
+             *       "updated_at": "2026-01-15T10:30:00Z",
+             *       "valid_from": "2026-01-15T10:30:00Z",
+             *       "valid_to": null
              *     }
              */
             data?: components["schemas"]["SubnetBase"] & {
                 /** Format: date-time */
                 readonly created_at: string;
                 /** Format: uuid */
+                readonly first_discovery_id?: string | null;
+                /** Format: uuid */
                 readonly id: string;
+                /** Format: uuid */
+                readonly last_discovery_id?: string | null;
+                /** Format: date-time */
+                readonly last_seen_at?: string;
+                /** Format: uuid */
+                readonly lineage_id?: string | null;
                 /** Format: date-time */
                 readonly updated_at: string;
+                /** Format: date-time */
+                readonly valid_from?: string;
+                /** Format: date-time */
+                readonly valid_to?: string | null;
             };
             error?: string | null;
             meta: components["schemas"]["ApiMeta"];
@@ -3786,9 +3886,12 @@ export interface components {
              *       "description": "Production environment resources",
              *       "id": "550e8400-e29b-41d4-a716-44665544000a",
              *       "is_application": false,
+             *       "lineage_id": null,
              *       "name": "production",
              *       "organization_id": "550e8400-e29b-41d4-a716-446655440001",
-             *       "updated_at": "2026-01-15T10:30:00Z"
+             *       "updated_at": "2026-01-15T10:30:00Z",
+             *       "valid_from": "2026-01-15T10:30:00Z",
+             *       "valid_to": null
              *     }
              */
             data?: components["schemas"]["TagBase"] & {
@@ -3796,8 +3899,14 @@ export interface components {
                 readonly created_at: string;
                 /** Format: uuid */
                 readonly id: string;
+                /** Format: uuid */
+                readonly lineage_id?: string | null;
                 /** Format: date-time */
                 readonly updated_at: string;
+                /** Format: date-time */
+                readonly valid_from?: string;
+                /** Format: date-time */
+                readonly valid_to?: string | null;
             };
             error?: string | null;
             meta: components["schemas"]["ApiMeta"];
@@ -3939,6 +4048,7 @@ export interface components {
                 phase: components["schemas"]["DiscoveryPhase"];
                 /** Format: int32 */
                 progress: number;
+                scanned?: null | components["schemas"]["ScannedEntityIds"];
                 /** Format: uuid */
                 session_id: string;
                 /** Format: date-time */
@@ -3986,9 +4096,21 @@ export interface components {
                 /** Format: date-time */
                 readonly created_at: string;
                 /** Format: uuid */
+                readonly first_discovery_id?: string | null;
+                /** Format: uuid */
                 readonly id: string;
+                /** Format: uuid */
+                readonly last_discovery_id?: string | null;
+                /** Format: date-time */
+                readonly last_seen_at?: string;
+                /** Format: uuid */
+                readonly lineage_id?: string | null;
                 /** Format: date-time */
                 readonly updated_at: string;
+                /** Format: date-time */
+                readonly valid_from?: string;
+                /** Format: date-time */
+                readonly valid_to?: string | null;
             };
             error?: string | null;
             meta: components["schemas"]["ApiMeta"];
@@ -4044,23 +4166,41 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-05-01T19:08:39.690239Z",
-         *       "id": "d4f17a47-8bee-4567-90eb-1c57731a8ed5",
+         *       "created_at": "2026-05-03T04:33:55.408977Z",
+         *       "first_discovery_id": null,
+         *       "id": "7d79e2ce-6cc0-415e-a993-e77aa160672d",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
+         *       "last_discovery_id": null,
+         *       "last_seen_at": "2026-05-03T04:33:55.408977Z",
+         *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-05-01T19:08:39.690239Z"
+         *       "updated_at": "2026-05-03T04:33:55.408977Z",
+         *       "valid_from": "2026-05-03T04:33:55.408977Z",
+         *       "valid_to": null
          *     }
          */
         Binding: components["schemas"]["BindingBase"] & {
             /** Format: date-time */
             readonly created_at: string;
             /** Format: uuid */
+            readonly first_discovery_id?: string | null;
+            /** Format: uuid */
             readonly id: string;
+            /** Format: uuid */
+            readonly last_discovery_id?: string | null;
+            /** Format: date-time */
+            readonly last_seen_at?: string;
+            /** Format: uuid */
+            readonly lineage_id?: string | null;
             /** Format: date-time */
             readonly updated_at: string;
+            /** Format: date-time */
+            readonly valid_from?: string;
+            /** Format: date-time */
+            readonly valid_to?: string | null;
         };
         /** @description The base data for a Binding entity (everything except id, created_at, updated_at) */
         BindingBase: components["schemas"]["BindingType"] & {
@@ -4253,7 +4393,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Plex Media Server",
+         *           "service_definition": "Nest Thermostat",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -4313,6 +4453,10 @@ export interface components {
             service_definition: string;
             tags: string[];
             virtualization?: null | components["schemas"]["ServiceVirtualization"];
+        };
+        CreateSnapshotRequest: {
+            /** Format: uuid */
+            network_id: string;
         };
         CreateUpdateShareRequest: {
             share: components["schemas"]["Share"];
@@ -4579,6 +4723,7 @@ export interface components {
          *       "description": "HTTP/HTTPS services dependency",
          *       "edge_style": "Bezier",
          *       "id": "550e8400-e29b-41d4-a716-446655440008",
+         *       "lineage_id": null,
          *       "members": {
          *         "service_ids": [],
          *         "type": "Services"
@@ -4589,7 +4734,9 @@ export interface components {
          *         "type": "Manual"
          *       },
          *       "tags": [],
-         *       "updated_at": "2026-01-15T10:30:00Z"
+         *       "updated_at": "2026-01-15T10:30:00Z",
+         *       "valid_from": "2026-01-15T10:30:00Z",
+         *       "valid_to": null
          *     }
          */
         Dependency: components["schemas"]["DependencyBase"] & {
@@ -4597,8 +4744,14 @@ export interface components {
             readonly created_at: string;
             /** Format: uuid */
             readonly id: string;
+            /** Format: uuid */
+            readonly lineage_id?: string | null;
             /** Format: date-time */
             readonly updated_at: string;
+            /** Format: date-time */
+            readonly valid_from?: string;
+            /** Format: date-time */
+            readonly valid_to?: string | null;
         };
         DependencyBase: {
             color: components["schemas"]["Color"];
@@ -4705,14 +4858,8 @@ export interface components {
              */
             subnets?: components["schemas"]["Subnet"][];
         };
-        DiscoveryMetadata: components["schemas"]["DiscoveryType"] & {
-            /** Format: uuid */
-            daemon_id: string;
-            /** Format: date-time */
-            date: string;
-        };
         /** @enum {string} */
-        DiscoveryPhase: "Queued" | "Pending" | "Starting" | "Started" | "Scanning" | "Complete" | "Failed" | "Cancelled";
+        DiscoveryPhase: "AwaitingSnapshot" | "Queued" | "Pending" | "Starting" | "Started" | "Scanning" | "Complete" | "Failed" | "Cancelled";
         /**
          * @description Protocol that discovered the physical link between network devices
          * @enum {string}
@@ -4777,6 +4924,7 @@ export interface components {
             phase: components["schemas"]["DiscoveryPhase"];
             /** Format: int32 */
             progress: number;
+            scanned?: null | components["schemas"]["ScannedEntityIds"];
             /** Format: uuid */
             session_id: string;
             /** Format: date-time */
@@ -4945,7 +5093,7 @@ export interface components {
             urgency?: string | null;
         };
         /** @enum {string} */
-        EntityDiscriminants: "Organization" | "Invite" | "Share" | "Network" | "DaemonApiKey" | "UserApiKey" | "User" | "Tag" | "Discovery" | "Daemon" | "Host" | "Service" | "Port" | "Binding" | "IPAddress" | "Interface" | "Credential" | "Subnet" | "Vlan" | "Dependency" | "Topology" | "Unknown";
+        EntityDiscriminants: "Organization" | "Invite" | "Share" | "Network" | "DaemonApiKey" | "UserApiKey" | "User" | "Tag" | "Discovery" | "Daemon" | "Host" | "Service" | "Port" | "Binding" | "IPAddress" | "Interface" | "Credential" | "Subnet" | "Vlan" | "Dependency" | "Topology" | "Snapshot" | "Unknown";
         EntitySource: {
             /** @enum {string} */
             type: "Manual";
@@ -4953,12 +5101,10 @@ export interface components {
             /** @enum {string} */
             type: "System";
         } | {
-            metadata: components["schemas"]["DiscoveryMetadata"][];
             /** @enum {string} */
             type: "Discovery";
         } | {
             details: components["schemas"]["MatchDetails"];
-            metadata: components["schemas"]["DiscoveryMetadata"][];
             /** @enum {string} */
             type: "DiscoveryWithMatch";
         } | {
@@ -4984,9 +5130,13 @@ export interface components {
          *       "created_at": "2026-01-15T10:30:00Z",
          *       "credential_assignments": [],
          *       "description": "Primary web server",
+         *       "first_discovery_id": null,
          *       "hidden": false,
          *       "hostname": "web-server-01.local",
          *       "id": "550e8400-e29b-41d4-a716-446655440003",
+         *       "last_discovery_id": null,
+         *       "last_seen_at": "2026-01-15T10:30:00Z",
+         *       "lineage_id": null,
          *       "name": "web-server-01",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "source": {
@@ -4994,16 +5144,57 @@ export interface components {
          *       },
          *       "tags": [],
          *       "updated_at": "2026-01-15T10:30:00Z",
+         *       "valid_from": "2026-01-15T10:30:00Z",
+         *       "valid_to": null,
          *       "virtualization": null
          *     }
          */
         Host: components["schemas"]["HostBase"] & {
             /** Format: date-time */
             readonly created_at: string;
+            /**
+             * Format: uuid
+             * @description Discovery (historical row) that first observed this entity. Set once
+             *     (post-terminal); immutable thereafter via the `IS NULL` guard in
+             *     `update_discovery_fks`.
+             */
+            readonly first_discovery_id?: string | null;
             /** Format: uuid */
             readonly id: string;
+            /**
+             * Format: uuid
+             * @description Discovery (historical row) that last touched this entity. Populated
+             *     post-terminal by the per-entity-service subscriber on
+             *     `DiscoveryProcessed`. NULL until the first successful discovery
+             *     session terminates after this row was created.
+             */
+            readonly last_discovery_id?: string | null;
+            /**
+             * Format: date-time
+             * @description Last successful natural-key match by daemon discovery against this
+             *     live row. Refreshed every scan, regardless of field changes.
+             */
+            readonly last_seen_at?: string;
+            /**
+             * Format: uuid
+             * @description Lineage pointer on closed historical rows back to the live row whose
+             *     state they capture. NULL on live rows.
+             */
+            readonly lineage_id?: string | null;
             /** Format: date-time */
             readonly updated_at: string;
+            /**
+             * Format: date-time
+             * @description SCD2: when this row version became live. Equal to `created_at` for
+             *     rows that have never ridden a snapshot; advanced to the snapshot's
+             *     `taken_at` for live rows after a network snapshot fires.
+             */
+            readonly valid_from?: string;
+            /**
+             * Format: date-time
+             * @description SCD2: when this row was closed by a snapshot. NULL = currently live.
+             */
+            readonly valid_to?: string | null;
         };
         /**
          * @description Base data for a Host entity (stored in database).
@@ -5068,6 +5259,7 @@ export interface components {
          *           "cdp_platform": null,
          *           "cdp_port_id": null,
          *           "created_at": "2026-01-15T10:30:00Z",
+         *           "first_discovery_id": null,
          *           "host_id": "550e8400-e29b-41d4-a716-446655440003",
          *           "id": "550e8400-e29b-41d4-a716-44665544000f",
          *           "if_alias": "Uplink to Core Switch",
@@ -5076,6 +5268,9 @@ export interface components {
          *           "if_name": "Gi0/1",
          *           "if_type": 6,
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
+         *           "last_discovery_id": null,
+         *           "last_seen_at": "2026-01-15T10:30:00Z",
+         *           "lineage_id": null,
          *           "lldp_chassis_id": null,
          *           "lldp_mgmt_addr": null,
          *           "lldp_port_desc": null,
@@ -5087,21 +5282,29 @@ export interface components {
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "oper_status": "Up",
          *           "speed_bps": 1000000000,
-         *           "updated_at": "2026-01-15T10:30:00Z"
+         *           "updated_at": "2026-01-15T10:30:00Z",
+         *           "valid_from": "2026-01-15T10:30:00Z",
+         *           "valid_to": null
          *         }
          *       ],
          *       "ip_addresses": [
          *         {
          *           "created_at": "2026-01-15T10:30:00Z",
+         *           "first_discovery_id": null,
          *           "host_id": "550e8400-e29b-41d4-a716-446655440003",
          *           "id": "550e8400-e29b-41d4-a716-446655440005",
          *           "ip_address": "192.168.1.100",
+         *           "last_discovery_id": null,
+         *           "last_seen_at": "2026-01-15T10:30:00Z",
+         *           "lineage_id": null,
          *           "mac_address": "DE:AD:BE:EF:CA:FE",
          *           "name": "eth0",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
          *           "subnet_id": "550e8400-e29b-41d4-a716-446655440004",
-         *           "updated_at": "2026-01-15T10:30:00Z"
+         *           "updated_at": "2026-01-15T10:30:00Z",
+         *           "valid_from": "2026-01-15T10:30:00Z",
+         *           "valid_to": null
          *         }
          *       ],
          *       "name": "web-server-01",
@@ -5109,41 +5312,59 @@ export interface components {
          *       "ports": [
          *         {
          *           "created_at": "2026-01-15T10:30:00Z",
+         *           "first_discovery_id": null,
          *           "host_id": "550e8400-e29b-41d4-a716-446655440003",
          *           "id": "550e8400-e29b-41d4-a716-446655440006",
+         *           "last_discovery_id": null,
+         *           "last_seen_at": "2026-01-15T10:30:00Z",
+         *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "number": 80,
          *           "protocol": "Tcp",
          *           "type": "Http",
-         *           "updated_at": "2026-01-15T10:30:00Z"
+         *           "updated_at": "2026-01-15T10:30:00Z",
+         *           "valid_from": "2026-01-15T10:30:00Z",
+         *           "valid_to": null
          *         }
          *       ],
          *       "services": [
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-05-01T19:08:39.689261Z",
-         *               "id": "8f577b55-9801-4d3c-8680-fed2f833deba",
+         *               "created_at": "2026-05-03T04:33:55.408482Z",
+         *               "first_discovery_id": null,
+         *               "id": "19d7a540-8034-4343-b582-b52cdb749ab5",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
+         *               "last_discovery_id": null,
+         *               "last_seen_at": "2026-05-03T04:33:55.408482Z",
+         *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-05-01T19:08:39.689261Z"
+         *               "updated_at": "2026-05-03T04:33:55.408482Z",
+         *               "valid_from": "2026-05-03T04:33:55.408482Z",
+         *               "valid_to": null
          *             }
          *           ],
          *           "created_at": "2026-01-15T10:30:00Z",
+         *           "first_discovery_id": null,
          *           "host_id": "550e8400-e29b-41d4-a716-446655440003",
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
+         *           "last_discovery_id": null,
+         *           "last_seen_at": "2026-01-15T10:30:00Z",
+         *           "lineage_id": null,
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Plex Media Server",
+         *           "service_definition": "Nest Thermostat",
          *           "source": {
          *             "type": "Manual"
          *           },
          *           "tags": [],
          *           "updated_at": "2026-01-15T10:30:00Z",
+         *           "valid_from": "2026-01-15T10:30:00Z",
+         *           "valid_to": null,
          *           "virtualization": null
          *         }
          *       ],
@@ -5193,24 +5414,42 @@ export interface components {
         /**
          * @example {
          *       "created_at": "2026-01-15T10:30:00Z",
+         *       "first_discovery_id": null,
          *       "host_id": "550e8400-e29b-41d4-a716-446655440003",
          *       "id": "550e8400-e29b-41d4-a716-446655440005",
          *       "ip_address": "192.168.1.100",
+         *       "last_discovery_id": null,
+         *       "last_seen_at": "2026-01-15T10:30:00Z",
+         *       "lineage_id": null,
          *       "mac_address": "DE:AD:BE:EF:CA:FE",
          *       "name": "eth0",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
          *       "subnet_id": "550e8400-e29b-41d4-a716-446655440004",
-         *       "updated_at": "2026-01-15T10:30:00Z"
+         *       "updated_at": "2026-01-15T10:30:00Z",
+         *       "valid_from": "2026-01-15T10:30:00Z",
+         *       "valid_to": null
          *     }
          */
         IPAddress: components["schemas"]["IPAddressBase"] & {
             /** Format: date-time */
             readonly created_at: string;
             /** Format: uuid */
+            readonly first_discovery_id?: string | null;
+            /** Format: uuid */
             readonly id: string;
+            /** Format: uuid */
+            readonly last_discovery_id?: string | null;
+            /** Format: date-time */
+            readonly last_seen_at?: string;
+            /** Format: uuid */
+            readonly lineage_id?: string | null;
             /** Format: date-time */
             readonly updated_at: string;
+            /** Format: date-time */
+            readonly valid_from?: string;
+            /** Format: date-time */
+            readonly valid_to?: string | null;
         };
         IPAddressBase: {
             /** Format: uuid */
@@ -5326,9 +5565,21 @@ export interface components {
             /** Format: date-time */
             readonly created_at: string;
             /** Format: uuid */
+            readonly first_discovery_id?: string | null;
+            /** Format: uuid */
             readonly id: string;
+            /** Format: uuid */
+            readonly last_discovery_id?: string | null;
+            /** Format: date-time */
+            readonly last_seen_at?: string;
+            /** Format: uuid */
+            readonly lineage_id?: string | null;
             /** Format: date-time */
             readonly updated_at: string;
+            /** Format: date-time */
+            readonly valid_from?: string;
+            /** Format: date-time */
+            readonly valid_to?: string | null;
         };
         InterfaceBase: {
             /** @description SNMP ifAdminStatus: 1=up, 2=down, 3=testing */
@@ -5839,8 +6090,14 @@ export interface components {
                 readonly created_at: string;
                 /** Format: uuid */
                 readonly id: string;
+                /** Format: uuid */
+                readonly lineage_id?: string | null;
                 /** Format: date-time */
                 readonly updated_at: string;
+                /** Format: date-time */
+                readonly valid_from?: string;
+                /** Format: date-time */
+                readonly valid_to?: string | null;
             })[];
             error?: string | null;
             meta: components["schemas"]["PaginatedApiMeta"];
@@ -5887,9 +6144,21 @@ export interface components {
                 /** Format: date-time */
                 readonly created_at: string;
                 /** Format: uuid */
+                readonly first_discovery_id?: string | null;
+                /** Format: uuid */
                 readonly id: string;
+                /** Format: uuid */
+                readonly last_discovery_id?: string | null;
+                /** Format: date-time */
+                readonly last_seen_at?: string;
+                /** Format: uuid */
+                readonly lineage_id?: string | null;
                 /** Format: date-time */
                 readonly updated_at: string;
+                /** Format: date-time */
+                readonly valid_from?: string;
+                /** Format: date-time */
+                readonly valid_to?: string | null;
             })[];
             error?: string | null;
             meta: components["schemas"]["PaginatedApiMeta"];
@@ -5901,9 +6170,21 @@ export interface components {
                 /** Format: date-time */
                 readonly created_at: string;
                 /** Format: uuid */
+                readonly first_discovery_id?: string | null;
+                /** Format: uuid */
                 readonly id: string;
+                /** Format: uuid */
+                readonly last_discovery_id?: string | null;
+                /** Format: date-time */
+                readonly last_seen_at?: string;
+                /** Format: uuid */
+                readonly lineage_id?: string | null;
                 /** Format: date-time */
                 readonly updated_at: string;
+                /** Format: date-time */
+                readonly valid_from?: string;
+                /** Format: date-time */
+                readonly valid_to?: string | null;
             })[];
             error?: string | null;
             meta: components["schemas"]["PaginatedApiMeta"];
@@ -5916,8 +6197,14 @@ export interface components {
                 readonly created_at: string;
                 /** Format: uuid */
                 readonly id: string;
+                /** Format: uuid */
+                readonly lineage_id?: string | null;
                 /** Format: date-time */
                 readonly updated_at: string;
+                /** Format: date-time */
+                readonly valid_from?: string;
+                /** Format: date-time */
+                readonly valid_to?: string | null;
             })[];
             error?: string | null;
             meta: components["schemas"]["PaginatedApiMeta"];
@@ -5971,9 +6258,21 @@ export interface components {
                 /** Format: date-time */
                 readonly created_at: string;
                 /** Format: uuid */
+                readonly first_discovery_id?: string | null;
+                /** Format: uuid */
                 readonly id: string;
+                /** Format: uuid */
+                readonly last_discovery_id?: string | null;
+                /** Format: date-time */
+                readonly last_seen_at?: string;
+                /** Format: uuid */
+                readonly lineage_id?: string | null;
                 /** Format: date-time */
                 readonly updated_at: string;
+                /** Format: date-time */
+                readonly valid_from?: string;
+                /** Format: date-time */
+                readonly valid_to?: string | null;
             })[];
             error?: string | null;
             meta: components["schemas"]["PaginatedApiMeta"];
@@ -6071,27 +6370,52 @@ export interface components {
             seat_count: number;
             /** Format: int64 */
             seat_limit?: number | null;
+            /**
+             * Format: int32
+             * @description Snapshot retention window in days. `0` means snapshots are not
+             *     available on this plan; the UI uses this to disable the "Take
+             *     snapshot" button and surface the upgrade hook.
+             */
+            snapshot_retention_days: number;
         };
         /**
          * @description Port entity with custom serialization that flattens PortType fields.
          * @example {
          *       "created_at": "2026-01-15T10:30:00Z",
+         *       "first_discovery_id": null,
          *       "host_id": "550e8400-e29b-41d4-a716-446655440003",
          *       "id": "550e8400-e29b-41d4-a716-446655440006",
+         *       "last_discovery_id": null,
+         *       "last_seen_at": "2026-01-15T10:30:00Z",
+         *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "number": 80,
          *       "protocol": "Tcp",
          *       "type": "Http",
-         *       "updated_at": "2026-01-15T10:30:00Z"
+         *       "updated_at": "2026-01-15T10:30:00Z",
+         *       "valid_from": "2026-01-15T10:30:00Z",
+         *       "valid_to": null
          *     }
          */
         Port: components["schemas"]["PortBase"] & {
             /** Format: date-time */
             readonly created_at: string;
             /** Format: uuid */
+            readonly first_discovery_id?: string | null;
+            /** Format: uuid */
             readonly id: string;
+            /** Format: uuid */
+            readonly last_discovery_id?: string | null;
+            /** Format: date-time */
+            readonly last_seen_at?: string;
+            /** Format: uuid */
+            readonly lineage_id?: string | null;
             /** Format: date-time */
             readonly updated_at: string;
+            /** Format: date-time */
+            readonly valid_from?: string;
+            /** Format: date-time */
+            readonly valid_to?: string | null;
         };
         /** @description The base data for a Port entity (everything except id, created_at, updated_at) */
         PortBase: components["schemas"]["PortType"] & {
@@ -6318,6 +6642,35 @@ export interface components {
             /** @description On Windows, use Npcap broadcast ARP instead of SendARP (default: false) */
             use_npcap_arp?: boolean;
         };
+        /**
+         * @description Canonical IDs of entities scanned in a discovery session.
+         *
+         *     Populated daemon-side at terminal phase from `EntityBuffer`'s `Created`
+         *     entries. Travels with the terminal `DiscoveryUpdatePayload` to the server,
+         *     rides the in-memory `EntityOperation::Created` event published for the
+         *     historical Discovery row (the event scope carries `Entity::Discovery` with
+         *     the full struct, including `run_type::Historical { results }`), then is
+         *     stripped before persisting into the historical Discovery row's JSONB (see
+         *     the `SqlValue::RunType` bind_value handler in
+         *     `backend/src/server/shared/storage/generic.rs`). Per-entity-service
+         *     subscribers extract `results.scanned` from the in-memory event and call
+         *     `DiscoveryFkUpdater::update_discovery_fks` to backfill
+         *     `last_discovery_id` / `first_discovery_id` on the matched rows.
+         *
+         *     Naming: `scanned_*` because the daemon scans entities — some submissions
+         *     match existing rows (refresh), others insert new rows. Both populate the
+         *     EntityBuffer with canonical (server-assigned) IDs.
+         */
+        ScannedEntityIds: {
+            binding_ids?: string[];
+            host_ids?: string[];
+            interface_ids?: string[];
+            ip_address_ids?: string[];
+            port_ids?: string[];
+            service_ids?: string[];
+            subnet_ids?: string[];
+            vlan_ids?: string[];
+        };
         /** @description Secret value that can be either inline content or a file path on the daemon host. */
         SecretValue: {
             /** @enum {string} */
@@ -6341,28 +6694,40 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-05-01T19:08:39.690100Z",
-         *           "id": "60400722-8ff8-4563-9ca9-258520ce6ba0",
+         *           "created_at": "2026-05-03T04:33:55.408928Z",
+         *           "first_discovery_id": null,
+         *           "id": "086135f8-8d1a-4d74-a3dc-891da63891fe",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
+         *           "last_discovery_id": null,
+         *           "last_seen_at": "2026-05-03T04:33:55.408928Z",
+         *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-05-01T19:08:39.690100Z"
+         *           "updated_at": "2026-05-03T04:33:55.408928Z",
+         *           "valid_from": "2026-05-03T04:33:55.408928Z",
+         *           "valid_to": null
          *         }
          *       ],
          *       "created_at": "2026-01-15T10:30:00Z",
+         *       "first_discovery_id": null,
          *       "host_id": "550e8400-e29b-41d4-a716-446655440003",
          *       "id": "550e8400-e29b-41d4-a716-446655440007",
+         *       "last_discovery_id": null,
+         *       "last_seen_at": "2026-01-15T10:30:00Z",
+         *       "lineage_id": null,
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Plex Media Server",
+         *       "service_definition": "Nest Thermostat",
          *       "source": {
          *         "type": "Manual"
          *       },
          *       "tags": [],
          *       "updated_at": "2026-01-15T10:30:00Z",
+         *       "valid_from": "2026-01-15T10:30:00Z",
+         *       "valid_to": null,
          *       "virtualization": null
          *     }
          */
@@ -6370,9 +6735,21 @@ export interface components {
             /** Format: date-time */
             readonly created_at: string;
             /** Format: uuid */
+            readonly first_discovery_id?: string | null;
+            /** Format: uuid */
             readonly id: string;
+            /** Format: uuid */
+            readonly last_discovery_id?: string | null;
+            /** Format: date-time */
+            readonly last_seen_at?: string;
+            /** Format: uuid */
+            readonly lineage_id?: string | null;
             /** Format: date-time */
             readonly updated_at: string;
+            /** Format: date-time */
+            readonly valid_from?: string;
+            /** Format: date-time */
+            readonly valid_to?: string | null;
         };
         ServiceBase: {
             bindings: components["schemas"]["Binding"][];
@@ -6512,12 +6889,32 @@ export interface components {
             show_minimap: boolean;
             show_zoom_controls: boolean;
         };
+        Snapshot: components["schemas"]["SnapshotBase"] & {
+            /** Format: date-time */
+            readonly created_at: string;
+            /** Format: uuid */
+            readonly id: string;
+            /** Format: date-time */
+            readonly updated_at: string;
+        };
+        SnapshotBase: {
+            /** Format: uuid */
+            created_by_user_id?: string | null;
+            /** Format: uuid */
+            network_id: string;
+            /** Format: date-time */
+            taken_at: string;
+        };
         /**
          * @example {
          *       "cidr": "192.168.1.0/24",
          *       "created_at": "2026-01-15T10:30:00Z",
          *       "description": "Local area network",
+         *       "first_discovery_id": null,
          *       "id": "550e8400-e29b-41d4-a716-446655440004",
+         *       "last_discovery_id": null,
+         *       "last_seen_at": "2026-01-15T10:30:00Z",
+         *       "lineage_id": null,
          *       "name": "LAN",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "source": {
@@ -6525,16 +6922,30 @@ export interface components {
          *       },
          *       "subnet_type": "Lan",
          *       "tags": [],
-         *       "updated_at": "2026-01-15T10:30:00Z"
+         *       "updated_at": "2026-01-15T10:30:00Z",
+         *       "valid_from": "2026-01-15T10:30:00Z",
+         *       "valid_to": null
          *     }
          */
         Subnet: components["schemas"]["SubnetBase"] & {
             /** Format: date-time */
             readonly created_at: string;
             /** Format: uuid */
+            readonly first_discovery_id?: string | null;
+            /** Format: uuid */
             readonly id: string;
+            /** Format: uuid */
+            readonly last_discovery_id?: string | null;
+            /** Format: date-time */
+            readonly last_seen_at?: string;
+            /** Format: uuid */
+            readonly lineage_id?: string | null;
             /** Format: date-time */
             readonly updated_at: string;
+            /** Format: date-time */
+            readonly valid_from?: string;
+            /** Format: date-time */
+            readonly valid_to?: string | null;
         };
         SubnetBase: {
             cidr: string;
@@ -6571,9 +6982,12 @@ export interface components {
          *       "description": "Production environment resources",
          *       "id": "550e8400-e29b-41d4-a716-44665544000a",
          *       "is_application": false,
+         *       "lineage_id": null,
          *       "name": "production",
          *       "organization_id": "550e8400-e29b-41d4-a716-446655440001",
-         *       "updated_at": "2026-01-15T10:30:00Z"
+         *       "updated_at": "2026-01-15T10:30:00Z",
+         *       "valid_from": "2026-01-15T10:30:00Z",
+         *       "valid_to": null
          *     }
          */
         Tag: components["schemas"]["TagBase"] & {
@@ -6581,8 +6995,14 @@ export interface components {
             readonly created_at: string;
             /** Format: uuid */
             readonly id: string;
+            /** Format: uuid */
+            readonly lineage_id?: string | null;
             /** Format: date-time */
             readonly updated_at: string;
+            /** Format: date-time */
+            readonly valid_from?: string;
+            /** Format: date-time */
+            readonly valid_to?: string | null;
         };
         TagBase: {
             color: components["schemas"]["Color"];
@@ -6622,41 +7042,16 @@ export interface components {
             readonly updated_at: string;
         };
         TopologyBase: {
-            bindings: components["schemas"]["Binding"][];
-            dependencies: components["schemas"]["Dependency"][];
             edges: components["schemas"]["Edge"][];
-            entity_tags: components["schemas"]["Tag"][];
-            hosts: components["schemas"]["Host"][];
-            interfaces: components["schemas"]["Interface"][];
-            ip_addresses: components["schemas"]["IPAddress"][];
-            is_locked: boolean;
-            is_stale: boolean;
-            /** Format: date-time */
-            last_refreshed: string;
-            /** Format: date-time */
-            locked_at?: string | null;
-            /** Format: uuid */
-            locked_by?: string | null;
-            name: string;
             /** Format: uuid */
             network_id: string;
             nodes: components["schemas"]["Node"][];
             options: components["schemas"]["TopologyOptions"];
-            /** Format: uuid */
-            parent_id?: string | null;
-            ports: components["schemas"]["Port"][];
-            removed_bindings: string[];
-            removed_dependencies: string[];
-            removed_hosts: string[];
-            removed_interfaces: string[];
-            removed_ip_addresses: string[];
-            removed_ports: string[];
-            removed_services: string[];
-            removed_subnets: string[];
-            services: components["schemas"]["Service"][];
-            subnets: components["schemas"]["Subnet"][];
-            tags: string[];
-            vlans?: components["schemas"]["Vlan"][];
+            /**
+             * Format: uuid
+             * @description FK to `snapshots.id`. NULL = live view; Some = snapshot row.
+             */
+            snapshot_id?: string | null;
         };
         /**
          * @description Lightweight request type for updating an edge's handles.
@@ -6687,27 +7082,6 @@ export interface components {
             no_fade_edges: boolean;
             show_minimap?: boolean;
             tag_filter?: components["schemas"]["TopologyTagFilter"];
-        };
-        /**
-         * @description Lightweight request type for updating topology metadata.
-         *
-         *     Used for editing topology name/parent - instead of sending the entire topology
-         *     (which includes all hosts, ip_addresses, services, etc.), only sends the metadata fields.
-         *     Fixes HTTP 413 errors on metadata edit operations.
-         */
-        TopologyMetadataUpdate: {
-            /** @description New name for the topology */
-            name: string;
-            /**
-             * Format: uuid
-             * @description Network ID for authorization
-             */
-            network_id: string;
-            /**
-             * Format: uuid
-             * @description New parent topology ID (optional)
-             */
-            parent_id?: string | null;
         };
         /**
          * @description Lightweight request type for updating a single node's position.
@@ -6756,27 +7130,6 @@ export interface components {
         TopologyOptions: {
             local: components["schemas"]["TopologyLocalOptions"];
             request: components["schemas"]["TopologyRequestOptions"];
-        };
-        /**
-         * @description Lightweight request type for topology rebuild/refresh operations.
-         *
-         *     This type only includes the fields actually needed by the server - entity data
-         *     (hosts, ip_addresses, services, etc.) is fetched fresh from the database.
-         *     Using this instead of the full Topology dramatically reduces payload size
-         *     for large networks (from MBs to KBs), fixing HTTP 413 errors.
-         */
-        TopologyRebuildRequest: {
-            /** @description Existing edges for reference during rebuild */
-            edges?: components["schemas"]["Edge"][];
-            /**
-             * Format: uuid
-             * @description Network ID for authorization and data fetching
-             */
-            network_id: string;
-            /** @description Existing nodes for position preservation during rebuild */
-            nodes?: components["schemas"]["Node"][];
-            /** @description Topology options for graph building */
-            options: components["schemas"]["TopologyOptions"];
         };
         TopologyRequestOptions: {
             container_rules?: {
@@ -6975,9 +7328,21 @@ export interface components {
             /** Format: date-time */
             readonly created_at: string;
             /** Format: uuid */
+            readonly first_discovery_id?: string | null;
+            /** Format: uuid */
             readonly id: string;
+            /** Format: uuid */
+            readonly last_discovery_id?: string | null;
+            /** Format: date-time */
+            readonly last_seen_at?: string;
+            /** Format: uuid */
+            readonly lineage_id?: string | null;
             /** Format: date-time */
             readonly updated_at: string;
+            /** Format: date-time */
+            readonly valid_from?: string;
+            /** Format: date-time */
+            readonly valid_to?: string | null;
         };
         VlanBase: {
             description?: string | null;
@@ -12471,6 +12836,153 @@ export interface operations {
             };
         };
     };
+    get_all_snapshots: {
+        parameters: {
+            query?: {
+                /** @description Filter by network ID */
+                network_id?: string | null;
+                /** @description Filter by specific entity IDs (for selective loading) */
+                ids?: string[] | null;
+                /** @description Maximum number of results to return (1-1000, default: 50). Use 0 for no limit. */
+                limit?: number | null;
+                /** @description Number of results to skip. Default: 0. */
+                offset?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of snapshots */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: (components["schemas"]["SnapshotBase"] & {
+                            /** Format: date-time */
+                            readonly created_at: string;
+                            /** Format: uuid */
+                            readonly id: string;
+                            /** Format: date-time */
+                            readonly updated_at: string;
+                        })[];
+                        error?: string | null;
+                        meta: components["schemas"]["PaginatedApiMeta"];
+                        success: boolean;
+                    };
+                };
+            };
+        };
+    };
+    create_snapshot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateSnapshotRequest"];
+            };
+        };
+        responses: {
+            /** @description Snapshot created */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_Snapshot"];
+                };
+            };
+            /** @description Snapshots not available on plan */
+            402: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Network is busy with discovery; retry shortly */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    get_snapshot_by_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Snapshot ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Snapshot found */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_Snapshot"];
+                };
+            };
+            /** @description Snapshot not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_snapshot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Snapshot ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Snapshot deleted */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse"];
+                };
+            };
+            /** @description Snapshot not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
     list_subnets: {
         parameters: {
             query?: {
@@ -13079,39 +13591,6 @@ export interface operations {
             };
         };
     };
-    create_topology: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["Topology"];
-            };
-        };
-        responses: {
-            /** @description Topology created */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_Topology"];
-                };
-            };
-            /** @description Validation failed */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiErrorResponse"];
-                };
-            };
-        };
-    };
     export_topologies_csv: {
         parameters: {
             query?: {
@@ -13200,47 +13679,6 @@ export interface operations {
             };
             /** @description Topology not found */
             404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiErrorResponse"];
-                };
-            };
-        };
-    };
-    delete_topology: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Topology ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Topology deleted */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse"];
-                };
-            };
-            /** @description Topology not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiErrorResponse"];
-                };
-            };
-            /** @description Cannot delete last topology */
-            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -13377,92 +13815,6 @@ export interface operations {
             };
         };
     };
-    lock: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Topology ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Topology locked */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_Topology"];
-                };
-            };
-            /** @description Access denied */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiErrorResponse"];
-                };
-            };
-            /** @description Topology not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiErrorResponse"];
-                };
-            };
-        };
-    };
-    update_metadata: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Topology ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TopologyMetadataUpdate"];
-            };
-        };
-        responses: {
-            /** @description Metadata updated */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse"];
-                };
-            };
-            /** @description Access denied */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiErrorResponse"];
-                };
-            };
-            /** @description Topology not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiErrorResponse"];
-                };
-            };
-        };
-    };
     update_node_position: {
         parameters: {
             query?: never;
@@ -13543,137 +13895,6 @@ export interface operations {
                 };
             };
             /** @description Topology or node not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiErrorResponse"];
-                };
-            };
-        };
-    };
-    rebuild: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Topology ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TopologyRebuildRequest"];
-            };
-        };
-        responses: {
-            /** @description Topology rebuilt */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse"];
-                };
-            };
-            /** @description Access denied */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiErrorResponse"];
-                };
-            };
-            /** @description Topology not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiErrorResponse"];
-                };
-            };
-        };
-    };
-    refresh: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Topology ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TopologyRebuildRequest"];
-            };
-        };
-        responses: {
-            /** @description Topology refreshed */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse"];
-                };
-            };
-            /** @description Access denied */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiErrorResponse"];
-                };
-            };
-            /** @description Topology not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiErrorResponse"];
-                };
-            };
-        };
-    };
-    unlock: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Topology ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Topology unlocked */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_Topology"];
-                };
-            };
-            /** @description Access denied */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiErrorResponse"];
-                };
-            };
-            /** @description Topology not found */
             404: {
                 headers: {
                     [name: string]: unknown;

@@ -47,13 +47,19 @@
 		onClose,
 		topologyId = '',
 		networkId = '',
-		name = undefined
+		name = undefined,
+		topologyDisplayName = ''
 	}: {
 		isOpen?: boolean;
 		onClose: () => void;
 		topologyId?: string;
 		networkId?: string;
+		/** Modal-registry slug; threaded into GenericModal. */
 		name?: string;
+		/** Display name used in the modal title. Topology rows no longer carry
+		 *  a name field, so callers pass it explicitly (network name for live,
+		 *  formatted snapshot timestamp otherwise). */
+		topologyDisplayName?: string;
 	} = $props();
 
 	// Queries
@@ -61,10 +67,10 @@
 	const currentUserQuery = useCurrentUserQuery();
 	let currentUser = $derived(currentUserQuery.data);
 
-	const topologiesQuery = useTopologiesQuery();
-	let topologyName = $derived(topologiesQuery.data?.find((t) => t.id === topologyId)?.name ?? '');
-
-	let modalTitle = $derived(shares_manageShares({ name: topologyName }));
+	// Keep the topologies query around so the modal verifies the referenced
+	// topology exists; title comes from `topologyDisplayName` directly.
+	useTopologiesQuery();
+	let modalTitle = $derived(shares_manageShares({ name: topologyDisplayName }));
 
 	const organizationQuery = useOrganizationQuery();
 	let hasShareViews = $derived.by(() => {

@@ -15,6 +15,7 @@ use crate::server::{
     services::r#impl::base::Service,
     shared::storage::traits::Storable,
     shares::r#impl::base::Share,
+    snapshots::types::base::Snapshot,
     subnets::r#impl::base::Subnet,
     tags::entity_tags::EntityTag,
     tags::r#impl::base::Tag,
@@ -122,6 +123,14 @@ fn get_entity_deserializers() -> HashMap<&'static str, DeserializeFn> {
         Topology::table_name(),
         Box::new(|row| {
             Topology::from_row(row)?;
+            Ok(())
+        }),
+    );
+
+    map.insert(
+        Snapshot::table_name(),
+        Box::new(|row| {
+            Snapshot::from_row(row)?;
             Ok(())
         }),
     );

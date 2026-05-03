@@ -1,4 +1,4 @@
-import type { Topology } from '../types/base';
+import type { EnrichedTopology } from '../types/base';
 import type { Node } from '@xyflow/svelte';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -29,16 +29,11 @@ export const TUTORIAL_SERVICES = [
 	}
 ];
 
-export const TUTORIAL_TOPOLOGY: Topology = {
+export const TUTORIAL_TOPOLOGY: EnrichedTopology = {
 	id: uuidv4(),
 	name: 'Tutorial',
 	network_id: uuidv4(),
-	is_locked: false,
-	is_stale: false,
-	last_refreshed: new Date().toISOString(),
-	locked_at: null,
-	locked_by: null,
-	parent_id: null,
+	snapshot_id: null,
 	created_at: new Date().toISOString(),
 	updated_at: new Date().toISOString(),
 	nodes: [],
@@ -49,14 +44,7 @@ export const TUTORIAL_TOPOLOGY: Topology = {
 	ports: [],
 	ip_addresses: [],
 	interfaces: [],
-	removed_bindings: [],
-	removed_dependencies: [],
-	removed_hosts: [],
-	removed_interfaces: [],
-	removed_ip_addresses: [],
-	removed_ports: [],
-	removed_services: [],
-	removed_subnets: [],
+	vlans: [],
 	options: {
 		request: { element_rules: [], container_rules: [] },
 		local: {
@@ -99,7 +87,7 @@ export const TUTORIAL_TOPOLOGY: Topology = {
 		updated_at: new Date().toISOString()
 	})),
 	subnets: []
-} as unknown as Topology;
+} as unknown as EnrichedTopology;
 
 // Xyflow nodes positioned in a triangle for the mini topology viewer
 const POSITIONS = [

@@ -1,5 +1,5 @@
 import type { LayoutGraph } from '../layout/layout-graph';
-import type { Topology, TopologyNode, TopologyEdge } from '../types/base';
+import type { EnrichedTopology, TopologyNode, TopologyEdge } from '../types/base';
 import type { SelectionStores } from '../selection';
 import type { Node, Edge } from '@xyflow/svelte';
 import type { Writable } from 'svelte/store';
@@ -32,7 +32,7 @@ export interface LayoutState {
  * Immutable inputs for a single pipeline run.
  */
 export interface PipelineContext {
-	topology: Topology;
+	topology: EnrichedTopology;
 	containerElement: HTMLDivElement;
 	getNodes: () => Node[];
 	selectionStores: SelectionStores;

@@ -160,7 +160,9 @@ async fn create_network(
             .create_organizational_subnets(network.id, entity.clone())
             .await?;
 
-        let topology = Topology::new(TopologyBase::new(network.base.name.clone(), network.id));
+        // Create live-view topology row for this network. Snapshot rows are
+        // inserted separately by the Snapshot::Created subscriber.
+        let topology = Topology::new(TopologyBase::new(network.id));
 
         state
             .services

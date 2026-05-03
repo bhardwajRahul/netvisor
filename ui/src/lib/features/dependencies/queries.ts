@@ -100,11 +100,12 @@ export function useDeleteDependencyMutation() {
 				queryKeys.dependencies.all,
 				(old) => old?.filter((d) => d.id !== id) ?? []
 			);
-			// Optimistically strip the dependency and its edges from topology cache
+			// Optimistically strip the dependency's edges from the topology graph
+			// (dependency rows themselves now live in the dedicated dependencies cache,
+			// not on the topology row).
 			queryClient.setQueryData<Topology[]>(queryKeys.topology.all, (old) =>
 				old?.map((t) => ({
 					...t,
-					dependencies: t.dependencies.filter((d) => d.id !== id),
 					edges: t.edges.filter(
 						(e) =>
 							!(

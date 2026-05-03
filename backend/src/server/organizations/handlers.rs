@@ -256,7 +256,7 @@ pub async fn reset(
 
     // Create a default topology for the new network
     use crate::server::topology::types::base::TopologyBase;
-    let base = TopologyBase::new("My Topology".to_string(), network.id);
+    let base = TopologyBase::new(network.id);
     let topology = Topology {
         id: Uuid::new_v4(),
         created_at: chrono::Utc::now(),
@@ -736,12 +736,12 @@ pub async fn populate_demo_data(
             .map_err(|e| ApiError::internal_error(&e.to_string()))?;
     }
 
-    // 14. Rebuild topologies (compute nodes/edges from seeded entities)
+    // 14. Topologies — live-view rows are auto-built by `TopologyService::create`
+    // when nodes/edges are empty. Snapshot rows (if any in demo data) would be
+    // inserted by the snapshot subscriber, but demo data only seeds live views.
     let topology_service = Topology::get_service(&state);
-    for mut topology in demo_data.topologies {
-        topology_service
-            .rebuild(&mut topology, entity.clone())
-            .await?;
+    for topology in demo_data.topologies {
+        topology_service.create(topology, entity.clone()).await?;
     }
 
     Ok(Json(ApiResponse::success(())))

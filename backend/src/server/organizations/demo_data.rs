@@ -240,7 +240,7 @@ fn generate_topologies(networks: &[Network], tags: &[Tag], now: DateTime<Utc>) -
     networks
         .iter()
         .map(|network| {
-            let mut base = TopologyBase::new(format!("{} Topology", network.base.name), network.id);
+            let mut base = TopologyBase::new(network.id);
             // Add Critical tag to the default ByTag element rule
             if let Some(tag_id) = critical_tag_id {
                 let mut request = TopologyRequestOptions::default();

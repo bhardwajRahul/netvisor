@@ -153,6 +153,11 @@ export const queryKeys = {
 		all: ['topology'] as const,
 		detail: (id: string) => [...queryKeys.topology.all, 'detail', id] as const
 	},
+	snapshots: {
+		all: ['snapshots'] as const,
+		byNetwork: (networkId: string) => [...queryKeys.snapshots.all, 'network', networkId] as const,
+		detail: (id: string) => [...queryKeys.snapshots.all, 'detail', id] as const
+	},
 	billing: {
 		all: ['billing'] as const,
 		plans: () => [...queryKeys.billing.all, 'plans'] as const

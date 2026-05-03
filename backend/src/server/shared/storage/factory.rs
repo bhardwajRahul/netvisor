@@ -19,9 +19,9 @@ use crate::server::{
     ip_addresses::r#impl::base::IPAddress, networks::r#impl::Network,
     organizations::r#impl::base::Organization, ports::r#impl::base::Port,
     services::r#impl::base::Service, shared::storage::generic::GenericPostgresStorage,
-    shares::r#impl::base::Share, subnets::r#impl::base::Subnet, tags::r#impl::base::Tag,
-    topology::types::base::Topology, user_api_keys::r#impl::base::UserApiKey,
-    users::r#impl::base::User, vlans::r#impl::base::Vlan,
+    shares::r#impl::base::Share, snapshots::types::base::Snapshot, subnets::r#impl::base::Subnet,
+    tags::r#impl::base::Tag, topology::types::base::Topology,
+    user_api_keys::r#impl::base::UserApiKey, users::r#impl::base::User, vlans::r#impl::base::Vlan,
 };
 
 pub struct StorageFactory {
@@ -42,6 +42,7 @@ pub struct StorageFactory {
     pub shares: Arc<GenericPostgresStorage<Share>>,
     pub discovery: Arc<GenericPostgresStorage<Discovery>>,
     pub topologies: Arc<GenericPostgresStorage<Topology>>,
+    pub snapshots: Arc<GenericPostgresStorage<Snapshot>>,
     pub tags: Arc<GenericPostgresStorage<Tag>>,
     pub ports: Arc<GenericPostgresStorage<Port>>,
     pub bindings: Arc<GenericPostgresStorage<Binding>>,
@@ -103,6 +104,7 @@ impl StorageFactory {
             subnets: Arc::new(GenericPostgresStorage::new(pool.clone())),
             services: Arc::new(GenericPostgresStorage::new(pool.clone())),
             topologies: Arc::new(GenericPostgresStorage::new(pool.clone())),
+            snapshots: Arc::new(GenericPostgresStorage::new(pool.clone())),
             tags: Arc::new(GenericPostgresStorage::new(pool.clone())),
             ports: Arc::new(GenericPostgresStorage::new(pool.clone())),
             bindings: Arc::new(GenericPostgresStorage::new(pool.clone())),

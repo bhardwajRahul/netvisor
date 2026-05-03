@@ -149,6 +149,14 @@ pub struct ServerConfig {
 
     // License key for commercial self-hosted deployments
     pub license_key: Option<String>,
+
+    /// Override the snapshot retention window for self-hosted / community /
+    /// enterprise / demo plans. Default 90 days when unset. Ignored for the
+    /// SaaS-tier plans (Free / Starter / Pro / Business / Team) which carry
+    /// fixed per-tier retention values. Picks up `SCANOPY_SNAPSHOT_RETENTION_DAYS_OVERRIDE`
+    /// from the env automatically via the existing Figment env-var pipeline.
+    #[serde(default)]
+    pub snapshot_retention_days_override: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema, PartialEq)]
@@ -214,6 +222,7 @@ impl Default for ServerConfig {
             brevo_api_key: None,
             external_service_allowed_ips: HashMap::new(),
             license_key: None,
+            snapshot_retention_days_override: None,
         }
     }
 }

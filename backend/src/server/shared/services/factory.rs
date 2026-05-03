@@ -29,6 +29,7 @@ use crate::server::{
         storage::factory::StorageFactory,
     },
     shares::service::ShareService,
+    snapshots::service::SnapshotService,
     subnets::service::SubnetService,
     tags::{entity_tags::EntityTagService, service::TagService},
     topology::service::main::TopologyService,
@@ -53,6 +54,7 @@ pub struct ServiceFactory {
     pub subnet_service: Arc<SubnetService>,
     pub daemon_service: Arc<DaemonService>,
     pub topology_service: Arc<TopologyService>,
+    pub snapshot_service: Arc<SnapshotService>,
     pub service_service: Arc<ServiceService>,
     pub discovery_service: Arc<DiscoveryService>,
     pub daemon_api_key_service: Arc<DaemonApiKeyService>,
@@ -254,6 +256,12 @@ impl ServiceFactory {
             event_bus.clone(),
         ));
 
+        let snapshot_service = SnapshotService::new(
+            Arc::new(storage.pool.clone()),
+            storage.snapshots.clone(),
+            event_bus.clone(),
+        );
+
         let public_url = config.public_url.clone();
 
         let email_service = if let Some(ref brevo_api_key) = config.brevo_api_key {
@@ -370,6 +378,7 @@ impl ServiceFactory {
             subnet_service,
             daemon_service,
             topology_service,
+            snapshot_service,
             service_service,
             discovery_service,
             daemon_api_key_service,
@@ -422,6 +431,7 @@ impl ServiceFactory {
             subnet_service,
             daemon_service,
             topology_service,
+            snapshot_service,
             service_service,
             discovery_service,
             daemon_api_key_service,
@@ -456,6 +466,7 @@ impl ServiceFactory {
             .with(subnet_service.clone())
             .with(daemon_service.clone())
             .with(topology_service.clone())
+            .with(snapshot_service.clone())
             .with(service_service.clone())
             .with(discovery_service.clone())
             .with(daemon_api_key_service.clone())

@@ -123,7 +123,13 @@ export interface BillingPlanFeatures {
 export type FeatureId = keyof BillingPlanFeatures;
 
 /** Feature IDs plus resource-based upgrade reasons */
-export type UpgradeFeature = FeatureId | 'seats' | 'networks' | 'hosts' | 'plan_usage';
+export type UpgradeFeature =
+	| FeatureId
+	| 'seats'
+	| 'networks'
+	| 'hosts'
+	| 'plan_usage'
+	| 'snapshots';
 
 export interface BillingPlanMetadata {
 	features: BillingPlanFeatures;

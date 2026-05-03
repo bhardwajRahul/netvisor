@@ -1,5 +1,5 @@
 import type { components } from '$lib/api/schema';
-import type { Topology, TopologyNode } from './types/base';
+import type { EnrichedTopology, TopologyNode } from './types/base';
 import { entities } from '$lib/shared/stores/metadata';
 
 type ElementEntityType = components['schemas']['ElementEntityType'];
@@ -8,10 +8,10 @@ type ElementEntityTypeDiscriminant = ElementEntityType['element_type'];
 // Resolver return types
 export interface ElementRenderContext {
 	elementType: ElementEntityTypeDiscriminant;
-	host: Topology['hosts'][number] | undefined;
-	ipAddress: Topology['ip_addresses'][number] | undefined;
-	snmpInterface: Topology['interfaces'][number] | undefined;
-	services: Topology['services'][number][];
+	host: EnrichedTopology['hosts'][number] | undefined;
+	ipAddress: EnrichedTopology['ip_addresses'][number] | undefined;
+	snmpInterface: EnrichedTopology['interfaces'][number] | undefined;
+	services: EnrichedTopology['services'][number][];
 	hostId: string | undefined;
 	ipAddressId: string | undefined;
 	interfaceId: string | undefined;
@@ -28,7 +28,7 @@ export interface ContainerRenderContext {
 // Exhaustive resolver maps — TypeScript errors if a variant is missing
 const elementResolvers: Record<
 	ElementEntityTypeDiscriminant,
-	(nodeId: string, node: TopologyNode, topology: Topology) => ElementRenderContext
+	(nodeId: string, node: TopologyNode, topology: EnrichedTopology) => ElementRenderContext
 > = {
 	IPAddress: (_nodeId, node, topology) => {
 		const hostId = 'host_id' in node ? (node.host_id as string) : undefined;
@@ -124,7 +124,7 @@ const elementResolvers: Record<
 function resolveContainer(
 	nodeId: string,
 	node: TopologyNode,
-	topology: Topology
+	topology: EnrichedTopology
 ): ContainerRenderContext {
 	const containerType = 'container_type' in node ? (node.container_type as string) : 'Subnet';
 	const title = 'header' in node ? (node.header as string | null) : null;
@@ -137,7 +137,11 @@ function resolveContainer(
  * falling back to node ID match (for Subnet containers where ID === entity ID)
  * and then to getContainerContents for legacy/indirect resolution.
  */
-function resolveContainerTags(nodeId: string, node: TopologyNode, topology: Topology): string[] {
+function resolveContainerTags(
+	nodeId: string,
+	node: TopologyNode,
+	topology: EnrichedTopology
+): string[] {
 	const entityTags = new Map<string, string[]>();
 	for (const h of topology.hosts) entityTags.set(h.id, h.tags);
 	for (const s of topology.subnets) entityTags.set(s.id, s.tags);
@@ -192,7 +196,7 @@ export type DependencyTarget =
  */
 export function resolveDependencyTargets(
 	selectedNodes: { id: string; data: unknown }[],
-	topology: Topology
+	topology: EnrichedTopology
 ): DependencyTarget[] {
 	const targets: DependencyTarget[] = [];
 	const seen = new Set<string>();
@@ -328,7 +332,7 @@ export interface NodeSelectionIds {
 export function getNodeSelectionIds(
 	nodeId: string,
 	node: TopologyNode,
-	topology: Topology
+	topology: EnrichedTopology
 ): NodeSelectionIds {
 	const resolved = resolveElementNode(nodeId, node, topology);
 	const hostIds = resolved.hostId ? [resolved.hostId] : [];
@@ -428,7 +432,7 @@ export function getContainerContents(
  */
 export function resolveInlineServiceIds(
 	elementNodeIds: Set<string>,
-	topology: Topology
+	topology: EnrichedTopology
 ): Set<string> {
 	const out = new Set<string>();
 
@@ -549,7 +553,7 @@ export function buildEntityNodeIndex(nodes: TopologyNode[]): EntityNodeIndex {
 export function resolveElementNode(
 	nodeId: string,
 	node: TopologyNode,
-	topology: Topology
+	topology: EnrichedTopology
 ): ElementRenderContext {
 	if (node.node_type !== 'Element') throw new Error(`Expected Element, got ${node.node_type}`);
 	const elementType = node.element_type;
@@ -574,7 +578,7 @@ export function resolveElementNode(
 export function resolveContainerNode(
 	nodeId: string,
 	node: TopologyNode,
-	topology: Topology
+	topology: EnrichedTopology
 ): ContainerRenderContext {
 	if (node.node_type !== 'Container') throw new Error(`Expected Container, got ${node.node_type}`);
 	return resolveContainer(nodeId, node, topology);
