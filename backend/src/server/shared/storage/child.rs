@@ -41,10 +41,16 @@ impl<T: ChildStorableEntity + Display> GenericChildStorage<T> {
         &self.inner
     }
 
-    /// Get all children for a single parent
+    /// Get all children for a single parent.
+    ///
+    /// Returns only live (SCD2 `valid_to IS NULL`) rows. Every entity that
+    /// currently implements `ChildStorableEntity` is also `Snapshotable`,
+    /// so the filter is universally safe and required for correctness:
+    /// natural-key reconciliation and current-state reads must not see
+    /// closed historical copies.
     pub async fn get_for_parent(&self, parent_id: &Uuid) -> Result<Vec<T>> {
         let query_str = format!(
-            "SELECT * FROM {} WHERE {} = $1",
+            "SELECT * FROM {} WHERE {} = $1 AND valid_to IS NULL",
             T::table_name(),
             T::parent_column()
         );
@@ -57,15 +63,16 @@ impl<T: ChildStorableEntity + Display> GenericChildStorage<T> {
         rows.into_iter().map(|row| T::from_row(&row)).collect()
     }
 
-    /// Get children for multiple parents (batch loading)
-    /// Returns a map of parent_id -> children
+    /// Get children for multiple parents (batch loading).
+    /// Returns a map of parent_id -> children.
+    /// Live-only (SCD2 `valid_to IS NULL`) — see `get_for_parent` doc.
     pub async fn get_for_parents(&self, parent_ids: &[Uuid]) -> Result<HashMap<Uuid, Vec<T>>> {
         if parent_ids.is_empty() {
             return Ok(HashMap::new());
         }
 
         let query_str = format!(
-            "SELECT * FROM {} WHERE {} = ANY($1)",
+            "SELECT * FROM {} WHERE {} = ANY($1) AND valid_to IS NULL",
             T::table_name(),
             T::parent_column()
         );

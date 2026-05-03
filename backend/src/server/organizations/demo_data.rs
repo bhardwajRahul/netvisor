@@ -331,6 +331,9 @@ fn generate_tags(organization_id: Uuid, now: DateTime<Utc>) -> Vec<Tag> {
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
             base: TagBase {
                 name: name.to_string(),
                 description: Some(description.to_string()),
@@ -508,6 +511,12 @@ fn generate_subnets(networks: &[Network], tags: &[Tag], now: DateTime<Utc>) -> V
     vec![
         // ===== Headquarters subnets (7) =====
         Subnet {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -523,6 +532,12 @@ fn generate_subnets(networks: &[Network], tags: &[Tag], now: DateTime<Utc>) -> V
             },
         },
         Subnet {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -538,6 +553,12 @@ fn generate_subnets(networks: &[Network], tags: &[Tag], now: DateTime<Utc>) -> V
             },
         },
         Subnet {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -553,6 +574,12 @@ fn generate_subnets(networks: &[Network], tags: &[Tag], now: DateTime<Utc>) -> V
             },
         },
         Subnet {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -568,6 +595,12 @@ fn generate_subnets(networks: &[Network], tags: &[Tag], now: DateTime<Utc>) -> V
             },
         },
         Subnet {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -583,6 +616,12 @@ fn generate_subnets(networks: &[Network], tags: &[Tag], now: DateTime<Utc>) -> V
             },
         },
         Subnet {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -598,6 +637,12 @@ fn generate_subnets(networks: &[Network], tags: &[Tag], now: DateTime<Utc>) -> V
             },
         },
         Subnet {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -614,6 +659,12 @@ fn generate_subnets(networks: &[Network], tags: &[Tag], now: DateTime<Utc>) -> V
         },
         // ===== Data Center subnets (6) =====
         Subnet {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -629,6 +680,12 @@ fn generate_subnets(networks: &[Network], tags: &[Tag], now: DateTime<Utc>) -> V
             },
         },
         Subnet {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -644,6 +701,12 @@ fn generate_subnets(networks: &[Network], tags: &[Tag], now: DateTime<Utc>) -> V
             },
         },
         Subnet {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -659,6 +722,12 @@ fn generate_subnets(networks: &[Network], tags: &[Tag], now: DateTime<Utc>) -> V
             },
         },
         Subnet {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -674,6 +743,12 @@ fn generate_subnets(networks: &[Network], tags: &[Tag], now: DateTime<Utc>) -> V
             },
         },
         Subnet {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -689,6 +764,12 @@ fn generate_subnets(networks: &[Network], tags: &[Tag], now: DateTime<Utc>) -> V
             },
         },
         Subnet {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -728,6 +809,12 @@ fn create_host(
 ) -> (Host, IPAddress) {
     let host_id = Uuid::new_v4();
     let ip_address = IPAddress {
+        valid_from: now,
+        valid_to: None,
+        lineage_id: None,
+        last_seen_at: now,
+        last_discovery_id: None,
+        first_discovery_id: None,
         id: Uuid::new_v4(),
         created_at: now,
         updated_at: now,
@@ -742,6 +829,12 @@ fn create_host(
         },
     };
     let host = Host {
+        valid_from: now,
+        valid_to: None,
+        lineage_id: None,
+        last_seen_at: now,
+        last_discovery_id: None,
+        first_discovery_id: None,
         id: host_id,
         created_at: now,
         updated_at: now,
@@ -817,6 +910,12 @@ fn create_service(
 
     Some((
         Service {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -863,6 +962,12 @@ fn create_service_with_id(
 
     Some((
         Service {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: service_id,
             created_at: now,
             updated_at: now,
@@ -910,6 +1015,12 @@ fn create_container_service(
 
     Some((
         Service {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -1526,6 +1637,12 @@ fn generate_hosts_and_services(
     {
         let host_id = Uuid::new_v4();
         let eth0 = IPAddress {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -1540,6 +1657,12 @@ fn generate_hosts_and_services(
             },
         };
         let docker0 = IPAddress {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -1554,6 +1677,12 @@ fn generate_hosts_and_services(
             },
         };
         let host = Host {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: host_id,
             created_at: now,
             updated_at: now,
@@ -2593,6 +2722,12 @@ fn generate_hosts_and_services(
     {
         let host_id = Uuid::new_v4();
         let eth0 = IPAddress {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -2607,6 +2742,12 @@ fn generate_hosts_and_services(
             },
         };
         let docker0 = IPAddress {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -2621,6 +2762,12 @@ fn generate_hosts_and_services(
             },
         };
         let host = Host {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: host_id,
             created_at: now,
             updated_at: now,
@@ -3066,13 +3213,19 @@ fn generate_vlans(networks: &[Network], organization_id: Uuid, now: DateTime<Utc
                 id: Uuid::new_v4(),
                 created_at: now,
                 updated_at: now,
+                valid_from: now,
+                valid_to: None,
+                lineage_id: None,
+                last_seen_at: now,
+                last_discovery_id: None,
+                first_discovery_id: None,
                 base: VlanBase {
                     vlan_number,
                     name: name.to_string(),
                     description: None,
                     network_id: network.id,
                     organization_id,
-                    source: EntitySource::Discovery { metadata: vec![] },
+                    source: EntitySource::Discovery,
                 },
             });
         }
@@ -3131,6 +3284,12 @@ fn generate_interfaces(
 
         // WAN interface
         interfaces.push(Interface {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -3166,6 +3325,12 @@ fn generate_interfaces(
 
         // LAN interface — connected to HQ switch port 1
         interfaces.push(Interface {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -3207,6 +3372,12 @@ fn generate_interfaces(
 
         // OPT1 interface (disabled)
         interfaces.push(Interface {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -3252,6 +3423,12 @@ fn generate_interfaces(
         let ip_address = find_ip_address(host.id);
 
         interfaces.push(Interface {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -3303,6 +3480,12 @@ fn generate_interfaces(
         let ip_address = find_ip_address(host.id);
 
         interfaces.push(Interface {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -3344,6 +3527,12 @@ fn generate_interfaces(
 
         // Loopback
         interfaces.push(Interface {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -3389,6 +3578,12 @@ fn generate_interfaces(
         let ip_address = find_ip_address(host.id);
 
         interfaces.push(Interface {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -3440,6 +3635,12 @@ fn generate_interfaces(
         let ip_address = find_ip_address(host.id);
 
         interfaces.push(Interface {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -3499,6 +3700,12 @@ fn generate_interfaces(
 
         // Port 1 ↔ pfsense-fw01
         interfaces.push(Interface {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -3541,6 +3748,12 @@ fn generate_interfaces(
 
         // Port 2 ↔ truenas-primary
         interfaces.push(Interface {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -3583,6 +3796,12 @@ fn generate_interfaces(
 
         // Port 3 ↔ proxmox-hv01
         interfaces.push(Interface {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -3625,6 +3844,12 @@ fn generate_interfaces(
 
         // Port 4 ↔ proxmox-hv02
         interfaces.push(Interface {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -3667,6 +3892,12 @@ fn generate_interfaces(
 
         // Port 5 ↔ docker-prod01
         interfaces.push(Interface {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -3709,6 +3940,12 @@ fn generate_interfaces(
 
         // Port 6 ↔ unifi-ap-lobby (deferred via NeighborUpdate)
         interfaces.push(Interface {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -3752,6 +3989,12 @@ fn generate_interfaces(
         // Ports 7-48 — empty/down
         for port_num in 7..=48 {
             interfaces.push(Interface {
+                valid_from: now,
+                valid_to: None,
+                lineage_id: None,
+                last_seen_at: now,
+                last_discovery_id: None,
+                first_discovery_id: None,
                 id: Uuid::new_v4(),
                 created_at: now,
                 updated_at: now,
@@ -3805,6 +4048,12 @@ fn generate_interfaces(
         let ip_address = find_ip_address(host.id);
 
         interfaces.push(Interface {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -3856,6 +4105,12 @@ fn generate_interfaces(
         let ip_address = find_ip_address(host.id);
 
         interfaces.push(Interface {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -3907,6 +4162,12 @@ fn generate_interfaces(
         let ip_address = find_ip_address(host.id);
 
         interfaces.push(Interface {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -3958,6 +4219,12 @@ fn generate_interfaces(
         let ip_address = find_ip_address(host.id);
 
         interfaces.push(Interface {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -4009,6 +4276,12 @@ fn generate_interfaces(
         let ip_address = find_ip_address(host.id);
 
         interfaces.push(Interface {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -4066,6 +4339,12 @@ fn generate_interfaces(
 
         // Port 1 ↔ dc-fw01
         interfaces.push(Interface {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -4108,6 +4387,12 @@ fn generate_interfaces(
 
         // Port 2 ↔ dc-proxmox-hv01
         interfaces.push(Interface {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -4150,6 +4435,12 @@ fn generate_interfaces(
 
         // Port 3 ↔ dc-docker01
         interfaces.push(Interface {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -4192,6 +4483,12 @@ fn generate_interfaces(
 
         // Port 4 ↔ haproxy-lb01
         interfaces.push(Interface {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
@@ -4235,6 +4532,12 @@ fn generate_interfaces(
         // Ports 5-24 — empty/down
         for port_num in 5..=24 {
             interfaces.push(Interface {
+                valid_from: now,
+                valid_to: None,
+                lineage_id: None,
+                last_seen_at: now,
+                last_discovery_id: None,
+                first_discovery_id: None,
                 id: Uuid::new_v4(),
                 created_at: now,
                 updated_at: now,
@@ -4495,6 +4798,7 @@ fn generate_discoveries(
                         hosts_discovered: None,
                         estimated_remaining_secs: None,
                         discovery_id: None,
+                        scanned: None,
                     }),
                 },
                 name: "Discovery".to_string(),
@@ -4529,6 +4833,7 @@ fn generate_discoveries(
                         hosts_discovered: None,
                         estimated_remaining_secs: None,
                         discovery_id: None,
+                        scanned: None,
                     }),
                 },
                 name: "Discovery".to_string(),
@@ -4588,6 +4893,7 @@ fn generate_discoveries(
                         hosts_discovered: None,
                         estimated_remaining_secs: None,
                         discovery_id: None,
+                        scanned: None,
                     }),
                 },
                 name: "Discovery".to_string(),
@@ -4747,6 +5053,9 @@ fn generate_dependencies(
 
     // 1. Monitoring Stack: Prometheus (hub) ↔ Grafana, Uptime Kuma (spokes)
     dependencies.push(Dependency {
+        valid_from: now,
+        valid_to: None,
+        lineage_id: None,
         id: Uuid::new_v4(),
         created_at: now,
         updated_at: now,
@@ -4773,6 +5082,9 @@ fn generate_dependencies(
 
     // 2. Backup Flow: Proxmox VE (hv01) → TrueNAS
     dependencies.push(Dependency {
+        valid_from: now,
+        valid_to: None,
+        lineage_id: None,
         id: Uuid::new_v4(),
         created_at: now,
         updated_at: now,
@@ -4793,6 +5105,9 @@ fn generate_dependencies(
 
     // 3. Reverse Proxy Path: Traefik → Gitea
     dependencies.push(Dependency {
+        valid_from: now,
+        valid_to: None,
+        lineage_id: None,
         id: Uuid::new_v4(),
         created_at: now,
         updated_at: now,
@@ -4815,6 +5130,9 @@ fn generate_dependencies(
 
     // 4. Web Traffic Flow: HAProxy → Tomcat → MariaDB
     dependencies.push(Dependency {
+        valid_from: now,
+        valid_to: None,
+        lineage_id: None,
         id: Uuid::new_v4(),
         created_at: now,
         updated_at: now,
@@ -4842,6 +5160,9 @@ fn generate_dependencies(
 
     // 5. Observability Stack: Prometheus (container) → Grafana (container), Jaeger (container)
     dependencies.push(Dependency {
+        valid_from: now,
+        valid_to: None,
+        lineage_id: None,
         id: Uuid::new_v4(),
         created_at: now,
         updated_at: now,
@@ -4864,6 +5185,9 @@ fn generate_dependencies(
 
     // 6. Storage Tier: MinIO → Ceph, Elasticsearch
     dependencies.push(Dependency {
+        valid_from: now,
+        valid_to: None,
+        lineage_id: None,
         id: Uuid::new_v4(),
         created_at: now,
         updated_at: now,

@@ -552,3 +552,133 @@ where
         self.storage().delete_by_filter(filter).await
     }
 }
+
+// =============================================================================
+// SCD2 service-trait extensions
+// =============================================================================
+
+use crate::server::daemons::r#impl::api::ScannedEntityIds;
+use crate::server::shared::storage::snapshot::{DiscoveryTracked, Snapshotable};
+
+/// Per-action close-and-clone for service-driven mutations
+/// (`TagService::update`, `EntityTagsService` lifecycle, etc.).
+///
+/// Closes the existing live row by inserting a closed historical copy with a
+/// synthetic id and `lineage_id` pointing back to the live row, then advances
+/// the live row's `valid_from` to NOW and applies the new field values. The
+/// live row's id is stable across mutations — external FKs continue to work.
+#[async_trait]
+pub trait SnapshotMutator<E: Snapshotable + Display> {
+    async fn close_and_clone(&self, new_entity: E) -> Result<E, Error>;
+}
+
+#[async_trait]
+impl<S, E> SnapshotMutator<E> for S
+where
+    S: CrudService<E> + Sync,
+    E: Entity
+        + Into<EntityEnum>
+        + Default
+        + Display
+        + ChangeTriggersTopologyStaleness<E>
+        + Snapshotable
+        + Send
+        + Sync,
+{
+    async fn close_and_clone(&self, mut new_entity: E) -> Result<E, Error> {
+        let mut tx = self.storage().begin_transaction().await?;
+        let live = tx
+            .get_by_id(&Snapshotable::id_value(&new_entity))
+            .await?
+            .ok_or_else(|| anyhow!("close_and_clone: live row not found"))?;
+        let now = chrono::Utc::now();
+        // Closed historical copy: synthetic id, lineage_id pointing at live id.
+        let mut closed = live.make_closed_copy(now);
+        closed.set_id_value(uuid::Uuid::new_v4());
+        tx.create(&closed).await?;
+        // Advance live row's valid_from; new field values come from the input.
+        new_entity.set_valid_from(now);
+        let updated = tx.update(&mut new_entity).await?;
+        tx.commit().await?;
+        Ok(updated)
+    }
+}
+
+/// Pull the in-memory `ScannedEntityIds` payload off an
+/// `EntityOperation::Created` event for the historical Discovery row, plus
+/// the row's id (used as `last_discovery_id` / `first_discovery_id`).
+///
+/// Returns `None` when the event isn't for a Discovery, isn't a
+/// `RunType::Historical`, or carries `scanned: None` (which happens for
+/// rows read back from the DB after the strip in
+/// `SqlValue::RunType::bind_value`). Per-entity subscribers iterate events
+/// and skip on `None`.
+pub fn extract_scanned_from_discovery_event(
+    event: &crate::server::shared::events::traits::Event<
+        crate::server::shared::events::types::EntityOperation,
+    >,
+) -> Option<(&crate::server::daemons::r#impl::api::ScannedEntityIds, Uuid)> {
+    use crate::server::discovery::r#impl::types::RunType;
+    use crate::server::shared::entities::{Entity, EntityDiscriminants};
+
+    if event.scope.entity_discriminant() != EntityDiscriminants::Discovery {
+        return None;
+    }
+    let Entity::Discovery(discovery) = event.scope.entity_type() else {
+        return None;
+    };
+    let RunType::Historical { results } = &discovery.base.run_type else {
+        return None;
+    };
+    let scanned = results.scanned.as_ref()?;
+    Some((scanned, event.scope.entity_id()))
+}
+
+/// Subscriber-driven post-terminal FK update for `DiscoveryTracked` entities.
+/// Called from per-entity-service subscribers on the `EntityOperation::Created`
+/// event published for the historical Discovery row (whose scope carries
+/// `Entity::Discovery(...)` with `run_type::Historical { results: { scanned, .. } }`)
+/// to set `last_discovery_id` (always) and `first_discovery_id` (only when
+/// currently NULL).
+#[async_trait]
+pub trait DiscoveryFkUpdater<E: DiscoveryTracked + Display> {
+    async fn update_discovery_fks(
+        &self,
+        scanned: &ScannedEntityIds,
+        discovery_id: Uuid,
+    ) -> Result<(), Error>;
+}
+
+#[async_trait]
+impl<S, E> DiscoveryFkUpdater<E> for S
+where
+    S: CrudService<E> + Sync,
+    E: Entity
+        + Into<EntityEnum>
+        + Default
+        + Display
+        + ChangeTriggersTopologyStaleness<E>
+        + DiscoveryTracked
+        + Send
+        + Sync,
+{
+    async fn update_discovery_fks(
+        &self,
+        scanned: &ScannedEntityIds,
+        discovery_id: Uuid,
+    ) -> Result<(), Error> {
+        let filter = E::scanned_in_session_filter(scanned);
+        let mut entities = self.storage().get_all(filter).await?;
+        if entities.is_empty() {
+            return Ok(());
+        }
+        for e in entities.iter_mut() {
+            e.set_last_discovery_id(Some(discovery_id));
+            if e.first_discovery_id().is_none() {
+                e.set_first_discovery_id(Some(discovery_id));
+            }
+        }
+        self.storage().update_many(&entities).await?;
+        Ok(())
+    }
+}

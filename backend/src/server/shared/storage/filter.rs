@@ -322,6 +322,44 @@ impl<T: Storable> StorableFilter<T> {
         self
     }
 
+    /// SCD2 current-state filter: only live rows (`valid_to IS NULL`).
+    /// Used by the topology read path and reconciliation natural-key
+    /// matching to ignore closed historical copies.
+    pub fn live(mut self) -> Self {
+        let col = self.qualify_column("valid_to");
+        self.conditions.push(format!("{} IS NULL", col));
+        self
+    }
+
+    /// SCD2 as-of filter: rows that were live at timestamp `t`.
+    /// Used by snapshot-view consumers to read historical state.
+    pub fn as_of(mut self, t: chrono::DateTime<chrono::Utc>) -> Self {
+        let valid_from = self.qualify_column("valid_from");
+        let valid_to = self.qualify_column("valid_to");
+        let from_idx = self.values.len() + 1;
+        let to_idx = self.values.len() + 2;
+        self.conditions.push(format!(
+            "{vf} <= ${fi} AND ({vt} IS NULL OR {vt} > ${ti})",
+            vf = valid_from,
+            vt = valid_to,
+            fi = from_idx,
+            ti = to_idx,
+        ));
+        self.values.push(SqlValue::Timestamp(t));
+        self.values.push(SqlValue::Timestamp(t));
+        self
+    }
+
+    /// Lineage filter for "all closed copies tracking back to this live id."
+    /// Used to walk version history of a single logical entity.
+    pub fn lineage_id(mut self, id: &Uuid) -> Self {
+        let col = self.qualify_column("lineage_id");
+        self.conditions
+            .push(format!("{} = ${}", col, self.values.len() + 1));
+        self.values.push(SqlValue::Uuid(*id));
+        self
+    }
+
     pub fn host_id(mut self, id: &Uuid) -> Self {
         let col = self.qualify_column("host_id");
         self.conditions

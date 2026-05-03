@@ -1,11 +1,22 @@
 use crate::server::{
+    auth::middleware::auth::AuthenticatedEntity,
     shared::{
-        events::bus::EventBus,
-        services::traits::{CrudService, EventBusService},
-        storage::generic::GenericPostgresStorage,
+        entities::ChangeTriggersTopologyStaleness,
+        events::{
+            bus::EventBus,
+            traits::{EntityEventFlags, EntityScope, Event},
+            types::EntityOperation,
+        },
+        services::traits::{CrudService, EventBusService, SnapshotMutator},
+        storage::{
+            generic::GenericPostgresStorage,
+            traits::{Entity, Storage},
+        },
     },
     tags::r#impl::base::Tag,
 };
+use anyhow::anyhow;
+use async_trait::async_trait;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -27,6 +38,7 @@ impl EventBusService<Tag> for TagService {
     }
 }
 
+#[async_trait]
 impl CrudService<Tag> for TagService {
     fn storage(&self) -> &Arc<GenericPostgresStorage<Tag>> {
         &self.storage
@@ -36,6 +48,94 @@ impl CrudService<Tag> for TagService {
         &self,
     ) -> Option<&Arc<crate::server::tags::entity_tags::EntityTagService>> {
         None
+    }
+
+    /// Tag rename uses per-action close-and-clone (`SnapshotMutator`) instead
+    /// of in-place UPDATE: the prior field values are preserved on a closed
+    /// historical row with `lineage_id` lineage; the live row keeps its id
+    /// and gets the new field values plus advanced `valid_from`. Stable ids
+    /// mean `entity_tags.tag_id` references survive renames without cascade
+    /// UPDATE, and as-of joins through the OR-pattern resolve the right name
+    /// at any point in time.
+    async fn update(
+        &self,
+        entity: &mut Tag,
+        authentication: AuthenticatedEntity,
+    ) -> Result<Tag, anyhow::Error> {
+        let current = self
+            .get_by_id(&entity.id)
+            .await?
+            .ok_or_else(|| anyhow!("Could not find Tag {}", entity.id))?;
+
+        let updated = SnapshotMutator::close_and_clone(self, entity.clone()).await?;
+
+        let trigger_stale = updated.triggers_staleness(Some(current));
+
+        if let Some(scope) = EntityScope::from_ids(
+            updated.id(),
+            updated.clone().into(),
+            self.get_network_id(&updated),
+            self.get_organization_id(&updated),
+        ) {
+            self.event_bus()
+                .publish(
+                    Event::new(scope, EntityOperation::Updated, authentication).with_flags(
+                        EntityEventFlags {
+                            trigger_stale,
+                            ..Default::default()
+                        },
+                    ),
+                )
+                .await?;
+        }
+
+        Ok(updated)
+    }
+
+    /// Tag delete is a soft-close, not a hard delete: setting `valid_to =
+    /// NOW()` on the live row preserves FK integrity for any historical
+    /// `entity_tags` row that references this tag. Hard-delete would break
+    /// snapshot reads of associations that existed before the delete.
+    async fn delete(
+        &self,
+        id: &Uuid,
+        authentication: AuthenticatedEntity,
+    ) -> Result<(), anyhow::Error> {
+        let mut entity = self
+            .get_by_id(id)
+            .await?
+            .ok_or_else(|| anyhow!("Tag {} not found", id))?;
+
+        if entity.valid_to.is_some() {
+            // Already soft-closed; nothing to do.
+            return Ok(());
+        }
+
+        entity.valid_to = Some(chrono::Utc::now());
+        let _ = self.storage().update(&mut entity).await?;
+
+        let trigger_stale = entity.triggers_staleness(None);
+        let entity_for_event = entity.clone();
+
+        if let Some(scope) = EntityScope::from_ids(
+            entity_for_event.id(),
+            entity_for_event.into(),
+            self.get_network_id(&entity),
+            self.get_organization_id(&entity),
+        ) {
+            self.event_bus()
+                .publish(
+                    Event::new(scope, EntityOperation::Deleted, authentication).with_flags(
+                        EntityEventFlags {
+                            trigger_stale,
+                            ..Default::default()
+                        },
+                    ),
+                )
+                .await?;
+        }
+
+        Ok(())
     }
 }
 

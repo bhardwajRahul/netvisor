@@ -892,7 +892,7 @@ impl DaemonService {
             name: request.name.clone(),
             hostname: None,
             description: None,
-            source: EntitySource::Discovery { metadata: vec![] },
+            source: EntitySource::Discovery,
             virtualization: None,
             hidden: false,
             tags: Vec::new(),
@@ -917,6 +917,7 @@ impl DaemonService {
                 vec![],
                 vec![],
                 vec![],
+                None,
                 auth.clone(),
                 None,
             )
@@ -1115,6 +1116,13 @@ impl DaemonService {
         let mut limit_event_emitted = false;
         let mut billing_limit_reached: Option<(u64, Uuid)> = None;
 
+        // One ScanContext per batch — every host's children share the same
+        // scan_time so per-scan diff queries see consistent timestamps
+        // across the entire daemon submission. See ScanContext for rationale.
+        let scan_ctx = auth
+            .daemon_id()
+            .map(crate::server::shared::services::scan_context::ScanContext::new);
+
         // Process each discovered host - continue on failure to avoid blocking entire batch
         for host_request in entities.hosts {
             let pending_id = host_request.host.id;
@@ -1127,6 +1135,7 @@ impl DaemonService {
                     host_request.services,
                     host_request.interfaces,
                     host_request.subnets,
+                    scan_ctx.as_ref(),
                     auth.clone(),
                     limit_ctx.as_ref(),
                 )

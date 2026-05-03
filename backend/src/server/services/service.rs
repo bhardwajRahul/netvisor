@@ -19,10 +19,7 @@ use crate::server::{
         position::next_position,
         services::traits::{ChildCrudService, CrudService, EventBusService},
         storage::{filter::StorableFilter, generic::GenericPostgresStorage, traits::Storage},
-        types::{
-            api::ValidationError,
-            entities::{EntitySource, MAX_DISCOVERY_METADATA_ENTRIES},
-        },
+        types::{api::ValidationError, entities::EntitySource},
     },
 };
 use anyhow::anyhow;
@@ -161,7 +158,8 @@ impl CrudService<Service> for ServiceService {
         let lock = self.get_service_lock(&service.id).await;
         let _guard = lock.lock().await;
 
-        let filter = StorableFilter::<Service>::new_from_host_ids(&[service.base.host_id]);
+        // SCD2: only live services on this host are candidates for natural-key match.
+        let filter = StorableFilter::<Service>::new_from_host_ids(&[service.base.host_id]).live();
         let existing_services = self.get_all(filter).await?;
 
         // Auto-assign position for new services (next available position on host)
@@ -210,6 +208,13 @@ impl CrudService<Service> for ServiceService {
                     .await?;
                 }
 
+                // SCD2 origin: this row is being inserted for the first
+                // time. Stamp created_at + valid_from to the entity's
+                // already-refreshed `last_seen_at`. See
+                // `DiscoveryTracked::originate_scan_timestamps`.
+                use crate::server::shared::storage::snapshot::DiscoveryTracked;
+                let mut service = service;
+                service.originate_scan_timestamps(service.last_seen_at);
                 let mut created = self.storage.create(&service).await?;
 
                 // Save bindings to separate table with correct service_id and network_id
@@ -782,8 +787,8 @@ impl ServiceService {
             return Ok((vec![], vec![]));
         }
 
-        // Get existing claimed bindings from database
-        let filter = StorableFilter::<Service>::new_from_host_ids(&[*host_id]);
+        // Get existing claimed bindings from database. SCD2: live services only.
+        let filter = StorableFilter::<Service>::new_from_host_ids(&[*host_id]).live();
         let db_claimed: Vec<(Uuid, Option<Uuid>)> = self
             .get_all(filter)
             .await?
@@ -864,7 +869,8 @@ impl ServiceService {
             return Ok(());
         }
 
-        let filter = StorableFilter::<Service>::new_from_host_ids(&[*host_id]);
+        // SCD2: only live services compete for binding ownership.
+        let filter = StorableFilter::<Service>::new_from_host_ids(&[*host_id]).live();
         let other_services: Vec<_> = self
             .get_all(filter)
             .await?
@@ -1014,55 +1020,38 @@ impl ServiceService {
             existing_service.base.source,
             new_service_data.base.source.clone(),
         ) {
-            // Add latest discovery metadata to vec, update details to summarize what was discovered + highest confidence
+            // Both DiscoveryWithMatch: keep highest confidence and the better
+            // match reason. Discovery metadata (date/daemon/discovery_type) used
+            // to be appended here; that's now tracked via FK on the entity row
+            // (last_discovery_id / first_discovery_id) post-terminal.
             (
                 EntitySource::DiscoveryWithMatch {
-                    metadata: existing_service_metadata,
                     details: existing_service_details,
                 },
                 EntitySource::DiscoveryWithMatch {
-                    metadata: new_service_metadata,
                     details: new_service_details,
                 },
             ) => {
-                let mut new_metadata = [
-                    new_service_metadata.clone(),
-                    existing_service_metadata.clone(),
-                ]
-                .concat();
-                new_metadata.truncate(MAX_DISCOVERY_METADATA_ENTRIES);
-
-                // Max confidence
                 let confidence = existing_service_details
                     .confidence
                     .max(new_service_details.confidence);
-
                 let reason = if new_service_details.confidence > existing_service_details.confidence
                 {
-                    new_service_details.reason // Use the better match reason
+                    new_service_details.reason
                 } else {
-                    existing_service_details.reason // Keep existing reason
+                    existing_service_details.reason
                 };
-
                 EntitySource::DiscoveryWithMatch {
-                    metadata: new_metadata,
                     details: MatchDetails { confidence, reason },
                 }
             }
 
-            // Less-likely scenario: new service data is upserted to a manually or system-created record
-            (
-                _,
-                EntitySource::DiscoveryWithMatch {
-                    metadata: new_service_metadata,
-                    details: new_service_details,
-                },
-            ) => EntitySource::DiscoveryWithMatch {
-                metadata: new_service_metadata,
-                details: new_service_details,
-            },
+            // New service data upserted to a manually or system-created record
+            (_, EntitySource::DiscoveryWithMatch { details }) => {
+                EntitySource::DiscoveryWithMatch { details }
+            }
 
-            // The following case shouldn't be possible since upsert only happens from discovered services, but cover with something reasonable just in case
+            // Shouldn't happen during normal discovery; keep existing source.
             (existing_source, _) => existing_source,
         };
 

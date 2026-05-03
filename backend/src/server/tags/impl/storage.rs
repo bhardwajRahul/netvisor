@@ -8,7 +8,10 @@ use crate::server::{
     shared::{
         entities::EntityDiscriminants,
         entity_metadata::EntityCategory,
-        storage::traits::{Entity, SqlValue, Storable},
+        storage::{
+            snapshot::Snapshotable,
+            traits::{Entity, SqlValue, Storable},
+        },
     },
     tags::r#impl::base::{Tag, TagBase},
 };
@@ -40,6 +43,9 @@ impl Storable for Tag {
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
             base,
         }
     }
@@ -53,6 +59,9 @@ impl Storable for Tag {
             id,
             created_at,
             updated_at,
+            valid_from,
+            valid_to,
+            lineage_id,
             base:
                 Self::BaseData {
                     name,
@@ -73,6 +82,9 @@ impl Storable for Tag {
                 "is_application",
                 "created_at",
                 "updated_at",
+                "valid_from",
+                "valid_to",
+                "lineage_id",
             ],
             vec![
                 SqlValue::Uuid(id),
@@ -83,6 +95,9 @@ impl Storable for Tag {
                 SqlValue::Bool(is_application),
                 SqlValue::Timestamp(created_at),
                 SqlValue::Timestamp(updated_at),
+                SqlValue::Timestamp(valid_from),
+                SqlValue::OptionTimestamp(valid_to),
+                SqlValue::OptionalUuid(lineage_id),
             ],
         ))
     }
@@ -92,6 +107,9 @@ impl Storable for Tag {
             id: row.get("id"),
             created_at: row.get("created_at"),
             updated_at: row.get("updated_at"),
+            valid_from: row.get("valid_from"),
+            valid_to: row.get("valid_to"),
+            lineage_id: row.get("lineage_id"),
             base: TagBase {
                 name: row.get("name"),
                 description: row.get("description"),
@@ -101,6 +119,35 @@ impl Storable for Tag {
             },
         })
     }
+}
+
+impl Snapshotable for Tag {
+    fn id_value(&self) -> Uuid {
+        self.id
+    }
+    fn set_id_value(&mut self, id: Uuid) {
+        self.id = id;
+    }
+    fn valid_from(&self) -> DateTime<Utc> {
+        self.valid_from
+    }
+    fn valid_to(&self) -> Option<DateTime<Utc>> {
+        self.valid_to
+    }
+    fn lineage_id(&self) -> Option<Uuid> {
+        self.lineage_id
+    }
+    fn set_valid_from(&mut self, t: DateTime<Utc>) {
+        self.valid_from = t;
+    }
+    fn set_valid_to(&mut self, t: Option<DateTime<Utc>>) {
+        self.valid_to = t;
+    }
+    fn set_lineage_id(&mut self, id: Option<Uuid>) {
+        self.lineage_id = id;
+    }
+    // Tag is org-scoped — no within-tracked-set FKs to remap.
+    // Lifecycle: per-action close-and-clone on rename via TagService::update.
 }
 
 impl Entity for Tag {

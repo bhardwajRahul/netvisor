@@ -15,6 +15,7 @@ use crate::server::{
         entity_metadata::EntityCategory,
         storage::{
             child::ChildStorableEntity,
+            snapshot::{DiscoveryTracked, FkMaps, Snapshotable},
             traits::{Entity, SqlValue, Storable},
         },
         types::entities::EntitySource,
@@ -49,6 +50,12 @@ impl Storable for Service {
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             base,
         }
     }
@@ -62,6 +69,12 @@ impl Storable for Service {
             id,
             created_at,
             updated_at,
+            valid_from,
+            valid_to,
+            lineage_id,
+            last_seen_at,
+            last_discovery_id,
+            first_discovery_id,
             base:
                 Self::BaseData {
                     name,
@@ -88,6 +101,12 @@ impl Storable for Service {
                 "virtualization",
                 "source",
                 "position",
+                "valid_from",
+                "valid_to",
+                "lineage_id",
+                "last_seen_at",
+                "last_discovery_id",
+                "first_discovery_id",
             ],
             vec![
                 SqlValue::Uuid(id),
@@ -100,6 +119,12 @@ impl Storable for Service {
                 SqlValue::OptionalServiceVirtualization(virtualization),
                 SqlValue::EntitySource(source),
                 SqlValue::I32(position),
+                SqlValue::Timestamp(valid_from),
+                SqlValue::OptionTimestamp(valid_to),
+                SqlValue::OptionalUuid(lineage_id),
+                SqlValue::Timestamp(last_seen_at),
+                SqlValue::OptionalUuid(last_discovery_id),
+                SqlValue::OptionalUuid(first_discovery_id),
             ],
         ))
     }
@@ -119,6 +144,12 @@ impl Storable for Service {
             id: row.get("id"),
             created_at: row.get("created_at"),
             updated_at: row.get("updated_at"),
+            valid_from: row.get("valid_from"),
+            valid_to: row.get("valid_to"),
+            lineage_id: row.get("lineage_id"),
+            last_seen_at: row.get("last_seen_at"),
+            last_discovery_id: row.get("last_discovery_id"),
+            first_discovery_id: row.get("first_discovery_id"),
             base: ServiceBase {
                 name: row.get("name"),
                 network_id: row.get("network_id"),
@@ -131,6 +162,69 @@ impl Storable for Service {
                 position: row.get("position"),
             },
         })
+    }
+}
+
+impl Snapshotable for Service {
+    fn id_value(&self) -> Uuid {
+        self.id
+    }
+    fn set_id_value(&mut self, id: Uuid) {
+        self.id = id;
+    }
+    fn valid_from(&self) -> DateTime<Utc> {
+        self.valid_from
+    }
+    fn valid_to(&self) -> Option<DateTime<Utc>> {
+        self.valid_to
+    }
+    fn lineage_id(&self) -> Option<Uuid> {
+        self.lineage_id
+    }
+    fn set_valid_from(&mut self, t: DateTime<Utc>) {
+        self.valid_from = t;
+    }
+    fn set_valid_to(&mut self, t: Option<DateTime<Utc>>) {
+        self.valid_to = t;
+    }
+    fn set_lineage_id(&mut self, id: Option<Uuid>) {
+        self.lineage_id = id;
+    }
+
+    fn remap_fks_for_clone(&mut self, maps: &FkMaps) {
+        if let Some(closed) = maps.hosts.get(&self.base.host_id) {
+            self.base.host_id = *closed;
+        }
+    }
+}
+
+impl DiscoveryTracked for Service {
+    fn last_seen_at(&self) -> DateTime<Utc> {
+        self.last_seen_at
+    }
+    fn last_discovery_id(&self) -> Option<Uuid> {
+        self.last_discovery_id
+    }
+    fn first_discovery_id(&self) -> Option<Uuid> {
+        self.first_discovery_id
+    }
+    fn set_last_seen_at(&mut self, t: DateTime<Utc>) {
+        self.last_seen_at = t;
+    }
+    fn set_last_discovery_id(&mut self, id: Option<Uuid>) {
+        self.last_discovery_id = id;
+    }
+    fn set_first_discovery_id(&mut self, id: Option<Uuid>) {
+        self.first_discovery_id = id;
+    }
+
+    fn scanned_in_session_filter(
+        scanned: &crate::server::daemons::r#impl::api::ScannedEntityIds,
+    ) -> crate::server::shared::storage::filter::StorableFilter<Self> {
+        crate::server::shared::storage::filter::StorableFilter::<Self>::new_from_uuids_column(
+            "id",
+            &scanned.service_ids,
+        )
     }
 }
 

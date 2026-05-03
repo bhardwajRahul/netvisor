@@ -13,7 +13,7 @@ use crate::server::services::r#impl::virtualization::{
 use crate::server::shared::entities::ChangeTriggersTopologyStaleness;
 use crate::server::shared::position::Positioned;
 use crate::server::shared::storage::traits::Storable;
-use crate::server::shared::types::entities::{DiscoveryMetadata, EntitySource};
+use crate::server::shared::types::entities::EntitySource;
 use crate::server::subnets::r#impl::base::Subnet;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -86,6 +86,24 @@ pub struct Service {
     #[serde(default)]
     #[schema(read_only, required)]
     pub updated_at: DateTime<Utc>,
+    #[serde(default)]
+    #[schema(read_only)]
+    pub valid_from: DateTime<Utc>,
+    #[serde(default)]
+    #[schema(read_only)]
+    pub valid_to: Option<DateTime<Utc>>,
+    #[serde(default)]
+    #[schema(read_only)]
+    pub lineage_id: Option<Uuid>,
+    #[serde(default)]
+    #[schema(read_only)]
+    pub last_seen_at: DateTime<Utc>,
+    #[serde(default)]
+    #[schema(read_only)]
+    pub last_discovery_id: Option<Uuid>,
+    #[serde(default)]
+    #[schema(read_only)]
+    pub first_discovery_id: Option<Uuid>,
     #[serde(flatten)]
     #[validate(nested)]
     pub base: ServiceBase,
@@ -411,7 +429,11 @@ impl Service {
                 )
             };
 
-            let discovery_metadata = DiscoveryMetadata::new(discovery_type.clone(), *daemon_id);
+            // discovery_type and daemon_id are no longer captured on the
+            // entity row's source — that info now lives on the historical
+            // Discovery row (FK'd via last_discovery_id / first_discovery_id
+            // post-terminal by per-entity-service subscribers).
+            let _ = (&discovery_type, daemon_id);
 
             let ports: Vec<Port> = result
                 .ports
@@ -437,7 +459,6 @@ impl Service {
                 tags: Vec::new(),
                 bindings,
                 source: EntitySource::DiscoveryWithMatch {
-                    metadata: vec![discovery_metadata],
                     details: result.details.clone(),
                 },
                 position: 0, // Discovery services get position assigned during merge

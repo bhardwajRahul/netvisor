@@ -53,7 +53,9 @@ impl IPAddressService {
 
     /// Get all IP addresses for a specific host, ordered by position
     pub async fn get_for_host(&self, host_id: &Uuid) -> Result<Vec<IPAddress>> {
-        let filter = StorableFilter::<IPAddress>::new_from_host_ids(&[*host_id]);
+        // SCD2: only live rows. Closed historical copies are out of scope
+        // for current-state reads.
+        let filter = StorableFilter::<IPAddress>::new_from_host_ids(&[*host_id]).live();
         self.storage.get_all_ordered(filter, "position ASC").await
     }
 
@@ -63,7 +65,9 @@ impl IPAddressService {
             return Ok(HashMap::new());
         }
 
-        let filter = StorableFilter::<IPAddress>::new_from_host_ids(host_ids);
+        // SCD2: only live rows. Used by reconciliation natural-key matching
+        // and current-state reads — historical copies must not match.
+        let filter = StorableFilter::<IPAddress>::new_from_host_ids(host_ids).live();
         let ip_addresses = self.storage.get_all_ordered(filter, "position ASC").await?;
 
         let mut result: HashMap<Uuid, Vec<IPAddress>> = HashMap::new();

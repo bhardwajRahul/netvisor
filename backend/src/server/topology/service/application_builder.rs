@@ -416,6 +416,7 @@ mod tests {
                 bindings,
                 ..Default::default()
             },
+            ..Default::default()
         }
     }
 
@@ -431,6 +432,7 @@ mod tests {
                     ip_address_id: Uuid::new_v4(),
                 },
             },
+            ..Default::default()
         }
     }
 
@@ -445,6 +447,7 @@ mod tests {
                 members,
                 ..Default::default()
             },
+            ..Default::default()
         }
     }
 
@@ -734,6 +737,7 @@ mod tests {
                 tags: vec![app_tag_a_id],
                 ..Default::default()
             },
+            ..Default::default()
         };
         let host_b = Host {
             id: Uuid::new_v4(),
@@ -744,6 +748,7 @@ mod tests {
                 tags: vec![app_tag_b_id],
                 ..Default::default()
             },
+            ..Default::default()
         };
 
         let b1 = make_binding(Uuid::nil());
@@ -766,6 +771,7 @@ mod tests {
                 organization_id: Uuid::new_v4(),
                 is_application: true,
             },
+            ..Default::default()
         };
         let app_tag_b = Tag {
             id: app_tag_b_id,
@@ -778,6 +784,7 @@ mod tests {
                 organization_id: Uuid::new_v4(),
                 is_application: true,
             },
+            ..Default::default()
         };
 
         let services = vec![svc_a, svc_b];
@@ -882,6 +889,7 @@ mod tests {
                 tags: vec![app_tag_a_id, monitoring_tag_id],
                 ..Default::default()
             },
+            ..Default::default()
         };
         let host_b = Host {
             id: Uuid::new_v4(),
@@ -892,6 +900,7 @@ mod tests {
                 tags: vec![app_tag_b_id, monitoring_tag_id],
                 ..Default::default()
             },
+            ..Default::default()
         };
 
         let b1 = make_binding(Uuid::nil());
@@ -912,6 +921,7 @@ mod tests {
                 organization_id: Uuid::new_v4(),
                 is_application: true,
             },
+            ..Default::default()
         };
         let app_tag_b = Tag {
             id: app_tag_b_id,
@@ -924,6 +934,7 @@ mod tests {
                 organization_id: Uuid::new_v4(),
                 is_application: true,
             },
+            ..Default::default()
         };
 
         let services = vec![svc_a, svc_b];

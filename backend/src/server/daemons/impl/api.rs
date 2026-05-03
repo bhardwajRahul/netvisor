@@ -126,6 +126,47 @@ pub struct DaemonDiscoveryResponse {
     pub session_id: Uuid,
 }
 
+/// Canonical IDs of entities scanned in a discovery session.
+///
+/// Populated daemon-side at terminal phase from `EntityBuffer`'s `Created`
+/// entries. Travels with the terminal `DiscoveryUpdatePayload` to the server,
+/// rides the in-memory `EntityOperation::Created` event published for the
+/// historical Discovery row (the event scope carries `Entity::Discovery` with
+/// the full struct, including `run_type::Historical { results }`), then is
+/// stripped before persisting into the historical Discovery row's JSONB (see
+/// the `SqlValue::RunType` bind_value handler in
+/// `backend/src/server/shared/storage/generic.rs`). Per-entity-service
+/// subscribers extract `results.scanned` from the in-memory event and call
+/// `DiscoveryFkUpdater::update_discovery_fks` to backfill
+/// `last_discovery_id` / `first_discovery_id` on the matched rows.
+///
+/// Naming: `scanned_*` because the daemon scans entities — some submissions
+/// match existing rows (refresh), others insert new rows. Both populate the
+/// EntityBuffer with canonical (server-assigned) IDs.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq, Hash, ToSchema)]
+pub struct ScannedEntityIds {
+    #[serde(default)]
+    pub host_ids: Vec<Uuid>,
+    #[serde(default)]
+    pub subnet_ids: Vec<Uuid>,
+    #[serde(default)]
+    pub vlan_ids: Vec<Uuid>,
+    #[serde(default)]
+    pub ip_address_ids: Vec<Uuid>,
+    #[serde(default)]
+    pub port_ids: Vec<Uuid>,
+    #[serde(default)]
+    pub service_ids: Vec<Uuid>,
+    #[serde(default)]
+    pub interface_ids: Vec<Uuid>,
+    #[serde(default)]
+    pub binding_ids: Vec<Uuid>,
+    // No `subnet_vlan_ids`: SubnetVlan is Snapshotable but not
+    // DiscoveryTracked. Per-link discovery FKs aren't tracked; SCD2
+    // `valid_from` / `valid_to` (soft-close on `unlink`) capture when the
+    // link existed.
+}
+
 /// Progress update from daemon to server during discovery
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, ToSchema)]
 pub struct DiscoveryUpdatePayload {
@@ -146,6 +187,19 @@ pub struct DiscoveryUpdatePayload {
     /// Always enriched server-side; daemons do not send this field.
     #[serde(default)]
     pub discovery_id: Option<Uuid>,
+    /// Canonical IDs of entities scanned in this session, populated daemon-
+    /// side at terminal. **Transient**: stripped at `SqlValue::RunType` bind
+    /// time so it doesn't persist into the historical Discovery row's JSONB.
+    /// Available in-memory through the `EntityOperation::Created` event
+    /// published for the historical Discovery row (the event scope carries
+    /// `Entity::Discovery(...)`, the full in-memory struct), where per-entity
+    /// FK-update subscribers consume it.
+    ///
+    /// `Some(...)` when the daemon is sending the terminal payload over the
+    /// wire. `None` when read back from a persisted historical row, or when
+    /// not yet set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scanned: Option<ScannedEntityIds>,
 }
 
 impl DiscoveryUpdatePayload {
@@ -191,6 +245,7 @@ impl DiscoveryUpdatePayload {
             hosts_discovered: None,
             estimated_remaining_secs: None,
             discovery_id,
+            scanned: None,
         }
     }
 
@@ -212,6 +267,7 @@ impl DiscoveryUpdatePayload {
             hosts_discovered: None,
             estimated_remaining_secs: None,
             discovery_id: Some(info.discovery_id),
+            scanned: None,
         }
     }
 
@@ -356,4 +412,106 @@ pub struct TestReachabilityResponse {
     /// Health check result (only present when check_health was true)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub health: Option<bool>,
+}
+
+#[cfg(test)]
+mod scanned_payload_tests {
+    use super::*;
+    use crate::server::discovery::r#impl::types::{DiscoveryType, RunType};
+
+    fn payload_with_scanned(scanned: Option<ScannedEntityIds>) -> DiscoveryUpdatePayload {
+        let mut p = DiscoveryUpdatePayload::new(
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            DiscoveryType::default(),
+            None,
+        );
+        p.scanned = scanned;
+        p
+    }
+
+    #[test]
+    fn payload_serialize_skips_scanned_when_none() {
+        let p = payload_with_scanned(None);
+        let json = serde_json::to_value(&p).unwrap();
+        assert!(
+            json.get("scanned").is_none(),
+            "scanned: None should be skipped on serialize, got: {json}"
+        );
+    }
+
+    #[test]
+    fn payload_serialize_includes_scanned_when_some() {
+        let host_id = Uuid::new_v4();
+        let mut s = ScannedEntityIds::default();
+        s.host_ids.push(host_id);
+        let p = payload_with_scanned(Some(s));
+        let json = serde_json::to_value(&p).unwrap();
+        let scanned = json.get("scanned").expect("scanned should be present");
+        assert_eq!(
+            scanned["host_ids"][0].as_str().unwrap(),
+            host_id.to_string()
+        );
+    }
+
+    #[test]
+    fn run_type_historical_strip_drops_scanned_from_persisted_jsonb() {
+        // Mirrors the strip in `SqlValue::RunType::bind_value`
+        // (see `backend/src/server/shared/storage/generic.rs`):
+        // a clone of the typed RunType has its `scanned` field cleared
+        // before serializing to JSONB.
+        let mut s = ScannedEntityIds::default();
+        s.subnet_ids.push(Uuid::new_v4());
+        let payload = payload_with_scanned(Some(s));
+        let mut rt = RunType::Historical {
+            results: Box::new(payload),
+        };
+        // Apply the same strip the storage layer applies.
+        if let RunType::Historical { results } = &mut rt {
+            results.scanned = None;
+        }
+        let json = serde_json::to_value(&rt).unwrap();
+        let results = &json["results"];
+        assert!(
+            results.get("scanned").is_none(),
+            "Persisted JSONB must not carry `scanned` (it's transient): {results}"
+        );
+    }
+
+    #[test]
+    fn run_type_roundtrip_with_scanned_preserves_field_in_memory() {
+        // Verifies the wire path: serialize a payload with scanned set,
+        // deserialize back, and confirm the field round-trips when it's
+        // not stripped at the storage boundary.
+        let host_id = Uuid::new_v4();
+        let mut s = ScannedEntityIds::default();
+        s.host_ids.push(host_id);
+        let payload = payload_with_scanned(Some(s));
+        let rt = RunType::Historical {
+            results: Box::new(payload),
+        };
+
+        let json = serde_json::to_value(&rt).unwrap();
+        let parsed: RunType = serde_json::from_value(json).unwrap();
+        match parsed {
+            RunType::Historical { results } => {
+                let scanned = results.scanned.expect("scanned should round-trip");
+                assert_eq!(scanned.host_ids, vec![host_id]);
+            }
+            _ => panic!("expected Historical"),
+        }
+    }
+
+    #[test]
+    fn payload_deserialize_with_no_scanned_field_defaults_to_none() {
+        // Persisted historical rows have no `scanned` field; deserializing
+        // back into the typed payload should produce `scanned: None`.
+        let p = payload_with_scanned(None);
+        let mut json = serde_json::to_value(&p).unwrap();
+        // Ensure the key is genuinely absent.
+        json.as_object_mut().unwrap().remove("scanned");
+        let parsed: DiscoveryUpdatePayload = serde_json::from_value(json).unwrap();
+        assert!(parsed.scanned.is_none());
+    }
 }

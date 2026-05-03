@@ -115,6 +115,7 @@ mod tests {
                 tags: vec![], // NO host tags
                 ..Default::default()
             },
+            ..Default::default()
         };
 
         let subnet = Subnet {
@@ -127,6 +128,7 @@ mod tests {
                 name: "test-subnet".to_string(),
                 ..Default::default()
             },
+            ..Default::default()
         };
 
         let ip_address = IPAddress {
@@ -140,6 +142,7 @@ mod tests {
                 ip_address: std::net::IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)),
                 ..Default::default()
             },
+            ..Default::default()
         };
 
         let service = Service {
@@ -153,6 +156,7 @@ mod tests {
                 tags: vec![tag_id], // Service HAS the tag
                 ..Default::default()
             },
+            ..Default::default()
         };
 
         let tag = Tag {
@@ -166,6 +170,7 @@ mod tests {
                 organization_id: Uuid::new_v4(),
                 is_application: false,
             },
+            ..Default::default()
         };
 
         let mut options = TopologyOptions::default();

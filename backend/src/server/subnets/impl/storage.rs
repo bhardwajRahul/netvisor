@@ -10,7 +10,10 @@ use crate::server::{
     shared::{
         entities::EntityDiscriminants,
         entity_metadata::EntityCategory,
-        storage::traits::{Entity, SqlValue, Storable},
+        storage::{
+            snapshot::{DiscoveryTracked, Snapshotable},
+            traits::{Entity, SqlValue, Storable},
+        },
         types::{entities::EntitySource, metadata::HasId},
     },
     subnets::r#impl::{
@@ -47,6 +50,12 @@ impl Storable for Subnet {
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             base,
         }
     }
@@ -60,6 +69,12 @@ impl Storable for Subnet {
             id,
             created_at,
             updated_at,
+            valid_from,
+            valid_to,
+            lineage_id,
+            last_seen_at,
+            last_discovery_id,
+            first_discovery_id,
             base:
                 Self::BaseData {
                     name,
@@ -85,6 +100,12 @@ impl Storable for Subnet {
                 "network_id",
                 "created_at",
                 "updated_at",
+                "valid_from",
+                "valid_to",
+                "lineage_id",
+                "last_seen_at",
+                "last_discovery_id",
+                "first_discovery_id",
             ],
             vec![
                 SqlValue::Uuid(id),
@@ -97,6 +118,12 @@ impl Storable for Subnet {
                 SqlValue::Uuid(network_id),
                 SqlValue::Timestamp(created_at),
                 SqlValue::Timestamp(updated_at),
+                SqlValue::Timestamp(valid_from),
+                SqlValue::OptionTimestamp(valid_to),
+                SqlValue::OptionalUuid(lineage_id),
+                SqlValue::Timestamp(last_seen_at),
+                SqlValue::OptionalUuid(last_discovery_id),
+                SqlValue::OptionalUuid(first_discovery_id),
             ],
         ))
     }
@@ -115,6 +142,12 @@ impl Storable for Subnet {
             id: row.get("id"),
             created_at: row.get("created_at"),
             updated_at: row.get("updated_at"),
+            valid_from: row.get("valid_from"),
+            valid_to: row.get("valid_to"),
+            lineage_id: row.get("lineage_id"),
+            last_seen_at: row.get("last_seen_at"),
+            last_discovery_id: row.get("last_discovery_id"),
+            first_discovery_id: row.get("first_discovery_id"),
             base: SubnetBase {
                 name: row.get("name"),
                 description: row.get("description"),
@@ -130,6 +163,64 @@ impl Storable for Subnet {
                 tags: Vec::new(), // Hydrated from entity_tags junction table
             },
         })
+    }
+}
+
+impl Snapshotable for Subnet {
+    fn id_value(&self) -> Uuid {
+        self.id
+    }
+    fn set_id_value(&mut self, id: Uuid) {
+        self.id = id;
+    }
+    fn valid_from(&self) -> DateTime<Utc> {
+        self.valid_from
+    }
+    fn valid_to(&self) -> Option<DateTime<Utc>> {
+        self.valid_to
+    }
+    fn lineage_id(&self) -> Option<Uuid> {
+        self.lineage_id
+    }
+    fn set_valid_from(&mut self, t: DateTime<Utc>) {
+        self.valid_from = t;
+    }
+    fn set_valid_to(&mut self, t: Option<DateTime<Utc>>) {
+        self.valid_to = t;
+    }
+    fn set_lineage_id(&mut self, id: Option<Uuid>) {
+        self.lineage_id = id;
+    }
+    // Subnets are top-level — no within-tracked-set FKs to remap.
+}
+
+impl DiscoveryTracked for Subnet {
+    fn last_seen_at(&self) -> DateTime<Utc> {
+        self.last_seen_at
+    }
+    fn last_discovery_id(&self) -> Option<Uuid> {
+        self.last_discovery_id
+    }
+    fn first_discovery_id(&self) -> Option<Uuid> {
+        self.first_discovery_id
+    }
+    fn set_last_seen_at(&mut self, t: DateTime<Utc>) {
+        self.last_seen_at = t;
+    }
+    fn set_last_discovery_id(&mut self, id: Option<Uuid>) {
+        self.last_discovery_id = id;
+    }
+    fn set_first_discovery_id(&mut self, id: Option<Uuid>) {
+        self.first_discovery_id = id;
+    }
+
+    fn scanned_in_session_filter(
+        scanned: &crate::server::daemons::r#impl::api::ScannedEntityIds,
+    ) -> crate::server::shared::storage::filter::StorableFilter<Self> {
+        crate::server::shared::storage::filter::StorableFilter::<Self>::new_from_uuids_column(
+            "id",
+            &scanned.subnet_ids,
+        )
     }
 }
 
