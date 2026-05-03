@@ -10,7 +10,7 @@ use crate::server::{
 use chrono::{DateTime, Utc};
 use email_address::EmailAddress;
 use serde::{Deserialize, Serialize};
-use stripe_billing::CancellationDetailsFeedback;
+use stripe_billing::{CancellationDetailsFeedback, CancellationDetailsReason};
 use strum::EnumIter;
 use strum_macros::EnumDiscriminants;
 use uuid::Uuid;
@@ -130,6 +130,7 @@ pub enum BillingOperation {
         plan: BillingPlan,
         included_networks: Option<u64>,
         included_seats: Option<u64>,
+        mrr_amount_cents: i64,
     },
     TrialStarted {
         plan: BillingPlan,
@@ -153,8 +154,13 @@ pub enum BillingOperation {
         plan: BillingPlan,
         reason_code: Option<CancelReason>,
         stripe_feedback: Option<CancellationDetailsFeedback>,
+        stripe_reason: Option<CancellationDetailsReason>,
+        internal_reason: Option<String>,
         comment: Option<String>,
         period_end: DateTime<Utc>,
+        was_trialing: bool,
+        mrr_amount_cents: i64,
+        tenure_days: u32,
     },
     PaymentSucceeded {
         invoice: BillingInvoice,
@@ -162,12 +168,17 @@ pub enum BillingOperation {
     PaymentFailed {
         invoice_id: String,
         amount_cents: i64,
+        plan: BillingPlan,
+        attempt_count: u32,
     },
     PaymentActionRequired {
         invoice_id: String,
     },
     PaymentRecovered {
+        invoice_id: String,
         amount_cents: i64,
+        plan: BillingPlan,
+        attempt_count: u32,
     },
     FeatureLimitHit {
         limit_type: LimitType,
@@ -213,7 +224,9 @@ impl BillingOperation {
             | Self::TrialEnded { plan, .. }
             | Self::SubscriptionCancelled { plan, .. }
             | Self::FeatureLimitHit { plan, .. }
-            | Self::Paused { plan, .. } => Some(plan),
+            | Self::Paused { plan, .. }
+            | Self::PaymentFailed { plan, .. }
+            | Self::PaymentRecovered { plan, .. } => Some(plan),
             Self::PlanChanged { to, .. } => Some(to),
             _ => None,
         }
@@ -331,4 +344,78 @@ pub enum OnboardingOperation {
 pub enum AnalyticsOperation {
     TopologyShareViewed { share_id: Uuid, has_password: bool },
     TopologyEmbedViewed { share_id: Uuid, has_password: bool },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::server::billing::plans::get_free_plan;
+
+    fn round_trip(op: BillingOperation) {
+        let json = serde_json::to_string(&op).expect("serialize");
+        let back: BillingOperation = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(op, back, "round-trip mismatch for {json}");
+    }
+
+    #[test]
+    fn subscription_cancelled_round_trip_with_all_optionals_some() {
+        round_trip(BillingOperation::SubscriptionCancelled {
+            plan: get_free_plan(),
+            reason_code: Some(crate::server::billing::types::base::CancelReason::TooExpensive),
+            stripe_feedback: Some(CancellationDetailsFeedback::TooExpensive),
+            stripe_reason: Some(CancellationDetailsReason::PaymentFailed),
+            internal_reason: Some("admin".to_string()),
+            comment: Some("not for me".to_string()),
+            period_end: DateTime::<Utc>::from_timestamp(1_700_000_000, 0).unwrap(),
+            was_trialing: true,
+            mrr_amount_cents: 9900,
+            tenure_days: 42,
+        });
+    }
+
+    #[test]
+    fn subscription_cancelled_round_trip_with_all_optionals_none() {
+        round_trip(BillingOperation::SubscriptionCancelled {
+            plan: get_free_plan(),
+            reason_code: None,
+            stripe_feedback: None,
+            stripe_reason: None,
+            internal_reason: None,
+            comment: None,
+            period_end: DateTime::<Utc>::from_timestamp(1_700_000_000, 0).unwrap(),
+            was_trialing: false,
+            mrr_amount_cents: 0,
+            tenure_days: 0,
+        });
+    }
+
+    #[test]
+    fn checkout_completed_round_trip() {
+        round_trip(BillingOperation::CheckoutCompleted {
+            plan: get_free_plan(),
+            included_networks: Some(3),
+            included_seats: Some(5),
+            mrr_amount_cents: 4900,
+        });
+    }
+
+    #[test]
+    fn payment_failed_round_trip() {
+        round_trip(BillingOperation::PaymentFailed {
+            invoice_id: "in_123".to_string(),
+            amount_cents: 9900,
+            plan: get_free_plan(),
+            attempt_count: 3,
+        });
+    }
+
+    #[test]
+    fn payment_recovered_round_trip() {
+        round_trip(BillingOperation::PaymentRecovered {
+            invoice_id: "in_456".to_string(),
+            amount_cents: 9900,
+            plan: get_free_plan(),
+            attempt_count: 2,
+        });
+    }
 }

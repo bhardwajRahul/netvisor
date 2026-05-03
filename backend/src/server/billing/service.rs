@@ -498,6 +498,7 @@ impl BillingService {
                     plan,
                     included_networks: plan_config.included_networks,
                     included_seats: plan_config.included_seats,
+                    mrr_amount_cents: 0,
                 },
                 authentication,
             ))
@@ -1014,6 +1015,7 @@ impl BillingService {
                             plan,
                             included_networks: plan_config.included_networks,
                             included_seats: plan_config.included_seats,
+                            mrr_amount_cents: mrr_from_subscription(&sub),
                         },
                         authentication.clone(),
                     ))
@@ -1369,8 +1371,11 @@ impl BillingService {
             .unwrap_or_else(crate::server::billing::plans::get_free_plan);
         let was_trialing = organization.base.plan_status.as_deref() == Some("trialing");
         let customer_id = organization.base.stripe_customer_id.clone();
-        let (stripe_feedback, cancel_comment) =
+        let (stripe_feedback, cancel_comment, stripe_reason) =
             extract_cancellation_details(sub.cancellation_details.as_ref());
+        let internal_reason = sub.metadata.get("cancel_reason").cloned();
+        let mrr_amount_cents = mrr_from_subscription(&sub);
+        let tenure_days = (Utc::now() - organization.created_at).num_days().max(0) as u32;
 
         let free_plan = get_free_plan();
         organization.base.has_payment_method = false;
@@ -1401,11 +1406,15 @@ impl BillingService {
                 free_plan,
                 Some(cancelled_plan),
                 stripe_feedback,
+                stripe_reason,
+                internal_reason,
                 cancel_comment,
                 sub.ended_at
                     .or(sub.canceled_at)
                     .or(sub.cancel_at)
                     .unwrap_or_else(|| Utc::now().timestamp()),
+                mrr_amount_cents,
+                tenure_days,
                 organization_service,
                 user_service,
                 event_bus,
@@ -1437,8 +1446,12 @@ impl BillingService {
         free_plan: BillingPlan,
         cancelled_plan: Option<BillingPlan>,
         stripe_feedback: Option<CancellationDetailsFeedback>,
+        stripe_reason: Option<stripe_billing::CancellationDetailsReason>,
+        internal_reason: Option<String>,
         cancel_comment: Option<String>,
         period_end_ts: i64,
+        mrr_amount_cents: i64,
+        tenure_days: u32,
         organization_service: Arc<OrganizationService>,
         user_service: Arc<UserService>,
         event_bus: Arc<EventBus>,
@@ -1495,8 +1508,13 @@ impl BillingService {
                         plan: cancelled_plan.unwrap_or(free_plan),
                         reason_code: None,
                         stripe_feedback,
+                        stripe_reason,
+                        internal_reason: internal_reason.clone(),
                         comment: cancel_comment.clone(),
                         period_end,
+                        was_trialing,
+                        mrr_amount_cents,
+                        tenure_days,
                     },
                     authentication.clone(),
                 ))
@@ -1866,6 +1884,8 @@ impl BillingService {
                         .map(|i| i.to_string())
                         .unwrap_or_default(),
                     amount_cents: invoice.amount_due,
+                    plan: organization.base.plan.unwrap_or_else(get_free_plan),
+                    attempt_count: invoice.attempt_count as u32,
                 },
                 AuthenticatedEntity::System,
             ))
@@ -1934,7 +1954,14 @@ impl BillingService {
                         organization_id: organization.id,
                     },
                     BillingOperation::PaymentRecovered {
+                        invoice_id: invoice
+                            .id
+                            .as_ref()
+                            .map(|i| i.to_string())
+                            .unwrap_or_default(),
                         amount_cents: invoice.amount_paid,
+                        plan: organization.base.plan.unwrap_or_else(get_free_plan),
+                        attempt_count: invoice.attempt_count as u32,
                     },
                     AuthenticatedEntity::System,
                 ))
@@ -1962,10 +1989,37 @@ fn extract_cancellation_details(
 ) -> (
     Option<stripe_billing::CancellationDetailsFeedback>,
     Option<String>,
+    Option<stripe_billing::CancellationDetailsReason>,
 ) {
     let feedback = details.and_then(|d| d.feedback);
     let comment = details.and_then(|d| d.comment.clone());
-    (feedback, comment)
+    let reason = details.and_then(|d| d.reason);
+    (feedback, comment, reason)
+}
+
+/// Monthly equivalent (in cents) for a single line: unit * qty, divided by 12
+/// when yearly. Weekly/daily are not sold so collapse into the monthly bucket.
+fn line_monthly_cents(unit_amount: Option<i64>, quantity: Option<u64>, is_yearly: bool) -> i64 {
+    let line = unit_amount.unwrap_or(0) * (quantity.unwrap_or(0) as i64);
+    if is_yearly { line / 12 } else { line }
+}
+
+/// Sum monthly recurring revenue (in cents) across all line items of a Stripe
+/// subscription.
+fn mrr_from_subscription(sub: &stripe_billing::Subscription) -> i64 {
+    sub.items
+        .data
+        .iter()
+        .map(|item| {
+            let is_yearly = item
+                .price
+                .recurring
+                .as_ref()
+                .map(|r| matches!(r.interval, stripe_product::RecurringInterval::Year))
+                .unwrap_or(false);
+            line_monthly_cents(item.price.unit_amount, item.quantity, is_yearly)
+        })
+        .sum()
 }
 
 #[cfg(test)]
@@ -1974,7 +2028,7 @@ mod tests {
 
     #[test]
     fn extract_cancellation_details_none_input() {
-        assert_eq!(extract_cancellation_details(None), (None, None));
+        assert_eq!(extract_cancellation_details(None), (None, None, None));
     }
 
     #[test]
@@ -1984,7 +2038,10 @@ mod tests {
             feedback: None,
             reason: None,
         };
-        assert_eq!(extract_cancellation_details(Some(&details)), (None, None));
+        assert_eq!(
+            extract_cancellation_details(Some(&details)),
+            (None, None, None)
+        );
     }
 
     #[test]
@@ -1999,7 +2056,31 @@ mod tests {
             (
                 Some(CancellationDetailsFeedback::TooExpensive),
                 Some("too pricey for our team".to_string()),
+                Some(stripe_billing::CancellationDetailsReason::CancellationRequested),
             )
         );
+    }
+
+    #[test]
+    fn line_monthly_cents_monthly_passthrough() {
+        assert_eq!(line_monthly_cents(Some(2900), Some(1), false), 2900);
+    }
+
+    #[test]
+    fn line_monthly_cents_yearly_divides_by_12() {
+        // $290.00/yr * 1 = $290.00/yr -> 29000 cents -> 2416 cents/mo (truncated)
+        assert_eq!(line_monthly_cents(Some(29000), Some(1), true), 2416);
+    }
+
+    #[test]
+    fn line_monthly_cents_quantity_multiplies() {
+        assert_eq!(line_monthly_cents(Some(500), Some(7), false), 3500);
+    }
+
+    #[test]
+    fn line_monthly_cents_missing_fields_zero() {
+        assert_eq!(line_monthly_cents(None, Some(3), false), 0);
+        assert_eq!(line_monthly_cents(Some(500), None, false), 0);
+        assert_eq!(line_monthly_cents(None, None, true), 0);
     }
 }
