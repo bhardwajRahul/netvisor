@@ -775,3 +775,32 @@ pub const INSTALL_COMMAND_BODY: &str = r#"                    <!-- Main Content 
                         </td>
                     </tr>
 "#;
+
+// ============================================================================
+// Discovery Session Digest Email
+// ============================================================================
+
+pub const DISCOVERY_DIGEST_TITLE: &str = "Scanopy: Discovery scan summary";
+
+pub const DISCOVERY_DIGEST_BODY: &str = r#"                    <!-- Main Content -->
+                    <tr>
+                        <td style="padding: 0 40px 20px 40px;">
+                            <h1 style="margin: 0 0 20px 0; font-size: 24px; font-weight: 600; color: #1a1a1a; text-align: center;">Discovery scan summary</h1>
+                            <p style="margin: 0 0 8px 0; font-size: 16px; line-height: 24px; color: #4a4a4a;">Network: <strong>{network_name}</strong></p>
+                            <p style="margin: 0 0 20px 0; font-size: 14px; line-height: 20px; color: #6b7280;">Scan ran {started_at} → {finished_at}.</p>
+                            {subnets_section}
+                            {hosts_added_section}
+                            {hosts_vanished_section}
+                            {hosts_changed_section}
+                            {vlans_added_section}
+                            {vlans_removed_section}
+                        </td>
+                    </tr>
+
+                    <!-- Settings Link -->
+                    <tr>
+                        <td style="padding: 0 40px 30px 40px; border-top: 1px solid #e5e7eb;">
+                            <p style="margin: 20px 0 0 0; font-size: 13px; line-height: 18px; color: #9ca3af;">You're receiving this because you have access to {network_name} on Scanopy. <a href="{settings_url}" style="color: #2563eb;">Manage email preferences</a>.</p>
+                        </td>
+                    </tr>
+"#;

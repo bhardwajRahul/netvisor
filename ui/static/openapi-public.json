@@ -10351,13 +10351,55 @@
                     "format": "date-time",
                     "readOnly": true
                   },
+                  "first_discovery_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
                   "id": {
                     "type": "string",
                     "format": "uuid",
                     "readOnly": true
                   },
+                  "last_discovery_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
+                  "last_seen_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "lineage_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
                   "updated_at": {
                     "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "valid_from": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "valid_to": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
                     "format": "date-time",
                     "readOnly": true
                   }
@@ -10366,14 +10408,20 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-05-01T19:08:39.709695Z",
-              "id": "35407378-e73f-4561-98ea-356bc351c817",
+              "created_at": "2026-05-03T02:35:25.217562Z",
+              "first_discovery_id": null,
+              "id": "cc67e3ca-1535-4608-9f35-ef03cdcca7f8",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
+              "last_discovery_id": null,
+              "last_seen_at": "2026-05-03T02:35:25.217562Z",
+              "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-05-01T19:08:39.709695Z"
+              "updated_at": "2026-05-03T02:35:25.217562Z",
+              "valid_from": "2026-05-03T02:35:25.217562Z",
+              "valid_to": null
             }
           },
           "error": {
@@ -10873,8 +10921,29 @@
                     "format": "uuid",
                     "readOnly": true
                   },
+                  "lineage_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
                   "updated_at": {
                     "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "valid_from": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "valid_to": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
                     "format": "date-time",
                     "readOnly": true
                   }
@@ -10888,6 +10957,7 @@
               "description": "HTTP/HTTPS services dependency",
               "edge_style": "Bezier",
               "id": "550e8400-e29b-41d4-a716-446655440008",
+              "lineage_id": null,
               "members": {
                 "service_ids": [],
                 "type": "Services"
@@ -10898,7 +10968,9 @@
                 "type": "Manual"
               },
               "tags": [],
-              "updated_at": "2026-01-15T10:30:00Z"
+              "updated_at": "2026-01-15T10:30:00Z",
+              "valid_from": "2026-01-15T10:30:00Z",
+              "valid_to": null
             }
           },
           "error": {
@@ -11061,6 +11133,17 @@
                 "type": "integer",
                 "format": "int32",
                 "minimum": 0
+              },
+              "scanned": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ScannedEntityIds",
+                    "description": "Canonical IDs of entities scanned in this session, populated daemon-\nside at terminal. **Transient**: stripped at `SqlValue::RunType` bind\ntime so it doesn't persist into the historical Discovery row's JSONB.\nAvailable in-memory through the `EntityOperation::Created` event\npublished for the historical Discovery row (the event scope carries\n`Entity::Discovery(...)`, the full in-memory struct), where per-entity\nFK-update subscribers consume it.\n\n`Some(...)` when the daemon is sending the terminal payload over the\nwire. `None` when read back from a persisted historical row, or when\nnot yet set."
+                  }
+                ]
               },
               "session_id": {
                 "type": "string",
@@ -11251,6 +11334,7 @@
                   "cdp_platform": null,
                   "cdp_port_id": null,
                   "created_at": "2026-01-15T10:30:00Z",
+                  "first_discovery_id": null,
                   "host_id": "550e8400-e29b-41d4-a716-446655440003",
                   "id": "550e8400-e29b-41d4-a716-44665544000f",
                   "if_alias": "Uplink to Core Switch",
@@ -11259,6 +11343,9 @@
                   "if_name": "Gi0/1",
                   "if_type": 6,
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
+                  "last_discovery_id": null,
+                  "last_seen_at": "2026-01-15T10:30:00Z",
+                  "lineage_id": null,
                   "lldp_chassis_id": null,
                   "lldp_mgmt_addr": null,
                   "lldp_port_desc": null,
@@ -11270,21 +11357,29 @@
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "oper_status": "Up",
                   "speed_bps": 1000000000,
-                  "updated_at": "2026-01-15T10:30:00Z"
+                  "updated_at": "2026-01-15T10:30:00Z",
+                  "valid_from": "2026-01-15T10:30:00Z",
+                  "valid_to": null
                 }
               ],
               "ip_addresses": [
                 {
                   "created_at": "2026-01-15T10:30:00Z",
+                  "first_discovery_id": null,
                   "host_id": "550e8400-e29b-41d4-a716-446655440003",
                   "id": "550e8400-e29b-41d4-a716-446655440005",
                   "ip_address": "192.168.1.100",
+                  "last_discovery_id": null,
+                  "last_seen_at": "2026-01-15T10:30:00Z",
+                  "lineage_id": null,
                   "mac_address": "DE:AD:BE:EF:CA:FE",
                   "name": "eth0",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
                   "subnet_id": "550e8400-e29b-41d4-a716-446655440004",
-                  "updated_at": "2026-01-15T10:30:00Z"
+                  "updated_at": "2026-01-15T10:30:00Z",
+                  "valid_from": "2026-01-15T10:30:00Z",
+                  "valid_to": null
                 }
               ],
               "name": "web-server-01",
@@ -11292,41 +11387,59 @@
               "ports": [
                 {
                   "created_at": "2026-01-15T10:30:00Z",
+                  "first_discovery_id": null,
                   "host_id": "550e8400-e29b-41d4-a716-446655440003",
                   "id": "550e8400-e29b-41d4-a716-446655440006",
+                  "last_discovery_id": null,
+                  "last_seen_at": "2026-01-15T10:30:00Z",
+                  "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "number": 80,
                   "protocol": "Tcp",
                   "type": "Http",
-                  "updated_at": "2026-01-15T10:30:00Z"
+                  "updated_at": "2026-01-15T10:30:00Z",
+                  "valid_from": "2026-01-15T10:30:00Z",
+                  "valid_to": null
                 }
               ],
               "services": [
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-05-01T19:08:39.689801Z",
-                      "id": "49a7124e-58a8-482b-b8c8-9c5a71517283",
+                      "created_at": "2026-05-03T02:35:25.201179Z",
+                      "first_discovery_id": null,
+                      "id": "485dbb09-4f26-4edb-b018-b36a1823e35a",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
+                      "last_discovery_id": null,
+                      "last_seen_at": "2026-05-03T02:35:25.201179Z",
+                      "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-05-01T19:08:39.689801Z"
+                      "updated_at": "2026-05-03T02:35:25.201179Z",
+                      "valid_from": "2026-05-03T02:35:25.201179Z",
+                      "valid_to": null
                     }
                   ],
                   "created_at": "2026-01-15T10:30:00Z",
+                  "first_discovery_id": null,
                   "host_id": "550e8400-e29b-41d4-a716-446655440003",
                   "id": "550e8400-e29b-41d4-a716-446655440007",
+                  "last_discovery_id": null,
+                  "last_seen_at": "2026-01-15T10:30:00Z",
+                  "lineage_id": null,
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Plex Media Server",
+                  "service_definition": "Netbootxyz",
                   "source": {
                     "type": "Manual"
                   },
                   "tags": [],
                   "updated_at": "2026-01-15T10:30:00Z",
+                  "valid_from": "2026-01-15T10:30:00Z",
+                  "valid_to": null,
                   "virtualization": null
                 }
               ],
@@ -11377,13 +11490,55 @@
                     "format": "date-time",
                     "readOnly": true
                   },
+                  "first_discovery_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
                   "id": {
                     "type": "string",
                     "format": "uuid",
                     "readOnly": true
                   },
+                  "last_discovery_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
+                  "last_seen_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "lineage_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
                   "updated_at": {
                     "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "valid_from": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "valid_to": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
                     "format": "date-time",
                     "readOnly": true
                   }
@@ -11392,15 +11547,21 @@
             ],
             "example": {
               "created_at": "2026-01-15T10:30:00Z",
+              "first_discovery_id": null,
               "host_id": "550e8400-e29b-41d4-a716-446655440003",
               "id": "550e8400-e29b-41d4-a716-446655440005",
               "ip_address": "192.168.1.100",
+              "last_discovery_id": null,
+              "last_seen_at": "2026-01-15T10:30:00Z",
+              "lineage_id": null,
               "mac_address": "DE:AD:BE:EF:CA:FE",
               "name": "eth0",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
               "subnet_id": "550e8400-e29b-41d4-a716-446655440004",
-              "updated_at": "2026-01-15T10:30:00Z"
+              "updated_at": "2026-01-15T10:30:00Z",
+              "valid_from": "2026-01-15T10:30:00Z",
+              "valid_to": null
             }
           },
           "error": {
@@ -11442,13 +11603,55 @@
                     "format": "date-time",
                     "readOnly": true
                   },
+                  "first_discovery_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
                   "id": {
                     "type": "string",
                     "format": "uuid",
                     "readOnly": true
                   },
+                  "last_discovery_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
+                  "last_seen_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "lineage_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
                   "updated_at": {
                     "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "valid_from": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "valid_to": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
                     "format": "date-time",
                     "readOnly": true
                   }
@@ -11734,13 +11937,55 @@
                     "format": "date-time",
                     "readOnly": true
                   },
+                  "first_discovery_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
                   "id": {
                     "type": "string",
                     "format": "uuid",
                     "readOnly": true
                   },
+                  "last_discovery_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
+                  "last_seen_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "lineage_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
                   "updated_at": {
                     "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "valid_from": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "valid_to": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
                     "format": "date-time",
                     "readOnly": true
                   }
@@ -11750,13 +11995,19 @@
             "description": "Port entity with custom serialization that flattens PortType fields.",
             "example": {
               "created_at": "2026-01-15T10:30:00Z",
+              "first_discovery_id": null,
               "host_id": "550e8400-e29b-41d4-a716-446655440003",
               "id": "550e8400-e29b-41d4-a716-446655440006",
+              "last_discovery_id": null,
+              "last_seen_at": "2026-01-15T10:30:00Z",
+              "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "number": 80,
               "protocol": "Tcp",
               "type": "Http",
-              "updated_at": "2026-01-15T10:30:00Z"
+              "updated_at": "2026-01-15T10:30:00Z",
+              "valid_from": "2026-01-15T10:30:00Z",
+              "valid_to": null
             }
           },
           "error": {
@@ -12045,13 +12296,55 @@
                     "format": "date-time",
                     "readOnly": true
                   },
+                  "first_discovery_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
                   "id": {
                     "type": "string",
                     "format": "uuid",
                     "readOnly": true
                   },
+                  "last_discovery_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
+                  "last_seen_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "lineage_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
                   "updated_at": {
                     "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "valid_from": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "valid_to": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
                     "format": "date-time",
                     "readOnly": true
                   }
@@ -12061,28 +12354,40 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-05-01T19:08:39.703760Z",
-                  "id": "668b7ea5-bb08-4078-a487-9bf9dd06d89e",
+                  "created_at": "2026-05-03T02:35:25.212206Z",
+                  "first_discovery_id": null,
+                  "id": "9c4f66c0-7f09-46d2-a220-9b985e85877d",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
+                  "last_discovery_id": null,
+                  "last_seen_at": "2026-05-03T02:35:25.212206Z",
+                  "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-05-01T19:08:39.703760Z"
+                  "updated_at": "2026-05-03T02:35:25.212206Z",
+                  "valid_from": "2026-05-03T02:35:25.212206Z",
+                  "valid_to": null
                 }
               ],
               "created_at": "2026-01-15T10:30:00Z",
+              "first_discovery_id": null,
               "host_id": "550e8400-e29b-41d4-a716-446655440003",
               "id": "550e8400-e29b-41d4-a716-446655440007",
+              "last_discovery_id": null,
+              "last_seen_at": "2026-01-15T10:30:00Z",
+              "lineage_id": null,
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Plex Media Server",
+              "service_definition": "Netbootxyz",
               "source": {
                 "type": "Manual"
               },
               "tags": [],
               "updated_at": "2026-01-15T10:30:00Z",
+              "valid_from": "2026-01-15T10:30:00Z",
+              "valid_to": null,
               "virtualization": null
             }
           },
@@ -12274,13 +12579,55 @@
                     "format": "date-time",
                     "readOnly": true
                   },
+                  "first_discovery_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
                   "id": {
                     "type": "string",
                     "format": "uuid",
                     "readOnly": true
                   },
+                  "last_discovery_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
+                  "last_seen_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "lineage_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
                   "updated_at": {
                     "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "valid_from": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "valid_to": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
                     "format": "date-time",
                     "readOnly": true
                   }
@@ -12291,7 +12638,11 @@
               "cidr": "192.168.1.0/24",
               "created_at": "2026-01-15T10:30:00Z",
               "description": "Local area network",
+              "first_discovery_id": null,
               "id": "550e8400-e29b-41d4-a716-446655440004",
+              "last_discovery_id": null,
+              "last_seen_at": "2026-01-15T10:30:00Z",
+              "lineage_id": null,
               "name": "LAN",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "source": {
@@ -12299,7 +12650,9 @@
               },
               "subnet_type": "Lan",
               "tags": [],
-              "updated_at": "2026-01-15T10:30:00Z"
+              "updated_at": "2026-01-15T10:30:00Z",
+              "valid_from": "2026-01-15T10:30:00Z",
+              "valid_to": null
             }
           },
           "error": {
@@ -12346,8 +12699,29 @@
                     "format": "uuid",
                     "readOnly": true
                   },
+                  "lineage_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
                   "updated_at": {
                     "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "valid_from": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "valid_to": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
                     "format": "date-time",
                     "readOnly": true
                   }
@@ -12360,9 +12734,12 @@
               "description": "Production environment resources",
               "id": "550e8400-e29b-41d4-a716-44665544000a",
               "is_application": false,
+              "lineage_id": null,
               "name": "production",
               "organization_id": "550e8400-e29b-41d4-a716-446655440001",
-              "updated_at": "2026-01-15T10:30:00Z"
+              "updated_at": "2026-01-15T10:30:00Z",
+              "valid_from": "2026-01-15T10:30:00Z",
+              "valid_to": null
             }
           },
           "error": {
@@ -12974,6 +13351,17 @@
                   "format": "int32",
                   "minimum": 0
                 },
+                "scanned": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ScannedEntityIds",
+                      "description": "Canonical IDs of entities scanned in this session, populated daemon-\nside at terminal. **Transient**: stripped at `SqlValue::RunType` bind\ntime so it doesn't persist into the historical Discovery row's JSONB.\nAvailable in-memory through the `EntityOperation::Created` event\npublished for the historical Discovery row (the event scope carries\n`Entity::Discovery(...)`, the full in-memory struct), where per-entity\nFK-update subscribers consume it.\n\n`Some(...)` when the daemon is sending the terminal payload over the\nwire. `None` when read back from a persisted historical row, or when\nnot yet set."
+                    }
+                  ]
+                },
                 "session_id": {
                   "type": "string",
                   "format": "uuid"
@@ -13132,13 +13520,55 @@
                     "format": "date-time",
                     "readOnly": true
                   },
+                  "first_discovery_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
                   "id": {
                     "type": "string",
                     "format": "uuid",
                     "readOnly": true
                   },
+                  "last_discovery_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
+                  "last_seen_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "lineage_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
                   "updated_at": {
                     "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "valid_from": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "valid_to": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
                     "format": "date-time",
                     "readOnly": true
                   }
@@ -13441,13 +13871,55 @@
                 "format": "date-time",
                 "readOnly": true
               },
+              "first_discovery_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
               "id": {
                 "type": "string",
                 "format": "uuid",
                 "readOnly": true
               },
+              "last_discovery_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
+              "last_seen_at": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "lineage_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
               "updated_at": {
                 "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "valid_from": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "valid_to": {
+                "type": [
+                  "string",
+                  "null"
+                ],
                 "format": "date-time",
                 "readOnly": true
               }
@@ -13456,14 +13928,20 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-05-01T19:08:39.690215Z",
-          "id": "63abad43-687d-4aab-9d9b-cceb9f16e704",
+          "created_at": "2026-05-03T02:35:25.201534Z",
+          "first_discovery_id": null,
+          "id": "50b27df9-71fe-4c72-9f45-0467f0d4f313",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
+          "last_discovery_id": null,
+          "last_seen_at": "2026-05-03T02:35:25.201534Z",
+          "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-05-01T19:08:39.690215Z"
+          "updated_at": "2026-05-03T02:35:25.201534Z",
+          "valid_from": "2026-05-03T02:35:25.201534Z",
+          "valid_to": null
         }
       },
       "BindingBase": {
@@ -14052,7 +14530,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Plex Media Server",
+              "service_definition": "Netbootxyz",
               "tags": [],
               "virtualization": null
             }
@@ -14901,8 +15379,29 @@
                 "format": "uuid",
                 "readOnly": true
               },
+              "lineage_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
               "updated_at": {
                 "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "valid_from": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "valid_to": {
+                "type": [
+                  "string",
+                  "null"
+                ],
                 "format": "date-time",
                 "readOnly": true
               }
@@ -14916,6 +15415,7 @@
           "description": "HTTP/HTTPS services dependency",
           "edge_style": "Bezier",
           "id": "550e8400-e29b-41d4-a716-446655440008",
+          "lineage_id": null,
           "members": {
             "service_ids": [],
             "type": "Services"
@@ -14926,7 +15426,9 @@
             "type": "Manual"
           },
           "tags": [],
-          "updated_at": "2026-01-15T10:30:00Z"
+          "updated_at": "2026-01-15T10:30:00Z",
+          "valid_from": "2026-01-15T10:30:00Z",
+          "valid_to": null
         }
       },
       "DependencyBase": {
@@ -15223,33 +15725,10 @@
           }
         }
       },
-      "DiscoveryMetadata": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/DiscoveryType"
-          },
-          {
-            "type": "object",
-            "required": [
-              "daemon_id",
-              "date"
-            ],
-            "properties": {
-              "daemon_id": {
-                "type": "string",
-                "format": "uuid"
-              },
-              "date": {
-                "type": "string",
-                "format": "date-time"
-              }
-            }
-          }
-        ]
-      },
       "DiscoveryPhase": {
         "type": "string",
         "enum": [
+          "AwaitingSnapshot",
           "Queued",
           "Pending",
           "Starting",
@@ -15459,6 +15938,17 @@
             "type": "integer",
             "format": "int32",
             "minimum": 0
+          },
+          "scanned": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ScannedEntityIds",
+                "description": "Canonical IDs of entities scanned in this session, populated daemon-\nside at terminal. **Transient**: stripped at `SqlValue::RunType` bind\ntime so it doesn't persist into the historical Discovery row's JSONB.\nAvailable in-memory through the `EntityOperation::Created` event\npublished for the historical Discovery row (the event scope carries\n`Entity::Discovery(...)`, the full in-memory struct), where per-entity\nFK-update subscribers consume it.\n\n`Some(...)` when the daemon is sending the terminal payload over the\nwire. `None` when read back from a persisted historical row, or when\nnot yet set."
+              }
+            ]
           },
           "session_id": {
             "type": "string",
@@ -15931,6 +16421,17 @@
           }
         }
       },
+      "EmailSettings": {
+        "type": "object",
+        "required": [
+          "discovery_digest"
+        ],
+        "properties": {
+          "discovery_digest": {
+            "type": "boolean"
+          }
+        }
+      },
       "EnterpriseInquiryRequest": {
         "type": "object",
         "description": "Enterprise plan inquiry request",
@@ -16049,16 +16550,9 @@
             "type": "object",
             "title": "Discovery",
             "required": [
-              "metadata",
               "type"
             ],
             "properties": {
-              "metadata": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/DiscoveryMetadata"
-                }
-              },
               "type": {
                 "type": "string",
                 "enum": [
@@ -16071,19 +16565,12 @@
             "type": "object",
             "title": "DiscoveryWithMatch",
             "required": [
-              "metadata",
               "details",
               "type"
             ],
             "properties": {
               "details": {
                 "$ref": "#/components/schemas/MatchDetails"
-              },
-              "metadata": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/DiscoveryMetadata"
-                }
               },
               "type": {
                 "type": "string",
@@ -16181,14 +16668,62 @@
                 "format": "date-time",
                 "readOnly": true
               },
+              "first_discovery_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "description": "Discovery (historical row) that first observed this entity. Set once\n(post-terminal); immutable thereafter via the `IS NULL` guard in\n`update_discovery_fks`.",
+                "readOnly": true
+              },
               "id": {
                 "type": "string",
                 "format": "uuid",
                 "readOnly": true
               },
+              "last_discovery_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "description": "Discovery (historical row) that last touched this entity. Populated\npost-terminal by the per-entity-service subscriber on\n`DiscoveryProcessed`. NULL until the first successful discovery\nsession terminates after this row was created.",
+                "readOnly": true
+              },
+              "last_seen_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "Last successful natural-key match by daemon discovery against this\nlive row. Refreshed every scan, regardless of field changes.",
+                "readOnly": true
+              },
+              "lineage_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "description": "Lineage pointer on closed historical rows back to the live row whose\nstate they capture. NULL on live rows.",
+                "readOnly": true
+              },
               "updated_at": {
                 "type": "string",
                 "format": "date-time",
+                "readOnly": true
+              },
+              "valid_from": {
+                "type": "string",
+                "format": "date-time",
+                "description": "SCD2: when this row version became live. Equal to `created_at` for\nrows that have never ridden a snapshot; advanced to the snapshot's\n`taken_at` for live rows after a network snapshot fires.",
+                "readOnly": true
+              },
+              "valid_to": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time",
+                "description": "SCD2: when this row was closed by a snapshot. NULL = currently live.",
                 "readOnly": true
               }
             }
@@ -16198,9 +16733,13 @@
           "created_at": "2026-01-15T10:30:00Z",
           "credential_assignments": [],
           "description": "Primary web server",
+          "first_discovery_id": null,
           "hidden": false,
           "hostname": "web-server-01.local",
           "id": "550e8400-e29b-41d4-a716-446655440003",
+          "last_discovery_id": null,
+          "last_seen_at": "2026-01-15T10:30:00Z",
+          "lineage_id": null,
           "name": "web-server-01",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "source": {
@@ -16208,6 +16747,8 @@
           },
           "tags": [],
           "updated_at": "2026-01-15T10:30:00Z",
+          "valid_from": "2026-01-15T10:30:00Z",
+          "valid_to": null,
           "virtualization": null
         }
       },
@@ -16522,6 +17063,7 @@
               "cdp_platform": null,
               "cdp_port_id": null,
               "created_at": "2026-01-15T10:30:00Z",
+              "first_discovery_id": null,
               "host_id": "550e8400-e29b-41d4-a716-446655440003",
               "id": "550e8400-e29b-41d4-a716-44665544000f",
               "if_alias": "Uplink to Core Switch",
@@ -16530,6 +17072,9 @@
               "if_name": "Gi0/1",
               "if_type": 6,
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
+              "last_discovery_id": null,
+              "last_seen_at": "2026-01-15T10:30:00Z",
+              "lineage_id": null,
               "lldp_chassis_id": null,
               "lldp_mgmt_addr": null,
               "lldp_port_desc": null,
@@ -16541,21 +17086,29 @@
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "oper_status": "Up",
               "speed_bps": 1000000000,
-              "updated_at": "2026-01-15T10:30:00Z"
+              "updated_at": "2026-01-15T10:30:00Z",
+              "valid_from": "2026-01-15T10:30:00Z",
+              "valid_to": null
             }
           ],
           "ip_addresses": [
             {
               "created_at": "2026-01-15T10:30:00Z",
+              "first_discovery_id": null,
               "host_id": "550e8400-e29b-41d4-a716-446655440003",
               "id": "550e8400-e29b-41d4-a716-446655440005",
               "ip_address": "192.168.1.100",
+              "last_discovery_id": null,
+              "last_seen_at": "2026-01-15T10:30:00Z",
+              "lineage_id": null,
               "mac_address": "DE:AD:BE:EF:CA:FE",
               "name": "eth0",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
               "subnet_id": "550e8400-e29b-41d4-a716-446655440004",
-              "updated_at": "2026-01-15T10:30:00Z"
+              "updated_at": "2026-01-15T10:30:00Z",
+              "valid_from": "2026-01-15T10:30:00Z",
+              "valid_to": null
             }
           ],
           "name": "web-server-01",
@@ -16563,41 +17116,59 @@
           "ports": [
             {
               "created_at": "2026-01-15T10:30:00Z",
+              "first_discovery_id": null,
               "host_id": "550e8400-e29b-41d4-a716-446655440003",
               "id": "550e8400-e29b-41d4-a716-446655440006",
+              "last_discovery_id": null,
+              "last_seen_at": "2026-01-15T10:30:00Z",
+              "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "number": 80,
               "protocol": "Tcp",
               "type": "Http",
-              "updated_at": "2026-01-15T10:30:00Z"
+              "updated_at": "2026-01-15T10:30:00Z",
+              "valid_from": "2026-01-15T10:30:00Z",
+              "valid_to": null
             }
           ],
           "services": [
             {
               "bindings": [
                 {
-                  "created_at": "2026-05-01T19:08:39.689251Z",
-                  "id": "60f9d21d-6a26-49ec-b85e-8e12fa524fb6",
+                  "created_at": "2026-05-03T02:35:25.200748Z",
+                  "first_discovery_id": null,
+                  "id": "54116754-63ae-41b3-8bb3-962afda9105c",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
+                  "last_discovery_id": null,
+                  "last_seen_at": "2026-05-03T02:35:25.200748Z",
+                  "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-05-01T19:08:39.689251Z"
+                  "updated_at": "2026-05-03T02:35:25.200748Z",
+                  "valid_from": "2026-05-03T02:35:25.200748Z",
+                  "valid_to": null
                 }
               ],
               "created_at": "2026-01-15T10:30:00Z",
+              "first_discovery_id": null,
               "host_id": "550e8400-e29b-41d4-a716-446655440003",
               "id": "550e8400-e29b-41d4-a716-446655440007",
+              "last_discovery_id": null,
+              "last_seen_at": "2026-01-15T10:30:00Z",
+              "lineage_id": null,
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Plex Media Server",
+              "service_definition": "Netbootxyz",
               "source": {
                 "type": "Manual"
               },
               "tags": [],
               "updated_at": "2026-01-15T10:30:00Z",
+              "valid_from": "2026-01-15T10:30:00Z",
+              "valid_to": null,
               "virtualization": null
             }
           ],
@@ -16651,13 +17222,55 @@
                 "format": "date-time",
                 "readOnly": true
               },
+              "first_discovery_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
               "id": {
                 "type": "string",
                 "format": "uuid",
                 "readOnly": true
               },
+              "last_discovery_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
+              "last_seen_at": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "lineage_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
               "updated_at": {
                 "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "valid_from": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "valid_to": {
+                "type": [
+                  "string",
+                  "null"
+                ],
                 "format": "date-time",
                 "readOnly": true
               }
@@ -16666,15 +17279,21 @@
         ],
         "example": {
           "created_at": "2026-01-15T10:30:00Z",
+          "first_discovery_id": null,
           "host_id": "550e8400-e29b-41d4-a716-446655440003",
           "id": "550e8400-e29b-41d4-a716-446655440005",
           "ip_address": "192.168.1.100",
+          "last_discovery_id": null,
+          "last_seen_at": "2026-01-15T10:30:00Z",
+          "lineage_id": null,
           "mac_address": "DE:AD:BE:EF:CA:FE",
           "name": "eth0",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
           "subnet_id": "550e8400-e29b-41d4-a716-446655440004",
-          "updated_at": "2026-01-15T10:30:00Z"
+          "updated_at": "2026-01-15T10:30:00Z",
+          "valid_from": "2026-01-15T10:30:00Z",
+          "valid_to": null
         }
       },
       "IPAddressBase": {
@@ -17014,13 +17633,55 @@
                 "format": "date-time",
                 "readOnly": true
               },
+              "first_discovery_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
               "id": {
                 "type": "string",
                 "format": "uuid",
                 "readOnly": true
               },
+              "last_discovery_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
+              "last_seen_at": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "lineage_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
               "updated_at": {
                 "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "valid_from": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "valid_to": {
+                "type": [
+                  "string",
+                  "null"
+                ],
                 "format": "date-time",
                 "readOnly": true
               }
@@ -18584,8 +19245,29 @@
                       "format": "uuid",
                       "readOnly": true
                     },
+                    "lineage_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "uuid",
+                      "readOnly": true
+                    },
                     "updated_at": {
                       "type": "string",
+                      "format": "date-time",
+                      "readOnly": true
+                    },
+                    "valid_from": {
+                      "type": "string",
+                      "format": "date-time",
+                      "readOnly": true
+                    },
+                    "valid_to": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
                       "format": "date-time",
                       "readOnly": true
                     }
@@ -18599,6 +19281,7 @@
                 "description": "HTTP/HTTPS services dependency",
                 "edge_style": "Bezier",
                 "id": "550e8400-e29b-41d4-a716-446655440008",
+                "lineage_id": null,
                 "members": {
                   "service_ids": [],
                   "type": "Services"
@@ -18609,7 +19292,9 @@
                   "type": "Manual"
                 },
                 "tags": [],
-                "updated_at": "2026-01-15T10:30:00Z"
+                "updated_at": "2026-01-15T10:30:00Z",
+                "valid_from": "2026-01-15T10:30:00Z",
+                "valid_to": null
               }
             }
           },
@@ -18793,6 +19478,7 @@
                     "cdp_platform": null,
                     "cdp_port_id": null,
                     "created_at": "2026-01-15T10:30:00Z",
+                    "first_discovery_id": null,
                     "host_id": "550e8400-e29b-41d4-a716-446655440003",
                     "id": "550e8400-e29b-41d4-a716-44665544000f",
                     "if_alias": "Uplink to Core Switch",
@@ -18801,6 +19487,9 @@
                     "if_name": "Gi0/1",
                     "if_type": 6,
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
+                    "last_discovery_id": null,
+                    "last_seen_at": "2026-01-15T10:30:00Z",
+                    "lineage_id": null,
                     "lldp_chassis_id": null,
                     "lldp_mgmt_addr": null,
                     "lldp_port_desc": null,
@@ -18812,21 +19501,29 @@
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "oper_status": "Up",
                     "speed_bps": 1000000000,
-                    "updated_at": "2026-01-15T10:30:00Z"
+                    "updated_at": "2026-01-15T10:30:00Z",
+                    "valid_from": "2026-01-15T10:30:00Z",
+                    "valid_to": null
                   }
                 ],
                 "ip_addresses": [
                   {
                     "created_at": "2026-01-15T10:30:00Z",
+                    "first_discovery_id": null,
                     "host_id": "550e8400-e29b-41d4-a716-446655440003",
                     "id": "550e8400-e29b-41d4-a716-446655440005",
                     "ip_address": "192.168.1.100",
+                    "last_discovery_id": null,
+                    "last_seen_at": "2026-01-15T10:30:00Z",
+                    "lineage_id": null,
                     "mac_address": "DE:AD:BE:EF:CA:FE",
                     "name": "eth0",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
                     "subnet_id": "550e8400-e29b-41d4-a716-446655440004",
-                    "updated_at": "2026-01-15T10:30:00Z"
+                    "updated_at": "2026-01-15T10:30:00Z",
+                    "valid_from": "2026-01-15T10:30:00Z",
+                    "valid_to": null
                   }
                 ],
                 "name": "web-server-01",
@@ -18834,41 +19531,59 @@
                 "ports": [
                   {
                     "created_at": "2026-01-15T10:30:00Z",
+                    "first_discovery_id": null,
                     "host_id": "550e8400-e29b-41d4-a716-446655440003",
                     "id": "550e8400-e29b-41d4-a716-446655440006",
+                    "last_discovery_id": null,
+                    "last_seen_at": "2026-01-15T10:30:00Z",
+                    "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "number": 80,
                     "protocol": "Tcp",
                     "type": "Http",
-                    "updated_at": "2026-01-15T10:30:00Z"
+                    "updated_at": "2026-01-15T10:30:00Z",
+                    "valid_from": "2026-01-15T10:30:00Z",
+                    "valid_to": null
                   }
                 ],
                 "services": [
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-05-01T19:08:39.676270Z",
-                        "id": "2f5eee18-edec-42f0-a767-faf1f14c9586",
+                        "created_at": "2026-05-03T02:35:25.190623Z",
+                        "first_discovery_id": null,
+                        "id": "a70844e7-dc38-4418-b30d-ccef7968e543",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
+                        "last_discovery_id": null,
+                        "last_seen_at": "2026-05-03T02:35:25.190623Z",
+                        "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-05-01T19:08:39.676270Z"
+                        "updated_at": "2026-05-03T02:35:25.190623Z",
+                        "valid_from": "2026-05-03T02:35:25.190623Z",
+                        "valid_to": null
                       }
                     ],
                     "created_at": "2026-01-15T10:30:00Z",
+                    "first_discovery_id": null,
                     "host_id": "550e8400-e29b-41d4-a716-446655440003",
                     "id": "550e8400-e29b-41d4-a716-446655440007",
+                    "last_discovery_id": null,
+                    "last_seen_at": "2026-01-15T10:30:00Z",
+                    "lineage_id": null,
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Plex Media Server",
+                    "service_definition": "Netbootxyz",
                     "source": {
                       "type": "Manual"
                     },
                     "tags": [],
                     "updated_at": "2026-01-15T10:30:00Z",
+                    "valid_from": "2026-01-15T10:30:00Z",
+                    "valid_to": null,
                     "virtualization": null
                   }
                 ],
@@ -18924,13 +19639,55 @@
                       "format": "date-time",
                       "readOnly": true
                     },
+                    "first_discovery_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "uuid",
+                      "readOnly": true
+                    },
                     "id": {
                       "type": "string",
                       "format": "uuid",
                       "readOnly": true
                     },
+                    "last_discovery_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "uuid",
+                      "readOnly": true
+                    },
+                    "last_seen_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "readOnly": true
+                    },
+                    "lineage_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "uuid",
+                      "readOnly": true
+                    },
                     "updated_at": {
                       "type": "string",
+                      "format": "date-time",
+                      "readOnly": true
+                    },
+                    "valid_from": {
+                      "type": "string",
+                      "format": "date-time",
+                      "readOnly": true
+                    },
+                    "valid_to": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
                       "format": "date-time",
                       "readOnly": true
                     }
@@ -18940,28 +19697,40 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-05-01T19:08:39.702269Z",
-                    "id": "39206eb5-f35f-4107-ba4f-971327252575",
+                    "created_at": "2026-05-03T02:35:25.211167Z",
+                    "first_discovery_id": null,
+                    "id": "6b0f6c0b-08b4-4080-ab2a-3cf318f8e4de",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
+                    "last_discovery_id": null,
+                    "last_seen_at": "2026-05-03T02:35:25.211167Z",
+                    "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-05-01T19:08:39.702269Z"
+                    "updated_at": "2026-05-03T02:35:25.211167Z",
+                    "valid_from": "2026-05-03T02:35:25.211167Z",
+                    "valid_to": null
                   }
                 ],
                 "created_at": "2026-01-15T10:30:00Z",
+                "first_discovery_id": null,
                 "host_id": "550e8400-e29b-41d4-a716-446655440003",
                 "id": "550e8400-e29b-41d4-a716-446655440007",
+                "last_discovery_id": null,
+                "last_seen_at": "2026-01-15T10:30:00Z",
+                "lineage_id": null,
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Plex Media Server",
+                "service_definition": "Netbootxyz",
                 "source": {
                   "type": "Manual"
                 },
                 "tags": [],
                 "updated_at": "2026-01-15T10:30:00Z",
+                "valid_from": "2026-01-15T10:30:00Z",
+                "valid_to": null,
                 "virtualization": null
               }
             }
@@ -19009,13 +19778,55 @@
                       "format": "date-time",
                       "readOnly": true
                     },
+                    "first_discovery_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "uuid",
+                      "readOnly": true
+                    },
                     "id": {
                       "type": "string",
                       "format": "uuid",
                       "readOnly": true
                     },
+                    "last_discovery_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "uuid",
+                      "readOnly": true
+                    },
+                    "last_seen_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "readOnly": true
+                    },
+                    "lineage_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "uuid",
+                      "readOnly": true
+                    },
                     "updated_at": {
                       "type": "string",
+                      "format": "date-time",
+                      "readOnly": true
+                    },
+                    "valid_from": {
+                      "type": "string",
+                      "format": "date-time",
+                      "readOnly": true
+                    },
+                    "valid_to": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
                       "format": "date-time",
                       "readOnly": true
                     }
@@ -19026,7 +19837,11 @@
                 "cidr": "192.168.1.0/24",
                 "created_at": "2026-01-15T10:30:00Z",
                 "description": "Local area network",
+                "first_discovery_id": null,
                 "id": "550e8400-e29b-41d4-a716-446655440004",
+                "last_discovery_id": null,
+                "last_seen_at": "2026-01-15T10:30:00Z",
+                "lineage_id": null,
                 "name": "LAN",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "source": {
@@ -19034,7 +19849,9 @@
                 },
                 "subnet_type": "Lan",
                 "tags": [],
-                "updated_at": "2026-01-15T10:30:00Z"
+                "updated_at": "2026-01-15T10:30:00Z",
+                "valid_from": "2026-01-15T10:30:00Z",
+                "valid_to": null
               }
             }
           },
@@ -19086,8 +19903,29 @@
                       "format": "uuid",
                       "readOnly": true
                     },
+                    "lineage_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "uuid",
+                      "readOnly": true
+                    },
                     "updated_at": {
                       "type": "string",
+                      "format": "date-time",
+                      "readOnly": true
+                    },
+                    "valid_from": {
+                      "type": "string",
+                      "format": "date-time",
+                      "readOnly": true
+                    },
+                    "valid_to": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
                       "format": "date-time",
                       "readOnly": true
                     }
@@ -19100,9 +19938,12 @@
                 "description": "Production environment resources",
                 "id": "550e8400-e29b-41d4-a716-44665544000a",
                 "is_application": false,
+                "lineage_id": null,
                 "name": "production",
                 "organization_id": "550e8400-e29b-41d4-a716-446655440001",
-                "updated_at": "2026-01-15T10:30:00Z"
+                "updated_at": "2026-01-15T10:30:00Z",
+                "valid_from": "2026-01-15T10:30:00Z",
+                "valid_to": null
               }
             }
           },
@@ -19323,13 +20164,55 @@
                       "format": "date-time",
                       "readOnly": true
                     },
+                    "first_discovery_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "uuid",
+                      "readOnly": true
+                    },
                     "id": {
                       "type": "string",
                       "format": "uuid",
                       "readOnly": true
                     },
+                    "last_discovery_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "uuid",
+                      "readOnly": true
+                    },
+                    "last_seen_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "readOnly": true
+                    },
+                    "lineage_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "uuid",
+                      "readOnly": true
+                    },
                     "updated_at": {
                       "type": "string",
+                      "format": "date-time",
+                      "readOnly": true
+                    },
+                    "valid_from": {
+                      "type": "string",
+                      "format": "date-time",
+                      "readOnly": true
+                    },
+                    "valid_to": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
                       "format": "date-time",
                       "readOnly": true
                     }
@@ -19571,13 +20454,55 @@
                 "format": "date-time",
                 "readOnly": true
               },
+              "first_discovery_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
               "id": {
                 "type": "string",
                 "format": "uuid",
                 "readOnly": true
               },
+              "last_discovery_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
+              "last_seen_at": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "lineage_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
               "updated_at": {
                 "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "valid_from": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "valid_to": {
+                "type": [
+                  "string",
+                  "null"
+                ],
                 "format": "date-time",
                 "readOnly": true
               }
@@ -19587,13 +20512,19 @@
         "description": "Port entity with custom serialization that flattens PortType fields.",
         "example": {
           "created_at": "2026-01-15T10:30:00Z",
+          "first_discovery_id": null,
           "host_id": "550e8400-e29b-41d4-a716-446655440003",
           "id": "550e8400-e29b-41d4-a716-446655440006",
+          "last_discovery_id": null,
+          "last_seen_at": "2026-01-15T10:30:00Z",
+          "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "number": 80,
           "protocol": "Tcp",
           "type": "Http",
-          "updated_at": "2026-01-15T10:30:00Z"
+          "updated_at": "2026-01-15T10:30:00Z",
+          "valid_from": "2026-01-15T10:30:00Z",
+          "valid_to": null
         }
       },
       "PortBase": {
@@ -20136,6 +21067,68 @@
           }
         }
       },
+      "ScannedEntityIds": {
+        "type": "object",
+        "description": "Canonical IDs of entities scanned in a discovery session.\n\nPopulated daemon-side at terminal phase from `EntityBuffer`'s `Created`\nentries. Travels with the terminal `DiscoveryUpdatePayload` to the server,\nrides the in-memory `EntityOperation::Created` event published for the\nhistorical Discovery row (the event scope carries `Entity::Discovery` with\nthe full struct, including `run_type::Historical { results }`), then is\nstripped before persisting into the historical Discovery row's JSONB (see\nthe `SqlValue::RunType` bind_value handler in\n`backend/src/server/shared/storage/generic.rs`). Per-entity-service\nsubscribers extract `results.scanned` from the in-memory event and call\n`DiscoveryFkUpdater::update_discovery_fks` to backfill\n`last_discovery_id` / `first_discovery_id` on the matched rows.\n\nNaming: `scanned_*` because the daemon scans entities — some submissions\nmatch existing rows (refresh), others insert new rows. Both populate the\nEntityBuffer with canonical (server-assigned) IDs.",
+        "properties": {
+          "binding_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "host_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "interface_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "ip_address_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "port_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "service_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "subnet_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "vlan_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        }
+      },
       "SecretValue": {
         "oneOf": [
           {
@@ -20220,13 +21213,55 @@
                 "format": "date-time",
                 "readOnly": true
               },
+              "first_discovery_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
               "id": {
                 "type": "string",
                 "format": "uuid",
                 "readOnly": true
               },
+              "last_discovery_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
+              "last_seen_at": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "lineage_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
               "updated_at": {
                 "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "valid_from": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "valid_to": {
+                "type": [
+                  "string",
+                  "null"
+                ],
                 "format": "date-time",
                 "readOnly": true
               }
@@ -20236,28 +21271,40 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-05-01T19:08:39.690077Z",
-              "id": "1ae97448-7d90-4367-ac02-d757a9ebd06d",
+              "created_at": "2026-05-03T02:35:25.201457Z",
+              "first_discovery_id": null,
+              "id": "48afe46b-ffd3-4e89-8156-4036c40f8bb1",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
+              "last_discovery_id": null,
+              "last_seen_at": "2026-05-03T02:35:25.201457Z",
+              "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-05-01T19:08:39.690077Z"
+              "updated_at": "2026-05-03T02:35:25.201457Z",
+              "valid_from": "2026-05-03T02:35:25.201457Z",
+              "valid_to": null
             }
           ],
           "created_at": "2026-01-15T10:30:00Z",
+          "first_discovery_id": null,
           "host_id": "550e8400-e29b-41d4-a716-446655440003",
           "id": "550e8400-e29b-41d4-a716-446655440007",
+          "last_discovery_id": null,
+          "last_seen_at": "2026-01-15T10:30:00Z",
+          "lineage_id": null,
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Plex Media Server",
+          "service_definition": "Netbootxyz",
           "source": {
             "type": "Manual"
           },
           "tags": [],
           "updated_at": "2026-01-15T10:30:00Z",
+          "valid_from": "2026-01-15T10:30:00Z",
+          "valid_to": null,
           "virtualization": null
         }
       },
@@ -20687,13 +21734,55 @@
                 "format": "date-time",
                 "readOnly": true
               },
+              "first_discovery_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
               "id": {
                 "type": "string",
                 "format": "uuid",
                 "readOnly": true
               },
+              "last_discovery_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
+              "last_seen_at": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "lineage_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
               "updated_at": {
                 "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "valid_from": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "valid_to": {
+                "type": [
+                  "string",
+                  "null"
+                ],
                 "format": "date-time",
                 "readOnly": true
               }
@@ -20704,7 +21793,11 @@
           "cidr": "192.168.1.0/24",
           "created_at": "2026-01-15T10:30:00Z",
           "description": "Local area network",
+          "first_discovery_id": null,
           "id": "550e8400-e29b-41d4-a716-446655440004",
+          "last_discovery_id": null,
+          "last_seen_at": "2026-01-15T10:30:00Z",
+          "lineage_id": null,
           "name": "LAN",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "source": {
@@ -20712,7 +21805,9 @@
           },
           "subnet_type": "Lan",
           "tags": [],
-          "updated_at": "2026-01-15T10:30:00Z"
+          "updated_at": "2026-01-15T10:30:00Z",
+          "valid_from": "2026-01-15T10:30:00Z",
+          "valid_to": null
         }
       },
       "SubnetBase": {
@@ -20854,8 +21949,29 @@
                 "format": "uuid",
                 "readOnly": true
               },
+              "lineage_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
               "updated_at": {
                 "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "valid_from": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "valid_to": {
+                "type": [
+                  "string",
+                  "null"
+                ],
                 "format": "date-time",
                 "readOnly": true
               }
@@ -20868,9 +21984,12 @@
           "description": "Production environment resources",
           "id": "550e8400-e29b-41d4-a716-44665544000a",
           "is_application": false,
+          "lineage_id": null,
           "name": "production",
           "organization_id": "550e8400-e29b-41d4-a716-446655440001",
-          "updated_at": "2026-01-15T10:30:00Z"
+          "updated_at": "2026-01-15T10:30:00Z",
+          "valid_from": "2026-01-15T10:30:00Z",
+          "valid_to": null
         }
       },
       "TagBase": {
@@ -21830,6 +22949,10 @@
           "email": {
             "type": "string"
           },
+          "email_settings": {
+            "$ref": "#/components/schemas/EmailSettings",
+            "description": "Per-user email preferences"
+          },
           "email_verified": {
             "type": "boolean",
             "description": "Whether the user has verified their email address"
@@ -21970,13 +23093,55 @@
                 "format": "date-time",
                 "readOnly": true
               },
+              "first_discovery_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
               "id": {
                 "type": "string",
                 "format": "uuid",
                 "readOnly": true
               },
+              "last_discovery_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
+              "last_seen_at": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "lineage_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
               "updated_at": {
                 "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "valid_from": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "valid_to": {
+                "type": [
+                  "string",
+                  "null"
+                ],
                 "format": "date-time",
                 "readOnly": true
               }

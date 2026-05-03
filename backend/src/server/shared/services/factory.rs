@@ -8,6 +8,7 @@ use crate::server::{
     daemon_api_keys::service::DaemonApiKeyService,
     daemons::service::DaemonService,
     dependencies::service::DependencyService,
+    digest::service::DiscoveryDigestService,
     discovery::service::DiscoveryService,
     email::{brevo::BrevoEmailProvider, smtp::SmtpEmailProvider, traits::EmailService},
     hosts::service::HostService,
@@ -75,6 +76,7 @@ pub struct ServiceFactory {
     pub credential_service: Arc<CredentialService>,
     pub interface_service: Arc<InterfaceService>,
     pub vlan_service: Arc<VlanService>,
+    pub discovery_digest_service: Arc<DiscoveryDigestService>,
 }
 
 impl ServiceFactory {
@@ -254,6 +256,20 @@ impl ServiceFactory {
             event_bus.clone(),
         ));
 
+        let discovery_digest_service = Arc::new(DiscoveryDigestService::new(
+            host_service.clone(),
+            service_service.clone(),
+            port_service.clone(),
+            ip_address_service.clone(),
+            interface_service.clone(),
+            binding_service.clone(),
+            subnet_service.clone(),
+            vlan_service.clone(),
+            user_service.clone(),
+            network_service.clone(),
+            event_bus.clone(),
+        ));
+
         let public_url = config.public_url.clone();
 
         let email_service = if let Some(ref brevo_api_key) = config.brevo_api_key {
@@ -392,6 +408,7 @@ impl ServiceFactory {
             credential_service,
             interface_service,
             vlan_service,
+            discovery_digest_service,
         };
 
         // Register every `Subscriber<Op>` impl in the codebase. Entries are
@@ -444,6 +461,7 @@ impl ServiceFactory {
             credential_service,
             interface_service,
             vlan_service,
+            discovery_digest_service,
         } = self;
 
         ServiceCollector::new()
@@ -472,6 +490,7 @@ impl ServiceFactory {
             .with(credential_service.clone())
             .with(interface_service.clone())
             .with(vlan_service.clone())
+            .with(discovery_digest_service.clone())
             .with_optional(oidc_service.clone())
             .with_optional(billing_service.clone())
             .with_optional(email_service.clone())

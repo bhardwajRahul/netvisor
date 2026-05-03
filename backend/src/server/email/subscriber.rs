@@ -12,6 +12,7 @@ use std::collections::HashMap;
 use crate::server::{
     auth::middleware::auth::AuthenticatedEntity,
     billing::types::base::BillingReason,
+    digest::payload::{DiscoveryDigestOperation, DiscoveryDigestOperationDiscriminants},
     discovery::r#impl::types::DiscoveryType,
     email::traits::{EmailService, format_cents},
     shared::{
@@ -363,4 +364,41 @@ impl Subscriber<OnboardingOperation> for EmailService {
 inventory::submit!(SubscriberRegistration::new::<
     EmailService,
     OnboardingOperation,
+>());
+
+#[async_trait]
+impl Subscriber<DiscoveryDigestOperation> for EmailService {
+    fn filter(&self) -> EventFilter<DiscoveryDigestOperation> {
+        EventFilter::ops(vec![DiscoveryDigestOperationDiscriminants::Computed])
+    }
+
+    async fn handle(&self, events: Vec<Event<DiscoveryDigestOperation>>) -> Result<(), Error> {
+        for event in events {
+            let DiscoveryDigestOperation::Computed { payload } = event.operation;
+            if !payload.has_changes() {
+                continue;
+            }
+            for recipient in &payload.recipients {
+                if !recipient.discovery_digest_enabled {
+                    continue;
+                }
+                if let Err(e) = self
+                    .send_discovery_digest_email(recipient.email.clone(), &payload)
+                    .await
+                {
+                    tracing::warn!(
+                        user_id = %recipient.user_id,
+                        session_id = %payload.session_id,
+                        error = %e,
+                        "Failed to send discovery digest email",
+                    );
+                }
+            }
+        }
+        Ok(())
+    }
+}
+inventory::submit!(SubscriberRegistration::new::<
+    EmailService,
+    DiscoveryDigestOperation,
 >());

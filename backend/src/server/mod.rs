@@ -8,6 +8,7 @@ pub mod daemon_api_keys;
 pub mod daemons;
 pub mod dashboard;
 pub mod dependencies;
+pub mod digest;
 pub mod discovery;
 pub mod email;
 pub mod github;

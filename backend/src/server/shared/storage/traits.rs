@@ -31,7 +31,7 @@ use crate::server::{
         edges::{Edge, EdgeStyle},
         nodes::Node,
     },
-    users::r#impl::permissions::UserOrgPermissions,
+    users::r#impl::{email_settings::EmailSettings, permissions::UserOrgPermissions},
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -222,6 +222,7 @@ pub enum SqlValue {
     DiscoveryType(DiscoveryType),
     DaemonCapabilities(DaemonCapabilities),
     UserOrgPermissions(UserOrgPermissions),
+    EmailSettings(EmailSettings),
     OptionBillingPlan(Option<BillingPlan>),
     OptionBillingPlanStatus(Option<SubscriptionStatus>),
     BillingOperation(BillingOperation),
@@ -371,6 +372,7 @@ impl DbEnumContributor for Box<dyn ServiceDefinition> {
 impl_db_enum_contributor_empty!(
     DaemonCapabilities,
     UserOrgPermissions,
+    EmailSettings,
     TopologyOptions,
     ShareOptions,
     PlanLimitNotifications,
@@ -527,6 +529,7 @@ impl SqlValue {
             SqlValueDiscriminants::DiscoveryType => DiscoveryType::contribute(out),
             SqlValueDiscriminants::DaemonCapabilities => DaemonCapabilities::contribute(out),
             SqlValueDiscriminants::UserOrgPermissions => UserOrgPermissions::contribute(out),
+            SqlValueDiscriminants::EmailSettings => EmailSettings::contribute(out),
             SqlValueDiscriminants::OptionBillingPlan => BillingPlan::contribute(out),
             SqlValueDiscriminants::OptionBillingPlanStatus => SubscriptionStatus::contribute(out),
             SqlValueDiscriminants::BillingOperation => BillingOperation::contribute(out),

@@ -4,11 +4,14 @@ use anyhow::Result;
 
 use crate::{
     daemon::discovery::types::base::DiscoveryPhase,
-    server::shared::events::{
-        traits::{Event, Operation, Subscriber, TypedChannel},
-        types::{
-            AnalyticsOperation, AuthOperation, BillingOperation, EntityOperation,
-            OnboardingOperation,
+    server::{
+        digest::payload::DiscoveryDigestOperation,
+        shared::events::{
+            traits::{Event, Operation, Subscriber, TypedChannel},
+            types::{
+                AnalyticsOperation, AuthOperation, BillingOperation, EntityOperation,
+                OnboardingOperation,
+            },
         },
     },
 };
@@ -20,6 +23,7 @@ pub struct EventBus {
     pub auth_channel: TypedChannel<AuthOperation>,
     pub entity_channel: TypedChannel<EntityOperation>,
     pub discovery_channel: TypedChannel<DiscoveryPhase>,
+    pub discovery_digest_channel: TypedChannel<DiscoveryDigestOperation>,
 }
 
 impl Default for EventBus {
@@ -37,6 +41,7 @@ impl EventBus {
             auth_channel: TypedChannel::new(),
             entity_channel: TypedChannel::new(),
             discovery_channel: TypedChannel::new(),
+            discovery_digest_channel: TypedChannel::new(),
         }
     }
 
@@ -103,5 +108,11 @@ impl BusChannel<EntityOperation> for EventBus {
 impl BusChannel<DiscoveryPhase> for EventBus {
     fn channel(&self) -> &TypedChannel<DiscoveryPhase> {
         &self.discovery_channel
+    }
+}
+
+impl BusChannel<DiscoveryDigestOperation> for EventBus {
+    fn channel(&self) -> &TypedChannel<DiscoveryDigestOperation> {
+        &self.discovery_digest_channel
     }
 }

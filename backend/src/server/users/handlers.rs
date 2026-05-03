@@ -356,6 +356,7 @@ async fn admin_update_user(
     request.base.oidc_provider = existing.base.oidc_provider.clone();
     request.base.oidc_subject = existing.base.oidc_subject.clone();
     request.base.oidc_linked_at = existing.base.oidc_linked_at;
+    request.base.email_settings = existing.base.email_settings.clone();
 
     // Capture network_ids before update (they're stored in junction table, not user record)
     let network_ids = request.base.network_ids.clone();
