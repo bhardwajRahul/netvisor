@@ -28,6 +28,7 @@
 		billing_subscriptionActivated,
 		billing_subscriptionDelayed
 	} from '$lib/paraglide/messages';
+	import { markPlanActivated } from '$lib/shared/billing/plan-activation-marker';
 
 	let { children }: { children: Snippet } = $props();
 
@@ -122,6 +123,7 @@
 					plan_status: orgData.plan_status
 				});
 
+				markPlanActivated();
 				pushSuccess(billing_subscriptionActivated());
 				return true;
 			}
@@ -209,6 +211,7 @@
 					amount: organization.plan?.base_cents ?? 0,
 					plan_status: organization.plan_status
 				});
+				markPlanActivated();
 				pushSuccess(billing_subscriptionActivated());
 			} else {
 				// Webhook hasn't processed yet — poll until activation

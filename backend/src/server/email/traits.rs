@@ -6,6 +6,7 @@ use email_address::EmailAddress;
 use uuid::Uuid;
 
 use crate::server::{
+    daemons::{r#impl::base::Daemon, service::DaemonService},
     email::templates::{
         CANCELLATION_INITIATED_BODY, CANCELLATION_INITIATED_TITLE, CHECKOUT_COMPLETED_BODY,
         CHECKOUT_COMPLETED_TITLE, DAEMON_STANDBY_BODY, DAEMON_STANDBY_TITLE,
@@ -118,6 +119,7 @@ pub trait EmailProvider: Send + Sync {
         self.send_billing_email(to, subject, body).await
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn send_trial_ending_email(
         &self,
         to: EmailAddress,
@@ -125,11 +127,34 @@ pub trait EmailProvider: Send + Sync {
         has_payment: bool,
         billing_period: &str,
         base_price: &str,
+        hosts_count: u64,
+        networks_count: u64,
+        daemons_count: u64,
+        services_count: u64,
+        days_into_trial: i64,
     ) -> Result<(), Error> {
         let (subject, body) = if has_payment {
-            self.build_trial_ending_email_has_payment(plan_name, billing_period, base_price)
+            self.build_trial_ending_email_has_payment(
+                plan_name,
+                billing_period,
+                base_price,
+                hosts_count,
+                networks_count,
+                daemons_count,
+                services_count,
+                days_into_trial,
+            )
         } else {
-            self.build_trial_ending_email_no_payment(plan_name, billing_period, base_price)
+            self.build_trial_ending_email_no_payment(
+                plan_name,
+                billing_period,
+                base_price,
+                hosts_count,
+                networks_count,
+                daemons_count,
+                services_count,
+                days_into_trial,
+            )
         };
         self.send_billing_email(to, subject, body).await
     }
@@ -221,32 +246,54 @@ pub trait EmailProvider: Send + Sync {
         (TRIAL_STARTED_TITLE.to_string(), body)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn build_trial_ending_email_no_payment(
         &self,
         plan_name: &str,
         billing_period: &str,
         base_price: &str,
+        hosts_count: u64,
+        networks_count: u64,
+        daemons_count: u64,
+        services_count: u64,
+        days_into_trial: i64,
     ) -> (String, String) {
         let body = self.build_email(
             TRIAL_ENDING_BODY_NO_PAYMENT
                 .replace("{plan_name}", plan_name)
                 .replace("{billing_period}", billing_period)
-                .replace("{base_price}", base_price),
+                .replace("{base_price}", base_price)
+                .replace("{hosts_discovered}", &hosts_count.to_string())
+                .replace("{networks_mapped}", &networks_count.to_string())
+                .replace("{daemons_connected}", &daemons_count.to_string())
+                .replace("{services_identified}", &services_count.to_string())
+                .replace("{days_into_trial}", &days_into_trial.to_string()),
         );
         (TRIAL_ENDING_TITLE.to_string(), body)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn build_trial_ending_email_has_payment(
         &self,
         plan_name: &str,
         billing_period: &str,
         base_price: &str,
+        hosts_count: u64,
+        networks_count: u64,
+        daemons_count: u64,
+        services_count: u64,
+        days_into_trial: i64,
     ) -> (String, String) {
         let body = self.build_email(
             TRIAL_ENDING_BODY_HAS_PAYMENT
                 .replace("{plan_name}", plan_name)
                 .replace("{billing_period}", billing_period)
-                .replace("{base_price}", base_price),
+                .replace("{base_price}", base_price)
+                .replace("{hosts_discovered}", &hosts_count.to_string())
+                .replace("{networks_mapped}", &networks_count.to_string())
+                .replace("{daemons_connected}", &daemons_count.to_string())
+                .replace("{services_identified}", &services_count.to_string())
+                .replace("{days_into_trial}", &days_into_trial.to_string()),
         );
         (TRIAL_ENDING_TITLE.to_string(), body)
     }
@@ -579,6 +626,17 @@ pub trait EmailProvider: Send + Sync {
     }
 }
 
+/// Counts of entities discovered/created during the trial, plus elapsed days
+/// since org creation. Populates the trial-ending email and the in-app trial
+/// value recap card.
+pub struct TrialRecapMetrics {
+    pub hosts_count: u64,
+    pub networks_count: u64,
+    pub daemons_count: u64,
+    pub services_count: u64,
+    pub days_into_trial: i64,
+}
+
 /// Email service that wraps the provider
 pub struct EmailService {
     provider: Box<dyn EmailProvider>,
@@ -587,10 +645,12 @@ pub struct EmailService {
     pub host_service: Arc<HostService>,
     pub network_service: Arc<NetworkService>,
     pub service_service: Arc<ServiceService>,
+    pub daemon_service: Arc<DaemonService>,
     pub public_url: String,
 }
 
 impl EmailService {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         provider: Box<dyn EmailProvider>,
         user_service: Arc<UserService>,
@@ -598,6 +658,7 @@ impl EmailService {
         host_service: Arc<HostService>,
         network_service: Arc<NetworkService>,
         service_service: Arc<ServiceService>,
+        daemon_service: Arc<DaemonService>,
         public_url: String,
     ) -> Self {
         Self {
@@ -607,6 +668,7 @@ impl EmailService {
             host_service,
             network_service,
             service_service,
+            daemon_service,
             public_url,
         }
     }
@@ -672,26 +734,91 @@ impl EmailService {
         self.provider.send_billing_email(to, subject, body).await
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn send_trial_ending_email(
         &self,
         to: EmailAddress,
+        org_id: Uuid,
         plan_name: &str,
         has_payment: bool,
         billing_period: &str,
         base_price: &str,
     ) -> Result<()> {
+        let metrics = self.compute_trial_recap_metrics(org_id).await?;
+
         let (subject, body) = if has_payment {
             self.provider.build_trial_ending_email_has_payment(
                 plan_name,
                 billing_period,
                 base_price,
+                metrics.hosts_count,
+                metrics.networks_count,
+                metrics.daemons_count,
+                metrics.services_count,
+                metrics.days_into_trial,
             )
         } else {
-            self.provider
-                .build_trial_ending_email_no_payment(plan_name, billing_period, base_price)
+            self.provider.build_trial_ending_email_no_payment(
+                plan_name,
+                billing_period,
+                base_price,
+                metrics.hosts_count,
+                metrics.networks_count,
+                metrics.daemons_count,
+                metrics.services_count,
+                metrics.days_into_trial,
+            )
         };
         let body = body.replace("{base_url}", &self.public_url);
         self.provider.send_billing_email(to, subject, body).await
+    }
+
+    /// Counts of entities discovered/created during the trial, plus how many
+    /// days have elapsed since org creation. Used to populate the trial-ending
+    /// email and the in-app trial value recap card.
+    async fn compute_trial_recap_metrics(&self, org_id: Uuid) -> Result<TrialRecapMetrics> {
+        let org = self
+            .organization_service
+            .get_by_id(&org_id)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("Organization not found"))?;
+
+        let networks = self
+            .network_service
+            .get_all(StorableFilter::<Network>::new_from_org_id(&org_id))
+            .await?;
+        let networks_count = networks.len() as u64;
+        let network_ids: Vec<Uuid> = networks.iter().map(|n| n.id).collect();
+
+        let hosts_count = self
+            .host_service
+            .get_all(StorableFilter::<Host>::new_from_network_ids(&network_ids))
+            .await?
+            .len() as u64;
+
+        let services_count = self
+            .service_service
+            .get_all(StorableFilter::<
+                crate::server::services::r#impl::base::Service,
+            >::new_from_network_ids(&network_ids))
+            .await?
+            .len() as u64;
+
+        let daemons_count = self
+            .daemon_service
+            .get_all(StorableFilter::<Daemon>::new_from_network_ids(&network_ids))
+            .await?
+            .len() as u64;
+
+        let days_into_trial = (chrono::Utc::now() - org.created_at).num_days();
+
+        Ok(TrialRecapMetrics {
+            hosts_count,
+            networks_count,
+            daemons_count,
+            services_count,
+            days_into_trial,
+        })
     }
 
     pub async fn send_trial_expired_email(

@@ -106,6 +106,7 @@ impl Subscriber<BillingOperation> for EmailService {
                 } => {
                     self.send_trial_ending_email(
                         org_owner,
+                        event.scope.organization_id,
                         plan.name(),
                         has_payment_method,
                         plan.billing_period(),
@@ -137,7 +138,7 @@ impl Subscriber<BillingOperation> for EmailService {
                 BillingOperation::PaymentMethodRemoved => {
                     self.send_payment_method_removed_email(org_owner).await?;
                 }
-                BillingOperation::PaymentRecovered { amount_cents } => {
+                BillingOperation::PaymentRecovered { amount_cents, .. } => {
                     let amount = format_cents(amount_cents, "usd");
                     self.send_payment_recovered_email(org_owner, &amount)
                         .await?;
