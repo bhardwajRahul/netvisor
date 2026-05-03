@@ -10,10 +10,15 @@
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import { Check, X, ChevronDown, ChevronUp, Loader2, Minus, Plus } from 'lucide-svelte';
 	import {
+		billing_cancelBeforeCharge,
+		billing_continueToStripe,
 		billing_everythingInPlanPlus,
+		billing_firstInvoiceOn,
+		billing_firstInvoiceToday,
 		billing_showFeatures,
 		billing_hideFeatures,
-		billing_startTrialNoCreditCard
+		billing_startTrialNoCreditCard,
+		common_cancel
 	} from '$lib/paraglide/messages';
 	import Tag from '$lib/shared/components/data/Tag.svelte';
 	import ToggleGroup from './ToggleGroup.svelte';
@@ -72,7 +77,21 @@
 	}: Props = $props();
 
 	let loadingPlanType = $state<string | null>(null);
+	let confirmingPlanType = $state<string | null>(null);
 	let showFullComparison = $state(false);
+
+	function formatFirstInvoiceLabel(plan: BillingPlan): string {
+		if (plan.trial_days > 0 && !isReturningCustomer) {
+			const ms = Date.now() + plan.trial_days * 24 * 60 * 60 * 1000;
+			const dateStr = new Date(ms).toLocaleDateString(undefined, {
+				month: 'long',
+				day: 'numeric',
+				year: 'numeric'
+			});
+			return billing_firstInvoiceOn({ date: dateStr });
+		}
+		return billing_firstInvoiceToday();
+	}
 
 	type BillingPeriod = 'monthly' | 'yearly';
 	let billingPeriod = $state<BillingPeriod>('yearly');
@@ -474,20 +493,59 @@
 									Request Information
 								</button>
 							{:else if hosting === 'Cloud'}
-								<button
-									type="button"
-									onclick={() => handlePlanSelect(plan)}
-									disabled={loadingPlanType !== null}
-									class="btn-primary w-full text-sm"
-								>
-									{#if loadingPlanType === plan.type}
-										<Loader2 class="mx-auto h-4 w-4 animate-spin" />
-									{:else if isCurrentlyTrialing}
-										Switch plan
-									{:else}
-										{trial ? billing_startTrialNoCreditCard() : 'Get Started'}
-									{/if}
-								</button>
+								{#if !isCurrentlyTrialing && confirmingPlanType === plan.type}
+									<div class="space-y-2">
+										<div class="text-secondary text-center text-sm font-medium">
+											{formatFirstInvoiceLabel(plan)}
+										</div>
+										{#if hasTrial(plan)}
+											<div class="text-tertiary text-center text-xs">
+												{billing_cancelBeforeCharge()}
+											</div>
+										{/if}
+										<button
+											type="button"
+											onclick={() => handlePlanSelect(plan)}
+											disabled={loadingPlanType !== null}
+											class="btn-primary w-full text-sm"
+										>
+											{#if loadingPlanType === plan.type}
+												<Loader2 class="mx-auto h-4 w-4 animate-spin" />
+											{:else}
+												{billing_continueToStripe()}
+											{/if}
+										</button>
+										<button
+											type="button"
+											onclick={() => (confirmingPlanType = null)}
+											disabled={loadingPlanType !== null}
+											class="btn-secondary w-full text-sm"
+										>
+											{common_cancel()}
+										</button>
+									</div>
+								{:else}
+									<button
+										type="button"
+										onclick={() => {
+											if (isCurrentlyTrialing) {
+												handlePlanSelect(plan);
+											} else {
+												confirmingPlanType = plan.type;
+											}
+										}}
+										disabled={loadingPlanType !== null}
+										class="btn-primary w-full text-sm"
+									>
+										{#if loadingPlanType === plan.type}
+											<Loader2 class="mx-auto h-4 w-4 animate-spin" />
+										{:else if isCurrentlyTrialing}
+											Switch plan
+										{:else}
+											{trial ? billing_startTrialNoCreditCard() : 'Get Started'}
+										{/if}
+									</button>
+								{/if}
 							{:else if hosting === 'SelfHosted'}
 								{#if commercial && onPlanInquiry}
 									<button

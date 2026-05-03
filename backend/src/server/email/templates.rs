@@ -247,7 +247,7 @@ pub const SUBSCRIPTION_CANCELLED_BODY: &str = r#"                    <!-- Main C
                         <td style="padding: 0 40px 20px 40px;">
                             <h1 style="margin: 0 0 20px 0; font-size: 24px; font-weight: 600; color: #1a1a1a; text-align: center;">Subscription Cancelled</h1>
                             <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 24px; color: #4a4a4a;">Hi there,</p>
-                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 24px; color: #4a4a4a;">Your Scanopy subscription has been cancelled. Your account has been moved to the Free plan.</p>
+                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 24px; color: #4a4a4a;">Your Scanopy subscription was cancelled and your access ended on {period_end_date}. Your account has been moved to the Free plan.</p>
                             <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 24px; color: #4a4a4a;">You can continue using Scanopy with up to 25 hosts and manual discovery. Resubscribe anytime from your Settings page.</p>
                         </td>
                     </tr>
@@ -299,7 +299,7 @@ pub const PAYMENT_RECOVERED_BODY: &str = r#"                    <!-- Main Conten
                         <td style="padding: 0 40px 20px 40px;">
                             <h1 style="margin: 0 0 20px 0; font-size: 24px; font-weight: 600; color: #1a1a1a; text-align: center;">Payment Recovered</h1>
                             <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 24px; color: #4a4a4a;">Hi there,</p>
-                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 24px; color: #4a4a4a;">Your previously failed payment has gone through. Your subscription is active again — no action needed on your end.</p>
+                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 24px; color: #4a4a4a;">Your previously failed payment of {amount} has gone through. Your subscription is active again — no action needed on your end.</p>
                             <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 24px; color: #4a4a4a;">Thanks for being a Scanopy customer.</p>
                         </td>
                     </tr>

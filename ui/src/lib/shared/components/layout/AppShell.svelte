@@ -24,6 +24,7 @@
 		hasAnalyticsConsent
 	} from '$lib/shared/components/feedback/CookieConsent.svelte';
 	import {
+		billing_paymentMethodAdded,
 		billing_subscriptionActivated,
 		billing_subscriptionDelayed
 	} from '$lib/paraglide/messages';
@@ -236,6 +237,7 @@
 
 			// Refresh org data to update has_payment_method
 			queryClient.invalidateQueries({ queryKey: queryKeys.organizations.current() });
+			pushSuccess(billing_paymentMethodAdded());
 		}
 
 		// Check if current page matches where user should be
