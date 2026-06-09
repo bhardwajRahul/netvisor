@@ -124,6 +124,13 @@ impl UserNetworkAccessStorage {
         Ok(access_records.iter().map(|a| a.network_id()).collect())
     }
 
+    /// Get all user IDs with explicit access to a single network.
+    pub async fn get_user_ids_for_network(&self, network_id: &Uuid) -> Result<Vec<Uuid>> {
+        let filter = StorableFilter::<UserNetworkAccess>::new_from_network_ids(&[*network_id]);
+        let access_records = self.storage.get_all(filter).await?;
+        Ok(access_records.iter().map(|a| a.user_id()).collect())
+    }
+
     /// Get network IDs for multiple users (batch loading)
     pub async fn get_for_users(&self, user_ids: &[Uuid]) -> Result<HashMap<Uuid, Vec<Uuid>>> {
         if user_ids.is_empty() {

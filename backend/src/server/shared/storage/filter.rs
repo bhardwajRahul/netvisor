@@ -25,8 +25,14 @@ pub struct StorableFilter<T: Storable> {
     joins: Vec<String>,
 }
 
+impl<T: Storable> Default for StorableFilter<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<T: Storable> StorableFilter<T> {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             _marker: PhantomData,
             conditions: Vec::new(),
@@ -609,6 +615,25 @@ impl<T: Storable> StorableFilter<T> {
         self
     }
 
+    pub fn user_permissions_in(mut self, permissions: &[UserOrgPermissions]) -> Self {
+        if permissions.is_empty() {
+            self.conditions.push("FALSE".to_string());
+            return self;
+        }
+        let col = self.qualify_column("permissions");
+        let placeholders: Vec<String> = permissions
+            .iter()
+            .enumerate()
+            .map(|(i, _)| format!("${}", self.values.len() + i + 1))
+            .collect();
+        self.conditions
+            .push(format!("{} IN ({})", col, placeholders.join(", ")));
+        for p in permissions {
+            self.values.push(SqlValue::UserOrgPermissions(*p));
+        }
+        self
+    }
+
     pub fn expires_before(mut self, timestamp: DateTime<Utc>) -> Self {
         let col = self.qualify_column("expires_at");
         self.conditions
@@ -622,6 +647,66 @@ impl<T: Storable> StorableFilter<T> {
         self.conditions
             .push(format!("{} < ${}", col, self.values.len() + 1));
         self.values.push(SqlValue::Timestamp(timestamp));
+        self
+    }
+
+    pub fn last_seen_before(mut self, timestamp: DateTime<Utc>) -> Self {
+        let col = self.qualify_column("last_seen_at");
+        self.conditions
+            .push(format!("{} < ${}", col, self.values.len() + 1));
+        self.values.push(SqlValue::Timestamp(timestamp));
+        self
+    }
+
+    pub fn updated_before(mut self, timestamp: DateTime<Utc>) -> Self {
+        let col = self.qualify_column("updated_at");
+        self.conditions
+            .push(format!("{} < ${}", col, self.values.len() + 1));
+        self.values.push(SqlValue::Timestamp(timestamp));
+        self
+    }
+
+    pub fn created_between(mut self, start: DateTime<Utc>, end: DateTime<Utc>) -> Self {
+        let col = self.qualify_column("created_at");
+        let start_idx = self.values.len() + 1;
+        let end_idx = self.values.len() + 2;
+        self.conditions
+            .push(format!("{col} >= ${start_idx} AND {col} <= ${end_idx}"));
+        self.values.push(SqlValue::Timestamp(start));
+        self.values.push(SqlValue::Timestamp(end));
+        self
+    }
+
+    pub fn updated_between(mut self, start: DateTime<Utc>, end: DateTime<Utc>) -> Self {
+        let col = self.qualify_column("updated_at");
+        let start_idx = self.values.len() + 1;
+        let end_idx = self.values.len() + 2;
+        self.conditions
+            .push(format!("{col} >= ${start_idx} AND {col} <= ${end_idx}"));
+        self.values.push(SqlValue::Timestamp(start));
+        self.values.push(SqlValue::Timestamp(end));
+        self
+    }
+
+    pub fn valid_to_between(mut self, start: DateTime<Utc>, end: DateTime<Utc>) -> Self {
+        let col = self.qualify_column("valid_to");
+        let start_idx = self.values.len() + 1;
+        let end_idx = self.values.len() + 2;
+        self.conditions
+            .push(format!("{col} >= ${start_idx} AND {col} <= ${end_idx}"));
+        self.values.push(SqlValue::Timestamp(start));
+        self.values.push(SqlValue::Timestamp(end));
+        self
+    }
+
+    pub fn last_seen_between(mut self, start: DateTime<Utc>, end: DateTime<Utc>) -> Self {
+        let col = self.qualify_column("last_seen_at");
+        let start_idx = self.values.len() + 1;
+        let end_idx = self.values.len() + 2;
+        self.conditions
+            .push(format!("{col} >= ${start_idx} AND {col} <= ${end_idx}"));
+        self.values.push(SqlValue::Timestamp(start));
+        self.values.push(SqlValue::Timestamp(end));
         self
     }
 
@@ -961,8 +1046,14 @@ impl<T: Storable> StorableFilter<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::server::hosts::r#impl::base::Host;
     use crate::server::snapshots::types::base::Snapshot;
     use crate::server::tags::r#impl::base::Tag;
+    use chrono::TimeZone;
+
+    fn ts(secs: i64) -> DateTime<Utc> {
+        Utc.timestamp_opt(secs, 0).unwrap()
+    }
 
     #[test]
     fn id_or_lineage_in_emits_or_clause() {
@@ -1048,5 +1139,72 @@ mod tests {
             "expected upper bound in: {}",
             where_clause
         );
+    }
+
+    #[test]
+    fn created_between_emits_inclusive_range() {
+        let f = StorableFilter::<Host>::new().created_between(ts(100), ts(200));
+        assert_eq!(f.conditions.len(), 1);
+        let c = &f.conditions[0];
+        assert!(c.contains("created_at"), "condition was: {c}");
+        assert!(
+            c.contains(">= $1") && c.contains("<= $2"),
+            "condition was: {c}"
+        );
+        assert_eq!(f.values.len(), 2);
+        match (&f.values[0], &f.values[1]) {
+            (SqlValue::Timestamp(a), SqlValue::Timestamp(b)) => {
+                assert_eq!(*a, ts(100));
+                assert_eq!(*b, ts(200));
+            }
+            _ => panic!("expected two Timestamp values"),
+        }
+    }
+
+    #[test]
+    fn updated_between_uses_updated_at_column() {
+        let f = StorableFilter::<Host>::new().updated_between(ts(0), ts(1));
+        assert!(f.conditions[0].contains("updated_at"));
+    }
+
+    #[test]
+    fn valid_to_between_uses_valid_to_column() {
+        let f = StorableFilter::<Host>::new().valid_to_between(ts(0), ts(1));
+        assert!(f.conditions[0].contains("valid_to"));
+    }
+
+    #[test]
+    fn last_seen_between_uses_last_seen_at_column() {
+        let f = StorableFilter::<Host>::new().last_seen_between(ts(0), ts(1));
+        assert!(f.conditions[0].contains("last_seen_at"));
+    }
+
+    #[test]
+    fn between_helpers_advance_param_index() {
+        let f = StorableFilter::<Host>::new()
+            .created_between(ts(10), ts(20))
+            .updated_between(ts(30), ts(40));
+        assert_eq!(f.values.len(), 4);
+        assert!(f.conditions[0].contains("$1") && f.conditions[0].contains("$2"));
+        assert!(f.conditions[1].contains("$3") && f.conditions[1].contains("$4"));
+    }
+
+    #[test]
+    fn user_permissions_in_emits_in_clause() {
+        let f = StorableFilter::<crate::server::users::r#impl::base::User>::new()
+            .user_permissions_in(&[UserOrgPermissions::Owner, UserOrgPermissions::Admin]);
+        assert_eq!(f.conditions.len(), 1);
+        let c = &f.conditions[0];
+        assert!(c.contains("permissions"));
+        assert!(c.contains("IN ($1, $2)"), "condition was: {c}");
+        assert_eq!(f.values.len(), 2);
+    }
+
+    #[test]
+    fn user_permissions_in_empty_emits_false() {
+        let f = StorableFilter::<crate::server::users::r#impl::base::User>::new()
+            .user_permissions_in(&[]);
+        assert_eq!(f.conditions, vec!["FALSE".to_string()]);
+        assert_eq!(f.values.len(), 0);
     }
 }

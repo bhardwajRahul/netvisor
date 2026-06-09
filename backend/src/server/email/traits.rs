@@ -624,6 +624,231 @@ pub trait EmailProvider: Send + Sync {
         let subject = PLAN_LIMIT_REACHED_TITLE.replace("{limit_type}", limit_type);
         (subject, body)
     }
+
+    fn build_discovery_digest_email(
+        &self,
+        payload: &crate::server::digest::payload::DiscoveryDigestPayload,
+        public_url: &str,
+    ) -> (String, String) {
+        use crate::server::email::templates::{DISCOVERY_DIGEST_BODY, DISCOVERY_DIGEST_TITLE};
+        let started = payload
+            .started_at
+            .format("%b %-d, %Y %H:%M UTC")
+            .to_string();
+        let finished = payload
+            .finished_at
+            .format("%b %-d, %Y %H:%M UTC")
+            .to_string();
+        let settings_url = format!("{}/settings?tab=email", public_url.trim_end_matches('/'));
+
+        let subnets_section = render_subnets_section(&payload.subnets_scanned);
+        let hosts_added_section =
+            render_host_list_section("New hosts discovered", &payload.hosts_added);
+        let hosts_vanished_section =
+            render_host_list_section("Hosts not seen this scan", &payload.hosts_vanished);
+        let hosts_changed_section = render_host_changes_section(&payload.hosts_with_child_changes);
+        let vlans_added_section = render_vlan_list_section("VLANs detected", &payload.vlans_added);
+        let vlans_removed_section =
+            render_vlan_list_section("VLANs no longer detected", &payload.vlans_removed);
+
+        let body = self.build_email(
+            DISCOVERY_DIGEST_BODY
+                .replace("{network_name}", &html_escape(&payload.network_name))
+                .replace("{started_at}", &started)
+                .replace("{finished_at}", &finished)
+                .replace("{settings_url}", &settings_url)
+                .replace("{subnets_section}", &subnets_section)
+                .replace("{hosts_added_section}", &hosts_added_section)
+                .replace("{hosts_vanished_section}", &hosts_vanished_section)
+                .replace("{hosts_changed_section}", &hosts_changed_section)
+                .replace("{vlans_added_section}", &vlans_added_section)
+                .replace("{vlans_removed_section}", &vlans_removed_section),
+        );
+        let subject = format!("{}: {}", DISCOVERY_DIGEST_TITLE, payload.network_name);
+        (subject, body)
+    }
+}
+
+/// Render a `<ul>` of names with truncation to `MAX_LIST_ITEMS` followed by
+/// a "+N more" tail. Empty list returns an empty string so callers can drop
+/// whole sections without conditionals.
+const MAX_LIST_ITEMS: usize = 10;
+
+fn render_truncated_list(items: &[String]) -> String {
+    if items.is_empty() {
+        return String::new();
+    }
+    let shown: Vec<String> = items
+        .iter()
+        .take(MAX_LIST_ITEMS)
+        .map(|s| format!(r#"<li style="margin: 0 0 4px 0;">{}</li>"#, html_escape(s)))
+        .collect();
+    let tail = if items.len() > MAX_LIST_ITEMS {
+        format!(
+            r#"<li style="margin: 0; color: #6b7280;">+ {} more</li>"#,
+            items.len() - MAX_LIST_ITEMS
+        )
+    } else {
+        String::new()
+    };
+    format!(
+        r#"<ul style="margin: 0 0 16px 20px; padding: 0; font-size: 14px; line-height: 20px; color: #4a4a4a;">{}{}</ul>"#,
+        shown.join(""),
+        tail,
+    )
+}
+
+fn render_section(heading: &str, body_html: &str) -> String {
+    format!(
+        r#"<h2 style="margin: 24px 0 8px 0; font-size: 16px; font-weight: 600; color: #1a1a1a;">{}</h2>{}"#,
+        html_escape(heading),
+        body_html,
+    )
+}
+
+fn render_subnets_section(subnets: &[crate::server::digest::payload::SubnetSummary]) -> String {
+    if subnets.is_empty() {
+        return String::new();
+    }
+    let names: Vec<String> = subnets.iter().map(|s| s.label.clone()).collect();
+    render_section("Subnets scanned", &render_truncated_list(&names))
+}
+
+fn render_host_list_section(
+    heading: &str,
+    hosts: &[crate::server::digest::payload::HostSummary],
+) -> String {
+    if hosts.is_empty() {
+        return String::new();
+    }
+    let names: Vec<String> = hosts.iter().map(|h| h.label.clone()).collect();
+    let header = format!("{} ({})", heading, hosts.len());
+    render_section(&header, &render_truncated_list(&names))
+}
+
+fn render_vlan_list_section(
+    heading: &str,
+    vlans: &[crate::server::digest::payload::VlanSummary],
+) -> String {
+    if vlans.is_empty() {
+        return String::new();
+    }
+    let names: Vec<String> = vlans
+        .iter()
+        .map(|v| {
+            if v.name.is_empty() {
+                format!("VLAN {}", v.vlan_number)
+            } else {
+                format!("VLAN {} — {}", v.vlan_number, v.name)
+            }
+        })
+        .collect();
+    let header = format!("{} ({})", heading, vlans.len());
+    render_section(&header, &render_truncated_list(&names))
+}
+
+fn render_host_changes_section(
+    rollups: &[crate::server::digest::payload::HostChildChanges],
+) -> String {
+    if rollups.is_empty() {
+        return String::new();
+    }
+    let mut inner = String::new();
+    for rollup in rollups.iter().take(MAX_LIST_ITEMS) {
+        inner.push_str(&format!(
+            r#"<div style="margin: 0 0 16px 0; padding: 12px; background-color: #f9fafb; border-radius: 6px;"><p style="margin: 0 0 6px 0; font-size: 14px; font-weight: 600; color: #1a1a1a;">{}</p>"#,
+            html_escape(&rollup.host.label),
+        ));
+        for (label, items) in [
+            (
+                "Ports detected",
+                item_labels_ports_added(&rollup.ports_added),
+            ),
+            (
+                "Ports no longer detected",
+                item_labels_ports_added(&rollup.ports_removed),
+            ),
+            (
+                "Services detected",
+                item_labels_services(&rollup.services_added),
+            ),
+            (
+                "Services no longer detected",
+                item_labels_services(&rollup.services_removed),
+            ),
+            (
+                "IP addresses detected",
+                item_labels_ips(&rollup.ip_addresses_added),
+            ),
+            (
+                "IP addresses no longer detected",
+                item_labels_ips(&rollup.ip_addresses_removed),
+            ),
+            (
+                "Interfaces detected",
+                item_labels_interfaces(&rollup.interfaces_added),
+            ),
+            (
+                "Interfaces no longer detected",
+                item_labels_interfaces(&rollup.interfaces_removed),
+            ),
+            (
+                "Bindings detected",
+                item_labels_bindings(&rollup.bindings_added),
+            ),
+            (
+                "Bindings no longer detected",
+                item_labels_bindings(&rollup.bindings_removed),
+            ),
+        ] {
+            if !items.is_empty() {
+                inner.push_str(&format!(
+                    r#"<p style="margin: 6px 0 4px 0; font-size: 13px; font-weight: 500; color: #4a4a4a;">{}:</p>{}"#,
+                    html_escape(label),
+                    render_truncated_list(&items),
+                ));
+            }
+        }
+        inner.push_str("</div>");
+    }
+    if rollups.len() > MAX_LIST_ITEMS {
+        inner.push_str(&format!(
+            r#"<p style="margin: 0; font-size: 13px; color: #6b7280;">+ {} more host(s) with changes</p>"#,
+            rollups.len() - MAX_LIST_ITEMS
+        ));
+    }
+    let header = format!("Hosts with changes ({})", rollups.len());
+    render_section(&header, &inner)
+}
+
+fn item_labels_ports_added(items: &[crate::server::digest::payload::PortSummary]) -> Vec<String> {
+    items.iter().map(|p| p.label.clone()).collect()
+}
+
+fn item_labels_services(items: &[crate::server::digest::payload::ServiceSummary]) -> Vec<String> {
+    items.iter().map(|s| s.name.clone()).collect()
+}
+
+fn item_labels_ips(items: &[crate::server::digest::payload::IpAddressSummary]) -> Vec<String> {
+    items.iter().map(|ip| ip.address.clone()).collect()
+}
+
+fn item_labels_interfaces(
+    items: &[crate::server::digest::payload::InterfaceSummary],
+) -> Vec<String> {
+    items.iter().map(|i| i.label.clone()).collect()
+}
+
+fn item_labels_bindings(items: &[crate::server::digest::payload::BindingSummary]) -> Vec<String> {
+    items.iter().map(|b| b.label.clone()).collect()
+}
+
+fn html_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
 }
 
 /// Counts of entities discovered/created during the trial, plus elapsed days
@@ -713,6 +938,20 @@ impl EmailService {
         subject: String,
         body: String,
     ) -> Result<()> {
+        self.provider.send_billing_email(to, subject, body).await
+    }
+
+    /// Send a per-discovery-session digest. Routed through the existing
+    /// billing-email provider channel — same Brevo/SMTP transport with no
+    /// extra wiring needed.
+    pub async fn send_discovery_digest_email(
+        &self,
+        to: EmailAddress,
+        payload: &crate::server::digest::payload::DiscoveryDigestPayload,
+    ) -> Result<()> {
+        let (subject, body) = self
+            .provider
+            .build_discovery_digest_email(payload, &self.public_url);
         self.provider.send_billing_email(to, subject, body).await
     }
 

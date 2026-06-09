@@ -128,6 +128,48 @@ impl UserService {
         self.user_storage.get_all(filter).await
     }
 
+    /// Returns all users with access to `network_id` within `organization_id`.
+    ///
+    /// Access is the union of:
+    /// - Users with an explicit row in the `user_network_access` junction.
+    /// - Org Owners and Admins, who have implicit access to every network in
+    ///   their organization regardless of the junction table.
+    ///
+    /// Deduplicates users that fall into both sets. The org-id parameter is
+    /// required so the implicit set is scoped — junction rows alone don't
+    /// carry the org context the way `User.organization_id` does.
+    pub async fn get_users_with_network_access(
+        &self,
+        network_id: &Uuid,
+        organization_id: &Uuid,
+    ) -> Result<Vec<User>> {
+        let explicit_user_ids = self
+            .network_access_storage
+            .get_user_ids_for_network(network_id)
+            .await?;
+
+        let explicit = if explicit_user_ids.is_empty() {
+            Vec::new()
+        } else {
+            let filter = StorableFilter::<User>::new_from_user_ids(&explicit_user_ids);
+            self.user_storage.get_all(filter).await?
+        };
+
+        let implicit_filter = StorableFilter::<User>::new_from_org_id(organization_id)
+            .user_permissions_in(&[UserOrgPermissions::Owner, UserOrgPermissions::Admin]);
+        let implicit = self.user_storage.get_all(implicit_filter).await?;
+
+        let mut seen: std::collections::HashSet<Uuid> =
+            std::collections::HashSet::with_capacity(explicit.len() + implicit.len());
+        let mut out: Vec<User> = Vec::with_capacity(explicit.len() + implicit.len());
+        for user in explicit.into_iter().chain(implicit.into_iter()) {
+            if seen.insert(user.id) {
+                out.push(user);
+            }
+        }
+        Ok(out)
+    }
+
     /// Get network_ids for a user from the user_network_access junction table
     pub async fn get_network_ids(&self, user_id: &Uuid) -> Result<Vec<Uuid>> {
         self.network_access_storage.get_for_user(user_id).await
