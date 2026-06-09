@@ -1,28 +1,92 @@
 use std::{collections::HashMap, sync::Arc};
 
 use anyhow::Result;
-use chrono::{DateTime, Utc};
+use async_trait::async_trait;
+use chrono::{DateTime, Duration, Utc};
 use sqlx::{PgPool, Postgres};
 use uuid::Uuid;
 
+use crate::server::networks::r#impl::Network;
+use crate::server::networks::service::NetworkService;
+use crate::server::organizations::service::OrganizationService;
+use crate::server::shared::events::bus::EventBus;
+use crate::server::shared::services::traits::{CrudService, EventBusService};
 use crate::server::shared::storage::{
     filter::StorableFilter,
     generic::GenericPostgresStorage,
     snapshot::{FkMaps, Snapshotable},
-    traits::Storable,
+    traits::{Storable, Storage},
 };
+use crate::server::snapshots::types::base::Snapshot;
+use crate::server::tags::entity_tags::EntityTagService;
 
 /// Network snapshots: close-and-clone the live row set for a network at a
-/// single timestamp inside one transaction.
+/// single timestamp inside one transaction. Also acts as the `CrudService`
+/// for the `Snapshot` entity so the standard handlers can read/list/delete
+/// snapshot rows.
 pub struct SnapshotService {
     pool: Arc<PgPool>,
+    storage: Arc<GenericPostgresStorage<Snapshot>>,
+    event_bus: Arc<EventBus>,
+    network_service: std::sync::OnceLock<Arc<NetworkService>>,
+    organization_service: std::sync::OnceLock<Arc<OrganizationService>>,
 }
 
 impl SnapshotService {
-    pub fn new(pool: Arc<PgPool>) -> Arc<Self> {
-        Arc::new(Self { pool })
+    pub fn new(
+        pool: Arc<PgPool>,
+        storage: Arc<GenericPostgresStorage<Snapshot>>,
+        event_bus: Arc<EventBus>,
+    ) -> Arc<Self> {
+        Arc::new(Self {
+            pool,
+            storage,
+            event_bus,
+            network_service: std::sync::OnceLock::new(),
+            organization_service: std::sync::OnceLock::new(),
+        })
     }
 
+    /// Late-binding setter for retention dependencies. The service factory
+    /// constructs SnapshotService early (so other services can take it as a
+    /// peer) and then wires NetworkService + OrganizationService in once
+    /// they're ready. Idempotent: subsequent calls are no-ops.
+    pub fn set_retention_dependencies(
+        &self,
+        network_service: Arc<NetworkService>,
+        organization_service: Arc<OrganizationService>,
+    ) {
+        let _ = self.network_service.set(network_service);
+        let _ = self.organization_service.set(organization_service);
+    }
+}
+
+impl EventBusService<Snapshot> for SnapshotService {
+    fn event_bus(&self) -> &Arc<EventBus> {
+        &self.event_bus
+    }
+
+    fn get_network_id(&self, entity: &Snapshot) -> Option<Uuid> {
+        Some(entity.base.network_id)
+    }
+
+    fn get_organization_id(&self, _entity: &Snapshot) -> Option<Uuid> {
+        None
+    }
+}
+
+#[async_trait]
+impl CrudService<Snapshot> for SnapshotService {
+    fn storage(&self) -> &Arc<GenericPostgresStorage<Snapshot>> {
+        &self.storage
+    }
+
+    fn entity_tag_service(&self) -> Option<&Arc<EntityTagService>> {
+        None
+    }
+}
+
+impl SnapshotService {
     /// Synchronous orchestration of one network snapshot at `taken_at`.
     ///
     /// Caller (the manual-snapshot API handler or future scheduled-snapshot
@@ -38,6 +102,7 @@ impl SnapshotService {
         &self,
         network_id: Uuid,
         taken_at: DateTime<Utc>,
+        snapshot_id: Uuid,
     ) -> Result<()> {
         use crate::server::bindings::r#impl::base::Binding;
         use crate::server::dependencies::dependency_members::DependencyMemberRecord;
@@ -60,6 +125,7 @@ impl SnapshotService {
             &mut tx,
             network_filter::<Subnet>(network_id),
             taken_at,
+            snapshot_id,
             &maps,
         )
         .await?;
@@ -69,6 +135,7 @@ impl SnapshotService {
             &mut tx,
             network_filter::<Vlan>(network_id),
             taken_at,
+            snapshot_id,
             &maps,
         )
         .await?;
@@ -78,6 +145,7 @@ impl SnapshotService {
             &mut tx,
             network_filter::<Host>(network_id),
             taken_at,
+            snapshot_id,
             &maps,
         )
         .await?;
@@ -89,6 +157,7 @@ impl SnapshotService {
             &mut tx,
             network_filter::<IPAddress>(network_id),
             taken_at,
+            snapshot_id,
             &maps,
         )
         .await?;
@@ -100,6 +169,7 @@ impl SnapshotService {
             &mut tx,
             StorableFilter::<Port>::new_from_uuids_column("host_id", &host_ids).live(),
             taken_at,
+            snapshot_id,
             &maps,
         )
         .await?;
@@ -109,6 +179,7 @@ impl SnapshotService {
             &mut tx,
             network_filter::<Service>(network_id),
             taken_at,
+            snapshot_id,
             &maps,
         )
         .await?;
@@ -119,6 +190,7 @@ impl SnapshotService {
             &mut tx,
             StorableFilter::<Interface>::new_from_uuids_column("host_id", &host_ids).live(),
             taken_at,
+            snapshot_id,
             &maps,
         )
         .await?;
@@ -132,6 +204,7 @@ impl SnapshotService {
             &mut tx,
             StorableFilter::<Binding>::new_from_uuids_column("service_id", &service_ids).live(),
             taken_at,
+            snapshot_id,
             &maps,
         )
         .await?;
@@ -144,6 +217,7 @@ impl SnapshotService {
             StorableFilter::<SubnetVlanRecord>::new_from_uuids_column("subnet_id", &subnet_ids)
                 .live(),
             taken_at,
+            snapshot_id,
             &maps,
         )
         .await?;
@@ -152,6 +226,7 @@ impl SnapshotService {
             &mut tx,
             network_filter::<Dependency>(network_id),
             taken_at,
+            snapshot_id,
             &maps,
         )
         .await?;
@@ -167,6 +242,7 @@ impl SnapshotService {
             )
             .live(),
             taken_at,
+            snapshot_id,
             &maps,
         )
         .await?;
@@ -188,11 +264,79 @@ impl SnapshotService {
             &mut tx,
             StorableFilter::<EntityTag>::new_from_uuids_column("entity_id", &entity_ids).live(),
             taken_at,
+            snapshot_id,
             &maps,
         )
         .await?;
 
         tx.commit().await?;
+        Ok(())
+    }
+
+    /// Daily entry point. Iterates all orgs, resolves retention via the static
+    /// `snapshot_retention_days` lookup, delegates per-org. Idempotent.
+    pub async fn run_retention(&self, env_override: Option<u32>) -> Result<()> {
+        use crate::server::billing::retention::snapshot_retention_days;
+
+        let Some(org_service) = self.organization_service.get() else {
+            tracing::warn!(
+                "SnapshotService::run_retention called before retention dependencies were wired"
+            );
+            return Ok(());
+        };
+
+        let orgs = org_service
+            .get_all(StorableFilter::new_unfiltered())
+            .await?;
+
+        for org in orgs {
+            let plan = org
+                .base
+                .plan
+                .unwrap_or_else(crate::server::billing::plans::get_free_plan);
+            let days = snapshot_retention_days(&plan, env_override);
+            if let Err(e) = self.trim_org(org.id, days).await {
+                tracing::error!(
+                    organization_id = %org.id,
+                    error = ?e,
+                    "snapshot retention trim_org failed",
+                );
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Per-org retention trim. Deletes snapshots older than the cutoff. The
+    /// cascade FK on closed entity rows + topology rows reaps everything tied
+    /// to the deleted snapshots automatically. Live rows (snapshot_id IS NULL)
+    /// are untouched.
+    pub async fn trim_org(&self, org_id: Uuid, retention_days: u32) -> Result<()> {
+        if retention_days == 0 {
+            return Ok(());
+        }
+
+        let Some(network_service) = self.network_service.get() else {
+            anyhow::bail!(
+                "SnapshotService::trim_org called before retention dependencies were wired"
+            );
+        };
+
+        let cutoff = Utc::now() - Duration::days(retention_days as i64);
+
+        let networks = network_service
+            .get_all(StorableFilter::<Network>::new_from_org_id(&org_id))
+            .await?;
+        let network_ids: Vec<Uuid> = networks.into_iter().map(|n| n.id).collect();
+
+        if network_ids.is_empty() {
+            return Ok(());
+        }
+
+        let filter =
+            StorableFilter::<Snapshot>::new_from_network_ids(&network_ids).taken_at_lt(cutoff);
+        self.storage.delete_by_filter(filter).await?;
+
         Ok(())
     }
 }
@@ -212,6 +356,7 @@ async fn close_and_clone_for<T>(
     tx: &mut sqlx::Transaction<'_, Postgres>,
     filter: StorableFilter<T>,
     taken_at: DateTime<Utc>,
+    snapshot_id: Uuid,
     parent_maps: &FkMaps,
 ) -> Result<HashMap<Uuid, Uuid>>
 where
@@ -224,6 +369,7 @@ where
     }
 
     let mut closed: Vec<T> = Vec::with_capacity(live.len());
+    let mut closed_ids: Vec<Uuid> = Vec::with_capacity(live.len());
     let mut mapping: HashMap<Uuid, Uuid> = HashMap::with_capacity(live.len());
 
     for original in &live {
@@ -232,10 +378,25 @@ where
         copy.set_id_value(new_id);
         copy.remap_fks_for_clone(parent_maps);
         mapping.insert(original.id_value(), new_id);
+        closed_ids.push(new_id);
         closed.push(copy);
     }
 
     GenericPostgresStorage::<T>::create_many_in_tx(&closed, tx).await?;
+
+    // Stamp snapshot_id on the just-inserted closed rows. Single parameterized
+    // UPDATE per entity type — extending each Snapshotable struct + Storable
+    // impl with a snapshot_id field would be 13 files of churn for a column
+    // with no other read/write path. Confined to this transaction.
+    let stamp_sql = format!(
+        "UPDATE {} SET snapshot_id = $1 WHERE id = ANY($2)",
+        T::table_name()
+    );
+    sqlx::query(&stamp_sql)
+        .bind(snapshot_id)
+        .bind(&closed_ids)
+        .execute(&mut **tx)
+        .await?;
 
     let advanced_live: Vec<T> = live
         .into_iter()

@@ -29,6 +29,7 @@ export const entityToExportPath: Record<EntityDiscriminants, string | null> = {
 	Share: 'shares',
 	Discovery: 'discoveries',
 	Topology: 'topologies',
+	Snapshot: 'snapshots',
 	User: 'users',
 	Credential: 'credentials',
 	// API keys use auth paths

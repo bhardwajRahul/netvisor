@@ -3,9 +3,9 @@
 	import EntityDisplayWrapper from '$lib/shared/components/forms/selection/display/EntityDisplayWrapper.svelte';
 	import { HostDisplay } from '$lib/shared/components/forms/selection/display/HostDisplay.svelte';
 	import { IPAddressDisplay } from '$lib/shared/components/forms/selection/display/IPAddressDisplay.svelte';
-	import { autoRebuild } from '$lib/features/topology/queries';
 	import { useTopology, selectedTopologyId } from '$lib/features/topology/context';
 	import { getTopologyEditState } from '$lib/features/topology/state';
+	import type { EnrichedTopology } from '$lib/features/topology/types/base';
 
 	import type { components } from '$lib/api/schema';
 	type TopologyView = components['schemas']['TopologyView'];
@@ -26,10 +26,14 @@
 	const topoStore = topo.fromContext ? topo.store : null;
 	let isReadonly = topo.isReadonly;
 	let topology = $derived(
-		topoStore ? $topoStore : topo.query?.data?.find((t) => t.id === $selectedTopologyId)
+		topoStore
+			? $topoStore
+			: (topo.query?.data?.find((t) => t.id === $selectedTopologyId) as
+					| EnrichedTopology
+					| undefined)
 	);
 
-	let editState = $derived(getTopologyEditState(topology, $autoRebuild, isReadonly));
+	let editState = $derived(getTopologyEditState(topology, false, isReadonly));
 
 	let host = $derived(topology ? topology.hosts.find((h) => h.id == hostId) : null);
 

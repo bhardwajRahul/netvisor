@@ -182,6 +182,7 @@ pub enum LimitType {
     Networks,
     Hosts,
     Seats,
+    Snapshots,
 }
 
 /// Origin of the request that triggered the limit hit. `Api` covers

@@ -6,6 +6,7 @@ use crate::server::ip_addresses::r#impl::base::IPAddress;
 use crate::server::ports::r#impl::base::Port;
 use crate::server::services::r#impl::base::Service;
 use crate::server::shares::r#impl::base::Share;
+use crate::server::snapshots::types::base::Snapshot;
 use crate::server::subnets::r#impl::base::Subnet;
 use crate::server::topology::types::base::Topology;
 use crate::server::vlans::r#impl::base::Vlan;
@@ -84,6 +85,7 @@ pub enum Entity {
     Vlan(Vlan),
     Dependency(Dependency),
     Topology(Box<Topology>),
+    Snapshot(Snapshot),
 
     #[default]
     #[strum_discriminants(default)]
@@ -187,6 +189,10 @@ impl Entity {
                 <Topology as EntityTrait>::ENTITY_NAME_SINGULAR,
                 <Topology as EntityTrait>::ENTITY_NAME_PLURAL,
             ),
+            Entity::Snapshot(_) => (
+                <Snapshot as EntityTrait>::ENTITY_NAME_SINGULAR,
+                <Snapshot as EntityTrait>::ENTITY_NAME_PLURAL,
+            ),
             Entity::Unknown => ("Entity", "Entities"),
         }
     }
@@ -231,6 +237,7 @@ impl EntityDiscriminants {
             | EntityDiscriminants::Interface
             | EntityDiscriminants::Vlan
             | EntityDiscriminants::Topology
+            | EntityDiscriminants::Snapshot
             | EntityDiscriminants::Unknown => false,
         }
     }
@@ -265,6 +272,7 @@ impl EntityDiscriminants {
             | EntityDiscriminants::Vlan
             | EntityDiscriminants::Dependency
             | EntityDiscriminants::Topology
+            | EntityDiscriminants::Snapshot
             | EntityDiscriminants::Unknown => None,
         }
     }
@@ -288,6 +296,7 @@ impl EntityMetadataProvider for EntityDiscriminants {
             EntityDiscriminants::Credential => Color::Yellow,
 
             EntityDiscriminants::Topology => Color::Pink,
+            EntityDiscriminants::Snapshot => Color::Purple,
             EntityDiscriminants::Share => Color::Pink,
 
             EntityDiscriminants::Dependency => Color::Rose,
@@ -330,6 +339,7 @@ impl EntityMetadataProvider for EntityDiscriminants {
             EntityDiscriminants::Vlan => Icon::Network,
             EntityDiscriminants::Dependency => Icon::Waypoints,
             EntityDiscriminants::Topology => Icon::ChartBarStacked,
+            EntityDiscriminants::Snapshot => Icon::Camera,
 
             EntityDiscriminants::Unknown => Icon::CircleQuestionMark,
         }
@@ -473,6 +483,12 @@ impl From<Topology> for Entity {
     }
 }
 
+impl From<Snapshot> for Entity {
+    fn from(value: Snapshot) -> Self {
+        Self::Snapshot(value)
+    }
+}
+
 impl From<Tag> for Entity {
     fn from(value: Tag) -> Self {
         Self::Tag(value)
@@ -515,6 +531,7 @@ impl From<EntityDiscriminants> for Entity {
             EntityDiscriminants::UserApiKey => Entity::UserApiKey(UserApiKey::default()),
             EntityDiscriminants::Credential => Entity::Credential(Credential::default()),
             EntityDiscriminants::Topology => Entity::Topology(Box::default()),
+            EntityDiscriminants::Snapshot => Entity::Snapshot(Snapshot::default()),
             EntityDiscriminants::Unknown => Entity::Unknown,
         }
     }

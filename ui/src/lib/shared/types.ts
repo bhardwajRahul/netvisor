@@ -3,7 +3,6 @@ import type { Color } from '$lib/shared/utils/styling';
 
 // Re-export generated types
 export type EntitySource = components['schemas']['EntitySource'];
-export type DiscoveryMetadata = components['schemas']['DiscoveryMetadata'];
 export type DiscoveryType = components['schemas']['DiscoveryType'];
 export type MatchDetails = components['schemas']['MatchDetails'];
 export type MatchConfidence = components['schemas']['MatchConfidence'];

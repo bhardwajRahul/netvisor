@@ -14,10 +14,10 @@ use crate::server::{
     ip_addresses::handlers as interface_handlers, metrics::handlers as metrics_handlers,
     networks::handlers as network_handlers, organizations::handlers as organization_handlers,
     ports::handlers as port_handlers, services::handlers as service_handlers,
-    shares::handlers as share_handlers, subnets::handlers as subnet_handlers,
-    tags::handlers as tag_handlers, topology::handlers as topology_handlers,
-    user_api_keys::handlers as user_api_key_handlers, users::handlers as user_handlers,
-    vlans::handlers as vlan_handlers,
+    shares::handlers as share_handlers, snapshots::handlers as snapshot_handlers,
+    subnets::handlers as subnet_handlers, tags::handlers as tag_handlers,
+    topology::handlers as topology_handlers, user_api_keys::handlers as user_api_key_handlers,
+    users::handlers as user_handlers, vlans::handlers as vlan_handlers,
 };
 use axum::Json;
 use axum::Router;
@@ -97,6 +97,7 @@ fn create_billed_openapi_routes() -> OpenApiRouter<Arc<AppState>> {
         .nest("/api/v1/vlans", vlan_handlers::create_router())
         // Topology endpoints (tagged as internal - hidden from public docs)
         .nest("/api/v1/topology", topology_handlers::create_router())
+        .nest("/api/v1/snapshots", snapshot_handlers::create_router())
 }
 
 /// Creates the OpenApiRouter with exempt routes (not subject to billing middleware).

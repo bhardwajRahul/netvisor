@@ -342,6 +342,8 @@ async fn resolve_entity_scope(
             resolve_scope(s.credential_service.as_ref(), entity_id).await
         }
         EntityDiscriminants::Vlan => resolve_scope(s.vlan_service.as_ref(), entity_id).await,
+        // Snapshots aren't user-taggable, but the match must be exhaustive.
+        EntityDiscriminants::Snapshot => (None, None),
         EntityDiscriminants::Unknown => (None, None),
     }
 }
@@ -357,7 +359,7 @@ async fn emit_tag_change_events(
     auth: &AuthenticatedEntity,
     entity_ids: &[Uuid],
     entity_type: EntityDiscriminants,
-    trigger_stale: bool,
+    _trigger_stale: bool,
 ) {
     let default_entity: EntityEnum = entity_type.into();
 
@@ -377,7 +379,6 @@ async fn emit_tag_change_events(
                 .publish(
                     Event::new(scope, EntityOperation::Updated, auth.clone()).with_flags(
                         EntityEventFlags {
-                            trigger_stale,
                             suppress_logs: true,
                             ..Default::default()
                         },
@@ -467,17 +468,15 @@ pub async fn bulk_add_tag(
         .await?;
 
     if affected_count > 0 {
-        let trigger_stale = state
-            .services
-            .topology_service
-            .tag_affects_any_topology(request.tag_id, organization_id)
-            .await;
+        // Topology staleness model is gone — fire tag-change events
+        // unconditionally; the topology subscriber broadcasts a live-update
+        // ping for the affected network(s) on receipt.
         emit_tag_change_events(
             &state,
             &auth.entity,
             &request.entity_ids,
             request.entity_type,
-            trigger_stale,
+            false,
         )
         .await;
     }
@@ -519,7 +518,9 @@ pub async fn bulk_remove_tag(
         )));
     }
 
-    let organization_id = auth
+    // Assert auth context has an organization — bulk-remove is org-scoped
+    // even though we no longer thread the id through to the staleness check.
+    let _organization_id = auth
         .organization_id()
         .ok_or_else(|| ApiError::forbidden("Organization context required"))?;
 
@@ -530,17 +531,12 @@ pub async fn bulk_remove_tag(
         .await?;
 
     if affected_count > 0 {
-        let trigger_stale = state
-            .services
-            .topology_service
-            .tag_affects_any_topology(request.tag_id, organization_id)
-            .await;
         emit_tag_change_events(
             &state,
             &auth.entity,
             &request.entity_ids,
             request.entity_type,
-            trigger_stale,
+            false,
         )
         .await;
     }
@@ -587,17 +583,6 @@ pub async fn set_entity_tags(
         .organization_id()
         .ok_or_else(|| ApiError::forbidden("Organization context required"))?;
 
-    // Snapshot prior tags so we can detect app-tag adds/removes after set_tags.
-    let prior_tag_ids: std::collections::HashSet<Uuid> = state
-        .services
-        .entity_tag_service
-        .get_tags(&request.entity_id, &request.entity_type)
-        .await
-        .map_err(|e| ApiError::internal_error(&format!("Failed to read prior tags: {}", e)))?
-        .into_iter()
-        .collect();
-    let new_tag_ids: std::collections::HashSet<Uuid> = request.tag_ids.iter().copied().collect();
-
     state
         .services
         .entity_tag_service
@@ -609,26 +594,15 @@ pub async fn set_entity_tags(
         )
         .await?;
 
-    // Trigger stale only if a topology-affecting tag was actually added or removed.
-    let mut trigger_stale = false;
-    for tag_id in prior_tag_ids.symmetric_difference(&new_tag_ids) {
-        if state
-            .services
-            .topology_service
-            .tag_affects_any_topology(*tag_id, organization_id)
-            .await
-        {
-            trigger_stale = true;
-            break;
-        }
-    }
-
+    // Topology staleness model is gone — emit tag-change events
+    // unconditionally; the topology subscriber broadcasts a live-update
+    // ping for the affected network(s) on receipt.
     emit_tag_change_events(
         &state,
         &auth.entity,
         &[request.entity_id],
         request.entity_type,
-        trigger_stale,
+        false,
     )
     .await;
 

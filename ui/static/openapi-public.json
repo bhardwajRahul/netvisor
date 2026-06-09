@@ -7979,6 +7979,307 @@
         ]
       }
     },
+    "/api/v1/snapshots": {
+      "get": {
+        "tags": [
+          "Snapshots"
+        ],
+        "summary": "List snapshots for a network, sorted by `taken_at` DESC.",
+        "operationId": "get_all_snapshots",
+        "parameters": [
+          {
+            "name": "network_id",
+            "in": "query",
+            "description": "Filter by network ID",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "ids",
+            "in": "query",
+            "description": "Filter by specific entity IDs (for selective loading)",
+            "required": false,
+            "schema": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "string",
+                "format": "uuid"
+              }
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum number of results to return (1-1000, default: 50). Use 0 for no limit.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "maximum": 1000,
+              "minimum": 0
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Number of results to skip. Default: 0.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of snapshots",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Response type for paginated list endpoints (pagination is always present in meta)",
+                  "required": [
+                    "success",
+                    "data",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/SnapshotBase"
+                          },
+                          {
+                            "type": "object",
+                            "required": [
+                              "id",
+                              "created_at",
+                              "updated_at"
+                            ],
+                            "properties": {
+                              "created_at": {
+                                "type": "string",
+                                "format": "date-time",
+                                "readOnly": true
+                              },
+                              "id": {
+                                "type": "string",
+                                "format": "uuid",
+                                "readOnly": true
+                              },
+                              "updated_at": {
+                                "type": "string",
+                                "format": "date-time",
+                                "readOnly": true
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    "error": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/PaginatedApiMeta"
+                    },
+                    "success": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "user_api_key": []
+          },
+          {
+            "session": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Snapshots"
+        ],
+        "summary": "Take a snapshot of the current live topology + entity state for a network.\nAcquires the discovery snapshot lock, creates the snapshots row, runs\nclose-and-clone to stamp every Snapshotable entity row with `snapshot_id`\nand close them. The topology subscriber inserts the snapshot's topology\nrow off the back of the `Snapshot::Created` event.",
+        "operationId": "create_snapshot",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSnapshotRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Snapshot created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_Snapshot"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Snapshots not available on plan",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Network is busy with discovery; retry shortly",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "user_api_key": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/snapshots/{id}": {
+      "get": {
+        "tags": [
+          "Snapshots"
+        ],
+        "summary": "Get a snapshot by ID.",
+        "operationId": "get_snapshot_by_id",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Snapshot ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Snapshot found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_Snapshot"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Snapshot not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "user_api_key": []
+          },
+          {
+            "session": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Snapshots"
+        ],
+        "summary": "Delete a snapshot. The cascade FK on closed entity rows + topology rows\nreaps everything tied to this snapshot automatically.",
+        "operationId": "delete_snapshot",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Snapshot ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Snapshot deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Snapshot not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "user_api_key": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
     "/api/v1/subnets": {
       "get": {
         "tags": [
@@ -9268,128 +9569,6 @@
         ]
       }
     },
-    "/api/v1/topology/{id}/lock": {
-      "post": {
-        "tags": [
-          "Topologies"
-        ],
-        "summary": "Lock a topology",
-        "operationId": "lock",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "Topology ID",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Topology locked",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_Topology"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Access denied",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Topology not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "user_api_key": []
-          },
-          {
-            "session": []
-          }
-        ]
-      }
-    },
-    "/api/v1/topology/{id}/unlock": {
-      "post": {
-        "tags": [
-          "Topologies"
-        ],
-        "summary": "Unlock a topology",
-        "operationId": "unlock",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "Topology ID",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Topology unlocked",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_Topology"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Access denied",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Topology not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "user_api_key": []
-          },
-          {
-            "session": []
-          }
-        ]
-      }
-    },
     "/api/v1/users": {
       "get": {
         "tags": [
@@ -10351,13 +10530,55 @@
                     "format": "date-time",
                     "readOnly": true
                   },
+                  "first_discovery_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
                   "id": {
                     "type": "string",
                     "format": "uuid",
                     "readOnly": true
                   },
+                  "last_discovery_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
+                  "last_seen_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "lineage_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
                   "updated_at": {
                     "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "valid_from": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "valid_to": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
                     "format": "date-time",
                     "readOnly": true
                   }
@@ -10366,14 +10587,20 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-05-01T19:08:39.709695Z",
-              "id": "35407378-e73f-4561-98ea-356bc351c817",
+              "created_at": "2026-05-03T04:33:55.425043Z",
+              "first_discovery_id": null,
+              "id": "cedeb2fe-3c4a-4191-ae15-dc668928fac9",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
+              "last_discovery_id": null,
+              "last_seen_at": "2026-05-03T04:33:55.425043Z",
+              "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-05-01T19:08:39.709695Z"
+              "updated_at": "2026-05-03T04:33:55.425043Z",
+              "valid_from": "2026-05-03T04:33:55.425043Z",
+              "valid_to": null
             }
           },
           "error": {
@@ -10873,8 +11100,29 @@
                     "format": "uuid",
                     "readOnly": true
                   },
+                  "lineage_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
                   "updated_at": {
                     "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "valid_from": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "valid_to": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
                     "format": "date-time",
                     "readOnly": true
                   }
@@ -10888,6 +11136,7 @@
               "description": "HTTP/HTTPS services dependency",
               "edge_style": "Bezier",
               "id": "550e8400-e29b-41d4-a716-446655440008",
+              "lineage_id": null,
               "members": {
                 "service_ids": [],
                 "type": "Services"
@@ -10898,7 +11147,9 @@
                 "type": "Manual"
               },
               "tags": [],
-              "updated_at": "2026-01-15T10:30:00Z"
+              "updated_at": "2026-01-15T10:30:00Z",
+              "valid_from": "2026-01-15T10:30:00Z",
+              "valid_to": null
             }
           },
           "error": {
@@ -11061,6 +11312,17 @@
                 "type": "integer",
                 "format": "int32",
                 "minimum": 0
+              },
+              "scanned": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ScannedEntityIds",
+                    "description": "Canonical IDs of entities scanned in this session, populated daemon-\nside at terminal. **Transient**: stripped at `SqlValue::RunType` bind\ntime so it doesn't persist into the historical Discovery row's JSONB.\nAvailable in-memory through the `EntityOperation::Created` event\npublished for the historical Discovery row (the event scope carries\n`Entity::Discovery(...)`, the full in-memory struct), where per-entity\nFK-update subscribers consume it.\n\n`Some(...)` when the daemon is sending the terminal payload over the\nwire. `None` when read back from a persisted historical row, or when\nnot yet set."
+                  }
+                ]
               },
               "session_id": {
                 "type": "string",
@@ -11251,6 +11513,7 @@
                   "cdp_platform": null,
                   "cdp_port_id": null,
                   "created_at": "2026-01-15T10:30:00Z",
+                  "first_discovery_id": null,
                   "host_id": "550e8400-e29b-41d4-a716-446655440003",
                   "id": "550e8400-e29b-41d4-a716-44665544000f",
                   "if_alias": "Uplink to Core Switch",
@@ -11259,6 +11522,9 @@
                   "if_name": "Gi0/1",
                   "if_type": 6,
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
+                  "last_discovery_id": null,
+                  "last_seen_at": "2026-01-15T10:30:00Z",
+                  "lineage_id": null,
                   "lldp_chassis_id": null,
                   "lldp_mgmt_addr": null,
                   "lldp_port_desc": null,
@@ -11270,21 +11536,29 @@
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "oper_status": "Up",
                   "speed_bps": 1000000000,
-                  "updated_at": "2026-01-15T10:30:00Z"
+                  "updated_at": "2026-01-15T10:30:00Z",
+                  "valid_from": "2026-01-15T10:30:00Z",
+                  "valid_to": null
                 }
               ],
               "ip_addresses": [
                 {
                   "created_at": "2026-01-15T10:30:00Z",
+                  "first_discovery_id": null,
                   "host_id": "550e8400-e29b-41d4-a716-446655440003",
                   "id": "550e8400-e29b-41d4-a716-446655440005",
                   "ip_address": "192.168.1.100",
+                  "last_discovery_id": null,
+                  "last_seen_at": "2026-01-15T10:30:00Z",
+                  "lineage_id": null,
                   "mac_address": "DE:AD:BE:EF:CA:FE",
                   "name": "eth0",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
                   "subnet_id": "550e8400-e29b-41d4-a716-446655440004",
-                  "updated_at": "2026-01-15T10:30:00Z"
+                  "updated_at": "2026-01-15T10:30:00Z",
+                  "valid_from": "2026-01-15T10:30:00Z",
+                  "valid_to": null
                 }
               ],
               "name": "web-server-01",
@@ -11292,41 +11566,59 @@
               "ports": [
                 {
                   "created_at": "2026-01-15T10:30:00Z",
+                  "first_discovery_id": null,
                   "host_id": "550e8400-e29b-41d4-a716-446655440003",
                   "id": "550e8400-e29b-41d4-a716-446655440006",
+                  "last_discovery_id": null,
+                  "last_seen_at": "2026-01-15T10:30:00Z",
+                  "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "number": 80,
                   "protocol": "Tcp",
                   "type": "Http",
-                  "updated_at": "2026-01-15T10:30:00Z"
+                  "updated_at": "2026-01-15T10:30:00Z",
+                  "valid_from": "2026-01-15T10:30:00Z",
+                  "valid_to": null
                 }
               ],
               "services": [
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-05-01T19:08:39.689801Z",
-                      "id": "49a7124e-58a8-482b-b8c8-9c5a71517283",
+                      "created_at": "2026-05-03T04:33:55.408748Z",
+                      "first_discovery_id": null,
+                      "id": "9c25dc3d-1366-4921-9998-3e1bb3a19333",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
+                      "last_discovery_id": null,
+                      "last_seen_at": "2026-05-03T04:33:55.408748Z",
+                      "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-05-01T19:08:39.689801Z"
+                      "updated_at": "2026-05-03T04:33:55.408748Z",
+                      "valid_from": "2026-05-03T04:33:55.408748Z",
+                      "valid_to": null
                     }
                   ],
                   "created_at": "2026-01-15T10:30:00Z",
+                  "first_discovery_id": null,
                   "host_id": "550e8400-e29b-41d4-a716-446655440003",
                   "id": "550e8400-e29b-41d4-a716-446655440007",
+                  "last_discovery_id": null,
+                  "last_seen_at": "2026-01-15T10:30:00Z",
+                  "lineage_id": null,
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Plex Media Server",
+                  "service_definition": "Nest Thermostat",
                   "source": {
                     "type": "Manual"
                   },
                   "tags": [],
                   "updated_at": "2026-01-15T10:30:00Z",
+                  "valid_from": "2026-01-15T10:30:00Z",
+                  "valid_to": null,
                   "virtualization": null
                 }
               ],
@@ -11377,13 +11669,55 @@
                     "format": "date-time",
                     "readOnly": true
                   },
+                  "first_discovery_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
                   "id": {
                     "type": "string",
                     "format": "uuid",
                     "readOnly": true
                   },
+                  "last_discovery_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
+                  "last_seen_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "lineage_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
                   "updated_at": {
                     "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "valid_from": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "valid_to": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
                     "format": "date-time",
                     "readOnly": true
                   }
@@ -11392,15 +11726,21 @@
             ],
             "example": {
               "created_at": "2026-01-15T10:30:00Z",
+              "first_discovery_id": null,
               "host_id": "550e8400-e29b-41d4-a716-446655440003",
               "id": "550e8400-e29b-41d4-a716-446655440005",
               "ip_address": "192.168.1.100",
+              "last_discovery_id": null,
+              "last_seen_at": "2026-01-15T10:30:00Z",
+              "lineage_id": null,
               "mac_address": "DE:AD:BE:EF:CA:FE",
               "name": "eth0",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
               "subnet_id": "550e8400-e29b-41d4-a716-446655440004",
-              "updated_at": "2026-01-15T10:30:00Z"
+              "updated_at": "2026-01-15T10:30:00Z",
+              "valid_from": "2026-01-15T10:30:00Z",
+              "valid_to": null
             }
           },
           "error": {
@@ -11442,13 +11782,55 @@
                     "format": "date-time",
                     "readOnly": true
                   },
+                  "first_discovery_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
                   "id": {
                     "type": "string",
                     "format": "uuid",
                     "readOnly": true
                   },
+                  "last_discovery_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
+                  "last_seen_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "lineage_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
                   "updated_at": {
                     "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "valid_from": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "valid_to": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
                     "format": "date-time",
                     "readOnly": true
                   }
@@ -11734,13 +12116,55 @@
                     "format": "date-time",
                     "readOnly": true
                   },
+                  "first_discovery_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
                   "id": {
                     "type": "string",
                     "format": "uuid",
                     "readOnly": true
                   },
+                  "last_discovery_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
+                  "last_seen_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "lineage_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
                   "updated_at": {
                     "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "valid_from": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "valid_to": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
                     "format": "date-time",
                     "readOnly": true
                   }
@@ -11750,13 +12174,19 @@
             "description": "Port entity with custom serialization that flattens PortType fields.",
             "example": {
               "created_at": "2026-01-15T10:30:00Z",
+              "first_discovery_id": null,
               "host_id": "550e8400-e29b-41d4-a716-446655440003",
               "id": "550e8400-e29b-41d4-a716-446655440006",
+              "last_discovery_id": null,
+              "last_seen_at": "2026-01-15T10:30:00Z",
+              "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "number": 80,
               "protocol": "Tcp",
               "type": "Http",
-              "updated_at": "2026-01-15T10:30:00Z"
+              "updated_at": "2026-01-15T10:30:00Z",
+              "valid_from": "2026-01-15T10:30:00Z",
+              "valid_to": null
             }
           },
           "error": {
@@ -12045,13 +12475,55 @@
                     "format": "date-time",
                     "readOnly": true
                   },
+                  "first_discovery_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
                   "id": {
                     "type": "string",
                     "format": "uuid",
                     "readOnly": true
                   },
+                  "last_discovery_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
+                  "last_seen_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "lineage_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
                   "updated_at": {
                     "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "valid_from": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "valid_to": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
                     "format": "date-time",
                     "readOnly": true
                   }
@@ -12061,28 +12533,40 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-05-01T19:08:39.703760Z",
-                  "id": "668b7ea5-bb08-4078-a487-9bf9dd06d89e",
+                  "created_at": "2026-05-03T04:33:55.419438Z",
+                  "first_discovery_id": null,
+                  "id": "2b962d08-c9e6-4a82-80cd-6f587cd65897",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
+                  "last_discovery_id": null,
+                  "last_seen_at": "2026-05-03T04:33:55.419438Z",
+                  "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-05-01T19:08:39.703760Z"
+                  "updated_at": "2026-05-03T04:33:55.419438Z",
+                  "valid_from": "2026-05-03T04:33:55.419438Z",
+                  "valid_to": null
                 }
               ],
               "created_at": "2026-01-15T10:30:00Z",
+              "first_discovery_id": null,
               "host_id": "550e8400-e29b-41d4-a716-446655440003",
               "id": "550e8400-e29b-41d4-a716-446655440007",
+              "last_discovery_id": null,
+              "last_seen_at": "2026-01-15T10:30:00Z",
+              "lineage_id": null,
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Plex Media Server",
+              "service_definition": "Nest Thermostat",
               "source": {
                 "type": "Manual"
               },
               "tags": [],
               "updated_at": "2026-01-15T10:30:00Z",
+              "valid_from": "2026-01-15T10:30:00Z",
+              "valid_to": null,
               "virtualization": null
             }
           },
@@ -12225,6 +12709,59 @@
           }
         }
       },
+      "ApiResponse_Snapshot": {
+        "type": "object",
+        "required": [
+          "success",
+          "meta"
+        ],
+        "properties": {
+          "data": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SnapshotBase"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "id",
+                  "created_at",
+                  "updated_at"
+                ],
+                "properties": {
+                  "created_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "readOnly": true
+                  },
+                  "updated_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  }
+                }
+              }
+            ]
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ApiMeta"
+          },
+          "success": {
+            "type": "boolean"
+          }
+        }
+      },
       "ApiResponse_String": {
         "type": "object",
         "required": [
@@ -12274,13 +12811,55 @@
                     "format": "date-time",
                     "readOnly": true
                   },
+                  "first_discovery_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
                   "id": {
                     "type": "string",
                     "format": "uuid",
                     "readOnly": true
                   },
+                  "last_discovery_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
+                  "last_seen_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "lineage_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
                   "updated_at": {
                     "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "valid_from": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "valid_to": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
                     "format": "date-time",
                     "readOnly": true
                   }
@@ -12291,7 +12870,11 @@
               "cidr": "192.168.1.0/24",
               "created_at": "2026-01-15T10:30:00Z",
               "description": "Local area network",
+              "first_discovery_id": null,
               "id": "550e8400-e29b-41d4-a716-446655440004",
+              "last_discovery_id": null,
+              "last_seen_at": "2026-01-15T10:30:00Z",
+              "lineage_id": null,
               "name": "LAN",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "source": {
@@ -12299,7 +12882,9 @@
               },
               "subnet_type": "Lan",
               "tags": [],
-              "updated_at": "2026-01-15T10:30:00Z"
+              "updated_at": "2026-01-15T10:30:00Z",
+              "valid_from": "2026-01-15T10:30:00Z",
+              "valid_to": null
             }
           },
           "error": {
@@ -12346,8 +12931,29 @@
                     "format": "uuid",
                     "readOnly": true
                   },
+                  "lineage_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
                   "updated_at": {
                     "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "valid_from": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "valid_to": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
                     "format": "date-time",
                     "readOnly": true
                   }
@@ -12360,9 +12966,12 @@
               "description": "Production environment resources",
               "id": "550e8400-e29b-41d4-a716-44665544000a",
               "is_application": false,
+              "lineage_id": null,
               "name": "production",
               "organization_id": "550e8400-e29b-41d4-a716-446655440001",
-              "updated_at": "2026-01-15T10:30:00Z"
+              "updated_at": "2026-01-15T10:30:00Z",
+              "valid_from": "2026-01-15T10:30:00Z",
+              "valid_to": null
             }
           },
           "error": {
@@ -12974,6 +13583,17 @@
                   "format": "int32",
                   "minimum": 0
                 },
+                "scanned": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ScannedEntityIds",
+                      "description": "Canonical IDs of entities scanned in this session, populated daemon-\nside at terminal. **Transient**: stripped at `SqlValue::RunType` bind\ntime so it doesn't persist into the historical Discovery row's JSONB.\nAvailable in-memory through the `EntityOperation::Created` event\npublished for the historical Discovery row (the event scope carries\n`Entity::Discovery(...)`, the full in-memory struct), where per-entity\nFK-update subscribers consume it.\n\n`Some(...)` when the daemon is sending the terminal payload over the\nwire. `None` when read back from a persisted historical row, or when\nnot yet set."
+                    }
+                  ]
+                },
                 "session_id": {
                   "type": "string",
                   "format": "uuid"
@@ -13132,13 +13752,55 @@
                     "format": "date-time",
                     "readOnly": true
                   },
+                  "first_discovery_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
                   "id": {
                     "type": "string",
                     "format": "uuid",
                     "readOnly": true
                   },
+                  "last_discovery_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
+                  "last_seen_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "lineage_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
                   "updated_at": {
                     "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "valid_from": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "valid_to": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
                     "format": "date-time",
                     "readOnly": true
                   }
@@ -13441,13 +14103,55 @@
                 "format": "date-time",
                 "readOnly": true
               },
+              "first_discovery_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
               "id": {
                 "type": "string",
                 "format": "uuid",
                 "readOnly": true
               },
+              "last_discovery_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
+              "last_seen_at": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "lineage_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
               "updated_at": {
                 "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "valid_from": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "valid_to": {
+                "type": [
+                  "string",
+                  "null"
+                ],
                 "format": "date-time",
                 "readOnly": true
               }
@@ -13456,14 +14160,20 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-05-01T19:08:39.690215Z",
-          "id": "63abad43-687d-4aab-9d9b-cceb9f16e704",
+          "created_at": "2026-05-03T04:33:55.408983Z",
+          "first_discovery_id": null,
+          "id": "17c48c38-479b-479b-b530-de9617432755",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
+          "last_discovery_id": null,
+          "last_seen_at": "2026-05-03T04:33:55.408983Z",
+          "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-05-01T19:08:39.690215Z"
+          "updated_at": "2026-05-03T04:33:55.408983Z",
+          "valid_from": "2026-05-03T04:33:55.408983Z",
+          "valid_to": null
         }
       },
       "BindingBase": {
@@ -14052,7 +14762,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Plex Media Server",
+              "service_definition": "Nest Thermostat",
               "tags": [],
               "virtualization": null
             }
@@ -14141,6 +14851,18 @@
                 "$ref": "#/components/schemas/ServiceVirtualization"
               }
             ]
+          }
+        }
+      },
+      "CreateSnapshotRequest": {
+        "type": "object",
+        "required": [
+          "network_id"
+        ],
+        "properties": {
+          "network_id": {
+            "type": "string",
+            "format": "uuid"
           }
         }
       },
@@ -14901,8 +15623,29 @@
                 "format": "uuid",
                 "readOnly": true
               },
+              "lineage_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
               "updated_at": {
                 "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "valid_from": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "valid_to": {
+                "type": [
+                  "string",
+                  "null"
+                ],
                 "format": "date-time",
                 "readOnly": true
               }
@@ -14916,6 +15659,7 @@
           "description": "HTTP/HTTPS services dependency",
           "edge_style": "Bezier",
           "id": "550e8400-e29b-41d4-a716-446655440008",
+          "lineage_id": null,
           "members": {
             "service_ids": [],
             "type": "Services"
@@ -14926,7 +15670,9 @@
             "type": "Manual"
           },
           "tags": [],
-          "updated_at": "2026-01-15T10:30:00Z"
+          "updated_at": "2026-01-15T10:30:00Z",
+          "valid_from": "2026-01-15T10:30:00Z",
+          "valid_to": null
         }
       },
       "DependencyBase": {
@@ -15223,33 +15969,10 @@
           }
         }
       },
-      "DiscoveryMetadata": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/DiscoveryType"
-          },
-          {
-            "type": "object",
-            "required": [
-              "daemon_id",
-              "date"
-            ],
-            "properties": {
-              "daemon_id": {
-                "type": "string",
-                "format": "uuid"
-              },
-              "date": {
-                "type": "string",
-                "format": "date-time"
-              }
-            }
-          }
-        ]
-      },
       "DiscoveryPhase": {
         "type": "string",
         "enum": [
+          "AwaitingSnapshot",
           "Queued",
           "Pending",
           "Starting",
@@ -15459,6 +16182,17 @@
             "type": "integer",
             "format": "int32",
             "minimum": 0
+          },
+          "scanned": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ScannedEntityIds",
+                "description": "Canonical IDs of entities scanned in this session, populated daemon-\nside at terminal. **Transient**: stripped at `SqlValue::RunType` bind\ntime so it doesn't persist into the historical Discovery row's JSONB.\nAvailable in-memory through the `EntityOperation::Created` event\npublished for the historical Discovery row (the event scope carries\n`Entity::Discovery(...)`, the full in-memory struct), where per-entity\nFK-update subscribers consume it.\n\n`Some(...)` when the daemon is sending the terminal payload over the\nwire. `None` when read back from a persisted historical row, or when\nnot yet set."
+              }
+            ]
           },
           "session_id": {
             "type": "string",
@@ -16010,6 +16744,7 @@
           "Vlan",
           "Dependency",
           "Topology",
+          "Snapshot",
           "Unknown"
         ]
       },
@@ -16049,16 +16784,9 @@
             "type": "object",
             "title": "Discovery",
             "required": [
-              "metadata",
               "type"
             ],
             "properties": {
-              "metadata": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/DiscoveryMetadata"
-                }
-              },
               "type": {
                 "type": "string",
                 "enum": [
@@ -16071,19 +16799,12 @@
             "type": "object",
             "title": "DiscoveryWithMatch",
             "required": [
-              "metadata",
               "details",
               "type"
             ],
             "properties": {
               "details": {
                 "$ref": "#/components/schemas/MatchDetails"
-              },
-              "metadata": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/DiscoveryMetadata"
-                }
               },
               "type": {
                 "type": "string",
@@ -16181,14 +16902,62 @@
                 "format": "date-time",
                 "readOnly": true
               },
+              "first_discovery_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "description": "Discovery (historical row) that first observed this entity. Set once\n(post-terminal); immutable thereafter via the `IS NULL` guard in\n`update_discovery_fks`.",
+                "readOnly": true
+              },
               "id": {
                 "type": "string",
                 "format": "uuid",
                 "readOnly": true
               },
+              "last_discovery_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "description": "Discovery (historical row) that last touched this entity. Populated\npost-terminal by the per-entity-service subscriber on\n`DiscoveryProcessed`. NULL until the first successful discovery\nsession terminates after this row was created.",
+                "readOnly": true
+              },
+              "last_seen_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "Last successful natural-key match by daemon discovery against this\nlive row. Refreshed every scan, regardless of field changes.",
+                "readOnly": true
+              },
+              "lineage_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "description": "Lineage pointer on closed historical rows back to the live row whose\nstate they capture. NULL on live rows.",
+                "readOnly": true
+              },
               "updated_at": {
                 "type": "string",
                 "format": "date-time",
+                "readOnly": true
+              },
+              "valid_from": {
+                "type": "string",
+                "format": "date-time",
+                "description": "SCD2: when this row version became live. Equal to `created_at` for\nrows that have never ridden a snapshot; advanced to the snapshot's\n`taken_at` for live rows after a network snapshot fires.",
+                "readOnly": true
+              },
+              "valid_to": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time",
+                "description": "SCD2: when this row was closed by a snapshot. NULL = currently live.",
                 "readOnly": true
               }
             }
@@ -16198,9 +16967,13 @@
           "created_at": "2026-01-15T10:30:00Z",
           "credential_assignments": [],
           "description": "Primary web server",
+          "first_discovery_id": null,
           "hidden": false,
           "hostname": "web-server-01.local",
           "id": "550e8400-e29b-41d4-a716-446655440003",
+          "last_discovery_id": null,
+          "last_seen_at": "2026-01-15T10:30:00Z",
+          "lineage_id": null,
           "name": "web-server-01",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "source": {
@@ -16208,6 +16981,8 @@
           },
           "tags": [],
           "updated_at": "2026-01-15T10:30:00Z",
+          "valid_from": "2026-01-15T10:30:00Z",
+          "valid_to": null,
           "virtualization": null
         }
       },
@@ -16522,6 +17297,7 @@
               "cdp_platform": null,
               "cdp_port_id": null,
               "created_at": "2026-01-15T10:30:00Z",
+              "first_discovery_id": null,
               "host_id": "550e8400-e29b-41d4-a716-446655440003",
               "id": "550e8400-e29b-41d4-a716-44665544000f",
               "if_alias": "Uplink to Core Switch",
@@ -16530,6 +17306,9 @@
               "if_name": "Gi0/1",
               "if_type": 6,
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
+              "last_discovery_id": null,
+              "last_seen_at": "2026-01-15T10:30:00Z",
+              "lineage_id": null,
               "lldp_chassis_id": null,
               "lldp_mgmt_addr": null,
               "lldp_port_desc": null,
@@ -16541,21 +17320,29 @@
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "oper_status": "Up",
               "speed_bps": 1000000000,
-              "updated_at": "2026-01-15T10:30:00Z"
+              "updated_at": "2026-01-15T10:30:00Z",
+              "valid_from": "2026-01-15T10:30:00Z",
+              "valid_to": null
             }
           ],
           "ip_addresses": [
             {
               "created_at": "2026-01-15T10:30:00Z",
+              "first_discovery_id": null,
               "host_id": "550e8400-e29b-41d4-a716-446655440003",
               "id": "550e8400-e29b-41d4-a716-446655440005",
               "ip_address": "192.168.1.100",
+              "last_discovery_id": null,
+              "last_seen_at": "2026-01-15T10:30:00Z",
+              "lineage_id": null,
               "mac_address": "DE:AD:BE:EF:CA:FE",
               "name": "eth0",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
               "subnet_id": "550e8400-e29b-41d4-a716-446655440004",
-              "updated_at": "2026-01-15T10:30:00Z"
+              "updated_at": "2026-01-15T10:30:00Z",
+              "valid_from": "2026-01-15T10:30:00Z",
+              "valid_to": null
             }
           ],
           "name": "web-server-01",
@@ -16563,41 +17350,59 @@
           "ports": [
             {
               "created_at": "2026-01-15T10:30:00Z",
+              "first_discovery_id": null,
               "host_id": "550e8400-e29b-41d4-a716-446655440003",
               "id": "550e8400-e29b-41d4-a716-446655440006",
+              "last_discovery_id": null,
+              "last_seen_at": "2026-01-15T10:30:00Z",
+              "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "number": 80,
               "protocol": "Tcp",
               "type": "Http",
-              "updated_at": "2026-01-15T10:30:00Z"
+              "updated_at": "2026-01-15T10:30:00Z",
+              "valid_from": "2026-01-15T10:30:00Z",
+              "valid_to": null
             }
           ],
           "services": [
             {
               "bindings": [
                 {
-                  "created_at": "2026-05-01T19:08:39.689251Z",
-                  "id": "60f9d21d-6a26-49ec-b85e-8e12fa524fb6",
+                  "created_at": "2026-05-03T04:33:55.408484Z",
+                  "first_discovery_id": null,
+                  "id": "28493d52-4593-42ed-8204-ec379d3bf0d4",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
+                  "last_discovery_id": null,
+                  "last_seen_at": "2026-05-03T04:33:55.408484Z",
+                  "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-05-01T19:08:39.689251Z"
+                  "updated_at": "2026-05-03T04:33:55.408484Z",
+                  "valid_from": "2026-05-03T04:33:55.408484Z",
+                  "valid_to": null
                 }
               ],
               "created_at": "2026-01-15T10:30:00Z",
+              "first_discovery_id": null,
               "host_id": "550e8400-e29b-41d4-a716-446655440003",
               "id": "550e8400-e29b-41d4-a716-446655440007",
+              "last_discovery_id": null,
+              "last_seen_at": "2026-01-15T10:30:00Z",
+              "lineage_id": null,
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Plex Media Server",
+              "service_definition": "Nest Thermostat",
               "source": {
                 "type": "Manual"
               },
               "tags": [],
               "updated_at": "2026-01-15T10:30:00Z",
+              "valid_from": "2026-01-15T10:30:00Z",
+              "valid_to": null,
               "virtualization": null
             }
           ],
@@ -16651,13 +17456,55 @@
                 "format": "date-time",
                 "readOnly": true
               },
+              "first_discovery_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
               "id": {
                 "type": "string",
                 "format": "uuid",
                 "readOnly": true
               },
+              "last_discovery_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
+              "last_seen_at": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "lineage_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
               "updated_at": {
                 "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "valid_from": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "valid_to": {
+                "type": [
+                  "string",
+                  "null"
+                ],
                 "format": "date-time",
                 "readOnly": true
               }
@@ -16666,15 +17513,21 @@
         ],
         "example": {
           "created_at": "2026-01-15T10:30:00Z",
+          "first_discovery_id": null,
           "host_id": "550e8400-e29b-41d4-a716-446655440003",
           "id": "550e8400-e29b-41d4-a716-446655440005",
           "ip_address": "192.168.1.100",
+          "last_discovery_id": null,
+          "last_seen_at": "2026-01-15T10:30:00Z",
+          "lineage_id": null,
           "mac_address": "DE:AD:BE:EF:CA:FE",
           "name": "eth0",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
           "subnet_id": "550e8400-e29b-41d4-a716-446655440004",
-          "updated_at": "2026-01-15T10:30:00Z"
+          "updated_at": "2026-01-15T10:30:00Z",
+          "valid_from": "2026-01-15T10:30:00Z",
+          "valid_to": null
         }
       },
       "IPAddressBase": {
@@ -17014,13 +17867,55 @@
                 "format": "date-time",
                 "readOnly": true
               },
+              "first_discovery_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
               "id": {
                 "type": "string",
                 "format": "uuid",
                 "readOnly": true
               },
+              "last_discovery_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
+              "last_seen_at": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "lineage_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
               "updated_at": {
                 "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "valid_from": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "valid_to": {
+                "type": [
+                  "string",
+                  "null"
+                ],
                 "format": "date-time",
                 "readOnly": true
               }
@@ -18584,8 +19479,29 @@
                       "format": "uuid",
                       "readOnly": true
                     },
+                    "lineage_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "uuid",
+                      "readOnly": true
+                    },
                     "updated_at": {
                       "type": "string",
+                      "format": "date-time",
+                      "readOnly": true
+                    },
+                    "valid_from": {
+                      "type": "string",
+                      "format": "date-time",
+                      "readOnly": true
+                    },
+                    "valid_to": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
                       "format": "date-time",
                       "readOnly": true
                     }
@@ -18599,6 +19515,7 @@
                 "description": "HTTP/HTTPS services dependency",
                 "edge_style": "Bezier",
                 "id": "550e8400-e29b-41d4-a716-446655440008",
+                "lineage_id": null,
                 "members": {
                   "service_ids": [],
                   "type": "Services"
@@ -18609,7 +19526,9 @@
                   "type": "Manual"
                 },
                 "tags": [],
-                "updated_at": "2026-01-15T10:30:00Z"
+                "updated_at": "2026-01-15T10:30:00Z",
+                "valid_from": "2026-01-15T10:30:00Z",
+                "valid_to": null
               }
             }
           },
@@ -18793,6 +19712,7 @@
                     "cdp_platform": null,
                     "cdp_port_id": null,
                     "created_at": "2026-01-15T10:30:00Z",
+                    "first_discovery_id": null,
                     "host_id": "550e8400-e29b-41d4-a716-446655440003",
                     "id": "550e8400-e29b-41d4-a716-44665544000f",
                     "if_alias": "Uplink to Core Switch",
@@ -18801,6 +19721,9 @@
                     "if_name": "Gi0/1",
                     "if_type": 6,
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
+                    "last_discovery_id": null,
+                    "last_seen_at": "2026-01-15T10:30:00Z",
+                    "lineage_id": null,
                     "lldp_chassis_id": null,
                     "lldp_mgmt_addr": null,
                     "lldp_port_desc": null,
@@ -18812,21 +19735,29 @@
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "oper_status": "Up",
                     "speed_bps": 1000000000,
-                    "updated_at": "2026-01-15T10:30:00Z"
+                    "updated_at": "2026-01-15T10:30:00Z",
+                    "valid_from": "2026-01-15T10:30:00Z",
+                    "valid_to": null
                   }
                 ],
                 "ip_addresses": [
                   {
                     "created_at": "2026-01-15T10:30:00Z",
+                    "first_discovery_id": null,
                     "host_id": "550e8400-e29b-41d4-a716-446655440003",
                     "id": "550e8400-e29b-41d4-a716-446655440005",
                     "ip_address": "192.168.1.100",
+                    "last_discovery_id": null,
+                    "last_seen_at": "2026-01-15T10:30:00Z",
+                    "lineage_id": null,
                     "mac_address": "DE:AD:BE:EF:CA:FE",
                     "name": "eth0",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
                     "subnet_id": "550e8400-e29b-41d4-a716-446655440004",
-                    "updated_at": "2026-01-15T10:30:00Z"
+                    "updated_at": "2026-01-15T10:30:00Z",
+                    "valid_from": "2026-01-15T10:30:00Z",
+                    "valid_to": null
                   }
                 ],
                 "name": "web-server-01",
@@ -18834,41 +19765,59 @@
                 "ports": [
                   {
                     "created_at": "2026-01-15T10:30:00Z",
+                    "first_discovery_id": null,
                     "host_id": "550e8400-e29b-41d4-a716-446655440003",
                     "id": "550e8400-e29b-41d4-a716-446655440006",
+                    "last_discovery_id": null,
+                    "last_seen_at": "2026-01-15T10:30:00Z",
+                    "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "number": 80,
                     "protocol": "Tcp",
                     "type": "Http",
-                    "updated_at": "2026-01-15T10:30:00Z"
+                    "updated_at": "2026-01-15T10:30:00Z",
+                    "valid_from": "2026-01-15T10:30:00Z",
+                    "valid_to": null
                   }
                 ],
                 "services": [
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-05-01T19:08:39.676270Z",
-                        "id": "2f5eee18-edec-42f0-a767-faf1f14c9586",
+                        "created_at": "2026-05-03T04:33:55.396013Z",
+                        "first_discovery_id": null,
+                        "id": "b045e6f4-af89-4b54-9baa-392722e2fb30",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
+                        "last_discovery_id": null,
+                        "last_seen_at": "2026-05-03T04:33:55.396013Z",
+                        "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-05-01T19:08:39.676270Z"
+                        "updated_at": "2026-05-03T04:33:55.396013Z",
+                        "valid_from": "2026-05-03T04:33:55.396013Z",
+                        "valid_to": null
                       }
                     ],
                     "created_at": "2026-01-15T10:30:00Z",
+                    "first_discovery_id": null,
                     "host_id": "550e8400-e29b-41d4-a716-446655440003",
                     "id": "550e8400-e29b-41d4-a716-446655440007",
+                    "last_discovery_id": null,
+                    "last_seen_at": "2026-01-15T10:30:00Z",
+                    "lineage_id": null,
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Plex Media Server",
+                    "service_definition": "Nest Thermostat",
                     "source": {
                       "type": "Manual"
                     },
                     "tags": [],
                     "updated_at": "2026-01-15T10:30:00Z",
+                    "valid_from": "2026-01-15T10:30:00Z",
+                    "valid_to": null,
                     "virtualization": null
                   }
                 ],
@@ -18924,13 +19873,55 @@
                       "format": "date-time",
                       "readOnly": true
                     },
+                    "first_discovery_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "uuid",
+                      "readOnly": true
+                    },
                     "id": {
                       "type": "string",
                       "format": "uuid",
                       "readOnly": true
                     },
+                    "last_discovery_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "uuid",
+                      "readOnly": true
+                    },
+                    "last_seen_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "readOnly": true
+                    },
+                    "lineage_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "uuid",
+                      "readOnly": true
+                    },
                     "updated_at": {
                       "type": "string",
+                      "format": "date-time",
+                      "readOnly": true
+                    },
+                    "valid_from": {
+                      "type": "string",
+                      "format": "date-time",
+                      "readOnly": true
+                    },
+                    "valid_to": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
                       "format": "date-time",
                       "readOnly": true
                     }
@@ -18940,28 +19931,40 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-05-01T19:08:39.702269Z",
-                    "id": "39206eb5-f35f-4107-ba4f-971327252575",
+                    "created_at": "2026-05-03T04:33:55.418704Z",
+                    "first_discovery_id": null,
+                    "id": "e59fb250-0bc0-487c-854f-af2e8e96ed00",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
+                    "last_discovery_id": null,
+                    "last_seen_at": "2026-05-03T04:33:55.418704Z",
+                    "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-05-01T19:08:39.702269Z"
+                    "updated_at": "2026-05-03T04:33:55.418704Z",
+                    "valid_from": "2026-05-03T04:33:55.418704Z",
+                    "valid_to": null
                   }
                 ],
                 "created_at": "2026-01-15T10:30:00Z",
+                "first_discovery_id": null,
                 "host_id": "550e8400-e29b-41d4-a716-446655440003",
                 "id": "550e8400-e29b-41d4-a716-446655440007",
+                "last_discovery_id": null,
+                "last_seen_at": "2026-01-15T10:30:00Z",
+                "lineage_id": null,
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Plex Media Server",
+                "service_definition": "Nest Thermostat",
                 "source": {
                   "type": "Manual"
                 },
                 "tags": [],
                 "updated_at": "2026-01-15T10:30:00Z",
+                "valid_from": "2026-01-15T10:30:00Z",
+                "valid_to": null,
                 "virtualization": null
               }
             }
@@ -19009,13 +20012,55 @@
                       "format": "date-time",
                       "readOnly": true
                     },
+                    "first_discovery_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "uuid",
+                      "readOnly": true
+                    },
                     "id": {
                       "type": "string",
                       "format": "uuid",
                       "readOnly": true
                     },
+                    "last_discovery_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "uuid",
+                      "readOnly": true
+                    },
+                    "last_seen_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "readOnly": true
+                    },
+                    "lineage_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "uuid",
+                      "readOnly": true
+                    },
                     "updated_at": {
                       "type": "string",
+                      "format": "date-time",
+                      "readOnly": true
+                    },
+                    "valid_from": {
+                      "type": "string",
+                      "format": "date-time",
+                      "readOnly": true
+                    },
+                    "valid_to": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
                       "format": "date-time",
                       "readOnly": true
                     }
@@ -19026,7 +20071,11 @@
                 "cidr": "192.168.1.0/24",
                 "created_at": "2026-01-15T10:30:00Z",
                 "description": "Local area network",
+                "first_discovery_id": null,
                 "id": "550e8400-e29b-41d4-a716-446655440004",
+                "last_discovery_id": null,
+                "last_seen_at": "2026-01-15T10:30:00Z",
+                "lineage_id": null,
                 "name": "LAN",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "source": {
@@ -19034,7 +20083,9 @@
                 },
                 "subnet_type": "Lan",
                 "tags": [],
-                "updated_at": "2026-01-15T10:30:00Z"
+                "updated_at": "2026-01-15T10:30:00Z",
+                "valid_from": "2026-01-15T10:30:00Z",
+                "valid_to": null
               }
             }
           },
@@ -19086,8 +20137,29 @@
                       "format": "uuid",
                       "readOnly": true
                     },
+                    "lineage_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "uuid",
+                      "readOnly": true
+                    },
                     "updated_at": {
                       "type": "string",
+                      "format": "date-time",
+                      "readOnly": true
+                    },
+                    "valid_from": {
+                      "type": "string",
+                      "format": "date-time",
+                      "readOnly": true
+                    },
+                    "valid_to": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
                       "format": "date-time",
                       "readOnly": true
                     }
@@ -19100,9 +20172,12 @@
                 "description": "Production environment resources",
                 "id": "550e8400-e29b-41d4-a716-44665544000a",
                 "is_application": false,
+                "lineage_id": null,
                 "name": "production",
                 "organization_id": "550e8400-e29b-41d4-a716-446655440001",
-                "updated_at": "2026-01-15T10:30:00Z"
+                "updated_at": "2026-01-15T10:30:00Z",
+                "valid_from": "2026-01-15T10:30:00Z",
+                "valid_to": null
               }
             }
           },
@@ -19323,13 +20398,55 @@
                       "format": "date-time",
                       "readOnly": true
                     },
+                    "first_discovery_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "uuid",
+                      "readOnly": true
+                    },
                     "id": {
                       "type": "string",
                       "format": "uuid",
                       "readOnly": true
                     },
+                    "last_discovery_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "uuid",
+                      "readOnly": true
+                    },
+                    "last_seen_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "readOnly": true
+                    },
+                    "lineage_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "uuid",
+                      "readOnly": true
+                    },
                     "updated_at": {
                       "type": "string",
+                      "format": "date-time",
+                      "readOnly": true
+                    },
+                    "valid_from": {
+                      "type": "string",
+                      "format": "date-time",
+                      "readOnly": true
+                    },
+                    "valid_to": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
                       "format": "date-time",
                       "readOnly": true
                     }
@@ -19509,7 +20626,8 @@
         "required": [
           "host_count",
           "network_count",
-          "seat_count"
+          "seat_count",
+          "snapshot_retention_days"
         ],
         "properties": {
           "host_count": {
@@ -19550,6 +20668,12 @@
             ],
             "format": "int64",
             "minimum": 0
+          },
+          "snapshot_retention_days": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Snapshot retention window in days. `0` means snapshots are not\navailable on this plan; the UI uses this to disable the \"Take\nsnapshot\" button and surface the upgrade hook.",
+            "minimum": 0
           }
         }
       },
@@ -19571,13 +20695,55 @@
                 "format": "date-time",
                 "readOnly": true
               },
+              "first_discovery_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
               "id": {
                 "type": "string",
                 "format": "uuid",
                 "readOnly": true
               },
+              "last_discovery_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
+              "last_seen_at": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "lineage_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
               "updated_at": {
                 "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "valid_from": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "valid_to": {
+                "type": [
+                  "string",
+                  "null"
+                ],
                 "format": "date-time",
                 "readOnly": true
               }
@@ -19587,13 +20753,19 @@
         "description": "Port entity with custom serialization that flattens PortType fields.",
         "example": {
           "created_at": "2026-01-15T10:30:00Z",
+          "first_discovery_id": null,
           "host_id": "550e8400-e29b-41d4-a716-446655440003",
           "id": "550e8400-e29b-41d4-a716-446655440006",
+          "last_discovery_id": null,
+          "last_seen_at": "2026-01-15T10:30:00Z",
+          "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "number": 80,
           "protocol": "Tcp",
           "type": "Http",
-          "updated_at": "2026-01-15T10:30:00Z"
+          "updated_at": "2026-01-15T10:30:00Z",
+          "valid_from": "2026-01-15T10:30:00Z",
+          "valid_to": null
         }
       },
       "PortBase": {
@@ -20136,6 +21308,68 @@
           }
         }
       },
+      "ScannedEntityIds": {
+        "type": "object",
+        "description": "Canonical IDs of entities scanned in a discovery session.\n\nPopulated daemon-side at terminal phase from `EntityBuffer`'s `Created`\nentries. Travels with the terminal `DiscoveryUpdatePayload` to the server,\nrides the in-memory `EntityOperation::Created` event published for the\nhistorical Discovery row (the event scope carries `Entity::Discovery` with\nthe full struct, including `run_type::Historical { results }`), then is\nstripped before persisting into the historical Discovery row's JSONB (see\nthe `SqlValue::RunType` bind_value handler in\n`backend/src/server/shared/storage/generic.rs`). Per-entity-service\nsubscribers extract `results.scanned` from the in-memory event and call\n`DiscoveryFkUpdater::update_discovery_fks` to backfill\n`last_discovery_id` / `first_discovery_id` on the matched rows.\n\nNaming: `scanned_*` because the daemon scans entities — some submissions\nmatch existing rows (refresh), others insert new rows. Both populate the\nEntityBuffer with canonical (server-assigned) IDs.",
+        "properties": {
+          "binding_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "host_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "interface_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "ip_address_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "port_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "service_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "subnet_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "vlan_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        }
+      },
       "SecretValue": {
         "oneOf": [
           {
@@ -20220,13 +21454,55 @@
                 "format": "date-time",
                 "readOnly": true
               },
+              "first_discovery_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
               "id": {
                 "type": "string",
                 "format": "uuid",
                 "readOnly": true
               },
+              "last_discovery_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
+              "last_seen_at": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "lineage_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
               "updated_at": {
                 "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "valid_from": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "valid_to": {
+                "type": [
+                  "string",
+                  "null"
+                ],
                 "format": "date-time",
                 "readOnly": true
               }
@@ -20236,28 +21512,40 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-05-01T19:08:39.690077Z",
-              "id": "1ae97448-7d90-4367-ac02-d757a9ebd06d",
+              "created_at": "2026-05-03T04:33:55.408934Z",
+              "first_discovery_id": null,
+              "id": "ccd0b23f-9526-4448-8eaf-079e53e38553",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
+              "last_discovery_id": null,
+              "last_seen_at": "2026-05-03T04:33:55.408934Z",
+              "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-05-01T19:08:39.690077Z"
+              "updated_at": "2026-05-03T04:33:55.408934Z",
+              "valid_from": "2026-05-03T04:33:55.408934Z",
+              "valid_to": null
             }
           ],
           "created_at": "2026-01-15T10:30:00Z",
+          "first_discovery_id": null,
           "host_id": "550e8400-e29b-41d4-a716-446655440003",
           "id": "550e8400-e29b-41d4-a716-446655440007",
+          "last_discovery_id": null,
+          "last_seen_at": "2026-01-15T10:30:00Z",
+          "lineage_id": null,
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Plex Media Server",
+          "service_definition": "Nest Thermostat",
           "source": {
             "type": "Manual"
           },
           "tags": [],
           "updated_at": "2026-01-15T10:30:00Z",
+          "valid_from": "2026-01-15T10:30:00Z",
+          "valid_to": null,
           "virtualization": null
         }
       },
@@ -20669,10 +21957,10 @@
           }
         }
       },
-      "Subnet": {
+      "Snapshot": {
         "allOf": [
           {
-            "$ref": "#/components/schemas/SubnetBase"
+            "$ref": "#/components/schemas/SnapshotBase"
           },
           {
             "type": "object",
@@ -20699,12 +21987,114 @@
               }
             }
           }
+        ]
+      },
+      "SnapshotBase": {
+        "type": "object",
+        "required": [
+          "network_id",
+          "taken_at"
+        ],
+        "properties": {
+          "created_by_user_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "network_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "taken_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Subnet": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/SubnetBase"
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "created_at",
+              "updated_at"
+            ],
+            "properties": {
+              "created_at": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "first_discovery_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "readOnly": true
+              },
+              "last_discovery_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
+              "last_seen_at": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "lineage_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
+              "updated_at": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "valid_from": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "valid_to": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time",
+                "readOnly": true
+              }
+            }
+          }
         ],
         "example": {
           "cidr": "192.168.1.0/24",
           "created_at": "2026-01-15T10:30:00Z",
           "description": "Local area network",
+          "first_discovery_id": null,
           "id": "550e8400-e29b-41d4-a716-446655440004",
+          "last_discovery_id": null,
+          "last_seen_at": "2026-01-15T10:30:00Z",
+          "lineage_id": null,
           "name": "LAN",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "source": {
@@ -20712,7 +22102,9 @@
           },
           "subnet_type": "Lan",
           "tags": [],
-          "updated_at": "2026-01-15T10:30:00Z"
+          "updated_at": "2026-01-15T10:30:00Z",
+          "valid_from": "2026-01-15T10:30:00Z",
+          "valid_to": null
         }
       },
       "SubnetBase": {
@@ -20854,8 +22246,29 @@
                 "format": "uuid",
                 "readOnly": true
               },
+              "lineage_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
               "updated_at": {
                 "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "valid_from": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "valid_to": {
+                "type": [
+                  "string",
+                  "null"
+                ],
                 "format": "date-time",
                 "readOnly": true
               }
@@ -20868,9 +22281,12 @@
           "description": "Production environment resources",
           "id": "550e8400-e29b-41d4-a716-44665544000a",
           "is_application": false,
+          "lineage_id": null,
           "name": "production",
           "organization_id": "550e8400-e29b-41d4-a716-446655440001",
-          "updated_at": "2026-01-15T10:30:00Z"
+          "updated_at": "2026-01-15T10:30:00Z",
+          "valid_from": "2026-01-15T10:30:00Z",
+          "valid_to": null
         }
       },
       "TagBase": {
@@ -20992,102 +22408,17 @@
       "TopologyBase": {
         "type": "object",
         "required": [
-          "name",
-          "options",
           "network_id",
-          "tags",
+          "options",
           "nodes",
-          "edges",
-          "hosts",
-          "ip_addresses",
-          "ports",
-          "bindings",
-          "subnets",
-          "services",
-          "dependencies",
-          "interfaces",
-          "entity_tags",
-          "is_stale",
-          "last_refreshed",
-          "is_locked",
-          "removed_hosts",
-          "removed_ip_addresses",
-          "removed_subnets",
-          "removed_services",
-          "removed_dependencies",
-          "removed_ports",
-          "removed_bindings",
-          "removed_interfaces"
+          "edges"
         ],
         "properties": {
-          "bindings": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Binding"
-            }
-          },
-          "dependencies": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Dependency"
-            }
-          },
           "edges": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/Edge"
             }
-          },
-          "entity_tags": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Tag"
-            }
-          },
-          "hosts": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Host"
-            }
-          },
-          "interfaces": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Interface"
-            }
-          },
-          "ip_addresses": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/IPAddress"
-            }
-          },
-          "is_locked": {
-            "type": "boolean"
-          },
-          "is_stale": {
-            "type": "boolean"
-          },
-          "last_refreshed": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "locked_at": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time"
-          },
-          "locked_by": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "uuid"
-          },
-          "name": {
-            "type": "string"
           },
           "network_id": {
             "type": "string",
@@ -21102,99 +22433,13 @@
           "options": {
             "$ref": "#/components/schemas/TopologyOptions"
           },
-          "parent_id": {
+          "snapshot_id": {
             "type": [
               "string",
               "null"
             ],
-            "format": "uuid"
-          },
-          "ports": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Port"
-            }
-          },
-          "removed_bindings": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          "removed_dependencies": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          "removed_hosts": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          "removed_interfaces": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          "removed_ip_addresses": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          "removed_ports": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          "removed_services": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          "removed_subnets": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          "services": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Service"
-            }
-          },
-          "subnets": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Subnet"
-            }
-          },
-          "tags": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          "vlans": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Vlan"
-            }
+            "format": "uuid",
+            "description": "FK to `snapshots.id`. NULL = live view; Some = snapshot row."
           }
         }
       },
@@ -21252,33 +22497,6 @@
           },
           "tag_filter": {
             "$ref": "#/components/schemas/TopologyTagFilter"
-          }
-        }
-      },
-      "TopologyMetadataUpdate": {
-        "type": "object",
-        "description": "Lightweight request type for updating topology metadata.\n\nUsed for editing topology name/parent - instead of sending the entire topology\n(which includes all hosts, ip_addresses, services, etc.), only sends the metadata fields.\nFixes HTTP 413 errors on metadata edit operations.",
-        "required": [
-          "network_id",
-          "name"
-        ],
-        "properties": {
-          "name": {
-            "type": "string",
-            "description": "New name for the topology"
-          },
-          "network_id": {
-            "type": "string",
-            "format": "uuid",
-            "description": "Network ID for authorization"
-          },
-          "parent_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "uuid",
-            "description": "New parent topology ID (optional)"
           }
         }
       },
@@ -21349,39 +22567,6 @@
           },
           "request": {
             "$ref": "#/components/schemas/TopologyRequestOptions"
-          }
-        }
-      },
-      "TopologyRebuildRequest": {
-        "type": "object",
-        "description": "Lightweight request type for topology rebuild/refresh operations.\n\nThis type only includes the fields actually needed by the server - entity data\n(hosts, ip_addresses, services, etc.) is fetched fresh from the database.\nUsing this instead of the full Topology dramatically reduces payload size\nfor large networks (from MBs to KBs), fixing HTTP 413 errors.",
-        "required": [
-          "network_id",
-          "options"
-        ],
-        "properties": {
-          "edges": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Edge"
-            },
-            "description": "Existing edges for reference during rebuild"
-          },
-          "network_id": {
-            "type": "string",
-            "format": "uuid",
-            "description": "Network ID for authorization and data fetching"
-          },
-          "nodes": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Node"
-            },
-            "description": "Existing nodes for position preservation during rebuild"
-          },
-          "options": {
-            "$ref": "#/components/schemas/TopologyOptions",
-            "description": "Topology options for graph building"
           }
         }
       },
@@ -21479,6 +22664,7 @@
                   "Vlan",
                   "Dependency",
                   "Topology",
+                  "Snapshot",
                   "Unknown"
                 ]
               }
@@ -21970,13 +23156,55 @@
                 "format": "date-time",
                 "readOnly": true
               },
+              "first_discovery_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
               "id": {
                 "type": "string",
                 "format": "uuid",
                 "readOnly": true
               },
+              "last_discovery_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
+              "last_seen_at": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "lineage_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
               "updated_at": {
                 "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "valid_from": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "valid_to": {
+                "type": [
+                  "string",
+                  "null"
+                ],
                 "format": "date-time",
                 "readOnly": true
               }

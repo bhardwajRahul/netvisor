@@ -88,7 +88,7 @@
 		// Mirror the form's reason_code into $state so $derived expressions
 		// (offersForReason, button gating) react to changes.
 		// `form.state.values` is NOT tracked by $derived — read it from inside
-		// a `form.store.subscribe` callback (existing pattern, see TopologyModal).
+		// a `form.store.subscribe` callback (CLAUDE.md TanStack reactivity gap).
 		return form.store.subscribe(() => {
 			const v = form.state.values.reason_code as CancelReason | '';
 			if (v !== selectedReason) {

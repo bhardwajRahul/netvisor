@@ -7,13 +7,13 @@
 		selectedNodes,
 		previewEdges,
 		baseFlowEdges,
-		autoRebuild,
-		useRebuildTopologyMutation,
+		useUpdateTopologyMutation,
 		activeView,
 		topologyOptions,
-		updateSharedElementRules
+		updateSharedElementRules,
+		sanitizeOptionsForApi
 	} from '../../../queries';
-	import type { Topology } from '../../../types/base';
+	import type { EnrichedTopology } from '../../../types/base';
 	import type { TopologyNode } from '../../../types/base';
 	import {
 		getNodeSelectionIds,
@@ -61,9 +61,6 @@
 	import { v4 as uuidv4 } from 'uuid';
 	import {
 		appWizard_selectedCount,
-		topology_multiSelectCreateGroupRebuildWarning,
-		topology_multiSelectLockedHint,
-		topology_multiSelectStaleHint,
 		topology_multiSelectReadOnlyHint,
 		topology_multiSelectGroupName,
 		common_clearSelection,
@@ -101,7 +98,7 @@
 		editingDependency = null,
 		onDone
 	}: {
-		topology: Topology | undefined;
+		topology: EnrichedTopology | undefined;
 		isReadOnly?: boolean;
 		isTutorial?: boolean;
 		onClearSelection: () => void;
@@ -123,7 +120,7 @@
 	const bulkRemoveTagMutation = useBulkRemoveTagMutation();
 	const createDependencyMutation = useCreateDependencyMutation();
 	const updateDependencyMutation = useUpdateDependencyMutation();
-	const rebuildTopologyMutation = useRebuildTopologyMutation();
+	const updateTopologyMutation = useUpdateTopologyMutation();
 
 	// Subscribe to selectedNodes
 	let nodes = $state<Node[]>(get(selectedNodes));
@@ -201,14 +198,12 @@
 	let editState = $derived(
 		isTutorial
 			? { isReadonly: false, isEditable: true, disabledReason: null }
-			: getTopologyEditState(topology, get(autoRebuild), isReadOnly)
+			: getTopologyEditState(topology, false, isReadOnly)
 	);
 
 	let mutateDisabledReason = $derived.by(() => {
 		if (!editState.disabledReason) return '';
-		if (editState.disabledReason === 'readonly') return topology_multiSelectReadOnlyHint();
-		if (editState.disabledReason === 'locked') return topology_multiSelectLockedHint();
-		return topology_multiSelectStaleHint();
+		return topology_multiSelectReadOnlyHint();
 	});
 
 	// Merge topology entity_tags with tags query cache for newly created tags
@@ -397,9 +392,12 @@
 			}
 		]);
 		recentlyAddedTagIds = [];
-		// Rebuild topology to apply the new grouping rule
+		// Persist the new grouping rule via the topology layout PUT.
 		if (topology) {
-			rebuildTopologyMutation.mutate(topology);
+			updateTopologyMutation.mutate({
+				...topology,
+				options: sanitizeOptionsForApi(topology.options)
+			});
 		}
 	}
 
@@ -1116,11 +1114,6 @@
 					</button>
 				{:else}
 					<div class="space-y-2">
-						{#if !$autoRebuild}
-							<p class="text-tertiary text-xs">
-								{topology_multiSelectCreateGroupRebuildWarning()}
-							</p>
-						{/if}
 						{#if isEditMode}
 							<div class="flex gap-2">
 								<button class="btn-secondary flex-1 text-xs" onclick={cancelEdit}>

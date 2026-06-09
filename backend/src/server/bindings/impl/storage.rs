@@ -35,6 +35,12 @@ impl Storable for Binding {
         "bindings"
     }
 
+    const HAS_SCD2: bool = true;
+
+    fn is_live_row(&self) -> bool {
+        self.valid_to.is_none()
+    }
+
     fn new(base: Self::BaseData) -> Self {
         Binding::new(base)
     }

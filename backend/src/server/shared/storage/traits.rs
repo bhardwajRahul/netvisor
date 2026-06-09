@@ -94,6 +94,21 @@ pub trait Storable: Sized + Clone + Send + Sync + 'static + Default {
 
     /// Deserialization from database
     fn from_row(row: &PgRow) -> Result<Self, anyhow::Error>;
+
+    /// Whether this entity carries SCD2 columns (`valid_from` / `valid_to`).
+    /// When `true`, frontend-facing GET handlers automatically filter to live
+    /// rows (`valid_to IS NULL`) so closed historical copies don't leak into
+    /// list responses, and direct `GET /{id}` of a closed row returns 404.
+    /// Default `false`; the 13 Snapshotable entity types override to `true`.
+    const HAS_SCD2: bool = false;
+
+    /// Whether this entity instance is a live row (i.e. `valid_to IS NULL`).
+    /// Default `true` for non-SCD2 entities; SCD2 types override to consult
+    /// the `valid_to` field on `self`. Used by `get_by_id_handler` to 404
+    /// closed historical copies.
+    fn is_live_row(&self) -> bool {
+        true
+    }
 }
 
 /// Extended trait for user-facing domain entities (excludes junction tables).

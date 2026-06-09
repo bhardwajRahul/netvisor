@@ -174,6 +174,48 @@ impl FeatureCheck for ShareViewsFeature {
 }
 
 #[derive(Default)]
+pub struct TakeSnapshotFeature;
+
+#[async_trait]
+impl FeatureCheck for TakeSnapshotFeature {
+    async fn check(&self, ctx: &FeatureCheckContext<'_>) -> FeatureCheckResult {
+        use crate::server::billing::retention::snapshot_retention_days;
+        use crate::server::billing::types::base::LimitType;
+
+        let retention = snapshot_retention_days(
+            &ctx.plan,
+            ctx.app_state.config.snapshot_retention_days_override,
+        );
+        if retention == 0 {
+            let _ = ctx
+                .app_state
+                .services
+                .event_bus
+                .publish(Event::new(
+                    OrgScope {
+                        organization_id: ctx.organization.id,
+                    },
+                    BillingOperation::FeatureLimitHit {
+                        limit_type: LimitType::Snapshots,
+                        current_count: 0,
+                        limit: 0,
+                        plan: ctx.plan,
+                        source: LimitSource::Api,
+                    },
+                    AuthenticatedEntity::System,
+                ))
+                .await;
+
+            return FeatureCheckResult::payment_required(
+                "Snapshots aren't available on your plan. Upgrade to capture point-in-time topology.",
+            );
+        }
+
+        FeatureCheckResult::Allowed
+    }
+}
+
+#[derive(Default)]
 pub struct CreateNetworkFeature;
 
 #[async_trait]

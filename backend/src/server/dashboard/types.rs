@@ -25,6 +25,10 @@ pub struct PlanUsage {
     pub network_count: u64,
     pub seat_limit: Option<u64>,
     pub seat_count: u64,
+    /// Snapshot retention window in days. `0` means snapshots are not
+    /// available on this plan; the UI uses this to disable the "Take
+    /// snapshot" button and surface the upgrade hook.
+    pub snapshot_retention_days: u32,
 }
 
 /// Dashboard summary response

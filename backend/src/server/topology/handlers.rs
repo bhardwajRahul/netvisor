@@ -1,38 +1,28 @@
 use crate::server::shared::extractors::Query;
 use crate::server::shared::storage::traits::Entity;
-use crate::server::shared::types::error_codes::ErrorCode;
 use crate::server::{
     auth::middleware::permissions::{Authorized, IsUser, Member, Viewer},
     config::AppState,
     shared::{
-        events::{
-            traits::{Event as TypedEvent, OrgScope},
-            types::{OnboardingOperation, OnboardingOperationDiscriminants},
-        },
         handlers::{
             query::{FilterQueryExtractor, NetworkFilterQuery},
-            traits::{CrudHandlers, delete_handler, update_handler},
+            traits::{CrudHandlers, update_handler},
         },
         services::traits::CrudService,
-        storage::{filter::StorableFilter, traits::Storable},
+        storage::filter::StorableFilter,
         types::api::{
-            ApiError, ApiErrorResponse, ApiJson, ApiResponse, ApiResult, EmptyApiResponse,
+            ApiError, ApiErrorResponse, ApiResponse, ApiResult, EmptyApiResponse,
             PaginatedApiResponse,
         },
     },
-    topology::{
-        service::main::BuildGraphParams,
-        types::base::{
-            SetEntitiesParams, Topology, TopologyEdgeHandleUpdate, TopologyMetadataUpdate,
-            TopologyNodePositionUpdate, TopologyNodeResizeUpdate, TopologyRebuildRequest,
-            TopologyRequestOptions,
-        },
+    topology::types::base::{
+        Topology, TopologyEdgeHandleUpdate, TopologyNodePositionUpdate, TopologyNodeResizeUpdate,
     },
 };
 use axum::{
     body::Body,
     extract::{Path, State},
-    http::{HeaderMap, HeaderValue, StatusCode, header},
+    http::{HeaderMap, HeaderValue, header},
     response::{
         IntoResponse, Json, Sse,
         sse::{Event, KeepAlive},
@@ -40,6 +30,7 @@ use axum::{
     routing::get,
 };
 use futures::{Stream, stream};
+use serde_json::json;
 use std::{convert::Infallible, sync::Arc};
 use utoipa_axum::{router::OpenApiRouter, routes};
 use uuid::Uuid;
@@ -51,28 +42,28 @@ mod generated {
     crate::crud_export_csv_handler!(Topology);
 }
 
-/// Topology endpoints are internal-only (hidden from public docs)
+/// Topology endpoints are internal-only (hidden from public docs).
+///
+/// Topology rows are now read-mostly: `get_all` and `get_by_id` for listing,
+/// `update_topology` (nodes/edges/options) plus the lightweight node/edge
+/// mutators for layout edits, exports, and a single SSE channel.
+///
+/// Creation, deletion, lock/unlock, refresh, rebuild, and metadata updates
+/// are gone — topology rows are now derived state managed by the service:
+/// the live row is auto-created at network creation; snapshot rows are
+/// inserted by the `Snapshot::Created` subscriber.
 pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
     OpenApiRouter::new()
-        .routes(routes!(get_all_topologies, create_topology))
-        .routes(routes!(
-            generated::get_by_id,
-            update_topology,
-            delete_topology
-        ))
+        .routes(routes!(get_all_topologies))
+        .routes(routes!(generated::get_by_id, update_topology))
         .routes(routes!(generated::export_csv))
         .routes(routes!(export_mermaid))
         .routes(routes!(export_confluence))
-        .routes(routes!(refresh))
-        .routes(routes!(rebuild))
         .routes(routes!(update_node_position))
         .routes(routes!(update_node_resize))
         .routes(routes!(update_edge_handles))
-        .routes(routes!(update_metadata))
-        .routes(routes!(lock))
-        .routes(routes!(unlock))
         // SSE endpoint (not well-supported by OpenAPI)
-        .route("/stream", get(staleness_stream))
+        .route("/stream", get(live_topology_updates_stream))
 }
 
 #[utoipa::path(
@@ -92,53 +83,18 @@ async fn update_topology(
     id: Path<Uuid>,
     topology: Json<Topology>,
 ) -> ApiResult<Json<ApiResponse<Topology>>> {
+    // `snapshot_id` is immutable post-insert; `Storable::preserve_immutable_fields`
+    // restores it from the existing row before the UPDATE statement runs, so
+    // any client-supplied value here is silently ignored. Layout changes
+    // (nodes/edges/options) are the only mutations this handler accepts.
     update_handler::<Topology>(state, auth, id, topology).await
 }
 
-/// Delete a topology
+/// Get all topologies for the authenticated user's networks.
 ///
-/// Prevents deletion of the last topology on a network.
-#[utoipa::path(
-    delete,
-    path = "/{id}",
-    tags = [Topology::ENTITY_NAME_PLURAL, "internal"],
-    params(("id" = Uuid, Path, description = "Topology ID")),
-    responses(
-        (status = 200, description = "Topology deleted", body = EmptyApiResponse),
-        (status = 404, description = "Topology not found", body = ApiErrorResponse),
-        (status = 409, description = "Cannot delete last topology", body = ApiErrorResponse),
-    ),
-    security(("user_api_key" = []), ("session" = []))
-)]
-async fn delete_topology(
-    State(state): State<Arc<AppState>>,
-    auth: Authorized<Member>,
-    Path(id): Path<Uuid>,
-) -> ApiResult<Json<ApiResponse<()>>> {
-    let service = Topology::get_service(&state);
-
-    let topology = service
-        .get_by_id(&id)
-        .await?
-        .ok_or_else(|| ApiError::not_found(format!("Topology {} not found", id)))?;
-
-    let filter = StorableFilter::<Topology>::new_from_network_ids(&[topology.base.network_id]);
-    let topology_count = service.get_all(filter).await.unwrap_or_default().len();
-
-    if topology_count <= 1 {
-        return Err(ApiError::coded(
-            StatusCode::CONFLICT,
-            ErrorCode::EntityDeleteForbidden {
-                entity: "topology".to_string(),
-                reason: Some("A network must have at least one topology.".to_string()),
-            },
-        ));
-    }
-
-    delete_handler::<Topology>(State(state), auth, Path(id)).await
-}
-
-/// Get all topologies
+/// Returns both live-view rows (`snapshot_id IS NULL`) and snapshot-pinned
+/// rows. The frontend renders the live one by default and renders snapshot
+/// rows when the user picks one from the snapshots dropdown.
 #[utoipa::path(
     get,
     path = "",
@@ -159,7 +115,6 @@ async fn get_all_topologies(
         .organization_id()
         .ok_or_else(|| ApiError::forbidden("Organization context required"))?;
 
-    // Apply network filter and pagination
     let base_filter = StorableFilter::<Topology>::new_from_network_ids(&network_ids);
     let filter = query.apply_to_filter(base_filter, &network_ids, organization_id);
     let pagination = query.pagination();
@@ -182,353 +137,7 @@ async fn get_all_topologies(
     )))
 }
 
-/// Create topology
-#[utoipa::path(
-    post,
-    path = "",
-    tags = [Topology::ENTITY_NAME_PLURAL, "internal"],
-    request_body = Topology,
-    responses(
-        (status = 200, description = "Topology created", body = ApiResponse<Topology>),
-        (status = 400, description = "Validation failed", body = ApiErrorResponse),
-    ),
-     security(("user_api_key" = []), ("session" = []))
-)]
-async fn create_topology(
-    State(state): State<Arc<AppState>>,
-    auth: Authorized<Member>,
-    ApiJson(mut topology): ApiJson<Topology>,
-) -> ApiResult<Json<ApiResponse<Topology>>> {
-    let user_id = auth.user_id();
-    let network_ids = auth.network_ids();
-
-    // Validate user has access to this network
-    if !network_ids.contains(&topology.base.network_id) {
-        return Err(ApiError::forbidden("You don't have access to this network"));
-    }
-
-    if let Err(err) = topology.validate() {
-        tracing::warn!(
-            entity_type = Topology::table_name(),
-            user_id = ?user_id,
-            error = %err,
-            "Entity validation failed"
-        );
-        return Err(ApiError::bad_request(&format!(
-            "{} validation failed: {}",
-            Topology::entity_name(),
-            err
-        )));
-    }
-
-    tracing::debug!(
-        entity_type = Topology::table_name(),
-        user_id = ?user_id,
-        "Create request received"
-    );
-
-    let service = Topology::get_service(&state);
-
-    // Override request options with backend defaults — the backend is the
-    // source of truth for default rules (element_rules, container_rules, etc.)
-    // The frontend only sends view and local display preferences.
-    let default_request = TopologyRequestOptions::default();
-    topology.base.options.request.element_rules = default_request.element_rules;
-    topology.base.options.request.container_rules = default_request.container_rules;
-    topology.base.options.request.hide_metadata_values = default_request.hide_metadata_values;
-
-    let (hosts, ip_addresses, subnets, dependencies, ports, bindings, interfaces) =
-        service.get_entity_data(topology.base.network_id).await?;
-
-    let services = service.get_service_data(topology.base.network_id).await?;
-
-    let entity_tags = service
-        .get_entity_tags(
-            &hosts,
-            &services,
-            &subnets,
-            &topology.base.options.request.element_rules,
-        )
-        .await?;
-    let vlans = service
-        .get_vlans(topology.base.network_id)
-        .await
-        .unwrap_or_default();
-
-    let (nodes, edges) = service.build_graph(BuildGraphParams {
-        options: &topology.base.options,
-        hosts: &hosts,
-        ip_addresses: &ip_addresses,
-        subnets: &subnets,
-        services: &services,
-        dependencies: &dependencies,
-        ports: &ports,
-        bindings: &bindings,
-        interfaces: &interfaces,
-        entity_tags: &entity_tags,
-        vlans: &vlans,
-        old_edges: &[],
-        old_nodes: &[],
-        old_view: None,
-    });
-
-    topology.set_entities(SetEntitiesParams {
-        hosts,
-        ip_addresses,
-        services,
-        subnets,
-        dependencies,
-        ports,
-        bindings,
-        interfaces,
-        entity_tags,
-        vlans,
-    });
-
-    topology.set_graph(nodes, edges);
-
-    topology.clear_stale();
-
-    let entity = auth.into_entity();
-    let created = service
-        .create(topology, entity.clone())
-        .await
-        .map_err(|e| {
-            tracing::error!(
-                entity_type = Topology::table_name(),
-                user_id = ?user_id,
-                error = %e,
-                "Failed to create entity"
-            );
-            ApiError::internal_error(&e.to_string())
-        })?;
-
-    tracing::info!(
-        entity_type = Topology::table_name(),
-        entity_id = %created.id(),
-        user_id = ?user_id,
-        "Entity created via API"
-    );
-
-    Ok(Json(ApiResponse::success(created)))
-}
-
-/// Refresh topology data
-#[utoipa::path(
-    post,
-    path = "/{id}/refresh",
-    tags = [Topology::ENTITY_NAME_PLURAL, "internal"],
-    params(("id" = Uuid, Path, description = "Topology ID")),
-    request_body = TopologyRebuildRequest,
-    responses(
-        (status = 200, description = "Topology refreshed", body = EmptyApiResponse),
-        (status = 403, description = "Access denied", body = ApiErrorResponse),
-        (status = 404, description = "Topology not found", body = ApiErrorResponse),
-    ),
-     security(("user_api_key" = []), ("session" = []))
-)]
-async fn refresh(
-    State(state): State<Arc<AppState>>,
-    auth: Authorized<Member>,
-    Path(id): Path<Uuid>,
-    Json(request): Json<TopologyRebuildRequest>,
-) -> ApiResult<Json<ApiResponse<()>>> {
-    let network_ids = auth.network_ids();
-
-    // Validate user has access to this topology's network
-    if !network_ids.contains(&request.network_id) {
-        return Err(ApiError::forbidden(
-            "You don't have access to this topology's network",
-        ));
-    }
-
-    let service = Topology::get_service(&state);
-
-    // Fetch the existing topology
-    let mut topology = service
-        .get_by_id(&id)
-        .await?
-        .ok_or_else(|| ApiError::not_found(format!("Topology {} not found", id)))?;
-
-    // Update options from request
-    topology.base.options = request.options;
-
-    let (hosts, ip_addresses, subnets, dependencies, ports, bindings, interfaces) =
-        service.get_entity_data(request.network_id).await?;
-
-    let services = service.get_service_data(request.network_id).await?;
-
-    let entity_tags = service
-        .get_entity_tags(
-            &hosts,
-            &services,
-            &subnets,
-            &topology.base.options.request.element_rules,
-        )
-        .await?;
-    let vlans = service
-        .get_vlans(request.network_id)
-        .await
-        .unwrap_or_default();
-
-    topology.set_entities(SetEntitiesParams {
-        hosts,
-        services,
-        ip_addresses,
-        subnets,
-        dependencies,
-        ports,
-        bindings,
-        interfaces,
-        entity_tags,
-        vlans,
-    });
-
-    service.update(&mut topology, auth.into_entity()).await?;
-
-    // Return will be handled through event subscriber which triggers SSE
-
-    Ok(Json(ApiResponse::success(())))
-}
-
-/// Rebuild topology layout
-#[utoipa::path(
-    post,
-    path = "/{id}/rebuild",
-    tags = [Topology::ENTITY_NAME_PLURAL, "internal"],
-    params(("id" = Uuid, Path, description = "Topology ID")),
-    request_body = TopologyRebuildRequest,
-    responses(
-        (status = 200, description = "Topology rebuilt", body = EmptyApiResponse),
-        (status = 403, description = "Access denied", body = ApiErrorResponse),
-        (status = 404, description = "Topology not found", body = ApiErrorResponse),
-    ),
-     security(("user_api_key" = []), ("session" = []))
-)]
-async fn rebuild(
-    State(state): State<Arc<AppState>>,
-    auth: Authorized<Member>,
-    Path(id): Path<Uuid>,
-    Json(request): Json<TopologyRebuildRequest>,
-) -> ApiResult<Json<ApiResponse<()>>> {
-    let network_ids = auth.network_ids();
-
-    // Validate user has access to this topology's network
-    if !network_ids.contains(&request.network_id) {
-        return Err(ApiError::forbidden(
-            "You don't have access to this topology's network",
-        ));
-    }
-
-    let service = Topology::get_service(&state);
-
-    // Fetch the existing topology
-    let mut topology = service
-        .get_by_id(&id)
-        .await?
-        .ok_or_else(|| ApiError::not_found(format!("Topology {} not found", id)))?;
-
-    // Capture the old perspective before overwriting options
-    let old_view = Some(topology.base.options.request.view);
-
-    // Update options from request
-    topology.base.options = request.options.clone();
-
-    let (hosts, ip_addresses, subnets, dependencies, ports, bindings, interfaces) =
-        service.get_entity_data(request.network_id).await?;
-
-    let services = service.get_service_data(request.network_id).await?;
-
-    let entity_tags = service
-        .get_entity_tags(
-            &hosts,
-            &services,
-            &subnets,
-            &topology.base.options.request.element_rules,
-        )
-        .await?;
-    let vlans = service
-        .get_vlans(request.network_id)
-        .await
-        .unwrap_or_default();
-
-    let (nodes, edges) = service.build_graph(BuildGraphParams {
-        options: &topology.base.options,
-        hosts: &hosts,
-        ip_addresses: &ip_addresses,
-        subnets: &subnets,
-        services: &services,
-        dependencies: &dependencies,
-        ports: &ports,
-        bindings: &bindings,
-        interfaces: &interfaces,
-        entity_tags: &entity_tags,
-        vlans: &vlans,
-        old_nodes: &request.nodes,
-        old_edges: &request.edges,
-        old_view,
-    });
-
-    topology.set_entities(SetEntitiesParams {
-        hosts,
-        services,
-        ip_addresses,
-        subnets,
-        dependencies,
-        ports,
-        bindings,
-        interfaces,
-        entity_tags,
-        vlans,
-    });
-
-    topology.set_graph(nodes, edges);
-
-    topology.clear_stale();
-
-    let organization_id = auth.organization_id();
-    let entity = auth.into_entity();
-
-    // Publish onboarding milestone BEFORE topology update so it's
-    // in the DB when the SSE-triggered org refetch arrives
-    if let Some(org_id) = organization_id {
-        let organization = state
-            .services
-            .organization_service
-            .get_by_id(&org_id)
-            .await?;
-
-        if let Some(organization) = organization
-            && organization.not_onboarded(&OnboardingOperationDiscriminants::FirstTopologyRebuild)
-            && !organization
-                .not_onboarded(&OnboardingOperationDiscriminants::FirstDiscoveryCompleted)
-        {
-            state
-                .services
-                .event_bus
-                .publish(TypedEvent::new(
-                    OrgScope {
-                        organization_id: entity.organization_id().expect("User should have org_id"),
-                    },
-                    OnboardingOperation::FirstTopologyRebuild,
-                    entity.clone(),
-                ))
-                .await?;
-        }
-    }
-
-    service.update(&mut topology, entity).await?;
-
-    // Return will be handled through event subscriber which triggers SSE
-
-    Ok(Json(ApiResponse::success(())))
-}
-
 /// Update a single node's position
-///
-/// Lightweight endpoint for drag operations. Instead of sending the entire topology
-/// (which can be several megabytes), only sends the node ID and new position.
-/// Fixes HTTP 413 errors on drag operations for large topologies.
 #[utoipa::path(
     post,
     path = "/{id}/node-position",
@@ -550,7 +159,6 @@ async fn update_node_position(
 ) -> ApiResult<Json<ApiResponse<()>>> {
     let network_ids = auth.network_ids();
 
-    // Validate user has access to this topology's network
     if !network_ids.contains(&request.network_id) {
         return Err(ApiError::forbidden(
             "You don't have access to this topology's network",
@@ -559,13 +167,11 @@ async fn update_node_position(
 
     let service = Topology::get_service(&state);
 
-    // Fetch the existing topology
     let mut topology = service
         .get_by_id(&id)
         .await?
         .ok_or_else(|| ApiError::not_found(format!("Topology {} not found", id)))?;
 
-    // Find and update the node's position
     let node = topology
         .base
         .nodes
@@ -583,10 +189,6 @@ async fn update_node_position(
 }
 
 /// Update an edge's handles
-///
-/// Lightweight endpoint for edge reconnect operations. Instead of sending the entire
-/// topology, only sends the edge ID and new handle positions.
-/// Fixes HTTP 413 errors on edge reconnect operations for large topologies.
 #[utoipa::path(
     post,
     path = "/{id}/edge-handles",
@@ -608,7 +210,6 @@ async fn update_edge_handles(
 ) -> ApiResult<Json<ApiResponse<()>>> {
     let network_ids = auth.network_ids();
 
-    // Validate user has access to this topology's network
     if !network_ids.contains(&request.network_id) {
         return Err(ApiError::forbidden(
             "You don't have access to this topology's network",
@@ -617,13 +218,11 @@ async fn update_edge_handles(
 
     let service = Topology::get_service(&state);
 
-    // Fetch the existing topology
     let mut topology = service
         .get_by_id(&id)
         .await?
         .ok_or_else(|| ApiError::not_found(format!("Topology {} not found", id)))?;
 
-    // Find and update the edge's handles
     let edge = topology
         .base
         .edges
@@ -642,10 +241,6 @@ async fn update_edge_handles(
 }
 
 /// Update a node's size and position
-///
-/// Lightweight endpoint for subnet resize operations. Instead of sending the entire
-/// topology, only sends the node ID, new size, and new position.
-/// Fixes HTTP 413 errors on resize operations for large topologies.
 #[utoipa::path(
     post,
     path = "/{id}/node-resize",
@@ -667,7 +262,6 @@ async fn update_node_resize(
 ) -> ApiResult<Json<ApiResponse<()>>> {
     let network_ids = auth.network_ids();
 
-    // Validate user has access to this topology's network
     if !network_ids.contains(&request.network_id) {
         return Err(ApiError::forbidden(
             "You don't have access to this topology's network",
@@ -676,13 +270,11 @@ async fn update_node_resize(
 
     let service = Topology::get_service(&state);
 
-    // Fetch the existing topology
     let mut topology = service
         .get_by_id(&id)
         .await?
         .ok_or_else(|| ApiError::not_found(format!("Topology {} not found", id)))?;
 
-    // Find and update the node's size and position
     let node = topology
         .base
         .nodes
@@ -698,144 +290,6 @@ async fn update_node_resize(
     service.update(&mut topology, auth.into_entity()).await?;
 
     Ok(Json(ApiResponse::success(())))
-}
-
-/// Update topology metadata
-///
-/// Lightweight endpoint for editing topology name and parent. Instead of sending
-/// the entire topology (which includes all hosts, ip_addresses, services, etc.),
-/// only sends the metadata fields.
-/// Fixes HTTP 413 errors on metadata edit operations for large topologies.
-#[utoipa::path(
-    post,
-    path = "/{id}/metadata",
-    tags = [Topology::ENTITY_NAME_PLURAL, "internal"],
-    params(("id" = Uuid, Path, description = "Topology ID")),
-    request_body = TopologyMetadataUpdate,
-    responses(
-        (status = 200, description = "Metadata updated", body = EmptyApiResponse),
-        (status = 403, description = "Access denied", body = ApiErrorResponse),
-        (status = 404, description = "Topology not found", body = ApiErrorResponse),
-    ),
-     security(("user_api_key" = []), ("session" = []))
-)]
-async fn update_metadata(
-    State(state): State<Arc<AppState>>,
-    auth: Authorized<Member>,
-    Path(id): Path<Uuid>,
-    Json(request): Json<TopologyMetadataUpdate>,
-) -> ApiResult<Json<ApiResponse<()>>> {
-    let network_ids = auth.network_ids();
-
-    // Validate user has access to this topology's network
-    if !network_ids.contains(&request.network_id) {
-        return Err(ApiError::forbidden(
-            "You don't have access to this topology's network",
-        ));
-    }
-
-    let service = Topology::get_service(&state);
-
-    // Fetch the existing topology
-    let mut topology = service
-        .get_by_id(&id)
-        .await?
-        .ok_or_else(|| ApiError::not_found(format!("Topology {} not found", id)))?;
-
-    // Update metadata fields
-    topology.base.name = request.name;
-    topology.base.parent_id = request.parent_id;
-
-    service.update(&mut topology, auth.into_entity()).await?;
-
-    Ok(Json(ApiResponse::success(())))
-}
-
-/// Lock a topology
-#[utoipa::path(
-    post,
-    path = "/{id}/lock",
-    tags = [Topology::ENTITY_NAME_PLURAL],
-    params(("id" = Uuid, Path, description = "Topology ID")),
-    responses(
-        (status = 200, description = "Topology locked", body = ApiResponse<Topology>),
-        (status = 403, description = "Access denied", body = ApiErrorResponse),
-        (status = 404, description = "Topology not found", body = ApiErrorResponse),
-    ),
-     security(("user_api_key" = []), ("session" = []))
-)]
-async fn lock(
-    State(state): State<Arc<AppState>>,
-    auth: Authorized<Member>,
-    Path(id): Path<Uuid>,
-) -> ApiResult<Json<ApiResponse<Topology>>> {
-    let service = Topology::get_service(&state);
-    let network_ids = auth.network_ids();
-    let user_id = auth
-        .user_id()
-        .ok_or_else(|| ApiError::forbidden("User context required"))?;
-
-    if let Some(mut topology) = service.get_by_id(&id).await? {
-        // Validate user has access to this topology's network
-        if !network_ids.contains(&topology.base.network_id) {
-            return Err(ApiError::forbidden(
-                "You don't have access to this topology",
-            ));
-        }
-
-        topology.lock(user_id);
-
-        let updated = service.update(&mut topology, auth.into_entity()).await?;
-
-        Ok(Json(ApiResponse::success(updated)))
-    } else {
-        Err(ApiError::not_found(format!(
-            "Could not find topology {}",
-            id
-        )))
-    }
-}
-
-/// Unlock a topology
-#[utoipa::path(
-    post,
-    path = "/{id}/unlock",
-    tags = [Topology::ENTITY_NAME_PLURAL],
-    params(("id" = Uuid, Path, description = "Topology ID")),
-    responses(
-        (status = 200, description = "Topology unlocked", body = ApiResponse<Topology>),
-        (status = 403, description = "Access denied", body = ApiErrorResponse),
-        (status = 404, description = "Topology not found", body = ApiErrorResponse),
-    ),
-     security(("user_api_key" = []), ("session" = []))
-)]
-async fn unlock(
-    State(state): State<Arc<AppState>>,
-    auth: Authorized<Member>,
-    Path(id): Path<Uuid>,
-) -> ApiResult<Json<ApiResponse<Topology>>> {
-    let service = Topology::get_service(&state);
-    let network_ids = auth.network_ids();
-
-    if let Some(mut topology) = service.get_by_id(&id).await? {
-        // Validate user has access to this topology's network
-        if !network_ids.contains(&topology.base.network_id) {
-            return Err(ApiError::forbidden(
-                "You don't have access to this topology",
-            ));
-        }
-
-        topology.unlock();
-
-        let updated = service.update(&mut topology, auth.into_entity()).await?;
-
-        Ok(Json(ApiResponse::success(updated)))
-    } else {
-        Err(ApiError::not_found(format!(
-            "Could not find topology {}",
-            id
-        )))
-    }
 }
 
 /// Export topology as Mermaid flowchart
@@ -870,7 +324,13 @@ async fn export_mermaid(
         ));
     }
 
-    let content = crate::server::topology::types::export::topology_to_mermaid(&topology);
+    let at = snapshot_taken_at(&state, &topology).await?;
+    let data = service
+        .get_topology_data(topology.base.network_id, at)
+        .await
+        .map_err(|e| ApiError::internal_error(&e.to_string()))?;
+
+    let content = crate::server::topology::types::export::topology_to_mermaid(&topology, &data);
 
     let mut headers = HeaderMap::new();
     headers.insert(
@@ -917,7 +377,13 @@ async fn export_confluence(
         ));
     }
 
-    let content = crate::server::topology::types::export::topology_to_confluence(&topology);
+    let at = snapshot_taken_at(&state, &topology).await?;
+    let data = service
+        .get_topology_data(topology.base.network_id, at)
+        .await
+        .map_err(|e| ApiError::internal_error(&e.to_string()))?;
+
+    let content = crate::server::topology::types::export::topology_to_confluence(&topology, &data);
 
     let mut headers = HeaderMap::new();
     headers.insert(
@@ -932,14 +398,31 @@ async fn export_confluence(
     Ok((headers, Body::from(content)))
 }
 
-async fn staleness_stream(
+/// Resolve the snapshot's `taken_at` for a topology row, or `None` for the
+/// live view. Used by the export pipeline to load the right entity set.
+///
+/// Snapshot-pinned topology rows currently fall back to live data here —
+/// the snapshots service hasn't been wired into `AppState` yet (separate
+/// worker). Once that lands, this loads `Snapshot` by id and returns
+/// `Some(taken_at)`.
+async fn snapshot_taken_at(
+    _state: &Arc<AppState>,
+    _topology: &Topology,
+) -> ApiResult<Option<chrono::DateTime<chrono::Utc>>> {
+    Ok(None)
+}
+
+/// SSE stream of live-topology updates: emits `{ "network_id": "<uuid>" }`
+/// on every change to a network's live entity set. Frontends invalidate
+/// their topology query and refetch on receipt.
+async fn live_topology_updates_stream(
     State(state): State<Arc<AppState>>,
     auth: Authorized<IsUser>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
     let rx = state
         .services
         .topology_service
-        .subscribe_staleness_changes();
+        .subscribe_live_topology_updates();
 
     let allowed_networks = auth.network_ids();
 
@@ -948,13 +431,11 @@ async fn staleness_stream(
         async move {
             loop {
                 match rx.recv().await {
-                    Ok(update) => {
-                        // Only emit if user has access to this topology's network
-                        if allowed.contains(&update.base.network_id) {
-                            let json = serde_json::to_string(&update).ok()?;
-                            return Some((Ok(Event::default().data(json)), rx));
+                    Ok(network_id) => {
+                        if allowed.contains(&network_id) {
+                            let payload = json!({ "network_id": network_id }).to_string();
+                            return Some((Ok(Event::default().data(payload)), rx));
                         }
-                        // Otherwise skip and wait for next message
                     }
                     Err(_) => return None,
                 }

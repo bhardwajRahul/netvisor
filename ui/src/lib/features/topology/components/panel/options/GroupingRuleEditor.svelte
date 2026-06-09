@@ -30,9 +30,9 @@
 	import { getTopologyEditState } from '../../../state';
 	import {
 		useTopologiesQuery,
-		useRebuildTopologyMutation,
+		useUpdateTopologyMutation,
 		selectedTopologyId,
-		autoRebuild
+		sanitizeOptionsForApi
 	} from '../../../queries';
 	import type { components } from '$lib/api/schema';
 	type ServiceCategory = components['schemas']['ServiceCategory'];
@@ -80,12 +80,20 @@
 	} from '$lib/paraglide/messages';
 	import viewsJson from '$lib/data/views.json';
 
-	// Topology for edit state and rebuild
+	// Topology for edit state and option-saving
 	const topologiesQuery = useTopologiesQuery();
-	const rebuildMutation = useRebuildTopologyMutation();
+	const updateTopologyMutation = useUpdateTopologyMutation();
 	let topologiesData = $derived(topologiesQuery.data ?? []);
 	let topology = $derived(topologiesData.find((t) => t.id === $selectedTopologyId));
-	let editState = $derived(getTopologyEditState(topology, $autoRebuild, false));
+	let editState = $derived(getTopologyEditState(topology, false, false));
+
+	function saveOptions() {
+		if (!topology) return;
+		updateTopologyMutation.mutate({
+			...topology,
+			options: sanitizeOptionsForApi(topology.options)
+		});
+	}
 
 	// Tags query
 	const tagsQuery = useTagsQuery();
@@ -401,7 +409,7 @@
 			pendingElementRules = pendingElementRules.filter((r) => r.id !== removedId);
 		}
 		if (editingElementId === removedId) editingElementId = null;
-		if (topology) rebuildMutation.mutate(topology);
+		saveOptions();
 	}
 
 	function handleElementMoveUp(fromIndex: number) {
@@ -409,7 +417,7 @@
 		const newRules = [...elementRules];
 		[newRules[fromIndex - 1], newRules[fromIndex]] = [newRules[fromIndex], newRules[fromIndex - 1]];
 		updateElementRules(newRules);
-		if (topology) rebuildMutation.mutate(topology);
+		saveOptions();
 	}
 
 	function handleElementMoveDown(fromIndex: number) {
@@ -417,7 +425,7 @@
 		const newRules = [...elementRules];
 		[newRules[fromIndex], newRules[fromIndex + 1]] = [newRules[fromIndex + 1], newRules[fromIndex]];
 		updateElementRules(newRules);
-		if (topology) rebuildMutation.mutate(topology);
+		saveOptions();
 	}
 
 	function handleElementEdit(_item: ElementGraphRule, index: number) {
@@ -437,14 +445,13 @@
 		editingView = wasEditing ? null : currentView;
 
 		if (wasEditing) {
-			// Closing editor: flush pending edits to store and rebuild
+			// Closing editor: flush pending edits to store; the topology
+			// options store subscriber auto-saves to the backend.
 			if (pendingElementRules) {
 				updateElementRules(pendingElementRules);
 				pendingElementRules = null;
 			}
-			if (topology) {
-				rebuildMutation.mutate(topology);
-			}
+			saveOptions();
 		} else {
 			// Opening editor: start buffering edits
 			pendingElementRules = [...elementRules];

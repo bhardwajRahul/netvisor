@@ -4,12 +4,10 @@
 		selectedEdge,
 		selectedNode,
 		selectedNodes,
-		selectedTopologyId,
-		useTopologiesQuery,
 		useUpdateNodePositionMutation,
 		useUpdateEdgeHandlesMutation
 	} from '../../queries';
-	import { type EdgeHandle, type TopologyEdge } from '../../types/base';
+	import { type EdgeHandle, type TopologyEdge, type EnrichedTopology } from '../../types/base';
 	import { searchOpen } from '../../interactions';
 	import { editModeEnabled } from '../../state';
 	import { createTopologyKeydownHandler } from '../../keyboard';
@@ -20,23 +18,20 @@
 
 	// Props for callbacks from parent
 	let {
+		topology,
 		onToggleLock,
 		onRebuild,
 		isActive = false
 	}: {
+		topology: EnrichedTopology | null | undefined;
 		onToggleLock?: () => void;
 		onRebuild?: () => void;
 		isActive?: boolean;
 	} = $props();
 
 	// TanStack Query hooks
-	const topologiesQuery = useTopologiesQuery();
 	const updateNodePositionMutation = useUpdateNodePositionMutation();
 	const updateEdgeHandlesMutation = useUpdateEdgeHandlesMutation();
-
-	// Derived topology from query data
-	let topologiesData = $derived(topologiesQuery.data ?? []);
-	let topology = $derived(topologiesData.find((t) => t.id === $selectedTopologyId));
 
 	let baseViewer: BaseTopologyViewer | null = $state(null);
 

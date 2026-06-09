@@ -9,7 +9,7 @@
 		editingDependencyId,
 		OPTIONS_PANEL_WIDTH_PX
 	} from '../../queries';
-	import type { Topology } from '../../types/base';
+	import type { EnrichedTopology } from '../../types/base';
 	import { get } from 'svelte/store';
 	import { ChevronLeft, ChevronRight, Filter, Group, Eye } from 'lucide-svelte';
 	import OptionsContent from './options/OptionsContent.svelte';
@@ -42,8 +42,8 @@
 		onGroupCreated,
 		onDependencyTypeChange
 	}: {
-		topology: Topology | undefined;
-		tutorialTopology?: Topology;
+		topology: EnrichedTopology | undefined;
+		tutorialTopology?: EnrichedTopology;
 		isReadOnly?: boolean;
 		onClearSelection?: () => void;
 		onGroupCreated?: (groupId: string) => void;

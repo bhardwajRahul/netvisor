@@ -48,10 +48,45 @@ if ! command -v squawk >/dev/null 2>&1; then
 fi
 
 status=0
-if [ ${#in_tx_files[@]} -gt 0 ]; then
-    squawk --config "$CONFIG_PATH" "${in_tx_files[@]}" || status=$?
+# Per-file rule exclusions for migrations whose unsafety is intentional and
+# acknowledged in the migration's own header comment. Add to the relevant
+# array as needed. squawk's `--exclude-path` is path-pattern based; we exclude
+# entire rules per file by partitioning into separate squawk invocations.
+DOWNTIME_FILES=("$MIGRATIONS_DIR/20260502120004_drop_legacy_topology_columns.sql")
+FK_BACKFILL_FILES=("$MIGRATIONS_DIR/20260502120001_add_snapshot_id_fks.sql")
+
+# Filter file lists.
+in_tx_main=()
+for f in "${in_tx_files[@]}"; do
+    skip=0
+    for d in "${DOWNTIME_FILES[@]}" "${FK_BACKFILL_FILES[@]}"; do
+        if [ "$f" = "$d" ]; then skip=1; break; fi
+    done
+    if [ "$skip" = "0" ]; then in_tx_main+=("$f"); fi
+done
+
+if [ ${#in_tx_main[@]} -gt 0 ]; then
+    squawk --config "$CONFIG_PATH" "${in_tx_main[@]}" || status=$?
 fi
 if [ ${#no_tx_files[@]} -gt 0 ]; then
     squawk --config "$CONFIG_PATH" --no-assume-in-transaction "${no_tx_files[@]}" || status=$?
 fi
+
+# Downtime migration: drops legacy columns. Header comment in the migration
+# documents the deploy mode (stop-migrate-start). Suppress ban-drop-column.
+for f in "${DOWNTIME_FILES[@]}"; do
+    if [ -e "$f" ]; then
+        squawk --config "$CONFIG_PATH" --exclude=ban-drop-column "$f" || status=$?
+    fi
+done
+
+# Snapshot FK backfill: adds NULLABLE FK columns to the empty `snapshots`
+# table. The validation scan is fast because every existing row has
+# snapshot_id IS NULL. lock_timeout = '5s' prevents long-held locks.
+for f in "${FK_BACKFILL_FILES[@]}"; do
+    if [ -e "$f" ]; then
+        squawk --config "$CONFIG_PATH" --exclude=adding-foreign-key-constraint "$f" || status=$?
+    fi
+done
+
 exit "$status"

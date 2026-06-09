@@ -2,7 +2,7 @@
 	import type { Node } from '@xyflow/svelte';
 	import EntityDisplayWrapper from '$lib/shared/components/forms/selection/display/EntityDisplayWrapper.svelte';
 	import { IPAddressDisplay } from '$lib/shared/components/forms/selection/display/IPAddressDisplay.svelte';
-	import type { Topology } from '$lib/features/topology/types/base';
+	import type { EnrichedTopology } from '$lib/features/topology/types/base';
 	import type { ElementRenderContext } from '$lib/features/topology/resolvers';
 	import {
 		common_ipAddresses,
@@ -17,7 +17,7 @@
 		elementContext
 	}: {
 		node: Node;
-		topology: Topology;
+		topology: EnrichedTopology;
 		elementContext?: ElementRenderContext;
 	} = $props();
 	/* eslint-enable @typescript-eslint/no-unused-vars */
