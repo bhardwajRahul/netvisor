@@ -10,10 +10,10 @@ use crate::server::daemons::r#impl::api::DiscoveryUpdatePayload;
 use crate::server::{
     bindings::{r#impl::base::Binding, service::BindingService},
     digest::payload::{
-        BindingSummary, DigestRecipient, DiscoveryDigestFlags, DiscoveryDigestOperation,
-        DiscoveryDigestPayload, DiscoveryDigestScope, HostChildChanges, HostSummary,
-        InterfaceSummary, IpAddressSummary, PortSummary, ServiceSummary, SubnetSummary,
-        VlanSummary,
+        AffectedHostCard, BindingSummary, DigestRecipient, DiscoveryDigestFlags,
+        DiscoveryDigestOperation, DiscoveryDigestPayload, DiscoveryDigestScope, HostCardStatus,
+        HostDeltas, HostSummary, InterfaceSummary, IpAddressSummary, PortSummary, ServiceSummary,
+        SubnetSummary, VlanSummary,
     },
     discovery::r#impl::types::DiscoveryType,
     hosts::{r#impl::base::Host, service::HostService},
@@ -159,7 +159,7 @@ impl DiscoveryDigestService {
             subnets.iter().map(subnet_summary).collect()
         };
 
-        // Hosts added in [T_start, T_end].
+        // Three buckets of hosts the digest covers.
         let hosts_added_records: Vec<Host> = self
             .host_service
             .get_all(
@@ -168,11 +168,6 @@ impl DiscoveryDigestService {
                     .created_between(t_start, t_end),
             )
             .await?;
-        let hosts_added: Vec<HostSummary> = hosts_added_records.iter().map(host_summary).collect();
-
-        // Hosts vanished: live, existed before this session, and were not
-        // refreshed during it. By the no-row-close-on-scan rule, the SCD2
-        // valid_to is unset for these — only `last_seen_at` lags.
         let hosts_vanished_records: Vec<Host> = self
             .host_service
             .get_all(
@@ -182,11 +177,6 @@ impl DiscoveryDigestService {
                     .last_seen_before(t_start),
             )
             .await?;
-        let hosts_vanished: Vec<HostSummary> =
-            hosts_vanished_records.iter().map(host_summary).collect();
-
-        // Hosts scanned this session — the input set for per-host child
-        // change rollup. Existing-and-refreshed.
         let hosts_scanned_records: Vec<Host> = self
             .host_service
             .get_all(
@@ -196,18 +186,47 @@ impl DiscoveryDigestService {
                     .last_seen_between(t_start, t_end),
             )
             .await?;
-        let hosts_scanned_ids: Vec<Uuid> = hosts_scanned_records.iter().map(|h| h.id).collect();
-        let mut host_index: HashMap<Uuid, HostSummary> = hosts_scanned_records
+
+        // Per-host deltas for the scanned set (only changed hosts will be
+        // surfaced — empty deltas are filtered downstream).
+        let scanned_ids: Vec<Uuid> = hosts_scanned_records.iter().map(|h| h.id).collect();
+        let scanned_deltas: HashMap<Uuid, HostDeltas> = if scanned_ids.is_empty() {
+            HashMap::new()
+        } else {
+            self.compute_deltas(&scanned_ids, t_start, t_end).await?
+        };
+        let changed_records: Vec<&Host> = hosts_scanned_records
             .iter()
-            .map(|h| (h.id, host_summary(h)))
+            .filter(|h| scanned_deltas.get(&h.id).is_some_and(|d| !d.is_empty()))
             .collect();
 
-        let hosts_with_child_changes = if hosts_scanned_ids.is_empty() {
-            Vec::new()
-        } else {
-            self.compute_child_changes(&hosts_scanned_ids, t_start, t_end, &mut host_index)
-                .await?
-        };
+        // Union of all affected host ids; hydrate current children once for
+        // the whole set.
+        let mut affected_ids: Vec<Uuid> = Vec::with_capacity(
+            hosts_added_records.len() + hosts_vanished_records.len() + changed_records.len(),
+        );
+        affected_ids.extend(hosts_added_records.iter().map(|h| h.id));
+        affected_ids.extend(hosts_vanished_records.iter().map(|h| h.id));
+        affected_ids.extend(changed_records.iter().map(|h| h.id));
+
+        let current_children = self.fetch_current_children(&affected_ids).await?;
+
+        let hosts_added: Vec<AffectedHostCard> = hosts_added_records
+            .iter()
+            .map(|h| build_card(h, HostCardStatus::New, &current_children, None))
+            .collect();
+        let hosts_vanished: Vec<AffectedHostCard> = hosts_vanished_records
+            .iter()
+            .map(|h| build_card(h, HostCardStatus::Vanished, &current_children, None))
+            .collect();
+        let mut hosts_changed: Vec<AffectedHostCard> = changed_records
+            .iter()
+            .map(|h| {
+                let deltas = scanned_deltas.get(&h.id).cloned();
+                build_card(h, HostCardStatus::Changed, &current_children, deltas)
+            })
+            .collect();
+        hosts_changed.sort_by(|a, b| a.host.label.cmp(&b.host.label));
 
         // VLANs added / removed mirror the host added/vanished logic but on
         // the network scope.
@@ -244,20 +263,21 @@ impl DiscoveryDigestService {
             subnets_scanned,
             hosts_added,
             hosts_vanished,
-            hosts_with_child_changes,
+            hosts_changed,
             vlans_added,
             vlans_removed,
             recipients,
         })
     }
 
-    async fn compute_child_changes(
+    /// Compute per-host added/removed children for the scanned host set.
+    /// Result is keyed by host_id; absent keys had zero deltas.
+    async fn compute_deltas(
         &self,
         host_ids: &[Uuid],
         t_start: DateTime<Utc>,
         t_end: DateTime<Utc>,
-        host_index: &mut HashMap<Uuid, HostSummary>,
-    ) -> Result<Vec<HostChildChanges>> {
+    ) -> Result<HashMap<Uuid, HostDeltas>> {
         let ports_added: Vec<Port> = self
             .port_service
             .storage()
@@ -391,10 +411,7 @@ impl DiscoveryDigestService {
             (added, removed)
         };
 
-        // Group everything by host_id and emit one `HostChildChanges` per
-        // host that has at least one delta.
-        let mut by_host: HashMap<Uuid, HostChildChanges> = HashMap::new();
-
+        let mut by_host: HashMap<Uuid, HostDeltas> = HashMap::new();
         for p in &ports_added {
             by_host
                 .entry(p.base.host_id)
@@ -470,22 +487,85 @@ impl DiscoveryDigestService {
             }
         }
 
-        let mut out: Vec<HostChildChanges> = by_host
-            .into_iter()
-            .map(|(host_id, mut changes)| {
-                if let Some(host) = host_index.remove(&host_id) {
-                    changes.host = host;
-                } else {
-                    changes.host = HostSummary {
-                        id: host_id,
-                        label: host_id.to_string(),
-                    };
-                }
-                changes
-            })
-            .filter(|c| !c.is_empty())
-            .collect();
-        out.sort_by(|a, b| a.host.label.cmp(&b.host.label));
+        Ok(by_host)
+    }
+
+    /// Fetch the live current children for each affected host id and bucket
+    /// them by host. Powers the per-host card rendering — recipients see the
+    /// host's full footprint, not just deltas.
+    async fn fetch_current_children(
+        &self,
+        host_ids: &[Uuid],
+    ) -> Result<HashMap<Uuid, HostChildren>> {
+        if host_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let services: Vec<NetworkServiceEntity> = self
+            .service_service
+            .storage()
+            .get_all(
+                StorableFilter::<NetworkServiceEntity>::new()
+                    .live()
+                    .uuids_column("host_id", host_ids),
+            )
+            .await?;
+        let ips: Vec<IPAddress> = self
+            .ip_address_service
+            .storage()
+            .get_all(
+                StorableFilter::<IPAddress>::new()
+                    .live()
+                    .uuids_column("host_id", host_ids),
+            )
+            .await?;
+        let interfaces: Vec<Interface> = self
+            .interface_service
+            .storage()
+            .get_all(
+                StorableFilter::<Interface>::new()
+                    .live()
+                    .uuids_column("host_id", host_ids),
+            )
+            .await?;
+        let ports: Vec<Port> = self
+            .port_service
+            .storage()
+            .get_all(
+                StorableFilter::<Port>::new()
+                    .live()
+                    .uuids_column("host_id", host_ids),
+            )
+            .await?;
+
+        let mut out: HashMap<Uuid, HostChildren> = HashMap::new();
+        for id in host_ids {
+            out.entry(*id).or_default();
+        }
+        for s in &services {
+            out.entry(s.base.host_id)
+                .or_default()
+                .services
+                .push(service_summary(s));
+        }
+        for ip in &ips {
+            out.entry(ip.base.host_id)
+                .or_default()
+                .ip_addresses
+                .push(ip_summary(ip));
+        }
+        for i in &interfaces {
+            out.entry(i.base.host_id)
+                .or_default()
+                .interfaces
+                .push(interface_summary(i));
+        }
+        for p in &ports {
+            out.entry(p.base.host_id)
+                .or_default()
+                .ports
+                .push(port_summary(p));
+        }
         Ok(out)
     }
 
@@ -520,6 +600,32 @@ impl EventBusService<Host> for DiscoveryDigestService {
 
     fn get_organization_id(&self, _entity: &Host) -> Option<Uuid> {
         None
+    }
+}
+
+#[derive(Default)]
+struct HostChildren {
+    services: Vec<ServiceSummary>,
+    ip_addresses: Vec<IpAddressSummary>,
+    interfaces: Vec<InterfaceSummary>,
+    ports: Vec<PortSummary>,
+}
+
+fn build_card(
+    host: &Host,
+    status: HostCardStatus,
+    children: &HashMap<Uuid, HostChildren>,
+    deltas: Option<HostDeltas>,
+) -> AffectedHostCard {
+    let kids = children.get(&host.id);
+    AffectedHostCard {
+        host: host_summary(host),
+        status,
+        services: kids.map(|c| c.services.clone()).unwrap_or_default(),
+        ip_addresses: kids.map(|c| c.ip_addresses.clone()).unwrap_or_default(),
+        interfaces: kids.map(|c| c.interfaces.clone()).unwrap_or_default(),
+        ports: kids.map(|c| c.ports.clone()).unwrap_or_default(),
+        deltas,
     }
 }
 

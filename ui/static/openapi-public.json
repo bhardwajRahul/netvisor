@@ -10408,19 +10408,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-05-03T02:35:25.217562Z",
+              "created_at": "2026-06-10T16:24:13.178409Z",
               "first_discovery_id": null,
-              "id": "cc67e3ca-1535-4608-9f35-ef03cdcca7f8",
+              "id": "e20ff4c1-cbcc-46de-adeb-a359db7a58d3",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-05-03T02:35:25.217562Z",
+              "last_seen_at": "2026-06-10T16:24:13.178409Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-05-03T02:35:25.217562Z",
-              "valid_from": "2026-05-03T02:35:25.217562Z",
+              "updated_at": "2026-06-10T16:24:13.178409Z",
+              "valid_from": "2026-06-10T16:24:13.178409Z",
               "valid_to": null
             }
           },
@@ -11406,19 +11406,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-05-03T02:35:25.201179Z",
+                      "created_at": "2026-06-10T16:24:13.161719Z",
                       "first_discovery_id": null,
-                      "id": "485dbb09-4f26-4edb-b018-b36a1823e35a",
+                      "id": "ed65c54f-e18c-4f05-a449-fc33728ab8fa",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-05-03T02:35:25.201179Z",
+                      "last_seen_at": "2026-06-10T16:24:13.161719Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-05-03T02:35:25.201179Z",
-                      "valid_from": "2026-05-03T02:35:25.201179Z",
+                      "updated_at": "2026-06-10T16:24:13.161719Z",
+                      "valid_from": "2026-06-10T16:24:13.161719Z",
                       "valid_to": null
                     }
                   ],
@@ -11432,7 +11432,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Netbootxyz",
+                  "service_definition": "AWX",
                   "source": {
                     "type": "Manual"
                   },
@@ -12354,19 +12354,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-05-03T02:35:25.212206Z",
+                  "created_at": "2026-06-10T16:24:13.172987Z",
                   "first_discovery_id": null,
-                  "id": "9c4f66c0-7f09-46d2-a220-9b985e85877d",
+                  "id": "1f930765-92d6-46a1-93b5-e0ba09092fcb",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-05-03T02:35:25.212206Z",
+                  "last_seen_at": "2026-06-10T16:24:13.172987Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-05-03T02:35:25.212206Z",
-                  "valid_from": "2026-05-03T02:35:25.212206Z",
+                  "updated_at": "2026-06-10T16:24:13.172987Z",
+                  "valid_from": "2026-06-10T16:24:13.172987Z",
                   "valid_to": null
                 }
               ],
@@ -12380,7 +12380,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Netbootxyz",
+              "service_definition": "AWX",
               "source": {
                 "type": "Manual"
               },
@@ -13928,19 +13928,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-05-03T02:35:25.201534Z",
+          "created_at": "2026-06-10T16:24:13.162077Z",
           "first_discovery_id": null,
-          "id": "50b27df9-71fe-4c72-9f45-0467f0d4f313",
+          "id": "85e10380-731b-45e1-bf80-092bbd931f76",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-05-03T02:35:25.201534Z",
+          "last_seen_at": "2026-06-10T16:24:13.162077Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-05-03T02:35:25.201534Z",
-          "valid_from": "2026-05-03T02:35:25.201534Z",
+          "updated_at": "2026-06-10T16:24:13.162077Z",
+          "valid_from": "2026-06-10T16:24:13.162077Z",
           "valid_to": null
         }
       },
@@ -14530,7 +14530,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Netbootxyz",
+              "service_definition": "AWX",
               "tags": [],
               "virtualization": null
             }
@@ -17135,19 +17135,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-05-03T02:35:25.200748Z",
+                  "created_at": "2026-06-10T16:24:13.161307Z",
                   "first_discovery_id": null,
-                  "id": "54116754-63ae-41b3-8bb3-962afda9105c",
+                  "id": "3fd7178a-6ff9-459b-8143-6da71b3c2e95",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-05-03T02:35:25.200748Z",
+                  "last_seen_at": "2026-06-10T16:24:13.161307Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-05-03T02:35:25.200748Z",
-                  "valid_from": "2026-05-03T02:35:25.200748Z",
+                  "updated_at": "2026-06-10T16:24:13.161307Z",
+                  "valid_from": "2026-06-10T16:24:13.161307Z",
                   "valid_to": null
                 }
               ],
@@ -17161,7 +17161,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Netbootxyz",
+              "service_definition": "AWX",
               "source": {
                 "type": "Manual"
               },
@@ -19550,19 +19550,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-05-03T02:35:25.190623Z",
+                        "created_at": "2026-06-10T16:24:13.150834Z",
                         "first_discovery_id": null,
-                        "id": "a70844e7-dc38-4418-b30d-ccef7968e543",
+                        "id": "e5f68bc6-9cd3-46ab-a72c-cfecfc144afa",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-05-03T02:35:25.190623Z",
+                        "last_seen_at": "2026-06-10T16:24:13.150834Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-05-03T02:35:25.190623Z",
-                        "valid_from": "2026-05-03T02:35:25.190623Z",
+                        "updated_at": "2026-06-10T16:24:13.150834Z",
+                        "valid_from": "2026-06-10T16:24:13.150834Z",
                         "valid_to": null
                       }
                     ],
@@ -19576,7 +19576,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Netbootxyz",
+                    "service_definition": "AWX",
                     "source": {
                       "type": "Manual"
                     },
@@ -19697,19 +19697,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-05-03T02:35:25.211167Z",
+                    "created_at": "2026-06-10T16:24:13.171971Z",
                     "first_discovery_id": null,
-                    "id": "6b0f6c0b-08b4-4080-ab2a-3cf318f8e4de",
+                    "id": "fe812a27-ea13-4f62-901e-253d58158ff9",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-05-03T02:35:25.211167Z",
+                    "last_seen_at": "2026-06-10T16:24:13.171971Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-05-03T02:35:25.211167Z",
-                    "valid_from": "2026-05-03T02:35:25.211167Z",
+                    "updated_at": "2026-06-10T16:24:13.171971Z",
+                    "valid_from": "2026-06-10T16:24:13.171971Z",
                     "valid_to": null
                   }
                 ],
@@ -19723,7 +19723,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Netbootxyz",
+                "service_definition": "AWX",
                 "source": {
                   "type": "Manual"
                 },
@@ -21271,19 +21271,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-05-03T02:35:25.201457Z",
+              "created_at": "2026-06-10T16:24:13.162001Z",
               "first_discovery_id": null,
-              "id": "48afe46b-ffd3-4e89-8156-4036c40f8bb1",
+              "id": "883c1d5c-d103-4b8f-96b9-515122dad176",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-05-03T02:35:25.201457Z",
+              "last_seen_at": "2026-06-10T16:24:13.162001Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-05-03T02:35:25.201457Z",
-              "valid_from": "2026-05-03T02:35:25.201457Z",
+              "updated_at": "2026-06-10T16:24:13.162001Z",
+              "valid_from": "2026-06-10T16:24:13.162001Z",
               "valid_to": null
             }
           ],
@@ -21297,7 +21297,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Netbootxyz",
+          "service_definition": "AWX",
           "source": {
             "type": "Manual"
           },

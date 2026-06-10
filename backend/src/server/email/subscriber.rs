@@ -13,7 +13,6 @@ use crate::server::{
     auth::middleware::auth::AuthenticatedEntity,
     billing::types::base::BillingReason,
     digest::payload::{DiscoveryDigestOperation, DiscoveryDigestOperationDiscriminants},
-    discovery::r#impl::types::DiscoveryType,
     email::traits::{EmailService, format_cents},
     shared::{
         entities::{Entity, EntityDiscriminants},
@@ -316,46 +315,25 @@ impl Subscriber<OnboardingOperation> for EmailService {
     fn filter(&self) -> EventFilter<OnboardingOperation> {
         EventFilter::ops(vec![
             OnboardingOperationDiscriminants::FirstDaemonRegistered,
-            OnboardingOperationDiscriminants::FirstDiscoveryCompleted,
         ])
     }
 
     async fn handle(&self, events: Vec<Event<OnboardingOperation>>) -> Result<(), Error> {
         for event in events {
             let org_id = event.scope.organization_id;
-            match &event.operation {
-                OnboardingOperation::FirstDaemonRegistered {
-                    daemon_name,
-                    network_name,
-                } => {
-                    if let Err(e) = self
-                        .send_discovery_guide_for_org(org_id, daemon_name, network_name)
-                        .await
-                    {
-                        tracing::warn!(
-                            organization_id = %org_id,
-                            error = %e,
-                            "Failed to send discovery guide email"
-                        );
-                    }
-                }
-                OnboardingOperation::FirstDiscoveryCompleted { discovery_type } => {
-                    // Only send topology ready email for Network/Unified
-                    // discoveries, not SelfReport.
-                    let is_network = matches!(
-                        discovery_type,
-                        DiscoveryType::Network { .. } | DiscoveryType::Unified { .. }
-                    );
-
-                    if is_network && let Err(e) = self.send_topology_ready_for_org(org_id).await {
-                        tracing::warn!(
-                            organization_id = %org_id,
-                            error = %e,
-                            "Failed to send topology ready email"
-                        );
-                    }
-                }
-                _ => {}
+            if let OnboardingOperation::FirstDaemonRegistered {
+                daemon_name,
+                network_name,
+            } = &event.operation
+                && let Err(e) = self
+                    .send_discovery_guide_for_org(org_id, daemon_name, network_name)
+                    .await
+            {
+                tracing::warn!(
+                    organization_id = %org_id,
+                    error = %e,
+                    "Failed to send discovery guide email"
+                );
             }
         }
         Ok(())

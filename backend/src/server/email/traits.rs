@@ -22,11 +22,10 @@ use crate::server::{
         PAYMENT_METHOD_REMOVED_TITLE, PAYMENT_RECOVERED_BODY, PAYMENT_RECOVERED_TITLE,
         PLAN_CHANGED_BODY, PLAN_CHANGED_TITLE, PLAN_LIMIT_APPROACHING_BODY,
         PLAN_LIMIT_APPROACHING_TITLE, PLAN_LIMIT_REACHED_BODY, PLAN_LIMIT_REACHED_TITLE,
-        SUBSCRIPTION_CANCELLED_BODY, SUBSCRIPTION_CANCELLED_TITLE, TOPOLOGY_READY_BODY,
-        TOPOLOGY_READY_TITLE, TRIAL_CONVERTED_BODY, TRIAL_CONVERTED_TITLE,
-        TRIAL_ENDING_BODY_HAS_PAYMENT, TRIAL_ENDING_BODY_NO_PAYMENT, TRIAL_ENDING_TITLE,
-        TRIAL_EXPIRED_BODY, TRIAL_EXPIRED_TITLE, TRIAL_STARTED_BODY, TRIAL_STARTED_TITLE,
-        USAGE_SUMMARY_BODY, USAGE_SUMMARY_TITLE,
+        SUBSCRIPTION_CANCELLED_BODY, SUBSCRIPTION_CANCELLED_TITLE, TRIAL_CONVERTED_BODY,
+        TRIAL_CONVERTED_TITLE, TRIAL_ENDING_BODY_HAS_PAYMENT, TRIAL_ENDING_BODY_NO_PAYMENT,
+        TRIAL_ENDING_TITLE, TRIAL_EXPIRED_BODY, TRIAL_EXPIRED_TITLE, TRIAL_STARTED_BODY,
+        TRIAL_STARTED_TITLE, USAGE_SUMMARY_BODY, USAGE_SUMMARY_TITLE,
     },
     hosts::{r#impl::base::Host, service::HostService},
     networks::{r#impl::Network, service::NetworkService},
@@ -525,23 +524,6 @@ pub trait EmailProvider: Send + Sync {
         (DISCOVERY_GUIDE_PAID_TITLE.to_string(), body)
     }
 
-    fn build_topology_ready_email(
-        &self,
-        first_name: Option<&str>,
-        host_count: u64,
-        service_count: u64,
-        network_name: &str,
-    ) -> (String, String) {
-        let body = self.build_email(
-            TOPOLOGY_READY_BODY
-                .replace("{first_name}", first_name.unwrap_or("there"))
-                .replace("{host_count}", &host_count.to_string())
-                .replace("{service_count}", &service_count.to_string())
-                .replace("{network_name}", network_name),
-        );
-        (TOPOLOGY_READY_TITLE.to_string(), body)
-    }
-
     fn build_plan_limit_approaching_email(
         &self,
         first_name: Option<&str>,
@@ -641,12 +623,14 @@ pub trait EmailProvider: Send + Sync {
             .to_string();
         let settings_url = format!("{}/settings?tab=email", public_url.trim_end_matches('/'));
 
+        let summary_section = render_summary_banner(payload);
         let subnets_section = render_subnets_section(&payload.subnets_scanned);
         let hosts_added_section =
-            render_host_list_section("New hosts discovered", &payload.hosts_added);
+            render_host_cards_section("New hosts discovered", &payload.hosts_added);
         let hosts_vanished_section =
-            render_host_list_section("Hosts not seen this scan", &payload.hosts_vanished);
-        let hosts_changed_section = render_host_changes_section(&payload.hosts_with_child_changes);
+            render_host_cards_section("Hosts not seen this scan", &payload.hosts_vanished);
+        let hosts_changed_section =
+            render_host_cards_section("Hosts with changes", &payload.hosts_changed);
         let vlans_added_section = render_vlan_list_section("VLANs detected", &payload.vlans_added);
         let vlans_removed_section =
             render_vlan_list_section("VLANs no longer detected", &payload.vlans_removed);
@@ -657,6 +641,7 @@ pub trait EmailProvider: Send + Sync {
                 .replace("{started_at}", &started)
                 .replace("{finished_at}", &finished)
                 .replace("{settings_url}", &settings_url)
+                .replace("{summary_section}", &summary_section)
                 .replace("{subnets_section}", &subnets_section)
                 .replace("{hosts_added_section}", &hosts_added_section)
                 .replace("{hosts_vanished_section}", &hosts_vanished_section)
@@ -669,32 +654,41 @@ pub trait EmailProvider: Send + Sync {
     }
 }
 
-/// Render a `<ul>` of names with truncation to `MAX_LIST_ITEMS` followed by
-/// a "+N more" tail. Empty list returns an empty string so callers can drop
-/// whole sections without conditionals.
-const MAX_LIST_ITEMS: usize = 10;
+/// First N items in a list are rendered inline; the rest go inside a
+/// collapsed `<details>` so recipients can expand for the full set without
+/// the email turning into a wall of names.
+const MAX_INLINE_ITEMS: usize = 10;
 
-fn render_truncated_list(items: &[String]) -> String {
+/// Render a `<ul>` with up to `MAX_INLINE_ITEMS` visible items inline. Any
+/// additional items live inside a `<details>` block whose `<summary>` reads
+/// "Show all N". Older email clients without `<details>` support fall back
+/// to showing the content expanded — acceptable graceful degradation.
+fn render_expandable_list(items: &[String]) -> String {
     if items.is_empty() {
         return String::new();
     }
-    let shown: Vec<String> = items
+    let visible: Vec<String> = items
         .iter()
-        .take(MAX_LIST_ITEMS)
+        .take(MAX_INLINE_ITEMS)
         .map(|s| format!(r#"<li style="margin: 0 0 4px 0;">{}</li>"#, html_escape(s)))
         .collect();
-    let tail = if items.len() > MAX_LIST_ITEMS {
-        format!(
-            r#"<li style="margin: 0; color: #6b7280;">+ {} more</li>"#,
-            items.len() - MAX_LIST_ITEMS
-        )
-    } else {
-        String::new()
-    };
+    let visible_ul = format!(
+        r#"<ul style="margin: 0 0 8px 20px; padding: 0; font-size: 14px; line-height: 20px; color: #4a4a4a;">{}</ul>"#,
+        visible.join(""),
+    );
+    if items.len() <= MAX_INLINE_ITEMS {
+        return visible_ul;
+    }
+    let hidden: Vec<String> = items
+        .iter()
+        .skip(MAX_INLINE_ITEMS)
+        .map(|s| format!(r#"<li style="margin: 0 0 4px 0;">{}</li>"#, html_escape(s)))
+        .collect();
     format!(
-        r#"<ul style="margin: 0 0 16px 20px; padding: 0; font-size: 14px; line-height: 20px; color: #4a4a4a;">{}{}</ul>"#,
-        shown.join(""),
-        tail,
+        r#"{visible_ul}<details style="margin: 0 0 16px 0;"><summary style="cursor: pointer; font-size: 13px; color: #2563eb;">Show all {total}</summary><ul style="margin: 8px 0 0 20px; padding: 0; font-size: 14px; line-height: 20px; color: #4a4a4a;">{rest}</ul></details>"#,
+        visible_ul = visible_ul,
+        total = items.len(),
+        rest = hidden.join(""),
     )
 }
 
@@ -711,19 +705,7 @@ fn render_subnets_section(subnets: &[crate::server::digest::payload::SubnetSumma
         return String::new();
     }
     let names: Vec<String> = subnets.iter().map(|s| s.label.clone()).collect();
-    render_section("Subnets scanned", &render_truncated_list(&names))
-}
-
-fn render_host_list_section(
-    heading: &str,
-    hosts: &[crate::server::digest::payload::HostSummary],
-) -> String {
-    if hosts.is_empty() {
-        return String::new();
-    }
-    let names: Vec<String> = hosts.iter().map(|h| h.label.clone()).collect();
-    let header = format!("{} ({})", heading, hosts.len());
-    render_section(&header, &render_truncated_list(&names))
+    render_section("Subnets scanned", &render_expandable_list(&names))
 }
 
 fn render_vlan_list_section(
@@ -744,102 +726,206 @@ fn render_vlan_list_section(
         })
         .collect();
     let header = format!("{} ({})", heading, vlans.len());
-    render_section(&header, &render_truncated_list(&names))
+    render_section(&header, &render_expandable_list(&names))
 }
 
-fn render_host_changes_section(
-    rollups: &[crate::server::digest::payload::HostChildChanges],
+/// Stats banner at the top of the digest body. Counts only — drives the
+/// "tell me at a glance what happened" pass. Single table row, each cell a
+/// bold number + dim label, mirroring the existing email palette.
+fn render_summary_banner(
+    payload: &crate::server::digest::payload::DiscoveryDigestPayload,
 ) -> String {
-    if rollups.is_empty() {
+    let cells: Vec<(usize, &str)> = vec![
+        (payload.hosts_added.len(), "new hosts"),
+        (payload.hosts_vanished.len(), "vanished hosts"),
+        (payload.hosts_changed.len(), "changed hosts"),
+        (payload.vlans_added.len(), "VLANs detected"),
+        (payload.vlans_removed.len(), "VLANs no longer detected"),
+        (payload.subnets_scanned.len(), "subnets scanned"),
+    ];
+    let inner: String = cells
+        .iter()
+        .map(|(count, label)| {
+            format!(
+                r#"<td style="padding: 8px 12px; vertical-align: top;"><div style="font-size: 22px; font-weight: 700; color: #1a1a1a; line-height: 1.2;">{}</div><div style="font-size: 12px; color: #6b7280;">{}</div></td>"#,
+                count,
+                html_escape(label),
+            )
+        })
+        .collect();
+    format!(
+        r#"<table role="presentation" style="width: 100%; border-collapse: collapse; margin: 16px 0; background-color: #f9fafb; border-radius: 6px;"><tr>{}</tr></table>"#,
+        inner,
+    )
+}
+
+/// Render one section of host cards. Each card mirrors `HostCard.svelte`:
+/// header (name + status badge), Services / IP Addresses / Interfaces /
+/// Ports rows, then for Changed hosts a "What changed this scan" block.
+/// Section header carries the count; sections with more than
+/// `MAX_INLINE_ITEMS` cards wrap the overflow in `<details>` so recipients
+/// can opt-in to the full list.
+fn render_host_cards_section(
+    heading: &str,
+    cards: &[crate::server::digest::payload::AffectedHostCard],
+) -> String {
+    if cards.is_empty() {
         return String::new();
     }
-    let mut inner = String::new();
-    for rollup in rollups.iter().take(MAX_LIST_ITEMS) {
-        inner.push_str(&format!(
-            r#"<div style="margin: 0 0 16px 0; padding: 12px; background-color: #f9fafb; border-radius: 6px;"><p style="margin: 0 0 6px 0; font-size: 14px; font-weight: 600; color: #1a1a1a;">{}</p>"#,
-            html_escape(&rollup.host.label),
-        ));
-        for (label, items) in [
-            (
-                "Ports detected",
-                item_labels_ports_added(&rollup.ports_added),
-            ),
-            (
-                "Ports no longer detected",
-                item_labels_ports_added(&rollup.ports_removed),
-            ),
-            (
-                "Services detected",
-                item_labels_services(&rollup.services_added),
-            ),
-            (
-                "Services no longer detected",
-                item_labels_services(&rollup.services_removed),
-            ),
-            (
-                "IP addresses detected",
-                item_labels_ips(&rollup.ip_addresses_added),
-            ),
-            (
-                "IP addresses no longer detected",
-                item_labels_ips(&rollup.ip_addresses_removed),
-            ),
-            (
-                "Interfaces detected",
-                item_labels_interfaces(&rollup.interfaces_added),
-            ),
-            (
-                "Interfaces no longer detected",
-                item_labels_interfaces(&rollup.interfaces_removed),
-            ),
-            (
-                "Bindings detected",
-                item_labels_bindings(&rollup.bindings_added),
-            ),
-            (
-                "Bindings no longer detected",
-                item_labels_bindings(&rollup.bindings_removed),
-            ),
-        ] {
-            if !items.is_empty() {
-                inner.push_str(&format!(
-                    r#"<p style="margin: 6px 0 4px 0; font-size: 13px; font-weight: 500; color: #4a4a4a;">{}:</p>{}"#,
-                    html_escape(label),
-                    render_truncated_list(&items),
-                ));
-            }
-        }
-        inner.push_str("</div>");
+    let header = format!("{} ({})", heading, cards.len());
+    let visible: String = cards
+        .iter()
+        .take(MAX_INLINE_ITEMS)
+        .map(render_host_card)
+        .collect();
+    if cards.len() <= MAX_INLINE_ITEMS {
+        return render_section(&header, &visible);
     }
-    if rollups.len() > MAX_LIST_ITEMS {
-        inner.push_str(&format!(
-            r#"<p style="margin: 0; font-size: 13px; color: #6b7280;">+ {} more host(s) with changes</p>"#,
-            rollups.len() - MAX_LIST_ITEMS
-        ));
-    }
-    let header = format!("Hosts with changes ({})", rollups.len());
+    let hidden: String = cards
+        .iter()
+        .skip(MAX_INLINE_ITEMS)
+        .map(render_host_card)
+        .collect();
+    let inner = format!(
+        r#"{visible}<details style="margin: 0 0 16px 0;"><summary style="cursor: pointer; font-size: 13px; color: #2563eb;">Show all {total}</summary>{rest}</details>"#,
+        visible = visible,
+        total = cards.len(),
+        rest = hidden,
+    );
     render_section(&header, &inner)
 }
 
-fn item_labels_ports_added(items: &[crate::server::digest::payload::PortSummary]) -> Vec<String> {
+fn render_host_card(card: &crate::server::digest::payload::AffectedHostCard) -> String {
+    use crate::server::digest::payload::HostCardStatus;
+    let (badge_label, badge_bg, badge_fg) = match card.status {
+        HostCardStatus::New => ("New", "#dcfce7", "#166534"),
+        HostCardStatus::Vanished => ("Vanished", "#fee2e2", "#991b1b"),
+        HostCardStatus::Changed => ("Changed", "#fef3c7", "#92400e"),
+    };
+    let badge = format!(
+        r#"<span style="display: inline-block; padding: 2px 8px; font-size: 12px; font-weight: 600; border-radius: 999px; background-color: {bg}; color: {fg};">{label}</span>"#,
+        bg = badge_bg,
+        fg = badge_fg,
+        label = badge_label,
+    );
+
+    // Mirror HostCard.svelte's field order: Services, IP Addresses,
+    // Interfaces, Ports. Each row hidden when its list is empty.
+    let mut rows = String::new();
+    rows.push_str(&render_field_row(
+        "Services",
+        &card
+            .services
+            .iter()
+            .map(|s| s.name.clone())
+            .collect::<Vec<_>>(),
+    ));
+    rows.push_str(&render_field_row(
+        "IP Addresses",
+        &card
+            .ip_addresses
+            .iter()
+            .map(|ip| ip.address.clone())
+            .collect::<Vec<_>>(),
+    ));
+    rows.push_str(&render_field_row(
+        "Interfaces",
+        &card
+            .interfaces
+            .iter()
+            .map(|i| i.label.clone())
+            .collect::<Vec<_>>(),
+    ));
+    rows.push_str(&render_field_row(
+        "Ports",
+        &card
+            .ports
+            .iter()
+            .map(|p| p.label.clone())
+            .collect::<Vec<_>>(),
+    ));
+
+    let deltas_block = card
+        .deltas
+        .as_ref()
+        .filter(|d| !d.is_empty())
+        .map(render_deltas_block)
+        .unwrap_or_default();
+
+    format!(
+        r#"<div style="margin: 0 0 16px 0; padding: 14px; background-color: #ffffff; border: 1px solid #e5e7eb; border-radius: 8px;"><div style="display: flex; align-items: center; justify-content: space-between; margin: 0 0 10px 0;"><div style="font-size: 16px; font-weight: 600; color: #1a1a1a;">{name}</div>{badge}</div>{rows}{deltas}</div>"#,
+        name = html_escape(&card.host.label),
+        badge = badge,
+        rows = rows,
+        deltas = deltas_block,
+    )
+}
+
+fn render_field_row(label: &str, items: &[String]) -> String {
+    if items.is_empty() {
+        return String::new();
+    }
+    let value = render_expandable_list(items);
+    format!(
+        r#"<div style="margin: 0 0 8px 0; font-size: 13px;"><span style="font-weight: 600; color: #4b5563;">{}:</span>{}</div>"#,
+        html_escape(label),
+        value,
+    )
+}
+
+fn render_deltas_block(d: &crate::server::digest::payload::HostDeltas) -> String {
+    let entries = [
+        ("Ports added", labels_ports(&d.ports_added)),
+        ("Ports removed", labels_ports(&d.ports_removed)),
+        ("Services added", labels_services(&d.services_added)),
+        ("Services removed", labels_services(&d.services_removed)),
+        ("IP addresses added", labels_ips(&d.ip_addresses_added)),
+        ("IP addresses removed", labels_ips(&d.ip_addresses_removed)),
+        ("Interfaces added", labels_interfaces(&d.interfaces_added)),
+        (
+            "Interfaces removed",
+            labels_interfaces(&d.interfaces_removed),
+        ),
+        ("Bindings added", labels_bindings(&d.bindings_added)),
+        ("Bindings removed", labels_bindings(&d.bindings_removed)),
+    ];
+    let mut inner = String::new();
+    for (label, items) in &entries {
+        if items.is_empty() {
+            continue;
+        }
+        inner.push_str(&format!(
+            r#"<div style="margin: 0 0 6px 0; font-size: 13px;"><span style="font-weight: 600; color: #4b5563;">{}:</span>{}</div>"#,
+            html_escape(label),
+            render_expandable_list(items),
+        ));
+    }
+    if inner.is_empty() {
+        return String::new();
+    }
+    format!(
+        r#"<div style="margin: 12px 0 0 0; padding: 10px; background-color: #fffbeb; border: 1px solid #fde68a; border-radius: 6px;"><div style="font-size: 13px; font-weight: 600; color: #92400e; margin: 0 0 6px 0;">What changed this scan</div>{}</div>"#,
+        inner,
+    )
+}
+
+fn labels_ports(items: &[crate::server::digest::payload::PortSummary]) -> Vec<String> {
     items.iter().map(|p| p.label.clone()).collect()
 }
 
-fn item_labels_services(items: &[crate::server::digest::payload::ServiceSummary]) -> Vec<String> {
+fn labels_services(items: &[crate::server::digest::payload::ServiceSummary]) -> Vec<String> {
     items.iter().map(|s| s.name.clone()).collect()
 }
 
-fn item_labels_ips(items: &[crate::server::digest::payload::IpAddressSummary]) -> Vec<String> {
+fn labels_ips(items: &[crate::server::digest::payload::IpAddressSummary]) -> Vec<String> {
     items.iter().map(|ip| ip.address.clone()).collect()
 }
 
-fn item_labels_interfaces(
-    items: &[crate::server::digest::payload::InterfaceSummary],
-) -> Vec<String> {
+fn labels_interfaces(items: &[crate::server::digest::payload::InterfaceSummary]) -> Vec<String> {
     items.iter().map(|i| i.label.clone()).collect()
 }
 
-fn item_labels_bindings(items: &[crate::server::digest::payload::BindingSummary]) -> Vec<String> {
+fn labels_bindings(items: &[crate::server::digest::payload::BindingSummary]) -> Vec<String> {
     items.iter().map(|b| b.label.clone()).collect()
 }
 
@@ -1336,46 +1422,6 @@ impl EmailService {
             .unwrap_or(true);
 
         self.send_discovery_guide_email(owner_email, None, daemon_name, network_name, is_free)
-            .await
-    }
-
-    /// Send topology ready email for an organization after first discovery completion
-    pub async fn send_topology_ready_for_org(&self, org_id: Uuid) -> Result<()> {
-        // Verify org exists
-        self.organization_service
-            .get_by_id(&org_id)
-            .await?
-            .ok_or_else(|| anyhow::anyhow!("Organization not found"))?;
-
-        let owner_email = self.get_owner_email(&org_id).await?;
-
-        let network_filter = StorableFilter::<Network>::new_from_org_id(&org_id);
-        let networks = self.network_service.get_all(network_filter).await?;
-        let network_ids: Vec<Uuid> = networks.iter().map(|n| n.id).collect();
-        let network_name = networks
-            .first()
-            .map(|n| n.base.name.clone())
-            .unwrap_or_else(|| "your network".to_string());
-
-        let host_filter = StorableFilter::<Host>::new_from_network_ids(&network_ids);
-        let host_count = self.host_service.get_all(host_filter).await?.len() as u64;
-
-        let service_count = {
-            let filter = crate::server::shared::storage::filter::StorableFilter::<
-                crate::server::services::r#impl::base::Service,
-            >::new_from_network_ids(&network_ids);
-            self.service_service.get_all(filter).await?.len() as u64
-        };
-
-        let (subject, body) = self.provider.build_topology_ready_email(
-            None, // User model has no first_name field
-            host_count,
-            service_count,
-            &network_name,
-        );
-        let body = body.replace("{base_url}", &self.public_url);
-        self.provider
-            .send_billing_email(owner_email, subject, body)
             .await
     }
 

@@ -497,27 +497,6 @@ pub const DISCOVERY_GUIDE_PAID_BODY: &str = r#"                    <!-- Main Con
                     </tr>
 "#;
 
-pub const TOPOLOGY_READY_TITLE: &str = "Your Network Topology is Ready";
-
-pub const TOPOLOGY_READY_BODY: &str = r#"                    <!-- Main Content -->
-                    <tr>
-                        <td style="padding: 0 40px 20px 40px;">
-                            <h1 style="margin: 0 0 20px 0; font-size: 24px; font-weight: 600; color: #1a1a1a; text-align: center;">Your Topology is Ready!</h1>
-                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 24px; color: #4a4a4a;">Hi {first_name},</p>
-                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 24px; color: #4a4a4a;">Your first discovery on <strong>{network_name}</strong> has completed. Scanopy found <strong>{host_count} hosts</strong> and <strong>{service_count} services</strong>.</p>
-                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 24px; color: #4a4a4a;">Your interactive topology map is now available — open Scanopy to explore your network visually.</p>
-                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 24px; color: #4a4a4a;"><strong>Quick tips:</strong> Drag nodes to rearrange your layout, click any host to inspect its services and details, and use the export button to save your map.</p>
-                        </td>
-                    </tr>
-
-                    <!-- CTA Button -->
-                    <tr>
-                        <td align="center" style="padding: 0 40px 30px 40px;">
-                            <a href="{base_url}/?utm_source=email&utm_campaign=topology_ready&utm_medium=lifecycle#topology" style="display: inline-block; padding: 14px 40px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 500;">View Topology</a>
-                        </td>
-                    </tr>
-"#;
-
 pub const PLAN_LIMIT_APPROACHING_TITLE: &str = "You're Approaching Your {limit_type} Limit";
 
 pub const PLAN_LIMIT_APPROACHING_BODY: &str = r#"                    <!-- Main Content -->
@@ -788,6 +767,7 @@ pub const DISCOVERY_DIGEST_BODY: &str = r#"                    <!-- Main Content
                             <h1 style="margin: 0 0 20px 0; font-size: 24px; font-weight: 600; color: #1a1a1a; text-align: center;">Discovery scan summary</h1>
                             <p style="margin: 0 0 8px 0; font-size: 16px; line-height: 24px; color: #4a4a4a;">Network: <strong>{network_name}</strong></p>
                             <p style="margin: 0 0 20px 0; font-size: 14px; line-height: 20px; color: #6b7280;">Scan ran {started_at} → {finished_at}.</p>
+                            {summary_section}
                             {subnets_section}
                             {hosts_added_section}
                             {hosts_vanished_section}
