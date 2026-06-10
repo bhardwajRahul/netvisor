@@ -2221,8 +2221,9 @@ impl BillingService {
             .publish(Event::new(
                 OrgScope { organization_id },
                 BillingOperation::CancellationInitiated {
-                    reason_code: request.reason_code,
+                    reason_code: Some(request.reason_code),
                     stripe_feedback: stripe_feedback.map(stripe_to_shared_feedback),
+                    stripe_reason: None,
                     comment: request.comment,
                     save_offer_shown: request.save_offer_shown,
                     save_offer_redeemed: request.save_offer_redeemed,
