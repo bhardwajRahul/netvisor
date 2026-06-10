@@ -10587,19 +10587,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-05-03T04:33:55.425043Z",
+              "created_at": "2026-06-10T21:12:58.090801Z",
               "first_discovery_id": null,
-              "id": "cedeb2fe-3c4a-4191-ae15-dc668928fac9",
+              "id": "a50bc8d2-991c-48b7-9038-093c11fa9e12",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-05-03T04:33:55.425043Z",
+              "last_seen_at": "2026-06-10T21:12:58.090801Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-05-03T04:33:55.425043Z",
-              "valid_from": "2026-05-03T04:33:55.425043Z",
+              "updated_at": "2026-06-10T21:12:58.090801Z",
+              "valid_from": "2026-06-10T21:12:58.090801Z",
               "valid_to": null
             }
           },
@@ -11585,19 +11585,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-05-03T04:33:55.408748Z",
+                      "created_at": "2026-06-10T21:12:58.070004Z",
                       "first_discovery_id": null,
-                      "id": "9c25dc3d-1366-4921-9998-3e1bb3a19333",
+                      "id": "dfabccb2-f041-4b2d-8cd9-7cd65f4030b2",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-05-03T04:33:55.408748Z",
+                      "last_seen_at": "2026-06-10T21:12:58.070004Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-05-03T04:33:55.408748Z",
-                      "valid_from": "2026-05-03T04:33:55.408748Z",
+                      "updated_at": "2026-06-10T21:12:58.070004Z",
+                      "valid_from": "2026-06-10T21:12:58.070004Z",
                       "valid_to": null
                     }
                   ],
@@ -11611,7 +11611,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Nest Thermostat",
+                  "service_definition": "Appwrite",
                   "source": {
                     "type": "Manual"
                   },
@@ -12333,6 +12333,15 @@
                 "type": "integer",
                 "format": "int32",
                 "minimum": 0
+              },
+              "snapshot_retention_days_override": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int32",
+                "description": "`SCANOPY_SNAPSHOT_RETENTION_DAYS_OVERRIDE` if set on this instance.\nFrontend uses it inside the plan-comparison view to display the\neffective retention for this deployment rather than the per-plan\nfixture default.",
+                "minimum": 0
               }
             }
           },
@@ -12533,19 +12542,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-05-03T04:33:55.419438Z",
+                  "created_at": "2026-06-10T21:12:58.084215Z",
                   "first_discovery_id": null,
-                  "id": "2b962d08-c9e6-4a82-80cd-6f587cd65897",
+                  "id": "d4bd898f-4ee3-4a70-8a71-dc64e02368bc",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-05-03T04:33:55.419438Z",
+                  "last_seen_at": "2026-06-10T21:12:58.084215Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-05-03T04:33:55.419438Z",
-                  "valid_from": "2026-05-03T04:33:55.419438Z",
+                  "updated_at": "2026-06-10T21:12:58.084215Z",
+                  "valid_from": "2026-06-10T21:12:58.084215Z",
                   "valid_to": null
                 }
               ],
@@ -12559,7 +12568,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Nest Thermostat",
+              "service_definition": "Appwrite",
               "source": {
                 "type": "Manual"
               },
@@ -14160,19 +14169,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-05-03T04:33:55.408983Z",
+          "created_at": "2026-06-10T21:12:58.070512Z",
           "first_discovery_id": null,
-          "id": "17c48c38-479b-479b-b530-de9617432755",
+          "id": "ba999e95-b9ac-4570-b9c8-c5d6dd39d522",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-05-03T04:33:55.408983Z",
+          "last_seen_at": "2026-06-10T21:12:58.070512Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-05-03T04:33:55.408983Z",
-          "valid_from": "2026-05-03T04:33:55.408983Z",
+          "updated_at": "2026-06-10T21:12:58.070512Z",
+          "valid_from": "2026-06-10T21:12:58.070512Z",
           "valid_to": null
         }
       },
@@ -14762,7 +14771,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Nest Thermostat",
+              "service_definition": "Appwrite",
               "tags": [],
               "virtualization": null
             }
@@ -17369,19 +17378,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-05-03T04:33:55.408484Z",
+                  "created_at": "2026-06-10T21:12:58.069430Z",
                   "first_discovery_id": null,
-                  "id": "28493d52-4593-42ed-8204-ec379d3bf0d4",
+                  "id": "df2c6d9c-d251-476a-a8ae-1431e5c9bfe6",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-05-03T04:33:55.408484Z",
+                  "last_seen_at": "2026-06-10T21:12:58.069430Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-05-03T04:33:55.408484Z",
-                  "valid_from": "2026-05-03T04:33:55.408484Z",
+                  "updated_at": "2026-06-10T21:12:58.069430Z",
+                  "valid_from": "2026-06-10T21:12:58.069430Z",
                   "valid_to": null
                 }
               ],
@@ -17395,7 +17404,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Nest Thermostat",
+              "service_definition": "Appwrite",
               "source": {
                 "type": "Manual"
               },
@@ -19784,19 +19793,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-05-03T04:33:55.396013Z",
+                        "created_at": "2026-06-10T21:12:58.057216Z",
                         "first_discovery_id": null,
-                        "id": "b045e6f4-af89-4b54-9baa-392722e2fb30",
+                        "id": "d12cdb90-efe8-4225-9a34-7ead459b77ec",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-05-03T04:33:55.396013Z",
+                        "last_seen_at": "2026-06-10T21:12:58.057216Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-05-03T04:33:55.396013Z",
-                        "valid_from": "2026-05-03T04:33:55.396013Z",
+                        "updated_at": "2026-06-10T21:12:58.057216Z",
+                        "valid_from": "2026-06-10T21:12:58.057216Z",
                         "valid_to": null
                       }
                     ],
@@ -19810,7 +19819,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Nest Thermostat",
+                    "service_definition": "Appwrite",
                     "source": {
                       "type": "Manual"
                     },
@@ -19931,19 +19940,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-05-03T04:33:55.418704Z",
+                    "created_at": "2026-06-10T21:12:58.082960Z",
                     "first_discovery_id": null,
-                    "id": "e59fb250-0bc0-487c-854f-af2e8e96ed00",
+                    "id": "1ca07801-303e-4438-9aac-f702e07695ca",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-05-03T04:33:55.418704Z",
+                    "last_seen_at": "2026-06-10T21:12:58.082960Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-05-03T04:33:55.418704Z",
-                    "valid_from": "2026-05-03T04:33:55.418704Z",
+                    "updated_at": "2026-06-10T21:12:58.082960Z",
+                    "valid_from": "2026-06-10T21:12:58.082960Z",
                     "valid_to": null
                   }
                 ],
@@ -19957,7 +19966,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Nest Thermostat",
+                "service_definition": "Appwrite",
                 "source": {
                   "type": "Manual"
                 },
@@ -20626,8 +20635,7 @@
         "required": [
           "host_count",
           "network_count",
-          "seat_count",
-          "snapshot_retention_days"
+          "seat_count"
         ],
         "properties": {
           "host_count": {
@@ -20667,12 +20675,6 @@
               "null"
             ],
             "format": "int64",
-            "minimum": 0
-          },
-          "snapshot_retention_days": {
-            "type": "integer",
-            "format": "int32",
-            "description": "Snapshot retention window in days. `0` means snapshots are not\navailable on this plan; the UI uses this to disable the \"Take\nsnapshot\" button and surface the upgrade hook.",
             "minimum": 0
           }
         }
@@ -21010,6 +21012,15 @@
           "server_port": {
             "type": "integer",
             "format": "int32",
+            "minimum": 0
+          },
+          "snapshot_retention_days_override": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "`SCANOPY_SNAPSHOT_RETENTION_DAYS_OVERRIDE` if set on this instance.\nFrontend uses it inside the plan-comparison view to display the\neffective retention for this deployment rather than the per-plan\nfixture default.",
             "minimum": 0
           }
         }
@@ -21512,19 +21523,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-05-03T04:33:55.408934Z",
+              "created_at": "2026-06-10T21:12:58.070410Z",
               "first_discovery_id": null,
-              "id": "ccd0b23f-9526-4448-8eaf-079e53e38553",
+              "id": "1db9db14-4569-4471-9982-a16147a2b2c3",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-05-03T04:33:55.408934Z",
+              "last_seen_at": "2026-06-10T21:12:58.070410Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-05-03T04:33:55.408934Z",
-              "valid_from": "2026-05-03T04:33:55.408934Z",
+              "updated_at": "2026-06-10T21:12:58.070410Z",
+              "valid_from": "2026-06-10T21:12:58.070410Z",
               "valid_to": null
             }
           ],
@@ -21538,7 +21549,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Nest Thermostat",
+          "service_definition": "Appwrite",
           "source": {
             "type": "Manual"
           },

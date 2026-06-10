@@ -47,10 +47,7 @@
 		settings_billing_resume_confirmBody,
 		settings_billing_extendTrial_link,
 		settings_billing_extendTrial_confirmBody,
-		common_viewPlans,
-		home_planUsage_snapshotRetention,
-		home_planUsage_snapshotRetentionDays,
-		home_planUsage_snapshotsNotIncluded
+		common_viewPlans
 	} from '$lib/paraglide/messages';
 	import InlineWarning from '$lib/shared/components/feedback/InlineWarning.svelte';
 	import InlineInfo from '$lib/shared/components/feedback/InlineInfo.svelte';
@@ -67,9 +64,8 @@
 		dismissible?: boolean;
 	} = $props();
 
-	// Dashboard summary aggregates host/network/seat counts (and the snapshot
-	// retention window) into one query — reuse it here instead of re-counting
-	// users/networks/hosts independently.
+	// Dashboard summary aggregates host/network/seat counts into one query —
+	// reuse it here instead of re-counting users/networks/hosts independently.
 	const dashboardQuery = useDashboardQuery();
 	let planUsage = $derived(dashboardQuery.data?.plan_usage);
 
@@ -89,14 +85,6 @@
 	let seatCount = $derived(planUsage?.seat_count ?? 0);
 	let networkCount = $derived(planUsage?.network_count ?? 0);
 	let hostCount = $derived(planUsage?.host_count ?? 0);
-	let snapshotRetentionDays = $derived(planUsage?.snapshot_retention_days);
-	let snapshotRetentionLabel = $derived(
-		snapshotRetentionDays == null
-			? ''
-			: snapshotRetentionDays > 0
-				? home_planUsage_snapshotRetentionDays({ days: snapshotRetentionDays })
-				: home_planUsage_snapshotsNotIncluded()
-	);
 
 	let extraSeats = $derived.by(() => {
 		if (!org?.plan?.included_seats) return 0;
@@ -424,26 +412,6 @@
 													: 'bg-blue-500'}
 											/>
 										{/if}
-									</div>
-								{/if}
-
-								<!-- Snapshot Retention -->
-								{#if snapshotRetentionDays != null}
-									<div class="border-t pt-3" style="border-color: var(--color-border)">
-										<div class="flex items-baseline justify-between">
-											<div>
-												<p class="text-primary font-medium">
-													{home_planUsage_snapshotRetention()}
-												</p>
-												<p
-													class={snapshotRetentionDays > 0
-														? 'text-secondary text-sm'
-														: 'text-tertiary text-sm italic'}
-												>
-													{snapshotRetentionLabel}
-												</p>
-											</div>
-										</div>
 									</div>
 								{/if}
 							{/if}

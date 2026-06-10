@@ -35,6 +35,7 @@ pub enum Feature {
     ScheduledDiscovery,
     DiscoveryIntegrations,
     CsvExport,
+    SnapshotRetentionDays,
 }
 
 impl HasId for Feature {
@@ -63,6 +64,7 @@ impl HasId for Feature {
             Feature::ScheduledDiscovery => "scheduled_discovery",
             Feature::DiscoveryIntegrations => "discovery_integrations",
             Feature::CsvExport => "csv_export",
+            Feature::SnapshotRetentionDays => "snapshot_retention_days",
         }
     }
 }
@@ -121,7 +123,8 @@ impl TypeMetadataProvider for Feature {
             | Feature::HtmlExport
             | Feature::Embeds
             | Feature::ShareViews
-            | Feature::RemoveCreatedWith => "Visualization",
+            | Feature::RemoveCreatedWith
+            | Feature::SnapshotRetentionDays => "Visualization",
 
             Feature::EmailSupport
             | Feature::LiveChatSupport
@@ -162,6 +165,7 @@ impl TypeMetadataProvider for Feature {
             Feature::ScheduledDiscovery => "Scheduled Discovery",
             Feature::DiscoveryIntegrations => "Discovery Integrations",
             Feature::CsvExport => "CSV Export",
+            Feature::SnapshotRetentionDays => "Snapshot Retention",
         }
     }
 
@@ -213,6 +217,9 @@ impl TypeMetadataProvider for Feature {
             }
             Feature::CsvExport => {
                 "Download host, service, and network data as CSV for use in spreadsheets and other tools"
+            }
+            Feature::SnapshotRetentionDays => {
+                "How long captured snapshots are retained before automatic deletion"
             }
         }
     }

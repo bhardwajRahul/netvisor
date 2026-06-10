@@ -179,13 +179,11 @@ pub struct TakeSnapshotFeature;
 #[async_trait]
 impl FeatureCheck for TakeSnapshotFeature {
     async fn check(&self, ctx: &FeatureCheckContext<'_>) -> FeatureCheckResult {
-        use crate::server::billing::retention::snapshot_retention_days;
         use crate::server::billing::types::base::LimitType;
 
-        let retention = snapshot_retention_days(
-            &ctx.plan,
-            ctx.app_state.config.snapshot_retention_days_override,
-        );
+        let retention = ctx
+            .plan
+            .snapshot_retention_days(ctx.app_state.config.snapshot_retention_days_override);
         if retention == 0 {
             let _ = ctx
                 .app_state
