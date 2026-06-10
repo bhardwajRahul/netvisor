@@ -17,10 +17,8 @@
 		useExtendTrialMutation
 	} from '$lib/features/billing/queries';
 	import CancelSubscriptionModal from '$lib/features/billing/CancelSubscriptionModal.svelte';
-	import { useHostsQuery } from '$lib/features/hosts/queries';
 	import InfoCard from '$lib/shared/components/data/InfoCard.svelte';
-	import { useUsersQuery } from '$lib/features/users/queries';
-	import { useNetworksQuery } from '$lib/features/networks/queries';
+	import { useDashboardQuery } from '$lib/features/home/queries';
 	import {
 		common_billingExtra,
 		common_billingUsage,
@@ -49,7 +47,10 @@
 		settings_billing_resume_confirmBody,
 		settings_billing_extendTrial_link,
 		settings_billing_extendTrial_confirmBody,
-		common_viewPlans
+		common_viewPlans,
+		home_planUsage_snapshotRetention,
+		home_planUsage_snapshotRetentionDays,
+		home_planUsage_snapshotsNotIncluded
 	} from '$lib/paraglide/messages';
 	import InlineWarning from '$lib/shared/components/feedback/InlineWarning.svelte';
 	import InlineInfo from '$lib/shared/components/feedback/InlineInfo.svelte';
@@ -66,21 +67,15 @@
 		dismissible?: boolean;
 	} = $props();
 
-	// TanStack Query for users - only fetch when modal is open (Owner only)
-	const usersQuery = useUsersQuery({ enabled: () => isOpen });
-	let usersData = $derived(usersQuery.data ?? []);
-
-	// TanStack Query for networks
-	const networksQuery = useNetworksQuery();
-	let networksData = $derived(networksQuery.data ?? []);
+	// Dashboard summary aggregates host/network/seat counts (and the snapshot
+	// retention window) into one query — reuse it here instead of re-counting
+	// users/networks/hosts independently.
+	const dashboardQuery = useDashboardQuery();
+	let planUsage = $derived(dashboardQuery.data?.plan_usage);
 
 	// TanStack Query for organization
 	const organizationQuery = useOrganizationQuery();
 	let org = $derived(organizationQuery.data);
-
-	// Host count query (limit 1 to get total count from pagination)
-	const hostsQuery = useHostsQuery({ limit: 1 });
-	let hostCount = $derived(hostsQuery.data?.pagination?.total_count ?? 0);
 
 	// Customer portal mutation
 	const customerPortalMutation = useCustomerPortalMutation();
@@ -91,8 +86,17 @@
 	// Cancel modal state. Replaces the legacy Stripe-Portal handoff.
 	let showCancelModal = $state(false);
 
-	let seatCount = $derived(usersData.length);
-	let networkCount = $derived(networksData.length);
+	let seatCount = $derived(planUsage?.seat_count ?? 0);
+	let networkCount = $derived(planUsage?.network_count ?? 0);
+	let hostCount = $derived(planUsage?.host_count ?? 0);
+	let snapshotRetentionDays = $derived(planUsage?.snapshot_retention_days);
+	let snapshotRetentionLabel = $derived(
+		snapshotRetentionDays == null
+			? ''
+			: snapshotRetentionDays > 0
+				? home_planUsage_snapshotRetentionDays({ days: snapshotRetentionDays })
+				: home_planUsage_snapshotsNotIncluded()
+	);
 
 	let extraSeats = $derived.by(() => {
 		if (!org?.plan?.included_seats) return 0;
@@ -420,6 +424,26 @@
 													: 'bg-blue-500'}
 											/>
 										{/if}
+									</div>
+								{/if}
+
+								<!-- Snapshot Retention -->
+								{#if snapshotRetentionDays != null}
+									<div class="border-t pt-3" style="border-color: var(--color-border)">
+										<div class="flex items-baseline justify-between">
+											<div>
+												<p class="text-primary font-medium">
+													{home_planUsage_snapshotRetention()}
+												</p>
+												<p
+													class={snapshotRetentionDays > 0
+														? 'text-secondary text-sm'
+														: 'text-tertiary text-sm italic'}
+												>
+													{snapshotRetentionLabel}
+												</p>
+											</div>
+										</div>
 									</div>
 								{/if}
 							{/if}

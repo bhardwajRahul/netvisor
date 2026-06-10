@@ -4,77 +4,17 @@
  * Snapshots capture point-in-time topology state for a network. Live view
  * is the topology row with `snapshot_id IS NULL`; each past snapshot has
  * its own topology row whose `snapshot_id` matches a row in this list.
- *
- * Endpoints (not yet in the generated OpenAPI schema; we call them via
- * fetch until `make generate-types` is run after the backend lands):
- * - GET    /api/v1/snapshots?network_id=...   → Snapshot[]
- * - POST   /api/v1/snapshots                  → Snapshot
- * - DELETE /api/v1/snapshots/{id}             → void
  */
 
 import { createQuery, createMutation, useQueryClient } from '@tanstack/svelte-query';
 import { queryKeys } from '$lib/api/query-client';
+import { apiClient } from '$lib/api/client';
 import { pushSuccess } from '$lib/shared/stores/feedback';
 import { formatTimestamp } from '$lib/shared/utils/formatting';
 import { topology_snapshotCreated } from '$lib/paraglide/messages';
+import type { components } from '$lib/api/schema';
 
-/**
- * Snapshot type. Mirrors the backend `Snapshot` entity that the foundation
- * worker is adding. The shape comes from the project plan; replace this
- * declaration with `components['schemas']['Snapshot']` once backend types
- * are regenerated.
- */
-export interface Snapshot {
-	id: string;
-	network_id: string;
-	taken_at: string;
-	created_by_user_id: string | null;
-	created_at: string;
-	updated_at: string;
-}
-
-interface ApiResponse<T> {
-	success: boolean;
-	data: T | null;
-	error: string | null;
-}
-
-async function getSnapshotsForNetwork(networkId: string): Promise<Snapshot[]> {
-	const params = new URLSearchParams({ network_id: networkId, limit: '0' });
-	const response = await fetch(`/api/v1/snapshots?${params.toString()}`, {
-		credentials: 'include'
-	});
-	const body = (await response.json()) as ApiResponse<Snapshot[]>;
-	if (!body?.success || !body.data) {
-		throw new Error(body?.error || 'Failed to fetch snapshots');
-	}
-	return body.data;
-}
-
-async function postSnapshot(networkId: string): Promise<Snapshot> {
-	const response = await fetch('/api/v1/snapshots', {
-		method: 'POST',
-		headers: { 'Content-Type': 'application/json' },
-		credentials: 'include',
-		body: JSON.stringify({ network_id: networkId })
-	});
-	const body = (await response.json()) as ApiResponse<Snapshot>;
-	if (!body?.success || !body.data) {
-		throw new Error(body?.error || 'Failed to take snapshot');
-	}
-	return body.data;
-}
-
-async function deleteSnapshotRequest(snapshotId: string): Promise<void> {
-	const response = await fetch(`/api/v1/snapshots/${snapshotId}`, {
-		method: 'DELETE',
-		credentials: 'include'
-	});
-	const body = (await response.json()) as ApiResponse<unknown>;
-	if (!body?.success) {
-		throw new Error(body?.error || 'Failed to delete snapshot');
-	}
-}
+export type Snapshot = components['schemas']['Snapshot'];
 
 /**
  * Query hook: list snapshots for a network, sorted by `taken_at DESC`.
@@ -87,8 +27,13 @@ export function useSnapshotsQuery(networkId: () => string | undefined) {
 		queryFn: async () => {
 			const id = networkId();
 			if (!id) return [] as Snapshot[];
-			const snapshots = await getSnapshotsForNetwork(id);
-			return [...snapshots].sort(
+			const { data } = await apiClient.GET('/api/v1/snapshots', {
+				params: { query: { network_id: id, limit: 0 } }
+			});
+			if (!data?.success || !data.data) {
+				throw new Error(data?.error || 'Failed to fetch snapshots');
+			}
+			return [...data.data].sort(
 				(a, b) => new Date(b.taken_at).getTime() - new Date(a.taken_at).getTime()
 			);
 		},
@@ -102,12 +47,23 @@ export function useSnapshotsQuery(networkId: () => string | undefined) {
  * On success: invalidates the per-network snapshots list and the topology
  * list (the backend's snapshot subscriber inserts a topology row for the
  * new snapshot — clients refetch to pick it up).
+ *
+ * Error toasts (e.g. 409 when discovery is in flight) are surfaced by the
+ * apiClient error middleware — no per-mutation onError handler needed.
  */
 export function useTakeSnapshotMutation() {
 	const queryClient = useQueryClient();
 
 	return createMutation(() => ({
-		mutationFn: ({ network_id }: { network_id: string }) => postSnapshot(network_id),
+		mutationFn: async ({ network_id }: { network_id: string }) => {
+			const { data } = await apiClient.POST('/api/v1/snapshots', {
+				body: { network_id }
+			});
+			if (!data?.success || !data.data) {
+				throw new Error(data?.error || 'Failed to take snapshot');
+			}
+			return data.data;
+		},
 		onSuccess: (snapshot: Snapshot) => {
 			queryClient.invalidateQueries({
 				queryKey: queryKeys.snapshots.byNetwork(snapshot.network_id)
@@ -126,9 +82,16 @@ export function useDeleteSnapshotMutation() {
 	const queryClient = useQueryClient();
 
 	return createMutation(() => ({
-		mutationFn: ({ snapshot_id }: { snapshot_id: string; network_id: string }) =>
-			deleteSnapshotRequest(snapshot_id),
-		onSuccess: (_void, variables) => {
+		mutationFn: async ({ snapshot_id }: { snapshot_id: string; network_id: string }) => {
+			const { data } = await apiClient.DELETE('/api/v1/snapshots/{id}', {
+				params: { path: { id: snapshot_id } }
+			});
+			if (!data?.success) {
+				throw new Error(data?.error || 'Failed to delete snapshot');
+			}
+			return snapshot_id;
+		},
+		onSuccess: (_id, variables) => {
 			queryClient.invalidateQueries({
 				queryKey: queryKeys.snapshots.byNetwork(variables.network_id)
 			});

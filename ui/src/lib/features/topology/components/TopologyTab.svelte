@@ -590,6 +590,7 @@
 						displayComponent={snapshotDisplayWithLive}
 						onSelect={handleSnapshotChange}
 						options={snapshotOptions}
+						minWidth="22rem"
 					/>
 
 					{#if !isReadOnly}
