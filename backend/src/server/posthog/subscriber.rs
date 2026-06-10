@@ -234,6 +234,7 @@ impl Subscriber<BillingOperation> for PosthogService {
             BillingOperationDiscriminants::TrialEnded,
             BillingOperationDiscriminants::TrialWillEnd,
             BillingOperationDiscriminants::SubscriptionCancelled,
+            BillingOperationDiscriminants::CancellationInitiated,
             BillingOperationDiscriminants::PlanChanged,
             BillingOperationDiscriminants::PaymentFailed,
             BillingOperationDiscriminants::PaymentActionRequired,

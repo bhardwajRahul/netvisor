@@ -446,6 +446,7 @@ impl BrevoService {
             included_networks,
             included_seats,
             mrr_amount_cents: _,
+            is_trialing: _,
         } = &event.operation
         else {
             return Ok(());
