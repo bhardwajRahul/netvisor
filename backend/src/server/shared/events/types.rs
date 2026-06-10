@@ -131,6 +131,7 @@ pub enum BillingOperation {
         included_networks: Option<u64>,
         included_seats: Option<u64>,
         mrr_amount_cents: i64,
+        is_trialing: bool,
     },
     TrialStarted {
         plan: BillingPlan,
@@ -200,8 +201,9 @@ pub enum BillingOperation {
         new_trial_end: DateTime<Utc>,
     },
     CancellationInitiated {
-        reason_code: CancelReason,
+        reason_code: Option<CancelReason>,
         stripe_feedback: Option<CancellationDetailsFeedback>,
+        stripe_reason: Option<CancellationDetailsReason>,
         comment: Option<String>,
         save_offer_shown: Vec<SaveOffer>,
         save_offer_redeemed: Option<SaveOffer>,
@@ -390,12 +392,50 @@ mod tests {
     }
 
     #[test]
-    fn checkout_completed_round_trip() {
+    fn checkout_completed_round_trip_paid() {
         round_trip(BillingOperation::CheckoutCompleted {
             plan: get_free_plan(),
             included_networks: Some(3),
             included_seats: Some(5),
             mrr_amount_cents: 4900,
+            is_trialing: false,
+        });
+    }
+
+    #[test]
+    fn checkout_completed_round_trip_trialing() {
+        round_trip(BillingOperation::CheckoutCompleted {
+            plan: get_free_plan(),
+            included_networks: Some(3),
+            included_seats: Some(5),
+            mrr_amount_cents: 4900,
+            is_trialing: true,
+        });
+    }
+
+    #[test]
+    fn cancellation_initiated_round_trip_with_stripe_details() {
+        round_trip(BillingOperation::CancellationInitiated {
+            reason_code: None,
+            stripe_feedback: Some(CancellationDetailsFeedback::TooExpensive),
+            stripe_reason: Some(CancellationDetailsReason::CancellationRequested),
+            comment: Some("not for me".to_string()),
+            save_offer_shown: vec![],
+            save_offer_redeemed: None,
+            planned_period_end: DateTime::<Utc>::from_timestamp(1_700_000_000, 0).unwrap(),
+        });
+    }
+
+    #[test]
+    fn cancellation_initiated_round_trip_all_none() {
+        round_trip(BillingOperation::CancellationInitiated {
+            reason_code: None,
+            stripe_feedback: None,
+            stripe_reason: None,
+            comment: None,
+            save_offer_shown: vec![],
+            save_offer_redeemed: None,
+            planned_period_end: DateTime::<Utc>::from_timestamp(1_700_000_000, 0).unwrap(),
         });
     }
 

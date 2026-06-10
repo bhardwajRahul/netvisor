@@ -508,6 +508,7 @@ impl BillingService {
                     included_networks: plan_config.included_networks,
                     included_seats: plan_config.included_seats,
                     mrr_amount_cents: 0,
+                    is_trialing: false,
                 },
                 authentication,
             ))
@@ -976,15 +977,18 @@ impl BillingService {
                     .or(sub.cancel_at)
                     .and_then(|t| chrono::DateTime::<Utc>::from_timestamp(t, 0))
                     .unwrap_or_else(Utc::now);
+                let (stripe_feedback, comment, stripe_reason) =
+                    extract_cancellation_details(sub.cancellation_details.as_ref());
                 self.event_bus
                     .publish(Event::new(
                         OrgScope {
                             organization_id: organization.id,
                         },
                         BillingOperation::CancellationInitiated {
-                            reason_code: crate::server::billing::types::base::CancelReason::Other,
-                            stripe_feedback: None,
-                            comment: None,
+                            reason_code: None,
+                            stripe_feedback,
+                            stripe_reason,
+                            comment,
                             save_offer_shown: vec![],
                             save_offer_redeemed: None,
                             planned_period_end,
@@ -1035,6 +1039,7 @@ impl BillingService {
                             included_networks: plan_config.included_networks,
                             included_seats: plan_config.included_seats,
                             mrr_amount_cents: mrr_from_subscription(&sub),
+                            is_trialing,
                         },
                         authentication.clone(),
                     ))
