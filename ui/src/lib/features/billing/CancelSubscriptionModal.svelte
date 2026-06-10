@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { createForm } from '@tanstack/svelte-form';
-	import GenericModal, { type ModalTab } from '$lib/shared/components/layout/GenericModal.svelte';
+	import GenericModal from '$lib/shared/components/layout/GenericModal.svelte';
 	import SelectInput from '$lib/shared/components/forms/input/SelectInput.svelte';
 	import TextArea from '$lib/shared/components/forms/input/TextArea.svelte';
 	import {
@@ -10,25 +10,21 @@
 	} from '$lib/features/billing/queries';
 	import cancelReasons from '$lib/data/cancel-reasons.json';
 	import saveOffers from '$lib/data/save-offers.json';
+	import { pushSuccess } from '$lib/shared/stores/feedback';
 	import type { components } from '$lib/api/schema';
 	import type { AnyFieldApi } from '@tanstack/svelte-form';
 	import {
 		common_back,
-		common_confirm,
-		common_reason,
 		settings_billing_cancelModal_title,
-		settings_billing_cancelModal_step2Label,
 		settings_billing_cancelModal_reasonHeading,
 		settings_billing_cancelModal_reasonHelp,
 		settings_billing_cancelModal_commentLabel,
 		settings_billing_cancelModal_commentPlaceholder,
 		settings_billing_cancelModal_continueCancel,
 		settings_billing_cancelModal_keepSubscription,
-		settings_billing_cancelModal_confirmHeading,
 		settings_billing_cancelModal_confirmDisclosure,
 		settings_billing_cancelModal_confirmCta,
 		settings_billing_cancelModal_doneSummary,
-		settings_billing_cancelModal_done,
 		settings_billing_saveOffer_pauseTitle,
 		settings_billing_saveOffer_pauseSubtitle,
 		settings_billing_saveOffer_pauseDuration30,
@@ -59,9 +55,12 @@
 		onSubscriptionChanged?: () => void;
 	} = $props();
 
-	type Step = 1 | 2 | 3;
+	// Two internal steps. Step 1 picks the reason; step 2 shows any save offers
+	// AND hosts the Confirm Cancellation action in the footer. No stepper UI:
+	// the existence of a save offer should not be telegraphed by a visible
+	// breadcrumb labelled "Save Offer".
+	type Step = 1 | 2;
 	let currentStep = $state<Step>(1);
-	let confirmedPeriodEnd = $state<string | null>(null);
 
 	// Mirror state for the reason value. TanStack's `form.state.values` is not
 	// tracked by Svelte 5 `$derived`, so we mirror the form's reason_code into
@@ -158,23 +157,8 @@
 		});
 	}
 
-	const tabs = $derived<ModalTab[]>([
-		{ id: 'reason', label: common_reason() },
-		{
-			id: 'offer',
-			label: settings_billing_cancelModal_step2Label(),
-			disabled: offersForReason.length === 0
-		},
-		{ id: 'confirm', label: common_confirm() }
-	]);
-
-	const activeTab = $derived(
-		currentStep === 1 ? 'reason' : currentStep === 2 ? 'offer' : 'confirm'
-	);
-
 	function reset() {
 		currentStep = 1;
-		confirmedPeriodEnd = null;
 		selectedReason = '';
 		selectedPauseDuration = 'days30';
 		form.reset();
@@ -186,12 +170,8 @@
 		setTimeout(reset, 200);
 	}
 
-	function goToStep2OrSkip() {
-		currentStep = offersForReason.length === 0 ? 3 : 2;
-	}
-
-	function goBackFromStep3() {
-		currentStep = offersForReason.length === 0 ? 1 : 2;
+	function goToStep2() {
+		currentStep = 2;
 	}
 
 	async function handlePauseRedeem() {
@@ -224,23 +204,20 @@
 				save_offer_shown: shownOffers,
 				save_offer_redeemed: null
 			});
-			confirmedPeriodEnd = response.period_end;
+			pushSuccess(
+				settings_billing_cancelModal_doneSummary({
+					periodEnd: fmtDate(response.period_end)
+				})
+			);
 			onSubscriptionChanged?.();
+			handleClose();
 		} catch {
-			// Mutation onError surfaces toast; stay on step 3.
+			// Mutation onError surfaces toast; modal stays open.
 		}
 	}
 </script>
 
-<GenericModal
-	{isOpen}
-	title={settings_billing_cancelModal_title()}
-	size="md"
-	onClose={handleClose}
-	{tabs}
-	{activeTab}
-	tabStyle="stepper"
->
+<GenericModal {isOpen} title={settings_billing_cancelModal_title()} size="md" onClose={handleClose}>
 	<div class="flex flex-col gap-6 p-6">
 		{#if currentStep === 1}
 			<div class="space-y-4">
@@ -275,7 +252,7 @@
 					{/snippet}
 				</form.Field>
 			</div>
-		{:else if currentStep === 2}
+		{:else}
 			<div class="space-y-4">
 				{#each offersForReason as offerId (offerId)}
 					{#if offerId === 'pause'}
@@ -345,25 +322,11 @@
 						</div>
 					{/if}
 				{/each}
-			</div>
-		{:else}
-			<div class="space-y-4">
-				<h3 class="text-primary text-lg font-semibold">
-					{settings_billing_cancelModal_confirmHeading()}
-				</h3>
-				{#if confirmedPeriodEnd}
-					<p class="text-secondary text-sm">
-						{settings_billing_cancelModal_doneSummary({
-							periodEnd: fmtDate(confirmedPeriodEnd)
-						})}
-					</p>
-				{:else}
-					<p class="text-secondary text-sm">
-						{settings_billing_cancelModal_confirmDisclosure({
-							periodEnd: 'the end of your current billing cycle'
-						})}
-					</p>
-				{/if}
+				<p class="text-secondary text-sm">
+					{settings_billing_cancelModal_confirmDisclosure({
+						periodEnd: 'the end of your current billing cycle'
+					})}
+				</p>
 			</div>
 		{/if}
 	</div>
@@ -374,27 +337,11 @@
 				<button type="button" class="btn-secondary" onclick={handleClose}>
 					{settings_billing_cancelModal_keepSubscription()}
 				</button>
-				<button
-					type="button"
-					class="btn-primary"
-					disabled={!selectedReason}
-					onclick={goToStep2OrSkip}
-				>
+				<button type="button" class="btn-primary" disabled={!selectedReason} onclick={goToStep2}>
 					{settings_billing_cancelModal_continueCancel()}
-				</button>
-			{:else if currentStep === 2}
-				<button type="button" class="btn-secondary" onclick={() => (currentStep = 1)}>
-					{common_back()}
-				</button>
-				<button type="button" class="btn-tertiary" onclick={() => (currentStep = 3)}>
-					{settings_billing_cancelModal_continueCancel()}
-				</button>
-			{:else if confirmedPeriodEnd}
-				<button type="button" class="btn-primary ml-auto" onclick={handleClose}>
-					{settings_billing_cancelModal_done()}
 				</button>
 			{:else}
-				<button type="button" class="btn-secondary" onclick={goBackFromStep3}>
+				<button type="button" class="btn-secondary" onclick={() => (currentStep = 1)}>
 					{common_back()}
 				</button>
 				<button

@@ -38,6 +38,7 @@
 		settings_billing_needHelp,
 		settings_billing_pastDue,
 		settings_billing_paused_status,
+		settings_billing_cancelSubscription,
 		settings_billing_per,
 		settings_billing_trialActive,
 		settings_billing_unableToLoad,
@@ -446,9 +447,14 @@
 										{settings_billing_manageSubscription()}
 									</button>
 								{:else}
-									<button onclick={openCancelModal} class="btn-secondary w-full">
-										{settings_billing_manageSubscription()}
-									</button>
+									<div class="flex flex-col gap-2">
+										<button onclick={handleManageSubscription} class="btn-secondary w-full">
+											{settings_billing_manageSubscription()}
+										</button>
+										<button onclick={openCancelModal} class="btn-secondary w-full">
+											{settings_billing_cancelSubscription()}
+										</button>
+									</div>
 								{/if}
 							{/if}
 						</div>
