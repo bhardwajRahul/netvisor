@@ -67,11 +67,21 @@ pub struct VlanSummary {
     pub name: String,
 }
 
-/// Per-host child-entity changes detected over the session window. Built only
-/// for hosts that exist before the session and were refreshed during it.
+/// Status of a host within a digest. Drives the badge rendering and whether
+/// child deltas are included on the card.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum HostCardStatus {
+    New,
+    Vanished,
+    Changed,
+}
+
+/// Per-host child-entity additions and removals observed during the scan.
+/// Only populated for `Changed` hosts; New hosts' children are entirely
+/// "added" and Vanished hosts' children aren't redisplayed as removed.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
-pub struct HostChildChanges {
-    pub host: HostSummary,
+pub struct HostDeltas {
     pub ports_added: Vec<PortSummary>,
     pub ports_removed: Vec<PortSummary>,
     pub services_added: Vec<ServiceSummary>,
@@ -84,7 +94,7 @@ pub struct HostChildChanges {
     pub bindings_removed: Vec<BindingSummary>,
 }
 
-impl HostChildChanges {
+impl HostDeltas {
     pub fn is_empty(&self) -> bool {
         self.ports_added.is_empty()
             && self.ports_removed.is_empty()
@@ -97,6 +107,21 @@ impl HostChildChanges {
             && self.bindings_added.is_empty()
             && self.bindings_removed.is_empty()
     }
+}
+
+/// Rich host representation for the digest email — mirrors the UI's
+/// `HostCard.svelte` so a recipient sees the same shape they'd see in-app.
+/// Current children reflect live state at `finished_at`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AffectedHostCard {
+    pub host: HostSummary,
+    pub status: HostCardStatus,
+    pub services: Vec<ServiceSummary>,
+    pub ip_addresses: Vec<IpAddressSummary>,
+    pub interfaces: Vec<InterfaceSummary>,
+    pub ports: Vec<PortSummary>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deltas: Option<HostDeltas>,
 }
 
 /// Lightweight recipient identity. We carry just what the email subscriber
@@ -135,9 +160,9 @@ pub struct DiscoveryDigestPayload {
     pub finished_at: DateTime<Utc>,
 
     pub subnets_scanned: Vec<SubnetSummary>,
-    pub hosts_added: Vec<HostSummary>,
-    pub hosts_vanished: Vec<HostSummary>,
-    pub hosts_with_child_changes: Vec<HostChildChanges>,
+    pub hosts_added: Vec<AffectedHostCard>,
+    pub hosts_vanished: Vec<AffectedHostCard>,
+    pub hosts_changed: Vec<AffectedHostCard>,
     pub vlans_added: Vec<VlanSummary>,
     pub vlans_removed: Vec<VlanSummary>,
 
@@ -151,7 +176,7 @@ impl DiscoveryDigestPayload {
     pub fn has_changes(&self) -> bool {
         !self.hosts_added.is_empty()
             || !self.hosts_vanished.is_empty()
-            || !self.hosts_with_child_changes.is_empty()
+            || !self.hosts_changed.is_empty()
             || !self.vlans_added.is_empty()
             || !self.vlans_removed.is_empty()
     }

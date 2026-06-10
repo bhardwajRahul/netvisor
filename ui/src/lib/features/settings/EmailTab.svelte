@@ -21,22 +21,12 @@
 	let user = $derived(currentUserQuery.data);
 	let saving = $derived(updateSelfMutation.isPending);
 
-	// Per CLAUDE.md TanStack-Form + Svelte 5 reactivity pitfall: keep an
-	// independent $state mirror of the toggle. The form's defaultValues only
-	// initialize once, so when currentUser data lands later we sync via
-	// form.reset() in an $effect — the mirror is the source of truth.
-	let digestEnabled = $state(true);
-
-	$effect(() => {
-		if (user) {
-			digestEnabled = user.email_settings?.discovery_digest ?? true;
-			form.reset();
-			form.setFieldValue('discovery_digest', digestEnabled);
-		}
-	});
-
+	// Stable literal defaults — do NOT read reactive state inside the
+	// createForm options getter. Reading $state there makes TanStack Form
+	// recreate options on every change and loops against the $effect that
+	// writes back.
 	const form = createForm(() => ({
-		defaultValues: { discovery_digest: digestEnabled },
+		defaultValues: { discovery_digest: true },
 		onSubmit: async ({ value }) => {
 			if (!user) return;
 			try {
@@ -50,6 +40,17 @@
 			}
 		}
 	}));
+
+	// Hydrate the form from server data exactly once when currentUser lands.
+	// The `hydrated` flag guards against the effect re-firing on form state
+	// changes that follow the reset.
+	let hydrated = $state(false);
+	$effect(() => {
+		if (user && !hydrated) {
+			form.reset({ discovery_digest: user.email_settings?.discovery_digest ?? true });
+			hydrated = true;
+		}
+	});
 </script>
 
 <div class="flex flex-1 flex-col">
