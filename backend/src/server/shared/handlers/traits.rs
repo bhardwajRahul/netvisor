@@ -144,8 +144,10 @@ where
     };
 
     // SCD2 entities: hide closed historical copies from frontend-facing GETs.
+    // When the query carries an `at` timestamp (snapshot view), read as-of that
+    // instant instead of live.
     if T::HAS_SCD2 {
-        base_filter = base_filter.live();
+        base_filter = base_filter.live_or_as_of(query.at());
     }
 
     // Apply entity-specific filters

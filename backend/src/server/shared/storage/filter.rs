@@ -362,6 +362,17 @@ impl<T: Storable> StorableFilter<T> {
         self
     }
 
+    /// SCD2 read-path filter: `as_of(t)` when a snapshot timestamp is supplied,
+    /// otherwise current-state `live()`. Frontend-facing GETs use this so they
+    /// hide closed historical copies by default and read snapshot-pinned state
+    /// when `at` is set.
+    pub fn live_or_as_of(self, at: Option<chrono::DateTime<chrono::Utc>>) -> Self {
+        match at {
+            Some(t) => self.as_of(t),
+            None => self.live(),
+        }
+    }
+
     /// Lineage filter for "all closed copies tracking back to this live id."
     /// Used to walk version history of a single logical entity.
     pub fn lineage_id(mut self, id: &Uuid) -> Self {
@@ -1137,6 +1148,43 @@ mod tests {
         assert!(
             where_clause.contains("tags.valid_to IS NULL OR tags.valid_to > $2"),
             "expected upper bound in: {}",
+            where_clause
+        );
+    }
+
+    #[test]
+    fn live_or_as_of_none_is_live() {
+        // `at = None` (live view) must hide closed historical copies, i.e. behave
+        // exactly like `.live()`. This is the read-path guard that stops snapshot
+        // close-and-clone copies leaking into entity lists as empty-shell dupes.
+        let filter = StorableFilter::<Tag>::new_unfiltered().live_or_as_of(None);
+        let where_clause = filter.to_where_clause();
+        assert!(
+            where_clause.contains("tags.valid_to IS NULL"),
+            "expected live predicate in: {}",
+            where_clause
+        );
+        assert!(
+            !where_clause.contains("valid_from <="),
+            "live view must not emit an as-of window: {}",
+            where_clause
+        );
+    }
+
+    #[test]
+    fn live_or_as_of_some_is_as_of() {
+        // `at = Some(t)` (snapshot view) must read SCD2 state as of `t`.
+        let t = chrono::Utc::now();
+        let filter = StorableFilter::<Tag>::new_unfiltered().live_or_as_of(Some(t));
+        let where_clause = filter.to_where_clause();
+        assert!(
+            where_clause.contains("tags.valid_from <= $1"),
+            "expected as-of lower bound in: {}",
+            where_clause
+        );
+        assert!(
+            where_clause.contains("tags.valid_to IS NULL OR tags.valid_to > $2"),
+            "expected as-of upper bound in: {}",
             where_clause
         );
     }

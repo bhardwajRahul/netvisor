@@ -3009,19 +3009,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-06-10T21:12:58.090807Z",
+             *       "created_at": "2026-06-11T16:22:10.538369Z",
              *       "first_discovery_id": null,
-             *       "id": "e5cbed6c-3953-4368-b63b-fab94baf5afe",
+             *       "id": "4ede9b31-71d9-49fc-ab4a-276ef7127230",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-06-10T21:12:58.090807Z",
+             *       "last_seen_at": "2026-06-11T16:22:10.538369Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-06-10T21:12:58.090807Z",
-             *       "valid_from": "2026-06-10T21:12:58.090807Z",
+             *       "updated_at": "2026-06-11T16:22:10.538369Z",
+             *       "valid_from": "2026-06-11T16:22:10.538369Z",
              *       "valid_to": null
              *     }
              */
@@ -3358,19 +3358,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-06-10T21:12:58.069986Z",
+             *               "created_at": "2026-06-11T16:22:10.514988Z",
              *               "first_discovery_id": null,
-             *               "id": "80c78bca-dea1-4c53-bc0e-2503e52fdaa5",
+             *               "id": "d0774cfa-857c-423f-b68a-87463e6f9954",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-06-10T21:12:58.069986Z",
+             *               "last_seen_at": "2026-06-11T16:22:10.514988Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-06-10T21:12:58.069986Z",
-             *               "valid_from": "2026-06-10T21:12:58.069986Z",
+             *               "updated_at": "2026-06-11T16:22:10.514988Z",
+             *               "valid_from": "2026-06-11T16:22:10.514988Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3384,7 +3384,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Appwrite",
+             *           "service_definition": "Frigate",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3720,19 +3720,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-06-10T21:12:58.084474Z",
+             *           "created_at": "2026-06-11T16:22:10.531741Z",
              *           "first_discovery_id": null,
-             *           "id": "8fae1073-3f0d-4686-bc9c-e31868ffe0df",
+             *           "id": "7c2b36cb-2157-4256-adf9-1c0bb4296600",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-06-10T21:12:58.084474Z",
+             *           "last_seen_at": "2026-06-11T16:22:10.531741Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-06-10T21:12:58.084474Z",
-             *           "valid_from": "2026-06-10T21:12:58.084474Z",
+             *           "updated_at": "2026-06-11T16:22:10.531741Z",
+             *           "valid_from": "2026-06-11T16:22:10.531741Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -3746,7 +3746,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Appwrite",
+             *       "service_definition": "Frigate",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4174,19 +4174,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-06-10T21:12:58.070496Z",
+         *       "created_at": "2026-06-11T16:22:10.515471Z",
          *       "first_discovery_id": null,
-         *       "id": "64839e6b-7ee0-4059-908f-8476e8330088",
+         *       "id": "3381b56e-1022-46ea-b781-cfa1c91a9b7a",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-06-10T21:12:58.070496Z",
+         *       "last_seen_at": "2026-06-11T16:22:10.515471Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-06-10T21:12:58.070496Z",
-         *       "valid_from": "2026-06-10T21:12:58.070496Z",
+         *       "updated_at": "2026-06-11T16:22:10.515471Z",
+         *       "valid_from": "2026-06-11T16:22:10.515471Z",
          *       "valid_to": null
          *     }
          */
@@ -4401,7 +4401,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Appwrite",
+         *           "service_definition": "Frigate",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -5078,6 +5078,9 @@ export interface components {
             install_command: string;
             os: string;
         };
+        EmailSettings: {
+            discovery_digest: boolean;
+        };
         /** @description Enterprise plan inquiry request */
         EnterpriseInquiryRequest: {
             /** @description Company name */
@@ -5339,19 +5342,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-06-10T21:12:58.069424Z",
+         *               "created_at": "2026-06-11T16:22:10.514430Z",
          *               "first_discovery_id": null,
-         *               "id": "d49dc888-4ad5-490d-ad94-f4856f486b30",
+         *               "id": "44397780-9a5c-4ad9-8361-a7f4afcea325",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-06-10T21:12:58.069424Z",
+         *               "last_seen_at": "2026-06-11T16:22:10.514430Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-06-10T21:12:58.069424Z",
-         *               "valid_from": "2026-06-10T21:12:58.069424Z",
+         *               "updated_at": "2026-06-11T16:22:10.514430Z",
+         *               "valid_from": "2026-06-11T16:22:10.514430Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -5365,7 +5368,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Appwrite",
+         *           "service_definition": "Frigate",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -6703,19 +6706,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-06-10T21:12:58.070393Z",
+         *           "created_at": "2026-06-11T16:22:10.515366Z",
          *           "first_discovery_id": null,
-         *           "id": "eeb90a0b-33da-4956-b56c-10e28ead5a35",
+         *           "id": "b85b9eca-5dab-4e5a-8361-fafeb98014ce",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-06-10T21:12:58.070393Z",
+         *           "last_seen_at": "2026-06-11T16:22:10.515366Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-06-10T21:12:58.070393Z",
-         *           "valid_from": "2026-06-10T21:12:58.070393Z",
+         *           "updated_at": "2026-06-11T16:22:10.515366Z",
+         *           "valid_from": "2026-06-11T16:22:10.515366Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -6729,7 +6732,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Appwrite",
+         *       "service_definition": "Frigate",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -7284,6 +7287,8 @@ export interface components {
         };
         UserBase: {
             email: string;
+            /** @description Per-user email preferences */
+            email_settings?: components["schemas"]["EmailSettings"];
             /** @description Whether the user has verified their email address */
             email_verified?: boolean;
             /** @description Whether the user has a password set — computed from password_hash, never stored in DB */
@@ -9148,6 +9153,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -9253,6 +9263,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -10020,6 +10035,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -10111,6 +10131,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -10608,6 +10633,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -10754,6 +10784,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -10791,6 +10826,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -10983,6 +11023,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -11077,6 +11122,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -11352,6 +11402,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -11454,6 +11509,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -12077,6 +12137,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -12171,6 +12236,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -12321,6 +12391,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -12420,6 +12495,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -13007,6 +13087,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -13098,6 +13183,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -13238,6 +13328,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -13453,6 +13548,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -14189,6 +14289,11 @@ export interface operations {
                 offset?: number | null;
                 /** @description Filter by network ID */
                 network_id?: string | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -14317,6 +14422,11 @@ export interface operations {
                 offset?: number | null;
                 /** @description Filter by network ID */
                 network_id?: string | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;

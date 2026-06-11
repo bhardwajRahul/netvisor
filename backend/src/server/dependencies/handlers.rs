@@ -73,6 +73,9 @@ pub struct DependencyFilterQuery {
     /// Number of results to skip. Default: 0.
     #[param(minimum = 0)]
     pub offset: Option<u32>,
+    /// As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+    /// instant (snapshot view) instead of live state.
+    pub at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 impl DependencyFilterQuery {
@@ -160,7 +163,9 @@ async fn get_all_dependencies(
         .ok_or_else(|| ApiError::forbidden("Organization context required"))?;
 
     let base_filter = StorableFilter::<Dependency>::new_from_network_ids(&network_ids);
-    let filter = query.apply_to_filter(base_filter, &network_ids, organization_id);
+    let filter = query
+        .apply_to_filter(base_filter, &network_ids, organization_id)
+        .live_or_as_of(query.at);
 
     // Apply pagination
     let pagination = query.pagination();

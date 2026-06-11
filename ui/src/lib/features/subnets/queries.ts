@@ -10,19 +10,22 @@ import type { Subnet } from './types/base';
 /**
  * Query hook for fetching all subnets
  */
-export function useSubnetsQuery() {
-	return createQuery(() => ({
-		queryKey: queryKeys.subnets.all,
-		queryFn: async () => {
-			const { data } = await apiClient.GET('/api/v1/subnets', {
-				params: { query: { limit: 0 } }
-			});
-			if (!data?.success || !data.data) {
-				throw new Error(data?.error || 'Failed to fetch subnets');
+export function useSubnetsQuery(atGetter?: () => string | undefined) {
+	return createQuery(() => {
+		const at = atGetter?.();
+		return {
+			queryKey: at ? [...queryKeys.subnets.all, 'asOf', at] : queryKeys.subnets.all,
+			queryFn: async () => {
+				const { data } = await apiClient.GET('/api/v1/subnets', {
+					params: { query: { limit: 0, at } }
+				});
+				if (!data?.success || !data.data) {
+					throw new Error(data?.error || 'Failed to fetch subnets');
+				}
+				return data.data;
 			}
-			return data.data;
-		}
-	}));
+		};
+	});
 }
 
 /**

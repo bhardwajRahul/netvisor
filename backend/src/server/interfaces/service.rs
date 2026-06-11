@@ -72,13 +72,18 @@ impl InterfaceService {
     }
 
     /// Get if entries for multiple hosts, ordered by ifIndex within each host.
-    /// SCD2: only live rows.
-    pub async fn get_for_hosts(&self, host_ids: &[Uuid]) -> Result<HashMap<Uuid, Vec<Interface>>> {
+    /// `at = None` reads live rows; `Some(t)` reads SCD2 state as of `t`
+    /// (snapshot-view hydration).
+    pub async fn get_for_hosts(
+        &self,
+        host_ids: &[Uuid],
+        at: Option<chrono::DateTime<chrono::Utc>>,
+    ) -> Result<HashMap<Uuid, Vec<Interface>>> {
         if host_ids.is_empty() {
             return Ok(HashMap::new());
         }
 
-        let filter = StorableFilter::<Interface>::new_from_host_ids(host_ids).live();
+        let filter = StorableFilter::<Interface>::new_from_host_ids(host_ids).live_or_as_of(at);
         let entries = self
             .storage
             .get_all_ordered(filter, "host_id ASC, if_index ASC")

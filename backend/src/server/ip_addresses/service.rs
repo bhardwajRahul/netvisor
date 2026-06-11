@@ -59,15 +59,20 @@ impl IPAddressService {
         self.storage.get_all_ordered(filter, "position ASC").await
     }
 
-    /// Get IP addresses for multiple hosts, ordered by position within each host
-    pub async fn get_for_hosts(&self, host_ids: &[Uuid]) -> Result<HashMap<Uuid, Vec<IPAddress>>> {
+    /// Get IP addresses for multiple hosts, ordered by position within each host.
+    /// `at = None` reads live rows; `Some(t)` reads SCD2 state as of `t`
+    /// (snapshot-view hydration). Reconciliation natural-key matching passes
+    /// `None` so historical copies never match.
+    pub async fn get_for_hosts(
+        &self,
+        host_ids: &[Uuid],
+        at: Option<chrono::DateTime<chrono::Utc>>,
+    ) -> Result<HashMap<Uuid, Vec<IPAddress>>> {
         if host_ids.is_empty() {
             return Ok(HashMap::new());
         }
 
-        // SCD2: only live rows. Used by reconciliation natural-key matching
-        // and current-state reads — historical copies must not match.
-        let filter = StorableFilter::<IPAddress>::new_from_host_ids(host_ids).live();
+        let filter = StorableFilter::<IPAddress>::new_from_host_ids(host_ids).live_or_as_of(at);
         let ip_addresses = self.storage.get_all_ordered(filter, "position ASC").await?;
 
         let mut result: HashMap<Uuid, Vec<IPAddress>> = HashMap::new();

@@ -60,6 +60,9 @@ pub struct VlanFilterQuery {
     pub offset: Option<u32>,
     /// Filter by network ID
     pub network_id: Option<Uuid>,
+    /// As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+    /// instant (snapshot view) instead of live state.
+    pub at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 impl VlanFilterQuery {
@@ -147,7 +150,9 @@ async fn get_all_vlans(
     let network_ids = auth.network_ids();
 
     let base_filter = StorableFilter::<Vlan>::new_from_network_ids(&network_ids);
-    let filter = query.apply_to_filter(base_filter, &network_ids, Uuid::nil());
+    let filter = query
+        .apply_to_filter(base_filter, &network_ids, Uuid::nil())
+        .live_or_as_of(query.at);
 
     let pagination = query.pagination();
     let filter = pagination.apply_to_filter(filter);

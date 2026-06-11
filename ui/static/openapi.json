@@ -2665,6 +2665,19 @@
               "format": "int32",
               "minimum": 0
             }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
           }
         ],
         "responses": {
@@ -2905,6 +2918,19 @@
               ],
               "format": "int32",
               "minimum": 0
+            }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
             }
           }
         ],
@@ -4423,6 +4449,19 @@
               "format": "int32",
               "minimum": 0
             }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
           }
         ],
         "responses": {
@@ -4635,6 +4674,19 @@
               ],
               "format": "int32",
               "minimum": 0
+            }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
             }
           }
         ],
@@ -5600,6 +5652,19 @@
               "format": "int32",
               "minimum": 0
             }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
           }
         ],
         "responses": {
@@ -5918,6 +5983,19 @@
               "format": "int32",
               "minimum": 0
             }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
           }
         ],
         "responses": {
@@ -6067,6 +6145,19 @@
               ],
               "format": "int32",
               "minimum": 0
+            }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
             }
           }
         ],
@@ -6420,6 +6511,19 @@
               "format": "int32",
               "minimum": 0
             }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
           }
         ],
         "responses": {
@@ -6640,6 +6744,19 @@
               ],
               "format": "int32",
               "minimum": 0
+            }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
             }
           }
         ],
@@ -7103,6 +7220,19 @@
               "format": "int32",
               "minimum": 0
             }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
           }
         ],
         "responses": {
@@ -7328,6 +7458,19 @@
               ],
               "format": "int32",
               "minimum": 0
+            }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
             }
           }
         ],
@@ -8397,6 +8540,19 @@
               "format": "int32",
               "minimum": 0
             }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
           }
         ],
         "responses": {
@@ -8616,6 +8772,19 @@
               ],
               "format": "int32",
               "minimum": 0
+            }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
             }
           }
         ],
@@ -8964,6 +9133,19 @@
               "format": "int32",
               "minimum": 0
             }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
           }
         ],
         "responses": {
@@ -9237,6 +9419,19 @@
               ],
               "format": "int32",
               "minimum": 0
+            }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
             }
           }
         ],
@@ -10381,6 +10576,19 @@
               "format": "int32",
               "minimum": 0
             }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
           }
         ],
         "responses": {
@@ -10599,6 +10807,19 @@
               ],
               "format": "int32",
               "minimum": 0
+            }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
             }
           }
         ],
@@ -10874,6 +11095,19 @@
               ],
               "format": "int32",
               "minimum": 0
+            }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
             }
           }
         ],
@@ -11255,6 +11489,19 @@
               ],
               "format": "int32",
               "minimum": 0
+            }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
             }
           }
         ],
@@ -12584,6 +12831,19 @@
               ],
               "format": "uuid"
             }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
           }
         ],
         "responses": {
@@ -12849,6 +13109,19 @@
                 "null"
               ],
               "format": "uuid"
+            }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
             }
           }
         ],
@@ -13233,19 +13506,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-06-10T21:12:58.090807Z",
+              "created_at": "2026-06-11T16:22:10.538369Z",
               "first_discovery_id": null,
-              "id": "e5cbed6c-3953-4368-b63b-fab94baf5afe",
+              "id": "4ede9b31-71d9-49fc-ab4a-276ef7127230",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-10T21:12:58.090807Z",
+              "last_seen_at": "2026-06-11T16:22:10.538369Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-10T21:12:58.090807Z",
-              "valid_from": "2026-06-10T21:12:58.090807Z",
+              "updated_at": "2026-06-11T16:22:10.538369Z",
+              "valid_from": "2026-06-11T16:22:10.538369Z",
               "valid_to": null
             }
           },
@@ -14231,19 +14504,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-06-10T21:12:58.069986Z",
+                      "created_at": "2026-06-11T16:22:10.514988Z",
                       "first_discovery_id": null,
-                      "id": "80c78bca-dea1-4c53-bc0e-2503e52fdaa5",
+                      "id": "d0774cfa-857c-423f-b68a-87463e6f9954",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-06-10T21:12:58.069986Z",
+                      "last_seen_at": "2026-06-11T16:22:10.514988Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-06-10T21:12:58.069986Z",
-                      "valid_from": "2026-06-10T21:12:58.069986Z",
+                      "updated_at": "2026-06-11T16:22:10.514988Z",
+                      "valid_from": "2026-06-11T16:22:10.514988Z",
                       "valid_to": null
                     }
                   ],
@@ -14257,7 +14530,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Appwrite",
+                  "service_definition": "Frigate",
                   "source": {
                     "type": "Manual"
                   },
@@ -15188,19 +15461,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-06-10T21:12:58.084474Z",
+                  "created_at": "2026-06-11T16:22:10.531741Z",
                   "first_discovery_id": null,
-                  "id": "8fae1073-3f0d-4686-bc9c-e31868ffe0df",
+                  "id": "7c2b36cb-2157-4256-adf9-1c0bb4296600",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-10T21:12:58.084474Z",
+                  "last_seen_at": "2026-06-11T16:22:10.531741Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-10T21:12:58.084474Z",
-                  "valid_from": "2026-06-10T21:12:58.084474Z",
+                  "updated_at": "2026-06-11T16:22:10.531741Z",
+                  "valid_from": "2026-06-11T16:22:10.531741Z",
                   "valid_to": null
                 }
               ],
@@ -15214,7 +15487,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Appwrite",
+              "service_definition": "Frigate",
               "source": {
                 "type": "Manual"
               },
@@ -16815,19 +17088,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-06-10T21:12:58.070496Z",
+          "created_at": "2026-06-11T16:22:10.515471Z",
           "first_discovery_id": null,
-          "id": "64839e6b-7ee0-4059-908f-8476e8330088",
+          "id": "3381b56e-1022-46ea-b781-cfa1c91a9b7a",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-06-10T21:12:58.070496Z",
+          "last_seen_at": "2026-06-11T16:22:10.515471Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-06-10T21:12:58.070496Z",
-          "valid_from": "2026-06-10T21:12:58.070496Z",
+          "updated_at": "2026-06-11T16:22:10.515471Z",
+          "valid_from": "2026-06-11T16:22:10.515471Z",
           "valid_to": null
         }
       },
@@ -17417,7 +17690,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Appwrite",
+              "service_definition": "Frigate",
               "tags": [],
               "virtualization": null
             }
@@ -19320,6 +19593,17 @@
           }
         }
       },
+      "EmailSettings": {
+        "type": "object",
+        "required": [
+          "discovery_digest"
+        ],
+        "properties": {
+          "discovery_digest": {
+            "type": "boolean"
+          }
+        }
+      },
       "EnterpriseInquiryRequest": {
         "type": "object",
         "description": "Enterprise plan inquiry request",
@@ -20024,19 +20308,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-06-10T21:12:58.069424Z",
+                  "created_at": "2026-06-11T16:22:10.514430Z",
                   "first_discovery_id": null,
-                  "id": "d49dc888-4ad5-490d-ad94-f4856f486b30",
+                  "id": "44397780-9a5c-4ad9-8361-a7f4afcea325",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-10T21:12:58.069424Z",
+                  "last_seen_at": "2026-06-11T16:22:10.514430Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-10T21:12:58.069424Z",
-                  "valid_from": "2026-06-10T21:12:58.069424Z",
+                  "updated_at": "2026-06-11T16:22:10.514430Z",
+                  "valid_from": "2026-06-11T16:22:10.514430Z",
                   "valid_to": null
                 }
               ],
@@ -20050,7 +20334,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Appwrite",
+              "service_definition": "Frigate",
               "source": {
                 "type": "Manual"
               },
@@ -22439,19 +22723,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-06-10T21:12:58.057213Z",
+                        "created_at": "2026-06-11T16:22:10.502430Z",
                         "first_discovery_id": null,
-                        "id": "c8dac236-2e84-4985-842d-7e8a6605edcc",
+                        "id": "ee439d4d-6cba-46ca-bd55-d8e8f437ac6b",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-06-10T21:12:58.057213Z",
+                        "last_seen_at": "2026-06-11T16:22:10.502430Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-06-10T21:12:58.057213Z",
-                        "valid_from": "2026-06-10T21:12:58.057213Z",
+                        "updated_at": "2026-06-11T16:22:10.502430Z",
+                        "valid_from": "2026-06-11T16:22:10.502430Z",
                         "valid_to": null
                       }
                     ],
@@ -22465,7 +22749,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Appwrite",
+                    "service_definition": "Frigate",
                     "source": {
                       "type": "Manual"
                     },
@@ -22586,19 +22870,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-06-10T21:12:58.082947Z",
+                    "created_at": "2026-06-11T16:22:10.530322Z",
                     "first_discovery_id": null,
-                    "id": "febe227e-b90e-4ecd-9cf0-b2bde48e01ad",
+                    "id": "46d26b43-3f15-4a10-9be5-e9791acbaee4",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-06-10T21:12:58.082947Z",
+                    "last_seen_at": "2026-06-11T16:22:10.530322Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-06-10T21:12:58.082947Z",
-                    "valid_from": "2026-06-10T21:12:58.082947Z",
+                    "updated_at": "2026-06-11T16:22:10.530322Z",
+                    "valid_from": "2026-06-11T16:22:10.530322Z",
                     "valid_to": null
                   }
                 ],
@@ -22612,7 +22896,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Appwrite",
+                "service_definition": "Frigate",
                 "source": {
                   "type": "Manual"
                 },
@@ -24169,19 +24453,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-06-10T21:12:58.070393Z",
+              "created_at": "2026-06-11T16:22:10.515366Z",
               "first_discovery_id": null,
-              "id": "eeb90a0b-33da-4956-b56c-10e28ead5a35",
+              "id": "b85b9eca-5dab-4e5a-8361-fafeb98014ce",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-10T21:12:58.070393Z",
+              "last_seen_at": "2026-06-11T16:22:10.515366Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-10T21:12:58.070393Z",
-              "valid_from": "2026-06-10T21:12:58.070393Z",
+              "updated_at": "2026-06-11T16:22:10.515366Z",
+              "valid_from": "2026-06-11T16:22:10.515366Z",
               "valid_to": null
             }
           ],
@@ -24195,7 +24479,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Appwrite",
+          "service_definition": "Frigate",
           "source": {
             "type": "Manual"
           },
@@ -25672,6 +25956,10 @@
         "properties": {
           "email": {
             "type": "string"
+          },
+          "email_settings": {
+            "$ref": "#/components/schemas/EmailSettings",
+            "description": "Per-user email preferences"
           },
           "email_verified": {
             "type": "boolean",

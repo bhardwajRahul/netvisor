@@ -96,20 +96,32 @@
 			: false
 	);
 
+	// Snapshot selection drives as-of-T entity reads. When a snapshot is
+	// selected, entity queries read SCD2 state as of its `taken_at` instead of
+	// live, so the inspector shows the host/service/etc. as they were captured.
+	const snapshotsQuery = useSnapshotsQuery(() => $selectedNetworkId ?? undefined);
+	let snapshotsData = $derived(snapshotsQuery.data ?? []);
+	let selectedSnapshot = $derived(
+		$selectedSnapshotId ? snapshotsData.find((s) => s.id === $selectedSnapshotId) : null
+	);
+	// ISO timestamp threaded into the entity queries below; undefined on live view.
+	let entityAt = $derived(selectedSnapshot ? selectedSnapshot.taken_at : undefined);
+
 	// Queries - TanStack Query handles deduplication
-	const tagsQuery = useTagsQuery();
-	const subnetsQuery = useSubnetsQuery();
-	const dependenciesQuery = useDependenciesQuery();
+	const tagsQuery = useTagsQuery(() => entityAt);
+	const subnetsQuery = useSubnetsQuery(() => entityAt);
+	const dependenciesQuery = useDependenciesQuery(() => entityAt);
 	useUsersQuery({ enabled: () => canViewUsers });
 	const topologiesQuery = useTopologiesQuery();
 	const networksQuery = useNetworksQuery();
 	const organizationQuery = useOrganizationQuery();
 	const activeSessionsQuery = useActiveSessionsQuery();
 	const configQuery = useConfigQuery();
-	// Live entity arrays for the inspector / resolvers / display layer.
+	// Entity arrays for the inspector / resolvers / display layer.
 	// Hosts query populates the IP addresses / ports / services / interfaces
-	// caches as a side-effect; we expose them via their dedicated cache queries.
-	const hostsQuery = useHostsQuery({ limit: 0 });
+	// caches as a side-effect (as-of when `at` is set); we expose them via
+	// their dedicated cache queries.
+	const hostsQuery = useHostsQuery(() => ({ limit: 0, at: entityAt }));
 	const ipAddressesQuery = useIPAddressesQuery();
 	const portsQuery = usePortsQuery();
 	const interfacesQuery = useInterfacesQuery();
@@ -165,18 +177,9 @@
 	// Snapshot ids are UUIDv4, never match this string.
 	const LIVE_VIEW_SENTINEL = '__live__';
 
-	// Snapshots query for the currently selected network
-	const snapshotsQuery = useSnapshotsQuery(() => $selectedNetworkId ?? undefined);
-	let snapshotsData = $derived(snapshotsQuery.data ?? []);
-
 	// Mutations
 	const takeSnapshotMutation = useTakeSnapshotMutation();
 	const deleteSnapshotMutation = useDeleteSnapshotMutation();
-
-	// Currently selected snapshot record, or null when on live view
-	let selectedSnapshot = $derived(
-		$selectedSnapshotId ? snapshotsData.find((s) => s.id === $selectedSnapshotId) : null
-	);
 
 	// Selected topology row: live row when no snapshot, else the row whose
 	// snapshot_id matches the selected snapshot's id. Filter to the active
@@ -204,10 +207,10 @@
 		return network?.name ?? '';
 	});
 
-	// Enriched topology: graph row + live entity arrays. Snapshot views still
-	// use live entity data — the snapshot's nodes/edges already encode the
-	// captured visual state, and inspector entity details show the current
-	// live row (matches the snapshot when nothing has changed since).
+	// Enriched topology: graph row + entity arrays. On a snapshot view the
+	// entity queries above are pinned to the snapshot's `taken_at` (as-of-T),
+	// so the inspector shows entity state as captured; on live view they read
+	// current state.
 	let currentTopology = $derived.by(() => {
 		if (!currentTopologyRow) return null;
 		return enrichTopology(

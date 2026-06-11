@@ -18,19 +18,22 @@ export type SetTagsRequest = components['schemas']['SetTagsRequest'];
 /**
  * Query hook for fetching all tags
  */
-export function useTagsQuery() {
-	return createQuery(() => ({
-		queryKey: queryKeys.tags.all,
-		queryFn: async () => {
-			const { data } = await apiClient.GET('/api/v1/tags', {
-				params: { query: { limit: 0 } }
-			});
-			if (!data?.success || !data.data) {
-				throw new Error(data?.error || 'Failed to fetch tags');
+export function useTagsQuery(atGetter?: () => string | undefined) {
+	return createQuery(() => {
+		const at = atGetter?.();
+		return {
+			queryKey: at ? [...queryKeys.tags.all, 'asOf', at] : queryKeys.tags.all,
+			queryFn: async () => {
+				const { data } = await apiClient.GET('/api/v1/tags', {
+					params: { query: { limit: 0, at } }
+				});
+				if (!data?.success || !data.data) {
+					throw new Error(data?.error || 'Failed to fetch tags');
+				}
+				return data.data;
 			}
-			return data.data;
-		}
-	}));
+		};
+	});
 }
 
 /**
