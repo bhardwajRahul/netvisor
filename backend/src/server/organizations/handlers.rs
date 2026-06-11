@@ -323,7 +323,7 @@ pub async fn delete_organization(
     let entity: AuthenticatedEntity = auth.into_entity();
 
     // 1. Delete all child entities (reuse reset logic)
-    reset_organization_data(&state, &org.id, entity).await?;
+    reset_organization_data(&state, &org.id, entity.clone()).await?;
 
     // 2. Delete ALL users (including owner)
     let user_filter = StorableFilter::<User>::new_from_org_id(&org.id);
@@ -349,12 +349,14 @@ pub async fn delete_organization(
             .await?;
     }
 
-    // 3. Delete the organization itself
+    // 3. Delete the organization itself via the CRUD service so the
+    //    `EntityOperation::Deleted` event fires; the email subscriber for
+    //    `Entity::Organization { Deleted }` dispatches the confirmation
+    //    email to the initiating user (carried on `event.authentication`).
     state
         .services
         .organization_service
-        .storage()
-        .delete(&org.id)
+        .delete(&org.id, entity)
         .await
         .map_err(|e| ApiError::internal_error(&format!("Failed to delete organization: {}", e)))?;
 

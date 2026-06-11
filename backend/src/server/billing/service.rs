@@ -946,15 +946,24 @@ impl BillingService {
         let prior_was_free = prior_plan.is_free();
         let prior_was_trialing = prior_status_str.as_deref() == Some("trialing");
 
-        // Pending cancellation — user keeps current plan until period ends
+        // Pending cancellation — user keeps current plan until period ends.
+        // For `CancellationInitiated` the only meaningful timestamp is
+        // `cancel_at` (the scheduled future cancellation date). `canceled_at`
+        // is the time of the cancellation REQUEST (i.e. now) and `ended_at`
+        // is only set after the subscription has actually ended, so neither
+        // is appropriate here. If `cancel_at` is missing the webhook isn't
+        // describing a scheduled cancellation we should email about.
         if sub.cancel_at_period_end {
+            let Some(period_end_ts) = sub.cancel_at else {
+                tracing::debug!(
+                    organization_id = %organization.id,
+                    "Skipping CancellationInitiated: subscription has no `cancel_at` timestamp",
+                );
+                return Ok(());
+            };
             if let Some(owner) = owners.first() {
                 let authentication: AuthenticatedEntity = owner.clone().into();
-                let planned_period_end = sub
-                    .ended_at
-                    .or(sub.canceled_at)
-                    .or(sub.cancel_at)
-                    .and_then(|t| chrono::DateTime::<Utc>::from_timestamp(t, 0))
+                let planned_period_end = chrono::DateTime::<Utc>::from_timestamp(period_end_ts, 0)
                     .unwrap_or_else(Utc::now);
                 self.event_bus
                     .publish(Event::new(
