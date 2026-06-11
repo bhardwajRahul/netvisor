@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -6,7 +6,7 @@ use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 use crate::server::auth::middleware::auth::AuthenticatedEntity;
-use crate::server::daemons::r#impl::api::DiscoveryUpdatePayload;
+use crate::server::daemons::r#impl::api::{DiscoveryUpdatePayload, ScannedEntityIds};
 use crate::server::{
     bindings::{r#impl::base::Binding, service::BindingService},
     digest::payload::{
@@ -15,7 +15,6 @@ use crate::server::{
         HostDeltas, HostSummary, InterfaceSummary, IpAddressSummary, PortSummary, ServiceSummary,
         SubnetSummary, VlanSummary,
     },
-    discovery::r#impl::types::DiscoveryType,
     hosts::{r#impl::base::Host, service::HostService},
     interfaces::{r#impl::base::Interface, service::InterfaceService},
     ip_addresses::{r#impl::base::IPAddress, service::IPAddressService},
@@ -84,7 +83,11 @@ impl DiscoveryDigestService {
     /// `DiscoveryDigestOperation::Computed` event. Skips publishing entirely
     /// when timestamps are missing — those would yield meaningless filter
     /// windows.
-    pub async fn compute_and_publish(&self, payload: &DiscoveryUpdatePayload) -> Result<()> {
+    pub async fn compute_and_publish(
+        &self,
+        payload: &DiscoveryUpdatePayload,
+        scanned: &ScannedEntityIds,
+    ) -> Result<()> {
         let (Some(t_start), Some(t_end)) = (payload.started_at, payload.finished_at) else {
             tracing::warn!(
                 session_id = %payload.session_id,
@@ -107,6 +110,7 @@ impl DiscoveryDigestService {
         let digest = self
             .compute(
                 payload,
+                scanned,
                 t_start,
                 t_end,
                 &network.base.name,
@@ -133,6 +137,7 @@ impl DiscoveryDigestService {
     async fn compute(
         &self,
         payload: &DiscoveryUpdatePayload,
+        scanned: &ScannedEntityIds,
         t_start: DateTime<Utc>,
         t_end: DateTime<Utc>,
         network_name: &str,
@@ -140,23 +145,20 @@ impl DiscoveryDigestService {
     ) -> Result<DiscoveryDigestPayload> {
         let network_id = payload.network_id;
 
-        // Subnets scanned: hydrate from session's discovery type when it
-        // carries an explicit subnet list. Host-scoped variants
-        // (SelfReport / Docker) leave the list empty — those scans don't
-        // sweep a subnet.
-        let subnet_ids = match &payload.discovery_type {
-            DiscoveryType::Network { subnet_ids, .. }
-            | DiscoveryType::Unified { subnet_ids, .. } => subnet_ids.clone().unwrap_or_default(),
-            DiscoveryType::SelfReport { .. } | DiscoveryType::Docker { .. } => Vec::new(),
-        };
-        let subnets_scanned = if subnet_ids.is_empty() {
+        // Subnets scanned: trust the daemon's reported set. Empty for
+        // host-scoped discoveries (SelfReport / Docker) is the correct
+        // answer — those don't sweep a subnet.
+        let subnets_scanned: Vec<SubnetSummary> = if scanned.subnet_ids.is_empty() {
             Vec::new()
         } else {
-            let subnets = self
-                .subnet_service
-                .get_all(StorableFilter::<Subnet>::new_from_entity_ids(&subnet_ids))
-                .await?;
-            subnets.iter().map(subnet_summary).collect()
+            self.subnet_service
+                .get_all(StorableFilter::<Subnet>::new_from_entity_ids(
+                    &scanned.subnet_ids,
+                ))
+                .await?
+                .iter()
+                .map(subnet_summary)
+                .collect()
         };
 
         // Three buckets of hosts the digest covers.
@@ -193,7 +195,8 @@ impl DiscoveryDigestService {
         let scanned_deltas: HashMap<Uuid, HostDeltas> = if scanned_ids.is_empty() {
             HashMap::new()
         } else {
-            self.compute_deltas(&scanned_ids, t_start, t_end).await?
+            self.compute_deltas(&scanned_ids, scanned, t_start, t_end)
+                .await?
         };
         let changed_records: Vec<&Host> = hosts_scanned_records
             .iter()
@@ -272,104 +275,31 @@ impl DiscoveryDigestService {
 
     /// Compute per-host added/removed children for the scanned host set.
     /// Result is keyed by host_id; absent keys had zero deltas.
+    ///
+    /// "Removed" is detected via set membership against `ScannedEntityIds`
+    /// — a child is removed iff it's currently live on a scanned host but
+    /// its id is NOT in the daemon's reported scan set. This sidesteps the
+    /// foundation-worker reconciliation bug where child `last_seen_at` is
+    /// not refreshed on natural-key match (so timestamp-based detection
+    /// would mark every pre-existing child as removed).
     async fn compute_deltas(
         &self,
         host_ids: &[Uuid],
+        scanned: &ScannedEntityIds,
         t_start: DateTime<Utc>,
         t_end: DateTime<Utc>,
     ) -> Result<HashMap<Uuid, HostDeltas>> {
-        let ports_added: Vec<Port> = self
+        // All live children on the scanned hosts — one query per kind.
+        let all_ports: Vec<Port> = self
             .port_service
             .storage()
             .get_all(
                 StorableFilter::<Port>::new()
                     .live()
-                    .uuids_column("host_id", host_ids)
-                    .created_between(t_start, t_end),
+                    .uuids_column("host_id", host_ids),
             )
             .await?;
-        let ports_removed: Vec<Port> = self
-            .port_service
-            .storage()
-            .get_all(
-                StorableFilter::<Port>::new()
-                    .live()
-                    .uuids_column("host_id", host_ids)
-                    .created_before(t_start)
-                    .last_seen_before(t_start),
-            )
-            .await?;
-
-        let services_added: Vec<NetworkServiceEntity> = self
-            .service_service
-            .storage()
-            .get_all(
-                StorableFilter::<NetworkServiceEntity>::new()
-                    .live()
-                    .uuids_column("host_id", host_ids)
-                    .created_between(t_start, t_end),
-            )
-            .await?;
-        let services_removed: Vec<NetworkServiceEntity> = self
-            .service_service
-            .storage()
-            .get_all(
-                StorableFilter::<NetworkServiceEntity>::new()
-                    .live()
-                    .uuids_column("host_id", host_ids)
-                    .created_before(t_start)
-                    .last_seen_before(t_start),
-            )
-            .await?;
-
-        let ips_added: Vec<IPAddress> = self
-            .ip_address_service
-            .storage()
-            .get_all(
-                StorableFilter::<IPAddress>::new()
-                    .live()
-                    .uuids_column("host_id", host_ids)
-                    .created_between(t_start, t_end),
-            )
-            .await?;
-        let ips_removed: Vec<IPAddress> = self
-            .ip_address_service
-            .storage()
-            .get_all(
-                StorableFilter::<IPAddress>::new()
-                    .live()
-                    .uuids_column("host_id", host_ids)
-                    .created_before(t_start)
-                    .last_seen_before(t_start),
-            )
-            .await?;
-
-        let interfaces_added: Vec<Interface> = self
-            .interface_service
-            .storage()
-            .get_all(
-                StorableFilter::<Interface>::new()
-                    .live()
-                    .uuids_column("host_id", host_ids)
-                    .created_between(t_start, t_end),
-            )
-            .await?;
-        let interfaces_removed: Vec<Interface> = self
-            .interface_service
-            .storage()
-            .get_all(
-                StorableFilter::<Interface>::new()
-                    .live()
-                    .uuids_column("host_id", host_ids)
-                    .created_before(t_start)
-                    .last_seen_before(t_start),
-            )
-            .await?;
-
-        // Bindings have no host_id FK — they hang off services. Resolve via
-        // the services on the scanned hosts (live), then filter bindings by
-        // service_id IN (...).
-        let scanned_services: Vec<NetworkServiceEntity> = self
+        let all_services: Vec<NetworkServiceEntity> = self
             .service_service
             .storage()
             .get_all(
@@ -378,37 +308,75 @@ impl DiscoveryDigestService {
                     .uuids_column("host_id", host_ids),
             )
             .await?;
-        let service_to_host: HashMap<Uuid, Uuid> = scanned_services
+        let all_ips: Vec<IPAddress> = self
+            .ip_address_service
+            .storage()
+            .get_all(
+                StorableFilter::<IPAddress>::new()
+                    .live()
+                    .uuids_column("host_id", host_ids),
+            )
+            .await?;
+        let all_interfaces: Vec<Interface> = self
+            .interface_service
+            .storage()
+            .get_all(
+                StorableFilter::<Interface>::new()
+                    .live()
+                    .uuids_column("host_id", host_ids),
+            )
+            .await?;
+
+        // Bindings hang off services (no host_id FK). Resolve host via the
+        // live services already loaded above — capture before moving the
+        // service vec into the partition.
+        let service_to_host: HashMap<Uuid, Uuid> = all_services
             .iter()
             .map(|s| (s.id, s.base.host_id))
             .collect();
-        let scanned_service_ids: Vec<Uuid> = scanned_services.iter().map(|s| s.id).collect();
+        let scanned_service_uuids: Vec<Uuid> = all_services.iter().map(|s| s.id).collect();
 
-        let (bindings_added, bindings_removed) = if scanned_service_ids.is_empty() {
+        // Partition each set into "added in this window" vs "removed from a
+        // scanned host" (live, present on scanned host, not in scan).
+        let scanned_port_ids: HashSet<Uuid> = scanned.port_ids.iter().copied().collect();
+        let scanned_service_ids: HashSet<Uuid> = scanned.service_ids.iter().copied().collect();
+        let scanned_ip_ids: HashSet<Uuid> = scanned.ip_address_ids.iter().copied().collect();
+        let scanned_interface_ids: HashSet<Uuid> = scanned.interface_ids.iter().copied().collect();
+        let scanned_binding_ids: HashSet<Uuid> = scanned.binding_ids.iter().copied().collect();
+
+        let (ports_added, ports_removed) =
+            partition_by_scan(all_ports, &scanned_port_ids, t_start, t_end, |p| {
+                p.created_at
+            });
+        let (services_added, services_removed) =
+            partition_by_scan(all_services, &scanned_service_ids, t_start, t_end, |s| {
+                s.created_at
+            });
+        let (ips_added, ips_removed) =
+            partition_by_scan(all_ips, &scanned_ip_ids, t_start, t_end, |ip| ip.created_at);
+        let (interfaces_added, interfaces_removed) = partition_by_scan(
+            all_interfaces,
+            &scanned_interface_ids,
+            t_start,
+            t_end,
+            |i| i.created_at,
+        );
+
+        let (bindings_added, bindings_removed) = if scanned_service_uuids.is_empty() {
             (Vec::new(), Vec::new())
         } else {
-            let added = self
+            let all_bindings: Vec<Binding> = self
                 .binding_service
                 .storage()
                 .get_all(
                     StorableFilter::<Binding>::new()
                         .live()
-                        .uuids_column("service_id", &scanned_service_ids)
-                        .created_between(t_start, t_end),
+                        .uuids_column("service_id", &scanned_service_uuids),
                 )
                 .await?;
-            let removed = self
-                .binding_service
-                .storage()
-                .get_all(
-                    StorableFilter::<Binding>::new()
-                        .live()
-                        .uuids_column("service_id", &scanned_service_ids)
-                        .created_before(t_start)
-                        .last_seen_before(t_start),
-                )
-                .await?;
-            (added, removed)
+            partition_by_scan(all_bindings, &scanned_binding_ids, t_start, t_end, |b| {
+                b.created_at
+            })
         };
 
         let mut by_host: HashMap<Uuid, HostDeltas> = HashMap::new();
@@ -603,6 +571,64 @@ impl EventBusService<Host> for DiscoveryDigestService {
     }
 }
 
+/// Partition a vec of entities into `(added, removed)` for digest deltas:
+/// - **added**: created during `[start, end]`. Authoritative signal.
+/// - **removed**: id NOT in the scan's reported set. Sidesteps the
+///   foundation-worker reconciliation bug where existing children don't
+///   get `last_seen_at` refreshed on natural-key match.
+fn partition_by_scan<T>(
+    items: Vec<T>,
+    scanned_ids: &HashSet<Uuid>,
+    start: DateTime<Utc>,
+    end: DateTime<Utc>,
+    created_at: impl Fn(&T) -> DateTime<Utc>,
+) -> (Vec<T>, Vec<T>)
+where
+    T: Identified,
+{
+    let mut added = Vec::new();
+    let mut removed = Vec::new();
+    for item in items {
+        let ts = created_at(&item);
+        if ts >= start && ts <= end {
+            added.push(item);
+        } else if !scanned_ids.contains(&item.id()) {
+            removed.push(item);
+        }
+    }
+    (added, removed)
+}
+
+trait Identified {
+    fn id(&self) -> Uuid;
+}
+
+impl Identified for Port {
+    fn id(&self) -> Uuid {
+        self.id
+    }
+}
+impl Identified for NetworkServiceEntity {
+    fn id(&self) -> Uuid {
+        self.id
+    }
+}
+impl Identified for IPAddress {
+    fn id(&self) -> Uuid {
+        self.id
+    }
+}
+impl Identified for Interface {
+    fn id(&self) -> Uuid {
+        self.id
+    }
+}
+impl Identified for Binding {
+    fn id(&self) -> Uuid {
+        self.id
+    }
+}
+
 #[derive(Default)]
 struct HostChildren {
     services: Vec<ServiceSummary>,
@@ -643,7 +669,9 @@ fn port_summary(p: &Port) -> PortSummary {
     PortSummary {
         id: p.id,
         host_id: p.base.host_id,
-        label: p.to_string(),
+        // Port's Display impl is `"{port_type} (ID: {id})"`. Drop the ID
+        // suffix — recipients only want the human-readable port type.
+        label: p.base.port_type.to_string(),
     }
 }
 
@@ -664,10 +692,18 @@ fn ip_summary(ip: &IPAddress) -> IpAddressSummary {
 }
 
 fn interface_summary(i: &Interface) -> InterfaceSummary {
+    // Interface's Display includes its UUID. For the digest we want only the
+    // human-readable bits: the description if discovery provided one, else
+    // the ifIndex.
+    let label = if i.base.if_descr.is_empty() {
+        format!("ifIndex {}", i.base.if_index)
+    } else {
+        i.base.if_descr.clone()
+    };
     InterfaceSummary {
         id: i.id,
         host_id: i.base.host_id,
-        label: i.to_string(),
+        label,
     }
 }
 
