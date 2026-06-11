@@ -353,10 +353,7 @@
 							{/if}
 
 							{#if !isFree}
-								<button
-									onclick={handleManageSubscription}
-									class="{org.plan_status === 'past_due' ? 'btn-primary' : 'btn-secondary'} w-full"
-								>
+								<button onclick={handleManageSubscription} class="btn-secondary w-full">
 									{settings_billing_manageSubscription()}
 								</button>
 							{/if}

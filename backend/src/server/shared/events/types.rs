@@ -165,6 +165,11 @@ pub enum BillingOperation {
     },
     PaymentActionRequired {
         invoice_id: String,
+        /// Stripe-hosted authorization URL (3DS/SCA). Set in the cloud
+        /// invoice payload; the email CTA links here directly so the user
+        /// completes authorization on Stripe's page instead of navigating
+        /// our settings modal.
+        hosted_invoice_url: Option<String>,
     },
     PaymentRecovered {
         amount_cents: i64,

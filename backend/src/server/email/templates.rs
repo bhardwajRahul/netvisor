@@ -552,7 +552,7 @@ pub const PAYMENT_ACTION_REQUIRED_BODY: &str = r#"                    <!-- Main 
                     <!-- CTA Button -->
                     <tr>
                         <td align="center" style="padding: 0 40px 30px 40px;">
-                            <a href="{base_url}/?modal=settings&tab=billing" style="display: inline-block; padding: 14px 40px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 500;">Complete Verification</a>
+                            <a href="{cta_href}" style="display: inline-block; padding: 14px 40px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 500;">Authorize Payment</a>
                         </td>
                     </tr>
 "#;
