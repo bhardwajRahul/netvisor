@@ -43,17 +43,15 @@
 		settings_billing_upgradePlan,
 		settings_billing_upgradePlanDescription,
 		settings_billing_changePlan,
-		settings_billing_changePlanDescription,
 		settings_billing_resume_button,
 		settings_billing_resume_confirmBody,
 		settings_billing_extendTrial_link,
-		settings_billing_extendTrial_confirmBody,
-		common_viewPlans
+		settings_billing_extendTrial_confirmBody
 	} from '$lib/paraglide/messages';
 	import InlineWarning from '$lib/shared/components/feedback/InlineWarning.svelte';
 	import InlineInfo from '$lib/shared/components/feedback/InlineInfo.svelte';
 	import InlineDanger from '$lib/shared/components/feedback/InlineDanger.svelte';
-	import TrialValueRecapCard from './TrialValueRecapCard.svelte';
+	import { startSetupPayment } from '$lib/shared/billing/setup-payment';
 
 	let {
 		isOpen = false,
@@ -195,23 +193,13 @@
 		}
 	}
 
-	async function handleSetupPayment() {
-		trackEvent('trial_card_cta_clicked', {
-			trial_days_left: trialDaysLeft,
-			has_payment_method: hasPaymentMethod
+	function handleSetupPayment() {
+		return startSetupPayment({
+			mutation: setupPaymentMutation,
+			org,
+			source: 'trial_card',
+			trialDaysLeft
 		});
-		storeEventForAfterRedirect('payment_method_setup_initiated', {
-			plan_status: org?.plan_status,
-			trial_days_left: trialDaysLeft
-		});
-		try {
-			const url = await setupPaymentMutation.mutateAsync();
-			if (url) {
-				window.location.href = url;
-			}
-		} catch {
-			// Error handling is done by the mutation's onError
-		}
 	}
 </script>
 
@@ -221,14 +209,7 @@
 			<div class="space-y-6">
 				<!-- Trial Countdown (shown above current plan when trialing without payment) -->
 				{#if org.plan_status === 'trialing' && trialDaysLeft !== null && !hasPaymentMethod}
-					<InfoCard
-						dismissableKey="trial_card_dismissed"
-						onDismiss={() =>
-							trackEvent('trial_card_dismissed', {
-								trial_days_left: trialDaysLeft,
-								has_payment_method: hasPaymentMethod
-							})}
-					>
+					<InfoCard>
 						<div class="flex items-center justify-between">
 							<div class="flex items-center gap-3">
 								<AlertTriangle class="h-5 w-5 text-amber-500" />
@@ -265,10 +246,6 @@
 							</div>
 						{/if}
 					</InfoCard>
-				{/if}
-
-				{#if org.plan_status === 'trialing'}
-					<TrialValueRecapCard {org} onCloseSettings={onClose} />
 				{/if}
 
 				<!-- Current Plan -->
@@ -429,6 +406,19 @@
 								<InlineInfo title={settings_billing_paused_status()} />
 							{/if}
 
+							<button
+								onclick={() =>
+									triggerUpgrade({
+										source: 'settings_billing',
+										surface: 'billing_tab',
+										reopenSettings: true,
+										beforeModal: () => onClose()
+									})}
+								class="btn-primary w-full"
+							>
+								{isFree ? settings_billing_upgradePlan() : settings_billing_changePlan()}
+							</button>
+
 							{#if !isFree}
 								{#if org.plan_status === 'paused'}
 									<button
@@ -456,34 +446,6 @@
 							{/if}
 						</div>
 					</svelte:fragment>
-				</InfoCard>
-
-				<!-- View Plans -->
-				<InfoCard>
-					<div class="flex items-center justify-between">
-						<div>
-							<p class="text-primary text-sm font-medium">
-								{isFree ? settings_billing_upgradePlan() : settings_billing_changePlan()}
-							</p>
-							<p class="text-secondary mt-1 text-xs">
-								{isFree
-									? settings_billing_upgradePlanDescription()
-									: settings_billing_changePlanDescription()}
-							</p>
-						</div>
-						<button
-							onclick={() =>
-								triggerUpgrade({
-									source: 'settings_billing',
-									surface: 'billing_tab',
-									reopenSettings: true,
-									beforeModal: () => onClose()
-								})}
-							class="btn-primary whitespace-nowrap text-sm"
-						>
-							{common_viewPlans()}
-						</button>
-					</div>
 				</InfoCard>
 
 				<!-- Additional Info -->

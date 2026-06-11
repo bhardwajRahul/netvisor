@@ -238,6 +238,9 @@
 			cleanUrl.searchParams.delete('billing_flow');
 			window.history.replaceState({}, '', cleanUrl.toString());
 
+			markPlanActivated();
+			pushSuccess(billing_paymentMethodAdded());
+
 			// Refresh org data to update has_payment_method
 			queryClient.invalidateQueries({ queryKey: queryKeys.organizations.current() });
 			pushSuccess(billing_paymentMethodAdded());
