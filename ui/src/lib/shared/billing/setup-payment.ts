@@ -7,7 +7,7 @@ type SetupPaymentMutation = ReturnType<typeof useSetupPaymentMethodMutation>;
 interface StartSetupPaymentArgs {
 	mutation: SetupPaymentMutation;
 	org: Organization | null | undefined;
-	source: 'trial_card' | 'trial_banner' | 'trial_modal';
+	source: 'trial_card' | 'trial_banner' | 'trial_modal' | 'sidebar_trial_pill';
 	trialDaysLeft: number | null;
 }
 
@@ -17,7 +17,8 @@ export async function startSetupPayment({
 	source,
 	trialDaysLeft
 }: StartSetupPaymentArgs): Promise<void> {
-	trackEvent(`${source}_cta_clicked`, {
+	trackEvent('add_payment_cta_clicked', {
+		source,
 		trial_days_left: trialDaysLeft,
 		has_payment_method: org?.has_payment_method ?? false
 	});

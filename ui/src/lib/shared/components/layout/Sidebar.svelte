@@ -10,6 +10,8 @@
 	import { entityUIConfig, TAB_LABELS } from '$lib/shared/entity-ui-config';
 	import type { EntityDiscriminants } from '$lib/api/entities';
 	import { triggerUpgrade } from '$lib/features/billing/trigger-upgrade';
+	import { useSetupPaymentMethodMutation } from '$lib/features/billing/queries';
+	import { startSetupPayment } from '$lib/shared/billing/setup-payment';
 	import type { IconComponent } from '$lib/shared/utils/types';
 	import {
 		Menu,
@@ -98,6 +100,7 @@
 
 	const organizationQuery = useOrganizationQuery();
 	let organization = $derived(organizationQuery.data);
+	const setupPaymentMutation = useSetupPaymentMethodMutation();
 
 	// Derived values from queries
 	let userPermissions = $derived(currentUser?.permissions);
@@ -769,12 +772,18 @@
 			{#if showTrialPill}
 				<li>
 					<button
-						class="{baseClasses} text-amber-400 hover:bg-amber-500/10"
+						class="{baseClasses} {inactiveButtonClass}"
 						style="height: 2rem; padding: 0.375rem 0.75rem;"
 						title={collapsed ? trialPillLabel : ''}
-						onclick={() => triggerUpgrade({ source: 'sidebar_trial_pill', surface: 'sidebar' })}
+						onclick={() =>
+							startSetupPayment({
+								mutation: setupPaymentMutation,
+								org: organization,
+								source: 'sidebar_trial_pill',
+								trialDaysLeft
+							})}
 					>
-						<Clock class="h-4 w-4 flex-shrink-0" />
+						<Clock class="h-4 w-4 flex-shrink-0 text-amber-400" />
 						{#if !collapsed}
 							<span class="ml-2.5 truncate">{trialPillLabel}</span>
 						{/if}

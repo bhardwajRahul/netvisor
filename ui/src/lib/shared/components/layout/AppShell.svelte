@@ -24,6 +24,7 @@
 		hasAnalyticsConsent
 	} from '$lib/shared/components/feedback/CookieConsent.svelte';
 	import {
+		billing_paymentMethodAdded,
 		billing_subscriptionActivated,
 		billing_subscriptionDelayed
 	} from '$lib/paraglide/messages';
@@ -236,6 +237,9 @@
 			const cleanUrl = new URL($page.url);
 			cleanUrl.searchParams.delete('billing_flow');
 			window.history.replaceState({}, '', cleanUrl.toString());
+
+			markPlanActivated();
+			pushSuccess(billing_paymentMethodAdded());
 
 			// Refresh org data to update has_payment_method
 			queryClient.invalidateQueries({ queryKey: queryKeys.organizations.current() });
