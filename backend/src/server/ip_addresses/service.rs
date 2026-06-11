@@ -86,9 +86,12 @@ impl IPAddressService {
         Ok(result)
     }
 
-    /// Get all IP addresses for a specific subnet
+    /// Get all IP addresses for a specific subnet.
+    /// SCD2: live rows only. The sole caller is discovery subnet↔VLAN
+    /// reconciliation, which must not let closed historical copies (from prior
+    /// snapshots) resurrect stale native-VLAN links.
     pub async fn get_for_subnet(&self, subnet_id: &Uuid) -> Result<Vec<IPAddress>> {
-        let filter = StorableFilter::<IPAddress>::new_from_subnet_id(subnet_id);
+        let filter = StorableFilter::<IPAddress>::new_from_subnet_id(subnet_id).live();
         self.storage.get_all(filter).await
     }
 
