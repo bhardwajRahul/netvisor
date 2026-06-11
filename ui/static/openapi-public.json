@@ -10587,19 +10587,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-06-10T21:12:58.090801Z",
+              "created_at": "2026-06-11T20:12:38.835088Z",
               "first_discovery_id": null,
-              "id": "a50bc8d2-991c-48b7-9038-093c11fa9e12",
+              "id": "38f99806-61cf-4752-a53a-48506acfb524",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-10T21:12:58.090801Z",
+              "last_seen_at": "2026-06-11T20:12:38.835088Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-10T21:12:58.090801Z",
-              "valid_from": "2026-06-10T21:12:58.090801Z",
+              "updated_at": "2026-06-11T20:12:38.835088Z",
+              "valid_from": "2026-06-11T20:12:38.835088Z",
               "valid_to": null
             }
           },
@@ -11585,19 +11585,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-06-10T21:12:58.070004Z",
+                      "created_at": "2026-06-11T20:12:38.823219Z",
                       "first_discovery_id": null,
-                      "id": "dfabccb2-f041-4b2d-8cd9-7cd65f4030b2",
+                      "id": "9f005cc2-d10b-4df5-b17e-fcca5d5a4bd1",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-06-10T21:12:58.070004Z",
+                      "last_seen_at": "2026-06-11T20:12:38.823219Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-06-10T21:12:58.070004Z",
-                      "valid_from": "2026-06-10T21:12:58.070004Z",
+                      "updated_at": "2026-06-11T20:12:38.823219Z",
+                      "valid_from": "2026-06-11T20:12:38.823219Z",
                       "valid_to": null
                     }
                   ],
@@ -11611,7 +11611,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Appwrite",
+                  "service_definition": "Beszel Agent",
                   "source": {
                     "type": "Manual"
                   },
@@ -12542,19 +12542,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-06-10T21:12:58.084215Z",
+                  "created_at": "2026-06-11T20:12:38.830945Z",
                   "first_discovery_id": null,
-                  "id": "d4bd898f-4ee3-4a70-8a71-dc64e02368bc",
+                  "id": "49bb4273-496e-4e1e-8459-e51e60e5e6e6",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-10T21:12:58.084215Z",
+                  "last_seen_at": "2026-06-11T20:12:38.830945Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-10T21:12:58.084215Z",
-                  "valid_from": "2026-06-10T21:12:58.084215Z",
+                  "updated_at": "2026-06-11T20:12:38.830945Z",
+                  "valid_from": "2026-06-11T20:12:38.830945Z",
                   "valid_to": null
                 }
               ],
@@ -12568,7 +12568,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Appwrite",
+              "service_definition": "Beszel Agent",
               "source": {
                 "type": "Manual"
               },
@@ -13083,6 +13083,105 @@
                 }
               }
             ]
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ApiMeta"
+          },
+          "success": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ApiResponse_TopologyData": {
+        "type": "object",
+        "required": [
+          "success",
+          "meta"
+        ],
+        "properties": {
+          "data": {
+            "type": "object",
+            "description": "Bundle of entities that feed `build_graph` and the topology export pipeline.\n\nLoaded by [`crate::server::topology::service::main::TopologyService::get_topology_data`]\nfor either the live view (`at = None`) or a point-in-time snapshot\n(`at = Some(taken_at)`). Replaces the entity-blob columns previously\npersisted on the topology row.",
+            "required": [
+              "hosts",
+              "ip_addresses",
+              "subnets",
+              "dependencies",
+              "ports",
+              "bindings",
+              "interfaces",
+              "services",
+              "vlans",
+              "tags"
+            ],
+            "properties": {
+              "bindings": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Binding"
+                }
+              },
+              "dependencies": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Dependency"
+                }
+              },
+              "hosts": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Host"
+                }
+              },
+              "interfaces": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Interface"
+                }
+              },
+              "ip_addresses": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/IPAddress"
+                }
+              },
+              "ports": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Port"
+                }
+              },
+              "services": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Service"
+                }
+              },
+              "subnets": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Subnet"
+                }
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Tag"
+                }
+              },
+              "vlans": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Vlan"
+                }
+              }
+            }
           },
           "error": {
             "type": [
@@ -14169,19 +14268,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-06-10T21:12:58.070512Z",
+          "created_at": "2026-06-11T20:12:38.823433Z",
           "first_discovery_id": null,
-          "id": "ba999e95-b9ac-4570-b9c8-c5d6dd39d522",
+          "id": "62490cb6-026c-4535-8636-54beb061e7c5",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-06-10T21:12:58.070512Z",
+          "last_seen_at": "2026-06-11T20:12:38.823433Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-06-10T21:12:58.070512Z",
-          "valid_from": "2026-06-10T21:12:58.070512Z",
+          "updated_at": "2026-06-11T20:12:38.823433Z",
+          "valid_from": "2026-06-11T20:12:38.823433Z",
           "valid_to": null
         }
       },
@@ -14771,7 +14870,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Appwrite",
+              "service_definition": "Beszel Agent",
               "tags": [],
               "virtualization": null
             }
@@ -17378,19 +17477,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-06-10T21:12:58.069430Z",
+                  "created_at": "2026-06-11T20:12:38.822963Z",
                   "first_discovery_id": null,
-                  "id": "df2c6d9c-d251-476a-a8ae-1431e5c9bfe6",
+                  "id": "55dc4631-0229-431a-8ef5-d75cb569e788",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-10T21:12:58.069430Z",
+                  "last_seen_at": "2026-06-11T20:12:38.822963Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-10T21:12:58.069430Z",
-                  "valid_from": "2026-06-10T21:12:58.069430Z",
+                  "updated_at": "2026-06-11T20:12:38.822963Z",
+                  "valid_from": "2026-06-11T20:12:38.822963Z",
                   "valid_to": null
                 }
               ],
@@ -17404,7 +17503,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Appwrite",
+              "service_definition": "Beszel Agent",
               "source": {
                 "type": "Manual"
               },
@@ -19093,6 +19192,7 @@
           "FirstSnmpCredentialCreated",
           "FirstApplicationTagCreated",
           "FirstCredentialCreated",
+          "FirstSnapshotCreated",
           "InviteSent",
           "InviteAccepted",
           "ProfileCompleted",
@@ -19793,19 +19893,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-06-10T21:12:58.057216Z",
+                        "created_at": "2026-06-11T20:12:38.817146Z",
                         "first_discovery_id": null,
-                        "id": "d12cdb90-efe8-4225-9a34-7ead459b77ec",
+                        "id": "515a85e7-71bb-4811-861d-14d8a9f72273",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-06-10T21:12:58.057216Z",
+                        "last_seen_at": "2026-06-11T20:12:38.817146Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-06-10T21:12:58.057216Z",
-                        "valid_from": "2026-06-10T21:12:58.057216Z",
+                        "updated_at": "2026-06-11T20:12:38.817146Z",
+                        "valid_from": "2026-06-11T20:12:38.817146Z",
                         "valid_to": null
                       }
                     ],
@@ -19819,7 +19919,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Appwrite",
+                    "service_definition": "Beszel Agent",
                     "source": {
                       "type": "Manual"
                     },
@@ -19940,19 +20040,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-06-10T21:12:58.082960Z",
+                    "created_at": "2026-06-11T20:12:38.830162Z",
                     "first_discovery_id": null,
-                    "id": "1ca07801-303e-4438-9aac-f702e07695ca",
+                    "id": "19a91eff-9995-48d7-ae5f-7df3f639217b",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-06-10T21:12:58.082960Z",
+                    "last_seen_at": "2026-06-11T20:12:38.830162Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-06-10T21:12:58.082960Z",
-                    "valid_from": "2026-06-10T21:12:58.082960Z",
+                    "updated_at": "2026-06-11T20:12:38.830162Z",
+                    "valid_from": "2026-06-11T20:12:38.830162Z",
                     "valid_to": null
                   }
                 ],
@@ -19966,7 +20066,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Appwrite",
+                "service_definition": "Beszel Agent",
                 "source": {
                   "type": "Manual"
                 },
@@ -21523,19 +21623,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-06-10T21:12:58.070410Z",
+              "created_at": "2026-06-11T20:12:38.823386Z",
               "first_discovery_id": null,
-              "id": "1db9db14-4569-4471-9982-a16147a2b2c3",
+              "id": "8731d442-d1d2-4096-ad35-c251ed8a9e37",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-10T21:12:58.070410Z",
+              "last_seen_at": "2026-06-11T20:12:38.823386Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-10T21:12:58.070410Z",
-              "valid_from": "2026-06-10T21:12:58.070410Z",
+              "updated_at": "2026-06-11T20:12:38.823386Z",
+              "valid_from": "2026-06-11T20:12:38.823386Z",
               "valid_to": null
             }
           ],
@@ -21549,7 +21649,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Appwrite",
+          "service_definition": "Beszel Agent",
           "source": {
             "type": "Manual"
           },
@@ -22451,6 +22551,84 @@
             ],
             "format": "uuid",
             "description": "FK to `snapshots.id`. NULL = live view; Some = snapshot row."
+          }
+        }
+      },
+      "TopologyData": {
+        "type": "object",
+        "description": "Bundle of entities that feed `build_graph` and the topology export pipeline.\n\nLoaded by [`crate::server::topology::service::main::TopologyService::get_topology_data`]\nfor either the live view (`at = None`) or a point-in-time snapshot\n(`at = Some(taken_at)`). Replaces the entity-blob columns previously\npersisted on the topology row.",
+        "required": [
+          "hosts",
+          "ip_addresses",
+          "subnets",
+          "dependencies",
+          "ports",
+          "bindings",
+          "interfaces",
+          "services",
+          "vlans",
+          "tags"
+        ],
+        "properties": {
+          "bindings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Binding"
+            }
+          },
+          "dependencies": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Dependency"
+            }
+          },
+          "hosts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Host"
+            }
+          },
+          "interfaces": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Interface"
+            }
+          },
+          "ip_addresses": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IPAddress"
+            }
+          },
+          "ports": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Port"
+            }
+          },
+          "services": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Service"
+            }
+          },
+          "subnets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Subnet"
+            }
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Tag"
+            }
+          },
+          "vlans": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Vlan"
+            }
           }
         }
       },

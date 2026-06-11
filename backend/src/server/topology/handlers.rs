@@ -15,8 +15,12 @@ use crate::server::{
             PaginatedApiResponse,
         },
     },
-    topology::types::base::{
-        Topology, TopologyEdgeHandleUpdate, TopologyNodePositionUpdate, TopologyNodeResizeUpdate,
+    topology::types::{
+        api::TopologyData,
+        base::{
+            Topology, TopologyEdgeHandleUpdate, TopologyNodePositionUpdate,
+            TopologyNodeResizeUpdate,
+        },
     },
 };
 use axum::{
@@ -30,8 +34,10 @@ use axum::{
     routing::get,
 };
 use futures::{Stream, stream};
+use serde::Deserialize;
 use serde_json::json;
 use std::{convert::Infallible, sync::Arc};
+use utoipa::{IntoParams, ToSchema};
 use utoipa_axum::{router::OpenApiRouter, routes};
 use uuid::Uuid;
 
@@ -55,6 +61,7 @@ mod generated {
 pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
     OpenApiRouter::new()
         .routes(routes!(get_all_topologies))
+        .routes(routes!(get_topology_data))
         .routes(routes!(generated::get_by_id, update_topology))
         .routes(routes!(generated::export_csv))
         .routes(routes!(export_mermaid))
@@ -64,6 +71,71 @@ pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
         .routes(routes!(update_edge_handles))
         // SSE endpoint (not well-supported by OpenAPI)
         .route("/stream", get(live_topology_updates_stream))
+}
+
+#[derive(Debug, Deserialize, IntoParams, ToSchema)]
+pub struct TopologyDataQuery {
+    /// Network to read entities for. Required.
+    pub network_id: Uuid,
+    /// When set, returns the entity set as it was when this snapshot was taken.
+    /// When omitted, returns live entities.
+    #[serde(default)]
+    pub snapshot_id: Option<Uuid>,
+}
+
+/// Unified entity-set endpoint for the topology view.
+///
+/// `?snapshot_id=<id>` resolves to the snapshot's `taken_at` and returns the
+/// as-of-T entity set; otherwise returns live entities. The frontend
+/// `TopologyTab` is the sole intended consumer.
+#[utoipa::path(
+    get,
+    path = "/data",
+    tags = [Topology::ENTITY_NAME_PLURAL, "internal"],
+    params(TopologyDataQuery),
+    responses(
+        (status = 200, description = "Topology entity bundle", body = ApiResponse<TopologyData>),
+        (status = 403, description = "Access denied", body = ApiErrorResponse),
+        (status = 404, description = "Snapshot not found", body = ApiErrorResponse),
+    ),
+    security(("user_api_key" = []), ("session" = []))
+)]
+async fn get_topology_data(
+    State(state): State<Arc<AppState>>,
+    auth: Authorized<Viewer>,
+    Query(params): Query<TopologyDataQuery>,
+) -> ApiResult<Json<ApiResponse<TopologyData>>> {
+    let network_ids = auth.network_ids();
+    if !network_ids.contains(&params.network_id) {
+        return Err(ApiError::forbidden("You don't have access to this network"));
+    }
+
+    let at = if let Some(snapshot_id) = params.snapshot_id {
+        let snapshot = state
+            .services
+            .snapshot_service
+            .get_by_id(&snapshot_id)
+            .await
+            .map_err(|e| ApiError::internal_error(&e.to_string()))?
+            .ok_or_else(|| ApiError::not_found("Snapshot not found".to_string()))?;
+        if snapshot.base.network_id != params.network_id {
+            return Err(ApiError::forbidden(
+                "Snapshot belongs to a different network",
+            ));
+        }
+        Some(snapshot.base.taken_at)
+    } else {
+        None
+    };
+
+    let data = state
+        .services
+        .topology_service
+        .get_topology_data(params.network_id, at)
+        .await
+        .map_err(|e| ApiError::internal_error(&e.to_string()))?;
+
+    Ok(Json(ApiResponse::success(data)))
 }
 
 #[utoipa::path(

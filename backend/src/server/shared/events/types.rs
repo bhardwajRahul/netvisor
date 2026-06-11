@@ -325,6 +325,10 @@ pub enum OnboardingOperation {
     FirstSnmpCredentialCreated,
     FirstApplicationTagCreated,
     FirstCredentialCreated,
+    FirstSnapshotCreated {
+        snapshot_id: Uuid,
+        network_id: Uuid,
+    },
     InviteSent,
     InviteAccepted,
     ProfileCompleted {

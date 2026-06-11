@@ -5,6 +5,8 @@ use crate::server::{
     services::r#impl::base::Service, subnets::r#impl::base::Subnet, tags::r#impl::base::Tag,
     vlans::r#impl::base::Vlan,
 };
+use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 /// Bundle of entities that feed `build_graph` and the topology export pipeline.
 ///
@@ -12,7 +14,7 @@ use crate::server::{
 /// for either the live view (`at = None`) or a point-in-time snapshot
 /// (`at = Some(taken_at)`). Replaces the entity-blob columns previously
 /// persisted on the topology row.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, ToSchema)]
 pub struct TopologyData {
     pub hosts: Vec<Host>,
     pub ip_addresses: Vec<IPAddress>,

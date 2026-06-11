@@ -184,6 +184,40 @@ export function useTopologiesQuery(enabled?: () => boolean) {
 }
 
 /**
+ * Query hook for fetching the topology entity bundle for the selected view.
+ *
+ * `snapshot_id = undefined` → live entity set.
+ * `snapshot_id = <id>`      → entity set as-of that snapshot's `taken_at`.
+ *
+ * Single endpoint, single code path. The cache key includes the snapshot id
+ * so live vs snapshot data don't collide. The SSE `live_topology_updates_stream`
+ * consumer invalidates this query on live-view network updates.
+ */
+export function useTopologyDataQuery(
+	networkId: () => string | undefined,
+	snapshotId: () => string | undefined
+) {
+	return createQuery(() => ({
+		queryKey: queryKeys.topology.data(networkId() ?? '', snapshotId()),
+		queryFn: async () => {
+			const network_id = networkId();
+			if (!network_id) {
+				throw new Error('No network ID provided');
+			}
+			const snapshot_id = snapshotId();
+			const { data } = await apiClient.GET('/api/v1/topology/data', {
+				params: { query: { network_id, snapshot_id } }
+			});
+			if (!data?.success || !data.data) {
+				throw new Error(data?.error || 'Failed to fetch topology data');
+			}
+			return data.data;
+		},
+		enabled: () => !!networkId()
+	}));
+}
+
+/**
  * Query hook for fetching a single topology
  */
 export function useTopologyQuery(id: () => string | undefined) {
@@ -749,10 +783,22 @@ class TopologySSEManager extends BaseSSEManager<LiveTopologyUpdate> {
 			url: '/api/v1/topology/live-updates/stream',
 			onMessage: (update) => {
 				// Live data changed for this network — invalidate the topology
-				// list (the live row's nodes/edges may have shifted) and the
+				// list (the live row's nodes/edges may have shifted), the
 				// snapshots-for-network list (taking a snapshot would have
-				// added a row).
-				queryClient.invalidateQueries({ queryKey: queryKeys.topology.all });
+				// added a row), and the LIVE entity bundle for the affected
+				// network. Snapshot bundles are immutable; predicate keeps
+				// their cache entries intact.
+				queryClient.invalidateQueries({
+					predicate: (query) => {
+						const key = query.queryKey as readonly unknown[];
+						if (key[0] !== 'topology') return false;
+						if (key[1] === 'data') {
+							// key shape: ['topology', 'data', networkId, snapshotId | null]
+							return key[2] === update.network_id && key[3] == null;
+						}
+						return true;
+					}
+				});
 				queryClient.invalidateQueries({
 					queryKey: queryKeys.snapshots.byNetwork(update.network_id)
 				});

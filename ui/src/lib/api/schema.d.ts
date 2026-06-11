@@ -2633,6 +2633,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/topology/data": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Unified entity-set endpoint for the topology view.
+         * @description `?snapshot_id=<id>` resolves to the snapshot's `taken_at` and returns the
+         *     as-of-T entity set; otherwise returns live entities. The frontend
+         *     `TopologyTab` is the sole intended consumer.
+         */
+        get: operations["get_topology_data"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/topology/export/csv": {
         parameters: {
             query?: never;
@@ -3009,19 +3031,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-06-10T21:12:58.090807Z",
+             *       "created_at": "2026-06-11T20:12:38.835088Z",
              *       "first_discovery_id": null,
-             *       "id": "e5cbed6c-3953-4368-b63b-fab94baf5afe",
+             *       "id": "4dd6ddde-f3d7-494f-bd3f-7db7e7a4d8d8",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-06-10T21:12:58.090807Z",
+             *       "last_seen_at": "2026-06-11T20:12:38.835088Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-06-10T21:12:58.090807Z",
-             *       "valid_from": "2026-06-10T21:12:58.090807Z",
+             *       "updated_at": "2026-06-11T20:12:38.835088Z",
+             *       "valid_from": "2026-06-11T20:12:38.835088Z",
              *       "valid_to": null
              *     }
              */
@@ -3358,19 +3380,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-06-10T21:12:58.069986Z",
+             *               "created_at": "2026-06-11T20:12:38.823239Z",
              *               "first_discovery_id": null,
-             *               "id": "80c78bca-dea1-4c53-bc0e-2503e52fdaa5",
+             *               "id": "90202fff-2c57-4783-99cb-8bf25d638932",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-06-10T21:12:58.069986Z",
+             *               "last_seen_at": "2026-06-11T20:12:38.823239Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-06-10T21:12:58.069986Z",
-             *               "valid_from": "2026-06-10T21:12:58.069986Z",
+             *               "updated_at": "2026-06-11T20:12:38.823239Z",
+             *               "valid_from": "2026-06-11T20:12:38.823239Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3384,7 +3406,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Appwrite",
+             *           "service_definition": "Beszel Agent",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3720,19 +3742,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-06-10T21:12:58.084474Z",
+             *           "created_at": "2026-06-11T20:12:38.830938Z",
              *           "first_discovery_id": null,
-             *           "id": "8fae1073-3f0d-4686-bc9c-e31868ffe0df",
+             *           "id": "beb11505-4011-4225-bea9-a10412b6aaab",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-06-10T21:12:58.084474Z",
+             *           "last_seen_at": "2026-06-11T20:12:38.830938Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-06-10T21:12:58.084474Z",
-             *           "valid_from": "2026-06-10T21:12:58.084474Z",
+             *           "updated_at": "2026-06-11T20:12:38.830938Z",
+             *           "valid_from": "2026-06-11T20:12:38.830938Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -3746,7 +3768,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Appwrite",
+             *       "service_definition": "Beszel Agent",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -3942,6 +3964,31 @@ export interface components {
                 readonly id: string;
                 /** Format: date-time */
                 readonly updated_at: string;
+            };
+            error?: string | null;
+            meta: components["schemas"]["ApiMeta"];
+            success: boolean;
+        };
+        ApiResponse_TopologyData: {
+            /**
+             * @description Bundle of entities that feed `build_graph` and the topology export pipeline.
+             *
+             *     Loaded by [`crate::server::topology::service::main::TopologyService::get_topology_data`]
+             *     for either the live view (`at = None`) or a point-in-time snapshot
+             *     (`at = Some(taken_at)`). Replaces the entity-blob columns previously
+             *     persisted on the topology row.
+             */
+            data?: {
+                bindings: components["schemas"]["Binding"][];
+                dependencies: components["schemas"]["Dependency"][];
+                hosts: components["schemas"]["Host"][];
+                interfaces: components["schemas"]["Interface"][];
+                ip_addresses: components["schemas"]["IPAddress"][];
+                ports: components["schemas"]["Port"][];
+                services: components["schemas"]["Service"][];
+                subnets: components["schemas"]["Subnet"][];
+                tags: components["schemas"]["Tag"][];
+                vlans: components["schemas"]["Vlan"][];
             };
             error?: string | null;
             meta: components["schemas"]["ApiMeta"];
@@ -4174,19 +4221,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-06-10T21:12:58.070496Z",
+         *       "created_at": "2026-06-11T20:12:38.823458Z",
          *       "first_discovery_id": null,
-         *       "id": "64839e6b-7ee0-4059-908f-8476e8330088",
+         *       "id": "caebf75d-7708-4730-b8e6-923f8313f91d",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-06-10T21:12:58.070496Z",
+         *       "last_seen_at": "2026-06-11T20:12:38.823458Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-06-10T21:12:58.070496Z",
-         *       "valid_from": "2026-06-10T21:12:58.070496Z",
+         *       "updated_at": "2026-06-11T20:12:38.823458Z",
+         *       "valid_from": "2026-06-11T20:12:38.823458Z",
          *       "valid_to": null
          *     }
          */
@@ -4401,7 +4448,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Appwrite",
+         *           "service_definition": "Beszel Agent",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -5339,19 +5386,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-06-10T21:12:58.069424Z",
+         *               "created_at": "2026-06-11T20:12:38.822965Z",
          *               "first_discovery_id": null,
-         *               "id": "d49dc888-4ad5-490d-ad94-f4856f486b30",
+         *               "id": "4d3ee61e-7403-4ae3-aaba-d58ec88cc3c6",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-06-10T21:12:58.069424Z",
+         *               "last_seen_at": "2026-06-11T20:12:38.822965Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-06-10T21:12:58.069424Z",
-         *               "valid_from": "2026-06-10T21:12:58.069424Z",
+         *               "updated_at": "2026-06-11T20:12:38.822965Z",
+         *               "valid_from": "2026-06-11T20:12:38.822965Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -5365,7 +5412,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Appwrite",
+         *           "service_definition": "Beszel Agent",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -5975,7 +6022,7 @@ export interface components {
             snmp_version?: string | null;
         };
         /** @enum {string} */
-        OnboardingOperationDiscriminants: "OrgCreated" | "OnboardingModalCompleted" | "PlanSelected" | "FirstDaemonRegistered" | "FirstTopologyRebuild" | "FirstDiscoveryCompleted" | "FirstHostDiscovered" | "SecondNetworkCreated" | "FirstTagCreated" | "FirstDependencyCreated" | "FirstUserApiKeyCreated" | "FirstSnmpCredentialCreated" | "FirstApplicationTagCreated" | "FirstCredentialCreated" | "InviteSent" | "InviteAccepted" | "ProfileCompleted" | "ReferralSourceCompleted";
+        OnboardingOperationDiscriminants: "OrgCreated" | "OnboardingModalCompleted" | "PlanSelected" | "FirstDaemonRegistered" | "FirstTopologyRebuild" | "FirstDiscoveryCompleted" | "FirstHostDiscovered" | "SecondNetworkCreated" | "FirstTagCreated" | "FirstDependencyCreated" | "FirstUserApiKeyCreated" | "FirstSnmpCredentialCreated" | "FirstApplicationTagCreated" | "FirstCredentialCreated" | "FirstSnapshotCreated" | "InviteSent" | "InviteAccepted" | "ProfileCompleted" | "ReferralSourceCompleted";
         /** @description Response from onboarding state endpoint */
         OnboardingStateResponse: {
             network?: null | components["schemas"]["OnboardingNetworkState"];
@@ -6703,19 +6750,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-06-10T21:12:58.070393Z",
+         *           "created_at": "2026-06-11T20:12:38.823410Z",
          *           "first_discovery_id": null,
-         *           "id": "eeb90a0b-33da-4956-b56c-10e28ead5a35",
+         *           "id": "0cef28c9-1b6f-4db4-b5de-4a573965e7f6",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-06-10T21:12:58.070393Z",
+         *           "last_seen_at": "2026-06-11T20:12:38.823410Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-06-10T21:12:58.070393Z",
-         *           "valid_from": "2026-06-10T21:12:58.070393Z",
+         *           "updated_at": "2026-06-11T20:12:38.823410Z",
+         *           "valid_from": "2026-06-11T20:12:38.823410Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -6729,7 +6776,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Appwrite",
+         *       "service_definition": "Beszel Agent",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -7061,6 +7108,26 @@ export interface components {
              * @description FK to `snapshots.id`. NULL = live view; Some = snapshot row.
              */
             snapshot_id?: string | null;
+        };
+        /**
+         * @description Bundle of entities that feed `build_graph` and the topology export pipeline.
+         *
+         *     Loaded by [`crate::server::topology::service::main::TopologyService::get_topology_data`]
+         *     for either the live view (`at = None`) or a point-in-time snapshot
+         *     (`at = Some(taken_at)`). Replaces the entity-blob columns previously
+         *     persisted on the topology row.
+         */
+        TopologyData: {
+            bindings: components["schemas"]["Binding"][];
+            dependencies: components["schemas"]["Dependency"][];
+            hosts: components["schemas"]["Host"][];
+            interfaces: components["schemas"]["Interface"][];
+            ip_addresses: components["schemas"]["IPAddress"][];
+            ports: components["schemas"]["Port"][];
+            services: components["schemas"]["Service"][];
+            subnets: components["schemas"]["Subnet"][];
+            tags: components["schemas"]["Tag"][];
+            vlans: components["schemas"]["Vlan"][];
         };
         /**
          * @description Lightweight request type for updating an edge's handles.
@@ -13596,6 +13663,52 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PaginatedApiResponse_Topology"];
+                };
+            };
+        };
+    };
+    get_topology_data: {
+        parameters: {
+            query: {
+                /** @description Network to read entities for. Required. */
+                network_id: string;
+                /**
+                 * @description When set, returns the entity set as it was when this snapshot was taken.
+                 *     When omitted, returns live entities.
+                 */
+                snapshot_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Topology entity bundle */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_TopologyData"];
+                };
+            };
+            /** @description Access denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Snapshot not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
                 };
             };
         };

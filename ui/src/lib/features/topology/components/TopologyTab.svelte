@@ -15,6 +15,7 @@
 	import { get, writable } from 'svelte/store';
 	import {
 		useTopologiesQuery,
+		useTopologyDataQuery,
 		selectedTopologyId,
 		selectedNetworkId,
 		selectedSnapshotId,
@@ -51,15 +52,8 @@
 		type SimpleOption
 	} from '$lib/shared/components/forms/selection/display/SimpleOptionDisplay';
 	import { trackEvent } from '$lib/shared/utils/analytics';
-	import { useSubnetsQuery } from '$lib/features/subnets/queries';
 	import { useTagsQuery } from '$lib/features/tags/queries';
 	import { useActiveSessionsQuery } from '$lib/features/discovery/queries';
-	import { useDependenciesQuery } from '$lib/features/dependencies/queries';
-	import { useHostsQuery } from '$lib/features/hosts/queries';
-	import { useIPAddressesQuery } from '$lib/features/ip-addresses/queries';
-	import { usePortsQuery } from '$lib/features/ports/queries';
-	import { useInterfacesQuery } from '$lib/features/interfaces/queries';
-	import { useServicesCacheQuery } from '$lib/features/services/queries';
 	import { enrichTopology } from '$lib/features/topology/enriched';
 	import type { EnrichedTopology } from '$lib/features/topology/types/base';
 	import { formatTimestamp } from '$lib/shared/utils/formatting';
@@ -98,29 +92,25 @@
 
 	// Queries - TanStack Query handles deduplication
 	const tagsQuery = useTagsQuery();
-	const subnetsQuery = useSubnetsQuery();
-	const dependenciesQuery = useDependenciesQuery();
 	useUsersQuery({ enabled: () => canViewUsers });
 	const topologiesQuery = useTopologiesQuery();
 	const networksQuery = useNetworksQuery();
 	const organizationQuery = useOrganizationQuery();
 	const activeSessionsQuery = useActiveSessionsQuery();
 	const configQuery = useConfigQuery();
-	// Live entity arrays for the inspector / resolvers / display layer.
-	// Hosts query populates the IP addresses / ports / services / interfaces
-	// caches as a side-effect; we expose them via their dedicated cache queries.
-	const hostsQuery = useHostsQuery({ limit: 0 });
-	const ipAddressesQuery = useIPAddressesQuery();
-	const portsQuery = usePortsQuery();
-	const interfacesQuery = useInterfacesQuery();
-	const servicesCacheQuery = useServicesCacheQuery();
+	// Single bundle query for the topology view's entity set. `snapshot_id =
+	// undefined` returns live entities; `snapshot_id = <id>` returns the
+	// captured set as-of that snapshot's `taken_at`. Same code path for both
+	// — see backend `GET /api/v1/topology/data`.
+	const topologyDataQuery = useTopologyDataQuery(
+		() => $selectedNetworkId ?? undefined,
+		() => $selectedSnapshotId ?? undefined
+	);
 
 	// Derived data
 	let topologiesData = $derived(topologiesQuery.data ?? []);
 	let networksData = $derived(networksQuery.data ?? []);
-	let isLoading = $derived(
-		subnetsQuery.isPending || dependenciesQuery.isPending || topologiesQuery.isPending
-	);
+	let isLoading = $derived(topologiesQuery.isPending || topologyDataQuery.isPending);
 
 	let hasEmail = $derived(configQuery.data?.has_email_service ?? false);
 
@@ -204,25 +194,26 @@
 		return network?.name ?? '';
 	});
 
-	// Enriched topology: graph row + live entity arrays. Snapshot views still
-	// use live entity data — the snapshot's nodes/edges already encode the
-	// captured visual state, and inspector entity details show the current
-	// live row (matches the snapshot when nothing has changed since).
+	// Enriched topology: graph row + entity bundle for the selected view.
+	// Live view → live entities; snapshot view → entities as-of the snapshot's
+	// `taken_at` (single backend endpoint serves both).
 	let currentTopology = $derived.by(() => {
 		if (!currentTopologyRow) return null;
+		const bundle = topologyDataQuery.data;
+		if (!bundle) return null;
 		return enrichTopology(
 			currentTopologyRow,
 			{
-				hosts: hostsQuery.data?.items ?? [],
-				services: servicesCacheQuery.data ?? [],
-				subnets: subnetsQuery.data ?? [],
-				ip_addresses: ipAddressesQuery.data ?? [],
-				ports: portsQuery.data ?? [],
-				bindings: (servicesCacheQuery.data ?? []).flatMap((s) => s.bindings),
-				interfaces: interfacesQuery.data ?? [],
-				dependencies: dependenciesQuery.data ?? [],
-				vlans: [],
-				entity_tags: tagsQuery.data ?? []
+				hosts: bundle.hosts,
+				services: bundle.services,
+				subnets: bundle.subnets,
+				ip_addresses: bundle.ip_addresses,
+				ports: bundle.ports,
+				bindings: bundle.bindings,
+				interfaces: bundle.interfaces,
+				dependencies: bundle.dependencies,
+				vlans: bundle.vlans,
+				entity_tags: bundle.tags
 			},
 			currentTopologyName
 		);
@@ -597,19 +588,23 @@
 						minWidth="22rem"
 					/>
 
-					{#if !isReadOnly}
+					{#if !isReadOnly && $selectedSnapshotId == null}
 						<button
 							class="btn-secondary"
 							onclick={handleTakeSnapshot}
 							disabled={takeSnapshotMutation.isPending || !$selectedNetworkId}
+							aria-label={topology_takeSnapshot()}
+							data-tooltip={topology_takeSnapshot()}
+							use:tooltip
 						>
-							<Camera class="mr-1 h-4 w-4" />
-							{topology_takeSnapshot()}
+							<Camera class="h-5 w-5" />
 							{#if !snapshotsEnabled}
 								<Tag label="Upgrade" color="Yellow" />
 							{/if}
 						</button>
+					{/if}
 
+					{#if !isReadOnly}
 						{#if $selectedSnapshotId}
 							<button
 								class="btn-danger"

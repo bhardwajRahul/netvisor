@@ -27,6 +27,10 @@ use crate::server::{
         permissions::{Authorized, Member, Viewer},
     },
     config::AppState,
+    shared::events::{
+        traits::{Event, OrgScope},
+        types::{OnboardingOperation, OnboardingOperationDiscriminants},
+    },
     shared::extractors::Query,
     shared::{
         handlers::traits::{delete_handler, get_all_handler, get_by_id_handler},
@@ -173,6 +177,32 @@ async fn create_snapshot(
         .await;
 
     let created = result?;
+
+    // First-snapshot onboarding event. Best-effort: failures here don't fail
+    // the request — same fire-and-forget pattern as SecondNetworkCreated in
+    // networks/handlers.rs.
+    if let Some(organization_id) = auth.organization_id()
+        && let Ok(Some(org)) = state
+            .services
+            .organization_service
+            .get_by_id(&organization_id)
+            .await
+        && org.not_onboarded(&OnboardingOperationDiscriminants::FirstSnapshotCreated)
+    {
+        let _ = state
+            .services
+            .event_bus
+            .publish(Event::new(
+                OrgScope { organization_id },
+                OnboardingOperation::FirstSnapshotCreated {
+                    snapshot_id: created.id,
+                    network_id: created.base.network_id,
+                },
+                auth.entity.clone(),
+            ))
+            .await;
+    }
+
     Ok(Json(ApiResponse::success(created)))
 }
 
