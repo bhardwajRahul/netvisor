@@ -769,39 +769,49 @@
 	<!-- Bottom Navigation -->
 	<div class="flex-shrink-0 border-t px-2 py-2" style="border-color: var(--color-border)">
 		<ul class="space-y-1">
+			{#snippet sidebarAmberCta({
+				Icon,
+				label,
+				onclick
+			}: {
+				Icon: IconComponent;
+				label: string;
+				onclick: () => void;
+			})}
+				<button
+					class="{baseClasses} text-amber-400 hover:bg-amber-500/10"
+					style="height: 2rem; padding: 0.375rem 0.75rem;"
+					title={collapsed ? label : ''}
+					{onclick}
+				>
+					<Icon class="h-4 w-4 flex-shrink-0" />
+					{#if !collapsed}
+						<span class="ml-2.5 truncate">{label}</span>
+					{/if}
+				</button>
+			{/snippet}
+
 			{#if showTrialPill}
 				<li>
-					<button
-						class="{baseClasses} {inactiveButtonClass}"
-						style="height: 2rem; padding: 0.375rem 0.75rem;"
-						title={collapsed ? trialPillLabel : ''}
-						onclick={() =>
+					{@render sidebarAmberCta({
+						Icon: Clock,
+						label: trialPillLabel,
+						onclick: () =>
 							startSetupPayment({
 								mutation: setupPaymentMutation,
 								org: organization,
 								source: 'sidebar_trial_pill',
 								trialDaysLeft
-							})}
-					>
-						<Clock class="h-4 w-4 flex-shrink-0 text-amber-400" />
-						{#if !collapsed}
-							<span class="ml-2.5 truncate">{trialPillLabel}</span>
-						{/if}
-					</button>
+							})
+					})}
 				</li>
 			{:else if showFreeUpgradeButton}
 				<li>
-					<button
-						class="{baseClasses} text-amber-400 hover:bg-amber-500/10"
-						style="height: 2rem; padding: 0.375rem 0.75rem;"
-						title={collapsed ? common_upgrade() : ''}
-						onclick={() => triggerUpgrade({ source: 'sidebar', surface: 'sidebar' })}
-					>
-						<ArrowUpCircle class="h-4 w-4 flex-shrink-0" />
-						{#if !collapsed}
-							<span class="ml-2.5 truncate">{common_upgrade()}</span>
-						{/if}
-					</button>
+					{@render sidebarAmberCta({
+						Icon: ArrowUpCircle,
+						label: common_upgrade(),
+						onclick: () => triggerUpgrade({ source: 'sidebar', surface: 'sidebar' })
+					})}
 				</li>
 			{/if}
 			{#each bottomNavItems as item (item.id)}
