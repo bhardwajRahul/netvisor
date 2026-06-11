@@ -5,9 +5,11 @@
 //!
 //! Billing: updates flag columns (`last_paused_at`, `trial_extended_used`,
 //! `last_downgrade_at`, `last_downgrade_from_plan`) on the variants that drive
-//! Phase 5 eligibility gates and the downgrade banner, AND mirrors
+//! Phase 5 eligibility gates and the downgrade banner; mirrors
 //! `BillingOperation::implied_status()` onto `organizations.plan_status` so
-//! every billing event keeps the canonical status column in sync.
+//! every billing event keeps the canonical status column in sync; and writes
+//! `trial_end_date` from `TrialStarted` / `TrialExtended` so the trial UI
+//! surfaces can read trial state directly off the org payload.
 
 use anyhow::Error;
 use async_trait::async_trait;
@@ -78,9 +80,19 @@ impl Subscriber<BillingOperation> for OrganizationService {
                     organization.base.last_paused_at = Some(event.timestamp);
                     changed = true;
                 }
-                BillingOperation::TrialExtended { .. } => {
+                BillingOperation::TrialStarted { trial_end, .. } => {
+                    if organization.base.trial_end_date != Some(*trial_end) {
+                        organization.base.trial_end_date = Some(*trial_end);
+                        changed = true;
+                    }
+                }
+                BillingOperation::TrialExtended { new_trial_end, .. } => {
                     if !organization.base.trial_extended_used {
                         organization.base.trial_extended_used = true;
+                        changed = true;
+                    }
+                    if organization.base.trial_end_date != Some(*new_trial_end) {
+                        organization.base.trial_end_date = Some(*new_trial_end);
                         changed = true;
                     }
                 }
