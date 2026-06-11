@@ -244,7 +244,6 @@ impl BillingOperation {
             Self::CheckoutCompleted { .. }
             | Self::PlanChanged { .. }
             | Self::PaymentRecovered { .. }
-            | Self::PaymentSucceeded { .. }
             | Self::Resumed { .. } => Some(PlanStatus::Active),
 
             Self::TrialStarted { .. } | Self::TrialExtended { .. } => Some(PlanStatus::Trialing),
@@ -264,10 +263,21 @@ impl BillingOperation {
             Self::CancellationInitiated { .. } => Some(PlanStatus::PendingCancellation),
             Self::SubscriptionCancelled { .. } => Some(PlanStatus::Cancelled),
 
-            // Telemetry-only — no state implication
+            // Telemetry-only — no state implication. `PaymentSucceeded` is
+            // here (not Active) because it fires on every invoice.paid
+            // webhook including the $0 trial-setup invoice Stripe creates
+            // alongside `customer.subscription.created`. Treating it as
+            // Active would race the `TrialStarted` write and clobber
+            // `plan_status='trialing'`. Subscription lifecycle is owned by
+            // `CheckoutCompleted` / `TrialStarted` / `TrialEnded` /
+            // `PlanChanged` / `Paused` / `Resumed` / `Cancelled`, and dunning
+            // recovery by `PaymentRecovered` — which fires inside
+            // `handle_invoice_paid` BEFORE `PaymentSucceeded` for the
+            // was-past-due case, so we lose nothing.
             Self::CheckoutStarted { .. }
             | Self::TrialWillEnd { .. }
             | Self::FeatureLimitHit { .. }
+            | Self::PaymentSucceeded { .. }
             | Self::PaymentMethodAdded
             | Self::PaymentMethodRemoved => None,
         }

@@ -1,10 +1,5 @@
 var TEST_PLANS = [
 {
-  "branch": "chore/license-key-make-target",
-  "tests": []
-}
-,
-{
   "branch": "feat/event-model-typed-payloads",
   "notes": "Covers all email-driven flows and event-bus side effects across the auth/billing/event-subscriber refactors. All emails now route through the event bus via `Subscriber<Op>` impls registered via `inventory::submit!`; cancellations cascade via `InviteService::Subscriber<BillingOperation>` instead of a direct call. Tests are grouped into flows where state can be reused; truly independent tests omit `flow`/`sequence`. Programmatic checks (DB row updates for Pattern B flag columns, subscriber-name uniqueness at startup) are verified via `cargo test --lib` (300/300 green) and not included here.",
   "tests": [
@@ -21,20 +16,6 @@ var TEST_PLANS = [
       "expected": "A second verification email arrives with a different token. Both tokens work until the second is generated; the original token may be invalidated depending on storage logic.",
       "flow": "auth-password-register",
       "sequence": 2,
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "auth-invited-user-no-verification-email",
-      "category": "Auth emails",
-      "description": "Registering via an invite link to an existing org auto-verifies the email \u2014 no verification email is sent (`Register { email_and_token: None }`).",
-      "setup": "On an existing test org, send an invite to a fresh email. Open the invite link in incognito.",
-      "steps": [
-        "Click the invite link",
-        "Complete the registration form (password)",
-        "Check inbox for the invited email"
-      ],
-      "expected": "User lands logged in with `email_verified = true`. No verification email is in the inbox (only the original invite email).",
       "status": null,
       "feedback": null
     },
@@ -80,21 +61,6 @@ var TEST_PLANS = [
       "expected": "Email subject contains the period-end date (e.g. 'Your Scanopy Subscription Will End on May 15, 2026'). Body confirms access continues until that date.",
       "flow": "billing-cancellation",
       "sequence": 1,
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "billing-cancellation-revokes-org-invites",
-      "category": "Subscription side effects",
-      "description": "`SubscriptionCancelled` triggers `InviteService::Subscriber<BillingOperation>` which calls `revoke_org_invites`. Previously this was a direct method call from BillingService \u2014 now event-driven.",
-      "setup": "Test org with an active subscription AND at least one outstanding invite (Settings \u2192 Members \u2192 Invite, send to a fresh email but don't accept). Then cancel the subscription and let the period end.",
-      "steps": [
-        "Cancel the subscription, advance clock past period_end",
-        "Settings \u2192 Members \u2192 Pending invites"
-      ],
-      "expected": "All previously-sent invites are gone from the pending invites list.",
-      "flow": "billing-cancellation",
-      "sequence": 3,
       "status": null,
       "feedback": null
     },
@@ -230,35 +196,6 @@ var TEST_PLANS = [
       "expected": "Org-deleted confirmation email arrives at the initiator's address.",
       "status": null,
       "feedback": null
-    },
-    {
-      "id": "onboarding-milestones-persist-via-event",
-      "category": "Subscription side effects",
-      "description": "`OnboardingOperation::*` events flow through `OrganizationService::Subscriber<OnboardingOperation>` and append the discriminant to `organizations.onboarding`. The UI checklist reads from this column and shows ticks.",
-      "setup": "Fresh test org with empty onboarding state.",
-      "steps": [
-        "Complete the onboarding wizard (sets `OnboardingModalCompleted`)",
-        "Install a daemon (sets `FirstDaemonRegistered`)",
-        "Run a discovery (sets `FirstDiscoveryCompleted`)",
-        "Open the homepage / onboarding checklist UI"
-      ],
-      "expected": "Each completed milestone shows as ticked in the checklist UI. Reloading the page preserves the ticks (state is persisted via the subscriber).",
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "topology-staleness-on-entity-changes",
-      "category": "Subscription side effects",
-      "description": "Entity events for Host / Subnet / Service / etc. flow through `TopologyService::Subscriber<EntityOperation>`; the topology snapshot is marked stale and re-rendered.",
-      "setup": "Test org with at least one network, one daemon, and one rendered topology view.",
-      "steps": [
-        "Open the topology page",
-        "In another tab, create a host (e.g. via discovery or manual)",
-        "Return to the topology tab"
-      ],
-      "expected": "The topology view picks up the new host without manual refresh, OR shows a 'stale' indicator that updates on the next render.",
-      "status": null,
-      "feedback": null
     }
   ]
 }
@@ -302,33 +239,16 @@ var TEST_PLANS = [
       "feedback": null
     },
     {
-      "id": "snapshot-delete-removes-from-list",
-      "category": "Snapshots",
-      "description": "Deleting a snapshot removes it from the dropdown and reverts the view",
-      "setup": "After test snapshot-take-from-live-view completes.",
-      "steps": [
-        "Open the topology tab on the same network",
-        "Select the snapshot from the dropdown",
-        "Click 'Delete snapshot'",
-        "Confirm in the prompt"
-      ],
-      "expected": "The snapshot disappears from the dropdown. The selected view reverts to 'Live view'. No errors. Refreshing the page does not bring the snapshot back.",
-      "flow": "setup",
-      "sequence": 3,
-      "status": null,
-      "feedback": null
-    },
-    {
       "id": "snapshot-disabled-on-free-plan",
       "category": "Snapshots",
-      "description": "Free plan disables 'Take snapshot' with upgrade hook",
+      "description": "Free plan: Take snapshot button shows Upgrade badge and click fires paywall",
       "setup": "Use the API or admin tooling to set the org's plan to Free. Sign in as a Member of that org.",
       "steps": [
         "Open the topology tab",
-        "Hover over 'Take snapshot' to see the disabled tooltip",
+        "Confirm the Take snapshot button shows an 'Upgrade' badge next to the label",
         "Click 'Take snapshot'"
       ],
-      "expected": "Button is visibly disabled and shows the upgrade messaging. Click triggers the upgrade modal/paywall surface 'topology_tab' with feature 'snapshots'. No POST request is fired.",
+      "expected": "Button is enabled and displays the 'Upgrade' badge (same style as gated formats in the export dropdown). Clicking triggers the upgrade modal/paywall (surface 'topology_tab', feature 'snapshots'). No POST request is fired.",
       "status": null,
       "feedback": null
     },
@@ -428,19 +348,6 @@ var TEST_PLANS = [
         "Confirm the discovery transitions to Pending and runs"
       ],
       "expected": "The discovery is blocked while the snapshot is in flight, then unblocks automatically when the snapshot finishes. No data loss; both operations complete.",
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "snapshot-disabled-button-tooltip",
-      "category": "Snapshots",
-      "description": "Take snapshot button shows a useful disabled tooltip on free plan",
-      "setup": "Same as snapshot-disabled-on-free-plan.",
-      "steps": [
-        "Open the topology tab",
-        "Hover over the Take snapshot button"
-      ],
-      "expected": "Tooltip explains snapshots aren't included on the current plan and points to upgrading.",
       "status": null,
       "feedback": null
     }
@@ -802,23 +709,6 @@ var TEST_PLANS = [
   "branch": "feat/billing-telemetry-enrichments",
   "tests": [
     {
-      "id": "cancellation-initiated-posthog-portal",
-      "category": "Billing telemetry",
-      "description": "Stripe Portal cancel (default 'cancel at period end') must surface in PostHog as a cancellation_initiated event. Replaces the earlier subscription-cancelled-end-to-end test, which expected the wrong event name for the Portal flow.",
-      "setup": "Pick a test org on a paid subscription. Note the org's created_at and the subscription's monthly line totals for sanity-checking the enriched fields when they next ship.",
-      "steps": [
-        "Sign in as the org owner.",
-        "Click Manage Subscription -> launches Stripe Customer Portal.",
-        "In Portal, click Cancel subscription. Select reason 'Too expensive'. Add a comment.",
-        "Confirm cancellation.",
-        "Wait ~30s for the customer.subscription.updated webhook + async task.",
-        "Open PostHog and filter for event name 'cancellation_initiated' on this org."
-      ],
-      "expected": "cancellation_initiated event present with metadata: stripe_reason = 'cancellation_requested', stripe_feedback = 'too_expensive', comment = the text you typed, reason_code = null (no app-side save-offer reason for a Portal cancel), planned_period_end is the actual subscription period end.",
-      "status": null,
-      "feedback": null
-    },
-    {
       "id": "checkout-completed-mrr-and-trialing-flag",
       "category": "Billing telemetry",
       "description": "Confirm CheckoutCompleted carries mrr_amount_cents and the new is_trialing flag, distinguishing trial starts from paid checkouts.",
@@ -915,70 +805,8 @@ var TEST_PLANS = [
 }
 ,
 {
-  "branch": "ci/backward-compat-release-check",
-  "tests": []
-}
-,
-{
-  "branch": "chore/compat-followups",
-  "tests": [
-    {
-      "id": "coordinator-cp-command-fresh-dest",
-      "category": "Coordinator setup docs",
-      "description": "The updated coordinator cp command in /Users/maya/dev/scanopy/CLAUDE.md produces a flat ui/src/lib/data/*.json layout when the destination directory does not yet exist.",
-      "steps": [
-        "Open /Users/maya/dev/scanopy/CLAUDE.md and locate the 'Set up worktree dependencies' code block (around line 85).",
-        "Confirm the command uses 'cp -r /Users/maya/dev/scanopy/ui/src/lib/data/. /Users/maya/dev/scanopy-<task-name>/ui/src/lib/data/' (note the trailing /. on the source).",
-        "Confirm the command no longer contains 'rm -rf' for the data directory."
-      ],
-      "setup": "Pick any existing worktree under /Users/maya/dev/scanopy-* (or create a temporary one). Delete its ui/src/lib/data directory completely: rm -rf <worktree>/ui/src/lib/data. Then run the documented command verbatim with <task-name> substituted for that worktree's suffix.",
-      "expected": "ls <worktree>/ui/src/lib/data shows flat *.json files (e.g. service-definitions.json, billing-plans.json) directly inside the data/ directory. There is no nested data/data/ subdirectory.",
-      "expected_url": null,
-      "expected_screenshot": null,
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "coordinator-cp-command-existing-dest",
-      "category": "Coordinator setup docs",
-      "description": "Re-running the updated cp command against an already-populated destination is idempotent — it does not create a nested ui/src/lib/data/data/ subdirectory.",
-      "steps": [
-        "Without deleting anything, run the documented cp command a second time against the same worktree used in coordinator-cp-command-fresh-dest."
-      ],
-      "setup": "Reuse the worktree from the previous test. Do NOT delete ui/src/lib/data first; the destination is intentionally pre-populated.",
-      "expected": "ls <worktree>/ui/src/lib/data still shows flat *.json files. find <worktree>/ui/src/lib/data -type d returns only the data/ directory itself — no nested data/data/. service-definitions.json is still readable.",
-      "expected_url": null,
-      "expected_screenshot": null,
-      "flow": "setup",
-      "sequence": 2,
-      "status": null,
-      "feedback": null
-    }
-  ]
-}
-,
-{
   "branch": "fix/stripe-webhook-org-deleted",
   "tests": [
-    {
-      "id": "stripe-customer-deleted-on-org-delete",
-      "category": "Stripe teardown",
-      "description": "When an org with a stripe_customer_id is deleted, the Stripe customer is deleted (and any active subscriptions auto-canceled).",
-      "setup": "Create a fresh org and complete signup. Upgrade to a paid trial through the in-app billing flow so a Stripe customer + trialing subscription get created (this populates org.stripe_customer_id). Cancel the subscription via the in-app downgrade flow so the org returns to Free (deletion is gated on has_active_paid_subscription, which includes 'trialing'). Note the stripe_customer_id from the DB or Stripe dashboard before proceeding.",
-      "steps": [
-        "Sign in as the owner of the prepared org.",
-        "Navigate to org settings and delete the organization.",
-        "Confirm the deletion completes successfully (you are signed out / redirected).",
-        "Open the Stripe dashboard (test mode), search for the customer ID noted in setup.",
-        "Confirm the customer is shown as 'Deleted' (or `GET /v1/customers/{id}` returns `\"deleted\": true`).",
-        "Confirm any subscription that existed on that customer is now canceled."
-      ],
-      "expected": "Stripe customer is marked deleted; any active subscription is canceled; backend logs show no errors from the deletion path.",
-      "flow": "setup",
-      "sequence": 1,
-      "status": null,
-      "feedback": null
-    },
     {
       "id": "trial-will-end-webhook-after-org-deleted",
       "category": "Webhook safety net",
@@ -1255,61 +1083,99 @@ var TEST_PLANS = [
 }
 ,
 {
-  "branch": "feat/phase5-subscription-mechanics",
+  "branch": "fix/scd2-data-integrity-and-snapshot-views",
   "tests": [
     {
-      "id": "billing-tab-shows-both-manage-and-cancel-buttons",
-      "category": "Billing tab CTAs",
-      "description": "Active paid org sees Manage Subscription (Stripe Portal) AND Cancel Subscription side by side",
-      "setup": "Pick an org with an active paid subscription (plan_status = 'active', plan != Free).",
-      "steps": ["Open Settings → Billing as the org Owner"],
-      "expected": "The Current Plan card shows two stacked buttons: 'Manage Subscription' (opens Stripe Portal on click) and 'Cancel Subscription' below it (opens the in-app cancel modal on click). Paused orgs still show only 'Resume now'; past-due orgs still show only 'Manage Subscription'.",
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "cancel-modal-has-no-stepper",
-      "category": "Cancel modal",
-      "description": "The cancel modal does not render a breadcrumb / stepper at the top",
-      "setup": "Pick an org with an active paid subscription.",
+      "id": "no-empty-shell-duplicates-after-snapshot",
+      "category": "SCD2 Data Integrity",
+      "description": "Taking a snapshot must NOT create empty-shell duplicate rows in entity views. This is the primary reported bug.",
       "steps": [
-        "Open Settings → Billing → click 'Cancel Subscription'",
-        "Inspect the top of the modal"
+        "Open the Hosts tab and note the list of hosts (each should have services / IP addresses / interfaces).",
+        "Go to the topology view and click 'Take snapshot' for the selected network.",
+        "Return to the Hosts tab and refresh.",
+        "Confirm each host appears exactly ONCE — there is no second row with the same name but no services / IPs / interfaces.",
+        "Repeat the check on the Services tab and Subnets tab."
       ],
-      "expected": "Modal header shows 'Cancel subscription' as the title and the close button. No numbered stepper, no 'Reason / Save Offer / Confirm' breadcrumb, no step labels of any kind are visible.",
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "cancel-modal-too-expensive-shows-pause-and-discount",
-      "category": "Cancel modal",
-      "description": "Selecting 'Too expensive' on step 1 advances to step 2 with both Pause and Discount panels and a Confirm Cancellation button",
-      "setup": "Pick an org with an active paid subscription (last_paused_at is null so no pause cooldown applies).",
-      "steps": [
-        "Open Settings → Billing → click 'Cancel Subscription'",
-        "On the reason screen, pick 'Too expensive'",
-        "Click 'Continue cancelling'"
-      ],
-      "expected": "Modal advances to the save-offer screen. Two panels render: 'Pause subscription' (with 30/60/90 buttons + 'Pause until {date}' preview + 'Pause subscription' CTA) and 'Apply a discount' (with description + 'Apply discount' CTA). Below the panels: a confirmation disclosure starting 'If you confirm, you'll keep access until the end of your current billing cycle...'. Footer: 'Back' on the left, 'Confirm cancellation' (red, btn-danger) on the right.",
-      "flow": "cancel-too-expensive",
+      "setup": "Ensure the selected network has at least 2-3 discovered hosts with services and IP addresses (run a discovery scan first if empty).",
+      "expected": "After taking the snapshot, every host/service/subnet appears exactly once in its tab. No empty-shell duplicates appear.",
+      "flow": "setup",
       "sequence": 1,
       "status": null,
       "feedback": null
     },
     {
+      "id": "snapshot-view-shows-as-of-entity-state",
+      "category": "Snapshot As-Of Reads",
+      "description": "On a snapshot view, inspector entity cards show entity state as of the snapshot's taken_at, not current live state.",
+      "steps": [
+        "Take a snapshot of the network (topology view → Take snapshot).",
+        "On the live view, open a host in the inspector and add a new service to it (or add/rename via the UI), then save.",
+        "In the topology view's snapshot dropdown, select the snapshot you just took.",
+        "Open the same host's inspector card in the snapshot view.",
+        "Confirm the newly-added service is NOT shown (snapshot state predates it).",
+        "Switch the dropdown back to the live view and open the host again."
+      ],
+      "setup": "Network has at least one host with services. Snapshots must be enabled on the org's plan (snapshot_retention_days > 0).",
+      "expected": "Snapshot view inspector shows the host's services/IPs as captured at snapshot time (without the post-snapshot addition). Live view shows current state including the new service.",
+      "flow": "setup",
+      "sequence": 2,
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "live-view-unchanged-after-fix",
+      "category": "Snapshot As-Of Reads",
+      "description": "Live view (no snapshot selected) shows current entity state exactly as before — regression check.",
+      "steps": [
+        "With no snapshot selected (live view), open the Hosts/Services/Subnets tabs.",
+        "Confirm all current entities and their children render normally.",
+        "Open several inspector cards and confirm services, IP addresses, ports, bindings, and tags all display correctly."
+      ],
+      "expected": "Live view behaves identically to before the change: current entities and children render with no missing or duplicated data.",
+      "flow": "setup",
+      "sequence": 3,
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "snapshot-view-after-rediscovery",
+      "category": "Snapshot As-Of Reads",
+      "description": "After a snapshot, re-running discovery should not corrupt the snapshot view or the live view.",
+      "steps": [
+        "Take a snapshot of the network.",
+        "Trigger a fresh discovery scan on the same network and wait for it to complete.",
+        "Confirm the live Hosts tab still shows each host once (no duplicates) with up-to-date data.",
+        "Select the snapshot in the dropdown and confirm it still shows the captured pre-rediscovery state."
+      ],
+      "setup": "Network with an active daemon that can run a discovery scan.",
+      "expected": "Live view reflects the new scan with one row per host; snapshot view still reflects the captured state at snapshot time.",
+      "flow": "setup",
+      "sequence": 4,
+      "status": null,
+      "feedback": null
+    }
+  ]
+}
+,
+{
+  "branch": "feat/phase5-subscription-mechanics",
+  "tests": [
+    {
       "id": "cancel-modal-pause-redeem-flips-status",
       "category": "Cancel modal / Pause",
       "description": "Redeeming the pause save-offer pauses the subscription and surfaces the Resume button",
+      "setup": "Pick an org with an active paid subscription (last_paused_at null so no cooldown applies).",
       "steps": [
-        "From the previous test (save-offer screen with Pause + Discount panels), click '60 days' in the Pause panel",
-        "Verify the 'Pause until {date}' preview updates",
+        "Open Settings → Billing → click 'Cancel Subscription'",
+        "Pick 'Too expensive' → click 'Continue cancelling' to reach the save-offer screen",
+        "Click '60 days' in the Pause panel and verify the 'Pause until {date}' preview updates",
         "Click 'Pause subscription'",
         "Wait for the toast and modal close",
         "Look at the Billing tab status pill and the action button"
       ],
       "expected": "Toast 'Subscription paused until {date}'. Modal closes. Org status pill flips to 'Paused' (orange). The 'Resume now' button appears in place of the Manage / Cancel buttons. The blue inline alert reads 'Your subscription is paused. Resume any time...'",
       "flow": "cancel-too-expensive",
-      "sequence": 2,
+      "sequence": 1,
       "status": null,
       "feedback": null
     },
@@ -1324,38 +1190,6 @@ var TEST_PLANS = [
       ],
       "expected": "Toast 'Subscription resumed.' Status pill flips back to 'Active' (green). The 'Resume now' button disappears, replaced by the Manage Subscription + Cancel Subscription pair.",
       "flow": "cancel-too-expensive",
-      "sequence": 3,
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "cancel-modal-other-reason-no-offers-still-confirms",
-      "category": "Cancel modal",
-      "description": "Reasons with no save offers go directly to the confirm screen — no offer panels, just the disclosure + Confirm Cancellation",
-      "setup": "Pick an org with active paid subscription. Reset any prior modal state.",
-      "steps": [
-        "Open Settings → Billing → click 'Cancel Subscription'",
-        "On the reason screen, pick 'Other'",
-        "Optionally type a comment",
-        "Click 'Continue cancelling'"
-      ],
-      "expected": "Modal advances to a step-2 view with NO save-offer panels (because Other has none). The confirmation disclosure renders, with Back / Confirm Cancellation footer.",
-      "flow": "cancel-other",
-      "sequence": 1,
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "cancel-modal-confirm-shows-period-end-toast",
-      "category": "Cancel modal",
-      "description": "Confirming cancellation surfaces a success toast with the Stripe-derived period end and closes the modal",
-      "steps": [
-        "From the previous test (modal on confirm screen), click 'Confirm cancellation'",
-        "Wait for the cancel mutation to complete",
-        "Look at the toast area and the BillingTab beneath"
-      ],
-      "expected": "Toast: 'Your subscription has been cancelled. Access continues until {periodEnd}.' Modal closes. BillingTab status pill flips to 'Downgrading' (amber, mapped from pending_cancellation). The existing inline warning 'Your plan will change to Free at the end of your current billing cycle.' appears.",
-      "flow": "cancel-other",
       "sequence": 2,
       "status": null,
       "feedback": null
@@ -1402,20 +1236,10 @@ var TEST_PLANS = [
       "feedback": null
     },
     {
-      "id": "manage-subscription-opens-stripe-portal",
-      "category": "Billing tab CTAs",
-      "description": "Manage Subscription on an active paid org redirects to the Stripe Customer Portal",
-      "setup": "Pick an org with an active paid subscription.",
-      "steps": ["Open Settings → Billing → click 'Manage Subscription'"],
-      "expected": "Browser redirects to the Stripe Customer Portal (billing.stripe.com or the configured portal URL). Returning from the portal restores the Billing tab.",
-      "status": null,
-      "feedback": null
-    },
-    {
       "id": "stripe-metadata-stash",
       "category": "Cancel — Stripe-side verification",
       "description": "Confirmed cancellations write the canonical Scanopy reason to Stripe Subscription metadata",
-      "setup": "After running cancel-modal-confirm-shows-period-end-toast, look up the affected subscription in the Stripe dashboard.",
+      "setup": "Run the confirm-cancel flow once: pick an org with active paid subscription, open Cancel Subscription, pick 'Other', Continue, Confirm cancellation. Then look up the subscription in the Stripe dashboard.",
       "steps": [
         "Open Stripe Dashboard → Customers → {test customer}",
         "Click the subscription",
@@ -1455,35 +1279,6 @@ var TEST_PLANS = [
         "Verify the URL no longer contains the billing_flow query param"
       ],
       "expected": "A toast reading 'Payment method added.' appears briefly. The org's has_payment_method becomes true (visible in Settings → Billing — the trial card no longer prompts to add a payment method). No error toast.",
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "first-invoice-caption-inline",
-      "category": "Feature 5 — First-invoice date caption",
-      "description": "Each Cloud paid plan card that offers a free trial shows an inline 'First invoice on {date}' caption directly beneath its CTA. The CTA itself is one-click straight to Stripe — no intermediate confirmation step.",
-      "setup": "Use an org on the Free plan that has never trialed (so trial offers are shown). Open the Billing modal (Settings → Billing → Upgrade, or via any UpgradeButton).",
-      "steps": [
-        "Visually scan the Cloud paid plan cards (e.g., Pro, Team, Business) — confirm each has a small caption directly below its primary CTA reading 'First invoice on {Month Day, Year}'",
-        "Verify the date in each caption equals today + that plan's trial_days (cards for plans with different trial lengths should show different dates)",
-        "Verify NO caption appears beneath the Free plan CTA or the Enterprise 'Request Information' CTA",
-        "Click the primary CTA on a paid plan card (e.g., 'Start free trial — no card required')",
-        "Verify the click goes DIRECTLY to Stripe Checkout — no intermediate confirmation step, no second click required"
-      ],
-      "expected": "Caption is visible on every trial-eligible Cloud paid plan card. Dates are correct per plan. CTA is one-tap to Stripe. No extra step.",
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "first-invoice-caption-hidden-for-trialing-switch",
-      "category": "Feature 5 — First-invoice date caption",
-      "description": "Users currently trialing who view the plan picker to switch plans should NOT see the caption (the caption applies to first-time trial entry, not plan switches).",
-      "setup": "Use an org on a paid plan with plan_status='trialing'. Open the Billing modal.",
-      "steps": [
-        "Scan the Cloud plan cards — confirm NO 'First invoice on …' caption appears beneath any CTA",
-        "Confirm the CTAs read 'Switch plan' (not 'Start free trial')"
-      ],
-      "expected": "No first-invoice caption rendered. Switch-plan CTA behaves as before.",
       "status": null,
       "feedback": null
     },
