@@ -3009,19 +3009,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-05-03T04:33:55.425045Z",
+             *       "created_at": "2026-06-10T21:12:58.090807Z",
              *       "first_discovery_id": null,
-             *       "id": "d7f7a6c3-3043-41ca-835d-a48b27e8244b",
+             *       "id": "e5cbed6c-3953-4368-b63b-fab94baf5afe",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-05-03T04:33:55.425045Z",
+             *       "last_seen_at": "2026-06-10T21:12:58.090807Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-05-03T04:33:55.425045Z",
-             *       "valid_from": "2026-05-03T04:33:55.425045Z",
+             *       "updated_at": "2026-06-10T21:12:58.090807Z",
+             *       "valid_from": "2026-06-10T21:12:58.090807Z",
              *       "valid_to": null
              *     }
              */
@@ -3358,19 +3358,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-05-03T04:33:55.408742Z",
+             *               "created_at": "2026-06-10T21:12:58.069986Z",
              *               "first_discovery_id": null,
-             *               "id": "980035a9-e1b0-42e0-9c1e-b882341bbe35",
+             *               "id": "80c78bca-dea1-4c53-bc0e-2503e52fdaa5",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-05-03T04:33:55.408742Z",
+             *               "last_seen_at": "2026-06-10T21:12:58.069986Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-05-03T04:33:55.408742Z",
-             *               "valid_from": "2026-05-03T04:33:55.408742Z",
+             *               "updated_at": "2026-06-10T21:12:58.069986Z",
+             *               "valid_from": "2026-06-10T21:12:58.069986Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3384,7 +3384,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Nest Thermostat",
+             *           "service_definition": "Appwrite",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3669,6 +3669,14 @@ export interface components {
                 public_url: string;
                 /** Format: int32 */
                 server_port: number;
+                /**
+                 * Format: int32
+                 * @description `SCANOPY_SNAPSHOT_RETENTION_DAYS_OVERRIDE` if set on this instance.
+                 *     Frontend uses it inside the plan-comparison view to display the
+                 *     effective retention for this deployment rather than the per-plan
+                 *     fixture default.
+                 */
+                snapshot_retention_days_override?: number | null;
             };
             error?: string | null;
             meta: components["schemas"]["ApiMeta"];
@@ -3712,19 +3720,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-05-03T04:33:55.419448Z",
+             *           "created_at": "2026-06-10T21:12:58.084474Z",
              *           "first_discovery_id": null,
-             *           "id": "ddc2271a-e7cf-4391-bc9b-ccd398f212e6",
+             *           "id": "8fae1073-3f0d-4686-bc9c-e31868ffe0df",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-05-03T04:33:55.419448Z",
+             *           "last_seen_at": "2026-06-10T21:12:58.084474Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-05-03T04:33:55.419448Z",
-             *           "valid_from": "2026-05-03T04:33:55.419448Z",
+             *           "updated_at": "2026-06-10T21:12:58.084474Z",
+             *           "valid_from": "2026-06-10T21:12:58.084474Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -3738,7 +3746,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Nest Thermostat",
+             *       "service_definition": "Appwrite",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4166,19 +4174,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-05-03T04:33:55.408977Z",
+         *       "created_at": "2026-06-10T21:12:58.070496Z",
          *       "first_discovery_id": null,
-         *       "id": "7d79e2ce-6cc0-415e-a993-e77aa160672d",
+         *       "id": "64839e6b-7ee0-4059-908f-8476e8330088",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-05-03T04:33:55.408977Z",
+         *       "last_seen_at": "2026-06-10T21:12:58.070496Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-05-03T04:33:55.408977Z",
-         *       "valid_from": "2026-05-03T04:33:55.408977Z",
+         *       "updated_at": "2026-06-10T21:12:58.070496Z",
+         *       "valid_from": "2026-06-10T21:12:58.070496Z",
          *       "valid_to": null
          *     }
          */
@@ -4393,7 +4401,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Nest Thermostat",
+         *           "service_definition": "Appwrite",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -5331,19 +5339,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-05-03T04:33:55.408482Z",
+         *               "created_at": "2026-06-10T21:12:58.069424Z",
          *               "first_discovery_id": null,
-         *               "id": "19d7a540-8034-4343-b582-b52cdb749ab5",
+         *               "id": "d49dc888-4ad5-490d-ad94-f4856f486b30",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-05-03T04:33:55.408482Z",
+         *               "last_seen_at": "2026-06-10T21:12:58.069424Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-05-03T04:33:55.408482Z",
-         *               "valid_from": "2026-05-03T04:33:55.408482Z",
+         *               "updated_at": "2026-06-10T21:12:58.069424Z",
+         *               "valid_from": "2026-06-10T21:12:58.069424Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -5357,7 +5365,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Nest Thermostat",
+         *           "service_definition": "Appwrite",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -6370,13 +6378,6 @@ export interface components {
             seat_count: number;
             /** Format: int64 */
             seat_limit?: number | null;
-            /**
-             * Format: int32
-             * @description Snapshot retention window in days. `0` means snapshots are not
-             *     available on this plan; the UI uses this to disable the "Take
-             *     snapshot" button and surface the upgrade hook.
-             */
-            snapshot_retention_days: number;
         };
         /**
          * @description Port entity with custom serialization that flattens PortType fields.
@@ -6521,6 +6522,14 @@ export interface components {
             public_url: string;
             /** Format: int32 */
             server_port: number;
+            /**
+             * Format: int32
+             * @description `SCANOPY_SNAPSHOT_RETENTION_DAYS_OVERRIDE` if set on this instance.
+             *     Frontend uses it inside the plan-comparison view to display the
+             *     effective retention for this deployment rather than the per-plan
+             *     fixture default.
+             */
+            snapshot_retention_days_override?: number | null;
         };
         /** @description Public share metadata (returned without authentication) */
         PublicShareMetadata: {
@@ -6694,19 +6703,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-05-03T04:33:55.408928Z",
+         *           "created_at": "2026-06-10T21:12:58.070393Z",
          *           "first_discovery_id": null,
-         *           "id": "086135f8-8d1a-4d74-a3dc-891da63891fe",
+         *           "id": "eeb90a0b-33da-4956-b56c-10e28ead5a35",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-05-03T04:33:55.408928Z",
+         *           "last_seen_at": "2026-06-10T21:12:58.070393Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-05-03T04:33:55.408928Z",
-         *           "valid_from": "2026-05-03T04:33:55.408928Z",
+         *           "updated_at": "2026-06-10T21:12:58.070393Z",
+         *           "valid_from": "2026-06-10T21:12:58.070393Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -6720,7 +6729,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Nest Thermostat",
+         *       "service_definition": "Appwrite",
          *       "source": {
          *         "type": "Manual"
          *       },

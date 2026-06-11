@@ -167,11 +167,6 @@ async fn get_dashboard_summary(
         .await
         .map_err(|e| ApiError::internal_error(&e.to_string()))?;
 
-    let snapshot_retention_days = crate::server::billing::retention::snapshot_retention_days(
-        &plan,
-        state.config.snapshot_retention_days_override,
-    );
-
     let plan_usage = PlanUsage {
         host_limit,
         host_count: total_host_result.total_count,
@@ -179,7 +174,6 @@ async fn get_dashboard_summary(
         network_count: networks_result.total_count,
         seat_limit,
         seat_count: user_result.total_count,
-        snapshot_retention_days,
     };
 
     Ok(Json(ApiResponse::success(DashboardSummary {

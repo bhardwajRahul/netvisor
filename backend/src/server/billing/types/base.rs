@@ -400,6 +400,11 @@ pub struct BillingPlanFeatures {
     pub scheduled_discovery: bool,
     pub discovery_integrations: bool,
     pub csv_export: bool,
+    /// How many days of snapshots the plan retains before the daily sweep
+    /// deletes them. `0` means snapshots are unavailable on this plan. The
+    /// env-var override (`SCANOPY_SNAPSHOT_RETENTION_DAYS_OVERRIDE`) takes
+    /// precedence at runtime — see `BillingPlan::snapshot_retention_days`.
+    pub snapshot_retention_days: u32,
 }
 
 impl BillingPlan {
@@ -470,6 +475,15 @@ impl BillingPlan {
 
     pub fn seat_limit(&self) -> Option<u64> {
         self.config().included_seats
+    }
+
+    /// Snapshot retention window in days for this plan. `0` means snapshots
+    /// are unavailable. `env_override` (`SCANOPY_SNAPSHOT_RETENTION_DAYS_OVERRIDE`)
+    /// is a universal escape hatch — when set it wins over the fixture value
+    /// for every plan tier. Self-hosted operators use it to extend retention
+    /// without forking the plan fixture.
+    pub fn snapshot_retention_days(&self, env_override: Option<u32>) -> u32 {
+        env_override.unwrap_or_else(|| self.features().snapshot_retention_days)
     }
 
     pub fn can_invite_users(&self) -> bool {
@@ -563,12 +577,18 @@ impl BillingPlan {
     }
 
     /// Whether the feature identified by `feature_id` is enabled on this plan.
+    /// Boolean features → true/false directly; numeric features (e.g.
+    /// `snapshot_retention_days`) are "enabled" when the value is > 0.
     pub fn has_feature(&self, feature_id: &str) -> bool {
         let features = self.features();
         let json = serde_json::to_value(&features).unwrap();
-        json.get(feature_id)
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false)
+        let Some(v) = json.get(feature_id) else {
+            return false;
+        };
+        if let Some(b) = v.as_bool() {
+            return b;
+        }
+        v.as_u64().map(|n| n > 0).unwrap_or(false)
     }
 
     /// Build a default plan instance for a given discriminant (monthly, default config).
@@ -659,6 +679,7 @@ impl BillingPlan {
                 scheduled_discovery: true,
                 discovery_integrations: true,
                 csv_export: true,
+                snapshot_retention_days: 90,
             },
             BillingPlan::Free { .. } => BillingPlanFeatures {
                 share_views: false,
@@ -684,6 +705,7 @@ impl BillingPlan {
                 scheduled_discovery: false,
                 discovery_integrations: true,
                 csv_export: true,
+                snapshot_retention_days: 0,
             },
             BillingPlan::Starter { .. } => BillingPlanFeatures {
                 share_views: true,
@@ -709,6 +731,7 @@ impl BillingPlan {
                 scheduled_discovery: true,
                 discovery_integrations: true,
                 csv_export: true,
+                snapshot_retention_days: 7,
             },
             BillingPlan::Pro { .. } => BillingPlanFeatures {
                 share_views: true,
@@ -734,6 +757,7 @@ impl BillingPlan {
                 scheduled_discovery: true,
                 discovery_integrations: true,
                 csv_export: true,
+                snapshot_retention_days: 30,
             },
             BillingPlan::Team { .. } => BillingPlanFeatures {
                 share_views: true,
@@ -759,6 +783,7 @@ impl BillingPlan {
                 scheduled_discovery: true,
                 discovery_integrations: true,
                 csv_export: true,
+                snapshot_retention_days: 90,
             },
             BillingPlan::Business { .. } => BillingPlanFeatures {
                 share_views: true,
@@ -784,6 +809,7 @@ impl BillingPlan {
                 scheduled_discovery: true,
                 discovery_integrations: true,
                 csv_export: true,
+                snapshot_retention_days: 90,
             },
             BillingPlan::Enterprise { .. } => BillingPlanFeatures {
                 share_views: true,
@@ -809,6 +835,7 @@ impl BillingPlan {
                 scheduled_discovery: true,
                 discovery_integrations: true,
                 csv_export: true,
+                snapshot_retention_days: 90,
             },
             BillingPlan::Demo { .. } => BillingPlanFeatures {
                 share_views: true,
@@ -834,6 +861,7 @@ impl BillingPlan {
                 scheduled_discovery: true,
                 discovery_integrations: true,
                 csv_export: true,
+                snapshot_retention_days: 90,
             },
             BillingPlan::CommercialSelfHosted { .. } => BillingPlanFeatures {
                 share_views: true,
@@ -859,6 +887,7 @@ impl BillingPlan {
                 scheduled_discovery: true,
                 discovery_integrations: true,
                 csv_export: true,
+                snapshot_retention_days: 90,
             },
         }
     }
@@ -893,6 +922,7 @@ impl Into<Vec<Feature>> for BillingPlanFeatures {
             scheduled_discovery,
             discovery_integrations,
             csv_export,
+            snapshot_retention_days,
         } = self;
 
         if share_views {
@@ -985,6 +1015,10 @@ impl Into<Vec<Feature>> for BillingPlanFeatures {
 
         if csv_export {
             features.push(Feature::CsvExport)
+        }
+
+        if snapshot_retention_days > 0 {
+            features.push(Feature::SnapshotRetentionDays)
         }
 
         features
@@ -1260,5 +1294,80 @@ mod cancel_modal_tests {
         assert_eq!(SaveOffer::Pause.id(), "pause");
         assert_eq!(SaveOffer::Discount.id(), "discount");
         assert_eq!(SaveOffer::Downgrade.id(), "downgrade");
+    }
+}
+
+#[cfg(test)]
+mod snapshot_retention_tests {
+    use super::*;
+    use crate::server::billing::types::base::PlanConfig;
+
+    fn cfg() -> PlanConfig {
+        PlanConfig::default()
+    }
+
+    #[test]
+    fn no_override_returns_plan_fixture_value() {
+        assert_eq!(BillingPlan::Free(cfg()).snapshot_retention_days(None), 0);
+        assert_eq!(BillingPlan::Starter(cfg()).snapshot_retention_days(None), 7);
+        assert_eq!(BillingPlan::Pro(cfg()).snapshot_retention_days(None), 30);
+        assert_eq!(
+            BillingPlan::Business(cfg()).snapshot_retention_days(None),
+            90
+        );
+        assert_eq!(BillingPlan::Team(cfg()).snapshot_retention_days(None), 90);
+        assert_eq!(
+            BillingPlan::Community(cfg()).snapshot_retention_days(None),
+            90
+        );
+        assert_eq!(
+            BillingPlan::Enterprise(cfg()).snapshot_retention_days(None),
+            90
+        );
+        assert_eq!(BillingPlan::Demo(cfg()).snapshot_retention_days(None), 90);
+        assert_eq!(
+            BillingPlan::CommercialSelfHosted(cfg()).snapshot_retention_days(None),
+            90
+        );
+    }
+
+    #[test]
+    fn env_override_wins_for_every_plan_tier() {
+        let override_value = Some(365);
+        assert_eq!(
+            BillingPlan::Free(cfg()).snapshot_retention_days(override_value),
+            365
+        );
+        assert_eq!(
+            BillingPlan::Starter(cfg()).snapshot_retention_days(override_value),
+            365
+        );
+        assert_eq!(
+            BillingPlan::Pro(cfg()).snapshot_retention_days(override_value),
+            365
+        );
+        assert_eq!(
+            BillingPlan::Business(cfg()).snapshot_retention_days(override_value),
+            365
+        );
+        assert_eq!(
+            BillingPlan::Community(cfg()).snapshot_retention_days(override_value),
+            365
+        );
+        assert_eq!(
+            BillingPlan::Enterprise(cfg()).snapshot_retention_days(override_value),
+            365
+        );
+    }
+
+    #[test]
+    fn override_of_zero_disables_snapshots() {
+        // Universal escape hatch: an operator can set the override to 0 to
+        // disable snapshots on every plan (e.g. to drain a self-hosted box).
+        assert_eq!(BillingPlan::Pro(cfg()).snapshot_retention_days(Some(0)), 0);
+        assert_eq!(
+            BillingPlan::Business(cfg()).snapshot_retention_days(Some(0)),
+            0
+        );
     }
 }

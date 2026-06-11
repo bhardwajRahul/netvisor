@@ -118,6 +118,7 @@ export interface BillingPlanFeatures {
 	confluence_export: boolean;
 	pdf_export: boolean;
 	html_export: boolean;
+	snapshot_retention_days: number;
 }
 
 export type FeatureId = keyof BillingPlanFeatures;

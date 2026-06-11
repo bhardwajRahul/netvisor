@@ -2,11 +2,6 @@
 	import type { components } from '$lib/api/schema';
 	import UpgradeButton from '$lib/shared/components/UpgradeButton.svelte';
 	import ProgressTrack from '$lib/shared/components/data/ProgressTrack.svelte';
-	import {
-		home_planUsage_snapshotRetention,
-		home_planUsage_snapshotRetentionDays,
-		home_planUsage_snapshotsNotIncluded
-	} from '$lib/paraglide/messages';
 
 	type PlanUsage = components['schemas']['PlanUsage'];
 	type BillingPlan = components['schemas']['BillingPlan'];
@@ -23,13 +18,6 @@
 
 	let hasLimits = $derived(
 		planUsage.host_limit != null || planUsage.network_limit != null || planUsage.seat_limit != null
-	);
-	// Snapshot retention always shows — it's a feature config, not a usage cap.
-	let snapshotRetentionDays = $derived(planUsage.snapshot_retention_days);
-	let snapshotRetentionLabel = $derived(
-		snapshotRetentionDays > 0
-			? home_planUsage_snapshotRetentionDays({ days: snapshotRetentionDays })
-			: home_planUsage_snapshotsNotIncluded()
 	);
 
 	interface UsageRow {
@@ -92,7 +80,7 @@
 	}
 </script>
 
-{#if hasLimits || snapshotRetentionDays != null}
+{#if hasLimits}
 	<section>
 		<div class="mb-3 flex items-center justify-between">
 			<h3 class="text-primary text-base font-semibold">Plan Usage</h3>
@@ -125,14 +113,6 @@
 					{/if}
 				</div>
 			{/each}
-			<div class="card card-static">
-				<div class="flex items-center justify-between text-sm">
-					<span class="text-secondary">{home_planUsage_snapshotRetention()}</span>
-					<span class={snapshotRetentionDays > 0 ? 'text-secondary' : 'text-tertiary italic'}
-						>{snapshotRetentionLabel}</span
-					>
-				</div>
-			</div>
 		</div>
 	</section>
 {/if}

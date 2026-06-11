@@ -23,6 +23,9 @@
 	import type { ColorStyle, Color } from '$lib/shared/utils/styling';
 	import type { IconComponent } from '$lib/shared/utils/types';
 	import { tooltip } from '$lib/shared/actions/tooltip';
+	import { useConfigQuery } from '$lib/shared/stores/config-query';
+
+	const configQuery = useConfigQuery();
 
 	/**
 	 * Interface for metadata helpers props.
@@ -166,6 +169,14 @@
 	// ============================================================================
 
 	function getFeatureValue(planType: string, featureKey: string): boolean | string | number | null {
+		// `snapshot_retention_days` is a per-plan fixture value with a universal
+		// env-var escape hatch (`SCANOPY_SNAPSHOT_RETENTION_DAYS_OVERRIDE`).
+		// When the override is set on this deployment, it wins for every plan
+		// — mirrors the backend's `BillingPlan::snapshot_retention_days`.
+		if (featureKey === 'snapshot_retention_days') {
+			const override = configQuery.data?.snapshot_retention_days_override;
+			if (override != null) return override;
+		}
 		const metadata = billingPlanHelpers.getMetadata(planType);
 		const features = metadata?.features as unknown as
 			| Record<string, boolean | string | number | null>
@@ -745,6 +756,8 @@
 										{:else}
 											<X class="text-muted mx-auto h-4 w-4 lg:h-5 lg:w-5" />
 										{/if}
+									{:else if typeof value === 'number' && value === 0}
+										<X class="text-muted mx-auto h-4 w-4 lg:h-5 lg:w-5" />
 									{:else if value === null}
 										<span class="text-tertiary">&mdash;</span>
 									{:else}

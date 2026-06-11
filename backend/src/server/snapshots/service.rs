@@ -273,11 +273,10 @@ impl SnapshotService {
         Ok(())
     }
 
-    /// Daily entry point. Iterates all orgs, resolves retention via the static
-    /// `snapshot_retention_days` lookup, delegates per-org. Idempotent.
+    /// Daily entry point. Iterates all orgs, resolves retention via
+    /// `BillingPlan::snapshot_retention_days(env_override)`, delegates per-org.
+    /// Idempotent.
     pub async fn run_retention(&self, env_override: Option<u32>) -> Result<()> {
-        use crate::server::billing::retention::snapshot_retention_days;
-
         let Some(org_service) = self.organization_service.get() else {
             tracing::warn!(
                 "SnapshotService::run_retention called before retention dependencies were wired"
@@ -294,7 +293,7 @@ impl SnapshotService {
                 .base
                 .plan
                 .unwrap_or_else(crate::server::billing::plans::get_free_plan);
-            let days = snapshot_retention_days(&plan, env_override);
+            let days = plan.snapshot_retention_days(env_override);
             if let Err(e) = self.trim_org(org.id, days).await {
                 tracing::error!(
                     organization_id = %org.id,

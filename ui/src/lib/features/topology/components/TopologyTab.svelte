@@ -39,8 +39,8 @@
 	import { SnapshotDisplay } from '$lib/shared/components/forms/selection/display/SnapshotDisplay.svelte';
 	import { NetworkDisplay } from '$lib/shared/components/forms/selection/display/NetworkDisplay.svelte';
 	import { useNetworksQuery } from '$lib/features/networks/queries';
-	import { useDashboardQuery } from '$lib/features/home/queries';
 	import { triggerUpgrade } from '$lib/features/billing/trigger-upgrade';
+	import Tag from '$lib/shared/components/data/Tag.svelte';
 	import { makeGraphRule } from '../types/grouping';
 	import type { ContainerGraphRule } from '../types/grouping';
 	import { newNodeIds, updateTagFilter } from '../interactions';
@@ -72,16 +72,14 @@
 	import { useCurrentUserQuery } from '$lib/features/auth/queries';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
 	import type { components } from '$lib/api/schema';
-	import { entities, permissions, views } from '$lib/shared/stores/metadata';
+	import { billingPlans, entities, permissions, views } from '$lib/shared/stores/metadata';
 	import { getInspectorConfig } from './panel/inspectors/view-config';
-	import { openModal } from '$lib/shared/stores/modal-registry';
 	import type { TabProps } from '$lib/shared/types';
 	import {
 		common_delete,
 		topology_liveView,
 		topology_noTopologySelected,
 		topology_snapshotDeleteConfirm,
-		topology_snapshotsDisabledUpgrade,
 		topology_takeSnapshot
 	} from '$lib/paraglide/messages';
 	import { useConfigQuery } from '$lib/shared/stores/config-query';
@@ -108,7 +106,6 @@
 	const organizationQuery = useOrganizationQuery();
 	const activeSessionsQuery = useActiveSessionsQuery();
 	const configQuery = useConfigQuery();
-	const dashboardQuery = useDashboardQuery();
 	// Live entity arrays for the inspector / resolvers / display layer.
 	// Hosts query populates the IP addresses / ports / services / interfaces
 	// caches as a side-effect; we expose them via their dedicated cache queries.
@@ -127,10 +124,17 @@
 
 	let hasEmail = $derived(configQuery.data?.has_email_service ?? false);
 
-	// Snapshot retention (0 = snapshots disabled on this plan)
-	let snapshotRetentionDays = $derived(
-		dashboardQuery.data?.plan_usage?.snapshot_retention_days ?? 0
-	);
+	// Snapshot retention (0 = snapshots disabled on this plan).
+	// Reads the per-plan fixture value via the billingPlans metadata store
+	// with the deployment-wide env override (`/api/config`) taking precedence —
+	// mirrors `BillingPlan::snapshot_retention_days` on the backend.
+	let snapshotRetentionDays = $derived.by(() => {
+		const override = configQuery.data?.snapshot_retention_days_override;
+		if (override != null) return override;
+		const planType = organizationQuery.data?.plan?.type;
+		if (!planType) return 0;
+		return billingPlans.getMetadata(planType)?.features?.snapshot_retention_days ?? 0;
+	});
 	let snapshotsEnabled = $derived(snapshotRetentionDays > 0);
 
 	// Application wizard gate
@@ -536,7 +540,7 @@
 							{:else}
 								<button
 									class="btn-secondary"
-									onclick={() => openModal('topology-share')}
+									onclick={() => (isShareModalOpen = true)}
 									title="Share"
 								>
 									<Share2 class="my-1 h-5 w-5" />
@@ -598,12 +602,12 @@
 							class="btn-secondary"
 							onclick={handleTakeSnapshot}
 							disabled={takeSnapshotMutation.isPending || !$selectedNetworkId}
-							title={!snapshotsEnabled
-								? topology_snapshotsDisabledUpgrade()
-								: topology_takeSnapshot()}
 						>
 							<Camera class="mr-1 h-4 w-4" />
 							{topology_takeSnapshot()}
+							{#if !snapshotsEnabled}
+								<Tag label="Upgrade" color="Yellow" />
+							{/if}
 						</button>
 
 						{#if $selectedSnapshotId}

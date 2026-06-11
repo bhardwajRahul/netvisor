@@ -192,6 +192,11 @@ pub struct PublicConfigResponse {
     /// True when the license is past `intended_exp` but not yet past
     /// the hard `exp` — the silent grace window.
     pub license_in_grace_period: bool,
+    /// `SCANOPY_SNAPSHOT_RETENTION_DAYS_OVERRIDE` if set on this instance.
+    /// Frontend uses it inside the plan-comparison view to display the
+    /// effective retention for this deployment rather than the per-plan
+    /// fixture default.
+    pub snapshot_retention_days_override: Option<u32>,
 }
 
 impl Default for ServerConfig {
@@ -443,6 +448,7 @@ pub async fn get_public_config(State(state): State<Arc<AppState>>) -> impl IntoR
             license_expiry,
             license_intended_expiry,
             license_in_grace_period,
+            snapshot_retention_days_override: state.config.snapshot_retention_days_override,
         })),
     )
 }
