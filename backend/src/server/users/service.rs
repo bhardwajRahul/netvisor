@@ -151,7 +151,9 @@ impl UserService {
         let explicit = if explicit_user_ids.is_empty() {
             Vec::new()
         } else {
-            let filter = StorableFilter::<User>::new_from_user_ids(&explicit_user_ids);
+            // The users table's PK is `id`; the `user_id` column lives on the
+            // user_network_access junction. Filter on entity ids.
+            let filter = StorableFilter::<User>::new_from_entity_ids(&explicit_user_ids);
             self.user_storage.get_all(filter).await?
         };
 
