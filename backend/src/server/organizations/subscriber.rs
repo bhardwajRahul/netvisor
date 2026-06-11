@@ -8,8 +8,9 @@
 //! Phase 5 eligibility gates and the downgrade banner; mirrors
 //! `BillingOperation::implied_status()` onto `organizations.plan_status` so
 //! every billing event keeps the canonical status column in sync; and writes
-//! `trial_end_date` from `TrialStarted` / `TrialExtended` so the trial UI
-//! surfaces can read trial state directly off the org payload.
+//! `organizations.plan` + `trial_end_date` from the variants that establish
+//! or change the current plan (`CheckoutCompleted`, `TrialStarted`,
+//! `PlanChanged`, `TrialExtended`).
 
 use anyhow::Error;
 use async_trait::async_trait;
@@ -80,7 +81,19 @@ impl Subscriber<BillingOperation> for OrganizationService {
                     organization.base.last_paused_at = Some(event.timestamp);
                     changed = true;
                 }
-                BillingOperation::TrialStarted { trial_end, .. } => {
+                BillingOperation::CheckoutCompleted { plan, .. } => {
+                    if organization.base.plan.as_ref() != Some(plan) {
+                        organization.base.plan = Some(*plan);
+                        changed = true;
+                    }
+                }
+                BillingOperation::TrialStarted {
+                    plan, trial_end, ..
+                } => {
+                    if organization.base.plan.as_ref() != Some(plan) {
+                        organization.base.plan = Some(*plan);
+                        changed = true;
+                    }
                     if organization.base.trial_end_date != Some(*trial_end) {
                         organization.base.trial_end_date = Some(*trial_end);
                         changed = true;
@@ -98,12 +111,19 @@ impl Subscriber<BillingOperation> for OrganizationService {
                 }
                 BillingOperation::PlanChanged {
                     from,
-                    is_downgrade: true,
+                    to,
+                    is_downgrade,
                     ..
                 } => {
-                    organization.base.last_downgrade_at = Some(event.timestamp);
-                    organization.base.last_downgrade_from_plan = Some(*from);
-                    changed = true;
+                    if organization.base.plan.as_ref() != Some(to) {
+                        organization.base.plan = Some(*to);
+                        changed = true;
+                    }
+                    if *is_downgrade {
+                        organization.base.last_downgrade_at = Some(event.timestamp);
+                        organization.base.last_downgrade_from_plan = Some(*from);
+                        changed = true;
+                    }
                 }
                 BillingOperation::SubscriptionCancelled { plan, .. } => {
                     organization.base.last_downgrade_at = Some(event.timestamp);

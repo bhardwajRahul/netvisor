@@ -73,7 +73,7 @@ clean-db:
 	docker rm scanopy-postgres || true
 
 migrate-db:
-	cd backend && sqlx migrate run --database-url postgresql://postgres:password@localhost:5432/scanopy
+	cd backend && cargo run --bin migrate -- --database-url postgresql://postgres:password@localhost:5432/scanopy
 
 lint-migrations:
 	@cd backend && ./scripts/lint-migrations.sh

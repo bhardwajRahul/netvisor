@@ -746,7 +746,7 @@ interface LiveTopologyUpdate {
 class TopologySSEManager extends BaseSSEManager<LiveTopologyUpdate> {
 	protected createConfig(): SSEConfig<LiveTopologyUpdate> {
 		return {
-			url: '/api/v1/topology/live-updates/stream',
+			url: '/api/v1/topology/stream',
 			onMessage: (update) => {
 				// Live data changed for this network — invalidate the topology
 				// list (the live row's nodes/edges may have shifted) and the

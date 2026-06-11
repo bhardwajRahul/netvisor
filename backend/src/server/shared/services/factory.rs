@@ -25,7 +25,7 @@ use crate::server::{
     shared::{
         events::{
             bus::EventBus,
-            registry::{ServiceCollector, register_all_subscribers},
+            registry::{CollectedServices, ServiceCollector, register_all_subscribers},
         },
         storage::factory::StorageFactory,
     },
@@ -437,7 +437,7 @@ impl ServiceFactory {
     /// consumed by the `.add(...)` chain; an unused binding (forgot to add
     /// or intentionally skipping) trips `#[deny(unused_variables)]`.
     #[deny(unused_variables)]
-    fn all_services(&self) -> Vec<Arc<dyn std::any::Any + Send + Sync>> {
+    fn all_services(&self) -> CollectedServices {
         let Self {
             user_service,
             auth_service,

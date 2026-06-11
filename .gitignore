@@ -29,7 +29,7 @@ oidc.toml
 # Manual testing
 TEST_PLAN.json
 TEST_RESULTS.json
-tools/test-plans.js
+tools/testing/test-plans.js
 tools/test-runner.html
 
 # AI

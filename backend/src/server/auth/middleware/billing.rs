@@ -89,15 +89,19 @@ pub async fn require_billing_for_users(
     // Reassemble request with cached entities in extensions
     let request = Request::from_parts(parts, body);
 
-    // Check plan type - some plans are exempt from billing checks
+    // Check plan type - some plans are exempt from billing checks.
+    // `unwrap_or_default()` treats `plan = None` (newly-registered orgs that
+    // haven't selected a plan yet) as the build's default plan
+    // (Community / CommercialSelfHosted), which matches the exempt arm and
+    // lets `/api/v1/organizations` succeed. The frontend reads the resulting
+    // `plan = null` and opens BillingPlanModal to force plan selection.
+    let plan = organization.base.plan.clone().unwrap_or_default();
     if matches!(
-        organization.base.plan,
-        Some(
-            BillingPlan::Community(_)
-                | BillingPlan::Free(_)
-                | BillingPlan::CommercialSelfHosted(_)
-                | BillingPlan::Demo(_)
-        )
+        plan,
+        BillingPlan::Community(_)
+            | BillingPlan::Free(_)
+            | BillingPlan::CommercialSelfHosted(_)
+            | BillingPlan::Demo(_)
     ) {
         return next.run(request).await;
     }

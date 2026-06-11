@@ -289,9 +289,6 @@
 	let hasCompletedFirstDiscovery = $derived(
 		onboarding.length === 0 || onboarding.includes('FirstDiscoveryCompleted')
 	);
-	let hasCompletedFirstRebuild = $derived(
-		onboarding.length === 0 || onboarding.includes('FirstDiscoveryCompleted')
-	);
 
 	// URL params: read once on init for topology/view deep-linking
 	const urlParams = getTopologyParamsFromUrl();
@@ -580,7 +577,7 @@
 					{/if}
 				{/if}
 
-				{#if hasCompletedFirstRebuild && networksData.length > 0}
+				{#if networksData.length > 0}
 					<RichSelect
 						label=""
 						selectedValue={$selectedNetworkId ?? ''}

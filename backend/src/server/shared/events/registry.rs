@@ -85,17 +85,30 @@ where
     })
 }
 
-/// Builder for the type-erased service Vec passed to `register_all_subscribers`.
-/// Hides the `Arc<S> -> Arc<dyn Any + Send + Sync>` coercion so the factory's
-/// `all_services` method reads as a flat `.add(...)` chain.
+/// Output of `ServiceCollector::build()` — passed to `register_all_subscribers`.
+/// Carries the constructed services plus the `TypeId`s of any optional services
+/// that were declared via `with_optional` but were `None`. The registry uses
+/// the latter to distinguish "subscriber's service is intentionally absent"
+/// (debug log + skip) from "subscriber registered but its service was never
+/// added to the factory" (real bug — fail fast at startup).
+pub struct CollectedServices {
+    pub services: Vec<Arc<dyn Any + Send + Sync>>,
+    pub optional_absent: HashSet<TypeId>,
+}
+
+/// Builder for `CollectedServices`. Hides the `Arc<S> -> Arc<dyn Any>`
+/// coercion so the factory's `all_services` method reads as a flat
+/// `.with(...)` chain.
 pub struct ServiceCollector {
     services: Vec<Arc<dyn Any + Send + Sync>>,
+    optional_absent: HashSet<TypeId>,
 }
 
 impl ServiceCollector {
     pub fn new() -> Self {
         Self {
             services: Vec::new(),
+            optional_absent: HashSet::new(),
         }
     }
 
@@ -105,14 +118,20 @@ impl ServiceCollector {
     }
 
     pub fn with_optional<S: Any + Send + Sync + 'static>(mut self, s: Option<Arc<S>>) -> Self {
-        if let Some(s) = s {
-            self.services.push(s);
+        match s {
+            Some(svc) => self.services.push(svc),
+            None => {
+                self.optional_absent.insert(TypeId::of::<S>());
+            }
         }
         self
     }
 
-    pub fn build(self) -> Vec<Arc<dyn Any + Send + Sync>> {
-        self.services
+    pub fn build(self) -> CollectedServices {
+        CollectedServices {
+            services: self.services,
+            optional_absent: self.optional_absent,
+        }
     }
 }
 
@@ -130,7 +149,7 @@ impl Default for ServiceCollector {
 ///   means a new service was added to `ServiceFactory` but its corresponding
 ///   subscribers aren't reachable because it isn't in `all_services`)
 pub async fn register_all_subscribers(
-    services: Vec<Arc<dyn Any + Send + Sync>>,
+    services: CollectedServices,
     bus: Arc<EventBus>,
 ) -> Result<()> {
     let mut seen: HashSet<&'static str> = HashSet::new();
@@ -146,7 +165,7 @@ pub async fn register_all_subscribers(
         }
         let target = (entry.service_type)();
         let mut matched = false;
-        for svc in &services {
+        for svc in &services.services {
             if (**svc).type_id() == target {
                 (entry.register)(svc.clone(), bus.clone(), name).await;
                 matched = true;
@@ -154,6 +173,13 @@ pub async fn register_all_subscribers(
             }
         }
         if !matched {
+            if services.optional_absent.contains(&target) {
+                tracing::debug!(
+                    subscriber = name,
+                    "optional service not constructed (e.g. Brevo disabled); skipping subscriber",
+                );
+                continue;
+            }
             return Err(anyhow!(
                 "subscriber '{}' registered via inventory but no matching service in \
                  ServiceFactory::all_services() — was a new service added to the factory \
@@ -172,7 +198,8 @@ pub async fn register_all_subscribers(
 fn auto_name<S: 'static, Op: 'static>() -> &'static str {
     let s = snake_case_last_segment(std::any::type_name::<S>());
     let o = snake_case_last_segment(std::any::type_name::<Op>());
-    Box::leak(format!("{}:{}", s, o).into_boxed_str())
+    let op = o.replace("_operation", "");
+    Box::leak(format!("{}:{}", s, op).into_boxed_str())
 }
 
 /// `crate::path::ServiceName` -> `service_name`. Generic-parameter brackets
