@@ -296,3 +296,95 @@ impl Entity for Binding {
         self.updated_at = time;
     }
 }
+
+#[cfg(test)]
+mod remap_tests {
+    use super::*;
+    use crate::server::bindings::r#impl::base::{Binding, BindingBase, BindingType};
+    use crate::server::shared::storage::snapshot::{FkMaps, Snapshotable};
+
+    // Snapshot close-and-clone must rewrite a cloned binding's FK columns to the
+    // closed copies of its service / ip_address / port, so the historical binding
+    // references the historical parents (not the live ones). This is the
+    // `service_bindings -> ip_addresses` cascade the task called out.
+    #[test]
+    fn ip_address_binding_remaps_service_and_ip_address() {
+        let (live_service, closed_service) = (Uuid::new_v4(), Uuid::new_v4());
+        let (live_ip, closed_ip) = (Uuid::new_v4(), Uuid::new_v4());
+
+        let mut binding = Binding::new(BindingBase::new(
+            live_service,
+            Uuid::new_v4(),
+            BindingType::IPAddress {
+                ip_address_id: live_ip,
+            },
+        ));
+
+        let mut maps = FkMaps::default();
+        maps.services.insert(live_service, closed_service);
+        maps.ip_addresses.insert(live_ip, closed_ip);
+
+        binding.remap_fks_for_clone(&maps);
+
+        assert_eq!(binding.base.service_id, closed_service);
+        match binding.base.binding_type {
+            BindingType::IPAddress { ip_address_id } => assert_eq!(ip_address_id, closed_ip),
+            other => panic!("unexpected binding type: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn port_binding_remaps_port_and_optional_ip_address() {
+        let (live_port, closed_port) = (Uuid::new_v4(), Uuid::new_v4());
+        let (live_ip, closed_ip) = (Uuid::new_v4(), Uuid::new_v4());
+
+        let mut binding = Binding::new(BindingBase::new(
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            BindingType::Port {
+                port_id: live_port,
+                ip_address_id: Some(live_ip),
+            },
+        ));
+
+        let mut maps = FkMaps::default();
+        maps.ports.insert(live_port, closed_port);
+        maps.ip_addresses.insert(live_ip, closed_ip);
+
+        binding.remap_fks_for_clone(&maps);
+
+        match binding.base.binding_type {
+            BindingType::Port {
+                port_id,
+                ip_address_id,
+            } => {
+                assert_eq!(port_id, closed_port);
+                assert_eq!(ip_address_id, Some(closed_ip));
+            }
+            other => panic!("unexpected binding type: {other:?}"),
+        }
+    }
+
+    // FKs with no entry in the maps (e.g. a parent outside this network's
+    // snapshot) must be left untouched rather than zeroed.
+    #[test]
+    fn unmapped_fks_are_left_unchanged() {
+        let live_service = Uuid::new_v4();
+        let live_ip = Uuid::new_v4();
+        let mut binding = Binding::new(BindingBase::new(
+            live_service,
+            Uuid::new_v4(),
+            BindingType::IPAddress {
+                ip_address_id: live_ip,
+            },
+        ));
+
+        binding.remap_fks_for_clone(&FkMaps::default());
+
+        assert_eq!(binding.base.service_id, live_service);
+        match binding.base.binding_type {
+            BindingType::IPAddress { ip_address_id } => assert_eq!(ip_address_id, live_ip),
+            other => panic!("unexpected binding type: {other:?}"),
+        }
+    }
+}

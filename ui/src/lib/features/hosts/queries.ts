@@ -146,6 +146,9 @@ export interface HostQueryOptions {
 	order_direction?: components['schemas']['OrderDirection'];
 	/** Filter by tag IDs (returns hosts that have ANY of the specified tags). */
 	tag_ids?: string[];
+	/** As-of timestamp (ISO 8601). When set, returns SCD2 state as of this instant
+	 * (snapshot view) instead of live state. */
+	at?: string;
 }
 
 /**
@@ -193,7 +196,8 @@ export function useHostsQuery(optionsOrGetter: HostQueryOptions | (() => HostQue
 							group_by: options.group_by,
 							order_by: options.order_by,
 							order_direction: options.order_direction,
-							tag_ids: options.tag_ids
+							tag_ids: options.tag_ids,
+							at: options.at
 						}
 					}
 				});

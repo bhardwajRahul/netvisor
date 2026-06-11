@@ -97,6 +97,13 @@ pub trait FilterQueryExtractor: DeserializeOwned + Send + Sync + Default {
 
     /// Get pagination parameters from the query.
     fn pagination(&self) -> PaginationParams;
+
+    /// As-of timestamp for SCD2 reads. When `Some(t)`, the read path uses
+    /// `as_of(t)` (snapshot-pinned state); when `None`, it uses `live()`.
+    /// Defaults to `None`; query types that expose an `at` param override this.
+    fn at(&self) -> Option<chrono::DateTime<chrono::Utc>> {
+        None
+    }
 }
 
 // ============================================================================
@@ -211,9 +218,16 @@ pub struct HostChildQuery {
     /// Number of results to skip. Default: 0.
     #[param(minimum = 0)]
     pub offset: Option<u32>,
+    /// As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+    /// instant (snapshot view) instead of live state.
+    pub at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 impl FilterQueryExtractor for HostChildQuery {
+    fn at(&self) -> Option<chrono::DateTime<chrono::Utc>> {
+        self.at
+    }
+
     fn apply_to_filter<T: Storable>(
         &self,
         filter: StorableFilter<T>,
@@ -263,9 +277,16 @@ pub struct BindingQuery {
     /// Number of results to skip. Default: 0.
     #[param(minimum = 0)]
     pub offset: Option<u32>,
+    /// As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+    /// instant (snapshot view) instead of live state.
+    pub at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 impl FilterQueryExtractor for BindingQuery {
+    fn at(&self) -> Option<chrono::DateTime<chrono::Utc>> {
+        self.at
+    }
+
     fn apply_to_filter<T: Storable>(
         &self,
         filter: StorableFilter<T>,
@@ -316,9 +337,16 @@ pub struct IPAddressQuery {
     /// Number of results to skip. Default: 0.
     #[param(minimum = 0)]
     pub offset: Option<u32>,
+    /// As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+    /// instant (snapshot view) instead of live state.
+    pub at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 impl FilterQueryExtractor for IPAddressQuery {
+    fn at(&self) -> Option<chrono::DateTime<chrono::Utc>> {
+        self.at
+    }
+
     fn apply_to_filter<T: Storable>(
         &self,
         filter: StorableFilter<T>,

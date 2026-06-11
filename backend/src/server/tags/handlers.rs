@@ -74,6 +74,9 @@ pub struct TagFilterQuery {
     /// Number of results to skip. Default: 0.
     #[param(minimum = 0)]
     pub offset: Option<u32>,
+    /// As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+    /// instant (snapshot view) instead of live state.
+    pub at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 impl TagFilterQuery {
@@ -157,7 +160,10 @@ async fn get_all_tags(
         .organization_id()
         .ok_or_else(|| ApiError::forbidden("Organization context required"))?;
 
-    let base_filter = StorableFilter::<Tag>::new_from_org_id(&organization_id);
+    // SCD2 read path: live by default, or as-of the snapshot timestamp when set.
+    // Hides close-and-clone's closed historical tag copies from the tag list.
+    let base_filter =
+        StorableFilter::<Tag>::new_from_org_id(&organization_id).live_or_as_of(query.at);
 
     // Apply pagination
     let pagination = query.pagination();

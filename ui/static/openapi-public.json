@@ -1098,6 +1098,19 @@
               "format": "int32",
               "minimum": 0
             }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
           }
         ],
         "responses": {
@@ -1338,6 +1351,19 @@
               ],
               "format": "int32",
               "minimum": 0
+            }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
             }
           }
         ],
@@ -2764,6 +2790,19 @@
               "format": "int32",
               "minimum": 0
             }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
           }
         ],
         "responses": {
@@ -2976,6 +3015,19 @@
               ],
               "format": "int32",
               "minimum": 0
+            }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
             }
           }
         ],
@@ -3891,6 +3943,19 @@
               "format": "int32",
               "minimum": 0
             }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
           }
         ],
         "responses": {
@@ -4161,6 +4226,19 @@
               "format": "int32",
               "minimum": 0
             }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
           }
         ],
         "responses": {
@@ -4310,6 +4388,19 @@
               ],
               "format": "int32",
               "minimum": 0
+            }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
             }
           }
         ],
@@ -4663,6 +4754,19 @@
               "format": "int32",
               "minimum": 0
             }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
           }
         ],
         "responses": {
@@ -4883,6 +4987,19 @@
               ],
               "format": "int32",
               "minimum": 0
+            }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
             }
           }
         ],
@@ -5346,6 +5463,19 @@
               "format": "int32",
               "minimum": 0
             }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
           }
         ],
         "responses": {
@@ -5571,6 +5701,19 @@
               ],
               "format": "int32",
               "minimum": 0
+            }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
             }
           }
         ],
@@ -6459,6 +6602,19 @@
               "format": "int32",
               "minimum": 0
             }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
           }
         ],
         "responses": {
@@ -6678,6 +6834,19 @@
               ],
               "format": "int32",
               "minimum": 0
+            }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
             }
           }
         ],
@@ -7026,6 +7195,19 @@
               "format": "int32",
               "minimum": 0
             }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
           }
         ],
         "responses": {
@@ -7299,6 +7481,19 @@
               ],
               "format": "int32",
               "minimum": 0
+            }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
             }
           }
         ],
@@ -8378,6 +8573,19 @@
               "format": "int32",
               "minimum": 0
             }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
           }
         ],
         "responses": {
@@ -8596,6 +8804,19 @@
               ],
               "format": "int32",
               "minimum": 0
+            }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
             }
           }
         ],
@@ -8871,6 +9092,19 @@
               ],
               "format": "int32",
               "minimum": 0
+            }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
             }
           }
         ],
@@ -9252,6 +9486,19 @@
               ],
               "format": "int32",
               "minimum": 0
+            }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
             }
           }
         ],
@@ -9960,6 +10207,19 @@
               ],
               "format": "uuid"
             }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
           }
         ],
         "responses": {
@@ -10225,6 +10485,19 @@
                 "null"
               ],
               "format": "uuid"
+            }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
             }
           }
         ],
@@ -10587,19 +10860,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-05-03T04:33:55.425043Z",
+              "created_at": "2026-06-10T21:15:51.465838Z",
               "first_discovery_id": null,
-              "id": "cedeb2fe-3c4a-4191-ae15-dc668928fac9",
+              "id": "4d51ff9f-a28c-458e-bc42-b9587b3bbbff",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-05-03T04:33:55.425043Z",
+              "last_seen_at": "2026-06-10T21:15:51.465838Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-05-03T04:33:55.425043Z",
-              "valid_from": "2026-05-03T04:33:55.425043Z",
+              "updated_at": "2026-06-10T21:15:51.465838Z",
+              "valid_from": "2026-06-10T21:15:51.465838Z",
               "valid_to": null
             }
           },
@@ -11585,19 +11858,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-05-03T04:33:55.408748Z",
+                      "created_at": "2026-06-10T21:15:51.454213Z",
                       "first_discovery_id": null,
-                      "id": "9c25dc3d-1366-4921-9998-3e1bb3a19333",
+                      "id": "d65bf41d-ec28-4f33-86d0-4aaedc628804",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-05-03T04:33:55.408748Z",
+                      "last_seen_at": "2026-06-10T21:15:51.454213Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-05-03T04:33:55.408748Z",
-                      "valid_from": "2026-05-03T04:33:55.408748Z",
+                      "updated_at": "2026-06-10T21:15:51.454213Z",
+                      "valid_from": "2026-06-10T21:15:51.454213Z",
                       "valid_to": null
                     }
                   ],
@@ -11611,7 +11884,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Nest Thermostat",
+                  "service_definition": "Roku Media Player",
                   "source": {
                     "type": "Manual"
                   },
@@ -12533,19 +12806,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-05-03T04:33:55.419438Z",
+                  "created_at": "2026-06-10T21:15:51.461659Z",
                   "first_discovery_id": null,
-                  "id": "2b962d08-c9e6-4a82-80cd-6f587cd65897",
+                  "id": "61dbeaf0-64b2-486a-8a64-57c607060dc1",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-05-03T04:33:55.419438Z",
+                  "last_seen_at": "2026-06-10T21:15:51.461659Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-05-03T04:33:55.419438Z",
-                  "valid_from": "2026-05-03T04:33:55.419438Z",
+                  "updated_at": "2026-06-10T21:15:51.461659Z",
+                  "valid_from": "2026-06-10T21:15:51.461659Z",
                   "valid_to": null
                 }
               ],
@@ -12559,7 +12832,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Nest Thermostat",
+              "service_definition": "Roku Media Player",
               "source": {
                 "type": "Manual"
               },
@@ -14160,19 +14433,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-05-03T04:33:55.408983Z",
+          "created_at": "2026-06-10T21:15:51.454426Z",
           "first_discovery_id": null,
-          "id": "17c48c38-479b-479b-b530-de9617432755",
+          "id": "72d064fb-8b07-4a38-bbf2-6b86530315ba",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-05-03T04:33:55.408983Z",
+          "last_seen_at": "2026-06-10T21:15:51.454426Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-05-03T04:33:55.408983Z",
-          "valid_from": "2026-05-03T04:33:55.408983Z",
+          "updated_at": "2026-06-10T21:15:51.454426Z",
+          "valid_from": "2026-06-10T21:15:51.454426Z",
           "valid_to": null
         }
       },
@@ -14762,7 +15035,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Nest Thermostat",
+              "service_definition": "Roku Media Player",
               "tags": [],
               "virtualization": null
             }
@@ -16665,6 +16938,17 @@
           }
         }
       },
+      "EmailSettings": {
+        "type": "object",
+        "required": [
+          "discovery_digest"
+        ],
+        "properties": {
+          "discovery_digest": {
+            "type": "boolean"
+          }
+        }
+      },
       "EnterpriseInquiryRequest": {
         "type": "object",
         "description": "Enterprise plan inquiry request",
@@ -17369,19 +17653,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-05-03T04:33:55.408484Z",
+                  "created_at": "2026-06-10T21:15:51.453952Z",
                   "first_discovery_id": null,
-                  "id": "28493d52-4593-42ed-8204-ec379d3bf0d4",
+                  "id": "ee9d8795-5b37-4219-b40c-2f51b84bc21a",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-05-03T04:33:55.408484Z",
+                  "last_seen_at": "2026-06-10T21:15:51.453952Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-05-03T04:33:55.408484Z",
-                  "valid_from": "2026-05-03T04:33:55.408484Z",
+                  "updated_at": "2026-06-10T21:15:51.453952Z",
+                  "valid_from": "2026-06-10T21:15:51.453952Z",
                   "valid_to": null
                 }
               ],
@@ -17395,7 +17679,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Nest Thermostat",
+              "service_definition": "Roku Media Player",
               "source": {
                 "type": "Manual"
               },
@@ -19784,19 +20068,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-05-03T04:33:55.396013Z",
+                        "created_at": "2026-06-10T21:15:51.448143Z",
                         "first_discovery_id": null,
-                        "id": "b045e6f4-af89-4b54-9baa-392722e2fb30",
+                        "id": "7c3f5b43-c28c-4ab0-a563-2f8b2221c5ce",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-05-03T04:33:55.396013Z",
+                        "last_seen_at": "2026-06-10T21:15:51.448143Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-05-03T04:33:55.396013Z",
-                        "valid_from": "2026-05-03T04:33:55.396013Z",
+                        "updated_at": "2026-06-10T21:15:51.448143Z",
+                        "valid_from": "2026-06-10T21:15:51.448143Z",
                         "valid_to": null
                       }
                     ],
@@ -19810,7 +20094,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Nest Thermostat",
+                    "service_definition": "Roku Media Player",
                     "source": {
                       "type": "Manual"
                     },
@@ -19931,19 +20215,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-05-03T04:33:55.418704Z",
+                    "created_at": "2026-06-10T21:15:51.460882Z",
                     "first_discovery_id": null,
-                    "id": "e59fb250-0bc0-487c-854f-af2e8e96ed00",
+                    "id": "7c259d7e-19d7-4416-b3d3-bda0f1a74f3b",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-05-03T04:33:55.418704Z",
+                    "last_seen_at": "2026-06-10T21:15:51.460882Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-05-03T04:33:55.418704Z",
-                    "valid_from": "2026-05-03T04:33:55.418704Z",
+                    "updated_at": "2026-06-10T21:15:51.460882Z",
+                    "valid_from": "2026-06-10T21:15:51.460882Z",
                     "valid_to": null
                   }
                 ],
@@ -19957,7 +20241,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Nest Thermostat",
+                "service_definition": "Roku Media Player",
                 "source": {
                   "type": "Manual"
                 },
@@ -21512,19 +21796,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-05-03T04:33:55.408934Z",
+              "created_at": "2026-06-10T21:15:51.454380Z",
               "first_discovery_id": null,
-              "id": "ccd0b23f-9526-4448-8eaf-079e53e38553",
+              "id": "43650469-96d9-4be2-86c5-b8d342d81937",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-05-03T04:33:55.408934Z",
+              "last_seen_at": "2026-06-10T21:15:51.454380Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-05-03T04:33:55.408934Z",
-              "valid_from": "2026-05-03T04:33:55.408934Z",
+              "updated_at": "2026-06-10T21:15:51.454380Z",
+              "valid_from": "2026-06-10T21:15:51.454380Z",
               "valid_to": null
             }
           ],
@@ -21538,7 +21822,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Nest Thermostat",
+          "service_definition": "Roku Media Player",
           "source": {
             "type": "Manual"
           },
@@ -23015,6 +23299,10 @@
         "properties": {
           "email": {
             "type": "string"
+          },
+          "email_settings": {
+            "$ref": "#/components/schemas/EmailSettings",
+            "description": "Per-user email preferences"
           },
           "email_verified": {
             "type": "boolean",

@@ -3009,19 +3009,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-05-03T04:33:55.425045Z",
+             *       "created_at": "2026-06-10T21:15:51.465839Z",
              *       "first_discovery_id": null,
-             *       "id": "d7f7a6c3-3043-41ca-835d-a48b27e8244b",
+             *       "id": "a2defb4c-c5d5-422b-9688-9da98d15b556",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-05-03T04:33:55.425045Z",
+             *       "last_seen_at": "2026-06-10T21:15:51.465839Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-05-03T04:33:55.425045Z",
-             *       "valid_from": "2026-05-03T04:33:55.425045Z",
+             *       "updated_at": "2026-06-10T21:15:51.465839Z",
+             *       "valid_from": "2026-06-10T21:15:51.465839Z",
              *       "valid_to": null
              *     }
              */
@@ -3358,19 +3358,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-05-03T04:33:55.408742Z",
+             *               "created_at": "2026-06-10T21:15:51.454220Z",
              *               "first_discovery_id": null,
-             *               "id": "980035a9-e1b0-42e0-9c1e-b882341bbe35",
+             *               "id": "d598a2c7-6d60-4602-abb9-792ff109ae1f",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-05-03T04:33:55.408742Z",
+             *               "last_seen_at": "2026-06-10T21:15:51.454220Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-05-03T04:33:55.408742Z",
-             *               "valid_from": "2026-05-03T04:33:55.408742Z",
+             *               "updated_at": "2026-06-10T21:15:51.454220Z",
+             *               "valid_from": "2026-06-10T21:15:51.454220Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3384,7 +3384,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Nest Thermostat",
+             *           "service_definition": "Roku Media Player",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3712,19 +3712,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-05-03T04:33:55.419448Z",
+             *           "created_at": "2026-06-10T21:15:51.461664Z",
              *           "first_discovery_id": null,
-             *           "id": "ddc2271a-e7cf-4391-bc9b-ccd398f212e6",
+             *           "id": "27729dbc-f503-4d5d-b18c-96bb95746b32",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-05-03T04:33:55.419448Z",
+             *           "last_seen_at": "2026-06-10T21:15:51.461664Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-05-03T04:33:55.419448Z",
-             *           "valid_from": "2026-05-03T04:33:55.419448Z",
+             *           "updated_at": "2026-06-10T21:15:51.461664Z",
+             *           "valid_from": "2026-06-10T21:15:51.461664Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -3738,7 +3738,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Nest Thermostat",
+             *       "service_definition": "Roku Media Player",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4166,19 +4166,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-05-03T04:33:55.408977Z",
+         *       "created_at": "2026-06-10T21:15:51.454437Z",
          *       "first_discovery_id": null,
-         *       "id": "7d79e2ce-6cc0-415e-a993-e77aa160672d",
+         *       "id": "151180c7-5a95-48c2-a2e5-34ef274d3294",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-05-03T04:33:55.408977Z",
+         *       "last_seen_at": "2026-06-10T21:15:51.454437Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-05-03T04:33:55.408977Z",
-         *       "valid_from": "2026-05-03T04:33:55.408977Z",
+         *       "updated_at": "2026-06-10T21:15:51.454437Z",
+         *       "valid_from": "2026-06-10T21:15:51.454437Z",
          *       "valid_to": null
          *     }
          */
@@ -4393,7 +4393,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Nest Thermostat",
+         *           "service_definition": "Roku Media Player",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -5070,6 +5070,9 @@ export interface components {
             install_command: string;
             os: string;
         };
+        EmailSettings: {
+            discovery_digest: boolean;
+        };
         /** @description Enterprise plan inquiry request */
         EnterpriseInquiryRequest: {
             /** @description Company name */
@@ -5331,19 +5334,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-05-03T04:33:55.408482Z",
+         *               "created_at": "2026-06-10T21:15:51.453950Z",
          *               "first_discovery_id": null,
-         *               "id": "19d7a540-8034-4343-b582-b52cdb749ab5",
+         *               "id": "95d548c3-fb0a-404c-9cd9-19150b562f94",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-05-03T04:33:55.408482Z",
+         *               "last_seen_at": "2026-06-10T21:15:51.453950Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-05-03T04:33:55.408482Z",
-         *               "valid_from": "2026-05-03T04:33:55.408482Z",
+         *               "updated_at": "2026-06-10T21:15:51.453950Z",
+         *               "valid_from": "2026-06-10T21:15:51.453950Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -5357,7 +5360,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Nest Thermostat",
+         *           "service_definition": "Roku Media Player",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -6694,19 +6697,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-05-03T04:33:55.408928Z",
+         *           "created_at": "2026-06-10T21:15:51.454389Z",
          *           "first_discovery_id": null,
-         *           "id": "086135f8-8d1a-4d74-a3dc-891da63891fe",
+         *           "id": "374dfd0f-0ff8-4e55-85c0-88fa0e1512f6",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-05-03T04:33:55.408928Z",
+         *           "last_seen_at": "2026-06-10T21:15:51.454389Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-05-03T04:33:55.408928Z",
-         *           "valid_from": "2026-05-03T04:33:55.408928Z",
+         *           "updated_at": "2026-06-10T21:15:51.454389Z",
+         *           "valid_from": "2026-06-10T21:15:51.454389Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -6720,7 +6723,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Nest Thermostat",
+         *       "service_definition": "Roku Media Player",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -7275,6 +7278,8 @@ export interface components {
         };
         UserBase: {
             email: string;
+            /** @description Per-user email preferences */
+            email_settings?: components["schemas"]["EmailSettings"];
             /** @description Whether the user has verified their email address */
             email_verified?: boolean;
             /** @description Whether the user has a password set — computed from password_hash, never stored in DB */
@@ -9139,6 +9144,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -9244,6 +9254,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -10011,6 +10026,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -10102,6 +10122,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -10599,6 +10624,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -10745,6 +10775,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -10782,6 +10817,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -10974,6 +11014,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -11068,6 +11113,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -11343,6 +11393,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -11445,6 +11500,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -12068,6 +12128,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -12162,6 +12227,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -12312,6 +12382,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -12411,6 +12486,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -12998,6 +13078,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -13089,6 +13174,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -13229,6 +13319,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -13444,6 +13539,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -14180,6 +14280,11 @@ export interface operations {
                 offset?: number | null;
                 /** @description Filter by network ID */
                 network_id?: string | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -14308,6 +14413,11 @@ export interface operations {
                 offset?: number | null;
                 /** @description Filter by network ID */
                 network_id?: string | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
