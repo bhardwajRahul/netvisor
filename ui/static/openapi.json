@@ -11773,6 +11773,82 @@
         ]
       }
     },
+    "/api/v1/topology/data": {
+      "get": {
+        "tags": [
+          "Topologies",
+          "internal"
+        ],
+        "summary": "Unified entity-set endpoint for the topology view.",
+        "description": "`?snapshot_id=<id>` resolves to the snapshot's `taken_at` and returns the\nas-of-T entity set; otherwise returns live entities. The frontend\n`TopologyTab` is the sole intended consumer.",
+        "operationId": "get_topology_data",
+        "parameters": [
+          {
+            "name": "network_id",
+            "in": "query",
+            "description": "Network to read entities for. Required.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "snapshot_id",
+            "in": "query",
+            "description": "When set, returns the entity set as it was when this snapshot was taken.\nWhen omitted, returns live entities.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Topology entity bundle",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_TopologyData"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Access denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Snapshot not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "user_api_key": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
     "/api/v1/topology/export/csv": {
       "get": {
         "tags": [
@@ -13506,19 +13582,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-06-11T16:22:10.538369Z",
+              "created_at": "2026-06-11T21:06:17.867165Z",
               "first_discovery_id": null,
-              "id": "4ede9b31-71d9-49fc-ab4a-276ef7127230",
+              "id": "c9893ec2-4b75-471d-bf29-b44748bb7556",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-11T16:22:10.538369Z",
+              "last_seen_at": "2026-06-11T21:06:17.867165Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-11T16:22:10.538369Z",
-              "valid_from": "2026-06-11T16:22:10.538369Z",
+              "updated_at": "2026-06-11T21:06:17.867165Z",
+              "valid_from": "2026-06-11T21:06:17.867165Z",
               "valid_to": null
             }
           },
@@ -14504,19 +14580,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-06-11T16:22:10.514988Z",
+                      "created_at": "2026-06-11T21:06:17.848128Z",
                       "first_discovery_id": null,
-                      "id": "d0774cfa-857c-423f-b68a-87463e6f9954",
+                      "id": "8cce7a83-98cc-45e4-a618-638b2b4cb68e",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-06-11T16:22:10.514988Z",
+                      "last_seen_at": "2026-06-11T21:06:17.848128Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-06-11T16:22:10.514988Z",
-                      "valid_from": "2026-06-11T16:22:10.514988Z",
+                      "updated_at": "2026-06-11T21:06:17.848128Z",
+                      "valid_from": "2026-06-11T21:06:17.848128Z",
                       "valid_to": null
                     }
                   ],
@@ -14530,7 +14606,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Frigate",
+                  "service_definition": "FreshRSS",
                   "source": {
                     "type": "Manual"
                   },
@@ -15461,19 +15537,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-06-11T16:22:10.531741Z",
+                  "created_at": "2026-06-11T21:06:17.861032Z",
                   "first_discovery_id": null,
-                  "id": "7c2b36cb-2157-4256-adf9-1c0bb4296600",
+                  "id": "82ee6646-bab9-4e82-99e9-06366963bfa0",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-11T16:22:10.531741Z",
+                  "last_seen_at": "2026-06-11T21:06:17.861032Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-11T16:22:10.531741Z",
-                  "valid_from": "2026-06-11T16:22:10.531741Z",
+                  "updated_at": "2026-06-11T21:06:17.861032Z",
+                  "valid_from": "2026-06-11T21:06:17.861032Z",
                   "valid_to": null
                 }
               ],
@@ -15487,7 +15563,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Frigate",
+              "service_definition": "FreshRSS",
               "source": {
                 "type": "Manual"
               },
@@ -16002,6 +16078,105 @@
                 }
               }
             ]
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ApiMeta"
+          },
+          "success": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ApiResponse_TopologyData": {
+        "type": "object",
+        "required": [
+          "success",
+          "meta"
+        ],
+        "properties": {
+          "data": {
+            "type": "object",
+            "description": "Bundle of entities that feed `build_graph` and the topology export pipeline.\n\nLoaded by [`crate::server::topology::service::main::TopologyService::get_topology_data`]\nfor either the live view (`at = None`) or a point-in-time snapshot\n(`at = Some(taken_at)`). Replaces the entity-blob columns previously\npersisted on the topology row.",
+            "required": [
+              "hosts",
+              "ip_addresses",
+              "subnets",
+              "dependencies",
+              "ports",
+              "bindings",
+              "interfaces",
+              "services",
+              "vlans",
+              "tags"
+            ],
+            "properties": {
+              "bindings": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Binding"
+                }
+              },
+              "dependencies": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Dependency"
+                }
+              },
+              "hosts": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Host"
+                }
+              },
+              "interfaces": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Interface"
+                }
+              },
+              "ip_addresses": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/IPAddress"
+                }
+              },
+              "ports": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Port"
+                }
+              },
+              "services": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Service"
+                }
+              },
+              "subnets": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Subnet"
+                }
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Tag"
+                }
+              },
+              "vlans": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Vlan"
+                }
+              }
+            }
           },
           "error": {
             "type": [
@@ -17088,19 +17263,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-06-11T16:22:10.515471Z",
+          "created_at": "2026-06-11T21:06:17.848560Z",
           "first_discovery_id": null,
-          "id": "3381b56e-1022-46ea-b781-cfa1c91a9b7a",
+          "id": "a131b59a-2730-4c30-9296-caf38b64948f",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-06-11T16:22:10.515471Z",
+          "last_seen_at": "2026-06-11T21:06:17.848560Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-06-11T16:22:10.515471Z",
-          "valid_from": "2026-06-11T16:22:10.515471Z",
+          "updated_at": "2026-06-11T21:06:17.848560Z",
+          "valid_from": "2026-06-11T21:06:17.848560Z",
           "valid_to": null
         }
       },
@@ -17690,7 +17865,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Frigate",
+              "service_definition": "FreshRSS",
               "tags": [],
               "virtualization": null
             }
@@ -20308,19 +20483,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-06-11T16:22:10.514430Z",
+                  "created_at": "2026-06-11T21:06:17.847641Z",
                   "first_discovery_id": null,
-                  "id": "44397780-9a5c-4ad9-8361-a7f4afcea325",
+                  "id": "c0586020-6394-4b7e-8028-54675950c412",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-11T16:22:10.514430Z",
+                  "last_seen_at": "2026-06-11T21:06:17.847641Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-11T16:22:10.514430Z",
-                  "valid_from": "2026-06-11T16:22:10.514430Z",
+                  "updated_at": "2026-06-11T21:06:17.847641Z",
+                  "valid_from": "2026-06-11T21:06:17.847641Z",
                   "valid_to": null
                 }
               ],
@@ -20334,7 +20509,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Frigate",
+              "service_definition": "FreshRSS",
               "source": {
                 "type": "Manual"
               },
@@ -22023,6 +22198,7 @@
           "FirstSnmpCredentialCreated",
           "FirstApplicationTagCreated",
           "FirstCredentialCreated",
+          "FirstSnapshotCreated",
           "InviteSent",
           "InviteAccepted",
           "ProfileCompleted",
@@ -22723,19 +22899,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-06-11T16:22:10.502430Z",
+                        "created_at": "2026-06-11T21:06:17.836122Z",
                         "first_discovery_id": null,
-                        "id": "ee439d4d-6cba-46ca-bd55-d8e8f437ac6b",
+                        "id": "b328901f-f87e-4694-b898-ac8778764e77",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-06-11T16:22:10.502430Z",
+                        "last_seen_at": "2026-06-11T21:06:17.836122Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-06-11T16:22:10.502430Z",
-                        "valid_from": "2026-06-11T16:22:10.502430Z",
+                        "updated_at": "2026-06-11T21:06:17.836122Z",
+                        "valid_from": "2026-06-11T21:06:17.836122Z",
                         "valid_to": null
                       }
                     ],
@@ -22749,7 +22925,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Frigate",
+                    "service_definition": "FreshRSS",
                     "source": {
                       "type": "Manual"
                     },
@@ -22870,19 +23046,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-06-11T16:22:10.530322Z",
+                    "created_at": "2026-06-11T21:06:17.859815Z",
                     "first_discovery_id": null,
-                    "id": "46d26b43-3f15-4a10-9be5-e9791acbaee4",
+                    "id": "bb921444-14a7-4bdf-9805-2dd1e14a6a7c",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-06-11T16:22:10.530322Z",
+                    "last_seen_at": "2026-06-11T21:06:17.859815Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-06-11T16:22:10.530322Z",
-                    "valid_from": "2026-06-11T16:22:10.530322Z",
+                    "updated_at": "2026-06-11T21:06:17.859815Z",
+                    "valid_from": "2026-06-11T21:06:17.859815Z",
                     "valid_to": null
                   }
                 ],
@@ -22896,7 +23072,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Frigate",
+                "service_definition": "FreshRSS",
                 "source": {
                   "type": "Manual"
                 },
@@ -24453,19 +24629,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-06-11T16:22:10.515366Z",
+              "created_at": "2026-06-11T21:06:17.848471Z",
               "first_discovery_id": null,
-              "id": "b85b9eca-5dab-4e5a-8361-fafeb98014ce",
+              "id": "a7f760ac-0d6f-4778-9933-c1b4c98db787",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-11T16:22:10.515366Z",
+              "last_seen_at": "2026-06-11T21:06:17.848471Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-11T16:22:10.515366Z",
-              "valid_from": "2026-06-11T16:22:10.515366Z",
+              "updated_at": "2026-06-11T21:06:17.848471Z",
+              "valid_from": "2026-06-11T21:06:17.848471Z",
               "valid_to": null
             }
           ],
@@ -24479,7 +24655,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Frigate",
+          "service_definition": "FreshRSS",
           "source": {
             "type": "Manual"
           },
@@ -25381,6 +25557,84 @@
             ],
             "format": "uuid",
             "description": "FK to `snapshots.id`. NULL = live view; Some = snapshot row."
+          }
+        }
+      },
+      "TopologyData": {
+        "type": "object",
+        "description": "Bundle of entities that feed `build_graph` and the topology export pipeline.\n\nLoaded by [`crate::server::topology::service::main::TopologyService::get_topology_data`]\nfor either the live view (`at = None`) or a point-in-time snapshot\n(`at = Some(taken_at)`). Replaces the entity-blob columns previously\npersisted on the topology row.",
+        "required": [
+          "hosts",
+          "ip_addresses",
+          "subnets",
+          "dependencies",
+          "ports",
+          "bindings",
+          "interfaces",
+          "services",
+          "vlans",
+          "tags"
+        ],
+        "properties": {
+          "bindings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Binding"
+            }
+          },
+          "dependencies": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Dependency"
+            }
+          },
+          "hosts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Host"
+            }
+          },
+          "interfaces": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Interface"
+            }
+          },
+          "ip_addresses": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IPAddress"
+            }
+          },
+          "ports": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Port"
+            }
+          },
+          "services": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Service"
+            }
+          },
+          "subnets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Subnet"
+            }
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Tag"
+            }
+          },
+          "vlans": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Vlan"
+            }
           }
         }
       },

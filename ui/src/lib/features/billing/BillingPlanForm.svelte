@@ -335,6 +335,12 @@
 		return value == null ? 'Unlimited' : String(value);
 	}
 
+	function formatSnapshotRetention(value: boolean | string | number | null): string {
+		if (value === 0) return 'Not included';
+		if (typeof value === 'number') return `${value} days`;
+		return '—';
+	}
+
 	function sortFeaturesByCategory(features: string[]): string[] {
 		const order = ['Discovery', 'Visualization', 'Integrations', 'Support', 'Enterprise'];
 		return [...features].sort((a, b) => {
@@ -631,6 +637,14 @@
 								</div>
 								<span class="text-primary font-medium">
 									{formatIncludedValue(plan.included_hosts, plan)}
+								</span>
+							</div>
+
+							<!-- Snapshot Retention -->
+							<div class="flex items-center justify-between text-sm">
+								<span class="text-secondary">Snapshot Retention</span>
+								<span class="text-primary font-medium">
+									{formatSnapshotRetention(getFeatureValue(plan.type, 'snapshot_retention_days'))}
 								</span>
 							</div>
 						</div>

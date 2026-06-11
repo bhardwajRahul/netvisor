@@ -125,6 +125,7 @@
     "FirstSnmpCredentialCreated",
     "FirstApplicationTagCreated",
     "FirstCredentialCreated",
+    "FirstSnapshotCreated",
     "InviteSent",
     "InviteAccepted",
     "ProfileCompleted",
