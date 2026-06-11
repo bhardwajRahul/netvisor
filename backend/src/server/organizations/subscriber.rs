@@ -4,8 +4,12 @@
 //! so the UI checklist renders without re-deriving from the event log.
 //!
 //! Billing: updates flag columns (`last_paused_at`, `trial_extended_used`,
-//! `last_downgrade_at`, `last_downgrade_from_plan`) on the four billing
-//! variants that drive Phase 5 eligibility gates and the downgrade banner.
+//! `last_downgrade_at`, `last_downgrade_from_plan`) on the variants that drive
+//! Phase 5 eligibility gates and the downgrade banner; mirrors
+//! `BillingOperation::implied_status()` onto `organizations.plan_status` so
+//! every billing event keeps the canonical status column in sync; and writes
+//! `trial_end_date` from `TrialStarted` / `TrialExtended` so the trial UI
+//! surfaces can read trial state directly off the org payload.
 
 use anyhow::Error;
 use async_trait::async_trait;
@@ -19,7 +23,7 @@ use crate::server::{
         events::{
             registry::SubscriberRegistration,
             traits::{Event, EventFilter, Subscriber},
-            types::{BillingOperation, BillingOperationDiscriminants, OnboardingOperation},
+            types::{BillingOperation, OnboardingOperation},
         },
         services::traits::CrudService,
     },
@@ -58,12 +62,9 @@ inventory::submit!(SubscriberRegistration::new::<
 #[async_trait]
 impl Subscriber<BillingOperation> for OrganizationService {
     fn filter(&self) -> EventFilter<BillingOperation> {
-        EventFilter::ops(vec![
-            BillingOperationDiscriminants::Paused,
-            BillingOperationDiscriminants::TrialExtended,
-            BillingOperationDiscriminants::PlanChanged,
-            BillingOperationDiscriminants::SubscriptionCancelled,
-        ])
+        // Wildcard so every billing event participates in the plan_status
+        // mirror below; per-variant flag updates still gate themselves.
+        EventFilter::all()
     }
 
     async fn handle(&self, events: Vec<Event<BillingOperation>>) -> Result<(), Error> {
@@ -79,9 +80,19 @@ impl Subscriber<BillingOperation> for OrganizationService {
                     organization.base.last_paused_at = Some(event.timestamp);
                     changed = true;
                 }
-                BillingOperation::TrialExtended { .. } => {
+                BillingOperation::TrialStarted { trial_end, .. } => {
+                    if organization.base.trial_end_date != Some(*trial_end) {
+                        organization.base.trial_end_date = Some(*trial_end);
+                        changed = true;
+                    }
+                }
+                BillingOperation::TrialExtended { new_trial_end, .. } => {
                     if !organization.base.trial_extended_used {
                         organization.base.trial_extended_used = true;
+                        changed = true;
+                    }
+                    if organization.base.trial_end_date != Some(*new_trial_end) {
+                        organization.base.trial_end_date = Some(*new_trial_end);
                         changed = true;
                     }
                 }
@@ -100,6 +111,19 @@ impl Subscriber<BillingOperation> for OrganizationService {
                     changed = true;
                 }
                 _ => {}
+            }
+
+            // Mirror the canonical PlanStatus implied by every billing
+            // operation onto `plan_status`. Single source of truth via
+            // `BillingOperation::implied_status()`; downstream consumers
+            // (auth gates, BillingTab pills, Brevo sync) read the same
+            // string, set in one place.
+            if let Some(status) = event.operation.implied_status() {
+                let new_status = Some(status.to_string());
+                if organization.base.plan_status != new_status {
+                    organization.base.plan_status = new_status;
+                    changed = true;
+                }
             }
 
             if changed {
