@@ -41,7 +41,6 @@
 		settings_billing_trialActive,
 		settings_billing_unableToLoad,
 		settings_billing_upgradePlan,
-		settings_billing_upgradePlanDescription,
 		settings_billing_changePlan,
 		settings_billing_resume_button,
 		settings_billing_resume_confirmBody,

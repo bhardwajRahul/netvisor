@@ -1079,7 +1079,6 @@
 	"settings_billing_trialActive": "Your trial is active. You won't be charged until your trial ends.",
 	"settings_billing_unableToLoad": "Unable to load billing information",
 	"settings_billing_upgradePlan": "Upgrade your plan",
-	"settings_billing_upgradePlanDescription": "Get scheduled discovery, DaemonPoll mode, and more hosts",
 	"settings_email_digestDescription": "After each discovery scan completes, send a summary of new, vanished, and changed hosts on networks you have access to.",
 	"settings_email_digestLabel": "Discovery scan summary",
 	"settings_email_intro": "Choose which emails you'd like to receive from Scanopy.",
