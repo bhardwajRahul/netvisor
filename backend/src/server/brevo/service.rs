@@ -158,6 +158,7 @@ impl BrevoService {
             | OnboardingOperation::FirstUserApiKeyCreated
             | OnboardingOperation::FirstSnmpCredentialCreated
             | OnboardingOperation::FirstCredentialCreated
+            | OnboardingOperation::FirstSnapshotCreated { .. }
             | OnboardingOperation::InviteSent
             | OnboardingOperation::InviteAccepted
             | OnboardingOperation::ReferralSourceCompleted { .. } => {
@@ -202,6 +203,9 @@ impl BrevoService {
             }
             OnboardingOperation::FirstHostDiscovered => {
                 company_attrs = company_attrs.with_first_host_discovered_date(event.timestamp)
+            }
+            OnboardingOperation::FirstSnapshotCreated { .. } => {
+                company_attrs = company_attrs.with_first_snapshot_date(event.timestamp);
             }
             _ => return Ok(()),
         }

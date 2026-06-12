@@ -328,6 +328,7 @@ impl Subscriber<OnboardingOperation> for PosthogService {
             OnboardingOperationDiscriminants::InviteAccepted,
             OnboardingOperationDiscriminants::ProfileCompleted,
             OnboardingOperationDiscriminants::FirstApplicationTagCreated,
+            OnboardingOperationDiscriminants::FirstSnapshotCreated,
             OnboardingOperationDiscriminants::ReferralSourceCompleted,
         ])
     }

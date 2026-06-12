@@ -66,14 +66,13 @@ impl Subscriber<EntityOperation> for TopologyService {
         }
 
         let mut affected_networks: HashSet<Uuid> = HashSet::new();
-        let mut snapshot_creations: Vec<(Uuid, Uuid, chrono::DateTime<chrono::Utc>)> = Vec::new();
 
         for event in events {
-            // Handle Snapshot::Created — build a topology row anchored to it.
-            if let Entity::Snapshot(snap) = event.scope.entity_type()
-                && event.operation == EntityOperation::Created
-            {
-                snapshot_creations.push((snap.id, snap.base.network_id, snap.base.taken_at));
+            // Snapshot rows are inserted synchronously by the create_snapshot
+            // handler (after run_close_and_clone), not from this debounced
+            // subscriber — so closed copies exist when build_snapshot_topology
+            // runs. Ignore Snapshot::Created here.
+            if let Entity::Snapshot(_) = event.scope.entity_type() {
                 continue;
             }
 
@@ -110,14 +109,6 @@ impl Subscriber<EntityOperation> for TopologyService {
             });
         }
 
-        // Build snapshot-pinned topology rows. We do this here rather than
-        // in the snapshots handler so the topology lifecycle stays inside
-        // its own service.
-        for (snapshot_id, network_id, taken_at) in snapshot_creations {
-            self.build_snapshot_topology(snapshot_id, network_id, taken_at)
-                .await?;
-        }
-
         Ok(())
     }
 
@@ -127,14 +118,17 @@ impl Subscriber<EntityOperation> for TopologyService {
 }
 
 impl TopologyService {
-    /// Insert a topology row pinned to `snapshot_id`. Loads the as-of-T
-    /// entity set, runs `build_graph` from scratch, and clones `options`
-    /// from the network's live-view topology row (if one exists).
-    async fn build_snapshot_topology(
+    /// Insert a topology row pinned to `snapshot_id`. Loads the closed-copy
+    /// entity set (keyed by `snapshot_id`), runs `build_graph` from scratch,
+    /// and clones `options` from the network's live-view topology row.
+    ///
+    /// Public so the `create_snapshot` handler can call it synchronously
+    /// after `run_close_and_clone` — the subscriber path can't because it
+    /// runs debounced and may fire before close-and-clone commits.
+    pub async fn build_snapshot_topology(
         &self,
         snapshot_id: Uuid,
         network_id: Uuid,
-        taken_at: chrono::DateTime<chrono::Utc>,
     ) -> Result<(), Error> {
         // Find the live-view row for this network to seed `options`.
         let topo_filter = StorageFilter::<Topology>::new_from_network_ids(&[network_id]);
@@ -145,7 +139,11 @@ impl TopologyService {
             .map(|t| t.base.options)
             .unwrap_or_default();
 
-        let data = self.get_topology_data(network_id, Some(taken_at)).await?;
+        // Closed copies are stamped with snapshot_id by run_close_and_clone.
+        // Look them up directly — survives any later hard-delete of live rows.
+        let data = self
+            .get_topology_data(network_id, Some(snapshot_id))
+            .await?;
 
         let (nodes, edges) = self.build_graph(BuildGraphParams {
             options: &live_options,

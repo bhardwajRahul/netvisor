@@ -3031,19 +3031,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-06-11T20:12:38.835088Z",
+             *       "created_at": "2026-06-11T22:40:02.250263Z",
              *       "first_discovery_id": null,
-             *       "id": "4dd6ddde-f3d7-494f-bd3f-7db7e7a4d8d8",
+             *       "id": "d5197605-ab49-46a2-ac29-e85755e83b80",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-06-11T20:12:38.835088Z",
+             *       "last_seen_at": "2026-06-11T22:40:02.250263Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-06-11T20:12:38.835088Z",
-             *       "valid_from": "2026-06-11T20:12:38.835088Z",
+             *       "updated_at": "2026-06-11T22:40:02.250263Z",
+             *       "valid_from": "2026-06-11T22:40:02.250263Z",
              *       "valid_to": null
              *     }
              */
@@ -3380,19 +3380,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-06-11T20:12:38.823239Z",
+             *               "created_at": "2026-06-11T22:40:02.238950Z",
              *               "first_discovery_id": null,
-             *               "id": "90202fff-2c57-4783-99cb-8bf25d638932",
+             *               "id": "5456dede-cef9-46be-af23-c27d1d6cc727",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-06-11T20:12:38.823239Z",
+             *               "last_seen_at": "2026-06-11T22:40:02.238950Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-06-11T20:12:38.823239Z",
-             *               "valid_from": "2026-06-11T20:12:38.823239Z",
+             *               "updated_at": "2026-06-11T22:40:02.238950Z",
+             *               "valid_from": "2026-06-11T22:40:02.238950Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3406,7 +3406,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Beszel Agent",
+             *           "service_definition": "Cleanuparr",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3742,19 +3742,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-06-11T20:12:38.830938Z",
+             *           "created_at": "2026-06-11T22:40:02.246277Z",
              *           "first_discovery_id": null,
-             *           "id": "beb11505-4011-4225-bea9-a10412b6aaab",
+             *           "id": "c3edc8c5-4f6d-4b1a-a54d-8a01cdb346e0",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-06-11T20:12:38.830938Z",
+             *           "last_seen_at": "2026-06-11T22:40:02.246277Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-06-11T20:12:38.830938Z",
-             *           "valid_from": "2026-06-11T20:12:38.830938Z",
+             *           "updated_at": "2026-06-11T22:40:02.246277Z",
+             *           "valid_from": "2026-06-11T22:40:02.246277Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -3768,7 +3768,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Beszel Agent",
+             *       "service_definition": "Cleanuparr",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4221,19 +4221,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-06-11T20:12:38.823458Z",
+         *       "created_at": "2026-06-11T22:40:02.239194Z",
          *       "first_discovery_id": null,
-         *       "id": "caebf75d-7708-4730-b8e6-923f8313f91d",
+         *       "id": "b8abe97b-8f5d-4886-a5c7-c57509f77a75",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-06-11T20:12:38.823458Z",
+         *       "last_seen_at": "2026-06-11T22:40:02.239194Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-06-11T20:12:38.823458Z",
-         *       "valid_from": "2026-06-11T20:12:38.823458Z",
+         *       "updated_at": "2026-06-11T22:40:02.239194Z",
+         *       "valid_from": "2026-06-11T22:40:02.239194Z",
          *       "valid_to": null
          *     }
          */
@@ -4448,7 +4448,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Beszel Agent",
+         *           "service_definition": "Cleanuparr",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -5386,19 +5386,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-06-11T20:12:38.822965Z",
+         *               "created_at": "2026-06-11T22:40:02.238505Z",
          *               "first_discovery_id": null,
-         *               "id": "4d3ee61e-7403-4ae3-aaba-d58ec88cc3c6",
+         *               "id": "a0d1140e-009e-4bf4-bdc1-9036df70dc9a",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-06-11T20:12:38.822965Z",
+         *               "last_seen_at": "2026-06-11T22:40:02.238505Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-06-11T20:12:38.822965Z",
-         *               "valid_from": "2026-06-11T20:12:38.822965Z",
+         *               "updated_at": "2026-06-11T22:40:02.238505Z",
+         *               "valid_from": "2026-06-11T22:40:02.238505Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -5412,7 +5412,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Beszel Agent",
+         *           "service_definition": "Cleanuparr",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -6750,19 +6750,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-06-11T20:12:38.823410Z",
+         *           "created_at": "2026-06-11T22:40:02.239140Z",
          *           "first_discovery_id": null,
-         *           "id": "0cef28c9-1b6f-4db4-b5de-4a573965e7f6",
+         *           "id": "17a5b083-ef56-4193-80ee-e0160e155940",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-06-11T20:12:38.823410Z",
+         *           "last_seen_at": "2026-06-11T22:40:02.239140Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-06-11T20:12:38.823410Z",
-         *           "valid_from": "2026-06-11T20:12:38.823410Z",
+         *           "updated_at": "2026-06-11T22:40:02.239140Z",
+         *           "valid_from": "2026-06-11T22:40:02.239140Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -6776,7 +6776,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Beszel Agent",
+         *       "service_definition": "Cleanuparr",
          *       "source": {
          *         "type": "Manual"
          *       },

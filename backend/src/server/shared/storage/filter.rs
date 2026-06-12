@@ -366,6 +366,17 @@ impl<T: Storable> StorableFilter<T> {
         self
     }
 
+    /// Filter to closed copies stamped by a specific snapshot. Snapshot views
+    /// read these directly: the closed copies have distinct ids from their
+    /// live counterparts and survive live-row deletion.
+    pub fn snapshot_id(mut self, id: &Uuid) -> Self {
+        let col = self.qualify_column("snapshot_id");
+        self.conditions
+            .push(format!("{} = ${}", col, self.values.len() + 1));
+        self.values.push(SqlValue::Uuid(*id));
+        self
+    }
+
     /// Match rows whose `id` or `lineage_id` is in the supplied set. Used by
     /// the as-of tag-name resolver: when a tag was close-and-cloned, the live
     /// id and the closed id both refer to the same logical tag — a single

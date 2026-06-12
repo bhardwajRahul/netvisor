@@ -147,9 +147,10 @@ async fn create_snapshot(
             ..Default::default()
         };
 
-        // Generic create: validates access, INSERTs, emits Created event.
-        // The topology subscriber catches that event and creates the
-        // snapshot's topology row.
+        // INSERT the snapshots row. Created event fires but the topology
+        // subscriber ignores Snapshot events — the topology row is built
+        // synchronously below, after close-and-clone, so closed copies exist
+        // when build_snapshot_topology reads them.
         let created = state
             .services
             .snapshot_service
@@ -163,6 +164,17 @@ async fn create_snapshot(
             .services
             .snapshot_service
             .run_close_and_clone(created.base.network_id, created.base.taken_at, created.id)
+            .await
+            .map_err(|e| ApiError::internal_error(&e.to_string()))?;
+
+        // Build the snapshot's topology row off the closed copies (keyed by
+        // snapshot_id). Synchronous: must complete before the handler
+        // releases the discovery lock so the snapshot view has its row
+        // ready when the client refetches.
+        state
+            .services
+            .topology_service
+            .build_snapshot_topology(created.id, created.base.network_id)
             .await
             .map_err(|e| ApiError::internal_error(&e.to_string()))?;
 

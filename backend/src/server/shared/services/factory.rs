@@ -260,6 +260,8 @@ impl ServiceFactory {
             Arc::new(storage.pool.clone()),
             storage.snapshots.clone(),
             event_bus.clone(),
+            network_service.clone(),
+            organization_service.clone(),
         );
 
         let public_url = config.public_url.clone();

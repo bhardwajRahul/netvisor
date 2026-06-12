@@ -163,6 +163,7 @@ pub struct CompanyAttributes {
     pub scanopy_first_discovery_completed_date: Option<String>,
     pub scanopy_first_host_discovered_date: Option<String>,
     pub scanopy_first_topology_rebuild_date: Option<String>,
+    pub scanopy_first_snapshot_date: Option<String>,
 }
 
 impl CompanyAttributes {
@@ -333,6 +334,11 @@ impl CompanyAttributes {
         self
     }
 
+    pub fn with_first_snapshot_date(mut self, date: DateTime<Utc>) -> Self {
+        self.scanopy_first_snapshot_date = Some(date.to_rfc3339());
+        self
+    }
+
     /// Convert to Brevo API attributes map
     pub fn to_attributes(&self) -> HashMap<String, serde_json::Value> {
         let mut attrs = HashMap::new();
@@ -469,6 +475,12 @@ impl CompanyAttributes {
         if let Some(v) = &self.scanopy_first_topology_rebuild_date {
             attrs.insert(
                 "scanopy_first_topology_rebuild_date".to_string(),
+                serde_json::json!(v),
+            );
+        }
+        if let Some(v) = &self.scanopy_first_snapshot_date {
+            attrs.insert(
+                "scanopy_first_snapshot_date".to_string(),
                 serde_json::json!(v),
             );
         }

@@ -28,8 +28,8 @@ pub struct SnapshotService {
     pool: Arc<PgPool>,
     storage: Arc<GenericPostgresStorage<Snapshot>>,
     event_bus: Arc<EventBus>,
-    network_service: std::sync::OnceLock<Arc<NetworkService>>,
-    organization_service: std::sync::OnceLock<Arc<OrganizationService>>,
+    network_service: Arc<NetworkService>,
+    organization_service: Arc<OrganizationService>,
 }
 
 impl SnapshotService {
@@ -37,27 +37,16 @@ impl SnapshotService {
         pool: Arc<PgPool>,
         storage: Arc<GenericPostgresStorage<Snapshot>>,
         event_bus: Arc<EventBus>,
+        network_service: Arc<NetworkService>,
+        organization_service: Arc<OrganizationService>,
     ) -> Arc<Self> {
         Arc::new(Self {
             pool,
             storage,
             event_bus,
-            network_service: std::sync::OnceLock::new(),
-            organization_service: std::sync::OnceLock::new(),
+            network_service,
+            organization_service,
         })
-    }
-
-    /// Late-binding setter for retention dependencies. The service factory
-    /// constructs SnapshotService early (so other services can take it as a
-    /// peer) and then wires NetworkService + OrganizationService in once
-    /// they're ready. Idempotent: subsequent calls are no-ops.
-    pub fn set_retention_dependencies(
-        &self,
-        network_service: Arc<NetworkService>,
-        organization_service: Arc<OrganizationService>,
-    ) {
-        let _ = self.network_service.set(network_service);
-        let _ = self.organization_service.set(organization_service);
     }
 }
 
@@ -116,6 +105,15 @@ impl SnapshotService {
         use crate::server::tags::entity_tags::EntityTag;
         use crate::server::vlans::r#impl::base::Vlan;
         use crate::server::vlans::r#impl::subnet_vlans::SubnetVlanRecord;
+
+        // TEMPORARY: 60s delay so QA can observe a discovery session enter
+        // the AwaitingSnapshot phase while a snapshot is in flight. Remove
+        // after the discovery-blocked-while-snapshot-running test passes.
+        tracing::warn!(
+            "TEMPORARY: sleeping 60s inside run_close_and_clone for QA verification — \
+             REMOVE BEFORE MERGE"
+        );
+        tokio::time::sleep(std::time::Duration::from_secs(60)).await;
 
         let mut tx = self.pool.begin().await?;
         let mut maps = FkMaps::default();
@@ -277,14 +275,8 @@ impl SnapshotService {
     /// `BillingPlan::snapshot_retention_days(env_override)`, delegates per-org.
     /// Idempotent.
     pub async fn run_retention(&self, env_override: Option<u32>) -> Result<()> {
-        let Some(org_service) = self.organization_service.get() else {
-            tracing::warn!(
-                "SnapshotService::run_retention called before retention dependencies were wired"
-            );
-            return Ok(());
-        };
-
-        let orgs = org_service
+        let orgs = self
+            .organization_service
             .get_all(StorableFilter::new_unfiltered())
             .await?;
 
@@ -315,15 +307,10 @@ impl SnapshotService {
             return Ok(());
         }
 
-        let Some(network_service) = self.network_service.get() else {
-            anyhow::bail!(
-                "SnapshotService::trim_org called before retention dependencies were wired"
-            );
-        };
-
         let cutoff = Utc::now() - Duration::days(retention_days as i64);
 
-        let networks = network_service
+        let networks = self
+            .network_service
             .get_all(StorableFilter::<Network>::new_from_org_id(&org_id))
             .await?;
         let network_ids: Vec<Uuid> = networks.into_iter().map(|n| n.id).collect();
