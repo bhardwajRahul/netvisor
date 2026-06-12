@@ -121,6 +121,7 @@ impl BrevoService {
             // Phase 5 additions — Brevo doesn't currently track these states explicitly.
             BillingOperation::Paused { .. }
             | BillingOperation::Resumed { .. }
+            | BillingOperation::Reactivated
             | BillingOperation::PaymentSucceeded { .. }
             | BillingOperation::TrialExtended { .. }
             | BillingOperation::CancellationInitiated { .. }

@@ -14,6 +14,7 @@
 		useCustomerPortalMutation,
 		useSetupPaymentMethodMutation,
 		useResumeSubscriptionMutation,
+		useReactivateSubscriptionMutation,
 		useExtendTrialMutation
 	} from '$lib/features/billing/queries';
 	import CancelSubscriptionModal from '$lib/features/billing/CancelSubscriptionModal.svelte';
@@ -48,6 +49,7 @@
 		settings_billing_changePlanDescription,
 		settings_billing_resume_button,
 		settings_billing_resume_confirmBody,
+		settings_billing_reactivateSubscription,
 		settings_billing_extendTrial_link,
 		settings_billing_extendTrial_confirmBody,
 		common_viewPlans
@@ -86,6 +88,7 @@
 	const customerPortalMutation = useCustomerPortalMutation();
 	const setupPaymentMutation = useSetupPaymentMethodMutation();
 	const resumeMutation = useResumeSubscriptionMutation();
+	const reactivateMutation = useReactivateSubscriptionMutation();
 	const extendTrialMutation = useExtendTrialMutation();
 
 	// Cancel modal state. Replaces the legacy Stripe-Portal handoff.
@@ -186,6 +189,15 @@
 		if (!confirm(settings_billing_resume_confirmBody())) return;
 		try {
 			await resumeMutation.mutateAsync();
+			organizationQuery.refetch();
+		} catch {
+			// Mutation onError handles toast.
+		}
+	}
+
+	async function handleReactivate() {
+		try {
+			await reactivateMutation.mutateAsync();
 			organizationQuery.refetch();
 		} catch {
 			// Mutation onError handles toast.
@@ -446,6 +458,20 @@
 									<button onclick={handleManageSubscription} class="btn-primary w-full">
 										{settings_billing_manageSubscription()}
 									</button>
+								{:else if org.plan_status === 'pending_cancellation'}
+									<div class="flex flex-col gap-2">
+										<button
+											type="button"
+											onclick={handleReactivate}
+											class="btn-primary w-full"
+											disabled={reactivateMutation.isPending}
+										>
+											{settings_billing_reactivateSubscription()}
+										</button>
+										<button onclick={handleManageSubscription} class="btn-secondary w-full">
+											{settings_billing_manageSubscription()}
+										</button>
+									</div>
 								{:else}
 									<div class="flex flex-col gap-2">
 										<button onclick={handleManageSubscription} class="btn-secondary w-full">

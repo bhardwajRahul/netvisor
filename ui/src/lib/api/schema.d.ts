@@ -433,6 +433,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/billing/reactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reactivate a subscription pending cancellation
+         * @description Clears Stripe's `cancel_at_period_end`. Available while
+         *     `plan_status === 'pending_cancellation'`.
+         */
+        post: operations["reactivate_subscription"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/billing/resume": {
         parameters: {
             query?: never;
@@ -3070,14 +3091,14 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-05-01T19:08:39.709697Z",
-             *       "id": "100ce23b-6c43-44c4-8c99-171396c38567",
+             *       "created_at": "2026-06-12T04:03:11.325467Z",
+             *       "id": "ab10e0be-9155-4e73-b735-a6c614aa6ef0",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-05-01T19:08:39.709697Z"
+             *       "updated_at": "2026-06-12T04:03:11.325467Z"
              *     }
              */
             data?: components["schemas"]["BindingBase"] & {
@@ -3373,14 +3394,14 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-05-01T19:08:39.689822Z",
-             *               "id": "4327080e-4c44-4c2d-8f03-386571f5c39e",
+             *               "created_at": "2026-06-12T04:03:11.311583Z",
+             *               "id": "df313a94-fa18-437c-8fb2-e7dbd8df1bc1",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-05-01T19:08:39.689822Z"
+             *               "updated_at": "2026-06-12T04:03:11.311583Z"
              *             }
              *           ],
              *           "created_at": "2026-01-15T10:30:00Z",
@@ -3389,7 +3410,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Plex Media Server",
+             *           "service_definition": "Jellystat",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3667,14 +3688,14 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-05-01T19:08:39.703750Z",
-             *           "id": "ff0382bf-5e5a-435f-b5b5-07116ed160ce",
+             *           "created_at": "2026-06-12T04:03:11.321179Z",
+             *           "id": "3ebf5449-d140-4e6e-96ac-16966459111b",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-05-01T19:08:39.703750Z"
+             *           "updated_at": "2026-06-12T04:03:11.321179Z"
              *         }
              *       ],
              *       "created_at": "2026-01-15T10:30:00Z",
@@ -3683,7 +3704,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Plex Media Server",
+             *       "service_definition": "Jellystat",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4044,14 +4065,14 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-05-01T19:08:39.690239Z",
-         *       "id": "d4f17a47-8bee-4567-90eb-1c57731a8ed5",
+         *       "created_at": "2026-06-12T04:03:11.311821Z",
+         *       "id": "0c6e75e6-3577-487c-9933-f9d11a52df95",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-05-01T19:08:39.690239Z"
+         *       "updated_at": "2026-06-12T04:03:11.311821Z"
          *     }
          */
         Binding: components["schemas"]["BindingBase"] & {
@@ -4253,7 +4274,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Plex Media Server",
+         *           "service_definition": "Jellystat",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -5122,14 +5143,14 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-05-01T19:08:39.689261Z",
-         *               "id": "8f577b55-9801-4d3c-8680-fed2f833deba",
+         *               "created_at": "2026-06-12T04:03:11.311274Z",
+         *               "id": "6c3b1ccf-0562-41a4-9d05-2d1007333c1c",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-05-01T19:08:39.689261Z"
+         *               "updated_at": "2026-06-12T04:03:11.311274Z"
          *             }
          *           ],
          *           "created_at": "2026-01-15T10:30:00Z",
@@ -5138,7 +5159,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Plex Media Server",
+         *           "service_definition": "Jellystat",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -6341,14 +6362,14 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-05-01T19:08:39.690100Z",
-         *           "id": "60400722-8ff8-4563-9ca9-258520ce6ba0",
+         *           "created_at": "2026-06-12T04:03:11.311737Z",
+         *           "id": "1bbf7413-4925-4c27-983f-5c454c19bb35",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-05-01T19:08:39.690100Z"
+         *           "updated_at": "2026-06-12T04:03:11.311737Z"
          *         }
          *       ],
          *       "created_at": "2026-01-15T10:30:00Z",
@@ -6357,7 +6378,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Plex Media Server",
+         *       "service_definition": "Jellystat",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -7860,6 +7881,35 @@ export interface operations {
                 };
             };
             /** @description Billing not enabled */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    reactivate_subscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Subscription reactivated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_String"];
+                };
+            };
+            /** @description No pending cancellation or billing not enabled */
             400: {
                 headers: {
                     [name: string]: unknown;

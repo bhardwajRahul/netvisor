@@ -163,6 +163,27 @@ export function useResumeSubscriptionMutation() {
 }
 
 /**
+ * Mutation hook for reactivating a subscription pending cancellation
+ */
+export function useReactivateSubscriptionMutation() {
+	return createMutation(() => ({
+		mutationFn: async () => {
+			const { data } = await apiClient.POST('/api/billing/reactivate', {});
+			if (!data?.success || !data.data) {
+				throw new Error(data?.error || 'Failed to reactivate subscription');
+			}
+			return data.data;
+		},
+		onSuccess: (data: string) => {
+			pushSuccess(data);
+		},
+		onError: (error: Error) => {
+			pushError(`Error reactivating subscription: ${error.message}. Please try again.`);
+		}
+	}));
+}
+
+/**
  * Mutation hook for self-serve trial extend (+7 days, once per lifetime)
  */
 export function useExtendTrialMutation() {

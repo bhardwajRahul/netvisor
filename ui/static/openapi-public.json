@@ -10366,14 +10366,14 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-05-01T19:08:39.709695Z",
-              "id": "35407378-e73f-4561-98ea-356bc351c817",
+              "created_at": "2026-06-12T04:03:11.325715Z",
+              "id": "00fd7980-c8f8-4dce-960c-a61d95db2ddb",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-05-01T19:08:39.709695Z"
+              "updated_at": "2026-06-12T04:03:11.325715Z"
             }
           },
           "error": {
@@ -11305,14 +11305,14 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-05-01T19:08:39.689801Z",
-                      "id": "49a7124e-58a8-482b-b8c8-9c5a71517283",
+                      "created_at": "2026-06-12T04:03:11.311580Z",
+                      "id": "879db4c2-4114-4c32-9e42-17708ab00ffb",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-05-01T19:08:39.689801Z"
+                      "updated_at": "2026-06-12T04:03:11.311580Z"
                     }
                   ],
                   "created_at": "2026-01-15T10:30:00Z",
@@ -11321,7 +11321,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Plex Media Server",
+                  "service_definition": "Jellystat",
                   "source": {
                     "type": "Manual"
                   },
@@ -12061,14 +12061,14 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-05-01T19:08:39.703760Z",
-                  "id": "668b7ea5-bb08-4078-a487-9bf9dd06d89e",
+                  "created_at": "2026-06-12T04:03:11.321856Z",
+                  "id": "b9a9ef11-1fdb-4ff4-abae-cfc5d1a7c607",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-05-01T19:08:39.703760Z"
+                  "updated_at": "2026-06-12T04:03:11.321856Z"
                 }
               ],
               "created_at": "2026-01-15T10:30:00Z",
@@ -12077,7 +12077,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Plex Media Server",
+              "service_definition": "Jellystat",
               "source": {
                 "type": "Manual"
               },
@@ -13456,14 +13456,14 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-05-01T19:08:39.690215Z",
-          "id": "63abad43-687d-4aab-9d9b-cceb9f16e704",
+          "created_at": "2026-06-12T04:03:11.311809Z",
+          "id": "a982ed04-2491-4c99-acfb-43fca655807f",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-05-01T19:08:39.690215Z"
+          "updated_at": "2026-06-12T04:03:11.311809Z"
         }
       },
       "BindingBase": {
@@ -14052,7 +14052,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Plex Media Server",
+              "service_definition": "Jellystat",
               "tags": [],
               "virtualization": null
             }
@@ -16576,14 +16576,14 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-05-01T19:08:39.689251Z",
-                  "id": "60f9d21d-6a26-49ec-b85e-8e12fa524fb6",
+                  "created_at": "2026-06-12T04:03:11.311276Z",
+                  "id": "3f2f62d4-cbfc-419d-b7c5-e0692dd1b3c8",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-05-01T19:08:39.689251Z"
+                  "updated_at": "2026-06-12T04:03:11.311276Z"
                 }
               ],
               "created_at": "2026-01-15T10:30:00Z",
@@ -16592,7 +16592,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Plex Media Server",
+              "service_definition": "Jellystat",
               "source": {
                 "type": "Manual"
               },
@@ -18847,14 +18847,14 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-05-01T19:08:39.676270Z",
-                        "id": "2f5eee18-edec-42f0-a767-faf1f14c9586",
+                        "created_at": "2026-06-12T04:03:11.304754Z",
+                        "id": "d063233f-a6e2-4bf7-8a19-4cbf10501d32",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-05-01T19:08:39.676270Z"
+                        "updated_at": "2026-06-12T04:03:11.304754Z"
                       }
                     ],
                     "created_at": "2026-01-15T10:30:00Z",
@@ -18863,7 +18863,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Plex Media Server",
+                    "service_definition": "Jellystat",
                     "source": {
                       "type": "Manual"
                     },
@@ -18940,14 +18940,14 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-05-01T19:08:39.702269Z",
-                    "id": "39206eb5-f35f-4107-ba4f-971327252575",
+                    "created_at": "2026-06-12T04:03:11.320289Z",
+                    "id": "032688d7-64b1-4d62-a798-dc3df61d660a",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-05-01T19:08:39.702269Z"
+                    "updated_at": "2026-06-12T04:03:11.320289Z"
                   }
                 ],
                 "created_at": "2026-01-15T10:30:00Z",
@@ -18956,7 +18956,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Plex Media Server",
+                "service_definition": "Jellystat",
                 "source": {
                   "type": "Manual"
                 },
@@ -20236,14 +20236,14 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-05-01T19:08:39.690077Z",
-              "id": "1ae97448-7d90-4367-ac02-d757a9ebd06d",
+              "created_at": "2026-06-12T04:03:11.311735Z",
+              "id": "6d7ac604-895c-4568-af2d-ab093833dffd",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-05-01T19:08:39.690077Z"
+              "updated_at": "2026-06-12T04:03:11.311735Z"
             }
           ],
           "created_at": "2026-01-15T10:30:00Z",
@@ -20252,7 +20252,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Plex Media Server",
+          "service_definition": "Jellystat",
           "source": {
             "type": "Manual"
           },
