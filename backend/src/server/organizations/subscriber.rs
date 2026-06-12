@@ -104,10 +104,10 @@ impl Subscriber<BillingOperation> for OrganizationService {
             // Mirror the canonical PlanStatus implied by every billing
             // operation onto `plan_status`. Single source of truth via
             // `BillingOperation::implied_status()`; downstream consumers
-            // (auth gates, BillingTab pills, Brevo sync) read the same
-            // string, set in one place.
+            // (auth gates, BillingTab pills, Brevo sync) read the typed
+            // enum, set in one place.
             if let Some(status) = event.operation.implied_status() {
-                let new_status = Some(status.to_string());
+                let new_status = Some(status);
                 if organization.base.plan_status != new_status {
                     organization.base.plan_status = new_status;
                     changed = true;

@@ -1096,8 +1096,25 @@ impl TypeMetadataProvider for BillingPlan {
 /// (in `billing/service.rs`); each variant deterministically implies a
 /// `PlanStatus` for downstream feature gates via
 /// `BillingOperation::implied_status`.
+///
+/// `FromStr` is derived (via strum) so the storage layer can round-trip a
+/// snake_case `text` column back into the typed value; `ToSchema` exposes
+/// the enum as a stricter string union in the generated OpenAPI schema so
+/// the frontend's `org.plan_status === 'paused'` comparisons are
+/// compile-checked against the canonical variant list.
 #[derive(
-    Debug, Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq, Eq, Hash, strum::Display,
+    Debug,
+    Clone,
+    Copy,
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Eq,
+    Hash,
+    Display,
+    strum::EnumString,
+    EnumIter,
+    ToSchema,
 )]
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
@@ -1107,6 +1124,14 @@ pub enum PlanStatus {
     PastDue,
     Paused,
     PendingCancellation,
+    /// `canceled` (American) is the legacy spelling Stripe's
+    /// `SubscriptionStatus` serializes with, and pre-Phase-5 writers
+    /// echoed that value straight into `organizations.plan_status`. We
+    /// canonicalize on `cancelled` (British, matching the variant's
+    /// `serialize_all = "snake_case"` default) for new writes, but accept
+    /// the American spelling on read for any rows still carrying it.
+    #[serde(alias = "canceled")]
+    #[strum(serialize = "cancelled", serialize = "canceled")]
     Cancelled,
 }
 
@@ -1259,5 +1284,34 @@ mod cancel_modal_tests {
         assert_eq!(SaveOffer::Pause.id(), "pause");
         assert_eq!(SaveOffer::Discount.id(), "discount");
         assert_eq!(SaveOffer::Downgrade.id(), "downgrade");
+    }
+
+    #[test]
+    fn plan_status_writes_canonical_spelling() {
+        // Wire writes always use the British spelling so downstream
+        // string comparisons (frontend `'cancelled'`, Brevo sync, etc)
+        // stay consistent.
+        assert_eq!(PlanStatus::Cancelled.to_string(), "cancelled");
+        assert_eq!(
+            serde_json::to_string(&PlanStatus::Cancelled).unwrap(),
+            r#""cancelled""#
+        );
+    }
+
+    #[test]
+    fn plan_status_parses_either_spelling_from_storage() {
+        // Existing DB rows may carry either spelling: pre-Phase-5 writers
+        // echoed Stripe's American `"canceled"`; current writers use the
+        // canonical `"cancelled"`. Both must round-trip back to the
+        // typed variant on read.
+        use std::str::FromStr;
+        assert_eq!(PlanStatus::from_str("cancelled"), Ok(PlanStatus::Cancelled));
+        assert_eq!(PlanStatus::from_str("canceled"), Ok(PlanStatus::Cancelled));
+
+        // Serde path (JSONB, API request bodies) honors the alias too.
+        let from_canonical: PlanStatus = serde_json::from_str(r#""cancelled""#).unwrap();
+        let from_legacy: PlanStatus = serde_json::from_str(r#""canceled""#).unwrap();
+        assert_eq!(from_canonical, PlanStatus::Cancelled);
+        assert_eq!(from_legacy, PlanStatus::Cancelled);
     }
 }

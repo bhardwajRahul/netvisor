@@ -130,8 +130,7 @@
 				return 'text-amber-600 dark:text-amber-400';
 			case 'paused':
 				return 'text-orange-600 dark:text-orange-400';
-			case 'canceled':
-			case 'incomplete':
+			case 'cancelled':
 				return 'text-yellow-600 dark:text-yellow-400';
 			default:
 				return 'text-gray-600 dark:text-gray-400';
@@ -436,7 +435,7 @@
 								<InlineInfo title={settings_billing_trialActive()} />
 							{:else if org.plan_status === 'past_due'}
 								<InlineDanger title={settings_billing_pastDue()} />
-							{:else if org.plan_status === 'canceled'}
+							{:else if org.plan_status === 'cancelled'}
 								<InlineWarning title={settings_billing_canceled()} />
 							{:else if org.plan_status === 'pending_cancellation'}
 								<InlineWarning title={settings_billing_downgrade_pending()} />

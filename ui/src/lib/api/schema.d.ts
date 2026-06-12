@@ -3091,14 +3091,14 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-06-12T04:03:11.325467Z",
-             *       "id": "ab10e0be-9155-4e73-b735-a6c614aa6ef0",
+             *       "created_at": "2026-06-12T04:21:44.272912Z",
+             *       "id": "7e5eae81-c1aa-4dc8-ac63-19759d5df1a6",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-06-12T04:03:11.325467Z"
+             *       "updated_at": "2026-06-12T04:21:44.272912Z"
              *     }
              */
             data?: components["schemas"]["BindingBase"] & {
@@ -3394,14 +3394,14 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-06-12T04:03:11.311583Z",
-             *               "id": "df313a94-fa18-437c-8fb2-e7dbd8df1bc1",
+             *               "created_at": "2026-06-12T04:21:44.255409Z",
+             *               "id": "140192d3-a22f-4988-9493-a0c7997eac2d",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-06-12T04:03:11.311583Z"
+             *               "updated_at": "2026-06-12T04:21:44.255409Z"
              *             }
              *           ],
              *           "created_at": "2026-01-15T10:30:00Z",
@@ -3410,7 +3410,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Jellystat",
+             *           "service_definition": "Prowlarr",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3688,14 +3688,14 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-06-12T04:03:11.321179Z",
-             *           "id": "3ebf5449-d140-4e6e-96ac-16966459111b",
+             *           "created_at": "2026-06-12T04:21:44.267731Z",
+             *           "id": "c6035194-5c10-4d40-8571-18ce92186403",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-06-12T04:03:11.321179Z"
+             *           "updated_at": "2026-06-12T04:21:44.267731Z"
              *         }
              *       ],
              *       "created_at": "2026-01-15T10:30:00Z",
@@ -3704,7 +3704,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Jellystat",
+             *       "service_definition": "Prowlarr",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4065,14 +4065,14 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-06-12T04:03:11.311821Z",
-         *       "id": "0c6e75e6-3577-487c-9933-f9d11a52df95",
+         *       "created_at": "2026-06-12T04:21:44.255766Z",
+         *       "id": "c921fadc-9f86-437a-bc8b-e2a56c9096fa",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-06-12T04:03:11.311821Z"
+         *       "updated_at": "2026-06-12T04:21:44.255766Z"
          *     }
          */
         Binding: components["schemas"]["BindingBase"] & {
@@ -4274,7 +4274,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Jellystat",
+         *           "service_definition": "Prowlarr",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -5143,14 +5143,14 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-06-12T04:03:11.311274Z",
-         *               "id": "6c3b1ccf-0562-41a4-9d05-2d1007333c1c",
+         *               "created_at": "2026-06-12T04:21:44.254919Z",
+         *               "id": "f28617b5-12c7-45c2-bec1-eba914fba741",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-06-12T04:03:11.311274Z"
+         *               "updated_at": "2026-06-12T04:21:44.254919Z"
          *             }
          *           ],
          *           "created_at": "2026-01-15T10:30:00Z",
@@ -5159,7 +5159,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Jellystat",
+         *           "service_definition": "Prowlarr",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -5788,7 +5788,7 @@ export interface components {
             name: string;
             onboarding: components["schemas"]["OnboardingOperationDiscriminants"][];
             plan: null | components["schemas"]["BillingPlan"];
-            readonly plan_status: string | null;
+            plan_status: null | components["schemas"]["PlanStatus"];
             /** Format: date-time */
             readonly trial_end_date?: string | null;
             /** @description Whether the org has used its one-time trial-extend perk. */
@@ -6078,6 +6078,21 @@ export interface components {
             /** Format: int32 */
             trial_days: number;
         };
+        /**
+         * @description Derived subscription status — our domain enum, never Stripe's raw status.
+         *     Stripe webhook events map to typed `BillingOperation` variants at reception
+         *     (in `billing/service.rs`); each variant deterministically implies a
+         *     `PlanStatus` for downstream feature gates via
+         *     `BillingOperation::implied_status`.
+         *
+         *     `FromStr` is derived (via strum) so the storage layer can round-trip a
+         *     snake_case `text` column back into the typed value; `ToSchema` exposes
+         *     the enum as a stricter string union in the generated OpenAPI schema so
+         *     the frontend's `org.plan_status === 'paused'` comparisons are
+         *     compile-checked against the canonical variant list.
+         * @enum {string}
+         */
+        PlanStatus: "active" | "trialing" | "past_due" | "paused" | "pending_cancellation" | "cancelled";
         /** @description Plan usage limits and current counts */
         PlanUsage: {
             /** Format: int64 */
@@ -6362,14 +6377,14 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-06-12T04:03:11.311737Z",
-         *           "id": "1bbf7413-4925-4c27-983f-5c454c19bb35",
+         *           "created_at": "2026-06-12T04:21:44.255630Z",
+         *           "id": "310ad075-e5fe-4d92-b2d1-f7bd6f2b81de",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-06-12T04:03:11.311737Z"
+         *           "updated_at": "2026-06-12T04:21:44.255630Z"
          *         }
          *       ],
          *       "created_at": "2026-01-15T10:30:00Z",
@@ -6378,7 +6393,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Jellystat",
+         *       "service_definition": "Prowlarr",
          *       "source": {
          *         "type": "Manual"
          *       },

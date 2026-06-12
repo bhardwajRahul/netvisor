@@ -10366,14 +10366,14 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-06-12T04:03:11.325715Z",
-              "id": "00fd7980-c8f8-4dce-960c-a61d95db2ddb",
+              "created_at": "2026-06-12T04:21:44.272908Z",
+              "id": "c261d51e-9552-4a68-ac12-e2f52fb8d996",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-12T04:03:11.325715Z"
+              "updated_at": "2026-06-12T04:21:44.272908Z"
             }
           },
           "error": {
@@ -11305,14 +11305,14 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-06-12T04:03:11.311580Z",
-                      "id": "879db4c2-4114-4c32-9e42-17708ab00ffb",
+                      "created_at": "2026-06-12T04:21:44.255416Z",
+                      "id": "b45e682b-815a-43fd-bcd6-94117e08fbc2",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-06-12T04:03:11.311580Z"
+                      "updated_at": "2026-06-12T04:21:44.255416Z"
                     }
                   ],
                   "created_at": "2026-01-15T10:30:00Z",
@@ -11321,7 +11321,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Jellystat",
+                  "service_definition": "Prowlarr",
                   "source": {
                     "type": "Manual"
                   },
@@ -12061,14 +12061,14 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-06-12T04:03:11.321856Z",
-                  "id": "b9a9ef11-1fdb-4ff4-abae-cfc5d1a7c607",
+                  "created_at": "2026-06-12T04:21:44.267729Z",
+                  "id": "276ba7ce-d685-435a-bf8d-adf7d41041db",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-12T04:03:11.321856Z"
+                  "updated_at": "2026-06-12T04:21:44.267729Z"
                 }
               ],
               "created_at": "2026-01-15T10:30:00Z",
@@ -12077,7 +12077,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Jellystat",
+              "service_definition": "Prowlarr",
               "source": {
                 "type": "Manual"
               },
@@ -13456,14 +13456,14 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-06-12T04:03:11.311809Z",
-          "id": "a982ed04-2491-4c99-acfb-43fca655807f",
+          "created_at": "2026-06-12T04:21:44.255766Z",
+          "id": "eaf94568-dc55-4e83-ba66-1f8706a756fc",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-06-12T04:03:11.311809Z"
+          "updated_at": "2026-06-12T04:21:44.255766Z"
         }
       },
       "BindingBase": {
@@ -14052,7 +14052,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Jellystat",
+              "service_definition": "Prowlarr",
               "tags": [],
               "virtualization": null
             }
@@ -16576,14 +16576,14 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-06-12T04:03:11.311276Z",
-                  "id": "3f2f62d4-cbfc-419d-b7c5-e0692dd1b3c8",
+                  "created_at": "2026-06-12T04:21:44.254925Z",
+                  "id": "758880fd-cd83-4003-a6b5-6990091e091c",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-12T04:03:11.311276Z"
+                  "updated_at": "2026-06-12T04:21:44.254925Z"
                 }
               ],
               "created_at": "2026-01-15T10:30:00Z",
@@ -16592,7 +16592,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Jellystat",
+              "service_definition": "Prowlarr",
               "source": {
                 "type": "Manual"
               },
@@ -18370,11 +18370,14 @@
             ]
           },
           "plan_status": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "readOnly": true
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PlanStatus"
+              }
+            ]
           },
           "trial_end_date": {
             "type": [
@@ -18847,14 +18850,14 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-06-12T04:03:11.304754Z",
-                        "id": "d063233f-a6e2-4bf7-8a19-4cbf10501d32",
+                        "created_at": "2026-06-12T04:21:44.243591Z",
+                        "id": "ebca8637-79f9-424c-b42e-389e321b2c8c",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-06-12T04:03:11.304754Z"
+                        "updated_at": "2026-06-12T04:21:44.243591Z"
                       }
                     ],
                     "created_at": "2026-01-15T10:30:00Z",
@@ -18863,7 +18866,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Jellystat",
+                    "service_definition": "Prowlarr",
                     "source": {
                       "type": "Manual"
                     },
@@ -18940,14 +18943,14 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-06-12T04:03:11.320289Z",
-                    "id": "032688d7-64b1-4d62-a798-dc3df61d660a",
+                    "created_at": "2026-06-12T04:21:44.266399Z",
+                    "id": "d1a3af43-841c-460a-83e2-be0e0dbd093c",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-06-12T04:03:11.320289Z"
+                    "updated_at": "2026-06-12T04:21:44.266399Z"
                   }
                 ],
                 "created_at": "2026-01-15T10:30:00Z",
@@ -18956,7 +18959,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Jellystat",
+                "service_definition": "Prowlarr",
                 "source": {
                   "type": "Manual"
                 },
@@ -19502,6 +19505,18 @@
             "minimum": 0
           }
         }
+      },
+      "PlanStatus": {
+        "type": "string",
+        "description": "Derived subscription status — our domain enum, never Stripe's raw status.\nStripe webhook events map to typed `BillingOperation` variants at reception\n(in `billing/service.rs`); each variant deterministically implies a\n`PlanStatus` for downstream feature gates via\n`BillingOperation::implied_status`.\n\n`FromStr` is derived (via strum) so the storage layer can round-trip a\nsnake_case `text` column back into the typed value; `ToSchema` exposes\nthe enum as a stricter string union in the generated OpenAPI schema so\nthe frontend's `org.plan_status === 'paused'` comparisons are\ncompile-checked against the canonical variant list.",
+        "enum": [
+          "active",
+          "trialing",
+          "past_due",
+          "paused",
+          "pending_cancellation",
+          "cancelled"
+        ]
       },
       "PlanUsage": {
         "type": "object",
@@ -20236,14 +20251,14 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-06-12T04:03:11.311735Z",
-              "id": "6d7ac604-895c-4568-af2d-ab093833dffd",
+              "created_at": "2026-06-12T04:21:44.255641Z",
+              "id": "2075567d-ef9f-411b-9690-8694911acbce",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-12T04:03:11.311735Z"
+              "updated_at": "2026-06-12T04:21:44.255641Z"
             }
           ],
           "created_at": "2026-01-15T10:30:00Z",
@@ -20252,7 +20267,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Jellystat",
+          "service_definition": "Prowlarr",
           "source": {
             "type": "Manual"
           },

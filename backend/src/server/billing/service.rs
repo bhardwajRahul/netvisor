@@ -5,7 +5,7 @@ use crate::server::billing::plans::get_free_plan;
 use crate::server::billing::types::api::{
     CancelSubscriptionRequest, CancelSubscriptionResponse, ChangePlanPreview, PauseDuration,
 };
-use crate::server::billing::types::base::{BillingInvoice, BillingPlan, CancelReason};
+use crate::server::billing::types::base::{BillingInvoice, BillingPlan, CancelReason, PlanStatus};
 use crate::server::billing::types::features::Feature;
 use crate::server::billing::types::stripe_metadata::StripeSubscriptionMetadata;
 use crate::server::hosts::r#impl::base::Host;
@@ -951,9 +951,9 @@ impl BillingService {
             .base
             .plan
             .unwrap_or_else(crate::server::billing::plans::get_free_plan);
-        let prior_status_str = organization.base.plan_status.clone();
+        let prior_status = organization.base.plan_status;
         let prior_was_free = prior_plan.is_free();
-        let prior_was_trialing = prior_status_str.as_deref() == Some("trialing");
+        let prior_was_trialing = prior_status == Some(PlanStatus::Trialing);
 
         // Typed view of `sub.metadata`. Phase 5 Scanopy-only context
         // (cancel reason, pause duration, etc.) rides here from the
@@ -967,7 +967,7 @@ impl BillingService {
         // hides the duplicate from `implied_status` but downstream
         // analytics see two CancellationInitiated events for one decision.
         if sub.cancel_at_period_end {
-            if prior_status_str.as_deref() == Some("pending_cancellation") {
+            if prior_status == Some(PlanStatus::PendingCancellation) {
                 tracing::debug!(
                     organization_id = %org_id,
                     "Subscription already pending cancellation, skipping re-emit"
@@ -1017,7 +1017,7 @@ impl BillingService {
 
         // First time signing up for a plan
         if let Some(owner) = owners.first()
-            && (prior_plan.is_free() || prior_status_str.is_none())
+            && (prior_plan.is_free() || prior_status.is_none())
             && organization.not_onboarded(&OnboardingOperationDiscriminants::PlanSelected)
         {
             let authentication: AuthenticatedEntity = owner.clone().into();
@@ -1038,7 +1038,7 @@ impl BillingService {
             let is_trialing = sub.status == SubscriptionStatus::Trialing;
 
             // Checkout completed (first subscription creation, or upgrade from Free)
-            if prior_status_str.is_none() || prior_was_free {
+            if prior_status.is_none() || prior_was_free {
                 let plan_config = plan.config();
                 self.event_bus
                     .publish(Event::new(
@@ -1132,7 +1132,7 @@ impl BillingService {
         // Publish PlanChanged event if plan type actually changed (covers upgrades, downgrades, tier switches).
         // Only emit if the prior state had a real subscription history (not the
         // synthetic Free default returned when no events exist).
-        if prior_status_str.is_some()
+        if prior_status.is_some()
             && prior_plan.name() != plan.name()
             && let Some(owner) = owners.first()
         {
@@ -1158,7 +1158,7 @@ impl BillingService {
 
         // Paused arm — endpoint stashed `scanopy_pause_duration_days` and
         // set Stripe's `pause_collection`. Webhook reads both.
-        if prior_status_str.as_deref() != Some("paused")
+        if prior_status != Some(PlanStatus::Paused)
             && let Some(pause_collection) = sub.pause_collection.as_ref()
             && let Some(owner) = owners.first()
         {
@@ -1187,7 +1187,7 @@ impl BillingService {
         // SDK plumbing, so we can't distinguish a user-clicked resume from
         // a scheduled auto-resume. The signal remains useful: "this org
         // resumed."
-        if prior_status_str.as_deref() == Some("paused")
+        if prior_status == Some(PlanStatus::Paused)
             && sub.pause_collection.is_none()
             && let Some(owner) = owners.first()
         {
@@ -1228,9 +1228,9 @@ impl BillingService {
         }
 
         // Reactivated arm — pending cancellation cleared. Idempotency via
-        // `prior_status_str == pending_cancellation`; the subscriber then
+        // `prior_status == pending_cancellation`; the subscriber then
         // flips it back to `active` via `implied_status`.
-        if prior_status_str.as_deref() == Some("pending_cancellation")
+        if prior_status == Some(PlanStatus::PendingCancellation)
             && !sub.cancel_at_period_end
             && let Some(owner) = owners.first()
         {
@@ -1509,7 +1509,7 @@ impl BillingService {
             .base
             .plan
             .unwrap_or_else(crate::server::billing::plans::get_free_plan);
-        let was_trialing = organization.base.plan_status.as_deref() == Some("trialing");
+        let was_trialing = organization.base.plan_status == Some(PlanStatus::Trialing);
         let customer_id = organization.base.stripe_customer_id.clone();
         let (stripe_feedback, cancel_comment) =
             extract_cancellation_details(sub.cancellation_details.as_ref());
@@ -1769,8 +1769,8 @@ impl BillingService {
             return Ok(false);
         }
         Ok(matches!(
-            org.base.plan_status.as_deref(),
-            Some("active") | Some("trialing") | Some("past_due")
+            org.base.plan_status,
+            Some(PlanStatus::Active) | Some(PlanStatus::Trialing) | Some(PlanStatus::PastDue)
         ))
     }
 
@@ -2176,7 +2176,7 @@ impl BillingService {
         if organization.base.trial_extended_used {
             return Err(anyhow!("Trial has already been extended."));
         }
-        if organization.base.plan_status.as_deref() != Some("trialing") {
+        if organization.base.plan_status != Some(PlanStatus::Trialing) {
             return Err(anyhow!("Trial extend is only available during a trial."));
         }
         let current_trial_end = organization
@@ -2310,7 +2310,7 @@ impl BillingService {
             return Ok(());
         };
 
-        let was_past_due = organization.base.plan_status.as_deref() == Some("past_due");
+        let was_past_due = organization.base.plan_status == Some(PlanStatus::PastDue);
 
         if was_past_due {
             self.event_bus
