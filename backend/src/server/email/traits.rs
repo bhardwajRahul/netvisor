@@ -626,16 +626,18 @@ pub trait EmailProvider: Send + Sync {
             .finished_at
             .format("%b %-d, %Y %H:%M UTC")
             .to_string();
-        let settings_url = format!("{}/settings?tab=email", public_url.trim_end_matches('/'));
+        let base = public_url.trim_end_matches('/');
+        let settings_url = format!("{base}/settings?tab=email");
 
         let summary_section = render_summary_banner(payload);
-        let subnets_section = render_subnets_section(&payload.subnets_scanned);
+        let legend_section = render_legend();
+        let subnets_section = render_subnets_section(&payload.subnets_scanned, base);
         let hosts_added_section =
-            render_host_cards_section("New hosts discovered", &payload.hosts_added);
+            render_host_cards_section("New hosts discovered", &payload.hosts_added, base);
         let hosts_vanished_section =
-            render_host_cards_section("Hosts not seen this scan", &payload.hosts_vanished);
+            render_host_cards_section("Hosts not seen this scan", &payload.hosts_vanished, base);
         let hosts_changed_section =
-            render_host_cards_section("Hosts with changes", &payload.hosts_changed);
+            render_host_cards_section("Hosts with changes", &payload.hosts_changed, base);
         let vlans_added_section = render_vlan_list_section("VLANs detected", &payload.vlans_added);
         let vlans_removed_section =
             render_vlan_list_section("VLANs no longer detected", &payload.vlans_removed);
@@ -647,6 +649,7 @@ pub trait EmailProvider: Send + Sync {
                 .replace("{finished_at}", &finished)
                 .replace("{settings_url}", &settings_url)
                 .replace("{summary_section}", &summary_section)
+                .replace("{legend_section}", legend_section)
                 .replace("{subnets_section}", &subnets_section)
                 .replace("{hosts_added_section}", &hosts_added_section)
                 .replace("{hosts_vanished_section}", &hosts_vanished_section)
@@ -659,52 +662,96 @@ pub trait EmailProvider: Send + Sync {
     }
 }
 
-/// First N items in a list are rendered inline; the rest go inside a
-/// collapsed `<details>` so recipients can expand for the full set without
-/// the email turning into a wall of names.
-const MAX_INLINE_ITEMS: usize = 10;
+/// Inline tag bags expand at 10 items. Host-card sections expand at 5 —
+/// recipients only want a peek at each host's footprint by default.
+const MAX_TAG_ITEMS_INLINE: usize = 10;
+const MAX_HOST_CARDS_INLINE: usize = 5;
 
-/// Render a single colored "tag" (pill) for an entity instance. Color
-/// derives from the entity's `EntityDiscriminants::color()` so the email
-/// matches the in-app `GenericCard` tag styling.
-fn render_tag(label: &str, color: Color) -> String {
-    let (bg, fg) = color.email_tag_hex();
-    format!(
-        r#"<span style="display: inline-block; padding: 3px 10px; margin: 2px 4px 2px 0; border-radius: 12px; background-color: {bg}; color: {fg}; font-size: 13px; line-height: 1.4; white-space: nowrap;">{label}</span>"#,
-        label = html_escape(label),
-    )
+/// Carrier for a single tag chip — entity colour stays bound to the
+/// discriminant; status is encoded with glyph + strikethrough, never with
+/// colour.
+struct TagItem {
+    label: String,
+    color: Color,
+    status: crate::server::digest::payload::TagStatus,
+    href: Option<String>,
+    /// Already-absolute URL (relative `/logos/...` paths rewritten by the
+    /// caller against `public_url`).
+    logo_url: Option<String>,
 }
 
-/// Wrap-inline tag bag. Up to `MAX_INLINE_ITEMS` tags render visible; the
-/// rest live inside a `<details>` whose `<summary>` reads "Show all N".
-fn render_tag_bag(tags: &[(String, Color)]) -> String {
+/// Render a single tag chip. Background/text colour come from the entity
+/// type. Status is conveyed by the prefix glyph + (for Removed) strike-
+/// through on the label. When `href` is `Some` the entire chip becomes a
+/// clickable anchor that opens the corresponding modal in the app.
+fn render_tag(tag: &TagItem) -> String {
+    use crate::server::digest::payload::TagStatus;
+    let (bg, fg) = tag.color.email_tag_hex();
+    let (prefix, label_style) = match tag.status {
+        TagStatus::New => ("+ ", ""),
+        TagStatus::Removed => ("− ", "text-decoration: line-through;"),
+        TagStatus::Unchanged => ("", ""),
+    };
+    let logo = tag.logo_url.as_deref().filter(|u| !u.is_empty()).map_or_else(
+        String::new,
+        |u| {
+            format!(
+                r#"<img src="{src}" alt="" width="14" height="14" style="vertical-align: middle; margin-right: 4px; border: 0;">"#,
+                src = html_escape(u),
+            )
+        },
+    );
+    let chip = format!(
+        r#"<span style="display: inline-block; padding: 3px 10px; margin: 2px 4px 2px 0; border-radius: 12px; background-color: {bg}; color: {fg}; font-size: 13px; line-height: 1.4; white-space: nowrap;">{prefix}{logo}<span style="{label_style}">{label}</span></span>"#,
+        bg = bg,
+        fg = fg,
+        prefix = prefix,
+        logo = logo,
+        label_style = label_style,
+        label = html_escape(&tag.label),
+    );
+    match &tag.href {
+        Some(href) if !href.is_empty() => format!(
+            r#"<a href="{href}" style="text-decoration: none; color: inherit;">{chip}</a>"#,
+            href = html_escape(href),
+            chip = chip,
+        ),
+        _ => chip,
+    }
+}
+
+/// Wrap-inline tag bag. Up to `MAX_TAG_ITEMS_INLINE` tags render visible;
+/// remaining items live inside a `<details>` whose `<summary>` reads
+/// "Show N more".
+fn render_tag_bag(tags: &[TagItem]) -> String {
     if tags.is_empty() {
         return String::new();
     }
     let visible: String = tags
         .iter()
-        .take(MAX_INLINE_ITEMS)
-        .map(|(l, c)| render_tag(l, *c))
+        .take(MAX_TAG_ITEMS_INLINE)
+        .map(render_tag)
         .collect();
-    if tags.len() <= MAX_INLINE_ITEMS {
+    if tags.len() <= MAX_TAG_ITEMS_INLINE {
         return visible;
     }
     let hidden: String = tags
         .iter()
-        .skip(MAX_INLINE_ITEMS)
-        .map(|(l, c)| render_tag(l, *c))
+        .skip(MAX_TAG_ITEMS_INLINE)
+        .map(render_tag)
         .collect();
+    let more = tags.len() - MAX_TAG_ITEMS_INLINE;
     format!(
-        r#"{visible}<details style="margin: 4px 0 0 0;"><summary style="cursor: pointer; font-size: 12px; color: #2563eb;">Show all {total}</summary><div style="margin-top: 6px;">{rest}</div></details>"#,
+        r#"{visible}<details style="margin: 4px 0 0 0;"><summary style="cursor: pointer; font-size: 12px; color: #2563eb;">Show {more} more</summary><div style="margin-top: 6px;">{hidden}</div></details>"#,
         visible = visible,
-        total = tags.len(),
-        rest = hidden,
+        more = more,
+        hidden = hidden,
     )
 }
 
 /// Field row inside a host card: bold label + inline tag bag below it.
 /// Hidden entirely when the tag bag is empty.
-fn render_tag_row(label: &str, tags: &[(String, Color)]) -> String {
+fn render_tag_row(label: &str, tags: &[TagItem]) -> String {
     if tags.is_empty() {
         return String::new();
     }
@@ -723,12 +770,31 @@ fn render_section(heading: &str, body_html: &str) -> String {
     )
 }
 
-fn render_subnets_section(subnets: &[crate::server::digest::payload::SubnetSummary]) -> String {
+/// Glyph legend explaining the per-tag status encoding. No colour — colour
+/// stays bound to the entity type. Placed at the top of the body just
+/// below the summary banner.
+fn render_legend() -> &'static str {
+    r#"<div style="margin: 0 0 16px 0; padding: 8px 12px; background-color: #f9fafb; border-radius: 6px; font-size: 12px; color: #4b5563;"><span style="margin-right: 14px;"><strong>+</strong> new</span><span style="margin-right: 14px;">unchanged</span><span><strong>−</strong> <span style="text-decoration: line-through;">removed</span></span></div>"#
+}
+
+fn render_subnets_section(
+    subnets: &[crate::server::digest::payload::SubnetSummary],
+    base: &str,
+) -> String {
     if subnets.is_empty() {
         return String::new();
     }
     let color = EntityDiscriminants::Subnet.color();
-    let tags: Vec<(String, Color)> = subnets.iter().map(|s| (s.label.clone(), color)).collect();
+    let tags: Vec<TagItem> = subnets
+        .iter()
+        .map(|s| TagItem {
+            label: s.label.clone(),
+            color,
+            status: Default::default(),
+            href: Some(format!("{base}/?modal=subnet-editor&id={}", s.id)),
+            logo_url: None,
+        })
+        .collect();
     let header = format!("Subnets scanned ({})", subnets.len());
     render_section(&header, &render_tag_bag(&tags))
 }
@@ -741,7 +807,7 @@ fn render_vlan_list_section(
         return String::new();
     }
     let color = EntityDiscriminants::Vlan.color();
-    let tags: Vec<(String, Color)> = vlans
+    let tags: Vec<TagItem> = vlans
         .iter()
         .map(|v| {
             let label = if v.name.is_empty() {
@@ -749,16 +815,20 @@ fn render_vlan_list_section(
             } else {
                 format!("VLAN {} — {}", v.vlan_number, v.name)
             };
-            (label, color)
+            TagItem {
+                label,
+                color,
+                status: Default::default(),
+                href: None, // VLANs aren't deep-linkable in the UI
+                logo_url: None,
+            }
         })
         .collect();
     let header = format!("{} ({})", heading, vlans.len());
     render_section(&header, &render_tag_bag(&tags))
 }
 
-/// Stats banner at the top of the digest body. Counts only — drives the
-/// "tell me at a glance what happened" pass. Single table row, each cell a
-/// bold number + dim label, mirroring the existing email palette.
+/// Stats banner at the top of the digest body.
 fn render_summary_banner(
     payload: &crate::server::digest::payload::DiscoveryDigestPayload,
 ) -> String {
@@ -786,15 +856,13 @@ fn render_summary_banner(
     )
 }
 
-/// Render one section of host cards. Each card mirrors `HostCard.svelte`:
-/// header (name + status badge), Services / IP Addresses / Interfaces /
-/// Ports rows, then for Changed hosts a "What changed this scan" block.
-/// Section header carries the count; sections with more than
-/// `MAX_INLINE_ITEMS` cards wrap the overflow in `<details>` so recipients
-/// can opt-in to the full list.
+/// Render one section of host cards. Sections with more than 5 cards put
+/// the overflow inside `<details>` so recipients can opt-in to the full
+/// list. Summary reads "Show {N} more hosts".
 fn render_host_cards_section(
     heading: &str,
     cards: &[crate::server::digest::payload::AffectedHostCard],
+    base: &str,
 ) -> String {
     if cards.is_empty() {
         return String::new();
@@ -802,27 +870,28 @@ fn render_host_cards_section(
     let header = format!("{} ({})", heading, cards.len());
     let visible: String = cards
         .iter()
-        .take(MAX_INLINE_ITEMS)
-        .map(render_host_card)
+        .take(MAX_HOST_CARDS_INLINE)
+        .map(|c| render_host_card(c, base))
         .collect();
-    if cards.len() <= MAX_INLINE_ITEMS {
+    if cards.len() <= MAX_HOST_CARDS_INLINE {
         return render_section(&header, &visible);
     }
     let hidden: String = cards
         .iter()
-        .skip(MAX_INLINE_ITEMS)
-        .map(render_host_card)
+        .skip(MAX_HOST_CARDS_INLINE)
+        .map(|c| render_host_card(c, base))
         .collect();
+    let more = cards.len() - MAX_HOST_CARDS_INLINE;
     let inner = format!(
-        r#"{visible}<details style="margin: 0 0 16px 0;"><summary style="cursor: pointer; font-size: 13px; color: #2563eb;">Show all {total}</summary>{rest}</details>"#,
+        r#"{visible}<details style="margin: 0 0 16px 0;"><summary style="cursor: pointer; font-size: 13px; color: #2563eb;">Show {more} more hosts</summary>{hidden}</details>"#,
         visible = visible,
-        total = cards.len(),
-        rest = hidden,
+        more = more,
+        hidden = hidden,
     );
     render_section(&header, &inner)
 }
 
-fn render_host_card(card: &crate::server::digest::payload::AffectedHostCard) -> String {
+fn render_host_card(card: &crate::server::digest::payload::AffectedHostCard, base: &str) -> String {
     use crate::server::digest::payload::HostCardStatus;
     let (badge_label, badge_bg, badge_fg) = match card.status {
         HostCardStatus::New => ("New", "#dcfce7", "#166534"),
@@ -835,89 +904,135 @@ fn render_host_card(card: &crate::server::digest::payload::AffectedHostCard) -> 
         fg = badge_fg,
         label = badge_label,
     );
+    let host_href = format!("{base}/?modal=host-editor&id={}", card.host.id);
+    let host_link = format!(
+        r#"<a href="{href}" style="text-decoration: none; color: #1a1a1a;">{label}</a>"#,
+        href = html_escape(&host_href),
+        label = html_escape(&card.host.label),
+    );
 
-    // Mirror HostCard.svelte's field order: Services, IP Addresses,
-    // Interfaces, Ports. Each row is a wrap-inline tag bag colored by the
-    // entity discriminant. Bindings are intentionally omitted — they're
-    // the service↔port join we already show as separate rows.
+    // Split services into the non-container set + the Containers set,
+    // mirroring HostCard.svelte. The Containers row only renders when the
+    // host has at least one container service.
+    let (containers, services): (Vec<_>, Vec<_>) =
+        card.services.iter().partition(|s| s.is_container);
+
+    let services_tags = tags_services(&services, card.host.id, base);
+    let containers_tags = tags_services(&containers, card.host.id, base);
+    let ip_tags = tags_ips(&card.ip_addresses, card.host.id, base);
+    let interface_tags = tags_interfaces(&card.interfaces, card.host.id, base);
+    let port_tags = tags_ports(&card.ports, card.host.id, base);
+
     let mut rows = String::new();
-    rows.push_str(&render_tag_row("Services", &tags_services(&card.services)));
-    rows.push_str(&render_tag_row(
-        "IP Addresses",
-        &tags_ips(&card.ip_addresses),
-    ));
-    rows.push_str(&render_tag_row(
-        "Interfaces",
-        &tags_interfaces(&card.interfaces),
-    ));
-    rows.push_str(&render_tag_row("Ports", &tags_ports(&card.ports)));
-
-    let deltas_block = card
-        .deltas
-        .as_ref()
-        .filter(|d| !d.is_empty())
-        .map(render_deltas_block)
-        .unwrap_or_default();
+    rows.push_str(&render_tag_row("Services", &services_tags));
+    rows.push_str(&render_tag_row("Containers", &containers_tags));
+    rows.push_str(&render_tag_row("IP Addresses", &ip_tags));
+    rows.push_str(&render_tag_row("Interfaces", &interface_tags));
+    rows.push_str(&render_tag_row("Ports", &port_tags));
 
     format!(
-        r#"<div style="margin: 0 0 16px 0; padding: 14px; background-color: #ffffff; border: 1px solid #e5e7eb; border-radius: 8px;"><div style="display: flex; align-items: center; justify-content: space-between; margin: 0 0 10px 0;"><div style="font-size: 16px; font-weight: 600; color: #1a1a1a;">{name}</div>{badge}</div>{rows}{deltas}</div>"#,
-        name = html_escape(&card.host.label),
+        r#"<div style="margin: 0 0 16px 0; padding: 14px; background-color: #ffffff; border: 1px solid #e5e7eb; border-radius: 8px;"><div style="display: flex; align-items: center; justify-content: space-between; margin: 0 0 10px 0;"><div style="font-size: 16px; font-weight: 600;">{host_link}</div>{badge}</div>{rows}</div>"#,
+        host_link = host_link,
         badge = badge,
         rows = rows,
-        deltas = deltas_block,
     )
 }
 
-fn render_deltas_block(d: &crate::server::digest::payload::HostDeltas) -> String {
-    // Each row is "{Label}: {tag bag}". Bindings are intentionally
-    // omitted — we already render services + ports + IPs which is what
-    // bindings join across.
-    let entries: Vec<(&str, Vec<(String, Color)>)> = vec![
-        ("Ports added", tags_ports(&d.ports_added)),
-        ("Ports removed", tags_ports(&d.ports_removed)),
-        ("Services added", tags_services(&d.services_added)),
-        ("Services removed", tags_services(&d.services_removed)),
-        ("IP addresses added", tags_ips(&d.ip_addresses_added)),
-        ("IP addresses removed", tags_ips(&d.ip_addresses_removed)),
-        ("Interfaces added", tags_interfaces(&d.interfaces_added)),
-        ("Interfaces removed", tags_interfaces(&d.interfaces_removed)),
-    ];
-    let mut inner = String::new();
-    for (label, tags) in &entries {
-        if tags.is_empty() {
-            continue;
-        }
-        inner.push_str(&render_tag_row(label, tags));
+/// Rewrite a relative `/logos/...` path to an absolute URL using the
+/// installed app's `public_url`. Absolute URLs pass through.
+fn absolute_logo(raw: &Option<String>, base: &str) -> Option<String> {
+    let raw = raw.as_deref()?;
+    if raw.is_empty() {
+        return None;
     }
-    if inner.is_empty() {
-        return String::new();
+    if raw.starts_with("http://") || raw.starts_with("https://") {
+        Some(raw.to_string())
+    } else if let Some(path) = raw.strip_prefix('/') {
+        Some(format!("{base}/{path}"))
+    } else {
+        Some(raw.to_string())
     }
-    format!(
-        r#"<div style="margin: 12px 0 0 0; padding: 10px; background-color: #fffbeb; border: 1px solid #fde68a; border-radius: 6px;"><div style="font-size: 13px; font-weight: 600; color: #92400e; margin: 0 0 6px 0;">What changed this scan</div>{}</div>"#,
-        inner,
-    )
 }
 
-fn tags_ports(items: &[crate::server::digest::payload::PortSummary]) -> Vec<(String, Color)> {
+fn tags_ports(
+    items: &[crate::server::digest::payload::PortSummary],
+    host_id: Uuid,
+    base: &str,
+) -> Vec<TagItem> {
     let color = EntityDiscriminants::Port.color();
-    items.iter().map(|p| (p.label.clone(), color)).collect()
+    items
+        .iter()
+        .map(|p| TagItem {
+            label: p.label.clone(),
+            color,
+            status: p.status,
+            href: Some(format!(
+                "{base}/?modal=host-editor&id={host_id}&tab=ports&subEntityId={}",
+                p.id
+            )),
+            logo_url: None,
+        })
+        .collect()
 }
 
-fn tags_services(items: &[crate::server::digest::payload::ServiceSummary]) -> Vec<(String, Color)> {
+fn tags_services(
+    items: &[&crate::server::digest::payload::ServiceSummary],
+    _host_id: Uuid,
+    base: &str,
+) -> Vec<TagItem> {
     let color = EntityDiscriminants::Service.color();
-    items.iter().map(|s| (s.name.clone(), color)).collect()
+    items
+        .iter()
+        .map(|s| TagItem {
+            label: s.name.clone(),
+            color,
+            status: s.status,
+            href: Some(format!("{base}/?modal=service-editor&id={}", s.id)),
+            logo_url: absolute_logo(&s.logo_url, base),
+        })
+        .collect()
 }
 
-fn tags_ips(items: &[crate::server::digest::payload::IpAddressSummary]) -> Vec<(String, Color)> {
+fn tags_ips(
+    items: &[crate::server::digest::payload::IpAddressSummary],
+    host_id: Uuid,
+    base: &str,
+) -> Vec<TagItem> {
     let color = EntityDiscriminants::IPAddress.color();
-    items.iter().map(|ip| (ip.address.clone(), color)).collect()
+    items
+        .iter()
+        .map(|ip| TagItem {
+            label: ip.address.clone(),
+            color,
+            status: ip.status,
+            href: Some(format!(
+                "{base}/?modal=host-editor&id={host_id}&tab=ip-addresses&subEntityId={}",
+                ip.id
+            )),
+            logo_url: None,
+        })
+        .collect()
 }
 
 fn tags_interfaces(
     items: &[crate::server::digest::payload::InterfaceSummary],
-) -> Vec<(String, Color)> {
+    host_id: Uuid,
+    base: &str,
+) -> Vec<TagItem> {
     let color = EntityDiscriminants::Interface.color();
-    items.iter().map(|i| (i.label.clone(), color)).collect()
+    items
+        .iter()
+        .map(|i| TagItem {
+            label: i.label.clone(),
+            color,
+            status: i.status,
+            href: Some(format!(
+                "{base}/?modal=host-editor&id={host_id}&tab=interfaces&subEntityId={}",
+                i.id
+            )),
+            logo_url: None,
+        })
+        .collect()
 }
 
 fn html_escape(s: &str) -> String {

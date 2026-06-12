@@ -18,12 +18,30 @@ pub struct HostSummary {
     pub label: String,
 }
 
+/// Per-tag change indicator. Status is encoded with glyph + (for Removed)
+/// strikethrough — never via colour. Colour stays bound to the entity type
+/// per `EntityDiscriminants::color()`.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TagStatus {
+    /// Created during this scan window.
+    New,
+    /// Was live before the scan, daemon did not re-report it this scan.
+    Removed,
+    /// Live and re-reported in this scan (steady state).
+    #[default]
+    Unchanged,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PortSummary {
     pub id: Uuid,
     pub host_id: Uuid,
-    /// e.g. `"443/tcp"` or `"Http (ID: ...)"`. Source: `Port`'s Display impl.
+    /// Human-readable port-type label, e.g. `"22/tcp"` or `"Ssh"`. Never
+    /// includes UUIDs.
     pub label: String,
+    #[serde(default)]
+    pub status: TagStatus,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -31,6 +49,17 @@ pub struct ServiceSummary {
     pub id: Uuid,
     pub host_id: Uuid,
     pub name: String,
+    /// True when the service is a container (Docker virtualization, etc).
+    /// The renderer splits these into a separate "Containers" row.
+    #[serde(default)]
+    pub is_container: bool,
+    /// Raw value from `ServiceDefinition::logo_url()`. The renderer
+    /// rewrites relative `/logos/...` paths to absolute using the email
+    /// service's `public_url`. `None` when the service has no logo.
+    #[serde(default)]
+    pub logo_url: Option<String>,
+    #[serde(default)]
+    pub status: TagStatus,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -38,6 +67,8 @@ pub struct IpAddressSummary {
     pub id: Uuid,
     pub host_id: Uuid,
     pub address: String,
+    #[serde(default)]
+    pub status: TagStatus,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -45,13 +76,8 @@ pub struct InterfaceSummary {
     pub id: Uuid,
     pub host_id: Uuid,
     pub label: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct BindingSummary {
-    pub id: Uuid,
-    pub host_id: Uuid,
-    pub label: String,
+    #[serde(default)]
+    pub status: TagStatus,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -77,41 +103,12 @@ pub enum HostCardStatus {
     Changed,
 }
 
-/// Per-host child-entity additions and removals observed during the scan.
-/// Only populated for `Changed` hosts; New hosts' children are entirely
-/// "added" and Vanished hosts' children aren't redisplayed as removed.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
-pub struct HostDeltas {
-    pub ports_added: Vec<PortSummary>,
-    pub ports_removed: Vec<PortSummary>,
-    pub services_added: Vec<ServiceSummary>,
-    pub services_removed: Vec<ServiceSummary>,
-    pub ip_addresses_added: Vec<IpAddressSummary>,
-    pub ip_addresses_removed: Vec<IpAddressSummary>,
-    pub interfaces_added: Vec<InterfaceSummary>,
-    pub interfaces_removed: Vec<InterfaceSummary>,
-    pub bindings_added: Vec<BindingSummary>,
-    pub bindings_removed: Vec<BindingSummary>,
-}
-
-impl HostDeltas {
-    pub fn is_empty(&self) -> bool {
-        self.ports_added.is_empty()
-            && self.ports_removed.is_empty()
-            && self.services_added.is_empty()
-            && self.services_removed.is_empty()
-            && self.ip_addresses_added.is_empty()
-            && self.ip_addresses_removed.is_empty()
-            && self.interfaces_added.is_empty()
-            && self.interfaces_removed.is_empty()
-            && self.bindings_added.is_empty()
-            && self.bindings_removed.is_empty()
-    }
-}
-
 /// Rich host representation for the digest email — mirrors the UI's
 /// `HostCard.svelte` so a recipient sees the same shape they'd see in-app.
-/// Current children reflect live state at `finished_at`.
+/// Children reflect live state at `finished_at`, with per-tag `status`
+/// indicating which were newly discovered, unchanged, or removed in this
+/// scan. Bindings are intentionally not included — they're the
+/// service↔port↔IP join that the other rows already cover.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AffectedHostCard {
     pub host: HostSummary,
@@ -120,8 +117,6 @@ pub struct AffectedHostCard {
     pub ip_addresses: Vec<IpAddressSummary>,
     pub interfaces: Vec<InterfaceSummary>,
     pub ports: Vec<PortSummary>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub deltas: Option<HostDeltas>,
 }
 
 /// Lightweight recipient identity. We carry just what the email subscriber
