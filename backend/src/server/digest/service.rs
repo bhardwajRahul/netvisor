@@ -6,14 +6,16 @@ use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 use crate::server::auth::middleware::auth::AuthenticatedEntity;
+use crate::server::bindings::service::BindingService;
 use crate::server::daemons::r#impl::api::{DiscoveryUpdatePayload, ScannedEntityIds};
+use crate::server::services::r#impl::definitions::{ServiceDefinition, ServiceDefinitionExt};
+use crate::server::services::r#impl::virtualization::ServiceVirtualization;
 use crate::server::{
-    bindings::{r#impl::base::Binding, service::BindingService},
     digest::payload::{
-        AffectedHostCard, BindingSummary, DigestRecipient, DiscoveryDigestFlags,
-        DiscoveryDigestOperation, DiscoveryDigestPayload, DiscoveryDigestScope, HostCardStatus,
-        HostDeltas, HostSummary, InterfaceSummary, IpAddressSummary, PortSummary, ServiceSummary,
-        SubnetSummary, VlanSummary,
+        AffectedHostCard, DigestRecipient, DiscoveryDigestFlags, DiscoveryDigestOperation,
+        DiscoveryDigestPayload, DiscoveryDigestScope, HostCardStatus, HostSummary,
+        InterfaceSummary, IpAddressSummary, PortSummary, ServiceSummary, SubnetSummary, TagStatus,
+        VlanSummary,
     },
     hosts::{r#impl::base::Host, service::HostService},
     interfaces::{r#impl::base::Interface, service::InterfaceService},
@@ -189,45 +191,38 @@ impl DiscoveryDigestService {
             )
             .await?;
 
-        // Per-host deltas for the scanned set (only changed hosts will be
-        // surfaced — empty deltas are filtered downstream).
-        let scanned_ids: Vec<Uuid> = hosts_scanned_records.iter().map(|h| h.id).collect();
-        let scanned_deltas: HashMap<Uuid, HostDeltas> = if scanned_ids.is_empty() {
-            HashMap::new()
-        } else {
-            self.compute_deltas(&scanned_ids, scanned, t_start, t_end)
-                .await?
-        };
-        let changed_records: Vec<&Host> = hosts_scanned_records
-            .iter()
-            .filter(|h| scanned_deltas.get(&h.id).is_some_and(|d| !d.is_empty()))
-            .collect();
-
-        // Union of all affected host ids; hydrate current children once for
-        // the whole set.
+        // Union of all hosts that might appear in the digest. We hydrate
+        // children for all of them in one pass; the per-tag `status` on each
+        // child summary tells the renderer what changed.
         let mut affected_ids: Vec<Uuid> = Vec::with_capacity(
-            hosts_added_records.len() + hosts_vanished_records.len() + changed_records.len(),
+            hosts_added_records.len() + hosts_vanished_records.len() + hosts_scanned_records.len(),
         );
         affected_ids.extend(hosts_added_records.iter().map(|h| h.id));
         affected_ids.extend(hosts_vanished_records.iter().map(|h| h.id));
-        affected_ids.extend(changed_records.iter().map(|h| h.id));
+        affected_ids.extend(hosts_scanned_records.iter().map(|h| h.id));
 
-        let current_children = self.fetch_current_children(&affected_ids).await?;
+        let vanished_host_ids: HashSet<Uuid> =
+            hosts_vanished_records.iter().map(|h| h.id).collect();
+        let current_children = self
+            .fetch_current_children(&affected_ids, scanned, &vanished_host_ids, t_start, t_end)
+            .await?;
 
         let hosts_added: Vec<AffectedHostCard> = hosts_added_records
             .iter()
-            .map(|h| build_card(h, HostCardStatus::New, &current_children, None))
+            .map(|h| build_card(h, HostCardStatus::New, &current_children))
             .collect();
         let hosts_vanished: Vec<AffectedHostCard> = hosts_vanished_records
             .iter()
-            .map(|h| build_card(h, HostCardStatus::Vanished, &current_children, None))
+            .map(|h| build_card(h, HostCardStatus::Vanished, &current_children))
             .collect();
-        let mut hosts_changed: Vec<AffectedHostCard> = changed_records
+
+        // A scanned host is "Changed" only if at least one of its children
+        // has a non-Unchanged status. Hosts with no real deltas are dropped
+        // from the digest entirely.
+        let mut hosts_changed: Vec<AffectedHostCard> = hosts_scanned_records
             .iter()
-            .map(|h| {
-                let deltas = scanned_deltas.get(&h.id).cloned();
-                build_card(h, HostCardStatus::Changed, &current_children, deltas)
-            })
+            .map(|h| build_card(h, HostCardStatus::Changed, &current_children))
+            .filter(card_has_changes)
             .collect();
         hosts_changed.sort_by(|a, b| a.host.label.cmp(&b.host.label));
 
@@ -273,197 +268,22 @@ impl DiscoveryDigestService {
         })
     }
 
-    /// Compute per-host added/removed children for the scanned host set.
-    /// Result is keyed by host_id; absent keys had zero deltas.
+    /// Fetch live children for the affected-host set and bucket them by
+    /// host_id, with each child summary carrying its `TagStatus`:
+    /// - `New` when `created_at` falls inside the scan window.
+    /// - `Removed` when the daemon did not include the id in its scan set.
+    /// - `Unchanged` otherwise.
     ///
-    /// "Removed" is detected via set membership against `ScannedEntityIds`
-    /// — a child is removed iff it's currently live on a scanned host but
-    /// its id is NOT in the daemon's reported scan set. This sidesteps the
-    /// foundation-worker reconciliation bug where child `last_seen_at` is
-    /// not refreshed on natural-key match (so timestamp-based detection
-    /// would mark every pre-existing child as removed).
-    async fn compute_deltas(
-        &self,
-        host_ids: &[Uuid],
-        scanned: &ScannedEntityIds,
-        t_start: DateTime<Utc>,
-        t_end: DateTime<Utc>,
-    ) -> Result<HashMap<Uuid, HostDeltas>> {
-        // All live children on the scanned hosts — one query per kind.
-        let all_ports: Vec<Port> = self
-            .port_service
-            .storage()
-            .get_all(
-                StorableFilter::<Port>::new()
-                    .live()
-                    .uuids_column("host_id", host_ids),
-            )
-            .await?;
-        let all_services: Vec<NetworkServiceEntity> = self
-            .service_service
-            .storage()
-            .get_all(
-                StorableFilter::<NetworkServiceEntity>::new()
-                    .live()
-                    .uuids_column("host_id", host_ids),
-            )
-            .await?;
-        let all_ips: Vec<IPAddress> = self
-            .ip_address_service
-            .storage()
-            .get_all(
-                StorableFilter::<IPAddress>::new()
-                    .live()
-                    .uuids_column("host_id", host_ids),
-            )
-            .await?;
-        let all_interfaces: Vec<Interface> = self
-            .interface_service
-            .storage()
-            .get_all(
-                StorableFilter::<Interface>::new()
-                    .live()
-                    .uuids_column("host_id", host_ids),
-            )
-            .await?;
-
-        // Bindings hang off services (no host_id FK). Resolve host via the
-        // live services already loaded above — capture before moving the
-        // service vec into the partition.
-        let service_to_host: HashMap<Uuid, Uuid> = all_services
-            .iter()
-            .map(|s| (s.id, s.base.host_id))
-            .collect();
-        let scanned_service_uuids: Vec<Uuid> = all_services.iter().map(|s| s.id).collect();
-
-        // Partition each set into "added in this window" vs "removed from a
-        // scanned host" (live, present on scanned host, not in scan).
-        let scanned_port_ids: HashSet<Uuid> = scanned.port_ids.iter().copied().collect();
-        let scanned_service_ids: HashSet<Uuid> = scanned.service_ids.iter().copied().collect();
-        let scanned_ip_ids: HashSet<Uuid> = scanned.ip_address_ids.iter().copied().collect();
-        let scanned_interface_ids: HashSet<Uuid> = scanned.interface_ids.iter().copied().collect();
-        let scanned_binding_ids: HashSet<Uuid> = scanned.binding_ids.iter().copied().collect();
-
-        let (ports_added, ports_removed) =
-            partition_by_scan(all_ports, &scanned_port_ids, t_start, t_end, |p| {
-                p.created_at
-            });
-        let (services_added, services_removed) =
-            partition_by_scan(all_services, &scanned_service_ids, t_start, t_end, |s| {
-                s.created_at
-            });
-        let (ips_added, ips_removed) =
-            partition_by_scan(all_ips, &scanned_ip_ids, t_start, t_end, |ip| ip.created_at);
-        let (interfaces_added, interfaces_removed) = partition_by_scan(
-            all_interfaces,
-            &scanned_interface_ids,
-            t_start,
-            t_end,
-            |i| i.created_at,
-        );
-
-        let (bindings_added, bindings_removed) = if scanned_service_uuids.is_empty() {
-            (Vec::new(), Vec::new())
-        } else {
-            let all_bindings: Vec<Binding> = self
-                .binding_service
-                .storage()
-                .get_all(
-                    StorableFilter::<Binding>::new()
-                        .live()
-                        .uuids_column("service_id", &scanned_service_uuids),
-                )
-                .await?;
-            partition_by_scan(all_bindings, &scanned_binding_ids, t_start, t_end, |b| {
-                b.created_at
-            })
-        };
-
-        let mut by_host: HashMap<Uuid, HostDeltas> = HashMap::new();
-        for p in &ports_added {
-            by_host
-                .entry(p.base.host_id)
-                .or_default()
-                .ports_added
-                .push(port_summary(p));
-        }
-        for p in &ports_removed {
-            by_host
-                .entry(p.base.host_id)
-                .or_default()
-                .ports_removed
-                .push(port_summary(p));
-        }
-        for s in &services_added {
-            by_host
-                .entry(s.base.host_id)
-                .or_default()
-                .services_added
-                .push(service_summary(s));
-        }
-        for s in &services_removed {
-            by_host
-                .entry(s.base.host_id)
-                .or_default()
-                .services_removed
-                .push(service_summary(s));
-        }
-        for ip in &ips_added {
-            by_host
-                .entry(ip.base.host_id)
-                .or_default()
-                .ip_addresses_added
-                .push(ip_summary(ip));
-        }
-        for ip in &ips_removed {
-            by_host
-                .entry(ip.base.host_id)
-                .or_default()
-                .ip_addresses_removed
-                .push(ip_summary(ip));
-        }
-        for i in &interfaces_added {
-            by_host
-                .entry(i.base.host_id)
-                .or_default()
-                .interfaces_added
-                .push(interface_summary(i));
-        }
-        for i in &interfaces_removed {
-            by_host
-                .entry(i.base.host_id)
-                .or_default()
-                .interfaces_removed
-                .push(interface_summary(i));
-        }
-        for b in &bindings_added {
-            if let Some(host_id) = service_to_host.get(&b.base.service_id) {
-                by_host
-                    .entry(*host_id)
-                    .or_default()
-                    .bindings_added
-                    .push(binding_summary(b, *host_id));
-            }
-        }
-        for b in &bindings_removed {
-            if let Some(host_id) = service_to_host.get(&b.base.service_id) {
-                by_host
-                    .entry(*host_id)
-                    .or_default()
-                    .bindings_removed
-                    .push(binding_summary(b, *host_id));
-            }
-        }
-
-        Ok(by_host)
-    }
-
-    /// Fetch the live current children for each affected host id and bucket
-    /// them by host. Powers the per-host card rendering — recipients see the
-    /// host's full footprint, not just deltas.
+    /// Children of vanished hosts always get `Unchanged` (we just enumerate
+    /// what we know; the host card itself communicates the vanished state).
+    /// Filters Unclaimed Open Ports out of the service list.
     async fn fetch_current_children(
         &self,
         host_ids: &[Uuid],
+        scanned: &ScannedEntityIds,
+        vanished_host_ids: &HashSet<Uuid>,
+        t_start: DateTime<Utc>,
+        t_end: DateTime<Utc>,
     ) -> Result<HashMap<Uuid, HostChildren>> {
         if host_ids.is_empty() {
             return Ok(HashMap::new());
@@ -506,33 +326,79 @@ impl DiscoveryDigestService {
             )
             .await?;
 
+        let scanned_service_ids: HashSet<Uuid> = scanned.service_ids.iter().copied().collect();
+        let scanned_port_ids: HashSet<Uuid> = scanned.port_ids.iter().copied().collect();
+        let scanned_ip_ids: HashSet<Uuid> = scanned.ip_address_ids.iter().copied().collect();
+        let scanned_interface_ids: HashSet<Uuid> = scanned.interface_ids.iter().copied().collect();
+
         let mut out: HashMap<Uuid, HostChildren> = HashMap::new();
         for id in host_ids {
             out.entry(*id).or_default();
         }
         for s in &services {
+            // Skip the synthetic "Unclaimed Open Ports" service — it's
+            // useful in the UI's open-ports panel but noise in the digest.
+            if s.base.service_definition.is_open_ports() {
+                continue;
+            }
+            let status = tag_status(
+                s.base.host_id,
+                s.id,
+                s.created_at,
+                &scanned_service_ids,
+                vanished_host_ids,
+                t_start,
+                t_end,
+            );
             out.entry(s.base.host_id)
                 .or_default()
                 .services
-                .push(service_summary(s));
+                .push(service_summary(s, status));
         }
         for ip in &ips {
+            let status = tag_status(
+                ip.base.host_id,
+                ip.id,
+                ip.created_at,
+                &scanned_ip_ids,
+                vanished_host_ids,
+                t_start,
+                t_end,
+            );
             out.entry(ip.base.host_id)
                 .or_default()
                 .ip_addresses
-                .push(ip_summary(ip));
+                .push(ip_summary(ip, status));
         }
         for i in &interfaces {
+            let status = tag_status(
+                i.base.host_id,
+                i.id,
+                i.created_at,
+                &scanned_interface_ids,
+                vanished_host_ids,
+                t_start,
+                t_end,
+            );
             out.entry(i.base.host_id)
                 .or_default()
                 .interfaces
-                .push(interface_summary(i));
+                .push(interface_summary(i, status));
         }
         for p in &ports {
+            let status = tag_status(
+                p.base.host_id,
+                p.id,
+                p.created_at,
+                &scanned_port_ids,
+                vanished_host_ids,
+                t_start,
+                t_end,
+            );
             out.entry(p.base.host_id)
                 .or_default()
                 .ports
-                .push(port_summary(p));
+                .push(port_summary(p, status));
         }
         Ok(out)
     }
@@ -571,62 +437,47 @@ impl EventBusService<Host> for DiscoveryDigestService {
     }
 }
 
-/// Partition a vec of entities into `(added, removed)` for digest deltas:
-/// - **added**: created during `[start, end]`. Authoritative signal.
-/// - **removed**: id NOT in the scan's reported set. Sidesteps the
-///   foundation-worker reconciliation bug where existing children don't
-///   get `last_seen_at` refreshed on natural-key match.
-fn partition_by_scan<T>(
-    items: Vec<T>,
+/// Decide a child's `TagStatus`. Children of vanished hosts are flat
+/// `Unchanged` — the host card itself communicates the vanished state, so
+/// per-child markers would be redundant. For non-vanished hosts:
+/// `created_at` inside the scan window ⇒ New; not in the daemon's scan
+/// set ⇒ Removed; otherwise Unchanged.
+fn tag_status(
+    host_id: Uuid,
+    child_id: Uuid,
+    created_at: DateTime<Utc>,
     scanned_ids: &HashSet<Uuid>,
-    start: DateTime<Utc>,
-    end: DateTime<Utc>,
-    created_at: impl Fn(&T) -> DateTime<Utc>,
-) -> (Vec<T>, Vec<T>)
-where
-    T: Identified,
-{
-    let mut added = Vec::new();
-    let mut removed = Vec::new();
-    for item in items {
-        let ts = created_at(&item);
-        if ts >= start && ts <= end {
-            added.push(item);
-        } else if !scanned_ids.contains(&item.id()) {
-            removed.push(item);
-        }
+    vanished_host_ids: &HashSet<Uuid>,
+    t_start: DateTime<Utc>,
+    t_end: DateTime<Utc>,
+) -> TagStatus {
+    if vanished_host_ids.contains(&host_id) {
+        return TagStatus::Unchanged;
     }
-    (added, removed)
+    if created_at >= t_start && created_at <= t_end {
+        TagStatus::New
+    } else if !scanned_ids.contains(&child_id) {
+        TagStatus::Removed
+    } else {
+        TagStatus::Unchanged
+    }
 }
 
-trait Identified {
-    fn id(&self) -> Uuid;
-}
-
-impl Identified for Port {
-    fn id(&self) -> Uuid {
-        self.id
-    }
-}
-impl Identified for NetworkServiceEntity {
-    fn id(&self) -> Uuid {
-        self.id
-    }
-}
-impl Identified for IPAddress {
-    fn id(&self) -> Uuid {
-        self.id
-    }
-}
-impl Identified for Interface {
-    fn id(&self) -> Uuid {
-        self.id
-    }
-}
-impl Identified for Binding {
-    fn id(&self) -> Uuid {
-        self.id
-    }
+/// True when at least one child carries a non-`Unchanged` status — used to
+/// drop noisy "Changed" host cards where nothing actually changed.
+fn card_has_changes(card: &AffectedHostCard) -> bool {
+    card.services
+        .iter()
+        .any(|s| s.status != TagStatus::Unchanged)
+        || card
+            .ip_addresses
+            .iter()
+            .any(|x| x.status != TagStatus::Unchanged)
+        || card
+            .interfaces
+            .iter()
+            .any(|i| i.status != TagStatus::Unchanged)
+        || card.ports.iter().any(|p| p.status != TagStatus::Unchanged)
 }
 
 #[derive(Default)]
@@ -641,7 +492,6 @@ fn build_card(
     host: &Host,
     status: HostCardStatus,
     children: &HashMap<Uuid, HostChildren>,
-    deltas: Option<HostDeltas>,
 ) -> AffectedHostCard {
     let kids = children.get(&host.id);
     AffectedHostCard {
@@ -651,7 +501,6 @@ fn build_card(
         ip_addresses: kids.map(|c| c.ip_addresses.clone()).unwrap_or_default(),
         interfaces: kids.map(|c| c.interfaces.clone()).unwrap_or_default(),
         ports: kids.map(|c| c.ports.clone()).unwrap_or_default(),
-        deltas,
     }
 }
 
@@ -665,33 +514,50 @@ fn host_summary(h: &Host) -> HostSummary {
     HostSummary { id: h.id, label }
 }
 
-fn port_summary(p: &Port) -> PortSummary {
+fn port_summary(p: &Port, status: TagStatus) -> PortSummary {
     PortSummary {
         id: p.id,
         host_id: p.base.host_id,
         // Port's Display impl is `"{port_type} (ID: {id})"`. Drop the ID
         // suffix — recipients only want the human-readable port type.
         label: p.base.port_type.to_string(),
+        status,
     }
 }
 
-fn service_summary(s: &NetworkServiceEntity) -> ServiceSummary {
+fn service_summary(s: &NetworkServiceEntity, status: TagStatus) -> ServiceSummary {
+    let logo_url = {
+        let url = s.base.service_definition.logo_url();
+        if url.is_empty() {
+            None
+        } else {
+            Some(url.to_string())
+        }
+    };
+    let is_container = matches!(
+        s.base.virtualization,
+        Some(ServiceVirtualization::Docker(_))
+    );
     ServiceSummary {
         id: s.id,
         host_id: s.base.host_id,
         name: s.base.name.clone(),
+        is_container,
+        logo_url,
+        status,
     }
 }
 
-fn ip_summary(ip: &IPAddress) -> IpAddressSummary {
+fn ip_summary(ip: &IPAddress, status: TagStatus) -> IpAddressSummary {
     IpAddressSummary {
         id: ip.id,
         host_id: ip.base.host_id,
         address: ip.base.ip_address.to_string(),
+        status,
     }
 }
 
-fn interface_summary(i: &Interface) -> InterfaceSummary {
+fn interface_summary(i: &Interface, status: TagStatus) -> InterfaceSummary {
     // Interface's Display includes its UUID. For the digest we want only the
     // human-readable bits: the description if discovery provided one, else
     // the ifIndex.
@@ -704,14 +570,7 @@ fn interface_summary(i: &Interface) -> InterfaceSummary {
         id: i.id,
         host_id: i.base.host_id,
         label,
-    }
-}
-
-fn binding_summary(b: &Binding, host_id: Uuid) -> BindingSummary {
-    BindingSummary {
-        id: b.id,
-        host_id,
-        label: b.to_string(),
+        status,
     }
 }
 

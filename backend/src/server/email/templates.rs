@@ -768,6 +768,7 @@ pub const DISCOVERY_DIGEST_BODY: &str = r#"                    <!-- Main Content
                             <p style="margin: 0 0 8px 0; font-size: 16px; line-height: 24px; color: #4a4a4a;">Network: <strong>{network_name}</strong></p>
                             <p style="margin: 0 0 20px 0; font-size: 14px; line-height: 20px; color: #6b7280;">Scan ran {started_at} → {finished_at}.</p>
                             {summary_section}
+                            {legend_section}
                             {subnets_section}
                             {hosts_added_section}
                             {hosts_vanished_section}
