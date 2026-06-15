@@ -193,7 +193,13 @@ async fn create_snapshot(
     // First-snapshot onboarding event. Best-effort: failures here don't fail
     // the request — same fire-and-forget pattern as SecondNetworkCreated in
     // networks/handlers.rs.
-    if let Some(organization_id) = auth.organization_id()
+    let auth_org_id = auth.organization_id();
+    tracing::info!(
+        snapshot_id = %created.id,
+        org_id = ?auth_org_id,
+        "FirstSnapshotCreated publish: entry"
+    );
+    if let Some(organization_id) = auth_org_id
         && let Ok(Some(org)) = state
             .services
             .organization_service
@@ -201,7 +207,12 @@ async fn create_snapshot(
             .await
         && org.not_onboarded(&OnboardingOperationDiscriminants::FirstSnapshotCreated)
     {
-        let _ = state
+        tracing::info!(
+            snapshot_id = %created.id,
+            org_id = %organization_id,
+            "FirstSnapshotCreated publish: publishing event"
+        );
+        let publish_result = state
             .services
             .event_bus
             .publish(Event::new(
@@ -213,6 +224,22 @@ async fn create_snapshot(
                 auth.entity.clone(),
             ))
             .await;
+        match publish_result {
+            Ok(_) => tracing::info!(
+                snapshot_id = %created.id,
+                "FirstSnapshotCreated publish: ok"
+            ),
+            Err(e) => tracing::warn!(
+                snapshot_id = %created.id,
+                error = %e,
+                "FirstSnapshotCreated publish: failed"
+            ),
+        }
+    } else {
+        tracing::info!(
+            snapshot_id = %created.id,
+            "FirstSnapshotCreated publish: skipped (no org, org not found, or already onboarded)"
+        );
     }
 
     Ok(Json(ApiResponse::success(created)))

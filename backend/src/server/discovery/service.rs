@@ -416,6 +416,11 @@ impl DiscoveryService {
     /// session is promoted to `Pending` and a discovery event published;
     /// otherwise it stays `Queued`.
     pub async fn release_network_for_snapshot(&self, network_id: Uuid) {
+        tracing::info!(
+            network_id = %network_id,
+            "release_network_for_snapshot: entry"
+        );
+
         // Drop the running_snapshots entry up front so any subsequent
         // start_session for this network goes through the normal path.
         {
@@ -437,6 +442,14 @@ impl DiscoveryService {
             .map(|s| s.session_id)
             .collect();
 
+        tracing::info!(
+            network_id = %network_id,
+            awaiting_count = awaiting_session_ids.len(),
+            "release_network_for_snapshot: AwaitingSnapshot sessions found"
+        );
+
+        let mut transitioned_pending = 0usize;
+        let mut transitioned_queued = 0usize;
         for session_id in awaiting_session_ids {
             let daemon_id = match sessions.get(&session_id) {
                 Some(s) => s.daemon_id,
@@ -467,6 +480,7 @@ impl DiscoveryService {
             if let Some(session) = sessions.get_mut(&session_id) {
                 if daemon_has_active {
                     session.phase = DiscoveryPhase::Queued;
+                    transitioned_queued += 1;
                 } else {
                     session.phase = DiscoveryPhase::Pending;
                     self.session_last_updated
@@ -474,13 +488,30 @@ impl DiscoveryService {
                         .await
                         .insert(session_id, Utc::now());
                     to_publish.push(session.clone());
+                    transitioned_pending += 1;
                 }
+                tracing::info!(
+                    network_id = %network_id,
+                    session_id = %session_id,
+                    daemon_id = %daemon_id,
+                    daemon_has_active = daemon_has_active,
+                    new_phase = ?session.phase,
+                    "release_network_for_snapshot: session transitioned"
+                );
                 let _ = self.update_tx.send(session.clone());
             }
         }
 
         drop(daemon_sessions);
         drop(sessions);
+
+        tracing::info!(
+            network_id = %network_id,
+            transitioned_pending = transitioned_pending,
+            transitioned_queued = transitioned_queued,
+            events_to_publish = to_publish.len(),
+            "release_network_for_snapshot: transitions done"
+        );
 
         for payload in to_publish {
             if let Err(e) = self

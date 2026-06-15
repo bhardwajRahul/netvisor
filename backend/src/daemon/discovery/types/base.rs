@@ -8,9 +8,21 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::server::discovery::r#impl::types::DiscoveryType;
+use crate::server::shared::types::metadata::{EntityMetadataProvider, HasId, TypeMetadataProvider};
+use crate::server::shared::types::{Color, Icon};
 
 #[derive(
-    Debug, Clone, Serialize, Deserialize, Copy, PartialEq, Eq, Hash, ToSchema, EnumDiscriminants,
+    Debug,
+    Clone,
+    Serialize,
+    Deserialize,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    ToSchema,
+    EnumDiscriminants,
+    EnumIter,
 )]
 #[strum_discriminants(derive(Hash, EnumIter, strum::Display, Serialize, Deserialize))]
 pub enum DiscoveryPhase {
@@ -60,6 +72,84 @@ impl DiscoveryPhase {
                 | DiscoveryPhase::Started
                 | DiscoveryPhase::Scanning
         )
+    }
+}
+
+impl HasId for DiscoveryPhase {
+    fn id(&self) -> &'static str {
+        match self {
+            DiscoveryPhase::AwaitingSnapshot => "AwaitingSnapshot",
+            DiscoveryPhase::Queued => "Queued",
+            DiscoveryPhase::Pending => "Pending",
+            DiscoveryPhase::Starting => "Starting",
+            DiscoveryPhase::Started => "Started",
+            DiscoveryPhase::Scanning => "Scanning",
+            DiscoveryPhase::Complete => "Complete",
+            DiscoveryPhase::Failed => "Failed",
+            DiscoveryPhase::Cancelled => "Cancelled",
+        }
+    }
+}
+
+impl EntityMetadataProvider for DiscoveryPhase {
+    fn color(&self) -> Color {
+        match self {
+            DiscoveryPhase::AwaitingSnapshot => Color::Yellow,
+            DiscoveryPhase::Queued => Color::Gray,
+            DiscoveryPhase::Pending => Color::Blue,
+            DiscoveryPhase::Starting => Color::Blue,
+            DiscoveryPhase::Started => Color::Blue,
+            DiscoveryPhase::Scanning => Color::Blue,
+            DiscoveryPhase::Complete => Color::Green,
+            DiscoveryPhase::Failed => Color::Red,
+            DiscoveryPhase::Cancelled => Color::Gray,
+        }
+    }
+
+    fn icon(&self) -> Icon {
+        match self {
+            DiscoveryPhase::AwaitingSnapshot => Icon::Camera,
+            DiscoveryPhase::Queued => Icon::Clock,
+            DiscoveryPhase::Pending => Icon::Clock,
+            DiscoveryPhase::Starting => Icon::Play,
+            DiscoveryPhase::Started => Icon::Play,
+            DiscoveryPhase::Scanning => Icon::Radar,
+            DiscoveryPhase::Complete => Icon::Check,
+            DiscoveryPhase::Failed => Icon::X,
+            DiscoveryPhase::Cancelled => Icon::CircleSlash,
+        }
+    }
+}
+
+impl TypeMetadataProvider for DiscoveryPhase {
+    fn name(&self) -> &'static str {
+        match self {
+            DiscoveryPhase::AwaitingSnapshot => "Waiting for snapshot",
+            DiscoveryPhase::Queued => "Queued",
+            DiscoveryPhase::Pending => "Pending",
+            DiscoveryPhase::Starting => "Starting",
+            DiscoveryPhase::Started => "Started",
+            DiscoveryPhase::Scanning => "Scanning",
+            DiscoveryPhase::Complete => "Complete",
+            DiscoveryPhase::Failed => "Failed",
+            DiscoveryPhase::Cancelled => "Cancelled",
+        }
+    }
+
+    fn description(&self) -> &'static str {
+        match self {
+            DiscoveryPhase::AwaitingSnapshot => {
+                "Waiting for snapshot — discovery will start once the snapshot completes"
+            }
+            DiscoveryPhase::Queued => "Waiting in queue — another scan is running on this daemon",
+            DiscoveryPhase::Pending => "Ready to start — connecting to daemon",
+            DiscoveryPhase::Starting => "Waiting for session to start on the daemon",
+            DiscoveryPhase::Started => "Daemon acknowledged, actively running",
+            DiscoveryPhase::Scanning => "Scanning for hosts",
+            DiscoveryPhase::Complete => "Discovery complete",
+            DiscoveryPhase::Failed => "Discovery failed",
+            DiscoveryPhase::Cancelled => "Discovery cancelled",
+        }
     }
 }
 
