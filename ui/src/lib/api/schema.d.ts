@@ -3052,19 +3052,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-06-15T17:20:28.321467Z",
+             *       "created_at": "2026-06-15T20:56:31.256458Z",
              *       "first_discovery_id": null,
-             *       "id": "60e74ddf-c75d-4082-af41-0aedfc3cd345",
+             *       "id": "257b20f5-c48b-457b-b72b-a376835c1195",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-06-15T17:20:28.321467Z",
+             *       "last_seen_at": "2026-06-15T20:56:31.256458Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-06-15T17:20:28.321467Z",
-             *       "valid_from": "2026-06-15T17:20:28.321467Z",
+             *       "updated_at": "2026-06-15T20:56:31.256458Z",
+             *       "valid_from": "2026-06-15T20:56:31.256458Z",
              *       "valid_to": null
              *     }
              */
@@ -3401,19 +3401,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-06-15T17:20:28.308507Z",
+             *               "created_at": "2026-06-15T20:56:31.240354Z",
              *               "first_discovery_id": null,
-             *               "id": "4555b42d-9381-4578-86bc-e30268c47455",
+             *               "id": "fdd406da-7835-45c3-a5cb-7ef717f32d1c",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-06-15T17:20:28.308507Z",
+             *               "last_seen_at": "2026-06-15T20:56:31.240354Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-06-15T17:20:28.308507Z",
-             *               "valid_from": "2026-06-15T17:20:28.308507Z",
+             *               "updated_at": "2026-06-15T20:56:31.240354Z",
+             *               "valid_from": "2026-06-15T20:56:31.240354Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3427,7 +3427,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Unclaimed Open Ports",
+             *           "service_definition": "Kong",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3686,6 +3686,12 @@ export interface components {
                 deployment_type: components["schemas"]["DeploymentType"];
                 disable_password_login: boolean;
                 disable_registration: boolean;
+                /**
+                 * @description `STRIPE_SAVE_OFFER_COUPON_ID` env var is set. When false, the
+                 *     cancel modal hides the discount save-offer panel so the user
+                 *     doesn't see an option the deployment can't fulfil.
+                 */
+                discount_save_offer_available: boolean;
                 has_email_opt_in: boolean;
                 has_email_service: boolean;
                 has_integrated_daemon: boolean;
@@ -3763,19 +3769,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-06-15T17:20:28.316710Z",
+             *           "created_at": "2026-06-15T20:56:31.251103Z",
              *           "first_discovery_id": null,
-             *           "id": "8e836627-088c-44ed-9d1e-76712e154579",
+             *           "id": "a358233a-b0ae-4d6e-ba61-55688e03781d",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-06-15T17:20:28.316710Z",
+             *           "last_seen_at": "2026-06-15T20:56:31.251103Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-06-15T17:20:28.316710Z",
-             *           "valid_from": "2026-06-15T17:20:28.316710Z",
+             *           "updated_at": "2026-06-15T20:56:31.251103Z",
+             *           "valid_from": "2026-06-15T20:56:31.251103Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -3789,7 +3795,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Unclaimed Open Ports",
+             *       "service_definition": "Kong",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4242,19 +4248,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-06-15T17:20:28.308730Z",
+         *       "created_at": "2026-06-15T20:56:31.240706Z",
          *       "first_discovery_id": null,
-         *       "id": "1608b3be-942b-467d-a972-794115fd185a",
+         *       "id": "e5d85a86-af18-4797-9270-b9b7bc34ec8d",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-06-15T17:20:28.308730Z",
+         *       "last_seen_at": "2026-06-15T20:56:31.240706Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-06-15T17:20:28.308730Z",
-         *       "valid_from": "2026-06-15T17:20:28.308730Z",
+         *       "updated_at": "2026-06-15T20:56:31.240706Z",
+         *       "valid_from": "2026-06-15T20:56:31.240706Z",
          *       "valid_to": null
          *     }
          */
@@ -4469,7 +4475,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Unclaimed Open Ports",
+         *           "service_definition": "Kong",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -5410,19 +5416,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-06-15T17:20:28.308243Z",
+         *               "created_at": "2026-06-15T20:56:31.239961Z",
          *               "first_discovery_id": null,
-         *               "id": "c5897ef6-ad35-4675-9445-ec90bc927fd5",
+         *               "id": "ced03033-187c-4950-84c2-3ca3eceae051",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-06-15T17:20:28.308243Z",
+         *               "last_seen_at": "2026-06-15T20:56:31.239961Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-06-15T17:20:28.308243Z",
-         *               "valid_from": "2026-06-15T17:20:28.308243Z",
+         *               "updated_at": "2026-06-15T20:56:31.239961Z",
+         *               "valid_from": "2026-06-15T20:56:31.239961Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -5436,7 +5442,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Unclaimed Open Ports",
+         *           "service_definition": "Kong",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -6582,6 +6588,12 @@ export interface components {
             deployment_type: components["schemas"]["DeploymentType"];
             disable_password_login: boolean;
             disable_registration: boolean;
+            /**
+             * @description `STRIPE_SAVE_OFFER_COUPON_ID` env var is set. When false, the
+             *     cancel modal hides the discount save-offer panel so the user
+             *     doesn't see an option the deployment can't fulfil.
+             */
+            discount_save_offer_available: boolean;
             has_email_opt_in: boolean;
             has_email_service: boolean;
             has_integrated_daemon: boolean;
@@ -6789,19 +6801,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-06-15T17:20:28.308678Z",
+         *           "created_at": "2026-06-15T20:56:31.240633Z",
          *           "first_discovery_id": null,
-         *           "id": "8a6af0f2-344d-4ccd-acba-6072e74923a6",
+         *           "id": "115e06d7-539c-4740-840d-b14eaee927e0",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-06-15T17:20:28.308678Z",
+         *           "last_seen_at": "2026-06-15T20:56:31.240633Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-06-15T17:20:28.308678Z",
-         *           "valid_from": "2026-06-15T17:20:28.308678Z",
+         *           "updated_at": "2026-06-15T20:56:31.240633Z",
+         *           "valid_from": "2026-06-15T20:56:31.240633Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -6815,7 +6827,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Unclaimed Open Ports",
+         *       "service_definition": "Kong",
          *       "source": {
          *         "type": "Manual"
          *       },

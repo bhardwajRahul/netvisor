@@ -9,8 +9,8 @@ use super::messages::{
     DiscoveryGuide, Email, EmailChangedOld, InstallCommand, Invite, OidcLinked, OidcUnlinked,
     OrganizationDeleted, PasswordChanged, PasswordReset, PaymentActionRequired, PaymentFailed,
     PaymentMethodAdded, PaymentMethodRemoved, PaymentRecovered, PlanChanged, PlanLimitApproaching,
-    PlanLimitReached, SubscriptionCancelled, TrialConverted, TrialEnding, TrialExpired,
-    TrialStarted, UsageSummary, Verification,
+    PlanLimitReached, SubscriptionCancelled, SubscriptionReactivated, TrialConverted, TrialEnding,
+    TrialExpired, TrialStarted, UsageSummary, Verification,
 };
 use super::transport::EmailTransport;
 use crate::server::{
@@ -300,6 +300,10 @@ impl EmailService {
     ) -> Result<()> {
         self.dispatch(to, &CancellationInitiated { period_end })
             .await
+    }
+
+    pub async fn send_subscription_reactivated_email(&self, to: EmailAddress) -> Result<()> {
+        self.dispatch(to, &SubscriptionReactivated).await
     }
 
     pub async fn send_checkout_completed_email(

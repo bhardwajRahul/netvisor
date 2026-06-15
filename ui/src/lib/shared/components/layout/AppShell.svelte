@@ -29,6 +29,7 @@
 		billing_subscriptionDelayed
 	} from '$lib/paraglide/messages';
 	import { markPlanActivated } from '$lib/shared/billing/plan-activation-marker';
+	import { waitForOrgUpdate } from '$lib/shared/billing/wait-for-org-update';
 
 	let { children }: { children: Snippet } = $props();
 
@@ -110,26 +111,18 @@
 	});
 
 	async function waitForBillingActivation(maxAttempts = 10) {
-		for (let i = 0; i < maxAttempts; i++) {
-			// Invalidate cache then fetch fresh organization data
-			await queryClient.invalidateQueries({ queryKey: queryKeys.organizations.current() });
+		const ok = await waitForOrgUpdate(isBillingPlanActive, { maxAttempts });
+
+		if (ok) {
 			const orgData = await fetchOrganization();
-
-			if (orgData && isBillingPlanActive(orgData)) {
-				// Track billing completion for funnel analytics
-				trackEvent('billing_completed', {
-					plan: orgData.plan?.type ?? 'unknown',
-					amount: orgData.plan?.base_cents ?? 0,
-					plan_status: orgData.plan_status
-				});
-
-				markPlanActivated();
-				pushSuccess(billing_subscriptionActivated());
-				return true;
-			}
-
-			// Wait 2 seconds before next check
-			await new Promise((r) => setTimeout(r, 2000));
+			trackEvent('billing_completed', {
+				plan: orgData?.plan?.type ?? 'unknown',
+				amount: orgData?.plan?.base_cents ?? 0,
+				plan_status: orgData?.plan_status
+			});
+			markPlanActivated();
+			pushSuccess(billing_subscriptionActivated());
+			return true;
 		}
 
 		pushError(billing_subscriptionDelayed());

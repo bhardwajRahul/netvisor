@@ -53,6 +53,7 @@
 	import InlineInfo from '$lib/shared/components/feedback/InlineInfo.svelte';
 	import InlineDanger from '$lib/shared/components/feedback/InlineDanger.svelte';
 	import { startSetupPayment } from '$lib/shared/billing/setup-payment';
+	import { waitForOrgUpdate } from '$lib/shared/billing/wait-for-org-update';
 
 	let {
 		isOpen = false,
@@ -193,6 +194,7 @@
 		if (!confirm(settings_billing_resume_confirmBody())) return;
 		try {
 			await resumeMutation.mutateAsync();
+			await waitForOrgUpdate((o) => o.plan_status === 'active');
 			organizationQuery.refetch();
 		} catch {
 			// Mutation onError handles toast.
@@ -202,6 +204,7 @@
 	async function handleReactivate() {
 		try {
 			await reactivateMutation.mutateAsync();
+			await waitForOrgUpdate((o) => o.plan_status === 'active');
 			organizationQuery.refetch();
 		} catch {
 			// Mutation onError handles toast.
@@ -212,6 +215,7 @@
 		if (!confirm(settings_billing_extendTrial_confirmBody())) return;
 		try {
 			await extendTrialMutation.mutateAsync();
+			await waitForOrgUpdate((o) => o.trial_extended_used === true);
 			organizationQuery.refetch();
 		} catch {
 			// Mutation onError handles toast.
