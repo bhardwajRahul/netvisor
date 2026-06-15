@@ -107,12 +107,13 @@ pub async fn require_billing_for_users(
     }
 
     // Check subscription status. None = no subscription yet (must select a
-    // plan); "cancelled" = revoke access; everything else allows the request
+    // plan); Cancelled = revoke access; everything else allows the request
     // through (Active / Trialing / PendingCancellation / PastDue / Paused all
     // keep features available — Paused is a Stripe collection pause, not a
     // feature lockout).
-    match organization.base.plan_status.as_deref() {
-        Some("cancelled") => {
+    use crate::server::billing::types::base::PlanStatus;
+    match organization.base.plan_status {
+        Some(PlanStatus::Cancelled) => {
             billing_error_response("Your subscription has been canceled. Please renew to continue.")
         }
         Some(_) => next.run(request).await,

@@ -58,6 +58,7 @@ pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
         .routes(routes!(resume_subscription))
         .routes(routes!(extend_trial))
         .routes(routes!(cancel_subscription))
+        .routes(routes!(reactivate_subscription))
         .routes(routes!(apply_discount_save_offer))
 }
 
@@ -121,7 +122,7 @@ async fn create_checkout_session(
 
         // Check if org already has a plan — route based on target plan and payment state
         let org = billing_service.get_organization(organization_id).await?;
-        let plan_status = org.base.plan_status.clone();
+        let plan_status = org.base.plan_status;
 
         if plan_status.is_some() && org.base.stripe_customer_id.is_some() {
             if request.plan.is_free() {
@@ -132,7 +133,8 @@ async fn create_checkout_session(
                 Ok(Json(ApiResponse::success(result)))
             } else {
                 // Paid target — check trial eligibility and payment state
-                let is_currently_trialing = plan_status.as_deref() == Some("trialing");
+                use crate::server::billing::types::base::PlanStatus;
+                let is_currently_trialing = plan_status == Some(PlanStatus::Trialing);
 
                 if is_currently_trialing {
                     // Currently trialing — switch plan via subscription update (preserves trial)
@@ -553,6 +555,38 @@ async fn resume_subscription(
     if let Some(billing_service) = state.services.billing_service.clone() {
         let result = billing_service
             .resume_subscription(organization_id, auth.into_entity())
+            .await?;
+        Ok(Json(ApiResponse::success(result)))
+    } else {
+        Err(ApiError::billing_setup_incomplete())
+    }
+}
+
+/// Reactivate a subscription pending cancellation
+///
+/// Clears Stripe's `cancel_at_period_end`. Available while
+/// `plan_status === 'pending_cancellation'`.
+#[utoipa::path(
+    post,
+    path = "/reactivate",
+    tags = ["billing", "internal"],
+    responses(
+        (status = 200, description = "Subscription reactivated", body = ApiResponse<String>),
+        (status = 400, description = "No pending cancellation or billing not enabled", body = ApiErrorResponse),
+    ),
+    security(("user_api_key" = []), ("session" = []))
+)]
+async fn reactivate_subscription(
+    State(state): State<Arc<AppState>>,
+    auth: Authorized<Owner>,
+) -> ApiResult<Json<ApiResponse<String>>> {
+    let organization_id = auth
+        .organization_id()
+        .ok_or_else(ApiError::organization_required)?;
+
+    if let Some(billing_service) = state.services.billing_service.clone() {
+        let result = billing_service
+            .reactivate_subscription(organization_id, auth.into_entity())
             .await?;
         Ok(Json(ApiResponse::success(result)))
     } else {

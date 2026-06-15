@@ -5,7 +5,7 @@ use sqlx::postgres::PgRow;
 use uuid::Uuid;
 
 use crate::server::{
-    billing::types::base::BillingPlan,
+    billing::types::base::{BillingPlan, PlanStatus},
     organizations::r#impl::base::{Organization, OrganizationBase},
     shared::{
         entities::EntityDiscriminants,
@@ -20,7 +20,7 @@ use crate::server::{
 pub struct OrganizationCsvRow {
     pub id: Uuid,
     pub name: String,
-    pub plan_status: Option<String>,
+    pub plan_status: Option<PlanStatus>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -98,7 +98,7 @@ impl Storable for Organization {
                 SqlValue::String(name),
                 SqlValue::OptionalString(stripe_customer_id),
                 SqlValue::OptionBillingPlan(plan),
-                SqlValue::OptionalString(plan_status),
+                SqlValue::OptionalString(plan_status.map(|s| s.to_string())),
                 SqlValue::OnboardingOperation(onboarding),
                 SqlValue::Bool(has_payment_method),
                 SqlValue::OptionTimestamp(trial_end_date),
@@ -145,7 +145,11 @@ impl Storable for Organization {
                 name: row.get("name"),
                 stripe_customer_id: row.get("stripe_customer_id"),
                 plan,
-                plan_status: row.get("plan_status"),
+                plan_status: row
+                    .try_get::<Option<String>, _>("plan_status")
+                    .ok()
+                    .flatten()
+                    .and_then(|s| s.parse().ok()),
                 onboarding,
                 has_payment_method: row.get("has_payment_method"),
                 trial_end_date: row.get("trial_end_date"),
@@ -193,7 +197,7 @@ impl Entity for Organization {
         OrganizationCsvRow {
             id: self.id,
             name: self.base.name.clone(),
-            plan_status: self.base.plan_status.clone(),
+            plan_status: self.base.plan_status,
             created_at: self.created_at,
             updated_at: self.updated_at,
         }
@@ -231,7 +235,7 @@ impl Entity for Organization {
         // Billing fields are managed by Stripe integration, not user-editable
         self.base.stripe_customer_id = existing.base.stripe_customer_id.clone();
         self.base.plan = existing.base.plan;
-        self.base.plan_status = existing.base.plan_status.clone();
+        self.base.plan_status = existing.base.plan_status;
         // Onboarding state is server-managed
         self.base.onboarding = existing.base.onboarding.clone();
         // Brevo company ID is server-managed

@@ -214,6 +214,11 @@ pub enum BillingOperation {
         save_offer_redeemed: Option<SaveOffer>,
         planned_period_end: DateTime<Utc>,
     },
+    /// User cleared a pending cancellation (via in-app reactivate). Stripe's
+    /// `cancel_at_period_end` flips from true to false; we emit this so the
+    /// org subscriber's `implied_status` mirror flips `plan_status` back to
+    /// `active` and analytics subscribers can attribute the un-churn.
+    Reactivated,
     PaymentMethodAdded,
     PaymentMethodRemoved,
 }
@@ -249,7 +254,8 @@ impl BillingOperation {
             Self::CheckoutCompleted { .. }
             | Self::PlanChanged { .. }
             | Self::PaymentRecovered { .. }
-            | Self::Resumed { .. } => Some(PlanStatus::Active),
+            | Self::Resumed { .. }
+            | Self::Reactivated => Some(PlanStatus::Active),
 
             Self::TrialStarted { .. } | Self::TrialExtended { .. } => Some(PlanStatus::Trialing),
             Self::TrialEnded {

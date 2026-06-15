@@ -8,7 +8,7 @@ use uuid::Uuid;
 use validator::Validate;
 
 use crate::server::{
-    billing::types::base::BillingPlan,
+    billing::types::base::{BillingPlan, PlanStatus},
     shared::{
         entities::ChangeTriggersTopologyStaleness, events::types::OnboardingOperationDiscriminants,
     },
@@ -83,7 +83,7 @@ pub struct OrganizationBase {
     pub plan: Option<BillingPlan>,
     #[serde(default)]
     #[schema(read_only, required)]
-    pub plan_status: Option<String>,
+    pub plan_status: Option<PlanStatus>,
     #[schema(read_only, required)]
     pub onboarding: Vec<OnboardingOperationDiscriminants>,
     #[serde(default)]

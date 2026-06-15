@@ -14,6 +14,7 @@
 		useCustomerPortalMutation,
 		useSetupPaymentMethodMutation,
 		useResumeSubscriptionMutation,
+		useReactivateSubscriptionMutation,
 		useExtendTrialMutation
 	} from '$lib/features/billing/queries';
 	import CancelSubscriptionModal from '$lib/features/billing/CancelSubscriptionModal.svelte';
@@ -44,6 +45,7 @@
 		settings_billing_changePlan,
 		settings_billing_resume_button,
 		settings_billing_resume_confirmBody,
+		settings_billing_reactivateSubscription,
 		settings_billing_extendTrial_link,
 		settings_billing_extendTrial_confirmBody
 	} from '$lib/paraglide/messages';
@@ -75,6 +77,7 @@
 	const customerPortalMutation = useCustomerPortalMutation();
 	const setupPaymentMutation = useSetupPaymentMethodMutation();
 	const resumeMutation = useResumeSubscriptionMutation();
+	const reactivateMutation = useReactivateSubscriptionMutation();
 	const extendTrialMutation = useExtendTrialMutation();
 
 	// Cancel modal state. Replaces the legacy Stripe-Portal handoff.
@@ -117,8 +120,7 @@
 				return 'text-amber-600 dark:text-amber-400';
 			case 'paused':
 				return 'text-orange-600 dark:text-orange-400';
-			case 'canceled':
-			case 'incomplete':
+			case 'cancelled':
 				return 'text-yellow-600 dark:text-yellow-400';
 			default:
 				return 'text-gray-600 dark:text-gray-400';
@@ -176,6 +178,15 @@
 		if (!confirm(settings_billing_resume_confirmBody())) return;
 		try {
 			await resumeMutation.mutateAsync();
+			organizationQuery.refetch();
+		} catch {
+			// Mutation onError handles toast.
+		}
+	}
+
+	async function handleReactivate() {
+		try {
+			await reactivateMutation.mutateAsync();
 			organizationQuery.refetch();
 		} catch {
 			// Mutation onError handles toast.
@@ -397,7 +408,7 @@
 								<InlineInfo title={settings_billing_trialActive()} />
 							{:else if org.plan_status === 'past_due'}
 								<InlineDanger title={settings_billing_pastDue()} />
-							{:else if org.plan_status === 'canceled'}
+							{:else if org.plan_status === 'cancelled'}
 								<InlineWarning title={settings_billing_canceled()} />
 							{:else if org.plan_status === 'pending_cancellation'}
 								<InlineWarning title={settings_billing_downgrade_pending()} />
@@ -432,6 +443,20 @@
 									<button onclick={handleManageSubscription} class="btn-primary w-full">
 										{settings_billing_manageSubscription()}
 									</button>
+								{:else if org.plan_status === 'pending_cancellation'}
+									<div class="flex flex-col gap-2">
+										<button
+											type="button"
+											onclick={handleReactivate}
+											class="btn-primary w-full"
+											disabled={reactivateMutation.isPending}
+										>
+											{settings_billing_reactivateSubscription()}
+										</button>
+										<button onclick={handleManageSubscription} class="btn-secondary w-full">
+											{settings_billing_manageSubscription()}
+										</button>
+									</div>
 								{:else}
 									<div class="flex flex-col gap-2">
 										<button onclick={handleManageSubscription} class="btn-secondary w-full">
