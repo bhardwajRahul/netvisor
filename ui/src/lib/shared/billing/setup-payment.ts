@@ -1,4 +1,4 @@
-import { storeEventForAfterRedirect, trackEvent } from '$lib/shared/utils/analytics';
+import { storeEventForAfterRedirect } from '$lib/shared/utils/analytics';
 import type { useSetupPaymentMethodMutation } from '$lib/features/billing/queries';
 import type { Organization } from '$lib/features/organizations/types';
 
@@ -17,15 +17,11 @@ export async function startSetupPayment({
 	source,
 	trialDaysLeft
 }: StartSetupPaymentArgs): Promise<void> {
-	trackEvent('add_payment_cta_clicked', {
+	storeEventForAfterRedirect('add_payment_cta_clicked', {
 		source,
-		trial_days_left: trialDaysLeft,
-		has_payment_method: org?.has_payment_method ?? false
-	});
-	storeEventForAfterRedirect('payment_method_setup_initiated', {
 		plan_status: org?.plan_status,
 		trial_days_left: trialDaysLeft,
-		source
+		has_payment_method: org?.has_payment_method ?? false
 	});
 	try {
 		const url = await mutation.mutateAsync();
