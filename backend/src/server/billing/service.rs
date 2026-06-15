@@ -1033,6 +1033,11 @@ impl BillingService {
                         authentication,
                     ))
                     .await?;
+                tracing::info!(
+                    organization_id = %organization.id,
+                    subscription_id = %sub.id,
+                    "Published CancellationInitiated"
+                );
             }
             tracing::info!(
                 organization_id = %org_id,
