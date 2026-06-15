@@ -98,9 +98,6 @@
 	let selectedSnapshot = $derived(
 		$selectedSnapshotId ? snapshotsData.find((s) => s.id === $selectedSnapshotId) : null
 	);
-	// ISO timestamp threaded into the entity queries below; undefined on live view.
-	let entityAt = $derived(selectedSnapshot ? selectedSnapshot.taken_at : undefined);
-
 	// Queries - TanStack Query handles deduplication
 	const tagsQuery = useTagsQuery();
 	useUsersQuery({ enabled: () => canViewUsers });

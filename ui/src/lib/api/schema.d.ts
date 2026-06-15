@@ -433,6 +433,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/billing/reactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reactivate a subscription pending cancellation
+         * @description Clears Stripe's `cancel_at_period_end`. Available while
+         *     `plan_status === 'pending_cancellation'`.
+         */
+        post: operations["reactivate_subscription"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/billing/resume": {
         parameters: {
             query?: never;
@@ -3031,19 +3052,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-06-11T21:06:17.867165Z",
+             *       "created_at": "2026-06-15T17:20:28.321467Z",
              *       "first_discovery_id": null,
-             *       "id": "c9893ec2-4b75-471d-bf29-b44748bb7556",
+             *       "id": "60e74ddf-c75d-4082-af41-0aedfc3cd345",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-06-11T21:06:17.867165Z",
+             *       "last_seen_at": "2026-06-15T17:20:28.321467Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-06-11T21:06:17.867165Z",
-             *       "valid_from": "2026-06-11T21:06:17.867165Z",
+             *       "updated_at": "2026-06-15T17:20:28.321467Z",
+             *       "valid_from": "2026-06-15T17:20:28.321467Z",
              *       "valid_to": null
              *     }
              */
@@ -3380,19 +3401,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-06-11T21:06:17.848128Z",
+             *               "created_at": "2026-06-15T17:20:28.308507Z",
              *               "first_discovery_id": null,
-             *               "id": "8cce7a83-98cc-45e4-a618-638b2b4cb68e",
+             *               "id": "4555b42d-9381-4578-86bc-e30268c47455",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-06-11T21:06:17.848128Z",
+             *               "last_seen_at": "2026-06-15T17:20:28.308507Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-06-11T21:06:17.848128Z",
-             *               "valid_from": "2026-06-11T21:06:17.848128Z",
+             *               "updated_at": "2026-06-15T17:20:28.308507Z",
+             *               "valid_from": "2026-06-15T17:20:28.308507Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3406,7 +3427,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "FreshRSS",
+             *           "service_definition": "Unclaimed Open Ports",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3742,19 +3763,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-06-11T21:06:17.861032Z",
+             *           "created_at": "2026-06-15T17:20:28.316710Z",
              *           "first_discovery_id": null,
-             *           "id": "82ee6646-bab9-4e82-99e9-06366963bfa0",
+             *           "id": "8e836627-088c-44ed-9d1e-76712e154579",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-06-11T21:06:17.861032Z",
+             *           "last_seen_at": "2026-06-15T17:20:28.316710Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-06-11T21:06:17.861032Z",
-             *           "valid_from": "2026-06-11T21:06:17.861032Z",
+             *           "updated_at": "2026-06-15T17:20:28.316710Z",
+             *           "valid_from": "2026-06-15T17:20:28.316710Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -3768,7 +3789,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "FreshRSS",
+             *       "service_definition": "Unclaimed Open Ports",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4221,19 +4242,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-06-11T21:06:17.848560Z",
+         *       "created_at": "2026-06-15T17:20:28.308730Z",
          *       "first_discovery_id": null,
-         *       "id": "a131b59a-2730-4c30-9296-caf38b64948f",
+         *       "id": "1608b3be-942b-467d-a972-794115fd185a",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-06-11T21:06:17.848560Z",
+         *       "last_seen_at": "2026-06-15T17:20:28.308730Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-06-11T21:06:17.848560Z",
-         *       "valid_from": "2026-06-11T21:06:17.848560Z",
+         *       "updated_at": "2026-06-15T17:20:28.308730Z",
+         *       "valid_from": "2026-06-15T17:20:28.308730Z",
          *       "valid_to": null
          *     }
          */
@@ -4448,7 +4469,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "FreshRSS",
+         *           "service_definition": "Unclaimed Open Ports",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -5389,19 +5410,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-06-11T21:06:17.847641Z",
+         *               "created_at": "2026-06-15T17:20:28.308243Z",
          *               "first_discovery_id": null,
-         *               "id": "c0586020-6394-4b7e-8028-54675950c412",
+         *               "id": "c5897ef6-ad35-4675-9445-ec90bc927fd5",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-06-11T21:06:17.847641Z",
+         *               "last_seen_at": "2026-06-15T17:20:28.308243Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-06-11T21:06:17.847641Z",
-         *               "valid_from": "2026-06-11T21:06:17.847641Z",
+         *               "updated_at": "2026-06-15T17:20:28.308243Z",
+         *               "valid_from": "2026-06-15T17:20:28.308243Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -5415,7 +5436,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "FreshRSS",
+         *           "service_definition": "Unclaimed Open Ports",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -6076,7 +6097,7 @@ export interface components {
             name: string;
             onboarding: components["schemas"]["OnboardingOperationDiscriminants"][];
             plan: null | components["schemas"]["BillingPlan"];
-            readonly plan_status: string | null;
+            plan_status: null | components["schemas"]["PlanStatus"];
             /** Format: date-time */
             readonly trial_end_date?: string | null;
             /** @description Whether the org has used its one-time trial-extend perk. */
@@ -6414,6 +6435,21 @@ export interface components {
             /** Format: int32 */
             trial_days: number;
         };
+        /**
+         * @description Derived subscription status — our domain enum, never Stripe's raw status.
+         *     Stripe webhook events map to typed `BillingOperation` variants at reception
+         *     (in `billing/service.rs`); each variant deterministically implies a
+         *     `PlanStatus` for downstream feature gates via
+         *     `BillingOperation::implied_status`.
+         *
+         *     `FromStr` is derived (via strum) so the storage layer can round-trip a
+         *     snake_case `text` column back into the typed value; `ToSchema` exposes
+         *     the enum as a stricter string union in the generated OpenAPI schema so
+         *     the frontend's `org.plan_status === 'paused'` comparisons are
+         *     compile-checked against the canonical variant list.
+         * @enum {string}
+         */
+        PlanStatus: "active" | "trialing" | "past_due" | "paused" | "pending_cancellation" | "cancelled";
         /** @description Plan usage limits and current counts */
         PlanUsage: {
             /** Format: int64 */
@@ -6753,19 +6789,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-06-11T21:06:17.848471Z",
+         *           "created_at": "2026-06-15T17:20:28.308678Z",
          *           "first_discovery_id": null,
-         *           "id": "a7f760ac-0d6f-4778-9933-c1b4c98db787",
+         *           "id": "8a6af0f2-344d-4ccd-acba-6072e74923a6",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-06-11T21:06:17.848471Z",
+         *           "last_seen_at": "2026-06-15T17:20:28.308678Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-06-11T21:06:17.848471Z",
-         *           "valid_from": "2026-06-11T21:06:17.848471Z",
+         *           "updated_at": "2026-06-15T17:20:28.308678Z",
+         *           "valid_from": "2026-06-15T17:20:28.308678Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -6779,7 +6815,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "FreshRSS",
+         *       "service_definition": "Unclaimed Open Ports",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -8306,6 +8342,35 @@ export interface operations {
                 };
             };
             /** @description Billing not enabled */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    reactivate_subscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Subscription reactivated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_String"];
+                };
+            };
+            /** @description No pending cancellation or billing not enabled */
             400: {
                 headers: {
                     [name: string]: unknown;

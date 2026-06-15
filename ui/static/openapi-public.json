@@ -10860,19 +10860,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-06-11T21:06:17.867172Z",
+              "created_at": "2026-06-15T17:20:28.320660Z",
               "first_discovery_id": null,
-              "id": "7e1d7d9c-6fe8-438d-b1a2-c4dae50660cc",
+              "id": "5f5bf822-57ba-4ee0-a005-0a121e5f9029",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-11T21:06:17.867172Z",
+              "last_seen_at": "2026-06-15T17:20:28.320660Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-11T21:06:17.867172Z",
-              "valid_from": "2026-06-11T21:06:17.867172Z",
+              "updated_at": "2026-06-15T17:20:28.320660Z",
+              "valid_from": "2026-06-15T17:20:28.320660Z",
               "valid_to": null
             }
           },
@@ -11858,19 +11858,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-06-11T21:06:17.848095Z",
+                      "created_at": "2026-06-15T17:20:28.308360Z",
                       "first_discovery_id": null,
-                      "id": "abb01e17-1544-4095-86e0-06e5e86277b0",
+                      "id": "3934c65f-0e45-4b6a-89bb-e5afa2428c03",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-06-11T21:06:17.848095Z",
+                      "last_seen_at": "2026-06-15T17:20:28.308360Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-06-11T21:06:17.848095Z",
-                      "valid_from": "2026-06-11T21:06:17.848095Z",
+                      "updated_at": "2026-06-15T17:20:28.308360Z",
+                      "valid_from": "2026-06-15T17:20:28.308360Z",
                       "valid_to": null
                     }
                   ],
@@ -11884,7 +11884,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "FreshRSS",
+                  "service_definition": "Unclaimed Open Ports",
                   "source": {
                     "type": "Manual"
                   },
@@ -12815,19 +12815,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-06-11T21:06:17.861042Z",
+                  "created_at": "2026-06-15T17:20:28.316371Z",
                   "first_discovery_id": null,
-                  "id": "8446f010-6a50-4420-89d8-eafe310b153d",
+                  "id": "827e4d7a-9a03-4c79-9316-ac9dc0356ebf",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-11T21:06:17.861042Z",
+                  "last_seen_at": "2026-06-15T17:20:28.316371Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-11T21:06:17.861042Z",
-                  "valid_from": "2026-06-11T21:06:17.861042Z",
+                  "updated_at": "2026-06-15T17:20:28.316371Z",
+                  "valid_from": "2026-06-15T17:20:28.316371Z",
                   "valid_to": null
                 }
               ],
@@ -12841,7 +12841,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "FreshRSS",
+              "service_definition": "Unclaimed Open Ports",
               "source": {
                 "type": "Manual"
               },
@@ -14541,19 +14541,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-06-11T21:06:17.848528Z",
+          "created_at": "2026-06-15T17:20:28.308579Z",
           "first_discovery_id": null,
-          "id": "57a385da-862a-48d2-aef7-fb3996ebc2c6",
+          "id": "69dff9d8-6e1c-444f-8721-5c785a67b5bd",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-06-11T21:06:17.848528Z",
+          "last_seen_at": "2026-06-15T17:20:28.308579Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-06-11T21:06:17.848528Z",
-          "valid_from": "2026-06-11T21:06:17.848528Z",
+          "updated_at": "2026-06-15T17:20:28.308579Z",
+          "valid_from": "2026-06-15T17:20:28.308579Z",
           "valid_to": null
         }
       },
@@ -15143,7 +15143,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "FreshRSS",
+              "service_definition": "Unclaimed Open Ports",
               "tags": [],
               "virtualization": null
             }
@@ -17761,19 +17761,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-06-11T21:06:17.847621Z",
+                  "created_at": "2026-06-15T17:20:28.308098Z",
                   "first_discovery_id": null,
-                  "id": "c2b423b1-1210-4557-89f9-8260ca4b5cf3",
+                  "id": "91d53905-57c5-462a-ae3c-b6c58129ccbc",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-11T21:06:17.847621Z",
+                  "last_seen_at": "2026-06-15T17:20:28.308098Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-11T21:06:17.847621Z",
-                  "valid_from": "2026-06-11T21:06:17.847621Z",
+                  "updated_at": "2026-06-15T17:20:28.308098Z",
+                  "valid_from": "2026-06-15T17:20:28.308098Z",
                   "valid_to": null
                 }
               ],
@@ -17787,7 +17787,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "FreshRSS",
+              "service_definition": "Unclaimed Open Ports",
               "source": {
                 "type": "Manual"
               },
@@ -19658,11 +19658,14 @@
             ]
           },
           "plan_status": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "readOnly": true
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PlanStatus"
+              }
+            ]
           },
           "trial_end_date": {
             "type": [
@@ -20177,19 +20180,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-06-11T21:06:17.836132Z",
+                        "created_at": "2026-06-15T17:20:28.301986Z",
                         "first_discovery_id": null,
-                        "id": "1aaf9f1a-8545-457c-be33-f72e5848e5d4",
+                        "id": "b08c622f-a4de-4fa0-8d72-b846cae7760e",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-06-11T21:06:17.836132Z",
+                        "last_seen_at": "2026-06-15T17:20:28.301986Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-06-11T21:06:17.836132Z",
-                        "valid_from": "2026-06-11T21:06:17.836132Z",
+                        "updated_at": "2026-06-15T17:20:28.301986Z",
+                        "valid_from": "2026-06-15T17:20:28.301986Z",
                         "valid_to": null
                       }
                     ],
@@ -20203,7 +20206,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "FreshRSS",
+                    "service_definition": "Unclaimed Open Ports",
                     "source": {
                       "type": "Manual"
                     },
@@ -20324,19 +20327,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-06-11T21:06:17.859807Z",
+                    "created_at": "2026-06-15T17:20:28.315565Z",
                     "first_discovery_id": null,
-                    "id": "b5591f79-7277-4c37-b378-e617bbf62369",
+                    "id": "3b73b2a9-3acf-409a-a628-e51858b029c4",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-06-11T21:06:17.859807Z",
+                    "last_seen_at": "2026-06-15T17:20:28.315565Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-06-11T21:06:17.859807Z",
-                    "valid_from": "2026-06-11T21:06:17.859807Z",
+                    "updated_at": "2026-06-15T17:20:28.315565Z",
+                    "valid_from": "2026-06-15T17:20:28.315565Z",
                     "valid_to": null
                   }
                 ],
@@ -20350,7 +20353,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "FreshRSS",
+                "service_definition": "Unclaimed Open Ports",
                 "source": {
                   "type": "Manual"
                 },
@@ -21012,6 +21015,18 @@
             "minimum": 0
           }
         }
+      },
+      "PlanStatus": {
+        "type": "string",
+        "description": "Derived subscription status — our domain enum, never Stripe's raw status.\nStripe webhook events map to typed `BillingOperation` variants at reception\n(in `billing/service.rs`); each variant deterministically implies a\n`PlanStatus` for downstream feature gates via\n`BillingOperation::implied_status`.\n\n`FromStr` is derived (via strum) so the storage layer can round-trip a\nsnake_case `text` column back into the typed value; `ToSchema` exposes\nthe enum as a stricter string union in the generated OpenAPI schema so\nthe frontend's `org.plan_status === 'paused'` comparisons are\ncompile-checked against the canonical variant list.",
+        "enum": [
+          "active",
+          "trialing",
+          "past_due",
+          "paused",
+          "pending_cancellation",
+          "cancelled"
+        ]
       },
       "PlanUsage": {
         "type": "object",
@@ -21907,19 +21922,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-06-11T21:06:17.848438Z",
+              "created_at": "2026-06-15T17:20:28.308527Z",
               "first_discovery_id": null,
-              "id": "6e367b60-4f08-4389-85c6-8cac9e0bcdcd",
+              "id": "183fa0dd-a353-4b3a-b08f-983b0e0e64a7",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-11T21:06:17.848438Z",
+              "last_seen_at": "2026-06-15T17:20:28.308527Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-11T21:06:17.848438Z",
-              "valid_from": "2026-06-11T21:06:17.848438Z",
+              "updated_at": "2026-06-15T17:20:28.308527Z",
+              "valid_from": "2026-06-15T17:20:28.308527Z",
               "valid_to": null
             }
           ],
@@ -21933,7 +21948,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "FreshRSS",
+          "service_definition": "Unclaimed Open Ports",
           "source": {
             "type": "Manual"
           },
