@@ -41,14 +41,42 @@ impl Subscriber<OnboardingOperation> for OrganizationService {
             return Ok(());
         }
 
+        tracing::info!(
+            event_count = events.len(),
+            "OrganizationService onboarding subscriber: handle entry"
+        );
+
         for event in events {
+            let onboarding_step = event.operation.discriminant();
+            tracing::info!(
+                org_id = %event.scope.organization_id,
+                onboarding_step = ?onboarding_step,
+                "OrganizationService onboarding subscriber: processing event"
+            );
             if let Some(mut organization) = self.get_by_id(&event.scope.organization_id).await? {
-                let onboarding_step = event.operation.discriminant();
-                if organization.not_onboarded(&onboarding_step) {
+                let not_onboarded = organization.not_onboarded(&onboarding_step);
+                tracing::info!(
+                    org_id = %event.scope.organization_id,
+                    onboarding_step = ?onboarding_step,
+                    not_onboarded = not_onboarded,
+                    "OrganizationService onboarding subscriber: not_onboarded check"
+                );
+                if not_onboarded {
                     organization.base.onboarding.push(onboarding_step);
                     self.update(&mut organization, AuthenticatedEntity::System)
                         .await?;
+                    tracing::info!(
+                        org_id = %event.scope.organization_id,
+                        onboarding_step = ?onboarding_step,
+                        "OrganizationService onboarding subscriber: pushed + persisted"
+                    );
                 }
+            } else {
+                tracing::warn!(
+                    org_id = %event.scope.organization_id,
+                    onboarding_step = ?onboarding_step,
+                    "OrganizationService onboarding subscriber: org not found"
+                );
             }
         }
 

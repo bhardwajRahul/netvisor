@@ -1,6 +1,7 @@
 //! Shared fixture generation logic used by both the `generate-fixtures` binary
 //! and integration tests.
 
+use crate::daemon::discovery::types::base::DiscoveryPhase;
 use crate::server::billing::plans::get_website_fixture_plans;
 use crate::server::billing::types::base::{BillingPlan, CancelReason, SaveOffer};
 use crate::server::billing::types::features::Feature;
@@ -79,6 +80,10 @@ pub fn generate_ui_data_fixtures(output_dir: &Path) {
     let discovery_types: Vec<TypeMetadata> =
         DiscoveryType::iter().map(|d| d.to_metadata()).collect();
     write_fixture(&discovery_types, output_dir, "discovery-types.json");
+
+    let discovery_phases: Vec<TypeMetadata> =
+        DiscoveryPhase::iter().map(|p| p.to_metadata()).collect();
+    write_fixture(&discovery_phases, output_dir, "discovery-phases.json");
 
     let permissions: Vec<TypeMetadata> = UserOrgPermissions::iter()
         .map(|p| p.to_metadata())

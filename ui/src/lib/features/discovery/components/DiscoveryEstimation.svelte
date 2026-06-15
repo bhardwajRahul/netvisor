@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { formatEstimatedRemaining } from '$lib/features/discovery/utils/estimation';
 	import DocsHint from '$lib/shared/components/feedback/DocsHint.svelte';
+	import { discoveryPhases } from '$lib/shared/stores/metadata';
 	import {
 		home_docsDiscoveryTakesLong,
 		home_docsDiscoveryTakesLongLinkText
@@ -21,23 +22,17 @@
 	}: Props = $props();
 
 	let text = $derived.by(() => {
-		switch (phase) {
-			case 'Queued':
-				return 'Waiting in queue — another scan is running on this daemon';
-			case 'Pending':
-				return 'Ready to start — connecting to daemon';
-			case 'Starting':
-				return 'Waiting for session to start on the daemon';
-			case 'Cancelling':
-				return 'Cancellation can take up to 30 seconds';
-			case 'Scanning':
-				if (!hosts_discovered) return 'Scanning for hosts...';
-				if (estimated_remaining_secs != null)
-					return `Found ${hosts_discovered} hosts — ${formatEstimatedRemaining(estimated_remaining_secs)} remaining`;
-				return `Found ${hosts_discovered} hosts — estimating scan time...`;
-			default:
-				return null;
+		// Cancelling: frontend-only overlay during cancel mutation (no backend variant).
+		if (phase === 'Cancelling') return 'Cancellation can take up to 30 seconds';
+		// Scanning: dynamic host count + estimated remaining.
+		if (phase === 'Scanning') {
+			if (!hosts_discovered) return 'Scanning for hosts...';
+			if (estimated_remaining_secs != null)
+				return `Found ${hosts_discovered} hosts — ${formatEstimatedRemaining(estimated_remaining_secs)} remaining`;
+			return `Found ${hosts_discovered} hosts — estimating scan time...`;
 		}
+		// All other backend DiscoveryPhase variants source from metadata fixture.
+		return discoveryPhases.getDescription(phase) || null;
 	});
 </script>
 
