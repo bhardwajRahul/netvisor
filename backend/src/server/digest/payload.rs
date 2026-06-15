@@ -26,11 +26,17 @@ pub struct HostSummary {
 pub enum TagStatus {
     /// Created during this scan window.
     New,
-    /// Was live before the scan, daemon did not re-report it this scan.
-    Removed,
     /// Live and re-reported in this scan (steady state).
     #[default]
     Unchanged,
+    /// Not reported in this scan, but the entity's `last_discovery_id`
+    /// points at one of the most recent N successful scans on the
+    /// network — could be transient. Doesn't graduate to `Removed`
+    /// until it's been missing across multiple consecutive scans.
+    PossiblyMissing,
+    /// Not reported this scan, and last seen so long ago we're confident
+    /// it's gone.
+    Removed,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

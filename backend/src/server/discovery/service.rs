@@ -943,6 +943,26 @@ impl DiscoveryService {
             .map(|(did, _)| *did)
     }
 
+    /// Top-N historical Discovery row IDs for a network, ordered by
+    /// `updated_at DESC` (which equals the session's finished-at timestamp
+    /// for historical records). Used by the digest service to decide
+    /// whether a missing child is "possibly missing" (one of the recent N
+    /// discoveries still references it) or fully "removed."
+    pub async fn get_recent_historical_ids(
+        &self,
+        network_id: Uuid,
+        limit: usize,
+    ) -> Result<Vec<Uuid>, anyhow::Error> {
+        let filter = StorableFilter::<Discovery>::new_from_network_ids(&[network_id])
+            .historical_discovery()
+            .limit(limit as u32);
+        let discoveries = self
+            .discovery_storage
+            .get_all_ordered(filter, "updated_at DESC")
+            .await?;
+        Ok(discoveries.into_iter().map(|d| d.id).collect())
+    }
+
     /// Build a DaemonDiscoveryRequest with all credential mappings resolved.
     /// Called by both DaemonPoll and ServerPoll dispatch points.
     pub async fn build_daemon_request(

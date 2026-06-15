@@ -277,6 +277,7 @@ impl ServiceFactory {
             vlan_service.clone(),
             user_service.clone(),
             network_service.clone(),
+            discovery_service.clone(),
             event_bus.clone(),
         ));
 
