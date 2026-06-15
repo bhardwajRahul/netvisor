@@ -53,7 +53,7 @@ impl Email for DiscoveryDigest<'_> {
         let hosts_added_section =
             render_host_cards_section("New hosts discovered", &payload.hosts_added, base);
         let hosts_vanished_section =
-            render_host_cards_section("Hosts not seen this scan", &payload.hosts_vanished, base);
+            render_host_cards_section("Missing hosts", &payload.hosts_vanished, base);
         let hosts_changed_section =
             render_host_cards_section("Hosts with changes", &payload.hosts_changed, base);
         let vlans_added_section = render_vlan_list_section("VLANs detected", &payload.vlans_added);
@@ -214,7 +214,7 @@ fn render_section(heading: &str, body_html: &str) -> String {
 /// stays bound to the entity type. Placed at the top of the body just
 /// below the summary banner.
 fn render_legend() -> &'static str {
-    r#"<div style="margin: 0 0 16px 0; padding: 10px 14px; background-color: #f9fafb; border-radius: 6px; font-size: 12px; color: #4b5563; line-height: 1.5;"><div style="margin: 0 0 6px 0;"><span style="margin-right: 14px;"><strong>+</strong> new</span><span style="margin-right: 14px;">unchanged</span><span style="margin-right: 14px;"><strong>?</strong> <em>possibly missing</em></span><span><strong>−</strong> <span style="text-decoration: line-through;">removed</span></span></div><div style="font-size: 12px; color: #6b7280;"><strong>?</strong> means we expected to see this entity but didn't this scan. One miss isn't conclusive — transient network conditions can hide a port or service. We mark it <strong>−</strong> removed only after it's been missing across several consecutive scans.</div></div>"#
+    r#"<div style="margin: 0 0 16px 0; padding: 10px 14px; background-color: #f9fafb; border-radius: 6px; font-size: 12px; color: #4b5563; line-height: 1.5;"><div style="margin: 0 0 6px 0;"><span style="margin-right: 14px;"><strong>+</strong> new</span><span style="margin-right: 14px;">unchanged</span><span style="margin-right: 14px;"><strong>?</strong> <em>possibly missing</em></span><span><strong>−</strong> <span style="text-decoration: line-through;">missing</span></span></div><div style="font-size: 12px; color: #6b7280;"><strong>?</strong> means we expected to see this entity but didn't this scan. One miss isn't conclusive — transient network conditions can hide a port or service. We mark it <strong>−</strong> missing only after it's been gone for 3 consecutive scans.</div></div>"#
 }
 
 fn render_subnets_section(subnets: &[SubnetSummary], base: &str) -> String {
@@ -266,7 +266,7 @@ fn render_vlan_list_section(heading: &str, vlans: &[VlanSummary]) -> String {
 fn render_summary_banner(payload: &DiscoveryDigestPayload) -> String {
     let cells: Vec<(usize, &str)> = vec![
         (payload.hosts_added.len(), "new hosts"),
-        (payload.hosts_vanished.len(), "vanished hosts"),
+        (payload.hosts_vanished.len(), "missing hosts"),
         (payload.hosts_changed.len(), "changed hosts"),
         (payload.vlans_added.len(), "VLANs detected"),
         (payload.vlans_removed.len(), "VLANs no longer detected"),
@@ -311,7 +311,7 @@ fn render_host_cards_section(heading: &str, cards: &[AffectedHostCard], base: &s
         .collect();
     let more = cards.len() - MAX_HOST_CARDS_INLINE;
     let inner = format!(
-        r#"{visible}<details style="margin: 16px 0;"><summary style="cursor: pointer; display: inline-block; padding: 10px 18px; background-color: #2563eb; color: #ffffff; font-size: 13px; font-weight: 600; border-radius: 6px; list-style: none;">Show {more} more hosts &rarr;</summary><div style="margin-top: 12px;">{hidden}</div></details>"#,
+        r#"{visible}<details style="margin: 16px 0;"><summary style="cursor: pointer; display: inline-block; padding: 8px 16px; background-color: #ffffff; color: #2563eb; font-size: 13px; font-weight: 600; border: 1px solid #2563eb; border-radius: 6px; list-style: none;">Show {more} more hosts &#9662;</summary><div style="margin-top: 12px;">{hidden}</div></details>"#,
         visible = visible,
         more = more,
         hidden = hidden,
@@ -322,7 +322,7 @@ fn render_host_cards_section(heading: &str, cards: &[AffectedHostCard], base: &s
 fn render_host_card(card: &AffectedHostCard, base: &str) -> String {
     let (badge_label, badge_bg, badge_fg) = match card.status {
         HostCardStatus::New => ("New", "#dcfce7", "#166534"),
-        HostCardStatus::Vanished => ("Vanished", "#fee2e2", "#991b1b"),
+        HostCardStatus::Vanished => ("Missing", "#fee2e2", "#991b1b"),
         HostCardStatus::Changed => ("Changed", "#fef3c7", "#92400e"),
     };
     let badge = format!(
