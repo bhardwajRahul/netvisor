@@ -128,6 +128,17 @@
 	}
 
 	let isFree = $derived(org?.plan?.type === 'Free');
+	// Live Stripe subscription whose lifecycle these CTAs can act on. Non-Stripe
+	// plans (Free/Community/Demo/SelfHosted/Enterprise) have plan_status === null;
+	// a fully-cancelled subscription is 'cancelled' — neither is manageable here.
+	let hasManageableSubscription = $derived(
+		!isFree &&
+			(org?.plan_status === 'active' ||
+				org?.plan_status === 'trialing' ||
+				org?.plan_status === 'past_due' ||
+				org?.plan_status === 'paused' ||
+				org?.plan_status === 'pending_cancellation')
+	);
 	let hasPaymentMethod = $derived(org?.has_payment_method ?? false);
 	let trialEndDate = $derived(org?.trial_end_date ? new Date(org.trial_end_date) : null);
 	let trialDaysLeft = $derived.by(() => {
@@ -429,7 +440,7 @@
 								{isFree ? settings_billing_upgradePlan() : settings_billing_changePlan()}
 							</button>
 
-							{#if !isFree}
+							{#if hasManageableSubscription}
 								{#if org.plan_status === 'paused'}
 									<button
 										type="button"

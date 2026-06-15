@@ -8,6 +8,7 @@
 	import LicenseGraceBanner from '$lib/shared/components/feedback/LicenseGraceBanner.svelte';
 	import LicenseExpiringBanner from '$lib/shared/components/feedback/LicenseExpiringBanner.svelte';
 	import TrialEndingBanner from '$lib/shared/components/feedback/TrialEndingBanner.svelte';
+	import NoPaymentMethodBanner from '$lib/shared/components/feedback/NoPaymentMethodBanner.svelte';
 	import TrialExpiryModal from '$lib/shared/components/feedback/TrialExpiryModal.svelte';
 	import PostStripeWelcomeBanner from '$lib/shared/components/feedback/PostStripeWelcomeBanner.svelte';
 	import Sidebar from '$lib/shared/components/layout/Sidebar.svelte';
@@ -229,6 +230,7 @@
 				<EmailVerificationBanner email={currentUserQuery.data.email} />
 			{/if}
 			<TrialEndingBanner />
+			<NoPaymentMethodBanner />
 			<PostStripeWelcomeBanner />
 			{#if organization?.plan?.type === 'Demo'}
 				<DemoBanner />
