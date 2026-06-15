@@ -8,6 +8,8 @@ use uuid::Uuid;
 use crate::server::auth::middleware::auth::AuthenticatedEntity;
 use crate::server::bindings::service::BindingService;
 use crate::server::daemons::r#impl::api::{DiscoveryUpdatePayload, ScannedEntityIds};
+use crate::server::discovery::r#impl::types::DiscoveryType;
+use crate::server::discovery::service::DiscoveryService;
 use crate::server::services::r#impl::definitions::{ServiceDefinition, ServiceDefinitionExt};
 use crate::server::services::r#impl::virtualization::ServiceVirtualization;
 use crate::server::{
@@ -48,6 +50,7 @@ pub struct DiscoveryDigestService {
     pub vlan_service: Arc<VlanService>,
     pub user_service: Arc<UserService>,
     pub network_service: Arc<NetworkService>,
+    pub discovery_service: Arc<DiscoveryService>,
     pub event_bus: Arc<EventBus>,
 }
 
@@ -64,6 +67,7 @@ impl DiscoveryDigestService {
         vlan_service: Arc<VlanService>,
         user_service: Arc<UserService>,
         network_service: Arc<NetworkService>,
+        discovery_service: Arc<DiscoveryService>,
         event_bus: Arc<EventBus>,
     ) -> Self {
         Self {
@@ -77,6 +81,7 @@ impl DiscoveryDigestService {
             vlan_service,
             user_service,
             network_service,
+            discovery_service,
             event_bus,
         }
     }
@@ -147,18 +152,31 @@ impl DiscoveryDigestService {
     ) -> Result<DiscoveryDigestPayload> {
         let network_id = payload.network_id;
 
-        // Subnets scanned: trust the daemon's reported set. Empty for
-        // host-scoped discoveries (SelfReport / Docker) is the correct
-        // answer — those don't sweep a subnet.
-        let subnets_scanned: Vec<SubnetSummary> = if scanned.subnet_ids.is_empty() {
+        // Subnets scanned: prefer the discovery config's explicit subnet
+        // list when set (the user targeted a specific subset). Fall back
+        // to the daemon's reported set. Either way, drop loopback subnets
+        // (127.0.0.0/8 + ::1) — they're not user-meaningful.
+        let targeted: Option<&[Uuid]> = match &payload.discovery_type {
+            DiscoveryType::Network {
+                subnet_ids: Some(ids),
+                ..
+            }
+            | DiscoveryType::Unified {
+                subnet_ids: Some(ids),
+                ..
+            } if !ids.is_empty() => Some(ids.as_slice()),
+            _ => None,
+        };
+        let subnet_ids: &[Uuid] = targeted.unwrap_or(scanned.subnet_ids.as_slice());
+
+        let subnets_scanned: Vec<SubnetSummary> = if subnet_ids.is_empty() {
             Vec::new()
         } else {
             self.subnet_service
-                .get_all(StorableFilter::<Subnet>::new_from_entity_ids(
-                    &scanned.subnet_ids,
-                ))
+                .get_all(StorableFilter::<Subnet>::new_from_entity_ids(subnet_ids))
                 .await?
                 .iter()
+                .filter(|s| !s.base.cidr.first_address().is_loopback())
                 .map(subnet_summary)
                 .collect()
         };
@@ -203,8 +221,28 @@ impl DiscoveryDigestService {
 
         let vanished_host_ids: HashSet<Uuid> =
             hosts_vanished_records.iter().map(|h| h.id).collect();
+
+        // Recent-history grace: a child not in this scan that was last
+        // touched by one of the top-N most recent historical discoveries
+        // on this network gets `PossiblyMissing` rather than `Removed`.
+        // Tolerates transient scan-to-scan noise.
+        const REMOVAL_GRACE_SCANS: usize = 3;
+        let recent_discovery_ids: HashSet<Uuid> = self
+            .discovery_service
+            .get_recent_historical_ids(network_id, REMOVAL_GRACE_SCANS)
+            .await?
+            .into_iter()
+            .collect();
+
         let current_children = self
-            .fetch_current_children(&affected_ids, scanned, &vanished_host_ids, t_start, t_end)
+            .fetch_current_children(
+                &affected_ids,
+                scanned,
+                &vanished_host_ids,
+                &recent_discovery_ids,
+                t_start,
+                t_end,
+            )
             .await?;
 
         let hosts_added: Vec<AffectedHostCard> = hosts_added_records
@@ -271,7 +309,10 @@ impl DiscoveryDigestService {
     /// Fetch live children for the affected-host set and bucket them by
     /// host_id, with each child summary carrying its `TagStatus`:
     /// - `New` when `created_at` falls inside the scan window.
-    /// - `Removed` when the daemon did not include the id in its scan set.
+    /// - `PossiblyMissing` when not in this scan but `last_discovery_id`
+    ///   matches one of the recent-history grace discoveries.
+    /// - `Removed` when not in this scan and last touched by a discovery
+    ///   older than the grace window.
     /// - `Unchanged` otherwise.
     ///
     /// Children of vanished hosts always get `Unchanged` (we just enumerate
@@ -282,6 +323,7 @@ impl DiscoveryDigestService {
         host_ids: &[Uuid],
         scanned: &ScannedEntityIds,
         vanished_host_ids: &HashSet<Uuid>,
+        recent_discovery_ids: &HashSet<Uuid>,
         t_start: DateTime<Utc>,
         t_end: DateTime<Utc>,
     ) -> Result<HashMap<Uuid, HostChildren>> {
@@ -344,9 +386,11 @@ impl DiscoveryDigestService {
             let status = tag_status(
                 s.base.host_id,
                 s.id,
+                s.last_discovery_id,
                 s.created_at,
                 &scanned_service_ids,
                 vanished_host_ids,
+                recent_discovery_ids,
                 t_start,
                 t_end,
             );
@@ -359,9 +403,11 @@ impl DiscoveryDigestService {
             let status = tag_status(
                 ip.base.host_id,
                 ip.id,
+                ip.last_discovery_id,
                 ip.created_at,
                 &scanned_ip_ids,
                 vanished_host_ids,
+                recent_discovery_ids,
                 t_start,
                 t_end,
             );
@@ -374,9 +420,11 @@ impl DiscoveryDigestService {
             let status = tag_status(
                 i.base.host_id,
                 i.id,
+                i.last_discovery_id,
                 i.created_at,
                 &scanned_interface_ids,
                 vanished_host_ids,
+                recent_discovery_ids,
                 t_start,
                 t_end,
             );
@@ -389,9 +437,11 @@ impl DiscoveryDigestService {
             let status = tag_status(
                 p.base.host_id,
                 p.id,
+                p.last_discovery_id,
                 p.created_at,
                 &scanned_port_ids,
                 vanished_host_ids,
+                recent_discovery_ids,
                 t_start,
                 t_end,
             );
@@ -440,26 +490,37 @@ impl EventBusService<Host> for DiscoveryDigestService {
 /// Decide a child's `TagStatus`. Children of vanished hosts are flat
 /// `Unchanged` — the host card itself communicates the vanished state, so
 /// per-child markers would be redundant. For non-vanished hosts:
-/// `created_at` inside the scan window ⇒ New; not in the daemon's scan
-/// set ⇒ Removed; otherwise Unchanged.
+/// - `created_at` inside the scan window ⇒ `New`.
+/// - In the scan set ⇒ `Unchanged`.
+/// - Not in the scan set, last discovered by one of the recent-history
+///   discoveries ⇒ `PossiblyMissing` (transient miss possible).
+/// - Older than the grace window ⇒ `Removed`.
+#[allow(clippy::too_many_arguments)]
 fn tag_status(
     host_id: Uuid,
     child_id: Uuid,
+    child_last_discovery_id: Option<Uuid>,
     created_at: DateTime<Utc>,
     scanned_ids: &HashSet<Uuid>,
     vanished_host_ids: &HashSet<Uuid>,
+    recent_discovery_ids: &HashSet<Uuid>,
     t_start: DateTime<Utc>,
     t_end: DateTime<Utc>,
 ) -> TagStatus {
     if vanished_host_ids.contains(&host_id) {
         return TagStatus::Unchanged;
     }
-    if created_at >= t_start && created_at <= t_end {
-        TagStatus::New
-    } else if !scanned_ids.contains(&child_id) {
-        TagStatus::Removed
-    } else {
-        TagStatus::Unchanged
+    if scanned_ids.contains(&child_id) {
+        return if created_at >= t_start && created_at <= t_end {
+            TagStatus::New
+        } else {
+            TagStatus::Unchanged
+        };
+    }
+    // Not in this scan. Grace check.
+    match child_last_discovery_id {
+        Some(lid) if recent_discovery_ids.contains(&lid) => TagStatus::PossiblyMissing,
+        _ => TagStatus::Removed,
     }
 }
 

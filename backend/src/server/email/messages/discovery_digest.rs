@@ -7,6 +7,7 @@ use crate::server::{
         IpAddressSummary, PortSummary, ServiceSummary, SubnetSummary, TagStatus, VlanSummary,
     },
     shared::{
+        concepts::Concept,
         entities::EntityDiscriminants,
         types::{Color, metadata::EntityMetadataProvider},
     },
@@ -128,6 +129,7 @@ fn render_tag(tag: &TagItem) -> String {
     let (prefix, label_style) = match tag.status {
         TagStatus::New => ("+ ", ""),
         TagStatus::Removed => ("− ", "text-decoration: line-through;"),
+        TagStatus::PossiblyMissing => ("? ", "font-style: italic;"),
         TagStatus::Unchanged => ("", ""),
     };
     let logo = tag.logo_url.as_deref().filter(|u| !u.is_empty()).map_or_else(
@@ -212,7 +214,7 @@ fn render_section(heading: &str, body_html: &str) -> String {
 /// stays bound to the entity type. Placed at the top of the body just
 /// below the summary banner.
 fn render_legend() -> &'static str {
-    r#"<div style="margin: 0 0 16px 0; padding: 8px 12px; background-color: #f9fafb; border-radius: 6px; font-size: 12px; color: #4b5563;"><span style="margin-right: 14px;"><strong>+</strong> new</span><span style="margin-right: 14px;">unchanged</span><span><strong>−</strong> <span style="text-decoration: line-through;">removed</span></span></div>"#
+    r#"<div style="margin: 0 0 16px 0; padding: 10px 14px; background-color: #f9fafb; border-radius: 6px; font-size: 12px; color: #4b5563; line-height: 1.5;"><div style="margin: 0 0 6px 0;"><span style="margin-right: 14px;"><strong>+</strong> new</span><span style="margin-right: 14px;">unchanged</span><span style="margin-right: 14px;"><strong>?</strong> <em>possibly missing</em></span><span><strong>−</strong> <span style="text-decoration: line-through;">removed</span></span></div><div style="font-size: 12px; color: #6b7280;"><strong>?</strong> means we expected to see this entity but didn't this scan. One miss isn't conclusive — transient network conditions can hide a port or service. We mark it <strong>−</strong> removed only after it's been missing across several consecutive scans.</div></div>"#
 }
 
 fn render_subnets_section(subnets: &[SubnetSummary], base: &str) -> String {
@@ -309,7 +311,7 @@ fn render_host_cards_section(heading: &str, cards: &[AffectedHostCard], base: &s
         .collect();
     let more = cards.len() - MAX_HOST_CARDS_INLINE;
     let inner = format!(
-        r#"{visible}<details style="margin: 0 0 16px 0;"><summary style="cursor: pointer; font-size: 13px; color: #2563eb;">Show {more} more hosts</summary>{hidden}</details>"#,
+        r#"{visible}<details style="margin: 16px 0;"><summary style="cursor: pointer; display: inline-block; padding: 10px 18px; background-color: #2563eb; color: #ffffff; font-size: 13px; font-weight: 600; border-radius: 6px; list-style: none;">Show {more} more hosts &rarr;</summary><div style="margin-top: 12px;">{hidden}</div></details>"#,
         visible = visible,
         more = more,
         hidden = hidden,
@@ -343,14 +345,17 @@ fn render_host_card(card: &AffectedHostCard, base: &str) -> String {
         card.services.iter().partition(|s| s.is_container);
 
     let services_tags = tags_services(&services, card.host.id, base);
-    let containers_tags = tags_services(&containers, card.host.id, base);
+    let containerized_tags = tags_containerized_services(&containers, card.host.id, base);
     let ip_tags = tags_ips(&card.ip_addresses, card.host.id, base);
     let interface_tags = tags_interfaces(&card.interfaces, card.host.id, base);
     let port_tags = tags_ports(&card.ports, card.host.id, base);
 
     let mut rows = String::new();
     rows.push_str(&render_tag_row("Services", &services_tags));
-    rows.push_str(&render_tag_row("Containers", &containers_tags));
+    rows.push_str(&render_tag_row(
+        "Containerized Services",
+        &containerized_tags,
+    ));
     rows.push_str(&render_tag_row("IP Addresses", &ip_tags));
     rows.push_str(&render_tag_row("Interfaces", &interface_tags));
     rows.push_str(&render_tag_row("Ports", &port_tags));
@@ -398,6 +403,27 @@ fn tags_ports(items: &[PortSummary], host_id: Uuid, base: &str) -> Vec<TagItem> 
 
 fn tags_services(items: &[&ServiceSummary], _host_id: Uuid, base: &str) -> Vec<TagItem> {
     let color = EntityDiscriminants::Service.color();
+    items
+        .iter()
+        .map(|s| TagItem {
+            label: s.name.clone(),
+            color,
+            status: s.status,
+            href: Some(format!("{base}/?modal=service-editor&id={}", s.id)),
+            logo_url: absolute_logo(&s.logo_url, base),
+        })
+        .collect()
+}
+
+/// Containerised services get the UI's container concept colour
+/// (`Concept::Virtualization`) so they read as a distinct concept on the
+/// card without losing their service-ness.
+fn tags_containerized_services(
+    items: &[&ServiceSummary],
+    _host_id: Uuid,
+    base: &str,
+) -> Vec<TagItem> {
+    let color = Concept::Virtualization.color();
     items
         .iter()
         .map(|s| TagItem {

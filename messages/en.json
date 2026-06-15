@@ -818,6 +818,7 @@
 	"home_nudges_tagsDescription": "Add tags to group and filter your hosts, services, and other entities.",
 	"home_nudges_tagsTitle": "Organize with Tags",
 	"hosts_confirmBulkDelete": "Are you sure you want to delete {count} Hosts?",
+	"hosts_containerizedServices": "Containerized Services",
 	"hosts_consolidateModal_chooseHost": "Choose a host...",
 	"hosts_consolidateModal_credentialsMigrated": "{count} credential assignment(s) from \"{source}\" will be migrated to \"{destination}\"",
 	"hosts_consolidateModal_hostWillBeDeleted": "Host \"{name}\" will be deleted",
