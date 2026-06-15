@@ -106,15 +106,6 @@ impl SnapshotService {
         use crate::server::vlans::r#impl::base::Vlan;
         use crate::server::vlans::r#impl::subnet_vlans::SubnetVlanRecord;
 
-        // TEMPORARY: 60s delay so QA can observe a discovery session enter
-        // the AwaitingSnapshot phase while a snapshot is in flight. Remove
-        // after the discovery-blocked-while-snapshot-running test passes.
-        tracing::warn!(
-            "TEMPORARY: sleeping 60s inside run_close_and_clone for QA verification — \
-             REMOVE BEFORE MERGE"
-        );
-        tokio::time::sleep(std::time::Duration::from_secs(60)).await;
-
         let mut tx = self.pool.begin().await?;
         let mut maps = FkMaps::default();
 
