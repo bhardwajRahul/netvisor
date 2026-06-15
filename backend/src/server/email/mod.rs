@@ -1,5 +1,8 @@
 pub mod brevo;
+pub mod messages;
+pub mod service;
 pub mod smtp;
 pub mod subscriber;
-pub mod templates;
-pub mod traits;
+pub mod transport;
+
+pub use service::EmailService;

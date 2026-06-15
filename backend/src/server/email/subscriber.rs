@@ -13,7 +13,7 @@ use crate::server::{
     auth::middleware::auth::AuthenticatedEntity,
     billing::types::base::BillingReason,
     digest::payload::{DiscoveryDigestOperation, DiscoveryDigestOperationDiscriminants},
-    email::traits::{EmailService, format_cents},
+    email::service::{EmailService, format_cents},
     shared::{
         entities::{Entity, EntityDiscriminants},
         events::{

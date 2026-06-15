@@ -10,7 +10,7 @@ use crate::server::{
     dependencies::service::DependencyService,
     digest::service::DiscoveryDigestService,
     discovery::service::DiscoveryService,
-    email::{brevo::BrevoEmailProvider, smtp::SmtpEmailProvider, traits::EmailService},
+    email::{brevo::BrevoEmailProvider, service::EmailService, smtp::SmtpEmailProvider},
     hosts::service::HostService,
     interfaces::service::InterfaceService,
     invites::service::InviteService,

@@ -1,6 +1,6 @@
 use crate::server::{
     billing::types::features::Feature,
-    email::traits::format_cents,
+    email::service::format_cents,
     shared::types::{
         Color, Icon,
         metadata::{EntityMetadataProvider, HasId, TypeMetadataProvider},
