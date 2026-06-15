@@ -4,22 +4,6 @@ var TEST_PLANS = [
   "notes": "Covers all email-driven flows and event-bus side effects across the auth/billing/event-subscriber refactors. All emails now route through the event bus via `Subscriber<Op>` impls registered via `inventory::submit!`; cancellations cascade via `InviteService::Subscriber<BillingOperation>` instead of a direct call. Tests are grouped into flows where state can be reused; truly independent tests omit `flow`/`sequence`. Programmatic checks (DB row updates for Pattern B flag columns, subscriber-name uniqueness at startup) are verified via `cargo test --lib` (300/300 green) and not included here.",
   "tests": [
     {
-      "id": "auth-resend-verification",
-      "category": "Auth emails",
-      "description": "The /resend-verification endpoint emits a fresh `EmailVerificationRequested` event; the EmailService subscriber sends a new verification email.",
-      "setup": "Same flow as 'auth-register-new-org-verification-email' \u2014 register a new user but do NOT click the verification link yet.",
-      "steps": [
-        "While logged in but unverified, click 'Resend verification email' (in the unverified-banner UI)",
-        "Wait the rate-limit cooldown (~60 seconds)",
-        "Check the inbox"
-      ],
-      "expected": "A second verification email arrives with a different token. Both tokens work until the second is generated; the original token may be invalidated depending on storage logic.",
-      "flow": "auth-password-register",
-      "sequence": 2,
-      "status": null,
-      "feedback": null
-    },
-    {
       "id": "auth-self-hosted-no-email-service-auto-verify",
       "category": "Auth emails",
       "description": "Self-hosted deployments without SMTP/Brevo configured auto-verify on register \u2014 no email sent. Previously this path locked invited users out.",
@@ -123,23 +107,6 @@ var TEST_PLANS = [
       "feedback": null
     },
     {
-      "id": "billing-payment-method-added-email",
-      "category": "Billing emails",
-      "description": "`PaymentMethodAdded` \u2192 confirmation email. Previously had no trait method on `EmailProvider` \u2014 fix.",
-      "setup": "Test org without a payment method on file (or remove the existing one first).",
-      "steps": [
-        "Settings \u2192 Billing \u2192 Add payment method",
-        "Enter test card 4242 4242 4242 4242",
-        "Confirm",
-        "Check inbox"
-      ],
-      "expected": "Payment-method-added email arrives.",
-      "flow": "billing-payment-method",
-      "sequence": 1,
-      "status": null,
-      "feedback": null
-    },
-    {
       "id": "billing-payment-method-removed-email",
       "category": "Billing emails",
       "description": "`PaymentMethodRemoved` \u2192 security-notice email. Previously dropped silently \u2014 fix.",
@@ -204,37 +171,18 @@ var TEST_PLANS = [
   "branch": "feat/phase2-topology-snapshots",
   "tests": [
     {
-      "id": "snapshot-take-from-live-view",
-      "category": "Snapshots",
-      "description": "Take a snapshot from the topology tab on the live view",
-      "setup": "Sign in as a Member of an org on Pro or higher plan. Pick a network with at least one host, one service, and one subnet (run a discovery scan if the network is empty so there's something to capture).",
-      "steps": [
-        "Open the topology tab",
-        "Confirm the snapshot dropdown shows 'Live view' selected by default",
-        "Click 'Take snapshot'",
-        "Wait for the toast"
-      ],
-      "expected": "Toast confirms the snapshot saved. The snapshot dropdown now lists the new snapshot at the top with a formatted timestamp; the snapshot is available to load.",
-      "flow": "setup",
-      "sequence": 1,
-      "status": null,
-      "feedback": null
-    },
-    {
       "id": "snapshot-load-shows-captured-state",
       "category": "Snapshots",
-      "description": "Loading a snapshot renders the captured topology graph",
-      "setup": "After test snapshot-take-from-live-view completes, run a discovery scan or manually delete a host on the same network so the live state diverges from the captured state.",
+      "description": "Loading a snapshot renders the captured topology graph (including entities deleted since)",
+      "setup": "Take a snapshot, then delete one or more hosts so the live state diverges from the captured state.",
       "steps": [
         "Open the topology tab on the same network",
         "Pick the snapshot from the dropdown",
-        "Confirm the topology canvas renders the captured set of nodes/edges",
+        "Confirm the topology canvas renders every captured node (including the deleted hosts) with their captured names/IPs",
         "Switch back to 'Live view'",
-        "Confirm the canvas updates to show the new live state"
+        "Confirm the canvas updates to show the new live state (deleted hosts gone)"
       ],
-      "expected": "The snapshot view shows the topology as it was when captured (matching the pre-divergence state). Live view shows the post-divergence state. Switching is instant.",
-      "flow": "setup",
-      "sequence": 2,
+      "expected": "Snapshot view renders the captured entity set even after the live entities have been deleted from the network. Switching between Live view and a snapshot is instant and the inspector resolves entity names correctly for whichever view is active.",
       "status": null,
       "feedback": null
     },
@@ -245,50 +193,24 @@ var TEST_PLANS = [
       "setup": "Use the API or admin tooling to set the org's plan to Free. Sign in as a Member of that org.",
       "steps": [
         "Open the topology tab",
-        "Confirm the Take snapshot button shows an 'Upgrade' badge next to the label",
-        "Click 'Take snapshot'"
+        "Confirm the Take snapshot button is an icon-only Camera button with an 'Upgrade' badge",
+        "Click the button"
       ],
       "expected": "Button is enabled and displays the 'Upgrade' badge (same style as gated formats in the export dropdown). Clicking triggers the upgrade modal/paywall (surface 'topology_tab', feature 'snapshots'). No POST request is fired.",
       "status": null,
       "feedback": null
     },
     {
-      "id": "snapshot-creation-blocks-during-discovery",
+      "id": "snapshot-take-button-hidden-on-snapshot",
       "category": "Snapshots",
-      "description": "Take snapshot returns 409 if a discovery is in flight",
-      "setup": "Pick a network with a daemon. Start a discovery scan (manually trigger it from the discovery tab or wait for a scheduled scan). While the scan is in flight, switch to the topology tab.",
+      "description": "Take snapshot button hidden when viewing a snapshot; visible (icon-only) on Live view",
+      "setup": "Take at least one snapshot.",
       "steps": [
-        "Click 'Take snapshot' on the topology tab",
-        "Read the error toast"
+        "Open the topology tab on Live view; confirm the Camera button is visible (icon-only, with a tooltip on hover)",
+        "Select a snapshot from the dropdown",
+        "Confirm the Take snapshot button is no longer rendered"
       ],
-      "expected": "The request fails with a 409 conflict and a toast saying the network is busy. Retrying after the discovery completes succeeds.",
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "topology-live-update-after-discovery",
-      "category": "Topology UI",
-      "description": "Live view auto-refreshes when discovery changes the network",
-      "setup": "Open the topology tab on the live view of a network with a daemon. Trigger a discovery scan from another tab.",
-      "steps": [
-        "Watch the topology canvas while discovery runs",
-        "Look for new hosts/services appearing without a manual reload"
-      ],
-      "expected": "When discovery commits new entities, the topology canvas updates within a few seconds (via the live_topology_updates_stream SSE). No banner or refresh prompt — it just reflects the new state.",
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "plan-usage-shows-retention-window",
-      "category": "Billing UI",
-      "description": "Dashboard PlanUsage panel shows the snapshot retention window",
-      "setup": "Switch the org plan to Pro, Business, or higher.",
-      "steps": [
-        "Open the home/dashboard tab",
-        "Find the PlanUsage section",
-        "Confirm there is a row showing the retention window in days"
-      ],
-      "expected": "The PlanUsage card surfaces the snapshot_retention_days value (e.g. '30 days' for Pro, '90 days' for Business). On Free, it should either hide the row or show '0' / 'Not included'.",
+      "expected": "The Camera button appears only on the live view. On a snapshot view, it's absent entirely.",
       "status": null,
       "feedback": null
     },
@@ -308,33 +230,6 @@ var TEST_PLANS = [
       "feedback": null
     },
     {
-      "id": "topology-share-still-works",
-      "category": "Topology UI",
-      "description": "Share view still renders correctly after the refactor",
-      "setup": "Take a snapshot, then open the share modal from the topology tab.",
-      "steps": [
-        "Create or copy a share link from the topology tab",
-        "Open the share link in an incognito window",
-        "Confirm the topology graph renders"
-      ],
-      "expected": "The shared view shows the same nodes/edges as the originating topology view (live or snapshot). No errors related to missing entity-blob fields.",
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "snapshot-cascade-on-delete",
-      "category": "Snapshots",
-      "description": "Deleting a snapshot reaps closed entity rows + the snapshot's topology row",
-      "setup": "Take a snapshot. Then via psql or admin tooling, count the rows in (a) snapshots WHERE id = '<snap_id>'; (b) topologies WHERE snapshot_id = '<snap_id>'; (c) hosts WHERE snapshot_id = '<snap_id>'. Delete the snapshot via the UI.",
-      "steps": [
-        "Re-run the same SQL counts",
-        "Confirm all three counts are zero"
-      ],
-      "expected": "The snapshot row, its topology row, and every closed entity row that carried snapshot_id pointing to it are gone. Live rows (snapshot_id IS NULL) are untouched.",
-      "status": null,
-      "feedback": null
-    },
-    {
       "id": "discovery-blocked-while-snapshot-running",
       "category": "Discovery / Snapshot coordination",
       "description": "Sessions started while a snapshot is running enter AwaitingSnapshot, then transition to Pending after release.",
@@ -350,6 +245,20 @@ var TEST_PLANS = [
       "expected": "The discovery is blocked while the snapshot is in flight, then unblocks automatically when the snapshot finishes. No data loss; both operations complete.",
       "status": null,
       "feedback": null
+    },
+    {
+      "id": "first-snapshot-onboarding-event",
+      "category": "Onboarding",
+      "description": "Taking the first snapshot on an org emits the FirstSnapshotCreated onboarding event",
+      "setup": "Sign in as a Member of a Pro+ org that has never had a snapshot taken (verify via the organization's onboarding array — should not contain 'FirstSnapshotCreated' yet).",
+      "steps": [
+        "Open the topology tab",
+        "Take a snapshot",
+        "Refresh the page / inspect the organization onboarding array"
+      ],
+      "expected": "After the snapshot succeeds, the organization's onboarding array contains 'FirstSnapshotCreated'. Taking subsequent snapshots does not re-emit it.",
+      "status": null,
+      "feedback": null
     }
   ]
 }
@@ -360,345 +269,161 @@ var TEST_PLANS = [
     {
       "id": "trial-pill-renders-at-t7",
       "category": "Trial urgency ramp",
-      "description": "Sidebar shows the amber trial pill with clock icon and 'Trial: Nd left' copy when the org is trialing without payment and 7 or fewer days remain.",
+      "description": "Sidebar shows the trial pill with clock icon and 'Trial: Nd left' copy when the org is trialing without payment and 7 or fewer days remain. Pill is visually aligned with sibling sidebar buttons (same height, padding, border, hover background).",
       "setup": "On the trialing org used for this run, set `organizations.trial_end_date = NOW() + INTERVAL '6 days'` and ensure `has_payment_method = false`. Confirm `plan_status = 'trialing'`.",
       "steps": [
         "Reload the app as the Owner.",
-        "Look at the bottom of the left sidebar."
+        "Look at the bottom of the left sidebar.",
+        "Compare alignment with the sibling settings/support buttons (icon vertical centering, button height, padding, hover background)."
       ],
-      "expected": "An amber pill with a clock icon and copy 'Trial: 6d left' renders. The standard 'Upgrade' button does NOT also show. Clicking the pill opens the BillingPlanModal.",
+      "expected": "Button reads 'Trial: 6d left' with an amber clock icon. The button itself matches the standard sidebar nav style (transparent border, hover bg-gray-100); only the icon is amber. Indistinguishable in height and padding from the settings/support buttons next to it.",
       "flow": "setup",
       "sequence": 1,
       "status": null,
       "feedback": null
     },
     {
-      "id": "trial-pill-not-shown-at-t8",
+      "id": "trial-pill-click-routes-to-add-payment",
       "category": "Trial urgency ramp",
-      "description": "Sidebar does NOT show the trial pill when more than 7 days remain.",
-      "setup": "Set `organizations.trial_end_date = NOW() + INTERVAL '8 days'` for the same org.",
+      "description": "Clicking the sidebar trial pill drops the user into Stripe's add-payment-method flow, not the plan picker modal.",
+      "setup": "Same as previous test (T-6d, no payment method).",
       "steps": [
-        "Reload the app.",
-        "Look at the bottom of the left sidebar."
+        "Click the trial pill at the bottom of the sidebar.",
+        "Observe where the browser navigates."
       ],
-      "expected": "No trial pill visible (free-plan upgrade button also absent — org is on a paid trial).",
+      "expected": "Browser redirects to a Stripe-hosted page titled 'Save your payment method' (or equivalent setup intent flow). NOT the BillingPlanModal in-app.",
       "flow": "setup",
       "sequence": 2,
       "status": null,
       "feedback": null
     },
     {
-      "id": "trial-banner-renders-at-t3",
-      "category": "Trial urgency ramp",
-      "description": "Global TrialEndingBanner appears at the top of every page when 3 or fewer trial days remain and no payment method is set.",
-      "setup": "Set `organizations.trial_end_date = NOW() + INTERVAL '2 days'`, `has_payment_method = false`.",
+      "id": "trial-card-not-dismissable",
+      "category": "Trial card",
+      "description": "The trial countdown InfoCard on BillingTab does NOT show a dismiss X — preventing the user from accidentally hiding their only path to add a payment method.",
+      "setup": "Trialing org without payment method.",
       "steps": [
-        "Reload the app.",
-        "Inspect the top of the page across at least two tabs (e.g. Topology and Settings)."
+        "Open Settings → Billing.",
+        "Locate the amber 'Trial ends in Nd' card at the top.",
+        "Inspect the card for a close/X button."
       ],
-      "expected": "A yellow warning banner reads 'Your trial ends in 2 days. Add a payment method to keep your data and avoid interruption.' with an 'Add Payment Method' link/button. Banner persists across tabs. Clicking the CTA redirects to Stripe checkout.",
+      "expected": "No X icon, no dismiss button. The card cannot be hidden; the 'Add Payment Method' button is always present while trialing without payment.",
       "flow": "setup",
       "sequence": 3,
       "status": null,
       "feedback": null
     },
     {
-      "id": "trial-modal-renders-at-t1-and-stacks",
-      "category": "Trial urgency ramp",
-      "description": "TrialExpiryModal appears at T-1d. The T-3d banner stays visible behind it (stack semantics).",
-      "setup": "Set `organizations.trial_end_date = NOW() + INTERVAL '12 hours'`. Clear `localStorage.dismissed_today:trial_expiry_modal` if present (DevTools → Application → Local Storage).",
+      "id": "current-plan-card-has-change-plan-cta",
+      "category": "Current plan",
+      "description": "The Current Plan card has Change/Upgrade Plan as a primary CTA above Manage Subscription. The old standalone 'View Plans' InfoCard below it is gone.",
+      "setup": "Org on any paid or trialing plan.",
       "steps": [
-        "Reload the app.",
-        "Observe the modal that appears.",
-        "Look behind/under the modal at the top of the page."
+        "Open Settings → Billing.",
+        "Scroll to the Current Plan card.",
+        "Inspect the button stack at the bottom of the card.",
+        "Scroll below the Current Plan card to confirm there is no longer a separate 'View Plans' InfoCard."
       ],
-      "expected": "Modal titled 'Your trial ends tomorrow' with body text, a 'Remind me later' button and an 'Add Payment Method' button. Behind the modal, the yellow T-3d banner is still rendered. Sidebar pill is also visible.",
+      "expected": "Inside the Current Plan card: a primary (blue) button reads 'Change Plan' (or 'Upgrade Plan' for free users) followed by a secondary 'Manage Subscription' button beneath it. No standalone 'View Plans' card exists below.",
       "flow": "setup",
       "sequence": 4,
       "status": null,
       "feedback": null
     },
     {
-      "id": "trial-modal-dismiss-once-per-day",
-      "category": "Trial urgency ramp",
-      "description": "Dismissing the T-1d modal hides it for the rest of the day; reload should not bring it back until tomorrow.",
-      "setup": "Continuing from the previous test (trial_end_date still ~T-12h). Make sure the modal is currently shown.",
+      "id": "welcome-banner-after-add-payment-during-trial",
+      "category": "Post-Stripe welcome",
+      "description": "After completing the Add Payment Method flow from any trial surface (card, banner, modal, sidebar pill), returning to the app shows a confirmation toast AND a 24h dismissible 'Payment method added' welcome banner.",
+      "setup": "Trialing org without payment method. Have a working Stripe test card (4242 4242 4242 4242).",
       "steps": [
-        "Click 'Remind me later' on the modal.",
-        "Reload the page.",
-        "Open DevTools → Application → Local Storage and confirm `dismissed_today:trial_expiry_modal` exists with today's date."
+        "Click any 'Add Payment Method' CTA (trial card, T-3d banner, T-1d modal, or sidebar pill).",
+        "Complete the Stripe-hosted payment-method form with a test card.",
+        "Wait for the redirect back to the app."
       ],
-      "expected": "After clicking 'Remind me later', modal disappears immediately. After reload, modal does NOT reappear (banner and pill still do). LocalStorage entry visible with `YYYY-MM-DD` matching today.",
+      "expected": "On return: a green success toast reads 'Payment method added successfully.' AND a blue info banner appears at the top of every page reading 'Payment method added — your {plan} subscription will continue after the trial ends.' Banner is dismissible via X and persists across reloads for up to 24 hours.",
       "flow": "setup",
       "sequence": 5,
       "status": null,
       "feedback": null
     },
     {
-      "id": "trial-recap-card-renders-with-counts",
-      "category": "Trial value recap",
-      "description": "BillingTab shows the new 'Your trial so far' recap card with five real metrics during the trial.",
-      "setup": "Org with `plan_status = 'trialing'`, several discovered hosts/services and at least one daemon and one network. Created at least 2 days ago.",
+      "id": "welcome-banner-after-subscription-activation",
+      "category": "Post-Stripe welcome",
+      "description": "Completing the Stripe Checkout (full subscription activation, not just payment-method setup) shows the 'Welcome to {plan}' banner with the original activation copy.",
+      "setup": "Org on Free plan (or trialing). Initiate a full Stripe Checkout via the Change Plan flow with a test card.",
       "steps": [
-        "Open Settings → Billing.",
-        "Scroll to find the 'Your trial so far' card (between the trial countdown and the Current Plan card)."
+        "From Settings → Billing, click 'Change Plan' / 'Upgrade Plan'.",
+        "Pick a paid plan in the modal and proceed to Stripe Checkout.",
+        "Complete checkout with a test card.",
+        "Wait for the redirect back to the app."
       ],
-      "expected": "Card shows five tiles: hosts discovered, networks mapped, daemons connected, services identified, days into trial. Each shows a real, non-zero count where data exists. Days into trial roughly matches `now - org.created_at` in days.",
+      "expected": "Blue info banner reads 'Welcome to {plan name} — your subscription is now active.' Distinct copy from the trial-secured case. Dismissible via X.",
       "flow": "setup",
       "sequence": 6,
       "status": null,
       "feedback": null
     },
     {
-      "id": "trial-recap-empty-state",
-      "category": "Trial value recap",
-      "description": "When all four entity counts are zero, the recap card shows the empty-state CTA pointing at the next incomplete onboarding step.",
-      "setup": "Provision a brand-new trialing org (no daemons, no networks, no hosts, no services). The default network is fine but should have nothing in it.",
+      "id": "welcome-banner-dismiss",
+      "category": "Post-Stripe welcome",
+      "description": "Dismissing the welcome banner hides it permanently until localStorage is cleared.",
+      "setup": "Continuing from either welcome-banner test — banner is visible.",
       "steps": [
-        "Open Settings → Billing as the new org's Owner.",
-        "Locate the 'Your trial so far' card."
+        "Click the X on the banner.",
+        "Reload the page.",
+        "Open DevTools → Application → Local Storage and inspect `appbanner_dismissed:welcome_banner`."
       ],
-      "expected": "Card title is 'Your trial so far'; body shows 'Get the most from your trial' with a 'Next: Install a daemon' line and a 'Get started' CTA. Clicking the CTA closes the Settings modal and lands on the Daemons tab with the create-daemon modal open.",
+      "expected": "Banner disappears immediately. Stays gone after reload. LocalStorage entry shows `appbanner_dismissed:welcome_banner = 'true'`.",
       "flow": "setup",
       "sequence": 7,
       "status": null,
       "feedback": null
     },
     {
-      "id": "trial-ending-email-recap",
-      "category": "Trial value recap",
-      "description": "Trial-ending email (T-3d) renders the new five-metric recap block.",
-      "setup": "Trigger a `BillingOperation::TrialWillEnd` event for a real trialing org with non-zero hosts/networks/daemons/services. Easiest: in dev, run a script that publishes the event directly via the event bus, or replay a Stripe `customer.subscription.trial_will_end` webhook for the org's subscription.",
+      "id": "welcome-banner-24h-window",
+      "category": "Post-Stripe welcome",
+      "description": "Welcome banner stops rendering 24h after the activation marker even without dismissal.",
+      "setup": "Manually set `localStorage.plan_activated_at` to 25 hours ago: `localStorage.setItem('plan_activated_at', String(Date.now() - 25*60*60*1000))`. Clear `appbanner_dismissed:welcome_banner` if present.",
       "steps": [
-        "Wait for the email to arrive in the org owner's inbox (Brevo or SMTP).",
-        "Open the email and view the rendered HTML."
+        "Reload the app while logged in as the org Owner with an active or trialing-with-payment subscription.",
+        "Look for the welcome banner."
       ],
-      "expected": "Email body contains a 'Here's what Scanopy found during your trial' section with five rows: hosts discovered, networks mapped, daemons connected, services identified, and days into trial. Counts match the org's actual data.",
+      "expected": "No banner renders — the 24h window has elapsed.",
       "flow": "setup",
       "sequence": 8,
       "status": null,
       "feedback": null
     },
     {
-      "id": "post-stripe-welcome-banner",
-      "category": "Post-Stripe welcome",
-      "description": "Welcome banner appears after a successful Stripe checkout completion and persists for 24 hours.",
-      "setup": "Org currently `plan_status = 'trialing'` (or new). Have a working Stripe test card.",
+      "id": "add-payment-cta-clicked-event-fires-from-all-surfaces",
+      "category": "Telemetry",
+      "description": "A single `add_payment_cta_clicked` PostHog event fires from every Add-Payment-Method surface (trial card, T-3d banner, T-1d modal, sidebar pill), with a `source` property identifying which surface.",
+      "setup": "Trialing org without payment method. Open the browser DevTools network tab (filter for posthog) or check PostHog Live events.",
       "steps": [
-        "From Settings → Billing, click 'Manage Subscription' or otherwise initiate a Stripe Checkout flow.",
-        "Complete checkout with a test card.",
-        "Wait for the redirect back to the app."
+        "Click 'Add Payment Method' on the trial countdown card in Settings → Billing. Note the event in PostHog.",
+        "Cancel the Stripe redirect, come back to the app.",
+        "Set trial_end_date to ~T-2d and reload. Click the CTA on the T-3d banner. Note the event.",
+        "Set trial_end_date to ~T-12h, clear `dismissed_today:trial_expiry_modal`, reload. Click the CTA on the T-1d modal. Note the event.",
+        "Set trial_end_date back to ~T-6d, reload. Click the sidebar trial pill. Note the event."
       ],
-      "expected": "After landing back in the app, a blue info banner appears at the top reading 'Welcome to {plan name} — your subscription is now active.' with an X close button. `localStorage.plan_activated_at` is set to a recent timestamp.",
+      "expected": "Four events fired, all named `add_payment_cta_clicked`, with `source` values `trial_card`, `trial_banner`, `trial_modal`, and `sidebar_trial_pill` respectively. No `trial_card_cta_clicked` / `trial_banner_cta_clicked` / `trial_modal_cta_clicked` events fire.",
       "flow": "setup",
       "sequence": 9,
       "status": null,
       "feedback": null
     },
     {
-      "id": "post-stripe-welcome-banner-dismiss",
-      "category": "Post-Stripe welcome",
-      "description": "Dismissing the welcome banner hides it permanently (or until localStorage cleared).",
-      "setup": "Continuing from previous test — banner is currently visible.",
+      "id": "no-trial-recap-card",
+      "category": "Regression",
+      "description": "The 'Your trial so far' recap card on BillingTab has been removed and does not render.",
+      "setup": "Trialing org.",
       "steps": [
-        "Click the X on the welcome banner.",
-        "Reload the page.",
-        "Open DevTools → Application → Local Storage and inspect `appbanner_dismissed:welcome_banner`."
+        "Open Settings → Billing.",
+        "Look between the trial countdown card and the Current Plan card."
       ],
-      "expected": "Banner disappears immediately after click. After reload, banner stays gone. LocalStorage shows `appbanner_dismissed:welcome_banner = 'true'`.",
+      "expected": "No 'Your trial so far' card. The trial countdown card sits directly above the Current Plan card.",
       "flow": "setup",
       "sequence": 10,
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "post-stripe-welcome-banner-24h-window",
-      "category": "Post-Stripe welcome",
-      "description": "Welcome banner stops rendering 24h after activation even without dismissal.",
-      "setup": "Manually set `localStorage.plan_activated_at` to a timestamp 25 hours ago: `localStorage.setItem('plan_activated_at', String(Date.now() - 25*60*60*1000))`. Clear `appbanner_dismissed:welcome_banner` if present.",
-      "steps": [
-        "Reload the app while logged in as the org Owner with an active subscription.",
-        "Look for the welcome banner."
-      ],
-      "expected": "Banner does NOT render despite `plan_status = 'active'` — the 24h window has elapsed.",
-      "flow": "setup",
-      "sequence": 11,
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "trial-pill-not-shown-with-payment",
-      "category": "Trial urgency ramp",
-      "description": "Pill / banner / modal all suppress when trialing user already has a payment method on file.",
-      "setup": "Org with `plan_status = 'trialing'`, `trial_end_date = NOW() + INTERVAL '12 hours'`, AND `has_payment_method = true`.",
-      "steps": [
-        "Reload the app.",
-        "Check sidebar pill, top-of-page banner, and any popup modal."
-      ],
-      "expected": "Sidebar trial pill: not visible. T-3d banner: not visible. T-1d modal: not visible. (Trial recap card on BillingTab still shows — it's informational.)",
-      "flow": "setup",
-      "sequence": 12,
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "paywall-gate-hit-export-modal",
-      "category": "Paywall gate hit",
-      "description": "paywall_gate_hit fires from ExportModal before upgrade modal opens",
-      "setup": "Sign in as an Owner of an org on a plan that does NOT include PDF export (e.g. Free or a plan whose features.pdf_export is false). Open a topology view.",
-      "steps": [
-        "Open the export modal from a topology view",
-        "Click a disabled paywalled export format (e.g. PDF)",
-        "Watch PostHog activity feed for the events"
-      ],
-      "expected": "PostHog logs `paywall_gate_hit` with `{ feature: <format>, surface: 'export_modal', gate_type: 'plan_required' }` BEFORE `upgrade_button_clicked` and BEFORE the billing modal opens. The billing modal then opens.",
-      "flow": "setup",
-      "sequence": 13,
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "paywall-gate-hit-discovery-form",
-      "category": "Paywall gate hit",
-      "description": "paywall_gate_hit fires from disabled Scheduled discovery option",
-      "setup": "Sign in as an Owner of an org on a plan WITHOUT scheduled_discovery (e.g. Free).",
-      "steps": [
-        "Open Discovery → New Scan → Details step",
-        "Click the disabled 'Scheduled' run-type option",
-        "Watch PostHog"
-      ],
-      "expected": "`paywall_gate_hit` with `{ feature: 'scheduled_discovery', surface: 'discovery_form', gate_type: 'plan_required' }` fires before the billing modal opens.",
-      "flow": "setup",
-      "sequence": 14,
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "paywall-gate-hit-share-panel-embeds",
-      "category": "Paywall gate hit",
-      "description": "paywall_gate_hit fires from ShareConfigPanel embeds upgrade button",
-      "setup": "Sign in as an Owner of an org WITHOUT the `embeds` feature.",
-      "steps": [
-        "Open Shares → create or open a share view",
-        "Open the share config panel and locate the embed code section",
-        "Click the Upgrade button next to the locked embed code"
-      ],
-      "expected": "`paywall_gate_hit` with `{ feature: 'embeds', surface: 'share_panel', gate_type: 'plan_required' }` fires.",
-      "flow": "setup",
-      "sequence": 15,
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "paywall-gate-hit-sidebar",
-      "category": "Paywall gate hit",
-      "description": "paywall_gate_hit fires from sidebar Upgrade button",
-      "setup": "Sign in as an Owner on a Free plan (so the sidebar Upgrade button is visible).",
-      "steps": [
-        "Click the Upgrade button at the bottom of the sidebar"
-      ],
-      "expected": "`paywall_gate_hit` with `{ feature: null, surface: 'sidebar', gate_type: 'plan_required' }` fires before the billing modal opens.",
-      "flow": "setup",
-      "sequence": 16,
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "paywall-gate-hit-billing-tab",
-      "category": "Paywall gate hit",
-      "description": "paywall_gate_hit fires from BillingTab View Plans button",
-      "setup": "Sign in as an Owner on any non-Enterprise plan. Open Settings → Billing.",
-      "steps": [
-        "In the Billing tab, click the 'View Plans' / 'Upgrade Plan' / 'Change Plan' button"
-      ],
-      "expected": "`paywall_gate_hit` with `{ surface: 'billing_tab', gate_type: 'plan_required' }` fires before the billing modal opens.",
-      "flow": "setup",
-      "sequence": 17,
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "paywall-gate-hit-limit-hit-surfaces",
-      "category": "Paywall gate hit",
-      "description": "paywall_gate_hit fires with gate_type='limit_hit' for usage-limit gates",
-      "setup": "Set the org to a plan with low limits and seed enough hosts/users/networks to be at the limit. Concretely: create a Free-tier org and add hosts/users/networks until each tab shows the at-limit Upgrade button. Verify visually that PlanUsage on the home dashboard also shows the Upgrade button.",
-      "steps": [
-        "On the home dashboard, click the Upgrade button in the Plan Usage card → expect surface='home_plan_usage', gate_type='limit_hit'",
-        "In Settings → Networks, click the Upgrade button → expect surface='networks_tab', gate_type='limit_hit'",
-        "In Settings → Users, click the Upgrade button → expect surface='users_tab', gate_type='limit_hit'",
-        "In Hosts, click the Upgrade button → expect surface='hosts_tab', gate_type='limit_hit'"
-      ],
-      "expected": "Each click fires `paywall_gate_hit` with the matching surface and `gate_type: 'limit_hit'` before the billing modal opens.",
-      "flow": "setup",
-      "sequence": 18,
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "trial-card-impression-dedup",
-      "category": "Trial card",
-      "description": "trial_card_impression fires once per session and not again on reload",
-      "setup": "Sign in as an Owner of an org with `plan_status='trialing'`, no payment method on file, and a non-null trial_end_date in the future. Clear sessionStorage in the browser DevTools first.",
-      "steps": [
-        "Open Settings → Billing — the amber trial card should be visible",
-        "In the browser console, check sessionStorage for key `analytics_seen:trial_card_impression` (should be present)",
-        "Watch PostHog — `trial_card_impression` should have fired with `{ trial_days_left, has_payment_method: false }`",
-        "Refresh the page in the same tab",
-        "Re-open Settings → Billing and watch PostHog — no new `trial_card_impression` should fire",
-        "Open a new tab (different sessionStorage), sign in, navigate to Billing — `trial_card_impression` fires again"
-      ],
-      "expected": "Event fires exactly once per browser tab session even with reloads or remounts; new tab/session re-fires.",
-      "flow": "setup",
-      "sequence": 19,
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "trial-card-cta-clicked",
-      "category": "Trial card",
-      "description": "trial_card_cta_clicked fires on Add Payment Method click",
-      "setup": "Same as trial-card-impression-dedup.",
-      "steps": [
-        "Open Settings → Billing",
-        "Click 'Add Payment Method' on the trial card"
-      ],
-      "expected": "`trial_card_cta_clicked` fires with `{ trial_days_left, has_payment_method: false }` before the Stripe redirect.",
-      "flow": "setup",
-      "sequence": 20,
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "trial-card-dismissed",
-      "category": "Trial card",
-      "description": "Dismiss X fires trial_card_dismissed and persists across reloads",
-      "setup": "Same as trial-card-impression-dedup. Clear localStorage entry `infocard_dismissed:trial_card_dismissed` first.",
-      "steps": [
-        "Open Settings → Billing — trial card visible with X in top-right",
-        "Click the X dismiss button",
-        "Confirm `trial_card_dismissed` fired in PostHog with `{ trial_days_left, has_payment_method: false }`",
-        "Confirm the trial card is no longer rendered",
-        "Refresh the page",
-        "Re-open Settings → Billing"
-      ],
-      "expected": "Event fires exactly once. Card stays dismissed across page reloads (localStorage persistence). Other (non-trial) InfoCards on the page are unaffected.",
-      "flow": "setup",
-      "sequence": 21,
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "infocard-no-regression",
-      "category": "Trial card",
-      "description": "Other InfoCard usages still render normally without dismiss UI",
-      "setup": "Sign in as a non-trial user (e.g. paid plan).",
-      "steps": [
-        "Visit Settings → Account, Settings → Organization, Settings → Billing (current plan card and need-help card)",
-        "Visually inspect each InfoCard"
-      ],
-      "expected": "All InfoCards render normally without an X dismiss button. Layout unchanged from before.",
-      "flow": "setup",
-      "sequence": 22,
       "status": null,
       "feedback": null
     }
@@ -882,42 +607,22 @@ var TEST_PLANS = [
   "branch": "feat/phase2-session-digest",
   "tests": [
     {
-      "id": "digest-arrives-after-complete",
-      "category": "Discovery digest — happy path",
-      "description": "After a Discovery scan completes Successfully, every user with access to the scanned network (explicit + implicit Owner/Admin) receives the digest email, and the email reflects what the scan found.",
-      "setup": "Create one paid org with one network. Add at least 3 users: one Owner, one Admin (no explicit network access), one Member with explicit user_network_access for the network. All three users should have email_settings.discovery_digest = true (the default). Seed the network with: ~5 hosts that existed before the scan window, including one that already has 1-2 ports/services. Run a real Unified discovery against the network that produces (a) ≥1 new host, (b) ≥1 host with a new port AND a stale port (port that existed before but isn't reported this scan), (c) ≥1 host that previously existed but isn't seen this session (pre-seed `last_seen_at` to a value before T_start).",
-      "steps": [
-        "Watch the Owner's, Admin's, and Member's inboxes after the scan reaches Complete.",
-        "Open the digest email in each inbox.",
-        "Verify the top stats banner shows non-zero counts for new / vanished / changed hosts and the subnets-scanned cell.",
-        "Verify the Subnets-scanned section lists the subnets the daemon was configured for.",
-        "Verify the New hosts section shows the newly-discovered host(s).",
-        "Verify the Hosts-not-seen section shows the pre-seeded vanished host.",
-        "Verify the Hosts-with-changes section shows the host whose ports changed, with a 'What changed this scan' subsection listing added vs removed ports."
-      ],
-      "expected": "All three users receive the same email. The stats banner counts match the section counts. Each affected host is rendered as a card with name + status badge + Services/IP Addresses/Interfaces/Ports rows mirroring the in-app HostCard. The 'Manage email preferences' link in the footer points to /settings?tab=email.",
-      "flow": "setup",
-      "sequence": 1,
-      "status": null,
-      "feedback": null
-    },
-    {
       "id": "digest-respects-per-user-toggle",
       "category": "Discovery digest — opt-out",
       "description": "Opening the Email tab no longer hangs the browser. A user who turns off the discovery digest stops receiving emails immediately; other users in the same org keep receiving them.",
-      "setup": "Reuse the org and network from the happy-path test.",
+      "setup": "Reuse any org/network. Make sure the user under test has email_settings.discovery_digest = true.",
       "steps": [
-        "Sign in as the Member user, open Settings → Email tab.",
+        "Sign in as the test user, open Settings → Email tab.",
         "Verify the tab renders without the browser freezing or any infinite-loop warning in the console.",
         "Verify the 'Discovery scan summary' checkbox is on by default.",
         "Uncheck the box and click Save.",
         "Trigger another Unified discovery on the network and wait for Complete.",
-        "Check the Member's inbox — no digest should arrive.",
-        "Check the Owner's and Admin's inboxes — both should still receive the digest."
+        "Check the test user's inbox — no digest should arrive.",
+        "Check the Owner's inbox — should still receive the digest."
       ],
       "expected": "Email tab opens cleanly. Save succeeds with a success toast. No digest arrives at the opted-out user; other recipients still receive it.",
       "flow": "setup",
-      "sequence": 2,
+      "sequence": 1,
       "status": null,
       "feedback": null
     },
@@ -925,13 +630,13 @@ var TEST_PLANS = [
       "id": "digest-empty-suppressed",
       "category": "Discovery digest — empty session",
       "description": "When a discovery session produces zero changes, no digest is sent at all (regardless of recipient settings).",
-      "setup": "Reuse the org and network. Run a discovery that re-scans the same hosts with no new entities and no stale children — i.e. all hosts and children are simply refreshed (last_seen_at updated, no created_at in window, no last_seen_at < T_start on a scanned host).",
+      "setup": "Reuse the org and network. Run a discovery that re-scans the same hosts with no new entities and no removed children — i.e. all hosts and children are reported again unchanged.",
       "steps": [
         "Watch every recipient's inbox after the scan completes."
       ],
       "expected": "No digest email arrives at any recipient.",
       "flow": "setup",
-      "sequence": 3,
+      "sequence": 2,
       "status": null,
       "feedback": null
     },
@@ -945,42 +650,7 @@ var TEST_PLANS = [
       ],
       "expected": "No digest email arrives for either terminal state.",
       "flow": "setup",
-      "sequence": 4,
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "digest-expandable-large-list",
-      "category": "Discovery digest — rendering",
-      "description": "Sections with more than 10 items show the first 10 inline and put the rest inside a collapsible disclosure that the recipient can expand. Replaces the previous '+N more' truncation.",
-      "setup": "Run a discovery that adds at least 15 new hosts to the network. (A fresh subnet scan against a populated lab works.)",
-      "steps": [
-        "Open the digest email in the Owner's inbox.",
-        "Find the New hosts section. Verify exactly 10 host cards are visible.",
-        "Below the visible cards, click the 'Show all 15' disclosure (or whatever the true count is). The remaining cards should expand into view.",
-        "Verify the section header still shows the true count (e.g. 'New hosts discovered (15)')."
-      ],
-      "expected": "10 cards inline + a 'Show all N' disclosure that expands to reveal the rest. No '+N more' text or truncation.",
-      "flow": "setup",
-      "sequence": 5,
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "email-tab-reflects-server-state",
-      "category": "Email tab — load + save round-trip",
-      "description": "The Email tab shows the current value of the user's preference and persists changes.",
-      "setup": "Pick any user. Set their email_settings.discovery_digest = false directly (UPDATE users SET email_settings = '{\"discovery_digest\": false}'::jsonb WHERE id = '<user_id>').",
-      "steps": [
-        "Sign in as that user and open Settings → Email tab.",
-        "Verify the 'Discovery scan summary' checkbox is unchecked.",
-        "Check the box, click Save.",
-        "Reload the page, reopen Settings → Email tab.",
-        "Verify the box is checked."
-      ],
-      "expected": "The initial state matches the DB value. After save, the new value persists across reload.",
-      "flow": "setup",
-      "sequence": 6,
+      "sequence": 3,
       "status": null,
       "feedback": null
     },
@@ -997,56 +667,55 @@ var TEST_PLANS = [
       ],
       "expected": "The replayed request returns 401/403 'You can only update your own user record'. User B's email_settings remain unchanged.",
       "flow": "setup",
-      "sequence": 7,
+      "sequence": 4,
       "status": null,
       "feedback": null
     },
     {
-      "id": "digest-no-topology-ready-email",
-      "category": "Discovery digest — superseded emails removed",
-      "description": "Completing the first Network/Unified discovery for an org no longer triggers the legacy 'Your Topology is Ready!' email. Only the per-session digest arrives.",
-      "setup": "Create a brand new org (so FirstDiscoveryCompleted has not fired yet). Add one Owner, one daemon, one network with at least one subnet. Make sure the org has email_settings.discovery_digest = true on the Owner.",
+      "id": "digest-host-only-changes-when-children-actually-change",
+      "category": "Discovery digest — change-detection accuracy",
+      "description": "Rescanning a host whose ports/services/IPs/interfaces are unchanged does NOT classify the host as Changed in the digest. Previously, every pre-existing child was wrongly flagged as Removed because the foundation-worker reconciliation path doesn't refresh `last_seen_at` on natural-key match — now fixed by using the daemon's ScannedEntityIds for the removed-child signal.",
+      "setup": "Pick a host the daemon will rediscover with the same children it already has — same ports open, same services, same IPs, same interfaces.",
       "steps": [
-        "Trigger a Unified discovery against the network.",
-        "Wait for it to reach Complete.",
-        "Check the Owner's inbox."
+        "Trigger a Unified discovery and wait for Complete.",
+        "Open the digest email in the Owner's inbox."
       ],
-      "expected": "Exactly one email arrives — the Discovery scan summary digest. No 'Your Topology is Ready!' email is delivered.",
+      "expected": "If NO real children changed, the host should not appear in 'Hosts with changes'. The whole digest may be empty (no email at all) if no other hosts had real changes either. If a real delta exists on a different host, only that host shows in 'Hosts with changes' — not every scanned host.",
       "flow": "setup",
-      "sequence": 8,
+      "sequence": 5,
       "status": null,
       "feedback": null
     },
     {
       "id": "digest-summary-banner",
       "category": "Discovery digest — top summary",
-      "description": "The digest opens with a stats banner showing per-bucket counts.",
-      "setup": "Run any discovery that produces a mix of changes (≥1 new host, ≥1 vanished host, ≥1 changed host, ≥1 new VLAN).",
+      "description": "The digest opens with a stats banner showing per-bucket counts, including a non-zero subnets-scanned count when the daemon swept subnets.",
+      "setup": "Run any Unified discovery that walks at least one subnet AND produces a mix of changes (≥1 new host, ≥1 vanished host, ≥1 changed host, ≥1 new VLAN).",
       "steps": [
         "Open the digest email in the Owner's inbox.",
         "Scroll to the top, just below the 'Network: X' header."
       ],
-      "expected": "A single banner row with labelled count cells: new hosts, vanished hosts, changed hosts, VLANs detected, VLANs no longer detected, subnets scanned. Counts match the per-section counts further down.",
+      "expected": "A single banner row with labelled count cells: new hosts, vanished hosts, changed hosts, VLANs detected, VLANs no longer detected, subnets scanned. The subnets-scanned count is greater than 0 and matches the subnets the daemon actually walked. Counts match the per-section counts further down.",
       "flow": "setup",
-      "sequence": 9,
+      "sequence": 6,
       "status": null,
       "feedback": null
     },
     {
       "id": "digest-host-card-shape",
       "category": "Discovery digest — host cards",
-      "description": "Each affected host renders as a card mirroring HostCard.svelte from the UI.",
+      "description": "Each affected host renders as a card mirroring HostCard.svelte from the UI, with child entities shown as inline colored tags rather than bulleted lists, and no UUIDs visible anywhere.",
       "setup": "Seed a host with multiple services, IPs, interfaces, and ports — at least 3 of each. Trigger a discovery that adds/removes children so the host is classified as Changed.",
       "steps": [
         "Open the digest email in the Owner's inbox.",
         "Find the Hosts-with-changes section and the card for the seeded host.",
         "Verify the card header shows the hostname plus a 'Changed' badge.",
-        "Verify there are rows for Services, IP Addresses, Interfaces, and Ports, each enumerating the host's current live entities.",
-        "Verify the card ends with a 'What changed this scan' block listing what was added vs removed."
+        "Inspect the Services / IP Addresses / Interfaces / Ports rows.",
+        "Inspect the 'What changed this scan' block."
       ],
-      "expected": "Each affected host is one bordered card with name + colored status badge + the same field rows used in the UI's HostCard. Changed hosts also show the deltas block.",
+      "expected": "Each child entity is a colored inline pill that wraps to the next line when the row fills. Colors match the in-app HostCard (Services=fuchsia, IPs=emerald, Interfaces=teal, Ports=sky, Subnets=indigo, VLANs=violet). No UUIDs visible anywhere — port labels say e.g. '22/tcp' or 'Ssh', not 'Ssh (ID: ...)'. Bindings are NOT shown.",
       "flow": "setup",
-      "sequence": 10,
+      "sequence": 7,
       "status": null,
       "feedback": null
     }
@@ -1086,24 +755,6 @@ var TEST_PLANS = [
   "branch": "fix/scd2-data-integrity-and-snapshot-views",
   "tests": [
     {
-      "id": "no-empty-shell-duplicates-after-snapshot",
-      "category": "SCD2 Data Integrity",
-      "description": "Taking a snapshot must NOT create empty-shell duplicate rows in entity views. This is the primary reported bug.",
-      "steps": [
-        "Open the Hosts tab and note the list of hosts (each should have services / IP addresses / interfaces).",
-        "Go to the topology view and click 'Take snapshot' for the selected network.",
-        "Return to the Hosts tab and refresh.",
-        "Confirm each host appears exactly ONCE — there is no second row with the same name but no services / IPs / interfaces.",
-        "Repeat the check on the Services tab and Subnets tab."
-      ],
-      "setup": "Ensure the selected network has at least 2-3 discovered hosts with services and IP addresses (run a discovery scan first if empty).",
-      "expected": "After taking the snapshot, every host/service/subnet appears exactly once in its tab. No empty-shell duplicates appear.",
-      "flow": "setup",
-      "sequence": 1,
-      "status": null,
-      "feedback": null
-    },
-    {
       "id": "snapshot-view-shows-as-of-entity-state",
       "category": "Snapshot As-Of Reads",
       "description": "On a snapshot view, inspector entity cards show entity state as of the snapshot's taken_at, not current live state.",
@@ -1118,7 +769,7 @@ var TEST_PLANS = [
       "setup": "Network has at least one host with services. Snapshots must be enabled on the org's plan (snapshot_retention_days > 0).",
       "expected": "Snapshot view inspector shows the host's services/IPs as captured at snapshot time (without the post-snapshot addition). Live view shows current state including the new service.",
       "flow": "setup",
-      "sequence": 2,
+      "sequence": 1,
       "status": null,
       "feedback": null
     },
@@ -1133,24 +784,7 @@ var TEST_PLANS = [
       ],
       "expected": "Live view behaves identically to before the change: current entities and children render with no missing or duplicated data.",
       "flow": "setup",
-      "sequence": 3,
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "snapshot-view-after-rediscovery",
-      "category": "Snapshot As-Of Reads",
-      "description": "After a snapshot, re-running discovery should not corrupt the snapshot view or the live view.",
-      "steps": [
-        "Take a snapshot of the network.",
-        "Trigger a fresh discovery scan on the same network and wait for it to complete.",
-        "Confirm the live Hosts tab still shows each host once (no duplicates) with up-to-date data.",
-        "Select the snapshot in the dropdown and confirm it still shows the captured pre-rediscovery state."
-      ],
-      "setup": "Network with an active daemon that can run a discovery scan.",
-      "expected": "Live view reflects the new scan with one row per host; snapshot view still reflects the captured state at snapshot time.",
-      "flow": "setup",
-      "sequence": 4,
+      "sequence": 2,
       "status": null,
       "feedback": null
     }

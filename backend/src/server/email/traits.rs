@@ -360,8 +360,8 @@ pub trait EmailProvider: Send + Sync {
         (PAYMENT_FAILED_TITLE.to_string(), body)
     }
 
-    fn build_payment_action_required_email(&self) -> (String, String) {
-        let body = self.build_email(PAYMENT_ACTION_REQUIRED_BODY.to_string());
+    fn build_payment_action_required_email(&self, cta_href: &str) -> (String, String) {
+        let body = self.build_email(PAYMENT_ACTION_REQUIRED_BODY.replace("{cta_href}", cta_href));
         (PAYMENT_ACTION_REQUIRED_TITLE.to_string(), body)
     }
 
@@ -1218,8 +1218,14 @@ impl EmailService {
         self.provider.send_billing_email(to, subject, body).await
     }
 
-    pub async fn send_payment_action_required_email(&self, to: EmailAddress) -> Result<()> {
-        let (subject, body) = self.provider.build_payment_action_required_email();
+    pub async fn send_payment_action_required_email(
+        &self,
+        to: EmailAddress,
+        hosted_invoice_url: Option<String>,
+    ) -> Result<()> {
+        let cta_href = hosted_invoice_url
+            .unwrap_or_else(|| format!("{}/?modal=settings&tab=billing", self.public_url));
+        let (subject, body) = self.provider.build_payment_action_required_email(&cta_href);
         let body = body.replace("{base_url}", &self.public_url);
         self.provider.send_billing_email(to, subject, body).await
     }
@@ -1599,7 +1605,11 @@ fn format_invoice_period(
     start: chrono::DateTime<chrono::Utc>,
     end: chrono::DateTime<chrono::Utc>,
 ) -> String {
-    format!("{} – {}", start.format("%b %-d"), end.format("%b %-d, %Y"))
+    format!(
+        "{} – {}",
+        start.format("%b %-d, %Y"),
+        end.format("%b %-d, %Y")
+    )
 }
 
 /// Strip HTML tags for plain text fallback
