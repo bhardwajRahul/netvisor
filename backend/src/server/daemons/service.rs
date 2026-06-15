@@ -40,7 +40,7 @@ use crate::server::discovery::r#impl::base::{Discovery, DiscoveryBase};
 use crate::server::discovery::r#impl::scan_settings::ScanSettings;
 use crate::server::discovery::r#impl::types::{DiscoveryType, HostNamingFallback, RunType};
 use crate::server::discovery::service::DiscoveryService;
-use crate::server::email::traits::EmailService;
+use crate::server::email::service::EmailService;
 use crate::server::hosts::r#impl::base::{Host, HostBase};
 use crate::server::hosts::service::{HostLimitContext, HostService};
 use crate::server::networks::r#impl::Network;

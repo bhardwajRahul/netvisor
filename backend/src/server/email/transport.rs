@@ -1,0 +1,17 @@
+use anyhow::Error;
+use async_trait::async_trait;
+use email_address::EmailAddress;
+
+use super::messages::Email;
+
+/// Delivers a rendered email to a recipient.
+///
+/// Implementors own *how* a message is sent (Brevo's HTTP API, SMTP) and ask
+/// the [`Email`] for exactly the renderings they need — HTML, plaintext, the
+/// subject, the category tag. They never inspect which concrete email it is,
+/// so a new email never requires a transport change.
+#[async_trait]
+pub trait EmailTransport: Send + Sync {
+    /// Render `email` against `base_url` and deliver it to `to`.
+    async fn send(&self, to: EmailAddress, email: &dyn Email, base_url: &str) -> Result<(), Error>;
+}
