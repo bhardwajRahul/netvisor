@@ -95,7 +95,7 @@ pub async fn require_billing_for_users(
     // (Community / CommercialSelfHosted), which matches the exempt arm and
     // lets `/api/v1/organizations` succeed. The frontend reads the resulting
     // `plan = null` and opens BillingPlanModal to force plan selection.
-    let plan = organization.base.plan.clone().unwrap_or_default();
+    let plan = organization.base.plan.unwrap_or_default();
     if matches!(
         plan,
         BillingPlan::Community(_)

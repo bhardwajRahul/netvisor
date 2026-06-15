@@ -45,15 +45,23 @@
 		isOpen = false,
 		onClose,
 		lastPausedAt = null,
+		planStatus = null,
 		onSubscriptionChanged
 	}: {
 		isOpen?: boolean;
 		onClose: () => void;
 		/** Org's `last_paused_at` — used for 6-month rolling pause cooldown messaging. */
 		lastPausedAt?: string | null;
+		/** Org's `plan_status` — pause/discount save offers are suppressed while trialing. */
+		planStatus?: string | null;
 		/** Called after pause/discount/cancel succeed so the caller can refresh the org payload. */
 		onSubscriptionChanged?: () => void;
 	} = $props();
+
+	// Pause/discount are retention tools for billing subscribers. A trial isn't
+	// charging yet, so suppress save offers and let the cancellation go straight
+	// to confirm (cancel-at-period-end ends the trial without converting).
+	let isTrialing = $derived(planStatus === 'trialing');
 
 	// Two internal steps. Step 1 picks the reason; step 2 shows any save offers
 	// AND hosts the Confirm Cancellation action in the footer. No stepper UI:
@@ -105,7 +113,7 @@
 	]);
 
 	const offersForReason = $derived.by<string[]>(() => {
-		if (!selectedReason) return [];
+		if (isTrialing || !selectedReason) return [];
 		const reason = cancelReasons.find((r) => r.id === selectedReason);
 		const offers = (reason?.metadata as { save_offers?: string[] } | null | undefined)?.save_offers;
 		return offers ?? [];
