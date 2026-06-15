@@ -1053,7 +1053,6 @@
 	"settings_billing_cancelSubscription": "Cancel Subscription",
 	"settings_billing_canceled": "Your subscription has been canceled. Access will end at the end of your billing period.",
 	"settings_billing_changePlan": "Change your plan",
-	"settings_billing_changePlanDescription": "View available plans and upgrade or downgrade",
 	"settings_billing_contactUs": "Contact us at",
 	"settings_billing_currentPlan": "Current Plan",
 	"settings_billing_downgrade_pending": "Your plan will switch to Free at the end of your current billing cycle. Click Reactivate Subscription below to keep your current plan.",
