@@ -819,10 +819,10 @@ impl BillingService {
     pub async fn handle_webhook(&self, payload: &str, signature: &str) -> Result<(), Error> {
         let event = Webhook::construct_event(payload, signature, &self.webhook_secret)?;
 
-        tracing::info!(
-            stripe_event_id = %event.id,
-            stripe_event_type = ?event.type_,
-            "Stripe webhook received"
+        tracing::debug!(
+            event_type = ?event.type_,
+            event_id = %event.id,
+            "Received Stripe webhook"
         );
 
         match event.type_ {
@@ -1007,12 +1007,6 @@ impl BillingService {
                     .unwrap_or_else(Utc::now);
                 let (stripe_feedback, comment, stripe_reason) =
                     extract_cancellation_details(sub.cancellation_details.as_ref());
-                tracing::info!(
-                    organization_id = %organization.id,
-                    subscription_id = %sub.id,
-                    cancel_at_unix = period_end_ts,
-                    "Publishing CancellationInitiated"
-                );
                 self.event_bus
                     .publish(Event::new(
                         OrgScope {
