@@ -2,7 +2,6 @@ use std::{collections::HashMap, sync::Arc};
 
 use anyhow::Error;
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
 use petgraph::{Graph, graph::NodeIndex, visit::EdgeRef};
 use tokio::sync::broadcast;
 use uuid::Uuid;
@@ -217,83 +216,82 @@ impl TopologyService {
         self.live_update_tx.subscribe()
     }
 
-    /// Unified entity-set loader for both live and as-of-T topology reads.
+    /// Unified entity-set loader for live + snapshot topology reads.
     ///
-    /// `at = None` reads live entity rows (`valid_to IS NULL`).
-    /// `at = Some(t)` reads as-of-T rows (`valid_from <= t AND (valid_to IS NULL OR valid_to > t)`).
-    ///
-    /// Tag lookup uses the `id_or_lineage_in` filter when `at` is set, since
-    /// tag IDs may have been close-and-cloned at any prior snapshot.
+    /// `snapshot_id = None` reads live entity rows (`valid_to IS NULL`).
+    /// `snapshot_id = Some(id)` reads closed copies stamped at that snapshot
+    /// (`snapshot_id = id`) — those have distinct ids from their live
+    /// counterparts and survive live-row deletion.
     pub async fn get_topology_data(
         &self,
         network_id: Uuid,
-        at: Option<DateTime<Utc>>,
+        snapshot_id: Option<Uuid>,
     ) -> Result<TopologyData, Error> {
         let hosts = self
             .host_service
-            .get_all(apply_at(
+            .get_all(apply_snapshot(
                 StorableFilter::<Host>::new_from_network_ids(&[network_id]).hidden_is(false),
-                at,
+                snapshot_id,
             ))
             .await?;
         let ip_addresses = self
             .ip_address_service
-            .get_all(apply_at(
+            .get_all(apply_snapshot(
                 StorableFilter::<IPAddress>::new_from_network_ids(&[network_id]),
-                at,
+                snapshot_id,
             ))
             .await?;
         let subnets = self
             .subnet_service
-            .get_all(apply_at(
+            .get_all(apply_snapshot(
                 StorableFilter::<Subnet>::new_from_network_ids(&[network_id]),
-                at,
+                snapshot_id,
             ))
             .await?;
         let dependencies = self
             .dependency_service
-            .get_all(apply_at(
+            .get_all(apply_snapshot(
                 StorableFilter::<Dependency>::new_from_network_ids(&[network_id]),
-                at,
+                snapshot_id,
             ))
             .await?;
         let ports = self
             .port_service
-            .get_all(apply_at(
+            .get_all(apply_snapshot(
                 StorableFilter::<Port>::new_from_network_ids(&[network_id]),
-                at,
+                snapshot_id,
             ))
             .await?;
         let bindings = self
             .binding_service
-            .get_all(apply_at(
+            .get_all(apply_snapshot(
                 StorableFilter::<Binding>::new_from_network_ids(&[network_id]),
-                at,
+                snapshot_id,
             ))
             .await?;
         let interfaces = self
             .interface_service
-            .get_all(apply_at(
+            .get_all(apply_snapshot(
                 StorableFilter::<Interface>::new_from_network_ids(&[network_id]),
-                at,
+                snapshot_id,
             ))
             .await?;
         let services = self
             .service_service
-            .get_all(apply_at(
+            .get_all(apply_snapshot(
                 StorableFilter::<Service>::new_from_network_ids(&[network_id]),
-                at,
+                snapshot_id,
             ))
             .await?;
         let vlans = self
             .vlan_service
-            .get_all(apply_at(
+            .get_all(apply_snapshot(
                 StorableFilter::<Vlan>::new_from_uuid_column("network_id", &network_id),
-                at,
+                snapshot_id,
             ))
             .await?;
         let tags = self
-            .get_entity_tags(&hosts, &services, &subnets, at)
+            .get_entity_tags(&hosts, &services, &subnets, snapshot_id)
             .await?;
 
         Ok(TopologyData {
@@ -312,15 +310,17 @@ impl TopologyService {
 
     /// Fetch tag definitions for all tags used by hosts, services, and subnets.
     ///
-    /// When `at = Some(t)`, the SCD2 `as_of(t)` filter combined with the
-    /// `id_or_lineage_in(...)` OR-join resolves tags whose stable IDs may
-    /// have been close-and-cloned during snapshot creation.
+    /// Live view: `tag_id IN <referenced> AND valid_to IS NULL`.
+    /// Snapshot view: the entities themselves came from close-and-clone, and
+    /// their `tags` field already references the snapshot's closed tag rows
+    /// (close-and-clone rewrites `tags` to point at the new ids via the
+    /// `FkMaps` remap). So we filter by the referenced ids + `snapshot_id`.
     pub async fn get_entity_tags(
         &self,
         hosts: &[Host],
         services: &[Service],
         subnets: &[Subnet],
-        at: Option<DateTime<Utc>>,
+        snapshot_id: Option<Uuid>,
     ) -> Result<Vec<Tag>, Error> {
         let mut tag_ids: Vec<Uuid> = Vec::new();
         for host in hosts {
@@ -340,11 +340,9 @@ impl TopologyService {
             return Ok(vec![]);
         }
 
-        let filter = match at {
+        let filter = match snapshot_id {
             None => StorableFilter::<Tag>::new_from_entity_ids(&tag_ids).live(),
-            Some(t) => StorableFilter::<Tag>::new_unfiltered()
-                .id_or_lineage_in(&tag_ids)
-                .as_of(t),
+            Some(id) => StorableFilter::<Tag>::new_from_entity_ids(&tag_ids).snapshot_id(&id),
         };
         let tags = self.tag_service.get_all(filter).await?;
 
@@ -517,10 +515,16 @@ impl TopologyService {
     }
 }
 
-/// Switch a filter between live and as-of-T modes based on `at`.
-fn apply_at<T: Storable>(f: StorableFilter<T>, at: Option<DateTime<Utc>>) -> StorableFilter<T> {
-    match at {
+/// Switch a filter between live and snapshot modes based on `snapshot_id`.
+/// Live view: live rows (`valid_to IS NULL`). Snapshot view: closed copies
+/// stamped with the snapshot's id (distinct rows from the live versions, and
+/// survive live-row hard-deletes).
+fn apply_snapshot<T: Storable>(
+    f: StorableFilter<T>,
+    snapshot_id: Option<Uuid>,
+) -> StorableFilter<T> {
+    match snapshot_id {
         None => f.live(),
-        Some(t) => f.as_of(t),
+        Some(id) => f.snapshot_id(&id),
     }
 }

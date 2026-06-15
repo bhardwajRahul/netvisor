@@ -110,7 +110,9 @@ async fn get_topology_data(
         return Err(ApiError::forbidden("You don't have access to this network"));
     }
 
-    let at = if let Some(snapshot_id) = params.snapshot_id {
+    // Snapshot path: verify the snapshot belongs to the requested network
+    // before returning its closed copies.
+    if let Some(snapshot_id) = params.snapshot_id {
         let snapshot = state
             .services
             .snapshot_service
@@ -123,15 +125,12 @@ async fn get_topology_data(
                 "Snapshot belongs to a different network",
             ));
         }
-        Some(snapshot.base.taken_at)
-    } else {
-        None
-    };
+    }
 
     let data = state
         .services
         .topology_service
-        .get_topology_data(params.network_id, at)
+        .get_topology_data(params.network_id, params.snapshot_id)
         .await
         .map_err(|e| ApiError::internal_error(&e.to_string()))?;
 
@@ -396,9 +395,9 @@ async fn export_mermaid(
         ));
     }
 
-    let at = snapshot_taken_at(&state, &topology).await?;
+    let snapshot_id = topology_snapshot_id(&topology);
     let data = service
-        .get_topology_data(topology.base.network_id, at)
+        .get_topology_data(topology.base.network_id, snapshot_id)
         .await
         .map_err(|e| ApiError::internal_error(&e.to_string()))?;
 
@@ -449,9 +448,9 @@ async fn export_confluence(
         ));
     }
 
-    let at = snapshot_taken_at(&state, &topology).await?;
+    let snapshot_id = topology_snapshot_id(&topology);
     let data = service
-        .get_topology_data(topology.base.network_id, at)
+        .get_topology_data(topology.base.network_id, snapshot_id)
         .await
         .map_err(|e| ApiError::internal_error(&e.to_string()))?;
 
@@ -473,15 +472,11 @@ async fn export_confluence(
 /// Resolve the snapshot's `taken_at` for a topology row, or `None` for the
 /// live view. Used by the export pipeline to load the right entity set.
 ///
-/// Snapshot-pinned topology rows currently fall back to live data here —
-/// the snapshots service hasn't been wired into `AppState` yet (separate
-/// worker). Once that lands, this loads `Snapshot` by id and returns
-/// `Some(taken_at)`.
-async fn snapshot_taken_at(
-    _state: &Arc<AppState>,
-    _topology: &Topology,
-) -> ApiResult<Option<chrono::DateTime<chrono::Utc>>> {
-    Ok(None)
+/// Return the topology row's snapshot id (if any). Used by exports to load
+/// the topology's entity bundle via `get_topology_data(_, Some(snapshot_id))`
+/// for snapshot views, or `None` for the live view.
+fn topology_snapshot_id(topology: &Topology) -> Option<Uuid> {
+    topology.base.snapshot_id
 }
 
 /// SSE stream of live-topology updates: emits `{ "network_id": "<uuid>" }`

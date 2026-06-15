@@ -262,6 +262,8 @@ impl ServiceFactory {
             Arc::new(storage.pool.clone()),
             storage.snapshots.clone(),
             event_bus.clone(),
+            network_service.clone(),
+            organization_service.clone(),
         );
 
         let discovery_digest_service = Arc::new(DiscoveryDigestService::new(
