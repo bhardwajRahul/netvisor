@@ -11,6 +11,8 @@
 	import cancelReasons from '$lib/data/cancel-reasons.json';
 	import saveOffers from '$lib/data/save-offers.json';
 	import { pushSuccess } from '$lib/shared/stores/feedback';
+	import { useConfigQuery } from '$lib/shared/stores/config-query';
+	import { waitForOrgUpdate } from '$lib/shared/billing/wait-for-org-update';
 	import type { components } from '$lib/api/schema';
 	import type { AnyFieldApi } from '@tanstack/svelte-form';
 	import {
@@ -80,6 +82,8 @@
 	const cancelMutation = useCancelSubscriptionMutation();
 	const pauseMutation = usePauseSubscriptionMutation();
 	const discountMutation = useApplyDiscountSaveOfferMutation();
+	const configQuery = useConfigQuery();
+	const discountAvailable = $derived(configQuery.data?.discount_save_offer_available ?? false);
 
 	const form = createForm(() => ({
 		defaultValues: {
@@ -116,7 +120,10 @@
 		if (isTrialing || !selectedReason) return [];
 		const reason = cancelReasons.find((r) => r.id === selectedReason);
 		const offers = (reason?.metadata as { save_offers?: string[] } | null | undefined)?.save_offers;
-		return offers ?? [];
+		// Hide the discount panel when the deployment hasn't configured a
+		// Stripe coupon — the backend would reject the apply call anyway, but
+		// showing an option we can't fulfil is worse UX than not offering it.
+		return (offers ?? []).filter((o) => o !== 'discount' || discountAvailable);
 	});
 
 	const offerMeta = (offerId: string) => saveOffers.find((o) => o.id === offerId);
@@ -185,6 +192,7 @@
 	async function handlePauseRedeem() {
 		try {
 			await pauseMutation.mutateAsync(selectedPauseDuration);
+			await waitForOrgUpdate((o) => o.plan_status === 'paused');
 			onSubscriptionChanged?.();
 			handleClose();
 		} catch {
@@ -195,6 +203,9 @@
 	async function handleDiscountRedeem() {
 		try {
 			await discountMutation.mutateAsync();
+			// The discount is applied immediately on Stripe's side; no plan_status
+			// transition to wait for. Just refresh the org so the BillingTab
+			// reflects any downstream changes (e.g. next invoice preview).
 			onSubscriptionChanged?.();
 			handleClose();
 		} catch {
@@ -217,6 +228,7 @@
 					periodEnd: fmtDate(response.period_end)
 				})
 			);
+			await waitForOrgUpdate((o) => o.plan_status === 'pending_cancellation');
 			onSubscriptionChanged?.();
 			handleClose();
 		} catch {

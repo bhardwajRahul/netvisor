@@ -10860,19 +10860,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-06-15T17:20:28.320660Z",
+              "created_at": "2026-06-15T20:56:31.256452Z",
               "first_discovery_id": null,
-              "id": "5f5bf822-57ba-4ee0-a005-0a121e5f9029",
+              "id": "d8eb89b4-d256-45a1-903e-193288bd7742",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-15T17:20:28.320660Z",
+              "last_seen_at": "2026-06-15T20:56:31.256452Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-15T17:20:28.320660Z",
-              "valid_from": "2026-06-15T17:20:28.320660Z",
+              "updated_at": "2026-06-15T20:56:31.256452Z",
+              "valid_from": "2026-06-15T20:56:31.256452Z",
               "valid_to": null
             }
           },
@@ -11858,19 +11858,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-06-15T17:20:28.308360Z",
+                      "created_at": "2026-06-15T20:56:31.240358Z",
                       "first_discovery_id": null,
-                      "id": "3934c65f-0e45-4b6a-89bb-e5afa2428c03",
+                      "id": "19ea4f00-bb90-40a1-bf9a-2af1f36900c1",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-06-15T17:20:28.308360Z",
+                      "last_seen_at": "2026-06-15T20:56:31.240358Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-06-15T17:20:28.308360Z",
-                      "valid_from": "2026-06-15T17:20:28.308360Z",
+                      "updated_at": "2026-06-15T20:56:31.240358Z",
+                      "valid_from": "2026-06-15T20:56:31.240358Z",
                       "valid_to": null
                     }
                   ],
@@ -11884,7 +11884,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Unclaimed Open Ports",
+                  "service_definition": "Kong",
                   "source": {
                     "type": "Manual"
                   },
@@ -12530,6 +12530,7 @@
               "disable_password_login",
               "oidc_providers",
               "billing_enabled",
+              "discount_save_offer_available",
               "has_integrated_daemon",
               "has_email_service",
               "has_email_opt_in",
@@ -12550,6 +12551,10 @@
               },
               "disable_registration": {
                 "type": "boolean"
+              },
+              "discount_save_offer_available": {
+                "type": "boolean",
+                "description": "`STRIPE_SAVE_OFFER_COUPON_ID` env var is set. When false, the\ncancel modal hides the discount save-offer panel so the user\ndoesn't see an option the deployment can't fulfil."
               },
               "has_email_opt_in": {
                 "type": "boolean"
@@ -12815,19 +12820,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-06-15T17:20:28.316371Z",
+                  "created_at": "2026-06-15T20:56:31.251094Z",
                   "first_discovery_id": null,
-                  "id": "827e4d7a-9a03-4c79-9316-ac9dc0356ebf",
+                  "id": "a49439d1-bc4b-4c6f-8a88-fd77739b19f7",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-15T17:20:28.316371Z",
+                  "last_seen_at": "2026-06-15T20:56:31.251094Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-15T17:20:28.316371Z",
-                  "valid_from": "2026-06-15T17:20:28.316371Z",
+                  "updated_at": "2026-06-15T20:56:31.251094Z",
+                  "valid_from": "2026-06-15T20:56:31.251094Z",
                   "valid_to": null
                 }
               ],
@@ -12841,7 +12846,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Unclaimed Open Ports",
+              "service_definition": "Kong",
               "source": {
                 "type": "Manual"
               },
@@ -14541,19 +14546,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-06-15T17:20:28.308579Z",
+          "created_at": "2026-06-15T20:56:31.240714Z",
           "first_discovery_id": null,
-          "id": "69dff9d8-6e1c-444f-8721-5c785a67b5bd",
+          "id": "d9908cff-695b-47a4-8510-cd857cafc692",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-06-15T17:20:28.308579Z",
+          "last_seen_at": "2026-06-15T20:56:31.240714Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-06-15T17:20:28.308579Z",
-          "valid_from": "2026-06-15T17:20:28.308579Z",
+          "updated_at": "2026-06-15T20:56:31.240714Z",
+          "valid_from": "2026-06-15T20:56:31.240714Z",
           "valid_to": null
         }
       },
@@ -15143,7 +15148,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Unclaimed Open Ports",
+              "service_definition": "Kong",
               "tags": [],
               "virtualization": null
             }
@@ -17761,19 +17766,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-06-15T17:20:28.308098Z",
+                  "created_at": "2026-06-15T20:56:31.239964Z",
                   "first_discovery_id": null,
-                  "id": "91d53905-57c5-462a-ae3c-b6c58129ccbc",
+                  "id": "c9776603-4603-49ed-9469-b5d0e2a7ea3e",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-15T17:20:28.308098Z",
+                  "last_seen_at": "2026-06-15T20:56:31.239964Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-15T17:20:28.308098Z",
-                  "valid_from": "2026-06-15T17:20:28.308098Z",
+                  "updated_at": "2026-06-15T20:56:31.239964Z",
+                  "valid_from": "2026-06-15T20:56:31.239964Z",
                   "valid_to": null
                 }
               ],
@@ -17787,7 +17792,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Unclaimed Open Ports",
+              "service_definition": "Kong",
               "source": {
                 "type": "Manual"
               },
@@ -20180,19 +20185,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-06-15T17:20:28.301986Z",
+                        "created_at": "2026-06-15T20:56:31.230764Z",
                         "first_discovery_id": null,
-                        "id": "b08c622f-a4de-4fa0-8d72-b846cae7760e",
+                        "id": "34b97ca7-87b7-48dc-9805-e8e69d06115a",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-06-15T17:20:28.301986Z",
+                        "last_seen_at": "2026-06-15T20:56:31.230764Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-06-15T17:20:28.301986Z",
-                        "valid_from": "2026-06-15T17:20:28.301986Z",
+                        "updated_at": "2026-06-15T20:56:31.230764Z",
+                        "valid_from": "2026-06-15T20:56:31.230764Z",
                         "valid_to": null
                       }
                     ],
@@ -20206,7 +20211,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Unclaimed Open Ports",
+                    "service_definition": "Kong",
                     "source": {
                       "type": "Manual"
                     },
@@ -20327,19 +20332,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-06-15T17:20:28.315565Z",
+                    "created_at": "2026-06-15T20:56:31.250024Z",
                     "first_discovery_id": null,
-                    "id": "3b73b2a9-3acf-409a-a628-e51858b029c4",
+                    "id": "a62a322e-2f88-4c08-90d3-78e57443417b",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-06-15T17:20:28.315565Z",
+                    "last_seen_at": "2026-06-15T20:56:31.250024Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-06-15T17:20:28.315565Z",
-                    "valid_from": "2026-06-15T17:20:28.315565Z",
+                    "updated_at": "2026-06-15T20:56:31.250024Z",
+                    "valid_from": "2026-06-15T20:56:31.250024Z",
                     "valid_to": null
                   }
                 ],
@@ -20353,7 +20358,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Unclaimed Open Ports",
+                "service_definition": "Kong",
                 "source": {
                   "type": "Manual"
                 },
@@ -21336,6 +21341,7 @@
           "disable_password_login",
           "oidc_providers",
           "billing_enabled",
+          "discount_save_offer_available",
           "has_integrated_daemon",
           "has_email_service",
           "has_email_opt_in",
@@ -21356,6 +21362,10 @@
           },
           "disable_registration": {
             "type": "boolean"
+          },
+          "discount_save_offer_available": {
+            "type": "boolean",
+            "description": "`STRIPE_SAVE_OFFER_COUPON_ID` env var is set. When false, the\ncancel modal hides the discount save-offer panel so the user\ndoesn't see an option the deployment can't fulfil."
           },
           "has_email_opt_in": {
             "type": "boolean"
@@ -21922,19 +21932,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-06-15T17:20:28.308527Z",
+              "created_at": "2026-06-15T20:56:31.240642Z",
               "first_discovery_id": null,
-              "id": "183fa0dd-a353-4b3a-b08f-983b0e0e64a7",
+              "id": "7bdf34e6-4169-477d-942d-6b20be0d22cc",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-15T17:20:28.308527Z",
+              "last_seen_at": "2026-06-15T20:56:31.240642Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-15T17:20:28.308527Z",
-              "valid_from": "2026-06-15T17:20:28.308527Z",
+              "updated_at": "2026-06-15T20:56:31.240642Z",
+              "valid_from": "2026-06-15T20:56:31.240642Z",
               "valid_to": null
             }
           ],
@@ -21948,7 +21958,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Unclaimed Open Ports",
+          "service_definition": "Kong",
           "source": {
             "type": "Manual"
           },
