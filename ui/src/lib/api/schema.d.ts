@@ -253,9 +253,10 @@ export interface paths {
         put?: never;
         /**
          * Cancel subscription
-         * @description In-app cancel modal endpoint. Sets Stripe `cancel_at_period_end`, stashes
-         *     the canonical Scanopy reason in subscription metadata, returns the period
-         *     end so the modal can render the retention disclosure.
+         * @description In-app cancel modal endpoint. Sets Stripe `cancel_at` to the current
+         *     period end (via Stripe's `MaxPeriodEnd` sentinel), stashes the canonical
+         *     Scanopy reason in subscription metadata, returns the period end so the
+         *     modal can render the retention disclosure.
          */
         post: operations["cancel_subscription"];
         delete?: never;
@@ -444,8 +445,8 @@ export interface paths {
         put?: never;
         /**
          * Reactivate a subscription pending cancellation
-         * @description Clears Stripe's `cancel_at_period_end`. Available while
-         *     `plan_status === 'pending_cancellation'`.
+         * @description Clears Stripe's scheduled-cancellation state (`cancel_at` → None).
+         *     Available while `plan_status === 'pending_cancellation'`.
          */
         post: operations["reactivate_subscription"];
         delete?: never;
@@ -3052,19 +3053,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-06-15T17:20:28.321467Z",
+             *       "created_at": "2026-06-16T13:39:52.661233Z",
              *       "first_discovery_id": null,
-             *       "id": "60e74ddf-c75d-4082-af41-0aedfc3cd345",
+             *       "id": "893b1693-8c75-456a-8c7c-c2785882aa6e",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-06-15T17:20:28.321467Z",
+             *       "last_seen_at": "2026-06-16T13:39:52.661233Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-06-15T17:20:28.321467Z",
-             *       "valid_from": "2026-06-15T17:20:28.321467Z",
+             *       "updated_at": "2026-06-16T13:39:52.661233Z",
+             *       "valid_from": "2026-06-16T13:39:52.661233Z",
              *       "valid_to": null
              *     }
              */
@@ -3401,19 +3402,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-06-15T17:20:28.308507Z",
+             *               "created_at": "2026-06-16T13:39:52.644421Z",
              *               "first_discovery_id": null,
-             *               "id": "4555b42d-9381-4578-86bc-e30268c47455",
+             *               "id": "2b603966-50e4-405b-8926-eb4061d679d5",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-06-15T17:20:28.308507Z",
+             *               "last_seen_at": "2026-06-16T13:39:52.644421Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-06-15T17:20:28.308507Z",
-             *               "valid_from": "2026-06-15T17:20:28.308507Z",
+             *               "updated_at": "2026-06-16T13:39:52.644421Z",
+             *               "valid_from": "2026-06-16T13:39:52.644421Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3427,7 +3428,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Unclaimed Open Ports",
+             *           "service_definition": "NTP Server",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3763,19 +3764,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-06-15T17:20:28.316710Z",
+             *           "created_at": "2026-06-16T13:39:52.655779Z",
              *           "first_discovery_id": null,
-             *           "id": "8e836627-088c-44ed-9d1e-76712e154579",
+             *           "id": "8064fc0d-4a56-4f74-8d14-e18b5b767c47",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-06-15T17:20:28.316710Z",
+             *           "last_seen_at": "2026-06-16T13:39:52.655779Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-06-15T17:20:28.316710Z",
-             *           "valid_from": "2026-06-15T17:20:28.316710Z",
+             *           "updated_at": "2026-06-16T13:39:52.655779Z",
+             *           "valid_from": "2026-06-16T13:39:52.655779Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -3789,7 +3790,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Unclaimed Open Ports",
+             *       "service_definition": "NTP Server",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4242,19 +4243,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-06-15T17:20:28.308730Z",
+         *       "created_at": "2026-06-16T13:39:52.644807Z",
          *       "first_discovery_id": null,
-         *       "id": "1608b3be-942b-467d-a972-794115fd185a",
+         *       "id": "cc8ac7aa-72d9-4069-8fb1-7649908cee91",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-06-15T17:20:28.308730Z",
+         *       "last_seen_at": "2026-06-16T13:39:52.644807Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-06-15T17:20:28.308730Z",
-         *       "valid_from": "2026-06-15T17:20:28.308730Z",
+         *       "updated_at": "2026-06-16T13:39:52.644807Z",
+         *       "valid_from": "2026-06-16T13:39:52.644807Z",
          *       "valid_to": null
          *     }
          */
@@ -4469,7 +4470,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Unclaimed Open Ports",
+         *           "service_definition": "NTP Server",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -5410,19 +5411,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-06-15T17:20:28.308243Z",
+         *               "created_at": "2026-06-16T13:39:52.643988Z",
          *               "first_discovery_id": null,
-         *               "id": "c5897ef6-ad35-4675-9445-ec90bc927fd5",
+         *               "id": "8e0ce03e-8dde-4eef-9196-af464338bb97",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-06-15T17:20:28.308243Z",
+         *               "last_seen_at": "2026-06-16T13:39:52.643988Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-06-15T17:20:28.308243Z",
-         *               "valid_from": "2026-06-15T17:20:28.308243Z",
+         *               "updated_at": "2026-06-16T13:39:52.643988Z",
+         *               "valid_from": "2026-06-16T13:39:52.643988Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -5436,7 +5437,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Unclaimed Open Ports",
+         *           "service_definition": "NTP Server",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -6789,19 +6790,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-06-15T17:20:28.308678Z",
+         *           "created_at": "2026-06-16T13:39:52.644732Z",
          *           "first_discovery_id": null,
-         *           "id": "8a6af0f2-344d-4ccd-acba-6072e74923a6",
+         *           "id": "11d6f18d-f7e7-40f2-b547-4e38f127506a",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-06-15T17:20:28.308678Z",
+         *           "last_seen_at": "2026-06-16T13:39:52.644732Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-06-15T17:20:28.308678Z",
-         *           "valid_from": "2026-06-15T17:20:28.308678Z",
+         *           "updated_at": "2026-06-16T13:39:52.644732Z",
+         *           "valid_from": "2026-06-16T13:39:52.644732Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -6815,7 +6816,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Unclaimed Open Ports",
+         *       "service_definition": "NTP Server",
          *       "source": {
          *         "type": "Manual"
          *       },

@@ -40,6 +40,7 @@ use stripe_billing::subscription::CreateSubscriptionTrialSettingsEndBehaviorMiss
 use stripe_billing::subscription::DiscountsDataParam;
 use stripe_billing::subscription::ListSubscription;
 use stripe_billing::subscription::UpdateSubscription;
+use stripe_billing::subscription::UpdateSubscriptionCancelAt;
 use stripe_billing::subscription::UpdateSubscriptionCancellationDetails;
 use stripe_billing::subscription::UpdateSubscriptionCancellationDetailsFeedback;
 use stripe_billing::subscription::UpdateSubscriptionItems;
@@ -918,19 +919,6 @@ impl BillingService {
             "Processing subscription update"
         );
 
-        // Diagnostic: surface the cancel-related Stripe fields on every
-        // update webhook so we can verify in-app cancel and Portal cancel
-        // both arrive with `cancel_at_period_end=true`. Added 2026-06-15
-        // while diagnosing why CancellationInitiated wasn't firing for the
-        // user's Portal-cancel test.
-        tracing::info!(
-            subscription_id = %sub.id,
-            cancel_at_period_end = sub.cancel_at_period_end,
-            cancel_at = ?sub.cancel_at,
-            sub_status = ?sub.status,
-            "Subscription update webhook received"
-        );
-
         let org_id = sub
             .metadata
             .get("organization_id")
@@ -987,33 +975,26 @@ impl BillingService {
         let meta = StripeSubscriptionMetadata::from_stripe(&sub.metadata);
 
         // Pending cancellation — user keeps current plan until period ends.
-        // For `CancellationInitiated` the only meaningful timestamp is
-        // `cancel_at` (the scheduled future cancellation date). `canceled_at`
-        // is the time of the cancellation REQUEST (i.e. now) and `ended_at`
-        // is only set after the subscription has actually ended, so neither
-        // is appropriate here. If `cancel_at` is missing the webhook isn't
-        // describing a scheduled cancellation we should email about.
+        // `sub.cancel_at` is the universal signal for "scheduled
+        // cancellation": Stripe sets it on every scheduled-cancel path
+        // (Portal cancel, our cancel_subscription endpoint via
+        // .cancel_at(MaxPeriodEnd), dashboard "cancel at end of period").
+        // `cancel_at_period_end` is asymmetric — only set when WE pass it
+        // explicitly via the API — so we don't gate on it.
         //
         // Idempotency: only emit on the false→true transition. Subsequent
         // updates while still pending (e.g., user changes their email)
         // would otherwise re-emit; the subscriber's plan_status mirror
         // hides the duplicate from `implied_status`, but downstream
         // analytics see two CancellationInitiated events for one decision.
-        if sub.cancel_at_period_end {
+        if let Some(period_end_ts) = sub.cancel_at {
             if prior_status == Some(PlanStatus::PendingCancellation) {
-                tracing::info!(
+                tracing::debug!(
                     organization_id = %organization.id,
                     "Subscription already pending cancellation, skipping re-emit"
                 );
                 return Ok(());
             }
-            let Some(period_end_ts) = sub.cancel_at else {
-                tracing::info!(
-                    organization_id = %organization.id,
-                    "Skipping CancellationInitiated: subscription has no `cancel_at` timestamp",
-                );
-                return Ok(());
-            };
             if let Some(owner) = owners.first() {
                 let authentication: AuthenticatedEntity = owner.clone().into();
                 let planned_period_end = chrono::DateTime::<Utc>::from_timestamp(period_end_ts, 0)
@@ -1046,11 +1027,6 @@ impl BillingService {
                         authentication,
                     ))
                     .await?;
-                tracing::info!(
-                    organization_id = %organization.id,
-                    subscription_id = %sub.id,
-                    "Published CancellationInitiated"
-                );
             }
             tracing::info!(
                 organization_id = %org_id,
@@ -1277,7 +1253,7 @@ impl BillingService {
         // `prior_status == pending_cancellation`; the subscriber then
         // flips it back to `active` via `implied_status`.
         if prior_status == Some(PlanStatus::PendingCancellation)
-            && !sub.cancel_at_period_end
+            && sub.cancel_at.is_none()
             && let Some(owner) = owners.first()
         {
             self.event_bus
@@ -1302,7 +1278,7 @@ impl BillingService {
     /// Handle trial_will_end webhook (3 days before trial expiry)
     async fn handle_trial_will_end(&self, sub: Subscription) -> Result<(), Error> {
         // Skip email if subscription is already marked for cancellation (e.g., user switched to Free)
-        if sub.cancel_at_period_end {
+        if sub.cancel_at.is_some() {
             tracing::info!(
                 "Trial ending soon but subscription is pending cancellation, skipping email"
             );
@@ -1818,7 +1794,8 @@ impl BillingService {
 
     /// Schedule a downgrade to Free at the end of the billing cycle.
     ///
-    /// Sets `cancel_at_period_end: true` on the active subscription. Stripe keeps the
+    /// Sets `cancel_at = MaxPeriodEnd` on the active subscription (Stripe
+    /// computes the period-end and writes it to `cancel_at`). Stripe keeps the
     /// subscription active until the period ends, then fires `customer.subscription.deleted`
     /// which triggers auto-Free creation via `handle_subscription_deleted`.
     pub async fn schedule_downgrade(
@@ -1846,7 +1823,7 @@ impl BillingService {
             let is_trialing = sub.status == SubscriptionStatus::Trialing;
 
             UpdateSubscription::new(&sub.id)
-                .cancel_at_period_end(true)
+                .cancel_at(UpdateSubscriptionCancelAt::MaxPeriodEnd)
                 .send(&self.stripe)
                 .await?;
 
@@ -1973,7 +1950,15 @@ impl BillingService {
                     ("organization_id".to_string(), organization_id.to_string()),
                 ])
                 .proration_behavior(proration)
-                .cancel_at_period_end(false) // Clear any pending cancellation
+                // Clear any pending cancellation. We standardize on `cancel_at`
+                // everywhere we SET or READ scheduled-cancellation state, but
+                // async-stripe-billing's UpdateSubscription has no way to send
+                // `cancel_at: null` (Option::is_none is skip-serialized), so the
+                // documented canonical clear `cancel_at_period_end(false)` is
+                // the only SDK-supported path. Stripe interprets it as "clear
+                // all scheduled cancellation state" regardless of how cancel_at
+                // was originally set.
+                .cancel_at_period_end(false)
                 .send(&self.stripe)
                 .await?;
 
@@ -2251,15 +2236,19 @@ impl BillingService {
         ))
     }
 
-    /// In-app subscription cancellation. Sets Stripe `cancel_at_period_end`,
+    /// In-app subscription cancellation. Sets Stripe `cancel_at` (via the
+    /// `MaxPeriodEnd` sentinel — Stripe computes the period-end timestamp),
     /// stashes the canonical Scanopy reason + save-offer context in
     /// subscription metadata, and returns the period end so the modal can
     /// render the retention disclosure inline.
     ///
-    /// Pattern A: the webhook detects the `cancel_at_period_end: true`
-    /// transition and emits `BillingOperation::CancellationInitiated` with
-    /// the metadata-derived payload. The subscriber then mirrors
-    /// `plan_status` to `pending_cancellation`.
+    /// Pattern A: the webhook handler detects `sub.cancel_at.is_some()` and
+    /// emits `BillingOperation::CancellationInitiated` with the
+    /// metadata-derived payload. The subscriber then mirrors `plan_status`
+    /// to `pending_cancellation`. We standardize on `cancel_at` because it's
+    /// the universal scheduled-cancel signal across all Stripe paths (in-app,
+    /// Customer Portal, dashboard); `cancel_at_period_end` is only set when
+    /// we explicitly request it via the API, so we don't gate on it.
     pub async fn cancel_subscription(
         &self,
         organization_id: Uuid,
@@ -2284,14 +2273,15 @@ impl BillingService {
         };
 
         let updated = UpdateSubscription::new(&sub.id)
-            .cancel_at_period_end(true)
+            .cancel_at(UpdateSubscriptionCancelAt::MaxPeriodEnd)
             .cancellation_details(cancellation_details)
             .metadata(meta.to_stripe())
             .send(&self.stripe)
             .await?;
 
-        // Period end: prefer cancel_at (Stripe writes it when cancel_at_period_end
-        // is set), fall back to the first item's current_period_end.
+        // Period end: read back the cancel_at Stripe just set. Fall back to
+        // the first item's current_period_end in the unlikely event the API
+        // response omits cancel_at.
         let period_end_ts = updated
             .cancel_at
             .or_else(|| updated.items.data.first().map(|i| i.current_period_end))
@@ -2303,8 +2293,10 @@ impl BillingService {
     }
 
     /// Clear a pending cancellation. Pattern A: endpoint calls Stripe to
-    /// flip `cancel_at_period_end` to false; the webhook detects the
-    /// transition and emits `BillingOperation::Reactivated`. The
+    /// clear the scheduled cancellation (see in-line comment about the SDK
+    /// constraint that forces us to use `cancel_at_period_end(false)` for
+    /// the clear-only path); the webhook detects `sub.cancel_at` flipping
+    /// back to `None` and emits `BillingOperation::Reactivated`. The
     /// subscriber mirrors `plan_status` back to `active`.
     pub async fn reactivate_subscription(
         &self,
@@ -2314,6 +2306,14 @@ impl BillingService {
         let organization = self.get_organization(organization_id).await?;
         let sub = self.find_current_subscription(&organization).await?;
 
+        // Clear the scheduled cancellation. We standardize on `cancel_at`
+        // everywhere we SET or READ scheduled-cancellation state, but
+        // async-stripe-billing's UpdateSubscription has no way to send
+        // `cancel_at: null` (Option::is_none is skip-serialized), so the
+        // documented canonical clear `cancel_at_period_end(false)` is the
+        // only SDK-supported path. Stripe interprets it as "clear all
+        // scheduled cancellation state" regardless of how cancel_at was
+        // originally set.
         UpdateSubscription::new(&sub.id)
             .cancel_at_period_end(false)
             .send(&self.stripe)

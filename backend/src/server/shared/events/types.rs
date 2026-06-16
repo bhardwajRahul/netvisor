@@ -215,9 +215,9 @@ pub enum BillingOperation {
         planned_period_end: DateTime<Utc>,
     },
     /// User cleared a pending cancellation (via in-app reactivate). Stripe's
-    /// `cancel_at_period_end` flips from true to false; we emit this so the
-    /// org subscriber's `implied_status` mirror flips `plan_status` back to
-    /// `active` and analytics subscribers can attribute the un-churn.
+    /// `cancel_at` flips from `Some(period_end)` back to `None`; we emit this
+    /// so the org subscriber's `implied_status` mirror flips `plan_status`
+    /// back to `active` and analytics subscribers can attribute the un-churn.
     Reactivated,
     PaymentMethodAdded,
     PaymentMethodRemoved,
