@@ -69,47 +69,13 @@ impl Subscriber<BillingOperation> for OrganizationService {
     }
 
     async fn handle(&self, events: Vec<Event<BillingOperation>>) -> Result<(), Error> {
-        // Diagnostic tracing: surface every step of the plan_status mirror so
-        // when an event doesn't flip plan_status we can tell from logs whether
-        // the subscriber ran, what the prior status was, what implied_status
-        // returned, whether the comparison fired, and whether the update
-        // succeeded. Targeted at the Portal-cancel `pending_cancellation`
-        // mirror bug under investigation (2026-06-15); kept in long-term as
-        // these traces are cheap and the plan_status mirror is critical.
-        let batch_ops: Vec<String> = events
-            .iter()
-            .map(|e| e.operation.discriminant().to_string())
-            .collect();
-        let batch_orgs: Vec<uuid::Uuid> = events.iter().map(|e| e.scope.organization_id).collect();
-        tracing::info!(
-            event_count = events.len(),
-            ops = ?batch_ops,
-            org_ids = ?batch_orgs,
-            "OrganizationService<BillingOperation>::handle batch arrived",
-        );
-
         for event in events {
             let org_id = event.scope.organization_id;
-            let op_disc = event.operation.discriminant().to_string();
             let Some(mut organization) = self.get_by_id(&org_id).await? else {
-                tracing::warn!(
-                    %org_id,
-                    op = %op_disc,
-                    "OrganizationService<BillingOperation>::handle org not found, skipping",
-                );
                 continue;
             };
 
-            let prior_status = organization.base.plan_status;
             let implied = event.operation.implied_status();
-            tracing::info!(
-                %org_id,
-                op = %op_disc,
-                prior_plan_status = ?prior_status,
-                implied_status = ?implied,
-                "OrganizationService<BillingOperation>::handle per-event",
-            );
-
             let mut changed = false;
             match &event.operation {
                 BillingOperation::Paused { .. } => {
@@ -192,53 +158,14 @@ impl Subscriber<BillingOperation> for OrganizationService {
             if let Some(status) = implied {
                 let new_status = Some(status);
                 if organization.base.plan_status != new_status {
-                    tracing::info!(
-                        %org_id,
-                        op = %op_disc,
-                        from = ?organization.base.plan_status,
-                        to = ?new_status,
-                        "OrganizationService<BillingOperation>::handle mirror writing plan_status",
-                    );
                     organization.base.plan_status = new_status;
                     changed = true;
-                } else {
-                    tracing::info!(
-                        %org_id,
-                        op = %op_disc,
-                        plan_status = ?new_status,
-                        "OrganizationService<BillingOperation>::handle mirror noop (plan_status already matches)",
-                    );
                 }
             }
 
             if changed {
-                tracing::info!(
-                    %org_id,
-                    op = %op_disc,
-                    "OrganizationService<BillingOperation>::handle calling update",
-                );
-                match self
-                    .update(&mut organization, AuthenticatedEntity::System)
-                    .await
-                {
-                    Ok(_) => {
-                        tracing::info!(
-                            %org_id,
-                            op = %op_disc,
-                            persisted_plan_status = ?organization.base.plan_status,
-                            "OrganizationService<BillingOperation>::handle update Ok",
-                        );
-                    }
-                    Err(e) => {
-                        tracing::error!(
-                            %org_id,
-                            op = %op_disc,
-                            error = %e,
-                            "OrganizationService<BillingOperation>::handle update Err",
-                        );
-                        return Err(e);
-                    }
-                }
+                self.update(&mut organization, AuthenticatedEntity::System)
+                    .await?;
             }
         }
 

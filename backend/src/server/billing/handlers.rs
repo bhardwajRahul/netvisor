@@ -564,8 +564,8 @@ async fn resume_subscription(
 
 /// Reactivate a subscription pending cancellation
 ///
-/// Clears Stripe's `cancel_at_period_end`. Available while
-/// `plan_status === 'pending_cancellation'`.
+/// Clears Stripe's scheduled-cancellation state (`cancel_at` → None).
+/// Available while `plan_status === 'pending_cancellation'`.
 #[utoipa::path(
     post,
     path = "/reactivate",
@@ -625,9 +625,10 @@ async fn extend_trial(
 
 /// Cancel subscription
 ///
-/// In-app cancel modal endpoint. Sets Stripe `cancel_at_period_end`, stashes
-/// the canonical Scanopy reason in subscription metadata, returns the period
-/// end so the modal can render the retention disclosure.
+/// In-app cancel modal endpoint. Sets Stripe `cancel_at` to the current
+/// period end (via Stripe's `MaxPeriodEnd` sentinel), stashes the canonical
+/// Scanopy reason in subscription metadata, returns the period end so the
+/// modal can render the retention disclosure.
 #[utoipa::path(
     post,
     path = "/cancel",
