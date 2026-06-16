@@ -18,12 +18,13 @@ pub struct HostSummary {
     pub label: String,
 }
 
-/// Per-tag change indicator. Status is encoded with glyph + (for Removed)
-/// strikethrough — never via colour. Colour stays bound to the entity type
-/// per `EntityDiscriminants::color()`.
+/// Shared digest status for any `DiscoveryTracked` entity (hosts AND their
+/// children). Status is encoded visually with glyph + strikethrough on tags,
+/// or a badge on host cards — never via colour. Colour stays bound to the
+/// entity type per `EntityDiscriminants::color()`.
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub enum TagStatus {
+pub enum EntityDigestStatus {
     /// Created during this scan window.
     New,
     /// Live and re-reported in this scan (steady state).
@@ -31,12 +32,12 @@ pub enum TagStatus {
     Unchanged,
     /// Not reported in this scan, but the entity's `last_discovery_id`
     /// points at one of the most recent N successful scans on the
-    /// network — could be transient. Doesn't graduate to `Removed`
-    /// until it's been missing across multiple consecutive scans.
+    /// network — could be transient. Doesn't graduate to `Missing` until
+    /// it's been missing across multiple consecutive scans.
     PossiblyMissing,
     /// Not reported this scan, and last seen so long ago we're confident
     /// it's gone.
-    Removed,
+    Missing,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -47,7 +48,12 @@ pub struct PortSummary {
     /// includes UUIDs.
     pub label: String,
     #[serde(default)]
-    pub status: TagStatus,
+    pub status: EntityDigestStatus,
+    /// True when `status` was acquired this scan (a transition just
+    /// happened). Stably-stale entities have `is_fresh = false` and
+    /// don't trigger the host card's inclusion in the digest.
+    #[serde(default)]
+    pub is_fresh: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -65,7 +71,9 @@ pub struct ServiceSummary {
     #[serde(default)]
     pub logo_url: Option<String>,
     #[serde(default)]
-    pub status: TagStatus,
+    pub status: EntityDigestStatus,
+    #[serde(default)]
+    pub is_fresh: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -74,7 +82,9 @@ pub struct IpAddressSummary {
     pub host_id: Uuid,
     pub address: String,
     #[serde(default)]
-    pub status: TagStatus,
+    pub status: EntityDigestStatus,
+    #[serde(default)]
+    pub is_fresh: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -83,7 +93,9 @@ pub struct InterfaceSummary {
     pub host_id: Uuid,
     pub label: String,
     #[serde(default)]
-    pub status: TagStatus,
+    pub status: EntityDigestStatus,
+    #[serde(default)]
+    pub is_fresh: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -99,26 +111,19 @@ pub struct VlanSummary {
     pub name: String,
 }
 
-/// Status of a host within a digest. Drives the badge rendering and whether
-/// child deltas are included on the card.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum HostCardStatus {
-    New,
-    Vanished,
-    Changed,
-}
-
 /// Rich host representation for the digest email — mirrors the UI's
 /// `HostCard.svelte` so a recipient sees the same shape they'd see in-app.
-/// Children reflect live state at `finished_at`, with per-tag `status`
-/// indicating which were newly discovered, unchanged, or removed in this
-/// scan. Bindings are intentionally not included — they're the
+/// `status` uses the same `EntityDigestStatus` enum as its children, so the
+/// digest's vocabulary stays consistent. A host that's listed because its
+/// CHILDREN changed (rather than the host itself) carries `Unchanged`; the
+/// surrounding section header ("Hosts with changes") provides the context
+/// and the host's badge is hidden in that case. Children reflect live state
+/// at `finished_at`. Bindings are intentionally not included — they're the
 /// service↔port↔IP join that the other rows already cover.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AffectedHostCard {
     pub host: HostSummary,
-    pub status: HostCardStatus,
+    pub status: EntityDigestStatus,
     pub services: Vec<ServiceSummary>,
     pub ip_addresses: Vec<IpAddressSummary>,
     pub interfaces: Vec<InterfaceSummary>,

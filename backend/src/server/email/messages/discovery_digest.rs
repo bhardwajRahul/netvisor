@@ -3,8 +3,8 @@ use uuid::Uuid;
 use super::{Email, EmailCategory};
 use crate::server::{
     digest::payload::{
-        AffectedHostCard, DiscoveryDigestPayload, HostCardStatus, InterfaceSummary,
-        IpAddressSummary, PortSummary, ServiceSummary, SubnetSummary, TagStatus, VlanSummary,
+        AffectedHostCard, DiscoveryDigestPayload, EntityDigestStatus, InterfaceSummary,
+        IpAddressSummary, PortSummary, ServiceSummary, SubnetSummary, VlanSummary,
     },
     shared::{
         concepts::Concept,
@@ -113,7 +113,7 @@ const MAX_HOST_CARDS_INLINE: usize = 5;
 struct TagItem {
     label: String,
     color: Color,
-    status: TagStatus,
+    status: EntityDigestStatus,
     href: Option<String>,
     /// Already-absolute URL (relative `/logos/...` paths rewritten by the
     /// caller against `public_url`).
@@ -121,16 +121,16 @@ struct TagItem {
 }
 
 /// Render a single tag chip. Background/text colour come from the entity
-/// type. Status is conveyed by the prefix glyph + (for Removed) strike-
+/// type. Status is conveyed by the prefix glyph + (for Missing) strike-
 /// through on the label. When `href` is `Some` the entire chip becomes a
 /// clickable anchor that opens the corresponding modal in the app.
 fn render_tag(tag: &TagItem) -> String {
     let (bg, fg) = tag.color.email_tag_hex();
     let (prefix, label_style) = match tag.status {
-        TagStatus::New => ("+ ", ""),
-        TagStatus::Removed => ("− ", "text-decoration: line-through;"),
-        TagStatus::PossiblyMissing => ("? ", "font-style: italic;"),
-        TagStatus::Unchanged => ("", ""),
+        EntityDigestStatus::New => ("+ ", ""),
+        EntityDigestStatus::Missing => ("− ", "text-decoration: line-through;"),
+        EntityDigestStatus::PossiblyMissing => ("? ", "font-style: italic;"),
+        EntityDigestStatus::Unchanged => ("", ""),
     };
     let logo = tag.logo_url.as_deref().filter(|u| !u.is_empty()).map_or_else(
         String::new,
@@ -320,17 +320,26 @@ fn render_host_cards_section(heading: &str, cards: &[AffectedHostCard], base: &s
 }
 
 fn render_host_card(card: &AffectedHostCard, base: &str) -> String {
-    let (badge_label, badge_bg, badge_fg) = match card.status {
-        HostCardStatus::New => ("New", "#dcfce7", "#166534"),
-        HostCardStatus::Vanished => ("Missing", "#fee2e2", "#991b1b"),
-        HostCardStatus::Changed => ("Changed", "#fef3c7", "#92400e"),
-    };
-    let badge = format!(
-        r#"<span style="display: inline-block; padding: 2px 8px; font-size: 12px; font-weight: 600; border-radius: 999px; background-color: {bg}; color: {fg};">{label}</span>"#,
-        bg = badge_bg,
-        fg = badge_fg,
-        label = badge_label,
-    );
+    // Badge mirrors the per-tag glyph convention: a host that's listed
+    // because its children changed has `Unchanged` status — the surrounding
+    // section header carries the context, so no badge is shown.
+    let badge = match card.status {
+        EntityDigestStatus::New => Some(("New", "#dcfce7", "#166534", "")),
+        EntityDigestStatus::PossiblyMissing => Some((
+            "Possibly missing",
+            "#fef9c3",
+            "#854d0e",
+            "font-style: italic;",
+        )),
+        EntityDigestStatus::Missing => Some(("Missing", "#fee2e2", "#991b1b", "")),
+        EntityDigestStatus::Unchanged => None,
+    }
+    .map(|(label, bg, fg, extra)| {
+        format!(
+            r#"<span style="display: inline-block; padding: 2px 8px; font-size: 12px; font-weight: 600; border-radius: 999px; background-color: {bg}; color: {fg}; {extra}">{label}</span>"#,
+        )
+    })
+    .unwrap_or_default();
     let host_href = format!("{base}/?modal=host-editor&id={}", card.host.id);
     let host_link = format!(
         r#"<a href="{href}" style="text-decoration: none; color: #1a1a1a;">{label}</a>"#,

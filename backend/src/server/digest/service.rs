@@ -12,11 +12,12 @@ use crate::server::discovery::r#impl::types::DiscoveryType;
 use crate::server::discovery::service::DiscoveryService;
 use crate::server::services::r#impl::definitions::{ServiceDefinition, ServiceDefinitionExt};
 use crate::server::services::r#impl::virtualization::ServiceVirtualization;
+use crate::server::shared::storage::snapshot::DiscoveryTracked;
 use crate::server::{
     digest::payload::{
         AffectedHostCard, DigestRecipient, DiscoveryDigestFlags, DiscoveryDigestOperation,
-        DiscoveryDigestPayload, DiscoveryDigestScope, HostCardStatus, HostSummary,
-        InterfaceSummary, IpAddressSummary, PortSummary, ServiceSummary, SubnetSummary, TagStatus,
+        DiscoveryDigestPayload, DiscoveryDigestScope, EntityDigestStatus, HostSummary,
+        InterfaceSummary, IpAddressSummary, PortSummary, ServiceSummary, SubnetSummary,
         VlanSummary,
     },
     hosts::{r#impl::base::Host, service::HostService},
@@ -181,87 +182,100 @@ impl DiscoveryDigestService {
                 .collect()
         };
 
-        // Three buckets of hosts the digest covers.
-        let hosts_added_records: Vec<Host> = self
-            .host_service
-            .get_all(
-                StorableFilter::<Host>::new_from_network_ids(&[network_id])
-                    .live()
-                    .created_between(t_start, t_end),
-            )
-            .await?;
-        let hosts_vanished_records: Vec<Host> = self
-            .host_service
-            .get_all(
-                StorableFilter::<Host>::new_from_network_ids(&[network_id])
-                    .live()
-                    .created_before(t_start)
-                    .last_seen_before(t_start),
-            )
-            .await?;
-        let hosts_scanned_records: Vec<Host> = self
-            .host_service
-            .get_all(
-                StorableFilter::<Host>::new_from_network_ids(&[network_id])
-                    .live()
-                    .created_before(t_start)
-                    .last_seen_between(t_start, t_end),
-            )
-            .await?;
-
-        // Union of all hosts that might appear in the digest. We hydrate
-        // children for all of them in one pass; the per-tag `status` on each
-        // child summary tells the renderer what changed.
-        let mut affected_ids: Vec<Uuid> = Vec::with_capacity(
-            hosts_added_records.len() + hosts_vanished_records.len() + hosts_scanned_records.len(),
-        );
-        affected_ids.extend(hosts_added_records.iter().map(|h| h.id));
-        affected_ids.extend(hosts_vanished_records.iter().map(|h| h.id));
-        affected_ids.extend(hosts_scanned_records.iter().map(|h| h.id));
-
-        let vanished_host_ids: HashSet<Uuid> =
-            hosts_vanished_records.iter().map(|h| h.id).collect();
-
         // Recent-history grace: a child not in this scan that was last
         // touched by one of the top-N most recent historical discoveries
-        // on this network gets `PossiblyMissing` rather than `Removed`.
-        // Tolerates transient scan-to-scan noise.
+        // on this network gets `PossiblyMissing` rather than `Missing`.
+        // Tolerates transient scan-to-scan noise. Top-(N+1) gives us the
+        // discovery that just fell off the grace window this scan (used to
+        // detect fresh `Missing` transitions).
         const REMOVAL_GRACE_SCANS: usize = 3;
-        let recent_discovery_ids: HashSet<Uuid> = self
+        let recent_window: Vec<Uuid> = self
             .discovery_service
-            .get_recent_historical_ids(network_id, REMOVAL_GRACE_SCANS)
-            .await?
+            .get_recent_historical_ids(network_id, REMOVAL_GRACE_SCANS + 1)
+            .await?;
+        let window = DigestWindow {
+            t_start,
+            t_end,
+            recent: recent_window
+                .iter()
+                .take(REMOVAL_GRACE_SCANS)
+                .copied()
+                .collect(),
+            d1: recent_window.get(1).copied(),
+            d_dropped: recent_window.get(REMOVAL_GRACE_SCANS).copied(),
+        };
+
+        // One query for all live hosts on the network — the generic helper
+        // buckets them by status. Per-entity-type queries for children are
+        // batched the same way inside fetch_current_children.
+        let all_hosts: Vec<Host> = self
+            .host_service
+            .get_all(StorableFilter::<Host>::new_from_network_ids(&[network_id]).live())
+            .await?;
+        let scanned_host_ids: HashSet<Uuid> = scanned.host_ids.iter().copied().collect();
+
+        // First pass on hosts: bucket each one by status + fresh.
+        struct HostBucket {
+            host: Host,
+            status: EntityDigestStatus,
+            is_fresh: bool,
+        }
+        let host_buckets: Vec<HostBucket> = all_hosts
             .into_iter()
+            .map(|h| {
+                let (status, is_fresh) = compute_digest_status(&h, &scanned_host_ids, &window);
+                HostBucket {
+                    host: h,
+                    status,
+                    is_fresh,
+                }
+            })
+            .collect();
+
+        // Affected = added + every host that's seen-this-scan (their
+        // children might have fresh deltas) + every host that's
+        // (Possibly)Missing with fresh transition (we want to render
+        // their last-known children too).
+        let affected_ids: Vec<Uuid> = host_buckets
+            .iter()
+            .filter(|b| match b.status {
+                EntityDigestStatus::New | EntityDigestStatus::Unchanged => true,
+                EntityDigestStatus::PossiblyMissing | EntityDigestStatus::Missing => b.is_fresh,
+            })
+            .map(|b| b.host.id)
             .collect();
 
         let current_children = self
-            .fetch_current_children(
-                &affected_ids,
-                scanned,
-                &vanished_host_ids,
-                &recent_discovery_ids,
-                t_start,
-                t_end,
-            )
+            .fetch_current_children(&affected_ids, scanned, &window)
             .await?;
 
-        let hosts_added: Vec<AffectedHostCard> = hosts_added_records
-            .iter()
-            .map(|h| build_card(h, HostCardStatus::New, &current_children))
-            .collect();
-        let hosts_vanished: Vec<AffectedHostCard> = hosts_vanished_records
-            .iter()
-            .map(|h| build_card(h, HostCardStatus::Vanished, &current_children))
-            .collect();
+        let mut hosts_added: Vec<AffectedHostCard> = Vec::new();
+        let mut hosts_vanished: Vec<AffectedHostCard> = Vec::new();
+        let mut hosts_changed: Vec<AffectedHostCard> = Vec::new();
 
-        // A scanned host is "Changed" only if at least one of its children
-        // has a non-Unchanged status. Hosts with no real deltas are dropped
-        // from the digest entirely.
-        let mut hosts_changed: Vec<AffectedHostCard> = hosts_scanned_records
-            .iter()
-            .map(|h| build_card(h, HostCardStatus::Changed, &current_children))
-            .filter(card_has_changes)
-            .collect();
+        for HostBucket {
+            host,
+            status,
+            is_fresh,
+        } in host_buckets
+        {
+            match status {
+                EntityDigestStatus::New => {
+                    hosts_added.push(build_card(&host, status, &current_children));
+                }
+                EntityDigestStatus::PossiblyMissing | EntityDigestStatus::Missing => {
+                    if is_fresh {
+                        hosts_vanished.push(build_card(&host, status, &current_children));
+                    }
+                }
+                EntityDigestStatus::Unchanged => {
+                    let card = build_card(&host, status, &current_children);
+                    if card_has_fresh_children(&card) {
+                        hosts_changed.push(card);
+                    }
+                }
+            }
+        }
         hosts_changed.sort_by(|a, b| a.host.label.cmp(&b.host.label));
 
         // VLANs added / removed mirror the host added/vanished logic but on
@@ -307,25 +321,15 @@ impl DiscoveryDigestService {
     }
 
     /// Fetch live children for the affected-host set and bucket them by
-    /// host_id, with each child summary carrying its `TagStatus`:
-    /// - `New` when `created_at` falls inside the scan window.
-    /// - `PossiblyMissing` when not in this scan but `last_discovery_id`
-    ///   matches one of the recent-history grace discoveries.
-    /// - `Removed` when not in this scan and last touched by a discovery
-    ///   older than the grace window.
-    /// - `Unchanged` otherwise.
-    ///
-    /// Children of vanished hosts always get `Unchanged` (we just enumerate
-    /// what we know; the host card itself communicates the vanished state).
-    /// Filters Unclaimed Open Ports out of the service list.
+    /// host_id. Each child summary carries its `EntityDigestStatus` and
+    /// an `is_fresh` flag (computed via the generic
+    /// [`compute_digest_status`] helper). Filters Unclaimed Open Ports and
+    /// loopback IPs.
     async fn fetch_current_children(
         &self,
         host_ids: &[Uuid],
         scanned: &ScannedEntityIds,
-        vanished_host_ids: &HashSet<Uuid>,
-        recent_discovery_ids: &HashSet<Uuid>,
-        t_start: DateTime<Utc>,
-        t_end: DateTime<Utc>,
+        window: &DigestWindow,
     ) -> Result<HashMap<Uuid, HostChildren>> {
         if host_ids.is_empty() {
             return Ok(HashMap::new());
@@ -383,80 +387,39 @@ impl DiscoveryDigestService {
             if s.base.service_definition.is_open_ports() {
                 continue;
             }
-            let status = tag_status(
-                s.base.host_id,
-                s.id,
-                s.last_discovery_id,
-                s.created_at,
-                &scanned_service_ids,
-                vanished_host_ids,
-                recent_discovery_ids,
-                t_start,
-                t_end,
-            );
+            let (status, is_fresh) = compute_digest_status(s, &scanned_service_ids, window);
             out.entry(s.base.host_id)
                 .or_default()
                 .services
-                .push(service_summary(s, status));
+                .push(service_summary(s, status, is_fresh));
         }
         for ip in &ips {
             // Skip loopback (127.0.0.0/8, ::1) — typically the daemon's own
             // local address, set once at daemon registration and never
-            // re-included in subsequent scan sets. Without this filter it
-            // would graduate straight to Removed and falsely mark the
-            // daemon host as Changed.
+            // re-included in subsequent scan sets. Would graduate straight
+            // to Missing and falsely mark the daemon host as Changed.
             if ip.base.ip_address.is_loopback() {
                 continue;
             }
-            let status = tag_status(
-                ip.base.host_id,
-                ip.id,
-                ip.last_discovery_id,
-                ip.created_at,
-                &scanned_ip_ids,
-                vanished_host_ids,
-                recent_discovery_ids,
-                t_start,
-                t_end,
-            );
+            let (status, is_fresh) = compute_digest_status(ip, &scanned_ip_ids, window);
             out.entry(ip.base.host_id)
                 .or_default()
                 .ip_addresses
-                .push(ip_summary(ip, status));
+                .push(ip_summary(ip, status, is_fresh));
         }
         for i in &interfaces {
-            let status = tag_status(
-                i.base.host_id,
-                i.id,
-                i.last_discovery_id,
-                i.created_at,
-                &scanned_interface_ids,
-                vanished_host_ids,
-                recent_discovery_ids,
-                t_start,
-                t_end,
-            );
+            let (status, is_fresh) = compute_digest_status(i, &scanned_interface_ids, window);
             out.entry(i.base.host_id)
                 .or_default()
                 .interfaces
-                .push(interface_summary(i, status));
+                .push(interface_summary(i, status, is_fresh));
         }
         for p in &ports {
-            let status = tag_status(
-                p.base.host_id,
-                p.id,
-                p.last_discovery_id,
-                p.created_at,
-                &scanned_port_ids,
-                vanished_host_ids,
-                recent_discovery_ids,
-                t_start,
-                t_end,
-            );
+            let (status, is_fresh) = compute_digest_status(p, &scanned_port_ids, window);
             out.entry(p.base.host_id)
                 .or_default()
                 .ports
-                .push(port_summary(p, status));
+                .push(port_summary(p, status, is_fresh));
         }
         Ok(out)
     }
@@ -495,58 +458,64 @@ impl EventBusService<Host> for DiscoveryDigestService {
     }
 }
 
-/// Decide a child's `TagStatus`. Children of vanished hosts are flat
-/// `Unchanged` — the host card itself communicates the vanished state, so
-/// per-child markers would be redundant. For non-vanished hosts:
-/// - `created_at` inside the scan window ⇒ `New`.
-/// - In the scan set ⇒ `Unchanged`.
-/// - Not in the scan set, last discovered by one of the recent-history
-///   discoveries ⇒ `PossiblyMissing` (transient miss possible).
-/// - Older than the grace window ⇒ `Removed`.
-#[allow(clippy::too_many_arguments)]
-fn tag_status(
-    host_id: Uuid,
-    child_id: Uuid,
-    child_last_discovery_id: Option<Uuid>,
-    created_at: DateTime<Utc>,
-    scanned_ids: &HashSet<Uuid>,
-    vanished_host_ids: &HashSet<Uuid>,
-    recent_discovery_ids: &HashSet<Uuid>,
+/// Per-scan window context for `compute_digest_status`. Built once per
+/// digest from the network's recent-discovery history.
+struct DigestWindow {
     t_start: DateTime<Utc>,
     t_end: DateTime<Utc>,
-) -> TagStatus {
-    if vanished_host_ids.contains(&host_id) {
-        return TagStatus::Unchanged;
+    /// Top-N most-recent historical discoveries (grace window).
+    recent: HashSet<Uuid>,
+    /// Previous scan: `last_discovery_id == this` ⇒ entity was seen last
+    /// time and isn't now → fresh PossiblyMissing transition.
+    d1: Option<Uuid>,
+    /// The discovery that just dropped off the top-N this scan:
+    /// `last_discovery_id == this` ⇒ entity just graduated to Missing.
+    d_dropped: Option<Uuid>,
+}
+
+/// Compute the per-entity digest status. Generic over any
+/// `DiscoveryTracked` type — hosts and their children all flow through
+/// this single helper.
+///
+/// Returns `(status, is_fresh)` where `is_fresh` means "this status was
+/// acquired in THIS scan" (a transition just happened). Stably-stale
+/// entities have `is_fresh == false` and don't trigger card inclusion.
+///
+/// `scanned_ids` is the daemon-reported set for whichever entity kind
+/// `T` is — `scanned.host_ids` for hosts, `scanned.port_ids` for ports,
+/// etc.
+fn compute_digest_status<T: DiscoveryTracked>(
+    entity: &T,
+    scanned_ids: &HashSet<Uuid>,
+    window: &DigestWindow,
+) -> (EntityDigestStatus, bool) {
+    use EntityDigestStatus::*;
+    let id = entity.id();
+    let created_at = entity.created_at();
+    let last_disc = entity.last_discovery_id();
+
+    if scanned_ids.contains(&id) {
+        let is_new = created_at >= window.t_start && created_at <= window.t_end;
+        return (if is_new { New } else { Unchanged }, is_new);
     }
-    if scanned_ids.contains(&child_id) {
-        return if created_at >= t_start && created_at <= t_end {
-            TagStatus::New
-        } else {
-            TagStatus::Unchanged
-        };
-    }
-    // Not in this scan. Grace check.
-    match child_last_discovery_id {
-        Some(lid) if recent_discovery_ids.contains(&lid) => TagStatus::PossiblyMissing,
-        _ => TagStatus::Removed,
+    // Not in this scan. Recent-history grace check.
+    let is_fresh_pm = matches!((last_disc, window.d1), (Some(a), Some(b)) if a == b);
+    let is_fresh_m = matches!((last_disc, window.d_dropped), (Some(a), Some(b)) if a == b);
+    match last_disc {
+        Some(lid) if window.recent.contains(&lid) => (PossiblyMissing, is_fresh_pm),
+        _ => (Missing, is_fresh_m),
     }
 }
 
-/// True when at least one child carries a non-`Unchanged` status — used to
-/// drop noisy "Changed" host cards where nothing actually changed.
-fn card_has_changes(card: &AffectedHostCard) -> bool {
-    card.services
-        .iter()
-        .any(|s| s.status != TagStatus::Unchanged)
-        || card
-            .ip_addresses
-            .iter()
-            .any(|x| x.status != TagStatus::Unchanged)
-        || card
-            .interfaces
-            .iter()
-            .any(|i| i.status != TagStatus::Unchanged)
-        || card.ports.iter().any(|p| p.status != TagStatus::Unchanged)
+/// True when at least one child has `is_fresh == true` — i.e. a real
+/// transition happened on this host this scan. Used to drop noisy host
+/// cards whose only "non-Unchanged" children have been in that state for
+/// multiple scans already.
+fn card_has_fresh_children(card: &AffectedHostCard) -> bool {
+    card.services.iter().any(|s| s.is_fresh)
+        || card.ip_addresses.iter().any(|x| x.is_fresh)
+        || card.interfaces.iter().any(|i| i.is_fresh)
+        || card.ports.iter().any(|p| p.is_fresh)
 }
 
 #[derive(Default)]
@@ -559,7 +528,7 @@ struct HostChildren {
 
 fn build_card(
     host: &Host,
-    status: HostCardStatus,
+    status: EntityDigestStatus,
     children: &HashMap<Uuid, HostChildren>,
 ) -> AffectedHostCard {
     let kids = children.get(&host.id);
@@ -583,7 +552,7 @@ fn host_summary(h: &Host) -> HostSummary {
     HostSummary { id: h.id, label }
 }
 
-fn port_summary(p: &Port, status: TagStatus) -> PortSummary {
+fn port_summary(p: &Port, status: EntityDigestStatus, is_fresh: bool) -> PortSummary {
     PortSummary {
         id: p.id,
         host_id: p.base.host_id,
@@ -591,10 +560,15 @@ fn port_summary(p: &Port, status: TagStatus) -> PortSummary {
         // suffix — recipients only want the human-readable port type.
         label: p.base.port_type.to_string(),
         status,
+        is_fresh,
     }
 }
 
-fn service_summary(s: &NetworkServiceEntity, status: TagStatus) -> ServiceSummary {
+fn service_summary(
+    s: &NetworkServiceEntity,
+    status: EntityDigestStatus,
+    is_fresh: bool,
+) -> ServiceSummary {
     let logo_url = {
         let url = s.base.service_definition.logo_url();
         if url.is_empty() {
@@ -614,19 +588,25 @@ fn service_summary(s: &NetworkServiceEntity, status: TagStatus) -> ServiceSummar
         is_container,
         logo_url,
         status,
+        is_fresh,
     }
 }
 
-fn ip_summary(ip: &IPAddress, status: TagStatus) -> IpAddressSummary {
+fn ip_summary(ip: &IPAddress, status: EntityDigestStatus, is_fresh: bool) -> IpAddressSummary {
     IpAddressSummary {
         id: ip.id,
         host_id: ip.base.host_id,
         address: ip.base.ip_address.to_string(),
         status,
+        is_fresh,
     }
 }
 
-fn interface_summary(i: &Interface, status: TagStatus) -> InterfaceSummary {
+fn interface_summary(
+    i: &Interface,
+    status: EntityDigestStatus,
+    is_fresh: bool,
+) -> InterfaceSummary {
     // Interface's Display includes its UUID. For the digest we want only the
     // human-readable bits: the description if discovery provided one, else
     // the ifIndex.
@@ -640,6 +620,7 @@ fn interface_summary(i: &Interface, status: TagStatus) -> InterfaceSummary {
         host_id: i.base.host_id,
         label,
         status,
+        is_fresh,
     }
 }
 
