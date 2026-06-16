@@ -151,10 +151,6 @@ impl Subscriber<BillingOperation> for EmailService {
                     planned_period_end, ..
                 } => {
                     let period_end_str = planned_period_end.format("%B %-d, %Y").to_string();
-                    tracing::info!(
-                        organization_id = %event.scope.organization_id,
-                        "Sending cancellation-initiated email"
-                    );
                     self.send_cancellation_initiated_email(org_owner, &period_end_str)
                         .await?;
                 }
