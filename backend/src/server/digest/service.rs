@@ -400,6 +400,14 @@ impl DiscoveryDigestService {
                 .push(service_summary(s, status));
         }
         for ip in &ips {
+            // Skip loopback (127.0.0.0/8, ::1) — typically the daemon's own
+            // local address, set once at daemon registration and never
+            // re-included in subsequent scan sets. Without this filter it
+            // would graduate straight to Removed and falsely mark the
+            // daemon host as Changed.
+            if ip.base.ip_address.is_loopback() {
+                continue;
+            }
             let status = tag_status(
                 ip.base.host_id,
                 ip.id,
