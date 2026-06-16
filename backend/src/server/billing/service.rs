@@ -2159,6 +2159,18 @@ impl BillingService {
         }
 
         let sub = self.find_current_subscription(&organization).await?;
+
+        // Eligibility: Stripe rejects `pause_collection` on non-Active subs
+        // (trialing, paused, past_due, etc.). Catch that pre-flight with a
+        // clear message instead of letting the SDK call fail with a raw
+        // Stripe error.
+        if sub.status != SubscriptionStatus::Active {
+            return Err(anyhow!(
+                "Subscription must be active to pause; current status: {}",
+                sub.status
+            ));
+        }
+
         let resumes_at = Utc::now() + chrono::Duration::days(duration.days() as i64);
 
         let meta = StripeSubscriptionMetadata {
@@ -2173,7 +2185,18 @@ impl BillingService {
             })
             .metadata(meta.to_stripe())
             .send(&self.stripe)
-            .await?;
+            .await
+            .map_err(|e| {
+                tracing::error!(
+                    organization_id = %organization_id,
+                    subscription_id = %sub.id,
+                    subscription_status = %sub.status,
+                    duration_days = duration.days(),
+                    error = ?e,
+                    "Stripe rejected pause_collection"
+                );
+                anyhow!("Stripe rejected the pause request: {e}")
+            })?;
 
         Ok(format!(
             "Subscription paused until {}.",
@@ -2192,9 +2215,23 @@ impl BillingService {
         let organization = self.get_organization(organization_id).await?;
         let sub = self.find_current_subscription(&organization).await?;
 
+        if sub.pause_collection.is_none() {
+            return Err(anyhow!("Subscription is not paused; nothing to resume."));
+        }
+
         stripe_billing::subscription::ResumeSubscription::new(&sub.id)
             .send(&self.stripe)
-            .await?;
+            .await
+            .map_err(|e| {
+                tracing::error!(
+                    organization_id = %organization_id,
+                    subscription_id = %sub.id,
+                    subscription_status = %sub.status,
+                    error = ?e,
+                    "Stripe rejected resume"
+                );
+                anyhow!("Stripe rejected the resume request: {e}")
+            })?;
 
         Ok("Subscription resumed.".to_string())
     }
@@ -2263,6 +2300,23 @@ impl BillingService {
         let organization = self.get_organization(organization_id).await?;
         let sub = self.find_current_subscription(&organization).await?;
 
+        // Eligibility: only Active or Trialing subs may schedule a
+        // period-end cancellation. Past-due, paused, or already-pending
+        // subs reach this endpoint only by manual API call or a UI bug;
+        // refuse cleanly.
+        if !matches!(
+            sub.status,
+            SubscriptionStatus::Active | SubscriptionStatus::Trialing
+        ) {
+            return Err(anyhow!(
+                "Subscription must be active or trialing to cancel; current status: {}",
+                sub.status
+            ));
+        }
+        if sub.cancel_at_period_end {
+            return Err(anyhow!("Subscription is already pending cancellation."));
+        }
+
         let stripe_feedback: Option<UpdateSubscriptionCancellationDetailsFeedback> =
             map_cancel_reason_to_stripe(request.reason_code);
 
@@ -2282,7 +2336,18 @@ impl BillingService {
             .cancellation_details(cancellation_details)
             .metadata(meta.to_stripe())
             .send(&self.stripe)
-            .await?;
+            .await
+            .map_err(|e| {
+                tracing::error!(
+                    organization_id = %organization_id,
+                    subscription_id = %sub.id,
+                    subscription_status = %sub.status,
+                    reason_code = ?request.reason_code,
+                    error = ?e,
+                    "Stripe rejected cancel_at_period_end"
+                );
+                anyhow!("Stripe rejected the cancel request: {e}")
+            })?;
 
         // Period end: prefer cancel_at (Stripe writes it when cancel_at_period_end
         // is set), fall back to the first item's current_period_end.
@@ -2308,10 +2373,27 @@ impl BillingService {
         let organization = self.get_organization(organization_id).await?;
         let sub = self.find_current_subscription(&organization).await?;
 
+        // Eligibility: there must be a pending cancellation to clear.
+        if !sub.cancel_at_period_end {
+            return Err(anyhow!(
+                "Subscription is not pending cancellation; nothing to reactivate."
+            ));
+        }
+
         UpdateSubscription::new(&sub.id)
             .cancel_at_period_end(false)
             .send(&self.stripe)
-            .await?;
+            .await
+            .map_err(|e| {
+                tracing::error!(
+                    organization_id = %organization_id,
+                    subscription_id = %sub.id,
+                    subscription_status = %sub.status,
+                    error = ?e,
+                    "Stripe rejected reactivate (cancel_at_period_end=false)"
+                );
+                anyhow!("Stripe rejected the reactivate request: {e}")
+            })?;
 
         Ok("Subscription reactivated.".to_string())
     }
@@ -2331,14 +2413,32 @@ impl BillingService {
         let organization = self.get_organization(organization_id).await?;
         let sub = self.find_current_subscription(&organization).await?;
 
+        if sub.status != SubscriptionStatus::Active {
+            return Err(anyhow!(
+                "Subscription must be active to apply the discount; current status: {}",
+                sub.status
+            ));
+        }
+
         UpdateSubscription::new(&sub.id)
             .discounts(vec![DiscountsDataParam {
-                coupon: Some(coupon_id),
+                coupon: Some(coupon_id.clone()),
                 discount: None,
                 promotion_code: None,
             }])
             .send(&self.stripe)
-            .await?;
+            .await
+            .map_err(|e| {
+                tracing::error!(
+                    organization_id = %organization_id,
+                    subscription_id = %sub.id,
+                    subscription_status = %sub.status,
+                    coupon_id = %coupon_id,
+                    error = ?e,
+                    "Stripe rejected discount apply"
+                );
+                anyhow!("Stripe rejected the discount: {e}")
+            })?;
 
         Ok("Discount applied to your subscription.".to_string())
     }

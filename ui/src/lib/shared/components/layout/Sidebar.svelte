@@ -132,9 +132,10 @@
 	let showBillingNotification = $derived.by(() => {
 		if (!organization) return false;
 		const isPastDue = organization.plan_status === 'past_due';
+		const isPaused = organization.plan_status === 'paused';
 		const isTrialing = organization.plan_status === 'trialing';
 		const hasPayment = organization.has_payment_method ?? false;
-		return isPastDue || (isTrialing && !hasPayment);
+		return isPastDue || isPaused || (isTrialing && !hasPayment);
 	});
 
 	// Active discovery sessions — used for notification dot on sidebar and sub-tabs

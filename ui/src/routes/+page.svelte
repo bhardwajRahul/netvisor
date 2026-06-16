@@ -74,7 +74,13 @@
 	let sidebarCollapsed = $state(false);
 	let dataLoadingStarted = $state(false);
 	let showSettings = $state(false);
-	let isPastDue = $derived(organization?.plan_status === 'past_due');
+	// Billing-blocking states force the Settings modal open on the Billing tab
+	// and make it non-dismissible. Past-due users have to update payment; paused
+	// users have to click Resume Now before they can navigate elsewhere. The
+	// inline alerts in BillingTab carry the matching urgent copy.
+	let isBillingBlocking = $derived(
+		organization?.plan_status === 'past_due' || organization?.plan_status === 'paused'
+	);
 	let allTabs = $state<
 		Array<{
 			id: string;
@@ -126,9 +132,10 @@
 		}
 	});
 
-	// Auto-open settings modal to billing tab when past_due
+	// Auto-open settings modal to billing tab when past_due or paused —
+	// either state requires user action before they can resume normal use.
 	$effect(() => {
-		if (isPastDue && appInitialized) {
+		if (isBillingBlocking && appInitialized) {
 			openModal('settings', { tab: 'billing' });
 		}
 	});
@@ -215,8 +222,8 @@
 				bind:collapsed={sidebarCollapsed}
 				bind:allTabs
 				bind:showSettings
-				settingsInitialTab={isPastDue ? 'billing' : 'account'}
-				settingsDismissible={!isPastDue}
+				settingsInitialTab={isBillingBlocking ? 'billing' : 'account'}
+				settingsDismissible={!isBillingBlocking}
 			/>
 		</div>
 
