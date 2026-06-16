@@ -216,9 +216,13 @@ pub enum BillingOperation {
     },
     /// User cleared a pending cancellation (via in-app reactivate). Stripe's
     /// `cancel_at_period_end` flips from true to false; we emit this so the
-    /// org subscriber's `implied_status` mirror flips `plan_status` back to
-    /// `active` and analytics subscribers can attribute the un-churn.
-    Reactivated,
+    /// org subscriber's `implied_status` mirror restores `plan_status` and
+    /// analytics subscribers can attribute the un-churn. `trialing` carries the
+    /// live Stripe subscription status so a sub reactivated mid-trial returns to
+    /// `trialing` rather than being mislabelled `active`.
+    Reactivated {
+        trialing: bool,
+    },
     PaymentMethodAdded,
     PaymentMethodRemoved,
 }
@@ -255,9 +259,11 @@ impl BillingOperation {
             | Self::PlanChanged { .. }
             | Self::PaymentRecovered { .. }
             | Self::Resumed { .. }
-            | Self::Reactivated => Some(PlanStatus::Active),
+            | Self::Reactivated { trialing: false } => Some(PlanStatus::Active),
 
-            Self::TrialStarted { .. } | Self::TrialExtended { .. } => Some(PlanStatus::Trialing),
+            Self::Reactivated { trialing: true }
+            | Self::TrialStarted { .. }
+            | Self::TrialExtended { .. } => Some(PlanStatus::Trialing),
             Self::TrialEnded {
                 converted: true, ..
             } => Some(PlanStatus::Active),

@@ -4,7 +4,7 @@
 	import type { Snippet } from 'svelte';
 	import { queryClient, queryKeys } from '$lib/api/query-client';
 	import { useCurrentUserQuery } from '$lib/features/auth/queries';
-	import { useOrganizationQuery, fetchOrganization } from '$lib/features/organizations/queries';
+	import { useOrganizationQuery } from '$lib/features/organizations/queries';
 	import {
 		identifyUser,
 		trackEvent,
@@ -29,6 +29,7 @@
 		billing_subscriptionDelayed
 	} from '$lib/paraglide/messages';
 	import { markPlanActivated } from '$lib/shared/billing/plan-activation-marker';
+	import { pollOrganizationUntil } from '$lib/shared/billing/poll-organization';
 
 	let { children }: { children: Snippet } = $props();
 
@@ -110,26 +111,18 @@
 	});
 
 	async function waitForBillingActivation(maxAttempts = 10) {
-		for (let i = 0; i < maxAttempts; i++) {
-			// Invalidate cache then fetch fresh organization data
-			await queryClient.invalidateQueries({ queryKey: queryKeys.organizations.current() });
-			const orgData = await fetchOrganization();
+		const orgData = await pollOrganizationUntil(isBillingPlanActive, { maxAttempts });
+		if (orgData) {
+			// Track billing completion for funnel analytics
+			trackEvent('billing_completed', {
+				plan: orgData.plan?.type ?? 'unknown',
+				amount: orgData.plan?.base_cents ?? 0,
+				plan_status: orgData.plan_status
+			});
 
-			if (orgData && isBillingPlanActive(orgData)) {
-				// Track billing completion for funnel analytics
-				trackEvent('billing_completed', {
-					plan: orgData.plan?.type ?? 'unknown',
-					amount: orgData.plan?.base_cents ?? 0,
-					plan_status: orgData.plan_status
-				});
-
-				markPlanActivated();
-				pushSuccess(billing_subscriptionActivated());
-				return true;
-			}
-
-			// Wait 2 seconds before next check
-			await new Promise((r) => setTimeout(r, 2000));
+			markPlanActivated();
+			pushSuccess(billing_subscriptionActivated());
+			return true;
 		}
 
 		pushError(billing_subscriptionDelayed());
@@ -243,7 +236,6 @@
 
 			// Refresh org data to update has_payment_method
 			queryClient.invalidateQueries({ queryKey: queryKeys.organizations.current() });
-			pushSuccess(billing_paymentMethodAdded());
 		}
 
 		// Check if current page matches where user should be
