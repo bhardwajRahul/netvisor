@@ -161,8 +161,16 @@ impl Subscriber<BillingOperation> for OrganizationService {
                     }
                 }
                 BillingOperation::SubscriptionCancelled { plan, .. } => {
+                    // Cancellation always downgrades the org to Free. The
+                    // cancel-side-effects path used to chain a separate
+                    // PlanChanged event for this; we now do the write here so
+                    // the downstream cascade is owned by the source event.
+                    let free_plan = crate::server::billing::plans::get_free_plan();
                     organization.base.last_downgrade_at = Some(event.timestamp);
                     organization.base.last_downgrade_from_plan = Some(*plan);
+                    if organization.base.plan.as_ref() != Some(&free_plan) {
+                        organization.base.plan = Some(free_plan);
+                    }
                     changed = true;
                 }
                 _ => {}

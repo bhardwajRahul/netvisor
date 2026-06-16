@@ -918,6 +918,19 @@ impl BillingService {
             "Processing subscription update"
         );
 
+        // Diagnostic: surface the cancel-related Stripe fields on every
+        // update webhook so we can verify in-app cancel and Portal cancel
+        // both arrive with `cancel_at_period_end=true`. Added 2026-06-15
+        // while diagnosing why CancellationInitiated wasn't firing for the
+        // user's Portal-cancel test.
+        tracing::info!(
+            subscription_id = %sub.id,
+            cancel_at_period_end = sub.cancel_at_period_end,
+            cancel_at = ?sub.cancel_at,
+            sub_status = ?sub.status,
+            "Subscription update webhook received"
+        );
+
         let org_id = sub
             .metadata
             .get("organization_id")
@@ -988,14 +1001,14 @@ impl BillingService {
         // analytics see two CancellationInitiated events for one decision.
         if sub.cancel_at_period_end {
             if prior_status == Some(PlanStatus::PendingCancellation) {
-                tracing::debug!(
+                tracing::info!(
                     organization_id = %organization.id,
                     "Subscription already pending cancellation, skipping re-emit"
                 );
                 return Ok(());
             }
             let Some(period_end_ts) = sub.cancel_at else {
-                tracing::debug!(
+                tracing::info!(
                     organization_id = %organization.id,
                     "Skipping CancellationInitiated: subscription has no `cancel_at` timestamp",
                 );
@@ -1700,36 +1713,6 @@ impl BillingService {
                         tenure_days,
                     },
                     authentication.clone(),
-                ))
-                .await?;
-
-            if was_trialing {
-                event_bus
-                    .publish(Event::new(
-                        OrgScope {
-                            organization_id: org_id,
-                        },
-                        BillingOperation::TrialEnded {
-                            plan: cancelled_plan.unwrap_or(free_plan),
-                            converted: false,
-                        },
-                        authentication.clone(),
-                    ))
-                    .await?;
-            }
-
-            // Sync the Free plan to Brevo
-            event_bus
-                .publish(Event::new(
-                    OrgScope {
-                        organization_id: org_id,
-                    },
-                    BillingOperation::PlanChanged {
-                        from: cancelled_plan.unwrap_or(free_plan),
-                        to: free_plan,
-                        is_downgrade: true,
-                    },
-                    owner.clone().into(),
                 ))
                 .await?;
         }
