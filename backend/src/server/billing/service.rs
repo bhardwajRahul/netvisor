@@ -1544,9 +1544,12 @@ impl BillingService {
             return Ok(());
         }
 
-        // --- Synchronous phase: downgrade immediately, return 200 to Stripe ---
+        // --- Snapshot prior subscription state, then publish the cancellation
+        // event. The org's plan/status/has_payment_method downgrade to Free is
+        // owned by the `SubscriptionCancelled` arm of the org billing subscriber
+        // (single writer); this handler does not touch the org row. ---
 
-        let Some(mut organization) = self.organization_service.get_by_id(&org_id).await? else {
+        let Some(organization) = self.organization_service.get_by_id(&org_id).await? else {
             tracing::warn!(
                 organization_id = %org_id,
                 subscription_id = %sub.id,
@@ -1556,8 +1559,6 @@ impl BillingService {
             return Ok(());
         };
 
-        // Snapshot prior subscription state from the org row (before we
-        // overwrite plan/status fields below).
         let cancelled_plan = organization
             .base
             .plan
@@ -1571,15 +1572,11 @@ impl BillingService {
         let tenure_days = (Utc::now() - organization.created_at).num_days().max(0) as u32;
 
         let free_plan = get_free_plan();
-        organization.base.has_payment_method = false;
-        self.organization_service
-            .update(&mut organization, AuthenticatedEntity::System)
-            .await?;
 
         tracing::info!(
             organization_id = %org_id,
             subscription_id = %sub.id,
-            "Subscription canceled, downgraded to Free plan"
+            "Subscription canceled — publishing SubscriptionCancelled (subscriber downgrades to Free)"
         );
 
         // --- Async phase: side effects that don't need to block the webhook response ---

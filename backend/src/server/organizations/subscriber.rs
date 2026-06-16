@@ -160,17 +160,25 @@ impl Subscriber<BillingOperation> for OrganizationService {
                         changed = true;
                     }
                 }
-                BillingOperation::SubscriptionCancelled { plan, .. } => {
-                    // Cancellation always downgrades the org to Free. The
-                    // cancel-side-effects path used to chain a separate
-                    // PlanChanged event for this; we now do the write here so
-                    // the downstream cascade is owned by the source event.
+                BillingOperation::SubscriptionCancelled { plan, .. }
+                | BillingOperation::TrialEnded {
+                    converted: false,
+                    plan,
+                    ..
+                } => {
+                    // A full cancellation / unconverted trial always downgrades
+                    // the org to Free. The cancel-side-effects path used to chain
+                    // a separate PlanChanged event for this; we now do the write
+                    // here so the downgrade is owned by the source event. The
+                    // implied_status mirror below sets plan_status = Active (Free
+                    // is an active plan) in the same write — one owner, one write.
                     let free_plan = crate::server::billing::plans::get_free_plan();
                     organization.base.last_downgrade_at = Some(event.timestamp);
                     organization.base.last_downgrade_from_plan = Some(*plan);
                     if organization.base.plan.as_ref() != Some(&free_plan) {
                         organization.base.plan = Some(free_plan);
                     }
+                    organization.base.has_payment_method = false;
                     changed = true;
                 }
                 _ => {}
