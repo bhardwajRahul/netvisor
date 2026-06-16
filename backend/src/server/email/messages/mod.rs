@@ -280,7 +280,7 @@ mod tests {
             url: "https://app.example.test/invite/abc",
             inviter: "owner@example.test",
         });
-        
+
         assert_fully_rendered(&DiscoveryGuide {
             daemon_name: "daemon-1",
             network_name: "Home",

@@ -1062,6 +1062,7 @@
 	"settings_billing_changePlan": "Change your plan",
 	"settings_billing_contactUs": "Contact us at",
 	"settings_billing_currentPlan": "Current Plan",
+	"settings_billing_discount_active": "{percentOff}% off your subscription until {expiresAt}",
 	"settings_billing_downgrade_pending": "Your plan will switch to Free at the end of your current billing cycle. Click Reactivate Subscription below to keep your current plan.",
 	"settings_billing_extendTrial_confirmBody": "We'll add 7 days to your trial. This is a one-time extension. Continue?",
 	"settings_billing_extendTrial_link": "Extend trial by 7 days (one-time)",

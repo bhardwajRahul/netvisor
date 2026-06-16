@@ -223,6 +223,14 @@ pub enum BillingOperation {
     Reactivated {
         trialing: bool,
     },
+    /// Save-offer discount applied — the org subscriber persists the
+    /// percent + expiry so the eligibility gate (once per org) can read
+    /// them, the BillingTab chip can render the live percent, and the
+    /// cancel modal can drop the Discount panel on a subsequent visit.
+    DiscountApplied {
+        percent_off: i64,
+        expires_at: DateTime<Utc>,
+    },
     PaymentMethodAdded,
     PaymentMethodRemoved,
 }
@@ -309,6 +317,7 @@ impl BillingOperation {
             | Self::TrialWillEnd { .. }
             | Self::FeatureLimitHit { .. }
             | Self::PaymentSucceeded { .. }
+            | Self::DiscountApplied { .. }
             | Self::PaymentMethodAdded
             | Self::PaymentMethodRemoved => None,
         }

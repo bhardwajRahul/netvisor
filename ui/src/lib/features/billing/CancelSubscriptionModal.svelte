@@ -10,7 +10,7 @@
 	} from '$lib/features/billing/queries';
 	import cancelReasons from '$lib/data/cancel-reasons.json';
 	import saveOffers from '$lib/data/save-offers.json';
-	import { pushSuccess } from '$lib/shared/stores/feedback';
+	import { pushSuccess, pushWarning } from '$lib/shared/stores/feedback';
 	import { useConfigQuery } from '$lib/shared/stores/config-query';
 	import { waitForOrgUpdate } from '$lib/shared/billing/wait-for-org-update';
 	import type { components } from '$lib/api/schema';
@@ -48,6 +48,7 @@
 		isOpen = false,
 		onClose,
 		lastPausedAt = null,
+		lastDiscountAt = null,
 		planStatus = null,
 		onSubscriptionChanged
 	}: {
@@ -55,6 +56,8 @@
 		onClose: () => void;
 		/** Org's `last_paused_at` — used for 6-month rolling pause cooldown messaging. */
 		lastPausedAt?: string | null;
+		/** Org's `last_discount_at` — once-ever flag; non-null hides the Discount panel. */
+		lastDiscountAt?: string | null;
 		/** Org's `plan_status` — pause/discount save offers are suppressed while trialing. */
 		planStatus?: string | null;
 		/** Called after pause/discount/cancel succeed so the caller can refresh the org payload. */
@@ -124,7 +127,7 @@
 		// Hide the discount panel when the deployment hasn't configured a
 		// Stripe coupon — the backend would reject the apply call anyway, but
 		// showing an option we can't fulfil is worse UX than not offering it.
-		return (offers ?? []).filter((o) => o !== 'discount' || discountAvailable);
+		return (offers ?? []).filter((o) => o !== 'discount' || (discountAvailable && !lastDiscountAt));
 	});
 
 	const offerMeta = (offerId: string) => saveOffers.find((o) => o.id === offerId);
@@ -193,7 +196,12 @@
 	async function handlePauseRedeem() {
 		try {
 			await pauseMutation.mutateAsync(selectedPauseDuration);
-			await waitForOrgUpdate((o) => o.plan_status === 'paused');
+			const flipped = await waitForOrgUpdate((o) => o.plan_status === 'paused');
+			if (flipped) {
+				pushSuccess(`Subscription paused until ${fmtDate(pauseResumesAt)}.`);
+			} else {
+				pushWarning('Pause request accepted. It may take a moment to reflect across your account.');
+			}
 			onSubscriptionChanged?.();
 			handleClose();
 		} catch {
@@ -204,9 +212,14 @@
 	async function handleDiscountRedeem() {
 		try {
 			await discountMutation.mutateAsync();
-			// The discount is applied immediately on Stripe's side; no plan_status
-			// transition to wait for. Just refresh the org so the BillingTab
-			// reflects any downstream changes (e.g. next invoice preview).
+			const flipped = await waitForOrgUpdate((o) => o.last_discount_at != null);
+			if (flipped) {
+				pushSuccess('Discount applied to your subscription.');
+			} else {
+				pushWarning(
+					'Discount request accepted. It may take a moment to reflect across your account.'
+				);
+			}
 			onSubscriptionChanged?.();
 			handleClose();
 		} catch {
@@ -224,12 +237,18 @@
 				save_offer_shown: shownOffers,
 				save_offer_redeemed: null
 			});
-			pushSuccess(
-				settings_billing_cancelModal_doneSummary({
-					periodEnd: fmtDate(response.period_end)
-				})
-			);
-			await waitForOrgUpdate((o) => o.plan_status === 'pending_cancellation');
+			const flipped = await waitForOrgUpdate((o) => o.plan_status === 'pending_cancellation');
+			if (flipped) {
+				pushSuccess(
+					settings_billing_cancelModal_doneSummary({
+						periodEnd: fmtDate(response.period_end)
+					})
+				);
+			} else {
+				pushWarning(
+					'Cancellation request accepted. It may take a moment to reflect across your account.'
+				);
+			}
 			onSubscriptionChanged?.();
 			handleClose();
 		} catch {

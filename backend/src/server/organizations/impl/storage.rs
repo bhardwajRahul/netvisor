@@ -65,6 +65,9 @@ impl Storable for Organization {
                     trial_extended_used,
                     last_downgrade_at,
                     last_downgrade_from_plan,
+                    last_discount_at,
+                    discount_save_offer_percent_off,
+                    discount_save_offer_active_until,
                     brevo_company_id,
                     plan_limit_notifications,
                     use_case,
@@ -87,6 +90,9 @@ impl Storable for Organization {
                 "trial_extended_used",
                 "last_downgrade_at",
                 "last_downgrade_from_plan",
+                "last_discount_at",
+                "discount_save_offer_percent_off",
+                "discount_save_offer_active_until",
                 "brevo_company_id",
                 "plan_limit_notifications",
                 "use_case",
@@ -106,6 +112,9 @@ impl Storable for Organization {
                 SqlValue::Bool(trial_extended_used),
                 SqlValue::OptionTimestamp(last_downgrade_at),
                 SqlValue::OptionBillingPlan(last_downgrade_from_plan),
+                SqlValue::OptionTimestamp(last_discount_at),
+                SqlValue::OptionalI64(discount_save_offer_percent_off),
+                SqlValue::OptionTimestamp(discount_save_offer_active_until),
                 SqlValue::OptionalString(brevo_company_id),
                 SqlValue::PlanLimitNotifications(plan_limit_notifications),
                 SqlValue::OptionalString(Some(
@@ -157,6 +166,13 @@ impl Storable for Organization {
                 trial_extended_used: row.try_get("trial_extended_used").unwrap_or(false),
                 last_downgrade_at: row.try_get("last_downgrade_at").unwrap_or(None),
                 last_downgrade_from_plan,
+                last_discount_at: row.try_get("last_discount_at").unwrap_or(None),
+                discount_save_offer_percent_off: row
+                    .try_get("discount_save_offer_percent_off")
+                    .unwrap_or(None),
+                discount_save_offer_active_until: row
+                    .try_get("discount_save_offer_active_until")
+                    .unwrap_or(None),
                 brevo_company_id: row.get("brevo_company_id"),
                 plan_limit_notifications: row
                     .try_get::<serde_json::Value, _>("plan_limit_notifications")

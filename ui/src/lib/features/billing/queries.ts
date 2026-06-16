@@ -132,9 +132,9 @@ export function usePauseSubscriptionMutation() {
 			}
 			return data.data;
 		},
-		onSuccess: (data: string) => {
-			pushSuccess(data);
-		},
+		// No onSuccess toast — the call site fires it AFTER waitForOrgUpdate
+		// confirms the org actually flipped to paused. The API 200 only means
+		// Stripe accepted the request, not that downstream state is consistent.
 		onError: (error: Error) => {
 			pushError(`Error pausing subscription: ${error.message}. Please try again.`);
 		}
@@ -153,9 +153,7 @@ export function useResumeSubscriptionMutation() {
 			}
 			return data.data;
 		},
-		onSuccess: (data: string) => {
-			pushSuccess(data);
-		},
+		// No onSuccess toast — call site fires it after waitForOrgUpdate.
 		onError: (error: Error) => {
 			pushError(`Error resuming subscription: ${error.message}. Please try again.`);
 		}
@@ -174,9 +172,7 @@ export function useReactivateSubscriptionMutation() {
 			}
 			return data.data;
 		},
-		onSuccess: (data: string) => {
-			pushSuccess(data);
-		},
+		// No onSuccess toast — call site fires it after waitForOrgUpdate.
 		onError: (error: Error) => {
 			pushError(`Error reactivating subscription: ${error.message}. Please try again.`);
 		}
@@ -195,9 +191,7 @@ export function useExtendTrialMutation() {
 			}
 			return data.data;
 		},
-		onSuccess: (data: string) => {
-			pushSuccess(data);
-		},
+		// No onSuccess toast — call site fires it after waitForOrgUpdate.
 		onError: (error: Error) => {
 			pushError(`Error extending trial: ${error.message}. Please try again.`);
 		}
@@ -237,9 +231,9 @@ export function useApplyDiscountSaveOfferMutation() {
 			}
 			return data.data;
 		},
-		onSuccess: (data: string) => {
-			pushSuccess(data);
-		},
+		// No onSuccess toast — call site fires it after waitForOrgUpdate confirms
+		// `org.last_discount_at` is populated, so success is tied to the actual
+		// downstream write rather than the Stripe acknowledgement.
 		onError: (error: Error) => {
 			pushError(`Error applying discount: ${error.message}. Please try again.`);
 		}

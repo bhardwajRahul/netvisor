@@ -122,6 +122,7 @@ impl BrevoService {
             BillingOperation::Paused { .. }
             | BillingOperation::Resumed { .. }
             | BillingOperation::Reactivated { .. }
+            | BillingOperation::DiscountApplied { .. }
             | BillingOperation::PaymentSucceeded { .. }
             | BillingOperation::TrialExtended { .. }
             | BillingOperation::CancellationInitiated { .. }
