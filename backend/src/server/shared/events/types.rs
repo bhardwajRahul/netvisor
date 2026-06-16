@@ -258,7 +258,13 @@ impl BillingOperation {
             Self::CheckoutCompleted { .. }
             | Self::PaymentRecovered { .. }
             | Self::Resumed { .. }
-            | Self::Reactivated { trialing: false } => Some(PlanStatus::Active),
+            | Self::Reactivated { trialing: false }
+            // A full cancellation / unconverted trial downgrades the org to the
+            // Free plan, which is an *active* plan. The plan rewrite to Free
+            // lives in the org subscriber's matching arm (status alone can't
+            // express it); the status these events imply is Active.
+            | Self::SubscriptionCancelled { .. }
+            | Self::TrialEnded { converted: false, .. } => Some(PlanStatus::Active),
 
             Self::Reactivated { trialing: true }
             | Self::TrialStarted { .. }
@@ -266,9 +272,6 @@ impl BillingOperation {
             Self::TrialEnded {
                 converted: true, ..
             } => Some(PlanStatus::Active),
-            Self::TrialEnded {
-                converted: false, ..
-            } => Some(PlanStatus::Cancelled),
 
             Self::PaymentFailed { .. } | Self::PaymentActionRequired { .. } => {
                 Some(PlanStatus::PastDue)
@@ -277,7 +280,6 @@ impl BillingOperation {
             Self::Paused { .. } => Some(PlanStatus::Paused),
 
             Self::CancellationInitiated { .. } => Some(PlanStatus::PendingCancellation),
-            Self::SubscriptionCancelled { .. } => Some(PlanStatus::Cancelled),
 
             // Telemetry-only — no state implication.
             //

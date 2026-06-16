@@ -117,10 +117,16 @@
 	let recommendedPlan = $derived(contextHighlightPlan ?? baseRecommendedPlan);
 
 	async function handlePlanSelect(plan: BillingPlan) {
-		// Open the tab synchronously (inside the click) so popup blockers allow it;
-		// only the http (Stripe Checkout) branch uses it. (No 'noopener' — that makes
-		// window.open return null, losing the handle.)
-		const stripeTab = window.open('', '_blank');
+		// Only an immediate-payment selection (paid plan, no trial, no card on file)
+		// redirects to Stripe Checkout; trial signups / Free / plan changes activate
+		// in-app via a plain API call. Pre-open the tab synchronously (inside the
+		// click, so popup blockers allow it) only when a redirect is expected — so we
+		// don't flash a blank tab for the in-app cases. A misprediction (e.g. a
+		// returning customer who already used their trial) falls back to a same-tab
+		// redirect below. (No 'noopener' — that makes window.open return null.)
+		const expectsStripeCheckout =
+			plan.base_cents > 0 && plan.trial_days === 0 && !(organization?.has_payment_method ?? false);
+		const stripeTab = expectsStripeCheckout ? window.open('', '_blank') : null;
 		try {
 			// New tab — this tab stays put, so track immediately rather than stashing
 			// the event for a post-redirect flush.
@@ -141,7 +147,8 @@
 					onClose();
 					void waitForOrgUpdate(isBillingPlanActive);
 				} else {
-					// Popup blocked — fall back to a same-tab redirect.
+					// No pre-opened tab (redirect not anticipated, or popup blocked) —
+					// fall back to a same-tab redirect.
 					window.location.href = result;
 				}
 			} else {
