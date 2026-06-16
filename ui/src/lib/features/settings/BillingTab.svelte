@@ -5,11 +5,7 @@
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
 	import { isBillingPlanActive } from '$lib/features/organizations/types';
 	import { billingPlans } from '$lib/shared/stores/metadata';
-	import {
-		trackEvent,
-		storeEventForAfterRedirect,
-		trackOncePerSession
-	} from '$lib/shared/utils/analytics';
+	import { trackEvent, trackOncePerSession } from '$lib/shared/utils/analytics';
 	import {
 		useCustomerPortalMutation,
 		useSetupPaymentMethodMutation,
@@ -47,7 +43,11 @@
 		settings_billing_resume_confirmBody,
 		settings_billing_reactivateSubscription,
 		settings_billing_extendTrial_link,
-		settings_billing_extendTrial_confirmBody
+		settings_billing_extendTrial_confirmBody,
+		settings_billing_addPaymentMethodSubtitle,
+		settings_billing_trialCountdown,
+		settings_billing_trialEndsOn,
+		billing_addPaymentMethod
 	} from '$lib/paraglide/messages';
 	import InlineWarning from '$lib/shared/components/feedback/InlineWarning.svelte';
 	import InlineInfo from '$lib/shared/components/feedback/InlineInfo.svelte';
@@ -174,13 +174,38 @@
 	});
 
 	async function handleManageSubscription() {
-		storeEventForAfterRedirect('billing_portal_opened', { plan_type: org?.plan?.type });
+		// New tab — this tab stays put, so track immediately rather than stashing
+		// the event for a post-redirect flush.
+		trackEvent('billing_portal_opened', { plan_type: org?.plan?.type });
+		// Snapshot the billing-relevant fields so the poller can detect whatever the
+		// user changes in the (open-ended) Stripe portal.
+		const before = {
+			plan_status: org?.plan_status,
+			plan_type: org?.plan?.type,
+			has_payment_method: org?.has_payment_method
+		};
+		// Open synchronously so popup blockers allow it; point it at Stripe once ready.
+		// (No 'noopener' — that makes window.open return null, losing the handle.)
+		const stripeTab = window.open('', '_blank');
 		try {
 			const url = await customerPortalMutation.mutateAsync();
-			if (url) {
+			if (!url) {
+				stripeTab?.close();
+				return;
+			}
+			if (stripeTab) {
+				stripeTab.location.href = url;
+				void waitForOrgUpdate(
+					(o) =>
+						o.plan_status !== before.plan_status ||
+						o.plan?.type !== before.plan_type ||
+						(o.has_payment_method ?? false) !== (before.has_payment_method ?? false)
+				);
+			} else {
 				window.location.href = url;
 			}
 		} catch {
+			stripeTab?.close();
 			// Error handling is done by the mutation's onError
 		}
 	}
@@ -244,13 +269,18 @@
 								<AlertTriangle class="h-5 w-5 text-amber-500" />
 								<div>
 									<p class="text-primary text-sm font-medium">
-										Trial ends in {trialDaysLeft} days ({trialEndDate?.toLocaleDateString(
-											undefined,
-											{ month: 'long', day: 'numeric', year: 'numeric' }
-										)})
+										{settings_billing_trialCountdown({
+											days: trialDaysLeft,
+											date:
+												trialEndDate?.toLocaleDateString(undefined, {
+													month: 'long',
+													day: 'numeric',
+													year: 'numeric'
+												}) ?? ''
+										})}
 									</p>
 									<p class="text-secondary mt-1 text-xs">
-										Add a payment method to continue after the trial
+										{settings_billing_addPaymentMethodSubtitle()}
 									</p>
 								</div>
 							</div>
@@ -259,7 +289,7 @@
 								class="btn-primary flex items-center gap-1.5 text-sm"
 							>
 								<CreditCard size={14} />
-								Add Payment Method
+								{billing_addPaymentMethod()}
 							</button>
 						</div>
 						{#if !org.trial_extended_used && trialDaysLeft !== null && trialDaysLeft <= 3}
@@ -304,10 +334,12 @@
 										</p>
 										{#if org.plan_status === 'trialing' && trialEndDate}
 											<p class="text-secondary mt-1 text-xs">
-												Trial ends on {trialEndDate.toLocaleDateString(undefined, {
-													month: 'long',
-													day: 'numeric',
-													year: 'numeric'
+												{settings_billing_trialEndsOn({
+													date: trialEndDate.toLocaleDateString(undefined, {
+														month: 'long',
+														day: 'numeric',
+														year: 'numeric'
+													})
 												})}
 											</p>
 										{/if}
@@ -435,20 +467,24 @@
 								<InlineDanger title={settings_billing_paused_status()} />
 							{/if}
 
-							<button
-								onclick={() =>
-									triggerUpgrade({
-										source: 'settings_billing',
-										surface: 'billing_tab',
-										reopenSettings: true,
-										beforeModal: () => onClose()
-									})}
-								class="btn-primary w-full"
-							>
-								{hasManageableSubscription
-									? settings_billing_changePlan()
-									: settings_billing_upgradePlan()}
-							</button>
+							<!-- While downgrading (pending_cancellation), push users to Reactivate
+							     instead of re-picking a plan — so the plan-change button is hidden. -->
+							{#if org.plan_status !== 'pending_cancellation'}
+								<button
+									onclick={() =>
+										triggerUpgrade({
+											source: 'settings_billing',
+											surface: 'billing_tab',
+											reopenSettings: true,
+											beforeModal: () => onClose()
+										})}
+									class="btn-primary w-full"
+								>
+									{hasManageableSubscription
+										? settings_billing_changePlan()
+										: settings_billing_upgradePlan()}
+								</button>
+							{/if}
 
 							{#if hasManageableSubscription}
 								{#if org.plan_status === 'paused'}

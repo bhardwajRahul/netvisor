@@ -158,7 +158,7 @@ impl Subscriber<BillingOperation> for EmailService {
                     self.send_checkout_completed_email(org_owner, plan.name())
                         .await?;
                 }
-                BillingOperation::Reactivated => {
+                BillingOperation::Reactivated { .. } => {
                     self.send_subscription_reactivated_email(org_owner).await?;
                 }
                 _ => {}

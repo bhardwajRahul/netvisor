@@ -1268,8 +1268,9 @@ impl BillingService {
         }
 
         // Reactivated arm — pending cancellation cleared. Idempotency via
-        // `prior_status == pending_cancellation`; the subscriber then
-        // flips it back to `active` via `implied_status`.
+        // `prior_status == pending_cancellation`; the subscriber then restores
+        // `plan_status` via `implied_status`. Carry the live trial state so a sub
+        // reactivated mid-trial returns to `trialing`, not `active`.
         if prior_status == Some(PlanStatus::PendingCancellation)
             && !sub.cancel_at_period_end
             && let Some(owner) = owners.first()
@@ -1279,7 +1280,9 @@ impl BillingService {
                     OrgScope {
                         organization_id: org_id,
                     },
-                    BillingOperation::Reactivated,
+                    BillingOperation::Reactivated {
+                        trialing: sub.status == SubscriptionStatus::Trialing,
+                    },
                     owner.clone().into(),
                 ))
                 .await?;

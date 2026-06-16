@@ -4,7 +4,7 @@
 	import type { Snippet } from 'svelte';
 	import { queryClient, queryKeys } from '$lib/api/query-client';
 	import { useCurrentUserQuery } from '$lib/features/auth/queries';
-	import { useOrganizationQuery, fetchOrganization } from '$lib/features/organizations/queries';
+	import { fetchOrganization, useOrganizationQuery } from '$lib/features/organizations/queries';
 	import {
 		identifyUser,
 		trackEvent,
@@ -236,7 +236,6 @@
 
 			// Refresh org data to update has_payment_method
 			queryClient.invalidateQueries({ queryKey: queryKeys.organizations.current() });
-			pushSuccess(billing_paymentMethodAdded());
 		}
 
 		// Check if current page matches where user should be
