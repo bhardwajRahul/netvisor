@@ -557,17 +557,44 @@ impl BrevoService {
     }
 
     async fn handle_subscription_cancelled(&self, event: &Event<BillingOperation>) -> Result<()> {
-        let company_attrs = CompanyAttributes::new().with_plan_status(PlanStatus::Cancelled);
+        // Cancellation always downgrades to Free. Used to ride a chained
+        // PlanChanged{to: Free} for the plan_type write; now folded in here
+        // so the cancel-side-effects path emits exactly one event.
+        let was_trialing = matches!(
+            &event.operation,
+            BillingOperation::SubscriptionCancelled {
+                was_trialing: true,
+                ..
+            }
+        );
+        let company_attrs = CompanyAttributes::new()
+            .with_plan_status(PlanStatus::Cancelled)
+            .with_plan_type("Free");
         self.update_company_by_org(event.scope.organization_id, company_attrs)
             .await?;
 
-        if let Some(email) = self.get_owner_email(event.scope.organization_id).await
-            && let Err(e) = self
+        if let Some(email) = self.get_owner_email(event.scope.organization_id).await {
+            if let Err(e) = self
                 .client
                 .track_event("subscription_cancelled", &email, None)
                 .await
-        {
-            tracing::warn!(error = %e, "Failed to track subscription_cancelled event in Brevo");
+            {
+                tracing::warn!(error = %e, "Failed to track subscription_cancelled event in Brevo");
+            }
+            // Mirror the trial-end analytics signal that used to come from
+            // the chained TrialEnded{converted:false} emission.
+            if was_trialing
+                && let Err(e) = self
+                    .client
+                    .track_event(
+                        "trial_ended",
+                        &email,
+                        serde_json::to_value(&event.operation).ok(),
+                    )
+                    .await
+            {
+                tracing::warn!(error = %e, "Failed to track trial_ended event in Brevo");
+            }
         }
 
         tracing::debug!(
