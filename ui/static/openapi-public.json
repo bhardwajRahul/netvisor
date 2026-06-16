@@ -10860,19 +10860,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-06-15T20:56:31.256452Z",
+              "created_at": "2026-06-16T13:44:04.768141Z",
               "first_discovery_id": null,
-              "id": "d8eb89b4-d256-45a1-903e-193288bd7742",
+              "id": "f86f5cd4-fd7c-4b07-8b52-f6a8e9106d8d",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-15T20:56:31.256452Z",
+              "last_seen_at": "2026-06-16T13:44:04.768141Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-15T20:56:31.256452Z",
-              "valid_from": "2026-06-15T20:56:31.256452Z",
+              "updated_at": "2026-06-16T13:44:04.768141Z",
+              "valid_from": "2026-06-16T13:44:04.768141Z",
               "valid_to": null
             }
           },
@@ -11858,19 +11858,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-06-15T20:56:31.240358Z",
+                      "created_at": "2026-06-16T13:44:04.756406Z",
                       "first_discovery_id": null,
-                      "id": "19ea4f00-bb90-40a1-bf9a-2af1f36900c1",
+                      "id": "ee29132e-c111-40e0-aa17-f3cb35ae2324",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-06-15T20:56:31.240358Z",
+                      "last_seen_at": "2026-06-16T13:44:04.756406Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-06-15T20:56:31.240358Z",
-                      "valid_from": "2026-06-15T20:56:31.240358Z",
+                      "updated_at": "2026-06-16T13:44:04.756406Z",
+                      "valid_from": "2026-06-16T13:44:04.756406Z",
                       "valid_to": null
                     }
                   ],
@@ -11884,7 +11884,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Kong",
+                  "service_definition": "Telnet",
                   "source": {
                     "type": "Manual"
                   },
@@ -12820,19 +12820,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-06-15T20:56:31.251094Z",
+                  "created_at": "2026-06-16T13:44:04.764063Z",
                   "first_discovery_id": null,
-                  "id": "a49439d1-bc4b-4c6f-8a88-fd77739b19f7",
+                  "id": "826f495f-6c6b-4ac5-99ab-171da1aadc0a",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-15T20:56:31.251094Z",
+                  "last_seen_at": "2026-06-16T13:44:04.764063Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-15T20:56:31.251094Z",
-                  "valid_from": "2026-06-15T20:56:31.251094Z",
+                  "updated_at": "2026-06-16T13:44:04.764063Z",
+                  "valid_from": "2026-06-16T13:44:04.764063Z",
                   "valid_to": null
                 }
               ],
@@ -12846,7 +12846,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Kong",
+              "service_definition": "Telnet",
               "source": {
                 "type": "Manual"
               },
@@ -14546,19 +14546,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-06-15T20:56:31.240714Z",
+          "created_at": "2026-06-16T13:44:04.756659Z",
           "first_discovery_id": null,
-          "id": "d9908cff-695b-47a4-8510-cd857cafc692",
+          "id": "43489ca6-01d9-43cb-9503-686dc33b900a",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-06-15T20:56:31.240714Z",
+          "last_seen_at": "2026-06-16T13:44:04.756659Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-06-15T20:56:31.240714Z",
-          "valid_from": "2026-06-15T20:56:31.240714Z",
+          "updated_at": "2026-06-16T13:44:04.756659Z",
+          "valid_from": "2026-06-16T13:44:04.756659Z",
           "valid_to": null
         }
       },
@@ -15148,7 +15148,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Kong",
+              "service_definition": "Telnet",
               "tags": [],
               "virtualization": null
             }
@@ -17766,19 +17766,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-06-15T20:56:31.239964Z",
+                  "created_at": "2026-06-16T13:44:04.756138Z",
                   "first_discovery_id": null,
-                  "id": "c9776603-4603-49ed-9469-b5d0e2a7ea3e",
+                  "id": "8ed08c19-db6e-41e5-b003-52a4d4d29751",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-15T20:56:31.239964Z",
+                  "last_seen_at": "2026-06-16T13:44:04.756138Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-15T20:56:31.239964Z",
-                  "valid_from": "2026-06-15T20:56:31.239964Z",
+                  "updated_at": "2026-06-16T13:44:04.756138Z",
+                  "valid_from": "2026-06-16T13:44:04.756138Z",
                   "valid_to": null
                 }
               ],
@@ -17792,7 +17792,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Kong",
+              "service_definition": "Telnet",
               "source": {
                 "type": "Manual"
               },
@@ -19610,8 +19610,35 @@
           "onboarding"
         ],
         "properties": {
+          "discount_save_offer_active_until": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the currently-active save-offer discount window expires. The\nBillingTab chip renders only while `> now()`; expiry needs no\ncleanup job.",
+            "readOnly": true
+          },
+          "discount_save_offer_percent_off": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Percent off the currently-active save-offer discount applies. Read\nlive by the BillingTab chip so a future coupon swap renders the new\nvalue without a code change.",
+            "readOnly": true
+          },
           "has_payment_method": {
             "type": "boolean",
+            "readOnly": true
+          },
+          "last_discount_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Most recent save-offer-discount application. NULL = never. Drives the\nonce-per-org eligibility check in `apply_discount_save_offer` and\nhides the Discount panel on the cancel modal for any return visit.",
             "readOnly": true
           },
           "last_downgrade_at": {
@@ -20185,19 +20212,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-06-15T20:56:31.230764Z",
+                        "created_at": "2026-06-16T13:44:04.750247Z",
                         "first_discovery_id": null,
-                        "id": "34b97ca7-87b7-48dc-9805-e8e69d06115a",
+                        "id": "84236403-6a79-4e10-b005-a437b0619d75",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-06-15T20:56:31.230764Z",
+                        "last_seen_at": "2026-06-16T13:44:04.750247Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-06-15T20:56:31.230764Z",
-                        "valid_from": "2026-06-15T20:56:31.230764Z",
+                        "updated_at": "2026-06-16T13:44:04.750247Z",
+                        "valid_from": "2026-06-16T13:44:04.750247Z",
                         "valid_to": null
                       }
                     ],
@@ -20211,7 +20238,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Kong",
+                    "service_definition": "Telnet",
                     "source": {
                       "type": "Manual"
                     },
@@ -20332,19 +20359,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-06-15T20:56:31.250024Z",
+                    "created_at": "2026-06-16T13:44:04.763315Z",
                     "first_discovery_id": null,
-                    "id": "a62a322e-2f88-4c08-90d3-78e57443417b",
+                    "id": "1d267240-4332-406d-9619-e6233414feea",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-06-15T20:56:31.250024Z",
+                    "last_seen_at": "2026-06-16T13:44:04.763315Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-06-15T20:56:31.250024Z",
-                    "valid_from": "2026-06-15T20:56:31.250024Z",
+                    "updated_at": "2026-06-16T13:44:04.763315Z",
+                    "valid_from": "2026-06-16T13:44:04.763315Z",
                     "valid_to": null
                   }
                 ],
@@ -20358,7 +20385,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Kong",
+                "service_definition": "Telnet",
                 "source": {
                   "type": "Manual"
                 },
@@ -21932,19 +21959,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-06-15T20:56:31.240642Z",
+              "created_at": "2026-06-16T13:44:04.756611Z",
               "first_discovery_id": null,
-              "id": "7bdf34e6-4169-477d-942d-6b20be0d22cc",
+              "id": "42882d0f-31cd-446f-81ec-c1e2d60540c7",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-15T20:56:31.240642Z",
+              "last_seen_at": "2026-06-16T13:44:04.756611Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-15T20:56:31.240642Z",
-              "valid_from": "2026-06-15T20:56:31.240642Z",
+              "updated_at": "2026-06-16T13:44:04.756611Z",
+              "valid_from": "2026-06-16T13:44:04.756611Z",
               "valid_to": null
             }
           ],
@@ -21958,7 +21985,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Kong",
+          "service_definition": "Telnet",
           "source": {
             "type": "Manual"
           },

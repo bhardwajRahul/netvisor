@@ -111,6 +111,24 @@ pub struct OrganizationBase {
     #[serde(default)]
     #[schema(read_only)]
     pub last_downgrade_from_plan: Option<BillingPlan>,
+    /// Most recent save-offer-discount application. NULL = never. Drives the
+    /// once-per-org eligibility check in `apply_discount_save_offer` and
+    /// hides the Discount panel on the cancel modal for any return visit.
+    #[serde(default)]
+    #[schema(read_only)]
+    pub last_discount_at: Option<DateTime<Utc>>,
+    /// Percent off the currently-active save-offer discount applies. Read
+    /// live by the BillingTab chip so a future coupon swap renders the new
+    /// value without a code change.
+    #[serde(default)]
+    #[schema(read_only)]
+    pub discount_save_offer_percent_off: Option<i64>,
+    /// When the currently-active save-offer discount window expires. The
+    /// BillingTab chip renders only while `> now()`; expiry needs no
+    /// cleanup job.
+    #[serde(default)]
+    #[schema(read_only)]
+    pub discount_save_offer_active_until: Option<DateTime<Utc>>,
     /// Brevo company ID - internal, not exposed to API
     #[serde(default, skip_serializing)]
     pub brevo_company_id: Option<String>,

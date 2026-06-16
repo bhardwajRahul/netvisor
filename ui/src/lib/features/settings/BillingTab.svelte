@@ -32,6 +32,7 @@
 		settings_billing_canceled,
 		settings_billing_contactUs,
 		settings_billing_currentPlan,
+		settings_billing_discount_active,
 		settings_billing_downgrade_pending,
 		settings_billing_manageSubscription,
 		settings_billing_needHelp,
@@ -52,6 +53,7 @@
 	import InlineWarning from '$lib/shared/components/feedback/InlineWarning.svelte';
 	import InlineInfo from '$lib/shared/components/feedback/InlineInfo.svelte';
 	import InlineDanger from '$lib/shared/components/feedback/InlineDanger.svelte';
+	import { pushSuccess, pushWarning } from '$lib/shared/stores/feedback';
 	import { startSetupPayment } from '$lib/shared/billing/setup-payment';
 	import { waitForOrgUpdate } from '$lib/shared/billing/wait-for-org-update';
 
@@ -153,6 +155,25 @@
 		return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
 	});
 
+	// Render the active save-offer discount chip only while the discount
+	// window is still in the future. After expiry the row stays in the DB
+	// but the chip naturally disappears — no cleanup job required.
+	let activeDiscount = $derived.by(() => {
+		const until = org?.discount_save_offer_active_until;
+		const percent = org?.discount_save_offer_percent_off;
+		if (!until || percent == null) return null;
+		const expiresAt = new Date(until);
+		if (expiresAt.getTime() <= Date.now()) return null;
+		return {
+			percentOff: percent,
+			expiresAt: expiresAt.toLocaleDateString(undefined, {
+				month: 'long',
+				day: 'numeric',
+				year: 'numeric'
+			})
+		};
+	});
+
 	// Track billing tab view
 	$effect(() => {
 		if (isOpen && org) {
@@ -194,7 +215,14 @@
 		if (!confirm(settings_billing_resume_confirmBody())) return;
 		try {
 			await resumeMutation.mutateAsync();
-			await waitForOrgUpdate((o) => o.plan_status === 'active');
+			const flipped = await waitForOrgUpdate((o) => o.plan_status === 'active');
+			if (flipped) {
+				pushSuccess('Subscription resumed.');
+			} else {
+				pushWarning(
+					'Resume request accepted. It may take a moment to reflect across your account.'
+				);
+			}
 			organizationQuery.refetch();
 		} catch {
 			// Mutation onError handles toast.
@@ -204,7 +232,14 @@
 	async function handleReactivate() {
 		try {
 			await reactivateMutation.mutateAsync();
-			await waitForOrgUpdate((o) => o.plan_status === 'active');
+			const flipped = await waitForOrgUpdate((o) => o.plan_status === 'active');
+			if (flipped) {
+				pushSuccess('Subscription reactivated.');
+			} else {
+				pushWarning(
+					'Reactivate request accepted. It may take a moment to reflect across your account.'
+				);
+			}
 			organizationQuery.refetch();
 		} catch {
 			// Mutation onError handles toast.
@@ -215,7 +250,14 @@
 		if (!confirm(settings_billing_extendTrial_confirmBody())) return;
 		try {
 			await extendTrialMutation.mutateAsync();
-			await waitForOrgUpdate((o) => o.trial_extended_used === true);
+			const flipped = await waitForOrgUpdate((o) => o.trial_extended_used === true);
+			if (flipped) {
+				pushSuccess('Trial extended.');
+			} else {
+				pushWarning(
+					'Trial extend request accepted. It may take a moment to reflect across your account.'
+				);
+			}
 			organizationQuery.refetch();
 		} catch {
 			// Mutation onError handles toast.
@@ -308,6 +350,16 @@
 													month: 'long',
 													day: 'numeric',
 													year: 'numeric'
+												})}
+											</p>
+										{/if}
+										{#if activeDiscount}
+											<p
+												class="mt-1 inline-block rounded-md bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-300"
+											>
+												{settings_billing_discount_active({
+													percentOff: activeDiscount.percentOff,
+													expiresAt: activeDiscount.expiresAt
 												})}
 											</p>
 										{/if}
@@ -526,6 +578,7 @@
 	isOpen={showCancelModal}
 	onClose={() => (showCancelModal = false)}
 	lastPausedAt={org?.last_paused_at ?? null}
+	lastDiscountAt={org?.last_discount_at ?? null}
 	planStatus={org?.plan_status ?? null}
 	onSubscriptionChanged={() => organizationQuery.refetch()}
 />

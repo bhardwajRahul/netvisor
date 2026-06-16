@@ -67,6 +67,7 @@ use stripe_core::customer::UpdateCustomer;
 use stripe_core::customer::UpdateCustomerInvoiceSettings;
 use stripe_core::{CustomerId, EventType};
 use stripe_product::Price;
+use stripe_product::coupon::RetrieveCoupon;
 use stripe_product::price::CreatePriceRecurring;
 use stripe_product::price::SearchPrice;
 use stripe_product::price::{CreatePrice, CreatePriceRecurringUsageType};
@@ -2196,7 +2197,7 @@ impl BillingService {
             ..Default::default()
         };
 
-        UpdateSubscription::new(&sub.id)
+        let updated = UpdateSubscription::new(&sub.id)
             .pause_collection(UpdateSubscriptionPauseCollection {
                 behavior: UpdateSubscriptionPauseCollectionBehavior::KeepAsDraft,
                 resumes_at: Some(resumes_at.timestamp()),
@@ -2215,6 +2216,15 @@ impl BillingService {
                 );
                 anyhow!("Stripe rejected the pause request: {e}")
             })?;
+
+        tracing::info!(
+            organization_id = %organization_id,
+            subscription_id = %updated.id,
+            subscription_status = %updated.status,
+            pause_collection_set = updated.pause_collection.is_some(),
+            pause_collection_resumes_at = ?updated.pause_collection.as_ref().and_then(|p| p.resumes_at),
+            "Stripe accepted pause_collection"
+        );
 
         Ok(format!(
             "Subscription paused until {}.",
@@ -2367,6 +2377,14 @@ impl BillingService {
                 anyhow!("Stripe rejected the cancel request: {e}")
             })?;
 
+        tracing::info!(
+            organization_id = %organization_id,
+            subscription_id = %updated.id,
+            cancel_at_period_end = updated.cancel_at_period_end,
+            cancel_at = ?updated.cancel_at,
+            "Stripe accepted cancel_at_period_end"
+        );
+
         // Period end: prefer cancel_at (Stripe writes it when cancel_at_period_end
         // is set), fall back to the first item's current_period_end.
         let period_end_ts = updated
@@ -2398,7 +2416,7 @@ impl BillingService {
             ));
         }
 
-        UpdateSubscription::new(&sub.id)
+        let updated = UpdateSubscription::new(&sub.id)
             .cancel_at_period_end(false)
             .send(&self.stripe)
             .await
@@ -2413,6 +2431,13 @@ impl BillingService {
                 anyhow!("Stripe rejected the reactivate request: {e}")
             })?;
 
+        tracing::info!(
+            organization_id = %organization_id,
+            subscription_id = %updated.id,
+            cancel_at_period_end = updated.cancel_at_period_end,
+            "Stripe accepted reactivate"
+        );
+
         Ok("Subscription reactivated.".to_string())
     }
 
@@ -2423,12 +2448,20 @@ impl BillingService {
     pub async fn apply_discount_save_offer(
         &self,
         organization_id: Uuid,
-        _authentication: AuthenticatedEntity,
+        authentication: AuthenticatedEntity,
     ) -> Result<String, Error> {
         let coupon_id = std::env::var("STRIPE_SAVE_OFFER_COUPON_ID")
             .map_err(|_| anyhow!("Discount save offer is not configured"))?;
 
         let organization = self.get_organization(organization_id).await?;
+
+        // Eligibility: once-per-org. If the org has ever redeemed the
+        // save-offer discount, refuse — the cancel modal also hides the
+        // panel client-side, so this is defense in depth.
+        if organization.base.last_discount_at.is_some() {
+            return Err(anyhow!("You've already used your one-time discount."));
+        }
+
         let sub = self.find_current_subscription(&organization).await?;
 
         if sub.status != SubscriptionStatus::Active {
@@ -2438,7 +2471,7 @@ impl BillingService {
             ));
         }
 
-        UpdateSubscription::new(&sub.id)
+        let updated = UpdateSubscription::new(&sub.id)
             .discounts(vec![DiscountsDataParam {
                 coupon: Some(coupon_id.clone()),
                 discount: None,
@@ -2457,6 +2490,45 @@ impl BillingService {
                 );
                 anyhow!("Stripe rejected the discount: {e}")
             })?;
+
+        tracing::info!(
+            organization_id = %organization_id,
+            subscription_id = %updated.id,
+            discounts_count = updated.discounts.len(),
+            first_discount_id = ?updated.discounts.first().map(|d| d.id()),
+            "Stripe accepted discount apply"
+        );
+
+        // Look up the coupon to read percent_off + duration_in_months so the
+        // DiscountApplied event carries the live values. This lets the
+        // BillingTab chip render the actual percent (not a hard-coded one)
+        // and the expires_at gate stays accurate for any future coupon.
+        let coupon = RetrieveCoupon::new(coupon_id.clone())
+            .send(&self.stripe)
+            .await
+            .map_err(|e| {
+                tracing::error!(
+                    organization_id = %organization_id,
+                    coupon_id = %coupon_id,
+                    error = ?e,
+                    "Failed to retrieve coupon details after apply"
+                );
+                anyhow!("Failed to read coupon details: {e}")
+            })?;
+        let percent_off = coupon.percent_off.unwrap_or(0.0).round() as i64;
+        let duration_in_months = coupon.duration_in_months.unwrap_or(12);
+        let expires_at = Utc::now() + chrono::Duration::days(duration_in_months * 30);
+
+        self.event_bus
+            .publish(Event::new(
+                OrgScope { organization_id },
+                BillingOperation::DiscountApplied {
+                    percent_off,
+                    expires_at,
+                },
+                authentication,
+            ))
+            .await?;
 
         Ok("Discount applied to your subscription.".to_string())
     }

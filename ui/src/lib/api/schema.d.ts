@@ -3052,19 +3052,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-06-15T20:56:31.256458Z",
+             *       "created_at": "2026-06-16T13:44:04.768141Z",
              *       "first_discovery_id": null,
-             *       "id": "257b20f5-c48b-457b-b72b-a376835c1195",
+             *       "id": "cc060e6b-35fd-41f2-af5b-2184adfdeed3",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-06-15T20:56:31.256458Z",
+             *       "last_seen_at": "2026-06-16T13:44:04.768141Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-06-15T20:56:31.256458Z",
-             *       "valid_from": "2026-06-15T20:56:31.256458Z",
+             *       "updated_at": "2026-06-16T13:44:04.768141Z",
+             *       "valid_from": "2026-06-16T13:44:04.768141Z",
              *       "valid_to": null
              *     }
              */
@@ -3401,19 +3401,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-06-15T20:56:31.240354Z",
+             *               "created_at": "2026-06-16T13:44:04.756405Z",
              *               "first_discovery_id": null,
-             *               "id": "fdd406da-7835-45c3-a5cb-7ef717f32d1c",
+             *               "id": "1180f806-9cab-4ced-922f-14b88c273291",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-06-15T20:56:31.240354Z",
+             *               "last_seen_at": "2026-06-16T13:44:04.756405Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-06-15T20:56:31.240354Z",
-             *               "valid_from": "2026-06-15T20:56:31.240354Z",
+             *               "updated_at": "2026-06-16T13:44:04.756405Z",
+             *               "valid_from": "2026-06-16T13:44:04.756405Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3427,7 +3427,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Kong",
+             *           "service_definition": "Telnet",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3769,19 +3769,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-06-15T20:56:31.251103Z",
+             *           "created_at": "2026-06-16T13:44:04.764011Z",
              *           "first_discovery_id": null,
-             *           "id": "a358233a-b0ae-4d6e-ba61-55688e03781d",
+             *           "id": "653da009-4fc8-49d2-90d1-eb5c85bc60ca",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-06-15T20:56:31.251103Z",
+             *           "last_seen_at": "2026-06-16T13:44:04.764011Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-06-15T20:56:31.251103Z",
-             *           "valid_from": "2026-06-15T20:56:31.251103Z",
+             *           "updated_at": "2026-06-16T13:44:04.764011Z",
+             *           "valid_from": "2026-06-16T13:44:04.764011Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -3795,7 +3795,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Kong",
+             *       "service_definition": "Telnet",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4248,19 +4248,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-06-15T20:56:31.240706Z",
+         *       "created_at": "2026-06-16T13:44:04.756663Z",
          *       "first_discovery_id": null,
-         *       "id": "e5d85a86-af18-4797-9270-b9b7bc34ec8d",
+         *       "id": "89b5561b-1b91-4309-a9ec-e2271a8dc362",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-06-15T20:56:31.240706Z",
+         *       "last_seen_at": "2026-06-16T13:44:04.756663Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-06-15T20:56:31.240706Z",
-         *       "valid_from": "2026-06-15T20:56:31.240706Z",
+         *       "updated_at": "2026-06-16T13:44:04.756663Z",
+         *       "valid_from": "2026-06-16T13:44:04.756663Z",
          *       "valid_to": null
          *     }
          */
@@ -4475,7 +4475,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Kong",
+         *           "service_definition": "Telnet",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -5416,19 +5416,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-06-15T20:56:31.239961Z",
+         *               "created_at": "2026-06-16T13:44:04.756134Z",
          *               "first_discovery_id": null,
-         *               "id": "ced03033-187c-4950-84c2-3ca3eceae051",
+         *               "id": "1a8439e5-bf43-463e-9ade-26bce6ecdb9e",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-06-15T20:56:31.239961Z",
+         *               "last_seen_at": "2026-06-16T13:44:04.756134Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-06-15T20:56:31.239961Z",
-         *               "valid_from": "2026-06-15T20:56:31.239961Z",
+         *               "updated_at": "2026-06-16T13:44:04.756134Z",
+         *               "valid_from": "2026-06-16T13:44:04.756134Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -5442,7 +5442,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Kong",
+         *           "service_definition": "Telnet",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -6086,7 +6086,28 @@ export interface components {
             readonly updated_at: string;
         };
         OrganizationBase: {
+            /**
+             * Format: date-time
+             * @description When the currently-active save-offer discount window expires. The
+             *     BillingTab chip renders only while `> now()`; expiry needs no
+             *     cleanup job.
+             */
+            readonly discount_save_offer_active_until?: string | null;
+            /**
+             * Format: int32
+             * @description Percent off the currently-active save-offer discount applies. Read
+             *     live by the BillingTab chip so a future coupon swap renders the new
+             *     value without a code change.
+             */
+            readonly discount_save_offer_percent_off?: number | null;
             readonly has_payment_method?: boolean;
+            /**
+             * Format: date-time
+             * @description Most recent save-offer-discount application. NULL = never. Drives the
+             *     once-per-org eligibility check in `apply_discount_save_offer` and
+             *     hides the Discount panel on the cancel modal for any return visit.
+             */
+            readonly last_discount_at?: string | null;
             /**
              * Format: date-time
              * @description Most recent downgrade event timestamp (paid→cheaper, or paid→cancelled);
@@ -6801,19 +6822,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-06-15T20:56:31.240633Z",
+         *           "created_at": "2026-06-16T13:44:04.756614Z",
          *           "first_discovery_id": null,
-         *           "id": "115e06d7-539c-4740-840d-b14eaee927e0",
+         *           "id": "623822b1-995d-45d9-98ff-2a51dae8f994",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-06-15T20:56:31.240633Z",
+         *           "last_seen_at": "2026-06-16T13:44:04.756614Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-06-15T20:56:31.240633Z",
-         *           "valid_from": "2026-06-15T20:56:31.240633Z",
+         *           "updated_at": "2026-06-16T13:44:04.756614Z",
+         *           "valid_from": "2026-06-16T13:44:04.756614Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -6827,7 +6848,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Kong",
+         *       "service_definition": "Telnet",
          *       "source": {
          *         "type": "Manual"
          *       },

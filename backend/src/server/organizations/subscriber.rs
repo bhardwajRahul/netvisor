@@ -130,6 +130,15 @@ impl Subscriber<BillingOperation> for OrganizationService {
                     organization.base.last_downgrade_from_plan = Some(*plan);
                     changed = true;
                 }
+                BillingOperation::DiscountApplied {
+                    percent_off,
+                    expires_at,
+                } => {
+                    organization.base.last_discount_at = Some(event.timestamp);
+                    organization.base.discount_save_offer_percent_off = Some(*percent_off);
+                    organization.base.discount_save_offer_active_until = Some(*expires_at);
+                    changed = true;
+                }
                 _ => {}
             }
 
