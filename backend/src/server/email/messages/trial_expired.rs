@@ -9,7 +9,7 @@ pub struct TrialExpired<'a> {
 
 impl Email for TrialExpired<'_> {
     fn subject(&self) -> String {
-        "Your Scanopy Trial Has Ended".to_string()
+        "Your Trial Has Ended".to_string()
     }
 
     fn category(&self) -> EmailCategory {

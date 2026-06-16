@@ -9,7 +9,7 @@ pub struct Verification<'a> {
 
 impl Email for Verification<'_> {
     fn subject(&self) -> String {
-        "Verify Your Email - Scanopy".to_string()
+        "Verify Your Email".to_string()
     }
 
     fn category(&self) -> EmailCategory {

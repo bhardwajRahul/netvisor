@@ -11,7 +11,7 @@ pub struct TrialStarted<'a> {
 
 impl Email for TrialStarted<'_> {
     fn subject(&self) -> String {
-        "Welcome to Scanopy - Your Trial Has Started".to_string()
+        "Welcome to Scanopy! Your Trial Has Started".to_string()
     }
 
     fn category(&self) -> EmailCategory {

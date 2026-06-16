@@ -8,7 +8,7 @@ pub struct OidcLinked<'a> {
 
 impl Email for OidcLinked<'_> {
     fn subject(&self) -> String {
-        format!("{} Login Connected - Scanopy", self.provider_name)
+        format!("{} Login Connected", self.provider_name)
     }
 
     fn category(&self) -> EmailCategory {

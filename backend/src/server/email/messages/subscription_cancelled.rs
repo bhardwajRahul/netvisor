@@ -8,7 +8,7 @@ pub struct SubscriptionCancelled<'a> {
 
 impl Email for SubscriptionCancelled<'_> {
     fn subject(&self) -> String {
-        "Your Scanopy Subscription Has Been Cancelled".to_string()
+        "Your Subscription Has Been Cancelled".to_string()
     }
 
     fn category(&self) -> EmailCategory {

@@ -8,7 +8,7 @@ pub struct PaymentRecovered<'a> {
 
 impl Email for PaymentRecovered<'_> {
     fn subject(&self) -> String {
-        "Your Scanopy Payment is Back On Track".to_string()
+        "Your Payment is Back On Track".to_string()
     }
 
     fn category(&self) -> EmailCategory {

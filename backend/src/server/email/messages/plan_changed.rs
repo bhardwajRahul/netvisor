@@ -8,7 +8,7 @@ pub struct PlanChanged<'a> {
 
 impl Email for PlanChanged<'_> {
     fn subject(&self) -> String {
-        "Your Scanopy Plan Has Changed".to_string()
+        "Your Plan Has Changed".to_string()
     }
 
     fn category(&self) -> EmailCategory {

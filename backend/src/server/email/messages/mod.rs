@@ -280,18 +280,8 @@ mod tests {
             url: "https://app.example.test/invite/abc",
             inviter: "owner@example.test",
         });
-        for is_free in [true, false] {
-            assert_fully_rendered(&DiscoveryGuide {
-                is_free,
-                first_name: Some("Ada"),
-                daemon_name: "daemon-1",
-                network_name: "Home",
-            });
-        }
-        // None first_name exercises the "there" fallback.
+        
         assert_fully_rendered(&DiscoveryGuide {
-            is_free: true,
-            first_name: None,
             daemon_name: "daemon-1",
             network_name: "Home",
         });

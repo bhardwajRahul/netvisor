@@ -8,7 +8,7 @@ pub struct CancellationInitiated<'a> {
 
 impl Email for CancellationInitiated<'_> {
     fn subject(&self) -> String {
-        format!("Your Scanopy Subscription Will End on {}", self.period_end)
+        format!("Your Subscription Will End on {}", self.period_end)
     }
 
     fn category(&self) -> EmailCategory {

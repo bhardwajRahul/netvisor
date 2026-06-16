@@ -7,7 +7,7 @@ pub struct SubscriptionReactivated;
 
 impl Email for SubscriptionReactivated {
     fn subject(&self) -> String {
-        "Your Scanopy subscription is active again".to_string()
+        "Your Subscription is Active Again".to_string()
     }
 
     fn category(&self) -> EmailCategory {

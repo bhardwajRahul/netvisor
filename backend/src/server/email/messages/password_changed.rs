@@ -7,7 +7,7 @@ pub struct PasswordChanged<'a> {
 
 impl Email for PasswordChanged<'_> {
     fn subject(&self) -> String {
-        "Your Scanopy Password Was Changed".to_string()
+        "Your Password Was Changed".to_string()
     }
 
     fn category(&self) -> EmailCategory {

@@ -5,7 +5,7 @@ pub struct OrganizationDeleted;
 
 impl Email for OrganizationDeleted {
     fn subject(&self) -> String {
-        "Your Scanopy Organization Has Been Deleted".to_string()
+        "Your Organization Has Been Deleted".to_string()
     }
 
     fn category(&self) -> EmailCategory {

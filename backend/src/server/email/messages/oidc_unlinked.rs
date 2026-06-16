@@ -8,7 +8,7 @@ pub struct OidcUnlinked<'a> {
 
 impl Email for OidcUnlinked<'_> {
     fn subject(&self) -> String {
-        format!("{} Login Disconnected - Scanopy", self.provider_name)
+        format!("{} Login Disconnected", self.provider_name)
     }
 
     fn category(&self) -> EmailCategory {

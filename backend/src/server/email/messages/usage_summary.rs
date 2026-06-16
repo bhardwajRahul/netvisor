@@ -10,7 +10,7 @@ pub struct UsageSummary<'a> {
 
 impl Email for UsageSummary<'_> {
     fn subject(&self) -> String {
-        format!("Your Scanopy Invoice — {}", self.period)
+        format!("Your {} Invoice ", self.period)
     }
 
     fn category(&self) -> EmailCategory {

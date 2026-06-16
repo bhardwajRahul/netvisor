@@ -10,7 +10,7 @@ pub struct TrialConverted<'a> {
 
 impl Email for TrialConverted<'_> {
     fn subject(&self) -> String {
-        "Your Scanopy Subscription is Now Active".to_string()
+        "Your Subscription is Now Active".to_string()
     }
 
     fn category(&self) -> EmailCategory {

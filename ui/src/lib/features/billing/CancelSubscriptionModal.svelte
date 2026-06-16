@@ -239,7 +239,7 @@
 </script>
 
 <GenericModal {isOpen} title={settings_billing_cancelModal_title()} size="md" onClose={handleClose}>
-	<div class="flex flex-col gap-6 p-6">
+	<div class="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto p-6">
 		{#if currentStep === 1}
 			<div class="space-y-4">
 				<div>

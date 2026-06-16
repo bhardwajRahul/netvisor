@@ -8,7 +8,7 @@ pub struct InstallCommand<'a> {
 
 impl Email for InstallCommand<'_> {
     fn subject(&self) -> String {
-        "Your Scanopy Daemon Install Command".to_string()
+        "Your Daemon Install Command".to_string()
     }
 
     fn category(&self) -> EmailCategory {

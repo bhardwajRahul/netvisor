@@ -16,7 +16,7 @@ pub struct TrialEnding<'a> {
 
 impl Email for TrialEnding<'_> {
     fn subject(&self) -> String {
-        "Your Scanopy Trial Ends in 3 Days".to_string()
+        "Your Trial Ends in 3 Days".to_string()
     }
 
     fn category(&self) -> EmailCategory {

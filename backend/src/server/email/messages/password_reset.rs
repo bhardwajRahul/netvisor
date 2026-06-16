@@ -9,7 +9,7 @@ pub struct PasswordReset<'a> {
 
 impl Email for PasswordReset<'_> {
     fn subject(&self) -> String {
-        "Scanopy Password Reset".to_string()
+        "Password Reset".to_string()
     }
 
     fn category(&self) -> EmailCategory {

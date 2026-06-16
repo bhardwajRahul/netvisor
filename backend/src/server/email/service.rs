@@ -454,16 +454,12 @@ impl EmailService {
     pub async fn send_discovery_guide_email(
         &self,
         to: EmailAddress,
-        first_name: Option<String>,
         daemon_name: &str,
         network_name: &str,
-        is_free: bool,
     ) -> Result<()> {
         self.dispatch(
             to,
             &DiscoveryGuide {
-                is_free,
-                first_name: first_name.as_deref(),
                 daemon_name,
                 network_name,
             },
@@ -486,15 +482,8 @@ impl EmailService {
             .ok_or_else(|| anyhow::anyhow!("Organization not found"))?;
 
         let owner_email = self.get_owner_email(&org_id).await?;
-        let is_free = self
-            .organization_service
-            .get_by_id(&org_id)
-            .await?
-            .and_then(|o| o.base.plan)
-            .map(|p| p.is_free())
-            .unwrap_or(true);
 
-        self.send_discovery_guide_email(owner_email, None, daemon_name, network_name, is_free)
+        self.send_discovery_guide_email(owner_email, daemon_name, network_name)
             .await
     }
 

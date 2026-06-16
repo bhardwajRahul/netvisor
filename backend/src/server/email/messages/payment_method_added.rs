@@ -5,7 +5,7 @@ pub struct PaymentMethodAdded;
 
 impl Email for PaymentMethodAdded {
     fn subject(&self) -> String {
-        "Payment Method Added - Scanopy".to_string()
+        "Payment Method Added".to_string()
     }
 
     fn category(&self) -> EmailCategory {

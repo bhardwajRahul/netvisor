@@ -75,7 +75,7 @@ impl Email for DiscoveryDigest<'_> {
     }
 }
 
-const TITLE: &str = "Scanopy: Discovery scan summary";
+const TITLE: &str = "Discovery scan summary";
 
 const BODY: &str = r#"                    <!-- Main Content -->
                     <tr>
@@ -214,7 +214,7 @@ fn render_section(heading: &str, body_html: &str) -> String {
 /// stays bound to the entity type. Placed at the top of the body just
 /// below the summary banner.
 fn render_legend() -> &'static str {
-    r#"<div style="margin: 0 0 16px 0; padding: 10px 14px; background-color: #f9fafb; border-radius: 6px; font-size: 12px; color: #4b5563; line-height: 1.5;"><div style="margin: 0 0 6px 0;"><span style="margin-right: 14px;"><strong>+</strong> new</span><span style="margin-right: 14px;">unchanged</span><span style="margin-right: 14px;"><strong>?</strong> <em>possibly missing</em></span><span><strong>−</strong> <span style="text-decoration: line-through;">missing</span></span></div><div style="font-size: 12px; color: #6b7280;"><strong>?</strong> means we expected to see this entity but didn't this scan. One miss isn't conclusive — transient network conditions can hide a port or service. We mark it <strong>−</strong> missing only after it's been gone for 3 consecutive scans.</div></div>"#
+    r#"<div style="margin: 0 0 16px 0; padding: 10px 14px; background-color: #f9fafb; border-radius: 6px; font-size: 12px; color: #4b5563; line-height: 1.5;"><div style="margin: 0 0 6px 0;"><span style="margin-right: 14px;">(<strong>+</strong> new)</span><span style="margin-right: 14px;">(unchanged)</span><span style="margin-right: 14px;">(<strong>?</strong> <em>possibly missing</em>)</span><span>(<strong>−</strong> <span style="text-decoration: line-through;">missing)</span></span></div><div style="font-size: 12px; color: #6b7280;"><strong>?</strong> means we expected to see this entity but didn't this scan, usually due to transient network conditions. We mark it <strong>−</strong> missing only after it's been missing for 3 consecutive scans.</div></div>"#
 }
 
 fn render_subnets_section(subnets: &[SubnetSummary], base: &str) -> String {
