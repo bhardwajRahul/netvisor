@@ -432,7 +432,7 @@
 							{:else if org.plan_status === 'pending_cancellation'}
 								<InlineWarning title={settings_billing_downgrade_pending()} />
 							{:else if org.plan_status === 'paused'}
-								<InlineInfo title={settings_billing_paused_status()} />
+								<InlineDanger title={settings_billing_paused_status()} />
 							{/if}
 
 							<button

@@ -25,6 +25,7 @@
 		settings_billing_cancelModal_continueCancel,
 		settings_billing_cancelModal_keepSubscription,
 		settings_billing_cancelModal_confirmDisclosure,
+		settings_billing_cancelModal_confirmHeading,
 		settings_billing_cancelModal_confirmCta,
 		settings_billing_cancelModal_doneSummary,
 		settings_billing_saveOffer_pauseTitle,
@@ -342,11 +343,26 @@
 						</div>
 					{/if}
 				{/each}
-				<p class="text-secondary text-sm">
-					{settings_billing_cancelModal_confirmDisclosure({
-						periodEnd: 'the end of your current billing cycle'
-					})}
-				</p>
+				<div class="card card-static space-y-3 p-4">
+					<div>
+						<h4 class="text-primary text-base font-semibold">
+							{settings_billing_cancelModal_confirmHeading()}
+						</h4>
+						<p class="text-secondary mt-1 text-sm">
+							{settings_billing_cancelModal_confirmDisclosure({
+								periodEnd: 'the end of your current billing cycle'
+							})}
+						</p>
+					</div>
+					<button
+						type="button"
+						class="btn-danger w-full"
+						disabled={cancelMutation.isPending}
+						onclick={handleConfirmCancel}
+					>
+						{settings_billing_cancelModal_confirmCta()}
+					</button>
+				</div>
 			</div>
 		{/if}
 	</div>
@@ -363,14 +379,6 @@
 			{:else}
 				<button type="button" class="btn-secondary" onclick={() => (currentStep = 1)}>
 					{common_back()}
-				</button>
-				<button
-					type="button"
-					class="btn-danger"
-					disabled={cancelMutation.isPending}
-					onclick={handleConfirmCancel}
-				>
-					{settings_billing_cancelModal_confirmCta()}
 				</button>
 			{/if}
 		</div>

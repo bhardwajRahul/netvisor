@@ -47,6 +47,7 @@
 	let billingNeedsAttention = $derived(
 		!org?.plan ||
 			org?.plan_status === 'past_due' ||
+			org?.plan_status === 'paused' ||
 			org?.plan_status === 'cancelled' ||
 			(org?.plan_status === 'trialing' && !org?.has_payment_method)
 	);
