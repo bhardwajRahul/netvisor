@@ -127,22 +127,43 @@ pub trait Email: Send + Sync {
     /// Classification tag for grouping and provider analytics.
     fn category(&self) -> EmailCategory;
 
-    /// The `utm_campaign` slug for this email's CTAs. `utm_source=email` and
-    /// `utm_medium=lifecycle` are appended automatically by the `{utm}` token,
-    /// so an email only declares this one value (or `""` if it has no UTM CTA).
+    /// The `utm_campaign` slug for this email's CTAs.
     fn campaign(&self) -> &'static str;
+
+    /// The `utm_medium` value for this email's CTAs. Defaults to the email's
+    /// category name (`auth`, `billing`, `onboarding`, `daemon`, `account`,
+    /// `digest`) so analytics gets a useful split out of the box. Override
+    /// only when a particular email warrants a different bucket.
+    fn utm_medium(&self) -> &'static str {
+        self.category().as_str()
+    }
+
+    /// Bare UTM query-string fragment — no leading `?` or `&`. Single
+    /// source of truth for the UTM format; consumed by [`with_utm`] for
+    /// dynamic URL construction and by the `{utm}` token substitution in
+    /// [`render_html`].
+    fn utm_qs(&self) -> String {
+        format!(
+            "utm_source=email&utm_campaign={}&utm_medium={}",
+            self.campaign(),
+            self.utm_medium(),
+        )
+    }
+
+    /// Append the standard UTM tracking query to a URL. Picks `?` vs `&`
+    /// based on whether the URL already has a query string.
+    fn with_utm(&self, url: &str) -> String {
+        let sep = if url.contains('?') { '&' } else { '?' };
+        format!("{url}{sep}{}", self.utm_qs())
+    }
 
     /// Wrap the body in the shared chrome and substitute the layout tokens.
     fn render_html(&self, base_url: &str) -> String {
         let year = chrono::Utc::now().format("%Y").to_string();
-        let utm = format!(
-            "utm_source=email&utm_campaign={}&utm_medium=lifecycle",
-            self.campaign()
-        );
         format!("{}{}{}", EMAIL_HEADER, self.body_html(), EMAIL_FOOTER)
             .replace("{current_year}", &year)
             .replace("{base_url}", base_url)
-            .replace("{utm}", &utm)
+            .replace("{utm}", &self.utm_qs())
     }
 
     /// Plaintext alternative, derived from the wrapped HTML.
