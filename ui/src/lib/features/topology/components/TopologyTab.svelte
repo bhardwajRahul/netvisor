@@ -65,6 +65,7 @@
 	import { useUsersQuery } from '$lib/features/users/queries';
 	import { useCurrentUserQuery } from '$lib/features/auth/queries';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
+	import { waitForOrgUpdate } from '$lib/shared/billing/wait-for-org-update';
 	import type { components } from '$lib/api/schema';
 	import { billingPlans, entities, permissions, views } from '$lib/shared/stores/metadata';
 	import { getInspectorConfig } from './panel/inspectors/view-config';
@@ -276,6 +277,30 @@
 	let hasCompletedFirstDiscovery = $derived(
 		onboarding.length === 0 || onboarding.includes('FirstDiscoveryCompleted')
 	);
+
+	// Complete the "View your topology" onboarding step the first time the user opens the
+	// topology tab and there are hosts to look at. The backend emits FirstTopologyRebuild
+	// from the topology-data GET, but that query is cache/SSE-driven and won't necessarily
+	// re-hit the server on plain navigation — so force a one-shot refetch at view time to
+	// guarantee the emit, then poll the org until the milestone lands so the checklist
+	// updates. The guard stops it once the milestone exists.
+	let firstTopologyMilestoneTracked = $state(false);
+	$effect(() => {
+		const hasHosts = (topologyDataQuery.data?.hosts.length ?? 0) > 0;
+		if (
+			isActive &&
+			$selectedNetworkId &&
+			hasHosts &&
+			!firstTopologyMilestoneTracked &&
+			!onboarding.includes('FirstTopologyRebuild')
+		) {
+			firstTopologyMilestoneTracked = true;
+			void (async () => {
+				await topologyDataQuery.refetch();
+				void waitForOrgUpdate((o) => o.onboarding.includes('FirstTopologyRebuild'));
+			})();
+		}
+	});
 
 	// URL params: read once on init for topology/view deep-linking
 	const urlParams = getTopologyParamsFromUrl();

@@ -315,6 +315,8 @@ impl Subscriber<OnboardingOperation> for PosthogService {
             OnboardingOperationDiscriminants::OrgCreated,
             OnboardingOperationDiscriminants::OnboardingModalCompleted,
             OnboardingOperationDiscriminants::PlanSelected,
+            OnboardingOperationDiscriminants::DaemonPromptDismissed,
+            OnboardingOperationDiscriminants::DaemonPromptAccepted,
             OnboardingOperationDiscriminants::FirstDaemonRegistered,
             OnboardingOperationDiscriminants::FirstTopologyRebuild,
             OnboardingOperationDiscriminants::FirstDiscoveryCompleted,

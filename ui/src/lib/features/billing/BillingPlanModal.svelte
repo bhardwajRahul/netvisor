@@ -18,8 +18,6 @@
 	import { isBillingPlanActive } from '$lib/features/organizations/types';
 	import GenericModal from '$lib/shared/components/layout/GenericModal.svelte';
 	import { upgradeContext } from '$lib/features/billing/stores';
-	import { useQueryClient } from '@tanstack/svelte-query';
-	import { queryKeys } from '$lib/api/query-client';
 
 	let {
 		isOpen = false,
@@ -87,7 +85,6 @@
 	);
 
 	// Mutations
-	const queryClient = useQueryClient();
 	const checkoutMutation = useCheckoutMutation();
 
 	// Determine initial filter based on use case from onboarding
@@ -154,11 +151,14 @@
 			} else {
 				// Direct activation needs no Stripe tab.
 				stripeTab?.close();
-				// Plan activated directly (Free or trial) — refetch org so needsPlanSelection
-				// becomes false before we close the modal, preventing reactive reopening.
-				await queryClient.invalidateQueries({ queryKey: queryKeys.organizations.current() });
 				upgradeContext.set(null);
 				onClose();
+				// Plan activated directly (Free or trial) is still webhook-driven, so a
+				// single refetch races the webhook and reads stale state (e.g. plan_status
+				// still null, so NoPaymentMethodBanner never appears until a reload). Poll
+				// like the Stripe-redirect branch until the org reflects the activation.
+				// Closing first is safe: onClose sets planJustActivated, suppressing reopen.
+				void waitForOrgUpdate(isBillingPlanActive);
 			}
 		} catch {
 			// Error handled by mutation

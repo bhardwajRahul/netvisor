@@ -39,6 +39,7 @@ pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
         .routes(routes!(get_organization, update_org_name))
         .routes(routes!(update_profile))
         .routes(routes!(submit_referral_source))
+        .routes(routes!(daemon_prompt_response))
         .routes(routes!(reset))
         .routes(routes!(delete_organization))
         .routes(routes!(populate_demo_data))
@@ -195,6 +196,63 @@ async fn submit_referral_source(
         .await
         .map_err(|e| {
             ApiError::internal_error(&format!("Failed to publish referral source event: {}", e))
+        })?;
+
+    Ok(Json(ApiResponse::success(())))
+}
+
+/// Which daemon-prompt CTA the user chose.
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum DaemonPromptAction {
+    Dismissed,
+    Accepted,
+}
+
+/// Request recording the user's response to the "Start Discovering Your Network" prompt.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct DaemonPromptResponseRequest {
+    pub action: DaemonPromptAction,
+}
+
+/// Record the user's response to the daemon-install prompt so it is not shown again.
+/// Each CTA persists a distinct onboarding milestone (the org subscriber dedups); the
+/// PostHog subscriber turns these into funnel events, so no client-side telemetry is needed.
+#[utoipa::path(
+    post,
+    path = "/daemon-prompt-response",
+    tag = Organization::ENTITY_NAME_PLURAL,
+    request_body = DaemonPromptResponseRequest,
+    responses(
+        (status = 200, description = "Response recorded", body = EmptyApiResponse),
+    )
+)]
+async fn daemon_prompt_response(
+    auth: Authorized<Member>,
+    State(state): State<Arc<AppState>>,
+    Json(request): Json<DaemonPromptResponseRequest>,
+) -> ApiResult<Json<ApiResponse<()>>> {
+    let org_id = auth.organization_id().unwrap();
+    let authentication: AuthenticatedEntity = auth.into();
+
+    let operation = match request.action {
+        DaemonPromptAction::Dismissed => OnboardingOperation::DaemonPromptDismissed,
+        DaemonPromptAction::Accepted => OnboardingOperation::DaemonPromptAccepted,
+    };
+
+    state
+        .services
+        .event_bus
+        .publish(Event::new(
+            OrgScope {
+                organization_id: org_id,
+            },
+            operation,
+            authentication,
+        ))
+        .await
+        .map_err(|e| {
+            ApiError::internal_error(&format!("Failed to publish daemon prompt event: {}", e))
         })?;
 
     Ok(Json(ApiResponse::success(())))

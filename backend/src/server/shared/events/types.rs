@@ -356,10 +356,16 @@ pub enum OnboardingOperation {
     PlanSelected {
         plan: BillingPlan,
     },
+    DaemonPromptDismissed,
+    DaemonPromptAccepted,
     FirstDaemonRegistered {
         daemon_name: String,
         network_name: String,
     },
+    /// Emitted when a user views their live topology after discovery has produced
+    /// at least one host. (Originally tied to the topology-rebuild lifecycle, which
+    /// was removed in Phase 2 snapshots; the variant name is retained to keep legacy
+    /// persisted values valid, but it now means "first topology viewed".)
     FirstTopologyRebuild,
     FirstDiscoveryCompleted {
         discovery_type: DiscoveryType,
