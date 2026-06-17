@@ -4,7 +4,7 @@
 	import { isBillingPlanActive } from '$lib/features/organizations/types';
 	import SettingsModal from '$lib/features/settings/SettingsModal.svelte';
 	import SupportModal from '$lib/features/support/SupportModal.svelte';
-	import { entities } from '$lib/shared/stores/metadata';
+	import { billingPlans, entities } from '$lib/shared/stores/metadata';
 	import { useActiveSessionsQuery } from '$lib/features/discovery/queries';
 	import { modalState } from '$lib/shared/stores/modal-registry';
 	import { entityUIConfig, TAB_LABELS } from '$lib/shared/entity-ui-config';
@@ -105,8 +105,9 @@
 	// Derived values from queries
 	let userPermissions = $derived(currentUser?.permissions);
 	let isBillingEnabled = $derived(organization ? isBillingPlanActive(organization) : false);
-	let isDemoOrg = $derived(organization?.plan?.type === 'Demo');
-	let isFreePlan = $derived(organization?.plan?.type === 'Free');
+	let planMeta = $derived(billingPlans.getMetadata(organization?.plan?.type ?? null));
+	let isDemoOrg = $derived(planMeta.is_demo === true);
+	let isFreePlan = $derived(planMeta.is_free === true);
 	let isOwner = $derived(userPermissions === 'Owner');
 	let trialDaysLeft = $derived(getTrialDaysLeft(organization));
 	let showTrialPill = $derived(

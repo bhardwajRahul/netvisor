@@ -12,6 +12,7 @@
 		useDeleteOrganizationMutation
 	} from '$lib/features/organizations/queries';
 	import ConfirmationDialog from '$lib/shared/components/feedback/ConfirmationDialog.svelte';
+	import { billingPlans } from '$lib/shared/stores/metadata';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { formatTimestamp } from '$lib/shared/utils/formatting';
@@ -89,7 +90,7 @@
 
 	let org = $derived(organizationQuery.data);
 	let isOwner = $derived(currentUser?.permissions === 'Owner');
-	let isDemoOrg = $derived(org?.plan?.type === 'Demo');
+	let isDemoOrg = $derived(billingPlans.getMetadata(org?.plan?.type ?? null).is_demo === true);
 
 	// TanStack Form
 	const form = createForm(() => ({

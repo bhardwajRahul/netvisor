@@ -137,6 +137,10 @@ export type UpgradeFeature =
 export interface BillingPlanMetadata {
 	features: BillingPlanFeatures;
 	is_commercial: boolean;
+	is_stripe_managed: boolean;
+	is_free: boolean;
+	is_demo: boolean;
+	is_enterprise: boolean;
 	hosting: string;
 	custom_price: string | null;
 	incremental_features: string[];

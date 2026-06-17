@@ -4,7 +4,7 @@
 	import { required, max } from '$lib/shared/components/forms/validators';
 	import GenericModal from '$lib/shared/components/layout/GenericModal.svelte';
 	import ModalHeaderIcon from '$lib/shared/components/layout/ModalHeaderIcon.svelte';
-	import { entities } from '$lib/shared/stores/metadata';
+	import { billingPlans, entities } from '$lib/shared/stores/metadata';
 	import EntityMetadataSection from '$lib/shared/components/forms/EntityMetadataSection.svelte';
 	import type { Network } from '../types';
 	import { createEmptyNetworkFormData } from '../queries';
@@ -64,7 +64,9 @@
 	let currentUser = $derived(currentUserQuery.data);
 
 	// Demo mode check
-	let isDemoOrg = $derived(organization?.plan?.type === 'Demo');
+	let isDemoOrg = $derived(
+		billingPlans.getMetadata(organization?.plan?.type ?? null).is_demo === true
+	);
 	let isNonOwnerInDemo = $derived(isDemoOrg && currentUser?.permissions !== 'Owner');
 
 	// TanStack Query for credentials — filter to Broadcast-scoped types for network assignment

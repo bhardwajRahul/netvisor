@@ -2,9 +2,9 @@
 	import { CreditCard } from 'lucide-svelte';
 	import AppBanner from './AppBanner.svelte';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
-	import { isStripeManagedPlan } from '$lib/features/organizations/types';
 	import { useSetupPaymentMethodMutation } from '$lib/features/billing/queries';
 	import { startSetupPayment } from '$lib/shared/billing/setup-payment';
+	import { billingPlans } from '$lib/shared/stores/metadata';
 	import { getTrialDaysLeft, isTrialingWithoutPayment } from '$lib/shared/utils/trial';
 	import { trackOncePerSession } from '$lib/shared/utils/analytics';
 	import {
@@ -24,10 +24,11 @@
 	// still carry plan_status='active'. The final clause defers to
 	// TrialEndingBanner in its window (trialing + no card + <= 3 days) so the
 	// two never render together.
+	let planMeta = $derived(billingPlans.getMetadata(org?.plan?.type ?? null));
 	let shouldShow = $derived(
 		org != null &&
-			isStripeManagedPlan(org) &&
-			org.plan?.type !== 'Free' &&
+			planMeta.is_stripe_managed === true &&
+			planMeta.is_free !== true &&
 			(org.plan_status === 'trialing' ||
 				org.plan_status === 'active' ||
 				org.plan_status === 'past_due') &&

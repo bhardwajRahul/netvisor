@@ -465,6 +465,28 @@ impl BillingPlan {
         )
     }
 
+    /// Plans whose lifecycle is driven by a Stripe subscription. Drives the
+    /// frontend hard-gate (no Stripe = no required modal) and the post-Stripe
+    /// poll predicate. Exhaustive on purpose — adding a new variant must
+    /// classify it explicitly.
+    pub fn is_stripe_managed(&self) -> bool {
+        match self {
+            BillingPlan::Free(_)
+            | BillingPlan::Starter(_)
+            | BillingPlan::Pro(_)
+            | BillingPlan::Team(_)
+            | BillingPlan::Business(_)
+            | BillingPlan::Enterprise(_) => true,
+            BillingPlan::Community(_)
+            | BillingPlan::Demo(_)
+            | BillingPlan::CommercialSelfHosted(_) => false,
+        }
+    }
+
+    pub fn is_enterprise(&self) -> bool {
+        matches!(self, BillingPlan::Enterprise(_))
+    }
+
     pub fn host_limit(&self) -> Option<u64> {
         self.config().included_hosts
     }
@@ -1117,6 +1139,10 @@ impl TypeMetadataProvider for BillingPlan {
             // Feature flags and metadata
             "features": self.features(),
             "is_commercial": self.is_commercial(),
+            "is_stripe_managed": self.is_stripe_managed(),
+            "is_free": self.is_free(),
+            "is_demo": self.is_demo(),
+            "is_enterprise": self.is_enterprise(),
             "hosting": self.hosting(),
             "custom_price": self.custom_price(),
             // Tier relationship

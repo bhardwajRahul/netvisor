@@ -1,6 +1,7 @@
 import posthog from 'posthog-js';
 import { queryClient, queryKeys } from '$lib/api/query-client';
 import type { Organization } from '$lib/features/organizations/types';
+import { billingPlans } from '$lib/shared/stores/metadata';
 
 // Event queue for events that fire before PostHog loads
 type QueuedEvent =
@@ -43,7 +44,7 @@ export function flushEventQueue() {
  */
 export function isDemo(): boolean {
 	const org = queryClient.getQueryData<Organization | null>(queryKeys.organizations.current());
-	return org?.plan?.type === 'Demo';
+	return billingPlans.getMetadata(org?.plan?.type ?? null).is_demo === true;
 }
 
 /**

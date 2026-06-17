@@ -18,7 +18,7 @@
 	import { Plus } from 'lucide-svelte';
 	import { useCurrentUserQuery } from '$lib/features/auth/queries';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
-	import { permissions, credentialTypes } from '$lib/shared/stores/metadata';
+	import { permissions, credentialTypes, billingPlans } from '$lib/shared/stores/metadata';
 	import { getCredentialTypeId } from '$lib/features/credentials/types/base';
 	import { modalState, resolveModalDeepLink } from '$lib/shared/stores/modal-registry';
 	import type { TabProps } from '$lib/shared/types';
@@ -83,7 +83,9 @@
 	let isLoading = $derived(credentialsQuery.isLoading);
 
 	// Demo mode check
-	let isDemoOrg = $derived(organization?.plan?.type === 'Demo');
+	let isDemoOrg = $derived(
+		billingPlans.getMetadata(organization?.plan?.type ?? null).is_demo === true
+	);
 	let isNonOwnerInDemo = $derived(isDemoOrg && currentUser?.permissions !== 'Owner');
 
 	let canManage = $derived(

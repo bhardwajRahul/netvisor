@@ -1,21 +1,18 @@
 import type { components } from '$lib/api/schema';
+import { billingPlans } from '$lib/shared/stores/metadata';
 
 // Re-export generated types
 export type Organization = components['schemas']['Organization'];
 export type OrganizationInvite = components['schemas']['Invite'];
 export type CreateInviteRequest = components['schemas']['CreateInviteRequest'];
 
-// Plans backed by a Stripe subscription. Demo / Community / CommercialSelfHosted
-// are not, so they have no Stripe billing lifecycle.
-export function isStripeManagedPlan(organization: Organization): boolean {
+export function isBillingPlanActive(organization: Organization): boolean {
 	const type = organization.plan?.type;
-	return type != null && type !== 'Demo' && type !== 'Community' && type !== 'CommercialSelfHosted';
-}
-
-export function isBillingPlanActive(organization: Organization) {
-	if (!isStripeManagedPlan(organization)) {
-		return true;
-	}
+	// No plan selected yet — the hard-gate must trigger.
+	if (type == null) return false;
+	// Non-Stripe plans (Demo / Community / CommercialSelfHosted) have no
+	// Stripe lifecycle, so they're considered active by definition.
+	if (billingPlans.getMetadata(type).is_stripe_managed === false) return true;
 	return (
 		organization.plan_status == 'active' ||
 		organization.plan_status == 'trialing' ||

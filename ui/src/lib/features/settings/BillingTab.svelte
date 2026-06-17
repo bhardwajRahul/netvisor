@@ -3,7 +3,7 @@
 	import ProgressTrack from '$lib/shared/components/data/ProgressTrack.svelte';
 	import { triggerUpgrade } from '$lib/features/billing/trigger-upgrade';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
-	import { isBillingPlanActive, isStripeManagedPlan } from '$lib/features/organizations/types';
+	import { isBillingPlanActive } from '$lib/features/organizations/types';
 	import { billingPlans } from '$lib/shared/stores/metadata';
 	import { trackEvent, trackOncePerSession } from '$lib/shared/utils/analytics';
 	import {
@@ -129,7 +129,7 @@
 		}
 	}
 
-	let isFree = $derived(org?.plan?.type === 'Free');
+	let isFree = $derived(billingPlans.getMetadata(org?.plan?.type ?? null).is_free === true);
 
 	// Live Stripe subscription whose lifecycle these CTAs can act on. Non-Stripe
 	// plans (Free/Community/Demo/SelfHosted/Enterprise) have plan_status === null;
@@ -157,7 +157,8 @@
 	// Render the active save-offer discount chip only while the discount
 	// window is still in the future, and only on Stripe-managed plans.
 	let activeDiscount = $derived.by(() => {
-		if (!org || !isStripeManagedPlan(org)) return null;
+		if (!org || billingPlans.getMetadata(org.plan?.type ?? null).is_stripe_managed !== true)
+			return null;
 		const until = org.discount_save_offer_active_until;
 		const percent = org.discount_save_offer_percent_off;
 		if (!until || percent == null) return null;

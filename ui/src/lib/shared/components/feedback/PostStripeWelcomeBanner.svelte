@@ -18,7 +18,7 @@
 
 	let org = $derived(organizationQuery.data);
 
-	let isFreePlan = $derived(org?.plan?.type === 'Free');
+	let isFreePlan = $derived(billingPlans.getMetadata(org?.plan?.type ?? null).is_free === true);
 	let isActivated = $derived(
 		org != null && isBillingPlanActive(org) && org.plan_status === 'active'
 	);

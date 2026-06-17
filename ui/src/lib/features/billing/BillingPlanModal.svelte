@@ -40,7 +40,7 @@
 		const seen = new Set<string>(); // eslint-disable-line svelte/prefer-svelte-reactivity
 		return billingPlansJson
 			.filter((p) => p.metadata.hosting !== 'SelfHosted')
-			.filter((p) => !(p.id === 'Free' && p.metadata.rate === 'Year'))
+			.filter((p) => !(p.metadata.is_free && p.metadata.rate === 'Year'))
 			.map(
 				(p) =>
 					({
@@ -80,7 +80,8 @@
 	// Trialing users are NOT returning — they should see trial-aware UI instead.
 	let isReturningCustomer = $derived(
 		!isCurrentlyTrialing &&
-			((organization?.plan != null && organization.plan.type !== 'Free') ||
+			((organization?.plan != null &&
+				billingPlanHelpers.getMetadata(organization.plan.type)?.is_free !== true) ||
 				!!organization?.trial_end_date)
 	);
 
@@ -195,9 +196,9 @@
 >
 	<div class="flex min-h-0 flex-1 flex-col">
 		<BillingPlanForm
-			plans={organization?.plan?.type === 'Free'
+			plans={billingPlanHelpers.getMetadata(organization?.plan?.type ?? null)?.is_free
 				? plansData
-				: plansData.filter((p) => p.type !== 'Free')}
+				: plansData.filter((p) => billingPlanHelpers.getMetadata(p.type)?.is_free !== true)}
 			{billingPlanHelpers}
 			{featureHelpers}
 			onPlanSelect={handlePlanSelect}
