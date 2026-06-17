@@ -1,9 +1,16 @@
 use crate::server::shared::extractors::Query;
 use crate::server::shared::storage::traits::Entity;
 use crate::server::{
-    auth::middleware::permissions::{Authorized, IsUser, Member, Viewer},
+    auth::middleware::{
+        auth::AuthenticatedEntity,
+        permissions::{Authorized, IsUser, Member, Viewer},
+    },
     config::AppState,
     shared::{
+        events::{
+            traits::{Event as BusEvent, OrgScope},
+            types::{OnboardingOperation, OnboardingOperationDiscriminants},
+        },
         handlers::{
             query::{FilterQueryExtractor, NetworkFilterQuery},
             traits::{CrudHandlers, update_handler},
@@ -133,6 +140,39 @@ async fn get_topology_data(
         .get_topology_data(params.network_id, params.snapshot_id)
         .await
         .map_err(|e| ApiError::internal_error(&e.to_string()))?;
+
+    // Onboarding: mark the topology "viewed" the first time the user loads a live
+    // topology that actually has hosts to look at — but only once discovery has
+    // completed (the checklist step's prerequisite). One-time per org, enforced by the
+    // not_onboarded guard here and the subscriber's dedup. Emitted as System; the
+    // frontend forces a refetch on tab activation so this fires at view time.
+    if params.snapshot_id.is_none()
+        && !data.hosts.is_empty()
+        && let Ok(Some(network)) = state
+            .services
+            .network_service
+            .get_by_id(&params.network_id)
+            .await
+        && let Ok(Some(org)) = state
+            .services
+            .organization_service
+            .get_by_id(&network.base.organization_id)
+            .await
+        && org.has_onboarded(&OnboardingOperationDiscriminants::FirstDiscoveryCompleted)
+        && org.not_onboarded(&OnboardingOperationDiscriminants::FirstTopologyRebuild)
+    {
+        let _ = state
+            .services
+            .event_bus
+            .publish(BusEvent::new(
+                OrgScope {
+                    organization_id: org.id,
+                },
+                OnboardingOperation::FirstTopologyRebuild,
+                AuthenticatedEntity::System,
+            ))
+            .await;
+    }
 
     Ok(Json(ApiResponse::success(data)))
 }

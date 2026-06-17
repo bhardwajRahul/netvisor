@@ -48,24 +48,10 @@
 
 		<div class="modal-footer">
 			<div class="flex items-center justify-end gap-3">
-				<button
-					type="button"
-					class="btn-secondary"
-					onclick={() => {
-						trackEvent('daemon_prompt_skipped');
-						onSkip();
-					}}
-				>
+				<button type="button" class="btn-secondary" onclick={() => onSkip()}>
 					{daemons_promptSkip()}
 				</button>
-				<button
-					type="button"
-					class="btn-primary"
-					onclick={() => {
-						trackEvent('daemon_prompt_install_clicked');
-						onInstall();
-					}}
-				>
+				<button type="button" class="btn-primary" onclick={() => onInstall()}>
 					{daemons_promptGetStarted()}
 				</button>
 			</div>

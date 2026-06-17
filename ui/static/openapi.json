@@ -645,7 +645,7 @@
           "internal"
         ],
         "summary": "Cancel subscription",
-        "description": "In-app cancel modal endpoint. Sets Stripe `cancel_at_period_end`, stashes\nthe canonical Scanopy reason in subscription metadata, returns the period\nend so the modal can render the retention disclosure.",
+        "description": "In-app cancel modal endpoint. Sets Stripe `cancel_at` to the current\nperiod end (via Stripe's `MaxPeriodEnd` sentinel), stashes the canonical\nScanopy reason in subscription metadata, returns the period end so the\nmodal can render the retention disclosure.",
         "operationId": "cancel_subscription",
         "requestBody": {
           "content": {
@@ -1131,7 +1131,7 @@
           "internal"
         ],
         "summary": "Reactivate a subscription pending cancellation",
-        "description": "Clears Stripe's `cancel_at_period_end`. Available while\n`plan_status === 'pending_cancellation'`.",
+        "description": "Clears Stripe's scheduled-cancellation state (`cancel_at` → None).\nAvailable while `plan_status === 'pending_cancellation'`.",
         "operationId": "reactivate_subscription",
         "responses": {
           "200": {
@@ -8189,6 +8189,37 @@
         ]
       }
     },
+    "/api/v1/organizations/daemon-prompt-response": {
+      "post": {
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "Record the user's response to the daemon-install prompt so it is not shown again.\nEach CTA persists a distinct onboarding milestone (the org subscriber dedups); the\nPostHog subscriber turns these into funnel events, so no client-side telemetry is needed.",
+        "operationId": "daemon_prompt_response",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DaemonPromptResponseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Response recorded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/organizations/profile": {
       "post": {
         "tags": [
@@ -13623,19 +13654,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-06-16T13:44:04.768141Z",
+              "created_at": "2026-06-17T14:20:50.583596Z",
               "first_discovery_id": null,
-              "id": "cc060e6b-35fd-41f2-af5b-2184adfdeed3",
+              "id": "89894b1c-0f35-4f19-be50-429941f0e96c",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-16T13:44:04.768141Z",
+              "last_seen_at": "2026-06-17T14:20:50.583596Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-16T13:44:04.768141Z",
-              "valid_from": "2026-06-16T13:44:04.768141Z",
+              "updated_at": "2026-06-17T14:20:50.583596Z",
+              "valid_from": "2026-06-17T14:20:50.583596Z",
               "valid_to": null
             }
           },
@@ -14621,19 +14652,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-06-16T13:44:04.756405Z",
+                      "created_at": "2026-06-17T14:20:50.562764Z",
                       "first_discovery_id": null,
-                      "id": "1180f806-9cab-4ced-922f-14b88c273291",
+                      "id": "6936c41b-478a-4e9f-9242-48e36126ee6b",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-06-16T13:44:04.756405Z",
+                      "last_seen_at": "2026-06-17T14:20:50.562764Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-06-16T13:44:04.756405Z",
-                      "valid_from": "2026-06-16T13:44:04.756405Z",
+                      "updated_at": "2026-06-17T14:20:50.562764Z",
+                      "valid_from": "2026-06-17T14:20:50.562764Z",
                       "valid_to": null
                     }
                   ],
@@ -14647,7 +14678,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Telnet",
+                  "service_definition": "cAdvisor",
                   "source": {
                     "type": "Manual"
                   },
@@ -15583,19 +15614,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-06-16T13:44:04.764011Z",
+                  "created_at": "2026-06-17T14:20:50.576663Z",
                   "first_discovery_id": null,
-                  "id": "653da009-4fc8-49d2-90d1-eb5c85bc60ca",
+                  "id": "f12242a1-670e-4373-bb47-18eb043ddce3",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-16T13:44:04.764011Z",
+                  "last_seen_at": "2026-06-17T14:20:50.576663Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-16T13:44:04.764011Z",
-                  "valid_from": "2026-06-16T13:44:04.764011Z",
+                  "updated_at": "2026-06-17T14:20:50.576663Z",
+                  "valid_from": "2026-06-17T14:20:50.576663Z",
                   "valid_to": null
                 }
               ],
@@ -15609,7 +15640,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Telnet",
+              "service_definition": "cAdvisor",
               "source": {
                 "type": "Manual"
               },
@@ -17309,19 +17340,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-06-16T13:44:04.756663Z",
+          "created_at": "2026-06-17T14:20:50.563248Z",
           "first_discovery_id": null,
-          "id": "89b5561b-1b91-4309-a9ec-e2271a8dc362",
+          "id": "ad72044e-8dee-4e6d-ae61-9890024b05e6",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-06-16T13:44:04.756663Z",
+          "last_seen_at": "2026-06-17T14:20:50.563248Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-06-16T13:44:04.756663Z",
-          "valid_from": "2026-06-16T13:44:04.756663Z",
+          "updated_at": "2026-06-17T14:20:50.563248Z",
+          "valid_from": "2026-06-17T14:20:50.563248Z",
           "valid_to": null
         }
       },
@@ -17911,7 +17942,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Telnet",
+              "service_definition": "cAdvisor",
               "tags": [],
               "virtualization": null
             }
@@ -18503,6 +18534,26 @@
           "updated_at",
           "network_id"
         ]
+      },
+      "DaemonPromptAction": {
+        "type": "string",
+        "description": "Which daemon-prompt CTA the user chose.",
+        "enum": [
+          "dismissed",
+          "accepted"
+        ]
+      },
+      "DaemonPromptResponseRequest": {
+        "type": "object",
+        "description": "Request recording the user's response to the \"Start Discovering Your Network\" prompt.",
+        "required": [
+          "action"
+        ],
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/DaemonPromptAction"
+          }
+        }
       },
       "DaemonRegistrationRequest": {
         "type": "object",
@@ -20529,19 +20580,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-06-16T13:44:04.756134Z",
+                  "created_at": "2026-06-17T14:20:50.562201Z",
                   "first_discovery_id": null,
-                  "id": "1a8439e5-bf43-463e-9ade-26bce6ecdb9e",
+                  "id": "61452f4e-6d9f-402a-917a-501e6d0d597f",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-16T13:44:04.756134Z",
+                  "last_seen_at": "2026-06-17T14:20:50.562201Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-16T13:44:04.756134Z",
-                  "valid_from": "2026-06-16T13:44:04.756134Z",
+                  "updated_at": "2026-06-17T14:20:50.562201Z",
+                  "valid_from": "2026-06-17T14:20:50.562201Z",
                   "valid_to": null
                 }
               ],
@@ -20555,7 +20606,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Telnet",
+              "service_definition": "cAdvisor",
               "source": {
                 "type": "Manual"
               },
@@ -22233,6 +22284,8 @@
           "OrgCreated",
           "OnboardingModalCompleted",
           "PlanSelected",
+          "DaemonPromptDismissed",
+          "DaemonPromptAccepted",
           "FirstDaemonRegistered",
           "FirstTopologyRebuild",
           "FirstDiscoveryCompleted",
@@ -22387,7 +22440,7 @@
               "integer",
               "null"
             ],
-            "format": "int32",
+            "format": "int64",
             "description": "Percent off the currently-active save-offer discount applies. Read\nlive by the BillingTab chip so a future coupon swap renders the new\nvalue without a code change.",
             "readOnly": true
           },
@@ -22975,19 +23028,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-06-16T13:44:04.750254Z",
+                        "created_at": "2026-06-17T14:20:50.552867Z",
                         "first_discovery_id": null,
-                        "id": "1c7e53e8-29c6-4af0-98ec-32388c4a6874",
+                        "id": "38b4c6d0-c277-473a-9e17-c81940ab9d74",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-06-16T13:44:04.750254Z",
+                        "last_seen_at": "2026-06-17T14:20:50.552867Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-06-16T13:44:04.750254Z",
-                        "valid_from": "2026-06-16T13:44:04.750254Z",
+                        "updated_at": "2026-06-17T14:20:50.552867Z",
+                        "valid_from": "2026-06-17T14:20:50.552867Z",
                         "valid_to": null
                       }
                     ],
@@ -23001,7 +23054,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Telnet",
+                    "service_definition": "cAdvisor",
                     "source": {
                       "type": "Manual"
                     },
@@ -23122,19 +23175,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-06-16T13:44:04.763278Z",
+                    "created_at": "2026-06-17T14:20:50.575287Z",
                     "first_discovery_id": null,
-                    "id": "91b7134a-9509-4939-a943-b18dce86ed9e",
+                    "id": "8dbb273f-dcf1-4037-84f1-ae7a5172009a",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-06-16T13:44:04.763278Z",
+                    "last_seen_at": "2026-06-17T14:20:50.575287Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-06-16T13:44:04.763278Z",
-                    "valid_from": "2026-06-16T13:44:04.763278Z",
+                    "updated_at": "2026-06-17T14:20:50.575287Z",
+                    "valid_from": "2026-06-17T14:20:50.575287Z",
                     "valid_to": null
                   }
                 ],
@@ -23148,7 +23201,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Telnet",
+                "service_definition": "cAdvisor",
                 "source": {
                   "type": "Manual"
                 },
@@ -24722,19 +24775,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-06-16T13:44:04.756614Z",
+              "created_at": "2026-06-17T14:20:50.563151Z",
               "first_discovery_id": null,
-              "id": "623822b1-995d-45d9-98ff-2a51dae8f994",
+              "id": "5e31a926-2370-4959-99ff-a908274985fc",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-16T13:44:04.756614Z",
+              "last_seen_at": "2026-06-17T14:20:50.563151Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-16T13:44:04.756614Z",
-              "valid_from": "2026-06-16T13:44:04.756614Z",
+              "updated_at": "2026-06-17T14:20:50.563151Z",
+              "valid_from": "2026-06-17T14:20:50.563151Z",
               "valid_to": null
             }
           ],
@@ -24748,7 +24801,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Telnet",
+          "service_definition": "cAdvisor",
           "source": {
             "type": "Manual"
           },

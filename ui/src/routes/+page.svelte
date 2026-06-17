@@ -26,7 +26,10 @@
 	import BillingPlanModal from '$lib/features/billing/BillingPlanModal.svelte';
 	import DaemonPromptModal from '$lib/features/daemons/components/DaemonPromptModal.svelte';
 	import { useConfigQuery, isLicenseApproachingExpiry } from '$lib/shared/stores/config-query';
-	import { useOrganizationQuery } from '$lib/features/organizations/queries';
+	import {
+		useOrganizationQuery,
+		useDaemonPromptResponseMutation
+	} from '$lib/features/organizations/queries';
 	import { isBillingPlanActive } from '$lib/features/organizations/types';
 	import { reopenSettingsAfterBilling } from '$lib/features/billing/stores';
 	import {
@@ -68,6 +71,14 @@
 
 	// Daemon prompt: driven by modal registry
 	let showDaemonPrompt = $derived($modalState.name === 'daemon-prompt');
+	const daemonPromptResponseMutation = useDaemonPromptResponseMutation();
+	// Don't nag Viewers (they can't install daemons) and never re-show the prompt once
+	// the user has responded to it (either CTA persists an onboarding milestone).
+	let isViewer = $derived(currentUserQuery.data?.permissions === 'Viewer');
+	let daemonPromptResponded = $derived(
+		(organization?.onboarding?.includes('DaemonPromptDismissed') ?? false) ||
+			(organization?.onboarding?.includes('DaemonPromptAccepted') ?? false)
+	);
 
 	let activeTab = $state(initialHash || 'home');
 	let appInitialized = $state(false);
@@ -149,8 +160,10 @@
 			!daemonPromptShown &&
 			!showBillingModal &&
 			$modalState.name === null &&
+			!isViewer &&
 			organization?.onboarding?.includes('OrgCreated') &&
 			!organization?.onboarding?.includes('FirstDaemonRegistered') &&
+			!daemonPromptResponded &&
 			daemonsQuery.isSuccess &&
 			daemonsQuery.data?.length === 0
 		) {
@@ -289,7 +302,10 @@
 			if ($reopenSettingsAfterBilling) {
 				reopenSettingsAfterBilling.set(false);
 				openModal('settings', { tab: 'billing' });
-			} else if (daemonsQuery.data?.length === 0) {
+			} else if (!isViewer && !daemonPromptResponded && daemonsQuery.data?.length === 0) {
+				// Mark as shown here too so the first Skip click sticks — otherwise the
+				// auto-open $effect re-fires on close (its guard was never set on this path).
+				daemonPromptShown = true;
 				openModal('daemon-prompt');
 			}
 		}}
@@ -298,9 +314,11 @@
 	<DaemonPromptModal
 		isOpen={showDaemonPrompt}
 		onInstall={() => {
+			daemonPromptResponseMutation.mutate('accepted');
 			openModal('create-daemon');
 		}}
 		onSkip={() => {
+			daemonPromptResponseMutation.mutate('dismissed');
 			closeModal();
 		}}
 	/>

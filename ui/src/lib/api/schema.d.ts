@@ -253,9 +253,10 @@ export interface paths {
         put?: never;
         /**
          * Cancel subscription
-         * @description In-app cancel modal endpoint. Sets Stripe `cancel_at_period_end`, stashes
-         *     the canonical Scanopy reason in subscription metadata, returns the period
-         *     end so the modal can render the retention disclosure.
+         * @description In-app cancel modal endpoint. Sets Stripe `cancel_at` to the current
+         *     period end (via Stripe's `MaxPeriodEnd` sentinel), stashes the canonical
+         *     Scanopy reason in subscription metadata, returns the period end so the
+         *     modal can render the retention disclosure.
          */
         post: operations["cancel_subscription"];
         delete?: never;
@@ -444,8 +445,8 @@ export interface paths {
         put?: never;
         /**
          * Reactivate a subscription pending cancellation
-         * @description Clears Stripe's `cancel_at_period_end`. Available while
-         *     `plan_status === 'pending_cancellation'`.
+         * @description Clears Stripe's scheduled-cancellation state (`cancel_at` → None).
+         *     Available while `plan_status === 'pending_cancellation'`.
          */
         post: operations["reactivate_subscription"];
         delete?: never;
@@ -1958,6 +1959,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/daemon-prompt-response": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record the user's response to the daemon-install prompt so it is not shown again.
+         *     Each CTA persists a distinct onboarding milestone (the org subscriber dedups); the
+         *     PostHog subscriber turns these into funnel events, so no client-side telemetry is needed.
+         */
+        post: operations["daemon_prompt_response"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/profile": {
         parameters: {
             query?: never;
@@ -3052,19 +3074,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-06-16T13:44:04.768141Z",
+             *       "created_at": "2026-06-17T14:20:50.583596Z",
              *       "first_discovery_id": null,
-             *       "id": "cc060e6b-35fd-41f2-af5b-2184adfdeed3",
+             *       "id": "89894b1c-0f35-4f19-be50-429941f0e96c",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-06-16T13:44:04.768141Z",
+             *       "last_seen_at": "2026-06-17T14:20:50.583596Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-06-16T13:44:04.768141Z",
-             *       "valid_from": "2026-06-16T13:44:04.768141Z",
+             *       "updated_at": "2026-06-17T14:20:50.583596Z",
+             *       "valid_from": "2026-06-17T14:20:50.583596Z",
              *       "valid_to": null
              *     }
              */
@@ -3401,19 +3423,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-06-16T13:44:04.756405Z",
+             *               "created_at": "2026-06-17T14:20:50.562764Z",
              *               "first_discovery_id": null,
-             *               "id": "1180f806-9cab-4ced-922f-14b88c273291",
+             *               "id": "6936c41b-478a-4e9f-9242-48e36126ee6b",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-06-16T13:44:04.756405Z",
+             *               "last_seen_at": "2026-06-17T14:20:50.562764Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-06-16T13:44:04.756405Z",
-             *               "valid_from": "2026-06-16T13:44:04.756405Z",
+             *               "updated_at": "2026-06-17T14:20:50.562764Z",
+             *               "valid_from": "2026-06-17T14:20:50.562764Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3427,7 +3449,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Telnet",
+             *           "service_definition": "cAdvisor",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3769,19 +3791,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-06-16T13:44:04.764011Z",
+             *           "created_at": "2026-06-17T14:20:50.576663Z",
              *           "first_discovery_id": null,
-             *           "id": "653da009-4fc8-49d2-90d1-eb5c85bc60ca",
+             *           "id": "f12242a1-670e-4373-bb47-18eb043ddce3",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-06-16T13:44:04.764011Z",
+             *           "last_seen_at": "2026-06-17T14:20:50.576663Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-06-16T13:44:04.764011Z",
-             *           "valid_from": "2026-06-16T13:44:04.764011Z",
+             *           "updated_at": "2026-06-17T14:20:50.576663Z",
+             *           "valid_from": "2026-06-17T14:20:50.576663Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -3795,7 +3817,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Telnet",
+             *       "service_definition": "cAdvisor",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4248,19 +4270,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-06-16T13:44:04.756663Z",
+         *       "created_at": "2026-06-17T14:20:50.563248Z",
          *       "first_discovery_id": null,
-         *       "id": "89b5561b-1b91-4309-a9ec-e2271a8dc362",
+         *       "id": "ad72044e-8dee-4e6d-ae61-9890024b05e6",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-06-16T13:44:04.756663Z",
+         *       "last_seen_at": "2026-06-17T14:20:50.563248Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-06-16T13:44:04.756663Z",
-         *       "valid_from": "2026-06-16T13:44:04.756663Z",
+         *       "updated_at": "2026-06-17T14:20:50.563248Z",
+         *       "valid_from": "2026-06-17T14:20:50.563248Z",
          *       "valid_to": null
          *     }
          */
@@ -4475,7 +4497,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Telnet",
+         *           "service_definition": "cAdvisor",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -4707,6 +4729,15 @@ export interface components {
          * @enum {string}
          */
         DaemonOrderField: "created_at" | "name" | "last_seen" | "updated_at" | "network_id";
+        /**
+         * @description Which daemon-prompt CTA the user chose.
+         * @enum {string}
+         */
+        DaemonPromptAction: "dismissed" | "accepted";
+        /** @description Request recording the user's response to the "Start Discovering Your Network" prompt. */
+        DaemonPromptResponseRequest: {
+            action: components["schemas"]["DaemonPromptAction"];
+        };
         /** @description Daemon registration request from daemon to server */
         DaemonRegistrationRequest: {
             capabilities: components["schemas"]["DaemonCapabilities"];
@@ -5416,19 +5447,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-06-16T13:44:04.756134Z",
+         *               "created_at": "2026-06-17T14:20:50.562201Z",
          *               "first_discovery_id": null,
-         *               "id": "1a8439e5-bf43-463e-9ade-26bce6ecdb9e",
+         *               "id": "61452f4e-6d9f-402a-917a-501e6d0d597f",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-06-16T13:44:04.756134Z",
+         *               "last_seen_at": "2026-06-17T14:20:50.562201Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-06-16T13:44:04.756134Z",
-         *               "valid_from": "2026-06-16T13:44:04.756134Z",
+         *               "updated_at": "2026-06-17T14:20:50.562201Z",
+         *               "valid_from": "2026-06-17T14:20:50.562201Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -5442,7 +5473,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Telnet",
+         *           "service_definition": "cAdvisor",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -6052,7 +6083,7 @@ export interface components {
             snmp_version?: string | null;
         };
         /** @enum {string} */
-        OnboardingOperationDiscriminants: "OrgCreated" | "OnboardingModalCompleted" | "PlanSelected" | "FirstDaemonRegistered" | "FirstTopologyRebuild" | "FirstDiscoveryCompleted" | "FirstHostDiscovered" | "SecondNetworkCreated" | "FirstTagCreated" | "FirstDependencyCreated" | "FirstUserApiKeyCreated" | "FirstSnmpCredentialCreated" | "FirstApplicationTagCreated" | "FirstCredentialCreated" | "FirstSnapshotCreated" | "InviteSent" | "InviteAccepted" | "ProfileCompleted" | "ReferralSourceCompleted";
+        OnboardingOperationDiscriminants: "OrgCreated" | "OnboardingModalCompleted" | "PlanSelected" | "DaemonPromptDismissed" | "DaemonPromptAccepted" | "FirstDaemonRegistered" | "FirstTopologyRebuild" | "FirstDiscoveryCompleted" | "FirstHostDiscovered" | "SecondNetworkCreated" | "FirstTagCreated" | "FirstDependencyCreated" | "FirstUserApiKeyCreated" | "FirstSnmpCredentialCreated" | "FirstApplicationTagCreated" | "FirstCredentialCreated" | "FirstSnapshotCreated" | "InviteSent" | "InviteAccepted" | "ProfileCompleted" | "ReferralSourceCompleted";
         /** @description Response from onboarding state endpoint */
         OnboardingStateResponse: {
             network?: null | components["schemas"]["OnboardingNetworkState"];
@@ -6094,7 +6125,7 @@ export interface components {
              */
             readonly discount_save_offer_active_until?: string | null;
             /**
-             * Format: int32
+             * Format: int64
              * @description Percent off the currently-active save-offer discount applies. Read
              *     live by the BillingTab chip so a future coupon swap renders the new
              *     value without a code change.
@@ -6822,19 +6853,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-06-16T13:44:04.756614Z",
+         *           "created_at": "2026-06-17T14:20:50.563151Z",
          *           "first_discovery_id": null,
-         *           "id": "623822b1-995d-45d9-98ff-2a51dae8f994",
+         *           "id": "5e31a926-2370-4959-99ff-a908274985fc",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-06-16T13:44:04.756614Z",
+         *           "last_seen_at": "2026-06-17T14:20:50.563151Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-06-16T13:44:04.756614Z",
-         *           "valid_from": "2026-06-16T13:44:04.756614Z",
+         *           "updated_at": "2026-06-17T14:20:50.563151Z",
+         *           "valid_from": "2026-06-17T14:20:50.563151Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -6848,7 +6879,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Telnet",
+         *       "service_definition": "cAdvisor",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -12069,6 +12100,30 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    daemon_prompt_response: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DaemonPromptResponseRequest"];
+            };
+        };
+        responses: {
+            /** @description Response recorded */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse"];
                 };
             };
         };

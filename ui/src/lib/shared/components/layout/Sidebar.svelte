@@ -785,9 +785,11 @@
 					title={collapsed ? label : ''}
 					{onclick}
 				>
-					<Icon class="h-4 w-4 flex-shrink-0" />
+					<span class="relative">
+						<Icon class="h-5 w-5 flex-shrink-0" />
+					</span>
 					{#if !collapsed}
-						<span class="ml-2.5 truncate">{label}</span>
+						<span class="ml-3 truncate">{label}</span>
 					{/if}
 				</button>
 			{/snippet}
