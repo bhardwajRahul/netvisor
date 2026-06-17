@@ -314,6 +314,7 @@ pub mod roborock_vacuum;
 pub mod roku;
 pub mod sonos_speaker;
 pub mod tasmota;
+pub mod wiz;
 pub mod tuyasmart;
 
 // Printer
