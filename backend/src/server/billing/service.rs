@@ -989,9 +989,26 @@ impl BillingService {
         // hides the duplicate from `implied_status`, but downstream
         // analytics see two CancellationInitiated events for one decision.
         if let Some(period_end_ts) = sub.cancel_at {
+            // Diagnostic 2026-06-17: stripe_feedback/comment are coming through
+            // as null on CancellationInitiated even when the Portal collected
+            // them (subscription_cancelled fired later carries them correctly).
+            // Trace the actual cancellation_details Stripe sends on each
+            // cancel-scheduled webhook to distinguish:
+            //   A) Portal fires the update webhook BEFORE writing details
+            //   B) Two webhooks fire back-to-back; first lacks details; our
+            //      idempotency guard below skips the second
+            tracing::info!(
+                organization_id = %organization.id,
+                subscription_id = %sub.id,
+                period_end_ts,
+                prior_plan_status = ?prior_status,
+                cancellation_details = ?sub.cancellation_details,
+                "Subscription update webhook: scheduled cancel detected"
+            );
             if prior_status == Some(PlanStatus::PendingCancellation) {
-                tracing::debug!(
+                tracing::info!(
                     organization_id = %organization.id,
+                    cancellation_details = ?sub.cancellation_details,
                     "Subscription already pending cancellation, skipping re-emit"
                 );
                 return Ok(());
