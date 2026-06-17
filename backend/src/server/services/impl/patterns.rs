@@ -230,6 +230,7 @@ impl Vendor {
     pub const ECOBEE: &'static str = "ecobee inc";
     pub const ROKU: &'static str = "Roku, Inc";
     pub const ROBOROCK: &'static str = "Beijing Roborock Technology Co., Ltd.";
+    pub const TUYASMART: &'static str = "Tuya Smart Inc.";
 }
 
 impl PartialEq for Pattern<'_> {
