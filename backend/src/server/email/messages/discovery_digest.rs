@@ -45,17 +45,17 @@ impl Email for DiscoveryDigest<'_> {
             .format("%b %-d, %Y %H:%M UTC")
             .to_string();
         let base = self.base_url.trim_end_matches('/');
-        let settings_url = format!("{base}/settings?tab=email");
+        let settings_url = self.with_utm(&format!("{base}/?modal=settings&tab=email"));
 
         let summary_section = render_summary_banner(payload);
         let legend_section = render_legend();
-        let subnets_section = render_subnets_section(&payload.subnets_scanned, base);
+        let subnets_section = render_subnets_section(&payload.subnets_scanned, base, self);
         let hosts_added_section =
-            render_host_cards_section("New hosts discovered", &payload.hosts_added, base);
+            render_host_cards_section("New hosts discovered", &payload.hosts_added, base, self);
         let hosts_vanished_section =
-            render_host_cards_section("Missing hosts", &payload.hosts_vanished, base);
+            render_host_cards_section("Missing hosts", &payload.hosts_vanished, base, self);
         let hosts_changed_section =
-            render_host_cards_section("Hosts with changes", &payload.hosts_changed, base);
+            render_host_cards_section("Hosts with changes", &payload.hosts_changed, base, self);
         let vlans_added_section = render_vlan_list_section("VLANs detected", &payload.vlans_added);
         let vlans_removed_section =
             render_vlan_list_section("VLANs no longer detected", &payload.vlans_removed);
@@ -217,7 +217,7 @@ fn render_legend() -> &'static str {
     r#"<div style="margin: 0 0 16px 0; padding: 10px 14px; background-color: #f9fafb; border-radius: 6px; font-size: 12px; color: #4b5563; line-height: 1.5;"><div style="margin: 0 0 6px 0;"><span style="margin-right: 14px;">(<strong>+</strong> new)</span><span style="margin-right: 14px;">(unchanged)</span><span style="margin-right: 14px;">(<strong>?</strong> <em>possibly missing</em>)</span><span>(<strong>−</strong> <span style="text-decoration: line-through;">missing)</span></span></div><div style="font-size: 12px; color: #6b7280;"><strong>?</strong> means we expected to see this entity but didn't this scan, usually due to transient network conditions. We mark it <strong>−</strong> missing only after it's been missing for 3 consecutive scans.</div></div>"#
 }
 
-fn render_subnets_section(subnets: &[SubnetSummary], base: &str) -> String {
+fn render_subnets_section(subnets: &[SubnetSummary], base: &str, email: &dyn Email) -> String {
     if subnets.is_empty() {
         return String::new();
     }
@@ -228,7 +228,7 @@ fn render_subnets_section(subnets: &[SubnetSummary], base: &str) -> String {
             label: s.label.clone(),
             color,
             status: Default::default(),
-            href: Some(format!("{base}/?modal=subnet-editor&id={}", s.id)),
+            href: Some(email.with_utm(&format!("{base}/?modal=subnet-editor&id={}", s.id))),
             logo_url: None,
         })
         .collect();
@@ -291,7 +291,12 @@ fn render_summary_banner(payload: &DiscoveryDigestPayload) -> String {
 /// Render one section of host cards. Sections with more than 5 cards put
 /// the overflow inside `<details>` so recipients can opt-in to the full
 /// list. Summary reads "Show {N} more hosts".
-fn render_host_cards_section(heading: &str, cards: &[AffectedHostCard], base: &str) -> String {
+fn render_host_cards_section(
+    heading: &str,
+    cards: &[AffectedHostCard],
+    base: &str,
+    email: &dyn Email,
+) -> String {
     if cards.is_empty() {
         return String::new();
     }
@@ -299,7 +304,7 @@ fn render_host_cards_section(heading: &str, cards: &[AffectedHostCard], base: &s
     let visible: String = cards
         .iter()
         .take(MAX_HOST_CARDS_INLINE)
-        .map(|c| render_host_card(c, base))
+        .map(|c| render_host_card(c, base, email))
         .collect();
     if cards.len() <= MAX_HOST_CARDS_INLINE {
         return render_section(&header, &visible);
@@ -307,7 +312,7 @@ fn render_host_cards_section(heading: &str, cards: &[AffectedHostCard], base: &s
     let hidden: String = cards
         .iter()
         .skip(MAX_HOST_CARDS_INLINE)
-        .map(|c| render_host_card(c, base))
+        .map(|c| render_host_card(c, base, email))
         .collect();
     let more = cards.len() - MAX_HOST_CARDS_INLINE;
     let inner = format!(
@@ -319,28 +324,35 @@ fn render_host_cards_section(heading: &str, cards: &[AffectedHostCard], base: &s
     render_section(&header, &inner)
 }
 
-fn render_host_card(card: &AffectedHostCard, base: &str) -> String {
+fn render_host_card(card: &AffectedHostCard, base: &str, email: &dyn Email) -> String {
     // Badge mirrors the per-tag glyph convention: a host that's listed
     // because its children changed has `Unchanged` status — the surrounding
     // section header carries the context, so no badge is shown.
     let badge = match card.status {
-        EntityDigestStatus::New => Some(("New", "#dcfce7", "#166534", "")),
+        EntityDigestStatus::New => Some(("+", "New", "#dcfce7", "#166534", "")),
         EntityDigestStatus::PossiblyMissing => Some((
+            "?",
             "Possibly missing",
             "#fef9c3",
             "#854d0e",
             "font-style: italic;",
         )),
-        EntityDigestStatus::Missing => Some(("Missing", "#fee2e2", "#991b1b", "")),
+        EntityDigestStatus::Missing => Some((
+            "−",
+            "Missing",
+            "#fee2e2",
+            "#991b1b",
+            "text-decoration: line-through;",
+        )),
         EntityDigestStatus::Unchanged => None,
     }
-    .map(|(label, bg, fg, extra)| {
+    .map(|(glyph, title, bg, fg, extra)| {
         format!(
-            r#"<span style="display: inline-block; padding: 2px 8px; font-size: 12px; font-weight: 600; border-radius: 999px; background-color: {bg}; color: {fg}; {extra}">{label}</span>"#,
+            r#"<span title="{title}" style="display: inline-block; min-width: 18px; padding: 2px 6px; font-size: 13px; font-weight: 700; text-align: center; border-radius: 999px; background-color: {bg}; color: {fg}; {extra}">{glyph}</span>"#,
         )
     })
     .unwrap_or_default();
-    let host_href = format!("{base}/?modal=host-editor&id={}", card.host.id);
+    let host_href = email.with_utm(&format!("{base}/?modal=host-editor&id={}", card.host.id));
     let host_link = format!(
         r#"<a href="{href}" style="text-decoration: none; color: #1a1a1a;">{label}</a>"#,
         href = html_escape(&host_href),
@@ -353,11 +365,11 @@ fn render_host_card(card: &AffectedHostCard, base: &str) -> String {
     let (containers, services): (Vec<_>, Vec<_>) =
         card.services.iter().partition(|s| s.is_container);
 
-    let services_tags = tags_services(&services, card.host.id, base);
-    let containerized_tags = tags_containerized_services(&containers, card.host.id, base);
-    let ip_tags = tags_ips(&card.ip_addresses, card.host.id, base);
-    let interface_tags = tags_interfaces(&card.interfaces, card.host.id, base);
-    let port_tags = tags_ports(&card.ports, card.host.id, base);
+    let services_tags = tags_services(&services, card.host.id, base, email);
+    let containerized_tags = tags_containerized_services(&containers, card.host.id, base, email);
+    let ip_tags = tags_ips(&card.ip_addresses, card.host.id, base, email);
+    let interface_tags = tags_interfaces(&card.interfaces, card.host.id, base, email);
+    let port_tags = tags_ports(&card.ports, card.host.id, base, email);
 
     let mut rows = String::new();
     rows.push_str(&render_tag_row("Services", &services_tags));
@@ -393,7 +405,7 @@ fn absolute_logo(raw: &Option<String>, base: &str) -> Option<String> {
     }
 }
 
-fn tags_ports(items: &[PortSummary], host_id: Uuid, base: &str) -> Vec<TagItem> {
+fn tags_ports(items: &[PortSummary], host_id: Uuid, base: &str, email: &dyn Email) -> Vec<TagItem> {
     let color = EntityDiscriminants::Port.color();
     items
         .iter()
@@ -401,16 +413,21 @@ fn tags_ports(items: &[PortSummary], host_id: Uuid, base: &str) -> Vec<TagItem> 
             label: p.label.clone(),
             color,
             status: p.status,
-            href: Some(format!(
+            href: Some(email.with_utm(&format!(
                 "{base}/?modal=host-editor&id={host_id}&tab=ports&subEntityId={}",
                 p.id
-            )),
+            ))),
             logo_url: None,
         })
         .collect()
 }
 
-fn tags_services(items: &[&ServiceSummary], _host_id: Uuid, base: &str) -> Vec<TagItem> {
+fn tags_services(
+    items: &[&ServiceSummary],
+    _host_id: Uuid,
+    base: &str,
+    email: &dyn Email,
+) -> Vec<TagItem> {
     let color = EntityDiscriminants::Service.color();
     items
         .iter()
@@ -418,7 +435,7 @@ fn tags_services(items: &[&ServiceSummary], _host_id: Uuid, base: &str) -> Vec<T
             label: s.name.clone(),
             color,
             status: s.status,
-            href: Some(format!("{base}/?modal=service-editor&id={}", s.id)),
+            href: Some(email.with_utm(&format!("{base}/?modal=service-editor&id={}", s.id))),
             logo_url: absolute_logo(&s.logo_url, base),
         })
         .collect()
@@ -431,6 +448,7 @@ fn tags_containerized_services(
     items: &[&ServiceSummary],
     _host_id: Uuid,
     base: &str,
+    email: &dyn Email,
 ) -> Vec<TagItem> {
     let color = Concept::Virtualization.color();
     items
@@ -439,13 +457,18 @@ fn tags_containerized_services(
             label: s.name.clone(),
             color,
             status: s.status,
-            href: Some(format!("{base}/?modal=service-editor&id={}", s.id)),
+            href: Some(email.with_utm(&format!("{base}/?modal=service-editor&id={}", s.id))),
             logo_url: absolute_logo(&s.logo_url, base),
         })
         .collect()
 }
 
-fn tags_ips(items: &[IpAddressSummary], host_id: Uuid, base: &str) -> Vec<TagItem> {
+fn tags_ips(
+    items: &[IpAddressSummary],
+    host_id: Uuid,
+    base: &str,
+    email: &dyn Email,
+) -> Vec<TagItem> {
     let color = EntityDiscriminants::IPAddress.color();
     items
         .iter()
@@ -453,16 +476,21 @@ fn tags_ips(items: &[IpAddressSummary], host_id: Uuid, base: &str) -> Vec<TagIte
             label: ip.address.clone(),
             color,
             status: ip.status,
-            href: Some(format!(
+            href: Some(email.with_utm(&format!(
                 "{base}/?modal=host-editor&id={host_id}&tab=ip-addresses&subEntityId={}",
                 ip.id
-            )),
+            ))),
             logo_url: None,
         })
         .collect()
 }
 
-fn tags_interfaces(items: &[InterfaceSummary], host_id: Uuid, base: &str) -> Vec<TagItem> {
+fn tags_interfaces(
+    items: &[InterfaceSummary],
+    host_id: Uuid,
+    base: &str,
+    email: &dyn Email,
+) -> Vec<TagItem> {
     let color = EntityDiscriminants::Interface.color();
     items
         .iter()
@@ -470,10 +498,10 @@ fn tags_interfaces(items: &[InterfaceSummary], host_id: Uuid, base: &str) -> Vec
             label: i.label.clone(),
             color,
             status: i.status,
-            href: Some(format!(
+            href: Some(email.with_utm(&format!(
                 "{base}/?modal=host-editor&id={host_id}&tab=interfaces&subEntityId={}",
                 i.id
-            )),
+            ))),
             logo_url: None,
         })
         .collect()
