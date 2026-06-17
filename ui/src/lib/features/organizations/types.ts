@@ -5,6 +5,13 @@ export type Organization = components['schemas']['Organization'];
 export type OrganizationInvite = components['schemas']['Invite'];
 export type CreateInviteRequest = components['schemas']['CreateInviteRequest'];
 
+// Plans backed by a Stripe subscription. Demo / Community / CommercialSelfHosted
+// are not, so they have no Stripe billing lifecycle.
+export function isStripeManagedPlan(organization: Organization): boolean {
+	const type = organization.plan?.type;
+	return type != null && type !== 'Demo' && type !== 'Community' && type !== 'CommercialSelfHosted';
+}
+
 export function isBillingPlanActive(organization: Organization) {
 	// Demo and other non-Stripe plans are always considered active
 	if (
