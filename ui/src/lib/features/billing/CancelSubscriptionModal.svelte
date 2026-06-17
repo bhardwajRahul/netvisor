@@ -3,6 +3,7 @@
 	import GenericModal from '$lib/shared/components/layout/GenericModal.svelte';
 	import SelectInput from '$lib/shared/components/forms/input/SelectInput.svelte';
 	import TextArea from '$lib/shared/components/forms/input/TextArea.svelte';
+	import InlineWarning from '$lib/shared/components/feedback/InlineWarning.svelte';
 	import {
 		usePauseSubscriptionMutation,
 		useApplyDiscountSaveOfferMutation,
@@ -11,6 +12,7 @@
 	} from '$lib/features/billing/queries';
 	import cancelReasons from '$lib/data/cancel-reasons.json';
 	import saveOffers from '$lib/data/save-offers.json';
+	import { billingPlans } from '$lib/shared/stores/metadata';
 	import { pushSuccess, pushWarning } from '$lib/shared/stores/feedback';
 	import { useConfigQuery } from '$lib/shared/stores/config-query';
 	import { waitForOrgUpdate } from '$lib/shared/billing/wait-for-org-update';
@@ -52,6 +54,7 @@
 		lastPausedAt = null,
 		lastDiscountAt = null,
 		planStatus = null,
+		planType = null,
 		onSubscriptionChanged
 	}: {
 		isOpen?: boolean;
@@ -62,6 +65,8 @@
 		lastDiscountAt?: string | null;
 		/** Org's `plan_status` — pause/discount save offers are suppressed while trialing. */
 		planStatus?: string | null;
+		/** Org's `plan.type` — save offers only apply to Stripe-managed plans. */
+		planType?: string | null;
 		/** Called after pause/discount/cancel succeed so the caller can refresh the org payload. */
 		onSubscriptionChanged?: () => void;
 	} = $props();
@@ -70,6 +75,14 @@
 	// charging yet, so suppress save offers and let the cancellation go straight
 	// to confirm (cancel-at-period-end ends the trial without converting).
 	let isTrialing = $derived(planStatus === 'trialing');
+
+	// Save offers (pause + discount) only apply to Stripe-managed plans —
+	// pausing a Community/Demo/CommercialSelfHosted "subscription" or applying
+	// a Stripe coupon to a non-Stripe sub is nonsensical and the backend would
+	// 4xx anyway.
+	let isStripeManaged = $derived(
+		billingPlans.getMetadata(planType ?? null).is_stripe_managed === true
+	);
 
 	// Two internal steps. Step 1 picks the reason; step 2 shows any save offers
 	// AND hosts the Confirm Cancellation action in the footer. No stepper UI:
@@ -128,7 +141,7 @@
 	]);
 
 	const offersForReason = $derived.by<string[]>(() => {
-		if (isTrialing || !selectedReason) return [];
+		if (isTrialing || !isStripeManaged || !selectedReason) return [];
 		const reason = cancelReasons.find((r) => r.id === selectedReason);
 		const offers = (reason?.metadata as { save_offers?: string[] } | null | undefined)?.save_offers;
 		// Hide the discount panel when the deployment hasn't configured a
@@ -313,12 +326,12 @@
 								</p>
 							</div>
 							{#if pauseCooldownEnd && lastPausedAt}
-								<p class="text-sm text-warning">
-									{settings_billing_saveOffer_pauseCooldown({
+								<InlineWarning
+									title={settings_billing_saveOffer_pauseCooldown({
 										lastPausedDate: fmtDate(new Date(lastPausedAt)),
 										nextEligibleDate: fmtDate(pauseCooldownEnd)
 									})}
-								</p>
+								/>
 							{:else}
 								<div class="grid grid-cols-3 gap-2">
 									{#each pauseDurationOptions as d (d.value)}

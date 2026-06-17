@@ -629,5 +629,6 @@
 	lastPausedAt={org?.last_paused_at ?? null}
 	lastDiscountAt={org?.last_discount_at ?? null}
 	planStatus={org?.plan_status ?? null}
+	planType={org?.plan?.type ?? null}
 	onSubscriptionChanged={() => organizationQuery.refetch()}
 />
