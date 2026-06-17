@@ -10860,19 +10860,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-06-16T13:44:04.768141Z",
+              "created_at": "2026-06-17T14:07:58.849026Z",
               "first_discovery_id": null,
-              "id": "f86f5cd4-fd7c-4b07-8b52-f6a8e9106d8d",
+              "id": "accf1d0c-c98d-4c20-bda5-0f4e15eb249e",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-16T13:44:04.768141Z",
+              "last_seen_at": "2026-06-17T14:07:58.849026Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-16T13:44:04.768141Z",
-              "valid_from": "2026-06-16T13:44:04.768141Z",
+              "updated_at": "2026-06-17T14:07:58.849026Z",
+              "valid_from": "2026-06-17T14:07:58.849026Z",
               "valid_to": null
             }
           },
@@ -11858,19 +11858,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-06-16T13:44:04.756406Z",
+                      "created_at": "2026-06-17T14:07:58.830088Z",
                       "first_discovery_id": null,
-                      "id": "ee29132e-c111-40e0-aa17-f3cb35ae2324",
+                      "id": "6d1c4eeb-2638-4803-bd02-6f41dc3486d4",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-06-16T13:44:04.756406Z",
+                      "last_seen_at": "2026-06-17T14:07:58.830088Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-06-16T13:44:04.756406Z",
-                      "valid_from": "2026-06-16T13:44:04.756406Z",
+                      "updated_at": "2026-06-17T14:07:58.830088Z",
+                      "valid_from": "2026-06-17T14:07:58.830088Z",
                       "valid_to": null
                     }
                   ],
@@ -11884,7 +11884,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Telnet",
+                  "service_definition": "Actual Budget",
                   "source": {
                     "type": "Manual"
                   },
@@ -12296,6 +12296,52 @@
                 ]
               }
             }
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ApiMeta"
+          },
+          "success": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ApiResponse_Option_SaveOfferCoupon": {
+        "type": "object",
+        "required": [
+          "success",
+          "meta"
+        ],
+        "properties": {
+          "data": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "description": "Live terms for the configured save-offer coupon, read directly from\nStripe. Used by the cancel modal's Discount panel to render the offer\ndynamically instead of hard-coding the percent/duration.",
+                "required": [
+                  "percent_off",
+                  "duration_in_months"
+                ],
+                "properties": {
+                  "duration_in_months": {
+                    "type": "integer",
+                    "format": "int64"
+                  },
+                  "percent_off": {
+                    "type": "integer",
+                    "format": "int64"
+                  }
+                }
+              }
+            ]
           },
           "error": {
             "type": [
@@ -12820,19 +12866,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-06-16T13:44:04.764063Z",
+                  "created_at": "2026-06-17T14:07:58.842962Z",
                   "first_discovery_id": null,
-                  "id": "826f495f-6c6b-4ac5-99ab-171da1aadc0a",
+                  "id": "cf590741-98df-4bcf-b923-8474e01112d7",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-16T13:44:04.764063Z",
+                  "last_seen_at": "2026-06-17T14:07:58.842962Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-16T13:44:04.764063Z",
-                  "valid_from": "2026-06-16T13:44:04.764063Z",
+                  "updated_at": "2026-06-17T14:07:58.842962Z",
+                  "valid_from": "2026-06-17T14:07:58.842962Z",
                   "valid_to": null
                 }
               ],
@@ -12846,7 +12892,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Telnet",
+              "service_definition": "Actual Budget",
               "source": {
                 "type": "Manual"
               },
@@ -14546,19 +14592,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-06-16T13:44:04.756659Z",
+          "created_at": "2026-06-17T14:07:58.830536Z",
           "first_discovery_id": null,
-          "id": "43489ca6-01d9-43cb-9503-686dc33b900a",
+          "id": "da564bb5-d060-4d5e-8618-e274b06caa6f",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-06-16T13:44:04.756659Z",
+          "last_seen_at": "2026-06-17T14:07:58.830536Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-06-16T13:44:04.756659Z",
-          "valid_from": "2026-06-16T13:44:04.756659Z",
+          "updated_at": "2026-06-17T14:07:58.830536Z",
+          "valid_from": "2026-06-17T14:07:58.830536Z",
           "valid_to": null
         }
       },
@@ -15148,7 +15194,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Telnet",
+              "service_definition": "Actual Budget",
               "tags": [],
               "virtualization": null
             }
@@ -17766,19 +17812,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-06-16T13:44:04.756138Z",
+                  "created_at": "2026-06-17T14:07:58.829583Z",
                   "first_discovery_id": null,
-                  "id": "8ed08c19-db6e-41e5-b003-52a4d4d29751",
+                  "id": "4bcb5c57-c2f1-4bb7-8ee2-eb7e07597557",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-16T13:44:04.756138Z",
+                  "last_seen_at": "2026-06-17T14:07:58.829583Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-16T13:44:04.756138Z",
-                  "valid_from": "2026-06-16T13:44:04.756138Z",
+                  "updated_at": "2026-06-17T14:07:58.829583Z",
+                  "valid_from": "2026-06-17T14:07:58.829583Z",
                   "valid_to": null
                 }
               ],
@@ -17792,7 +17838,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Telnet",
+              "service_definition": "Actual Budget",
               "source": {
                 "type": "Manual"
               },
@@ -19624,7 +19670,7 @@
               "integer",
               "null"
             ],
-            "format": "int32",
+            "format": "int64",
             "description": "Percent off the currently-active save-offer discount applies. Read\nlive by the BillingTab chip so a future coupon swap renders the new\nvalue without a code change.",
             "readOnly": true
           },
@@ -20212,19 +20258,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-06-16T13:44:04.750247Z",
+                        "created_at": "2026-06-17T14:07:58.818146Z",
                         "first_discovery_id": null,
-                        "id": "84236403-6a79-4e10-b005-a437b0619d75",
+                        "id": "5251bf90-59dc-4def-b778-b47b7259359b",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-06-16T13:44:04.750247Z",
+                        "last_seen_at": "2026-06-17T14:07:58.818146Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-06-16T13:44:04.750247Z",
-                        "valid_from": "2026-06-16T13:44:04.750247Z",
+                        "updated_at": "2026-06-17T14:07:58.818146Z",
+                        "valid_from": "2026-06-17T14:07:58.818146Z",
                         "valid_to": null
                       }
                     ],
@@ -20238,7 +20284,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Telnet",
+                    "service_definition": "Actual Budget",
                     "source": {
                       "type": "Manual"
                     },
@@ -20359,19 +20405,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-06-16T13:44:04.763315Z",
+                    "created_at": "2026-06-17T14:07:58.841818Z",
                     "first_discovery_id": null,
-                    "id": "1d267240-4332-406d-9619-e6233414feea",
+                    "id": "143e2490-126f-40b7-95ea-23399c0b151b",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-06-16T13:44:04.763315Z",
+                    "last_seen_at": "2026-06-17T14:07:58.841818Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-06-16T13:44:04.763315Z",
-                    "valid_from": "2026-06-16T13:44:04.763315Z",
+                    "updated_at": "2026-06-17T14:07:58.841818Z",
+                    "valid_from": "2026-06-17T14:07:58.841818Z",
                     "valid_to": null
                   }
                 ],
@@ -20385,7 +20431,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Telnet",
+                "service_definition": "Actual Budget",
                 "source": {
                   "type": "Manual"
                 },
@@ -21684,6 +21730,24 @@
           "downgrade"
         ]
       },
+      "SaveOfferCoupon": {
+        "type": "object",
+        "description": "Live terms for the configured save-offer coupon, read directly from\nStripe. Used by the cancel modal's Discount panel to render the offer\ndynamically instead of hard-coding the percent/duration.",
+        "required": [
+          "percent_off",
+          "duration_in_months"
+        ],
+        "properties": {
+          "duration_in_months": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "percent_off": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "ScanSettings": {
         "type": "object",
         "description": "Scan performance settings. Lives on the discovery entity.\nNumeric fields are `Option<T>` — `None` means \"use daemon default\".\nThe daemon unwraps with defaults at point of use.",
@@ -21959,19 +22023,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-06-16T13:44:04.756611Z",
+              "created_at": "2026-06-17T14:07:58.830444Z",
               "first_discovery_id": null,
-              "id": "42882d0f-31cd-446f-81ec-c1e2d60540c7",
+              "id": "2bdaf37f-4a8f-48ed-977a-c464809e53ef",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-16T13:44:04.756611Z",
+              "last_seen_at": "2026-06-17T14:07:58.830444Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-16T13:44:04.756611Z",
-              "valid_from": "2026-06-16T13:44:04.756611Z",
+              "updated_at": "2026-06-17T14:07:58.830444Z",
+              "valid_from": "2026-06-17T14:07:58.830444Z",
               "valid_to": null
             }
           ],
@@ -21985,7 +22049,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Telnet",
+          "service_definition": "Actual Budget",
           "source": {
             "type": "Manual"
           },

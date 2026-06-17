@@ -29,7 +29,9 @@ mod plan_changed;
 mod plan_limit_approaching;
 mod plan_limit_reached;
 mod subscription_cancelled;
+mod subscription_paused;
 mod subscription_reactivated;
+mod subscription_resumed;
 mod trial_converted;
 mod trial_ending;
 mod trial_expired;
@@ -60,7 +62,9 @@ pub use plan_changed::PlanChanged;
 pub use plan_limit_approaching::PlanLimitApproaching;
 pub use plan_limit_reached::PlanLimitReached;
 pub use subscription_cancelled::SubscriptionCancelled;
+pub use subscription_paused::SubscriptionPaused;
 pub use subscription_reactivated::SubscriptionReactivated;
+pub use subscription_resumed::SubscriptionResumed;
 pub use trial_converted::TrialConverted;
 pub use trial_ending::TrialEnding;
 pub use trial_expired::TrialExpired;
@@ -347,6 +351,10 @@ mod tests {
             period_end: "January 1, 2026",
         });
         assert_fully_rendered(&SubscriptionReactivated);
+        assert_fully_rendered(&SubscriptionPaused {
+            resumes_at: "July 1, 2026",
+        });
+        assert_fully_rendered(&SubscriptionResumed);
         assert_fully_rendered(&CheckoutCompleted { plan_name: "Pro" });
         assert_fully_rendered(&UsageSummary {
             period: "Dec 1, 2025 – Jan 1, 2026",

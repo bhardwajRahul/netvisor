@@ -253,9 +253,10 @@ export interface paths {
         put?: never;
         /**
          * Cancel subscription
-         * @description In-app cancel modal endpoint. Sets Stripe `cancel_at_period_end`, stashes
-         *     the canonical Scanopy reason in subscription metadata, returns the period
-         *     end so the modal can render the retention disclosure.
+         * @description In-app cancel modal endpoint. Sets Stripe `cancel_at` to the current
+         *     period end (via Stripe's `MaxPeriodEnd` sentinel), stashes the canonical
+         *     Scanopy reason in subscription metadata, returns the period end so the
+         *     modal can render the retention disclosure.
          */
         post: operations["cancel_subscription"];
         delete?: never;
@@ -444,8 +445,8 @@ export interface paths {
         put?: never;
         /**
          * Reactivate a subscription pending cancellation
-         * @description Clears Stripe's `cancel_at_period_end`. Available while
-         *     `plan_status === 'pending_cancellation'`.
+         * @description Clears Stripe's scheduled-cancellation state (`cancel_at` → None).
+         *     Available while `plan_status === 'pending_cancellation'`.
          */
         post: operations["reactivate_subscription"];
         delete?: never;
@@ -469,6 +470,29 @@ export interface paths {
          *     `plan_status === 'paused'`.
          */
         post: operations["resume_subscription"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/billing/save-offer-coupon": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read live terms for the configured save-offer coupon
+         * @description Returns the coupon's `percent_off` and `duration_in_months` so the
+         *     cancel modal's Discount panel can render the offer dynamically. The
+         *     payload is `null` when `STRIPE_SAVE_OFFER_COUPON_ID` is unset — the
+         *     modal hides the panel in that case.
+         */
+        get: operations["get_save_offer_coupon"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3052,19 +3076,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-06-16T13:44:04.768141Z",
+             *       "created_at": "2026-06-17T14:07:58.849027Z",
              *       "first_discovery_id": null,
-             *       "id": "cc060e6b-35fd-41f2-af5b-2184adfdeed3",
+             *       "id": "99c9350b-8d0b-4e55-9051-535b7314ee7e",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-06-16T13:44:04.768141Z",
+             *       "last_seen_at": "2026-06-17T14:07:58.849027Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-06-16T13:44:04.768141Z",
-             *       "valid_from": "2026-06-16T13:44:04.768141Z",
+             *       "updated_at": "2026-06-17T14:07:58.849027Z",
+             *       "valid_from": "2026-06-17T14:07:58.849027Z",
              *       "valid_to": null
              *     }
              */
@@ -3401,19 +3425,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-06-16T13:44:04.756405Z",
+             *               "created_at": "2026-06-17T14:07:58.830077Z",
              *               "first_discovery_id": null,
-             *               "id": "1180f806-9cab-4ced-922f-14b88c273291",
+             *               "id": "8cfc4834-a0c1-4ecc-8ea6-b6d42d5d949b",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-06-16T13:44:04.756405Z",
+             *               "last_seen_at": "2026-06-17T14:07:58.830077Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-06-16T13:44:04.756405Z",
-             *               "valid_from": "2026-06-16T13:44:04.756405Z",
+             *               "updated_at": "2026-06-17T14:07:58.830077Z",
+             *               "valid_from": "2026-06-17T14:07:58.830077Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3427,7 +3451,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Telnet",
+             *           "service_definition": "Actual Budget",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3605,6 +3629,17 @@ export interface components {
             meta: components["schemas"]["ApiMeta"];
             success: boolean;
         };
+        ApiResponse_Option_SaveOfferCoupon: {
+            data?: null | {
+                /** Format: int64 */
+                duration_in_months: number;
+                /** Format: int64 */
+                percent_off: number;
+            };
+            error?: string | null;
+            meta: components["schemas"]["ApiMeta"];
+            success: boolean;
+        };
         ApiResponse_Organization: {
             data?: components["schemas"]["OrganizationBase"] & {
                 /** Format: date-time */
@@ -3769,19 +3804,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-06-16T13:44:04.764011Z",
+             *           "created_at": "2026-06-17T14:07:58.842982Z",
              *           "first_discovery_id": null,
-             *           "id": "653da009-4fc8-49d2-90d1-eb5c85bc60ca",
+             *           "id": "c051adb2-3db2-4041-b6d9-69d790253cc3",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-06-16T13:44:04.764011Z",
+             *           "last_seen_at": "2026-06-17T14:07:58.842982Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-06-16T13:44:04.764011Z",
-             *           "valid_from": "2026-06-16T13:44:04.764011Z",
+             *           "updated_at": "2026-06-17T14:07:58.842982Z",
+             *           "valid_from": "2026-06-17T14:07:58.842982Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -3795,7 +3830,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Telnet",
+             *       "service_definition": "Actual Budget",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4248,19 +4283,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-06-16T13:44:04.756663Z",
+         *       "created_at": "2026-06-17T14:07:58.830517Z",
          *       "first_discovery_id": null,
-         *       "id": "89b5561b-1b91-4309-a9ec-e2271a8dc362",
+         *       "id": "e67bfbe1-9d7d-4b4f-90d2-787bf8f8efd9",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-06-16T13:44:04.756663Z",
+         *       "last_seen_at": "2026-06-17T14:07:58.830517Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-06-16T13:44:04.756663Z",
-         *       "valid_from": "2026-06-16T13:44:04.756663Z",
+         *       "updated_at": "2026-06-17T14:07:58.830517Z",
+         *       "valid_from": "2026-06-17T14:07:58.830517Z",
          *       "valid_to": null
          *     }
          */
@@ -4475,7 +4510,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Telnet",
+         *           "service_definition": "Actual Budget",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -5416,19 +5451,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-06-16T13:44:04.756134Z",
+         *               "created_at": "2026-06-17T14:07:58.829580Z",
          *               "first_discovery_id": null,
-         *               "id": "1a8439e5-bf43-463e-9ade-26bce6ecdb9e",
+         *               "id": "81d1f95f-959b-4065-bf11-f09d127b97b2",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-06-16T13:44:04.756134Z",
+         *               "last_seen_at": "2026-06-17T14:07:58.829580Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-06-16T13:44:04.756134Z",
-         *               "valid_from": "2026-06-16T13:44:04.756134Z",
+         *               "updated_at": "2026-06-17T14:07:58.829580Z",
+         *               "valid_from": "2026-06-17T14:07:58.829580Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -5442,7 +5477,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Telnet",
+         *           "service_definition": "Actual Budget",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -6094,7 +6129,7 @@ export interface components {
              */
             readonly discount_save_offer_active_until?: string | null;
             /**
-             * Format: int32
+             * Format: int64
              * @description Percent off the currently-active save-offer discount applies. Read
              *     live by the BillingTab chip so a future coupon swap renders the new
              *     value without a code change.
@@ -6722,6 +6757,17 @@ export interface components {
          */
         SaveOffer: "pause" | "discount" | "downgrade";
         /**
+         * @description Live terms for the configured save-offer coupon, read directly from
+         *     Stripe. Used by the cancel modal's Discount panel to render the offer
+         *     dynamically instead of hard-coding the percent/duration.
+         */
+        SaveOfferCoupon: {
+            /** Format: int64 */
+            duration_in_months: number;
+            /** Format: int64 */
+            percent_off: number;
+        };
+        /**
          * @description Scan performance settings. Lives on the discovery entity.
          *     Numeric fields are `Option<T>` — `None` means "use daemon default".
          *     The daemon unwraps with defaults at point of use.
@@ -6822,19 +6868,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-06-16T13:44:04.756614Z",
+         *           "created_at": "2026-06-17T14:07:58.830429Z",
          *           "first_discovery_id": null,
-         *           "id": "623822b1-995d-45d9-98ff-2a51dae8f994",
+         *           "id": "7bccff74-68bc-43a7-9f6f-c63f83317576",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-06-16T13:44:04.756614Z",
+         *           "last_seen_at": "2026-06-17T14:07:58.830429Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-06-16T13:44:04.756614Z",
-         *           "valid_from": "2026-06-16T13:44:04.756614Z",
+         *           "updated_at": "2026-06-17T14:07:58.830429Z",
+         *           "valid_from": "2026-06-17T14:07:58.830429Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -6848,7 +6894,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Telnet",
+         *       "service_definition": "Actual Budget",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -8433,6 +8479,35 @@ export interface operations {
                 };
             };
             /** @description No paused subscription or billing not enabled */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    get_save_offer_coupon: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Save-offer coupon terms, or null when not configured */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_Option_SaveOfferCoupon"];
+                };
+            };
+            /** @description Billing not enabled */
             400: {
                 headers: {
                     [name: string]: unknown;

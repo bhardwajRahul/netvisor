@@ -4,6 +4,7 @@ use crate::server::billing::plans::get_enterprise_plan;
 use crate::server::billing::plans::get_free_plan;
 use crate::server::billing::types::api::{
     CancelSubscriptionRequest, CancelSubscriptionResponse, ChangePlanPreview, PauseDuration,
+    SaveOfferCoupon,
 };
 use crate::server::billing::types::base::{BillingInvoice, BillingPlan, CancelReason, PlanStatus};
 use crate::server::billing::types::features::Feature;
@@ -61,6 +62,7 @@ use stripe_checkout::{
     CheckoutSession, CheckoutSessionBillingAddressCollection, CheckoutSessionMode,
     CheckoutSessionPaymentMethodCollection,
 };
+use stripe_client_core::{RequestBuilder, StripeMethod, StripeRequest};
 use stripe_core::customer::CreateCustomer;
 use stripe_core::customer::DeleteCustomer;
 use stripe_core::customer::ListPaymentMethodsCustomer;
@@ -2138,7 +2140,8 @@ impl BillingService {
             let cooldown_end = last + chrono::Duration::days(180);
             if cooldown_end > Utc::now() {
                 return Err(anyhow!(
-                    "You can pause again on {}",
+                    "You last paused on {}. You can pause again on {}.",
+                    last.format("%B %-d, %Y"),
                     cooldown_end.format("%B %-d, %Y")
                 ));
             }
@@ -2199,7 +2202,20 @@ impl BillingService {
         ))
     }
 
-    /// Resume a paused subscription via Stripe's dedicated `resume` endpoint.
+    /// Resume a paused subscription by clearing `pause_collection`.
+    ///
+    /// Stripe's dedicated `ResumeSubscription` endpoint only handles
+    /// `status='paused'` (trial without payment method). Our pauses set
+    /// `pause_collection` while `status` stays `active`, so the resume
+    /// path is `UpdateSubscription` with `pause_collection=` (empty form
+    /// value — Stripe's documented "clear this field" convention).
+    ///
+    /// The SDK builder can't express that: its field is
+    /// `Option<UpdateSubscriptionPauseCollection>` with
+    /// `skip_serializing_if = "Option::is_none"`, so `None` is omitted
+    /// rather than nulled. We send the form value directly via a custom
+    /// `StripeRequest` impl, reusing the existing `stripe::Client`.
+    ///
     /// Pattern A: endpoint calls Stripe only; the webhook detects the
     /// pause-collection clearing and emits `BillingOperation::Resumed`.
     pub async fn resume_subscription(
@@ -2214,7 +2230,8 @@ impl BillingService {
             return Err(anyhow!("Subscription is not paused; nothing to resume."));
         }
 
-        stripe_billing::subscription::ResumeSubscription::new(&sub.id)
+        ClearPauseCollection::new(sub.id.clone())
+            .customize()
             .send(&self.stripe)
             .await
             .map_err(|e| {
@@ -2423,6 +2440,34 @@ impl BillingService {
         Ok("Subscription reactivated.".to_string())
     }
 
+    /// Read live coupon terms (percent_off + duration_in_months) for the
+    /// configured save-offer coupon. The cancel modal calls this to render
+    /// the Discount panel body dynamically from Stripe. Returns `Ok(None)`
+    /// when the env var is unset — the cancel modal hides the panel in
+    /// that case.
+    pub async fn get_save_offer_coupon(&self) -> Result<Option<SaveOfferCoupon>, Error> {
+        let Ok(coupon_id) = std::env::var("STRIPE_SAVE_OFFER_COUPON_ID") else {
+            return Ok(None);
+        };
+        let coupon = RetrieveCoupon::new(coupon_id.clone())
+            .send(&self.stripe)
+            .await
+            .map_err(|e| {
+                tracing::error!(
+                    coupon_id = %coupon_id,
+                    error = ?e,
+                    "Failed to retrieve save-offer coupon"
+                );
+                anyhow!("Failed to read save-offer coupon: {e}")
+            })?;
+        let percent_off = coupon.percent_off.unwrap_or(0.0).round() as i64;
+        let duration_in_months = coupon.duration_in_months.unwrap_or(12);
+        Ok(Some(SaveOfferCoupon {
+            percent_off,
+            duration_in_months,
+        }))
+    }
+
     /// Apply the discount save offer. Reads coupon ID from
     /// `STRIPE_SAVE_OFFER_COUPON_ID` env var. The cancel modal hides the
     /// discount panel when the env var is unset; this guard is
@@ -2614,6 +2659,49 @@ fn map_cancel_reason_to_stripe(
         CancelReason::TooComplex => F::TooComplex,
         CancelReason::Other => F::Other,
     })
+}
+
+/// Form body for clearing `pause_collection` via the Stripe REST API.
+///
+/// Stripe accepts an empty form value (`pause_collection=`) as the documented
+/// "clear this field" convention. The SDK's `UpdateSubscription::pause_collection`
+/// setter takes a typed struct and can't produce that wire representation.
+#[derive(serde::Serialize)]
+struct ClearPauseCollectionForm {
+    pause_collection: &'static str,
+}
+
+/// Custom Stripe request used by [`BillingService::resume_subscription`].
+///
+/// Implements [`StripeRequest`] directly so it reuses the existing
+/// `stripe::Client` (auth, retries, response decoding) without dropping to raw
+/// HTTP or stashing the Stripe secret on `BillingService`.
+struct ClearPauseCollection {
+    sub_id: stripe_billing::SubscriptionId,
+    body: ClearPauseCollectionForm,
+}
+
+impl ClearPauseCollection {
+    fn new(sub_id: stripe_billing::SubscriptionId) -> Self {
+        Self {
+            sub_id,
+            body: ClearPauseCollectionForm {
+                pause_collection: "",
+            },
+        }
+    }
+}
+
+impl StripeRequest for ClearPauseCollection {
+    type Output = stripe_billing::Subscription;
+
+    fn build(&self) -> RequestBuilder {
+        RequestBuilder::new(
+            StripeMethod::Post,
+            format!("/subscriptions/{}", self.sub_id),
+        )
+        .form(&self.body)
+    }
 }
 
 #[cfg(test)]

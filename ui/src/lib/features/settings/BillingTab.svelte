@@ -3,7 +3,7 @@
 	import ProgressTrack from '$lib/shared/components/data/ProgressTrack.svelte';
 	import { triggerUpgrade } from '$lib/features/billing/trigger-upgrade';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
-	import { isBillingPlanActive } from '$lib/features/organizations/types';
+	import { isBillingPlanActive, isStripeManagedPlan } from '$lib/features/organizations/types';
 	import { billingPlans } from '$lib/shared/stores/metadata';
 	import { trackEvent, trackOncePerSession } from '$lib/shared/utils/analytics';
 	import {
@@ -33,7 +33,6 @@
 		settings_billing_manageSubscription,
 		settings_billing_needHelp,
 		settings_billing_pastDue,
-		settings_billing_paused_status,
 		settings_billing_cancelSubscription,
 		settings_billing_per,
 		settings_billing_trialActive,
@@ -156,11 +155,11 @@
 	});
 
 	// Render the active save-offer discount chip only while the discount
-	// window is still in the future. After expiry the row stays in the DB
-	// but the chip naturally disappears — no cleanup job required.
+	// window is still in the future, and only on Stripe-managed plans.
 	let activeDiscount = $derived.by(() => {
-		const until = org?.discount_save_offer_active_until;
-		const percent = org?.discount_save_offer_percent_off;
+		if (!org || !isStripeManagedPlan(org)) return null;
+		const until = org.discount_save_offer_active_until;
+		const percent = org.discount_save_offer_percent_off;
 		if (!until || percent == null) return null;
 		const expiresAt = new Date(until);
 		if (expiresAt.getTime() <= Date.now()) return null;
@@ -172,6 +171,12 @@
 				year: 'numeric'
 			})
 		};
+	});
+
+	let discountedPriceLabel = $derived.by(() => {
+		if (!org?.plan || !activeDiscount) return null;
+		const discounted = (org.plan.base_cents * (100 - activeDiscount.percentOff)) / 100 / 100;
+		return discounted.toFixed(2);
 	});
 
 	// Track billing tab view
@@ -397,9 +402,18 @@
 										{/if}
 									</div>
 									<div class="text-right">
-										<p class="text-primary text-2xl font-bold">
-											${org.plan.base_cents / 100}
-										</p>
+										{#if activeDiscount && discountedPriceLabel}
+											<p class="text-tertiary text-sm line-through">
+												${org.plan.base_cents / 100}
+											</p>
+											<p class="text-primary text-2xl font-bold">
+												${discountedPriceLabel}
+											</p>
+										{:else}
+											<p class="text-primary text-2xl font-bold">
+												${org.plan.base_cents / 100}
+											</p>
+										{/if}
 										<p class="text-secondary text-xs">
 											{settings_billing_per({ rate: org.plan.rate })}
 										</p>
@@ -515,13 +529,11 @@
 								<InlineWarning title={settings_billing_canceled()} />
 							{:else if org.plan_status === 'pending_cancellation'}
 								<InlineWarning title={settings_billing_downgrade_pending()} />
-							{:else if org.plan_status === 'paused'}
-								<InlineDanger title={settings_billing_paused_status()} />
 							{/if}
 
-							<!-- While downgrading (pending_cancellation), push users to Reactivate
-							     instead of re-picking a plan — so the plan-change button is hidden. -->
-							{#if org.plan_status !== 'pending_cancellation'}
+							<!-- pending_cancellation pushes users to Reactivate; paused pushes
+							     them to Resume — so the plan-change button is hidden in both. -->
+							{#if org.plan_status !== 'pending_cancellation' && org.plan_status !== 'paused'}
 								<button
 									onclick={() =>
 										triggerUpgrade({
