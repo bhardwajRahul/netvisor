@@ -218,6 +218,19 @@ export function useTopologyDataQuery(
 }
 
 /**
+ * One-shot GET that records the `FirstTopologyRebuild` onboarding milestone ("user viewed
+ * their topology"). Sends `mark_viewed=true`, which the backend only honours for a live
+ * topology that has hosts and a completed discovery. Deliberately NOT routed through
+ * `useTopologyDataQuery` (which never sets the flag) so the milestone only fires from an
+ * explicit on-tab view, never from background fetches on other tabs.
+ */
+export async function markTopologyViewed(networkId: string): Promise<void> {
+	await apiClient.GET('/api/v1/topology/data', {
+		params: { query: { network_id: networkId, mark_viewed: true } }
+	});
+}
+
+/**
  * Query hook for fetching a single topology
  */
 export function useTopologyQuery(id: () => string | undefined) {

@@ -88,6 +88,12 @@ pub struct TopologyDataQuery {
     /// When omitted, returns live entities.
     #[serde(default)]
     pub snapshot_id: Option<Uuid>,
+    /// When `true`, records the `FirstTopologyRebuild` onboarding milestone (the user has
+    /// viewed their topology). Only the frontend's explicit on-tab view sets this — the
+    /// background topology-data query never does — so the milestone never fires from other
+    /// tabs. One-time per org (guarded below + subscriber dedup).
+    #[serde(default)]
+    pub mark_viewed: Option<bool>,
 }
 
 /// Unified entity-set endpoint for the topology view.
@@ -141,12 +147,13 @@ async fn get_topology_data(
         .await
         .map_err(|e| ApiError::internal_error(&e.to_string()))?;
 
-    // Onboarding: mark the topology "viewed" the first time the user loads a live
-    // topology that actually has hosts to look at — but only once discovery has
-    // completed (the checklist step's prerequisite). One-time per org, enforced by the
-    // not_onboarded guard here and the subscriber's dedup. Emitted as System; the
-    // frontend forces a refetch on tab activation so this fires at view time.
-    if params.snapshot_id.is_none()
+    // Onboarding: mark the topology "viewed" only when the frontend explicitly requests it
+    // (`mark_viewed=true`), which it does solely while the topology tab is focused. The
+    // background topology-data query never sets the flag, so the milestone can't fire from
+    // other tabs. Still gated to a live view with hosts and a completed discovery, one-time
+    // per org (the not_onboarded guard here + the subscriber's dedup).
+    if params.mark_viewed.unwrap_or(false)
+        && params.snapshot_id.is_none()
         && !data.hosts.is_empty()
         && let Ok(Some(network)) = state
             .services

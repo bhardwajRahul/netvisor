@@ -10891,19 +10891,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-06-17T14:59:21.638564Z",
+              "created_at": "2026-06-17T19:08:33.192715Z",
               "first_discovery_id": null,
-              "id": "092dc8cc-f070-4412-bd3b-0179c453ebb5",
+              "id": "fb85fe6c-3e86-40d6-b2dc-da0f79f9793b",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-17T14:59:21.638564Z",
+              "last_seen_at": "2026-06-17T19:08:33.192715Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-17T14:59:21.638564Z",
-              "valid_from": "2026-06-17T14:59:21.638564Z",
+              "updated_at": "2026-06-17T19:08:33.192715Z",
+              "valid_from": "2026-06-17T19:08:33.192715Z",
               "valid_to": null
             }
           },
@@ -11889,19 +11889,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-06-17T14:59:21.619096Z",
+                      "created_at": "2026-06-17T19:08:33.173068Z",
                       "first_discovery_id": null,
-                      "id": "2978da9e-a9fb-4486-94d1-f7c25352a3ad",
+                      "id": "ada52e16-320a-4433-91ca-73782e3b7b83",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-06-17T14:59:21.619096Z",
+                      "last_seen_at": "2026-06-17T19:08:33.173068Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-06-17T14:59:21.619096Z",
-                      "valid_from": "2026-06-17T14:59:21.619096Z",
+                      "updated_at": "2026-06-17T19:08:33.173068Z",
+                      "valid_from": "2026-06-17T19:08:33.173068Z",
                       "valid_to": null
                     }
                   ],
@@ -11915,7 +11915,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Confluence",
+                  "service_definition": "Forgejo",
                   "source": {
                     "type": "Manual"
                   },
@@ -12897,19 +12897,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-06-17T14:59:21.632158Z",
+                  "created_at": "2026-06-17T19:08:33.186340Z",
                   "first_discovery_id": null,
-                  "id": "4c5066fa-f846-411b-ba2a-fca4ca781825",
+                  "id": "b8d92c2e-69ca-427f-9a0d-31cf4fb1e591",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-17T14:59:21.632158Z",
+                  "last_seen_at": "2026-06-17T19:08:33.186340Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-17T14:59:21.632158Z",
-                  "valid_from": "2026-06-17T14:59:21.632158Z",
+                  "updated_at": "2026-06-17T19:08:33.186340Z",
+                  "valid_from": "2026-06-17T19:08:33.186340Z",
                   "valid_to": null
                 }
               ],
@@ -12923,7 +12923,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Confluence",
+              "service_definition": "Forgejo",
               "source": {
                 "type": "Manual"
               },
@@ -14623,19 +14623,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-06-17T14:59:21.619530Z",
+          "created_at": "2026-06-17T19:08:33.173506Z",
           "first_discovery_id": null,
-          "id": "d48f4d70-7cc6-4713-9172-48a35f823a5d",
+          "id": "c8c51eb2-c45e-49be-9c27-46ec85bdf56e",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-06-17T14:59:21.619530Z",
+          "last_seen_at": "2026-06-17T19:08:33.173506Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-06-17T14:59:21.619530Z",
-          "valid_from": "2026-06-17T14:59:21.619530Z",
+          "updated_at": "2026-06-17T19:08:33.173506Z",
+          "valid_from": "2026-06-17T19:08:33.173506Z",
           "valid_to": null
         }
       },
@@ -15225,7 +15225,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Confluence",
+              "service_definition": "Forgejo",
               "tags": [],
               "virtualization": null
             }
@@ -17863,19 +17863,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-06-17T14:59:21.618591Z",
+                  "created_at": "2026-06-17T19:08:33.172579Z",
                   "first_discovery_id": null,
-                  "id": "6a1d0df7-59d0-48c9-b0a7-bd8e2b2ecf0a",
+                  "id": "0baecb38-a90b-4e9e-9140-7b1e94be1867",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-17T14:59:21.618591Z",
+                  "last_seen_at": "2026-06-17T19:08:33.172579Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-17T14:59:21.618591Z",
-                  "valid_from": "2026-06-17T14:59:21.618591Z",
+                  "updated_at": "2026-06-17T19:08:33.172579Z",
+                  "valid_from": "2026-06-17T19:08:33.172579Z",
                   "valid_to": null
                 }
               ],
@@ -17889,7 +17889,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Confluence",
+              "service_definition": "Forgejo",
               "source": {
                 "type": "Manual"
               },
@@ -20311,19 +20311,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-06-17T14:59:21.607226Z",
+                        "created_at": "2026-06-17T19:08:33.160294Z",
                         "first_discovery_id": null,
-                        "id": "7fcd21a5-7cc6-433d-92f2-edb21cf9d496",
+                        "id": "2c195701-a6b0-458f-b5fe-0f91ccaa8f57",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-06-17T14:59:21.607226Z",
+                        "last_seen_at": "2026-06-17T19:08:33.160294Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-06-17T14:59:21.607226Z",
-                        "valid_from": "2026-06-17T14:59:21.607226Z",
+                        "updated_at": "2026-06-17T19:08:33.160294Z",
+                        "valid_from": "2026-06-17T19:08:33.160294Z",
                         "valid_to": null
                       }
                     ],
@@ -20337,7 +20337,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Confluence",
+                    "service_definition": "Forgejo",
                     "source": {
                       "type": "Manual"
                     },
@@ -20458,19 +20458,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-06-17T14:59:21.630975Z",
+                    "created_at": "2026-06-17T19:08:33.185075Z",
                     "first_discovery_id": null,
-                    "id": "ef7dc611-aabd-438b-b05b-9da661fb55ef",
+                    "id": "8bdc55cd-a4bb-4a07-ba59-03ffd85d0e72",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-06-17T14:59:21.630975Z",
+                    "last_seen_at": "2026-06-17T19:08:33.185075Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-06-17T14:59:21.630975Z",
-                    "valid_from": "2026-06-17T14:59:21.630975Z",
+                    "updated_at": "2026-06-17T19:08:33.185075Z",
+                    "valid_from": "2026-06-17T19:08:33.185075Z",
                     "valid_to": null
                   }
                 ],
@@ -20484,7 +20484,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Confluence",
+                "service_definition": "Forgejo",
                 "source": {
                   "type": "Manual"
                 },
@@ -22076,19 +22076,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-06-17T14:59:21.619440Z",
+              "created_at": "2026-06-17T19:08:33.173417Z",
               "first_discovery_id": null,
-              "id": "c61d27ed-43ba-4911-b132-5ac796e8169a",
+              "id": "df9a5128-9e7b-4c93-8e46-ba2d3d29e032",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-17T14:59:21.619440Z",
+              "last_seen_at": "2026-06-17T19:08:33.173417Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-17T14:59:21.619440Z",
-              "valid_from": "2026-06-17T14:59:21.619440Z",
+              "updated_at": "2026-06-17T19:08:33.173417Z",
+              "valid_from": "2026-06-17T19:08:33.173417Z",
               "valid_to": null
             }
           ],
@@ -22102,7 +22102,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Confluence",
+          "service_definition": "Forgejo",
           "source": {
             "type": "Manual"
           },

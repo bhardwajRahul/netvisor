@@ -4,12 +4,13 @@
 	import { useUpdateSelfMutation } from '$lib/features/users/queries';
 	import Checkbox from '$lib/shared/components/forms/input/Checkbox.svelte';
 	import InfoCard from '$lib/shared/components/data/InfoCard.svelte';
-	import { pushError } from '$lib/shared/stores/feedback';
+	import { pushError, pushSuccess } from '$lib/shared/stores/feedback';
 	import {
 		settings_email_digestDescription,
 		settings_email_digestLabel,
 		settings_email_intro,
-		settings_email_updateFailed
+		settings_email_updateFailed,
+		settings_email_updated
 	} from '$lib/paraglide/messages';
 
 	const currentUserQuery = useCurrentUserQuery();
@@ -28,6 +29,7 @@
 					...user,
 					email_settings: { discovery_digest: value.discovery_digest }
 				});
+				pushSuccess(settings_email_updated());
 			} catch {
 				// Persist failed — revert the toggle to the last server value (form.reset is
 				// the same path the hydrate uses, so the checkbox re-renders) and surface a
