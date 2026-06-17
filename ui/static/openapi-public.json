@@ -10891,19 +10891,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-06-17T14:20:50.583615Z",
+              "created_at": "2026-06-17T14:37:33.039763Z",
               "first_discovery_id": null,
-              "id": "6f9d70ff-131a-4282-94b1-7ba8185e15e3",
+              "id": "5dd48e40-f757-4588-9475-a1838d7bf413",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-17T14:20:50.583615Z",
+              "last_seen_at": "2026-06-17T14:37:33.039763Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-17T14:20:50.583615Z",
-              "valid_from": "2026-06-17T14:20:50.583615Z",
+              "updated_at": "2026-06-17T14:37:33.039763Z",
+              "valid_from": "2026-06-17T14:37:33.039763Z",
               "valid_to": null
             }
           },
@@ -11889,19 +11889,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-06-17T14:20:50.562788Z",
+                      "created_at": "2026-06-17T14:37:33.027727Z",
                       "first_discovery_id": null,
-                      "id": "5e061e0c-8c19-441c-a53d-afc958df9965",
+                      "id": "3836f75c-7ccd-43ac-9b43-57077c590763",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-06-17T14:20:50.562788Z",
+                      "last_seen_at": "2026-06-17T14:37:33.027727Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-06-17T14:20:50.562788Z",
-                      "valid_from": "2026-06-17T14:20:50.562788Z",
+                      "updated_at": "2026-06-17T14:37:33.027727Z",
+                      "valid_from": "2026-06-17T14:37:33.027727Z",
                       "valid_to": null
                     }
                   ],
@@ -11915,7 +11915,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "cAdvisor",
+                  "service_definition": "BackRest",
                   "source": {
                     "type": "Manual"
                   },
@@ -12327,6 +12327,52 @@
                 ]
               }
             }
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ApiMeta"
+          },
+          "success": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ApiResponse_Option_SaveOfferCoupon": {
+        "type": "object",
+        "required": [
+          "success",
+          "meta"
+        ],
+        "properties": {
+          "data": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "description": "Live terms for the configured save-offer coupon, read directly from\nStripe. Used by the cancel modal's Discount panel to render the offer\ndynamically instead of hard-coding the percent/duration.",
+                "required": [
+                  "percent_off",
+                  "duration_in_months"
+                ],
+                "properties": {
+                  "duration_in_months": {
+                    "type": "integer",
+                    "format": "int64"
+                  },
+                  "percent_off": {
+                    "type": "integer",
+                    "format": "int64"
+                  }
+                }
+              }
+            ]
           },
           "error": {
             "type": [
@@ -12851,19 +12897,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-06-17T14:20:50.576687Z",
+                  "created_at": "2026-06-17T14:37:33.035875Z",
                   "first_discovery_id": null,
-                  "id": "fbe22856-c6ea-4a44-bfdd-021d9bdfe651",
+                  "id": "ca75ed89-f855-49b1-a5eb-1aff6b06c90d",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-17T14:20:50.576687Z",
+                  "last_seen_at": "2026-06-17T14:37:33.035875Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-17T14:20:50.576687Z",
-                  "valid_from": "2026-06-17T14:20:50.576687Z",
+                  "updated_at": "2026-06-17T14:37:33.035875Z",
+                  "valid_from": "2026-06-17T14:37:33.035875Z",
                   "valid_to": null
                 }
               ],
@@ -12877,7 +12923,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "cAdvisor",
+              "service_definition": "BackRest",
               "source": {
                 "type": "Manual"
               },
@@ -14577,19 +14623,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-06-17T14:20:50.563311Z",
+          "created_at": "2026-06-17T14:37:33.027955Z",
           "first_discovery_id": null,
-          "id": "32bd3387-c7c3-444f-8eaf-524d0a107e3d",
+          "id": "87650b17-3aff-4f7d-8b14-550cb339ede3",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-06-17T14:20:50.563311Z",
+          "last_seen_at": "2026-06-17T14:37:33.027955Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-06-17T14:20:50.563311Z",
-          "valid_from": "2026-06-17T14:20:50.563311Z",
+          "updated_at": "2026-06-17T14:37:33.027955Z",
+          "valid_from": "2026-06-17T14:37:33.027955Z",
           "valid_to": null
         }
       },
@@ -15179,7 +15225,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "cAdvisor",
+              "service_definition": "BackRest",
               "tags": [],
               "virtualization": null
             }
@@ -17817,19 +17863,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-06-17T14:20:50.562210Z",
+                  "created_at": "2026-06-17T14:37:33.027463Z",
                   "first_discovery_id": null,
-                  "id": "ac4f51af-ce97-45f7-8bd9-216d95fb86fb",
+                  "id": "f1c51ccf-b65e-4ccd-8d94-87c042d8a08c",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-17T14:20:50.562210Z",
+                  "last_seen_at": "2026-06-17T14:37:33.027463Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-17T14:20:50.562210Z",
-                  "valid_from": "2026-06-17T14:20:50.562210Z",
+                  "updated_at": "2026-06-17T14:37:33.027463Z",
+                  "valid_from": "2026-06-17T14:37:33.027463Z",
                   "valid_to": null
                 }
               ],
@@ -17843,7 +17889,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "cAdvisor",
+              "service_definition": "BackRest",
               "source": {
                 "type": "Manual"
               },
@@ -20265,19 +20311,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-06-17T14:20:50.552872Z",
+                        "created_at": "2026-06-17T14:37:33.021576Z",
                         "first_discovery_id": null,
-                        "id": "5b25ab26-010c-4414-b1fb-796fa064ba5b",
+                        "id": "0afef55d-ffaa-4bfe-87c8-d47bd6b1ab34",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-06-17T14:20:50.552872Z",
+                        "last_seen_at": "2026-06-17T14:37:33.021576Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-06-17T14:20:50.552872Z",
-                        "valid_from": "2026-06-17T14:20:50.552872Z",
+                        "updated_at": "2026-06-17T14:37:33.021576Z",
+                        "valid_from": "2026-06-17T14:37:33.021576Z",
                         "valid_to": null
                       }
                     ],
@@ -20291,7 +20337,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "cAdvisor",
+                    "service_definition": "BackRest",
                     "source": {
                       "type": "Manual"
                     },
@@ -20412,19 +20458,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-06-17T14:20:50.575368Z",
+                    "created_at": "2026-06-17T14:37:33.035133Z",
                     "first_discovery_id": null,
-                    "id": "1a0c076c-8a5b-4808-9169-4ea928a99166",
+                    "id": "6a2ab4d9-f027-4308-9aaa-7ec5de5b6053",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-06-17T14:20:50.575368Z",
+                    "last_seen_at": "2026-06-17T14:37:33.035133Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-06-17T14:20:50.575368Z",
-                    "valid_from": "2026-06-17T14:20:50.575368Z",
+                    "updated_at": "2026-06-17T14:37:33.035133Z",
+                    "valid_from": "2026-06-17T14:37:33.035133Z",
                     "valid_to": null
                   }
                 ],
@@ -20438,7 +20484,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "cAdvisor",
+                "service_definition": "BackRest",
                 "source": {
                   "type": "Manual"
                 },
@@ -21737,6 +21783,24 @@
           "downgrade"
         ]
       },
+      "SaveOfferCoupon": {
+        "type": "object",
+        "description": "Live terms for the configured save-offer coupon, read directly from\nStripe. Used by the cancel modal's Discount panel to render the offer\ndynamically instead of hard-coding the percent/duration.",
+        "required": [
+          "percent_off",
+          "duration_in_months"
+        ],
+        "properties": {
+          "duration_in_months": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "percent_off": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "ScanSettings": {
         "type": "object",
         "description": "Scan performance settings. Lives on the discovery entity.\nNumeric fields are `Option<T>` — `None` means \"use daemon default\".\nThe daemon unwraps with defaults at point of use.",
@@ -22012,19 +22076,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-06-17T14:20:50.563204Z",
+              "created_at": "2026-06-17T14:37:33.027909Z",
               "first_discovery_id": null,
-              "id": "ae0fb74e-0b70-4f66-8072-0a0069d858d0",
+              "id": "442ac0ee-75dd-439c-838d-d0204669fed1",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-17T14:20:50.563204Z",
+              "last_seen_at": "2026-06-17T14:37:33.027909Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-17T14:20:50.563204Z",
-              "valid_from": "2026-06-17T14:20:50.563204Z",
+              "updated_at": "2026-06-17T14:37:33.027909Z",
+              "valid_from": "2026-06-17T14:37:33.027909Z",
               "valid_to": null
             }
           ],
@@ -22038,7 +22102,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "cAdvisor",
+          "service_definition": "BackRest",
           "source": {
             "type": "Manual"
           },

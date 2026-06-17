@@ -6,7 +6,8 @@
 	import {
 		usePauseSubscriptionMutation,
 		useApplyDiscountSaveOfferMutation,
-		useCancelSubscriptionMutation
+		useCancelSubscriptionMutation,
+		useSaveOfferCouponQuery
 	} from '$lib/features/billing/queries';
 	import cancelReasons from '$lib/data/cancel-reasons.json';
 	import saveOffers from '$lib/data/save-offers.json';
@@ -38,6 +39,7 @@
 		settings_billing_saveOffer_pauseCooldown,
 		settings_billing_saveOffer_discountTitle,
 		settings_billing_saveOffer_discountSubtitle,
+		settings_billing_saveOffer_discountSubtitleDynamic,
 		settings_billing_saveOffer_discountCta
 	} from '$lib/paraglide/messages';
 
@@ -88,6 +90,11 @@
 	const discountMutation = useApplyDiscountSaveOfferMutation();
 	const configQuery = useConfigQuery();
 	const discountAvailable = $derived(configQuery.data?.discount_save_offer_available ?? false);
+	// Fetch live coupon terms only while the modal is open and the deployment
+	// has a coupon configured — otherwise the GET would return null anyway and
+	// the panel won't render.
+	const saveOfferCouponQuery = useSaveOfferCouponQuery(() => isOpen && discountAvailable);
+	const saveOfferCoupon = $derived(saveOfferCouponQuery.data ?? null);
 
 	const form = createForm(() => ({
 		defaultValues: {
@@ -305,9 +312,10 @@
 									{settings_billing_saveOffer_pauseSubtitle()}
 								</p>
 							</div>
-							{#if pauseCooldownEnd}
+							{#if pauseCooldownEnd && lastPausedAt}
 								<p class="text-sm text-warning">
 									{settings_billing_saveOffer_pauseCooldown({
+										lastPausedDate: fmtDate(new Date(lastPausedAt)),
 										nextEligibleDate: fmtDate(pauseCooldownEnd)
 									})}
 								</p>
@@ -348,7 +356,14 @@
 									{offerMeta('discount')?.name ?? settings_billing_saveOffer_discountTitle()}
 								</h4>
 								<p class="text-secondary mt-1 text-sm">
-									{settings_billing_saveOffer_discountSubtitle()}
+									{#if saveOfferCoupon}
+										{settings_billing_saveOffer_discountSubtitleDynamic({
+											percentOff: saveOfferCoupon.percent_off,
+											durationInMonths: saveOfferCoupon.duration_in_months
+										})}
+									{:else}
+										{settings_billing_saveOffer_discountSubtitle()}
+									{/if}
 								</p>
 							</div>
 							<button

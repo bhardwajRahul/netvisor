@@ -13,18 +13,14 @@ export function isStripeManagedPlan(organization: Organization): boolean {
 }
 
 export function isBillingPlanActive(organization: Organization) {
-	// Demo and other non-Stripe plans are always considered active
-	if (
-		organization.plan?.type === 'Demo' ||
-		organization.plan?.type === 'Community' ||
-		organization.plan?.type === 'CommercialSelfHosted'
-	) {
+	if (!isStripeManagedPlan(organization)) {
 		return true;
 	}
 	return (
 		organization.plan_status == 'active' ||
 		organization.plan_status == 'trialing' ||
 		organization.plan_status == 'pending_cancellation' ||
-		organization.plan_status == 'past_due'
+		organization.plan_status == 'past_due' ||
+		organization.plan_status == 'paused'
 	);
 }

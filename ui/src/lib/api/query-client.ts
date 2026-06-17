@@ -162,7 +162,8 @@ export const queryKeys = {
 	},
 	billing: {
 		all: ['billing'] as const,
-		plans: () => [...queryKeys.billing.all, 'plans'] as const
+		plans: () => [...queryKeys.billing.all, 'plans'] as const,
+		saveOfferCoupon: () => [...queryKeys.billing.all, 'save-offer-coupon'] as const
 	},
 	shares: {
 		all: ['shares'] as const,

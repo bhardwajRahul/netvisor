@@ -128,14 +128,15 @@
 	let showSupport = $state(false);
 
 	// Show notification on settings only when trialing without payment method
-	// Free plan users don't need a payment method, so no dot for them
+	// Free plan users don't need a payment method, so no dot for them.
+	// Paused is intentionally excluded — the hard-gate billing modal already
+	// blocks the entire app, so a sidebar dot would be noise.
 	let showBillingNotification = $derived.by(() => {
 		if (!organization) return false;
 		const isPastDue = organization.plan_status === 'past_due';
-		const isPaused = organization.plan_status === 'paused';
 		const isTrialing = organization.plan_status === 'trialing';
 		const hasPayment = organization.has_payment_method ?? false;
-		return isPastDue || isPaused || (isTrialing && !hasPayment);
+		return isPastDue || (isTrialing && !hasPayment);
 	});
 
 	// Active discovery sessions — used for notification dot on sidebar and sub-tabs

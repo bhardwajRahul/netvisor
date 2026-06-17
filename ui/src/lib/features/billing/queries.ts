@@ -218,6 +218,25 @@ export function useCancelSubscriptionMutation() {
 }
 
 /**
+ * Query hook for the live save-offer coupon terms.
+ * Returns null when STRIPE_SAVE_OFFER_COUPON_ID is unset — the cancel
+ * modal hides the discount panel in that case.
+ */
+export function useSaveOfferCouponQuery(enabled: () => boolean = () => true) {
+	return createQuery(() => ({
+		queryKey: queryKeys.billing.saveOfferCoupon(),
+		enabled: enabled(),
+		queryFn: async () => {
+			const { data } = await apiClient.GET('/api/billing/save-offer-coupon', {});
+			if (!data?.success) {
+				throw new Error(data?.error || 'Failed to read save-offer coupon');
+			}
+			return data.data ?? null;
+		}
+	}));
+}
+
+/**
  * Mutation hook for the discount save offer.
  * Server returns 400 with a clear message when STRIPE_SAVE_OFFER_COUPON_ID
  * is unset; the auto-toast pipeline surfaces the error.

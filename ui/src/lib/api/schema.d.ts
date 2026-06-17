@@ -476,6 +476,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/billing/save-offer-coupon": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read live terms for the configured save-offer coupon
+         * @description Returns the coupon's `percent_off` and `duration_in_months` so the
+         *     cancel modal's Discount panel can render the offer dynamically. The
+         *     payload is `null` when `STRIPE_SAVE_OFFER_COUPON_ID` is unset — the
+         *     modal hides the panel in that case.
+         */
+        get: operations["get_save_offer_coupon"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/billing/setup-payment-method": {
         parameters: {
             query?: never;
@@ -3074,19 +3097,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-06-17T14:20:50.583596Z",
+             *       "created_at": "2026-06-17T14:37:33.039760Z",
              *       "first_discovery_id": null,
-             *       "id": "89894b1c-0f35-4f19-be50-429941f0e96c",
+             *       "id": "e6ca8725-ce0b-4921-8bfc-bda32f528b14",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-06-17T14:20:50.583596Z",
+             *       "last_seen_at": "2026-06-17T14:37:33.039760Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-06-17T14:20:50.583596Z",
-             *       "valid_from": "2026-06-17T14:20:50.583596Z",
+             *       "updated_at": "2026-06-17T14:37:33.039760Z",
+             *       "valid_from": "2026-06-17T14:37:33.039760Z",
              *       "valid_to": null
              *     }
              */
@@ -3423,19 +3446,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-06-17T14:20:50.562764Z",
+             *               "created_at": "2026-06-17T14:37:33.027732Z",
              *               "first_discovery_id": null,
-             *               "id": "6936c41b-478a-4e9f-9242-48e36126ee6b",
+             *               "id": "d8ecceb7-5a7a-4ad8-9cc7-9380545f5629",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-06-17T14:20:50.562764Z",
+             *               "last_seen_at": "2026-06-17T14:37:33.027732Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-06-17T14:20:50.562764Z",
-             *               "valid_from": "2026-06-17T14:20:50.562764Z",
+             *               "updated_at": "2026-06-17T14:37:33.027732Z",
+             *               "valid_from": "2026-06-17T14:37:33.027732Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3449,7 +3472,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "cAdvisor",
+             *           "service_definition": "BackRest",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3627,6 +3650,17 @@ export interface components {
             meta: components["schemas"]["ApiMeta"];
             success: boolean;
         };
+        ApiResponse_Option_SaveOfferCoupon: {
+            data?: null | {
+                /** Format: int64 */
+                duration_in_months: number;
+                /** Format: int64 */
+                percent_off: number;
+            };
+            error?: string | null;
+            meta: components["schemas"]["ApiMeta"];
+            success: boolean;
+        };
         ApiResponse_Organization: {
             data?: components["schemas"]["OrganizationBase"] & {
                 /** Format: date-time */
@@ -3791,19 +3825,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-06-17T14:20:50.576663Z",
+             *           "created_at": "2026-06-17T14:37:33.035649Z",
              *           "first_discovery_id": null,
-             *           "id": "f12242a1-670e-4373-bb47-18eb043ddce3",
+             *           "id": "a7adc8b0-b147-40bc-9436-1d15e0438d98",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-06-17T14:20:50.576663Z",
+             *           "last_seen_at": "2026-06-17T14:37:33.035649Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-06-17T14:20:50.576663Z",
-             *           "valid_from": "2026-06-17T14:20:50.576663Z",
+             *           "updated_at": "2026-06-17T14:37:33.035649Z",
+             *           "valid_from": "2026-06-17T14:37:33.035649Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -3817,7 +3851,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "cAdvisor",
+             *       "service_definition": "BackRest",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4270,19 +4304,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-06-17T14:20:50.563248Z",
+         *       "created_at": "2026-06-17T14:37:33.027964Z",
          *       "first_discovery_id": null,
-         *       "id": "ad72044e-8dee-4e6d-ae61-9890024b05e6",
+         *       "id": "43ac1061-a0e9-4988-8db1-5ce9b55a99b7",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-06-17T14:20:50.563248Z",
+         *       "last_seen_at": "2026-06-17T14:37:33.027964Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-06-17T14:20:50.563248Z",
-         *       "valid_from": "2026-06-17T14:20:50.563248Z",
+         *       "updated_at": "2026-06-17T14:37:33.027964Z",
+         *       "valid_from": "2026-06-17T14:37:33.027964Z",
          *       "valid_to": null
          *     }
          */
@@ -4497,7 +4531,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "cAdvisor",
+         *           "service_definition": "BackRest",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -5447,19 +5481,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-06-17T14:20:50.562201Z",
+         *               "created_at": "2026-06-17T14:37:33.027464Z",
          *               "first_discovery_id": null,
-         *               "id": "61452f4e-6d9f-402a-917a-501e6d0d597f",
+         *               "id": "17b3baa1-38bd-44c9-b9ee-c51fc9aeb1b7",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-06-17T14:20:50.562201Z",
+         *               "last_seen_at": "2026-06-17T14:37:33.027464Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-06-17T14:20:50.562201Z",
-         *               "valid_from": "2026-06-17T14:20:50.562201Z",
+         *               "updated_at": "2026-06-17T14:37:33.027464Z",
+         *               "valid_from": "2026-06-17T14:37:33.027464Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -5473,7 +5507,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "cAdvisor",
+         *           "service_definition": "BackRest",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -6753,6 +6787,17 @@ export interface components {
          */
         SaveOffer: "pause" | "discount" | "downgrade";
         /**
+         * @description Live terms for the configured save-offer coupon, read directly from
+         *     Stripe. Used by the cancel modal's Discount panel to render the offer
+         *     dynamically instead of hard-coding the percent/duration.
+         */
+        SaveOfferCoupon: {
+            /** Format: int64 */
+            duration_in_months: number;
+            /** Format: int64 */
+            percent_off: number;
+        };
+        /**
          * @description Scan performance settings. Lives on the discovery entity.
          *     Numeric fields are `Option<T>` — `None` means "use daemon default".
          *     The daemon unwraps with defaults at point of use.
@@ -6853,19 +6898,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-06-17T14:20:50.563151Z",
+         *           "created_at": "2026-06-17T14:37:33.027917Z",
          *           "first_discovery_id": null,
-         *           "id": "5e31a926-2370-4959-99ff-a908274985fc",
+         *           "id": "42154234-df48-4776-be98-65bceb454f1e",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-06-17T14:20:50.563151Z",
+         *           "last_seen_at": "2026-06-17T14:37:33.027917Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-06-17T14:20:50.563151Z",
-         *           "valid_from": "2026-06-17T14:20:50.563151Z",
+         *           "updated_at": "2026-06-17T14:37:33.027917Z",
+         *           "valid_from": "2026-06-17T14:37:33.027917Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -6879,7 +6924,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "cAdvisor",
+         *       "service_definition": "BackRest",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -8464,6 +8509,35 @@ export interface operations {
                 };
             };
             /** @description No paused subscription or billing not enabled */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    get_save_offer_coupon: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Save-offer coupon terms, or null when not configured */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_Option_SaveOfferCoupon"];
+                };
+            };
+            /** @description Billing not enabled */
             400: {
                 headers: {
                     [name: string]: unknown;
