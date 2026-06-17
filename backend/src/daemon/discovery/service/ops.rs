@@ -52,9 +52,7 @@ use crate::{
             },
         },
         shared::{
-            types::api::ApiErrorResponse,
-            types::entities::{DiscoveryMetadata, EntitySource},
-            types::metadata::HasId,
+            types::api::ApiErrorResponse, types::entities::EntitySource, types::metadata::HasId,
         },
         subnets::r#impl::base::Subnet,
     },
@@ -433,18 +431,26 @@ impl DiscoveryOps {
             }
         };
 
+        // Snapshot canonical IDs of entities scanned this session BEFORE
+        // clear_all wipes the buffer. Rides the terminal payload over the
+        // wire as `DiscoveryUpdatePayload.scanned`; per-entity FK-update
+        // subscribers consume it server-side via the in-memory
+        // `EntityOperation::Created` event for the historical Discovery row.
+        let scanned = self.entity_buffer.get_scanned_ids().await;
+
         // Report the terminal update (in DaemonPoll mode, this POSTs to server)
-        self.report_discovery_update(terminal_update.clone())
+        self.report_discovery_update_with_scanned(terminal_update.clone(), Some(scanned.clone()))
             .await?;
 
         // Store terminal payload for ServerPoll mode - the server polls for progress
         // and needs to receive the terminal state even after current_session is cleared.
         // This payload persists until a new session starts.
-        let terminal_payload = DiscoveryUpdatePayload::from_state_and_update(
+        let mut terminal_payload = DiscoveryUpdatePayload::from_state_and_update(
             self.discovery_type.clone(),
             session.info.clone(),
             terminal_update,
         );
+        terminal_payload.scanned = Some(scanned);
         let mut stored_terminal = self.terminal_payload.write().await;
         *stored_terminal = Some(terminal_payload);
         drop(stored_terminal);
@@ -469,6 +475,18 @@ impl DiscoveryOps {
 
     /// Report a discovery update to the server. Non-critical: logs errors but doesn't fail.
     async fn report_discovery_update(&self, update: DiscoverySessionUpdate) -> Result<(), Error> {
+        self.report_discovery_update_with_scanned(update, None)
+            .await
+    }
+
+    /// Report a discovery update to the server, optionally including the
+    /// terminal `ScannedEntityIds` payload for FK-update subscribers.
+    /// Non-critical: logs errors but doesn't fail.
+    async fn report_discovery_update_with_scanned(
+        &self,
+        update: DiscoverySessionUpdate,
+        scanned: Option<crate::server::daemons::r#impl::api::ScannedEntityIds>,
+    ) -> Result<(), Error> {
         use std::sync::atomic::Ordering;
 
         let session = self.get_session().await?;
@@ -490,6 +508,7 @@ impl DiscoveryOps {
             session.info.clone(),
             update,
         );
+        payload.scanned = scanned;
 
         // Populate estimation fields from session atomics
         let hosts = session.hosts_discovered.load(Ordering::Relaxed);
@@ -775,6 +794,12 @@ impl DiscoveryOps {
                 mapping.insert(item.vlan_number, item.id);
             }
         }
+        // Record canonical VLAN IDs so the terminal payload's
+        // `ScannedEntityIds.vlan_ids` includes them. Per-entity FK-update
+        // subscribers consume this server-side.
+        self.entity_buffer
+            .push_scanned_vlans(mapping.values().copied())
+            .await;
         Ok(mapping)
     }
 
@@ -893,12 +918,7 @@ impl DiscoveryOps {
             tags: Vec::new(),
             network_id,
             description: None,
-            source: EntitySource::Discovery {
-                metadata: vec![DiscoveryMetadata::new(
-                    self.discovery_type.clone(),
-                    daemon_id,
-                )],
-            },
+            source: EntitySource::Discovery,
             virtualization: None,
             hidden: false,
             sys_descr: None,

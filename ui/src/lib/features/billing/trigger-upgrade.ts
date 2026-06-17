@@ -7,11 +7,31 @@ import type { UpgradeFeature } from '$lib/shared/stores/metadata';
 
 const PRICING_URL = 'https://scanopy.net/pricing';
 
+export type PaywallSurface =
+	| 'export_modal'
+	| 'discovery_form'
+	| 'share_panel'
+	| 'sidebar'
+	| 'billing_tab'
+	| 'home_plan_usage'
+	| 'networks_tab'
+	| 'users_tab'
+	| 'hosts_tab'
+	| 'api_keys_tab'
+	| 'shares_modal'
+	| 'topology_tab';
+
+export type PaywallGateType = 'limit_hit' | 'plan_required';
+
 export interface TriggerUpgradeOptions {
 	/** Feature context for recommended plan selection. Null/undefined = generic upgrade. */
 	feature?: UpgradeFeature | null;
 	/** Source identifier for analytics (e.g., 'sidebar', 'export_modal'). */
 	source: string;
+	/** UI surface where the gated control was clicked. */
+	surface: PaywallSurface;
+	/** Whether this is a usage-limit hit or a feature-not-on-plan gate. Defaults to 'plan_required'. */
+	gate_type?: PaywallGateType;
 	/** If true, reopens settings modal after billing modal closes. */
 	reopenSettings?: boolean;
 	/** Callback to run before opening the billing modal (e.g., close another modal). */
@@ -26,6 +46,12 @@ export interface TriggerUpgradeOptions {
 export function triggerUpgrade(options: TriggerUpgradeOptions): void {
 	const config = queryClient.getQueryData<PublicServerConfig>(queryKeys.config.all);
 	const billingEnabled = config?.billing_enabled ?? false;
+
+	trackEvent('paywall_gate_hit', {
+		feature: options.feature ?? null,
+		surface: options.surface,
+		gate_type: options.gate_type ?? 'plan_required'
+	});
 
 	trackEvent('upgrade_button_clicked', {
 		feature: options.feature ?? options.source,

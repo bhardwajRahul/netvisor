@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Scanopy API",
-    "description": "\nNetwork topology discovery and visualization API.\n\n## Authentication\n\nTwo authentication methods are supported:\n\n| Method | Header | Use Case |\n|--------|--------|----------|\n| User API key | `Authorization: Bearer scp_u_...` | Programmatic access, integrations |\n| Session cookie | `Cookie: session_id=...` | Web UI (via `/api/auth/login`) |\n\nUser API keys require your organization to have API access enabled. Create keys at **Platform > API Keys**.\n\n## Rate Limiting\n\nLimit: 300 requests/minute\n\nBurst: 150\n\nResponse headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`\n\nWhen rate limited, you'll receive HTTP `429 Too Many Requests` with a `Retry-After` header.\n\n## Pagination\n\nList endpoints support pagination via query parameters:\n\n| Parameter | Type | Default | Description |\n|-----------|------|---------|-------------|\n| `limit` | integer | 50 | Maximum results to return (1-1000). Use 0 for no limit. |\n| `offset` | integer | 0 | Number of results to skip |\n\nExample: `GET /api/v1/hosts?limit=10&offset=20`\n\n## Response Format\n\nAll responses use a standard envelope:\n\n```json\n{\n  \"success\": true,\n  \"data\": { ... },\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.16.1\"\n  }\n}\n```\n\n**Paginated list responses** include pagination metadata:\n\n```json\n{\n  \"success\": true,\n  \"data\": [ ... ],\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.16.1\",\n    \"pagination\": {\n      \"total_count\": 142,\n      \"limit\": 50,\n      \"offset\": 0,\n      \"has_more\": true\n    }\n  }\n}\n```\n\n| Field | Description |\n|-------|-------------|\n| `total_count` | Total items matching your query (ignoring pagination) |\n| `limit` | Applied limit (your request or default) |\n| `offset` | Applied offset |\n| `has_more` | `true` if more results exist beyond this page |\n\n**Error responses** include an `error` field instead of `data`:\n\n```json\n{\n  \"success\": false,\n  \"error\": \"Resource not found\",\n  \"meta\": { ... }\n}\n```\n\n**Common status codes:** `400` validation error, `401` unauthorized, `403` forbidden, `404` not found, `409` conflict, `429` rate limited.\n\n## Versioning\n\nEndpoints are prefixed with `/api/v1/`. The API version is an integer (`api_version: 1`) returned in every response, versioned independently from the application. Check `GET /api/version` for current versions.\n\n**While Scanopy is pre-v1.0 (current: 0.16.1)**, the API should be considered unstable. Breaking changes may be introduced in any release without incrementing the API version. We recommend pinning to a specific Scanopy release if you depend on API stability, and reviewing the [changelog](/changelog) before upgrading. After Scanopy reaches v1.0, breaking API changes will only occur with an API version increment.\n\n## Multi-Tenancy\n\nResources are scoped to your **organization** and **network(s)**:\n\n- You can only access entities within your organization\n- Network-level entities (hosts, services, etc.) are filtered to networks you have access to\n- Use `?network_id=<UUID>` to filter list endpoints to a specific network\n- API keys can be scoped to a subset of your accessible networks\n",
+    "description": "\nNetwork topology discovery and visualization API.\n\n## Authentication\n\nTwo authentication methods are supported:\n\n| Method | Header | Use Case |\n|--------|--------|----------|\n| User API key | `Authorization: Bearer scp_u_...` | Programmatic access, integrations |\n| Session cookie | `Cookie: session_id=...` | Web UI (via `/api/auth/login`) |\n\nUser API keys require your organization to have API access enabled. Create keys at **Platform > API Keys**.\n\n## Rate Limiting\n\nLimit: 300 requests/minute\n\nBurst: 150\n\nResponse headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`\n\nWhen rate limited, you'll receive HTTP `429 Too Many Requests` with a `Retry-After` header.\n\n## Pagination\n\nList endpoints support pagination via query parameters:\n\n| Parameter | Type | Default | Description |\n|-----------|------|---------|-------------|\n| `limit` | integer | 50 | Maximum results to return (1-1000). Use 0 for no limit. |\n| `offset` | integer | 0 | Number of results to skip |\n\nExample: `GET /api/v1/hosts?limit=10&offset=20`\n\n## Response Format\n\nAll responses use a standard envelope:\n\n```json\n{\n  \"success\": true,\n  \"data\": { ... },\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.16.2\"\n  }\n}\n```\n\n**Paginated list responses** include pagination metadata:\n\n```json\n{\n  \"success\": true,\n  \"data\": [ ... ],\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.16.2\",\n    \"pagination\": {\n      \"total_count\": 142,\n      \"limit\": 50,\n      \"offset\": 0,\n      \"has_more\": true\n    }\n  }\n}\n```\n\n| Field | Description |\n|-------|-------------|\n| `total_count` | Total items matching your query (ignoring pagination) |\n| `limit` | Applied limit (your request or default) |\n| `offset` | Applied offset |\n| `has_more` | `true` if more results exist beyond this page |\n\n**Error responses** include an `error` field instead of `data`:\n\n```json\n{\n  \"success\": false,\n  \"error\": \"Resource not found\",\n  \"meta\": { ... }\n}\n```\n\n**Common status codes:** `400` validation error, `401` unauthorized, `403` forbidden, `404` not found, `409` conflict, `429` rate limited.\n\n## Versioning\n\nEndpoints are prefixed with `/api/v1/`. The API version is an integer (`api_version: 1`) returned in every response, versioned independently from the application. Check `GET /api/version` for current versions.\n\n**While Scanopy is pre-v1.0 (current: 0.16.2)**, the API should be considered unstable. Breaking changes may be introduced in any release without incrementing the API version. We recommend pinning to a specific Scanopy release if you depend on API stability, and reviewing the [changelog](/changelog) before upgrading. After Scanopy reaches v1.0, breaking API changes will only occur with an API version increment.\n\n## Multi-Tenancy\n\nResources are scoped to your **organization** and **network(s)**:\n\n- You can only access entities within your organization\n- Network-level entities (hosts, services, etc.) are filtered to networks you have access to\n- Use `?network_id=<UUID>` to filter list endpoints to a specific network\n- API keys can be scoped to a subset of your accessible networks\n",
     "license": {
       "name": "Dual (AGPL3.0, Commercial License Available)"
     },
@@ -638,6 +638,98 @@
         }
       }
     },
+    "/api/billing/cancel": {
+      "post": {
+        "tags": [
+          "billing",
+          "internal"
+        ],
+        "summary": "Cancel subscription",
+        "description": "In-app cancel modal endpoint. Sets Stripe `cancel_at_period_end`, stashes\nthe canonical Scanopy reason in subscription metadata, returns the period\nend so the modal can render the retention disclosure.",
+        "operationId": "cancel_subscription",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelSubscriptionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Cancellation initiated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_CancelSubscriptionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "No active subscription or billing not enabled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "user_api_key": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/billing/cancel/apply-discount": {
+      "post": {
+        "tags": [
+          "billing",
+          "internal"
+        ],
+        "summary": "Apply the discount save offer",
+        "description": "Applies the configured Stripe coupon to the subscription. Returns 400\nwhen `STRIPE_SAVE_OFFER_COUPON_ID` is unset.",
+        "operationId": "apply_discount_save_offer",
+        "responses": {
+          "200": {
+            "description": "Discount applied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_String"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Discount not configured or billing not enabled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "user_api_key": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
     "/api/billing/change-plan": {
       "post": {
         "tags": [
@@ -790,6 +882,46 @@
         ]
       }
     },
+    "/api/billing/extend-trial": {
+      "post": {
+        "tags": [
+          "billing",
+          "internal"
+        ],
+        "summary": "Self-serve trial extend (+7 days, once per org lifetime)",
+        "operationId": "extend_trial",
+        "responses": {
+          "200": {
+            "description": "Trial extended",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_String"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Ineligible or billing not enabled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "user_api_key": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
     "/api/billing/inquiry": {
       "post": {
         "tags": [
@@ -832,6 +964,57 @@
           },
           "401": {
             "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "user_api_key": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/billing/pause": {
+      "post": {
+        "tags": [
+          "billing",
+          "internal"
+        ],
+        "summary": "Pause subscription billing",
+        "description": "Pauses billing for a 30/60/90 day window. Eligibility: rolling 6-month\ncooldown anchored on the org's `last_paused_at`.",
+        "operationId": "pause_subscription",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PauseSubscriptionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Subscription paused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_String"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Ineligible or billing not enabled",
             "content": {
               "application/json": {
                 "schema": {
@@ -922,6 +1105,88 @@
           },
           "400": {
             "description": "Billing not enabled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "user_api_key": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/billing/reactivate": {
+      "post": {
+        "tags": [
+          "billing",
+          "internal"
+        ],
+        "summary": "Reactivate a subscription pending cancellation",
+        "description": "Clears Stripe's `cancel_at_period_end`. Available while\n`plan_status === 'pending_cancellation'`.",
+        "operationId": "reactivate_subscription",
+        "responses": {
+          "200": {
+            "description": "Subscription reactivated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_String"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "No pending cancellation or billing not enabled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "user_api_key": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/billing/resume": {
+      "post": {
+        "tags": [
+          "billing",
+          "internal"
+        ],
+        "summary": "Resume a paused subscription",
+        "description": "Clears Stripe pause collection and re-activates billing. Available while\n`plan_status === 'paused'`.",
+        "operationId": "resume_subscription",
+        "responses": {
+          "200": {
+            "description": "Subscription resumed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_String"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "No paused subscription or billing not enabled",
             "content": {
               "application/json": {
                 "schema": {
@@ -2441,6 +2706,19 @@
               "format": "int32",
               "minimum": 0
             }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
           }
         ],
         "responses": {
@@ -2681,6 +2959,19 @@
               ],
               "format": "int32",
               "minimum": 0
+            }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
             }
           }
         ],
@@ -4199,6 +4490,19 @@
               "format": "int32",
               "minimum": 0
             }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
           }
         ],
         "responses": {
@@ -4411,6 +4715,19 @@
               ],
               "format": "int32",
               "minimum": 0
+            }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
             }
           }
         ],
@@ -5376,6 +5693,19 @@
               "format": "int32",
               "minimum": 0
             }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
           }
         ],
         "responses": {
@@ -5694,6 +6024,19 @@
               "format": "int32",
               "minimum": 0
             }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
           }
         ],
         "responses": {
@@ -5843,6 +6186,19 @@
               ],
               "format": "int32",
               "minimum": 0
+            }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
             }
           }
         ],
@@ -6196,6 +6552,19 @@
               "format": "int32",
               "minimum": 0
             }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
           }
         ],
         "responses": {
@@ -6416,6 +6785,19 @@
               ],
               "format": "int32",
               "minimum": 0
+            }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
             }
           }
         ],
@@ -6879,6 +7261,19 @@
               "format": "int32",
               "minimum": 0
             }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
           }
         ],
         "responses": {
@@ -7104,6 +7499,19 @@
               ],
               "format": "int32",
               "minimum": 0
+            }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
             }
           }
         ],
@@ -8173,6 +8581,19 @@
               "format": "int32",
               "minimum": 0
             }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
           }
         ],
         "responses": {
@@ -8392,6 +8813,19 @@
               ],
               "format": "int32",
               "minimum": 0
+            }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
             }
           }
         ],
@@ -8740,6 +9174,19 @@
               "format": "int32",
               "minimum": 0
             }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
           }
         ],
         "responses": {
@@ -9013,6 +9460,19 @@
               ],
               "format": "int32",
               "minimum": 0
+            }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
             }
           }
         ],
@@ -9758,6 +10218,307 @@
         ]
       }
     },
+    "/api/v1/snapshots": {
+      "get": {
+        "tags": [
+          "Snapshots"
+        ],
+        "summary": "List snapshots for a network, sorted by `taken_at` DESC.",
+        "operationId": "get_all_snapshots",
+        "parameters": [
+          {
+            "name": "network_id",
+            "in": "query",
+            "description": "Filter by network ID",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "ids",
+            "in": "query",
+            "description": "Filter by specific entity IDs (for selective loading)",
+            "required": false,
+            "schema": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "string",
+                "format": "uuid"
+              }
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum number of results to return (1-1000, default: 50). Use 0 for no limit.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "maximum": 1000,
+              "minimum": 0
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Number of results to skip. Default: 0.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of snapshots",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Response type for paginated list endpoints (pagination is always present in meta)",
+                  "required": [
+                    "success",
+                    "data",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/SnapshotBase"
+                          },
+                          {
+                            "type": "object",
+                            "required": [
+                              "id",
+                              "created_at",
+                              "updated_at"
+                            ],
+                            "properties": {
+                              "created_at": {
+                                "type": "string",
+                                "format": "date-time",
+                                "readOnly": true
+                              },
+                              "id": {
+                                "type": "string",
+                                "format": "uuid",
+                                "readOnly": true
+                              },
+                              "updated_at": {
+                                "type": "string",
+                                "format": "date-time",
+                                "readOnly": true
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    "error": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/PaginatedApiMeta"
+                    },
+                    "success": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "user_api_key": []
+          },
+          {
+            "session": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Snapshots"
+        ],
+        "summary": "Take a snapshot of the current live topology + entity state for a network.\nAcquires the discovery snapshot lock, creates the snapshots row, runs\nclose-and-clone to stamp every Snapshotable entity row with `snapshot_id`\nand close them. The topology subscriber inserts the snapshot's topology\nrow off the back of the `Snapshot::Created` event.",
+        "operationId": "create_snapshot",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSnapshotRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Snapshot created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_Snapshot"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Snapshots not available on plan",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Network is busy with discovery; retry shortly",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "user_api_key": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/snapshots/{id}": {
+      "get": {
+        "tags": [
+          "Snapshots"
+        ],
+        "summary": "Get a snapshot by ID.",
+        "operationId": "get_snapshot_by_id",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Snapshot ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Snapshot found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_Snapshot"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Snapshot not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "user_api_key": []
+          },
+          {
+            "session": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Snapshots"
+        ],
+        "summary": "Delete a snapshot. The cascade FK on closed entity rows + topology rows\nreaps everything tied to this snapshot automatically.",
+        "operationId": "delete_snapshot",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Snapshot ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Snapshot deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Snapshot not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "user_api_key": []
+          },
+          {
+            "session": []
+          }
+        ]
+      }
+    },
     "/api/v1/subnets": {
       "get": {
         "tags": [
@@ -9855,6 +10616,19 @@
               ],
               "format": "int32",
               "minimum": 0
+            }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
             }
           }
         ],
@@ -10074,6 +10848,19 @@
               ],
               "format": "int32",
               "minimum": 0
+            }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
             }
           }
         ],
@@ -10349,6 +11136,19 @@
               ],
               "format": "int32",
               "minimum": 0
+            }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
             }
           }
         ],
@@ -10731,6 +11531,19 @@
               "format": "int32",
               "minimum": 0
             }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
           }
         ],
         "responses": {
@@ -10916,7 +11729,8 @@
           "Topologies",
           "internal"
         ],
-        "summary": "Get all topologies",
+        "summary": "Get all topologies for the authenticated user's networks.",
+        "description": "Returns both live-view rows (`snapshot_id IS NULL`) and snapshot-pinned\nrows. The frontend renders the live one by default and renders snapshot\nrows when the user picks one from the snapshots dropdown.",
         "operationId": "get_all_topologies",
         "parameters": [
           {
@@ -10998,37 +11812,65 @@
             "session": []
           }
         ]
-      },
-      "post": {
+      }
+    },
+    "/api/v1/topology/data": {
+      "get": {
         "tags": [
           "Topologies",
           "internal"
         ],
-        "summary": "Create topology",
-        "operationId": "create_topology",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/Topology"
-              }
+        "summary": "Unified entity-set endpoint for the topology view.",
+        "description": "`?snapshot_id=<id>` resolves to the snapshot's `taken_at` and returns the\nas-of-T entity set; otherwise returns live entities. The frontend\n`TopologyTab` is the sole intended consumer.",
+        "operationId": "get_topology_data",
+        "parameters": [
+          {
+            "name": "network_id",
+            "in": "query",
+            "description": "Network to read entities for. Required.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
             }
           },
-          "required": true
-        },
+          {
+            "name": "snapshot_id",
+            "in": "query",
+            "description": "When set, returns the entity set as it was when this snapshot was taken.\nWhen omitted, returns live entities.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "Topology created",
+            "description": "Topology entity bundle",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_Topology"
+                  "$ref": "#/components/schemas/ApiResponse_TopologyData"
                 }
               }
             }
           },
-          "400": {
-            "description": "Validation failed",
+          "403": {
+            "description": "Access denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Snapshot not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -11242,67 +12084,6 @@
             "session": []
           }
         ]
-      },
-      "delete": {
-        "tags": [
-          "Topologies",
-          "internal"
-        ],
-        "summary": "Delete a topology",
-        "description": "Prevents deletion of the last topology on a network.",
-        "operationId": "delete_topology",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "Topology ID",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Topology deleted",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Topology not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Cannot delete last topology",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "user_api_key": []
-          },
-          {
-            "session": []
-          }
-        ]
       }
     },
     "/api/v1/topology/{id}/edge-handles": {
@@ -11312,7 +12093,6 @@
           "internal"
         ],
         "summary": "Update an edge's handles",
-        "description": "Lightweight endpoint for edge reconnect operations. Instead of sending the entire\ntopology, only sends the edge ID and new handle positions.\nFixes HTTP 413 errors on edge reconnect operations for large topologies.",
         "operationId": "update_edge_handles",
         "parameters": [
           {
@@ -11494,140 +12274,6 @@
         ]
       }
     },
-    "/api/v1/topology/{id}/lock": {
-      "post": {
-        "tags": [
-          "Topologies"
-        ],
-        "summary": "Lock a topology",
-        "operationId": "lock",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "Topology ID",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Topology locked",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_Topology"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Access denied",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Topology not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "user_api_key": []
-          },
-          {
-            "session": []
-          }
-        ]
-      }
-    },
-    "/api/v1/topology/{id}/metadata": {
-      "post": {
-        "tags": [
-          "Topologies",
-          "internal"
-        ],
-        "summary": "Update topology metadata",
-        "description": "Lightweight endpoint for editing topology name and parent. Instead of sending\nthe entire topology (which includes all hosts, ip_addresses, services, etc.),\nonly sends the metadata fields.\nFixes HTTP 413 errors on metadata edit operations for large topologies.",
-        "operationId": "update_metadata",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "Topology ID",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TopologyMetadataUpdate"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Metadata updated",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Access denied",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Topology not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "user_api_key": []
-          },
-          {
-            "session": []
-          }
-        ]
-      }
-    },
     "/api/v1/topology/{id}/node-position": {
       "post": {
         "tags": [
@@ -11635,7 +12281,6 @@
           "internal"
         ],
         "summary": "Update a single node's position",
-        "description": "Lightweight endpoint for drag operations. Instead of sending the entire topology\n(which can be several megabytes), only sends the node ID and new position.\nFixes HTTP 413 errors on drag operations for large topologies.",
         "operationId": "update_node_position",
         "parameters": [
           {
@@ -11708,7 +12353,6 @@
           "internal"
         ],
         "summary": "Update a node's size and position",
-        "description": "Lightweight endpoint for subnet resize operations. Instead of sending the entire\ntopology, only sends the node ID, new size, and new position.\nFixes HTTP 413 errors on resize operations for large topologies.",
         "operationId": "update_node_resize",
         "parameters": [
           {
@@ -11755,211 +12399,6 @@
           },
           "404": {
             "description": "Topology or node not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "user_api_key": []
-          },
-          {
-            "session": []
-          }
-        ]
-      }
-    },
-    "/api/v1/topology/{id}/rebuild": {
-      "post": {
-        "tags": [
-          "Topologies",
-          "internal"
-        ],
-        "summary": "Rebuild topology layout",
-        "operationId": "rebuild",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "Topology ID",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TopologyRebuildRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Topology rebuilt",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Access denied",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Topology not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "user_api_key": []
-          },
-          {
-            "session": []
-          }
-        ]
-      }
-    },
-    "/api/v1/topology/{id}/refresh": {
-      "post": {
-        "tags": [
-          "Topologies",
-          "internal"
-        ],
-        "summary": "Refresh topology data",
-        "operationId": "refresh",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "Topology ID",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TopologyRebuildRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Topology refreshed",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Access denied",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Topology not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "user_api_key": []
-          },
-          {
-            "session": []
-          }
-        ]
-      }
-    },
-    "/api/v1/topology/{id}/unlock": {
-      "post": {
-        "tags": [
-          "Topologies"
-        ],
-        "summary": "Unlock a topology",
-        "operationId": "unlock",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "Topology ID",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Topology unlocked",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_Topology"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Access denied",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Topology not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -12509,6 +12948,19 @@
               ],
               "format": "uuid"
             }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
           }
         ],
         "responses": {
@@ -12775,6 +13227,19 @@
               ],
               "format": "uuid"
             }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "As-of timestamp (ISO 8601). When set, returns SCD2 state as of this\ninstant (snapshot view) instead of live state.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
           }
         ],
         "responses": {
@@ -13037,12 +13502,12 @@
           "server_version": {
             "type": "string",
             "description": "Server version (semver)",
-            "example": "0.16.1"
+            "example": "0.16.2"
           }
         },
         "example": {
           "api_version": 1,
-          "server_version": "0.16.1"
+          "server_version": "0.16.2"
         }
       },
       "ApiResponse": {
@@ -13101,13 +13566,55 @@
                     "format": "date-time",
                     "readOnly": true
                   },
+                  "first_discovery_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
                   "id": {
                     "type": "string",
                     "format": "uuid",
                     "readOnly": true
                   },
+                  "last_discovery_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
+                  "last_seen_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "lineage_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
                   "updated_at": {
                     "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "valid_from": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "valid_to": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
                     "format": "date-time",
                     "readOnly": true
                   }
@@ -13116,14 +13623,20 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-04-22T15:57:37.855455Z",
-              "id": "884790f4-3e17-4623-a93a-8a9928de57f7",
+              "created_at": "2026-06-16T13:44:04.768141Z",
+              "first_discovery_id": null,
+              "id": "cc060e6b-35fd-41f2-af5b-2184adfdeed3",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
+              "last_discovery_id": null,
+              "last_seen_at": "2026-06-16T13:44:04.768141Z",
+              "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-04-22T15:57:37.855455Z"
+              "updated_at": "2026-06-16T13:44:04.768141Z",
+              "valid_from": "2026-06-16T13:44:04.768141Z",
+              "valid_to": null
             }
           },
           "error": {
@@ -13196,6 +13709,39 @@
                 "type": "integer",
                 "description": "Number of entities affected",
                 "minimum": 0
+              }
+            }
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ApiMeta"
+          },
+          "success": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ApiResponse_CancelSubscriptionResponse": {
+        "type": "object",
+        "required": [
+          "success",
+          "meta"
+        ],
+        "properties": {
+          "data": {
+            "type": "object",
+            "required": [
+              "period_end"
+            ],
+            "properties": {
+              "period_end": {
+                "type": "string",
+                "format": "date-time"
               }
             }
           },
@@ -13590,8 +14136,29 @@
                     "format": "uuid",
                     "readOnly": true
                   },
+                  "lineage_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
                   "updated_at": {
                     "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "valid_from": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "valid_to": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
                     "format": "date-time",
                     "readOnly": true
                   }
@@ -13605,6 +14172,7 @@
               "description": "HTTP/HTTPS services dependency",
               "edge_style": "Bezier",
               "id": "550e8400-e29b-41d4-a716-446655440008",
+              "lineage_id": null,
               "members": {
                 "service_ids": [],
                 "type": "Services"
@@ -13615,7 +14183,9 @@
                 "type": "Manual"
               },
               "tags": [],
-              "updated_at": "2026-01-15T10:30:00Z"
+              "updated_at": "2026-01-15T10:30:00Z",
+              "valid_from": "2026-01-15T10:30:00Z",
+              "valid_to": null
             }
           },
           "error": {
@@ -13778,6 +14348,17 @@
                 "type": "integer",
                 "format": "int32",
                 "minimum": 0
+              },
+              "scanned": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ScannedEntityIds",
+                    "description": "Canonical IDs of entities scanned in this session, populated daemon-\nside at terminal. **Transient**: stripped at `SqlValue::RunType` bind\ntime so it doesn't persist into the historical Discovery row's JSONB.\nAvailable in-memory through the `EntityOperation::Created` event\npublished for the historical Discovery row (the event scope carries\n`Entity::Discovery(...)`, the full in-memory struct), where per-entity\nFK-update subscribers consume it.\n\n`Some(...)` when the daemon is sending the terminal payload over the\nwire. `None` when read back from a persisted historical row, or when\nnot yet set."
+                  }
+                ]
               },
               "session_id": {
                 "type": "string",
@@ -13968,6 +14549,7 @@
                   "cdp_platform": null,
                   "cdp_port_id": null,
                   "created_at": "2026-01-15T10:30:00Z",
+                  "first_discovery_id": null,
                   "host_id": "550e8400-e29b-41d4-a716-446655440003",
                   "id": "550e8400-e29b-41d4-a716-44665544000f",
                   "if_alias": "Uplink to Core Switch",
@@ -13976,6 +14558,9 @@
                   "if_name": "Gi0/1",
                   "if_type": 6,
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
+                  "last_discovery_id": null,
+                  "last_seen_at": "2026-01-15T10:30:00Z",
+                  "lineage_id": null,
                   "lldp_chassis_id": null,
                   "lldp_mgmt_addr": null,
                   "lldp_port_desc": null,
@@ -13987,21 +14572,29 @@
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "oper_status": "Up",
                   "speed_bps": 1000000000,
-                  "updated_at": "2026-01-15T10:30:00Z"
+                  "updated_at": "2026-01-15T10:30:00Z",
+                  "valid_from": "2026-01-15T10:30:00Z",
+                  "valid_to": null
                 }
               ],
               "ip_addresses": [
                 {
                   "created_at": "2026-01-15T10:30:00Z",
+                  "first_discovery_id": null,
                   "host_id": "550e8400-e29b-41d4-a716-446655440003",
                   "id": "550e8400-e29b-41d4-a716-446655440005",
                   "ip_address": "192.168.1.100",
+                  "last_discovery_id": null,
+                  "last_seen_at": "2026-01-15T10:30:00Z",
+                  "lineage_id": null,
                   "mac_address": "DE:AD:BE:EF:CA:FE",
                   "name": "eth0",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
                   "subnet_id": "550e8400-e29b-41d4-a716-446655440004",
-                  "updated_at": "2026-01-15T10:30:00Z"
+                  "updated_at": "2026-01-15T10:30:00Z",
+                  "valid_from": "2026-01-15T10:30:00Z",
+                  "valid_to": null
                 }
               ],
               "name": "web-server-01",
@@ -14009,41 +14602,59 @@
               "ports": [
                 {
                   "created_at": "2026-01-15T10:30:00Z",
+                  "first_discovery_id": null,
                   "host_id": "550e8400-e29b-41d4-a716-446655440003",
                   "id": "550e8400-e29b-41d4-a716-446655440006",
+                  "last_discovery_id": null,
+                  "last_seen_at": "2026-01-15T10:30:00Z",
+                  "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "number": 80,
                   "protocol": "Tcp",
                   "type": "Http",
-                  "updated_at": "2026-01-15T10:30:00Z"
+                  "updated_at": "2026-01-15T10:30:00Z",
+                  "valid_from": "2026-01-15T10:30:00Z",
+                  "valid_to": null
                 }
               ],
               "services": [
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-04-22T15:57:37.842909Z",
-                      "id": "00326136-141c-4cc4-bd84-88a80e4cd640",
+                      "created_at": "2026-06-16T13:44:04.756405Z",
+                      "first_discovery_id": null,
+                      "id": "1180f806-9cab-4ced-922f-14b88c273291",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
+                      "last_discovery_id": null,
+                      "last_seen_at": "2026-06-16T13:44:04.756405Z",
+                      "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-04-22T15:57:37.842909Z"
+                      "updated_at": "2026-06-16T13:44:04.756405Z",
+                      "valid_from": "2026-06-16T13:44:04.756405Z",
+                      "valid_to": null
                     }
                   ],
                   "created_at": "2026-01-15T10:30:00Z",
+                  "first_discovery_id": null,
                   "host_id": "550e8400-e29b-41d4-a716-446655440003",
                   "id": "550e8400-e29b-41d4-a716-446655440007",
+                  "last_discovery_id": null,
+                  "last_seen_at": "2026-01-15T10:30:00Z",
+                  "lineage_id": null,
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Portainer",
+                  "service_definition": "Telnet",
                   "source": {
                     "type": "Manual"
                   },
                   "tags": [],
                   "updated_at": "2026-01-15T10:30:00Z",
+                  "valid_from": "2026-01-15T10:30:00Z",
+                  "valid_to": null,
                   "virtualization": null
                 }
               ],
@@ -14094,13 +14705,55 @@
                     "format": "date-time",
                     "readOnly": true
                   },
+                  "first_discovery_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
                   "id": {
                     "type": "string",
                     "format": "uuid",
                     "readOnly": true
                   },
+                  "last_discovery_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
+                  "last_seen_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "lineage_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
                   "updated_at": {
                     "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "valid_from": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "valid_to": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
                     "format": "date-time",
                     "readOnly": true
                   }
@@ -14109,15 +14762,21 @@
             ],
             "example": {
               "created_at": "2026-01-15T10:30:00Z",
+              "first_discovery_id": null,
               "host_id": "550e8400-e29b-41d4-a716-446655440003",
               "id": "550e8400-e29b-41d4-a716-446655440005",
               "ip_address": "192.168.1.100",
+              "last_discovery_id": null,
+              "last_seen_at": "2026-01-15T10:30:00Z",
+              "lineage_id": null,
               "mac_address": "DE:AD:BE:EF:CA:FE",
               "name": "eth0",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
               "subnet_id": "550e8400-e29b-41d4-a716-446655440004",
-              "updated_at": "2026-01-15T10:30:00Z"
+              "updated_at": "2026-01-15T10:30:00Z",
+              "valid_from": "2026-01-15T10:30:00Z",
+              "valid_to": null
             }
           },
           "error": {
@@ -14159,13 +14818,55 @@
                     "format": "date-time",
                     "readOnly": true
                   },
+                  "first_discovery_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
                   "id": {
                     "type": "string",
                     "format": "uuid",
                     "readOnly": true
                   },
+                  "last_discovery_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
+                  "last_seen_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "lineage_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
                   "updated_at": {
                     "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "valid_from": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "valid_to": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
                     "format": "date-time",
                     "readOnly": true
                   }
@@ -14347,11 +15048,15 @@
                 "description": "Current onboarding step (if any)"
               },
               "use_case": {
-                "type": [
-                  "string",
-                  "null"
-                ],
-                "description": "Use case selection (homelab, company, msp)"
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/UseCase",
+                    "description": "Use case selection (homelab, company, msp)"
+                  }
+                ]
               }
             }
           },
@@ -14447,13 +15152,55 @@
                     "format": "date-time",
                     "readOnly": true
                   },
+                  "first_discovery_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
                   "id": {
                     "type": "string",
                     "format": "uuid",
                     "readOnly": true
                   },
+                  "last_discovery_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
+                  "last_seen_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "lineage_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
                   "updated_at": {
                     "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "valid_from": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "valid_to": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
                     "format": "date-time",
                     "readOnly": true
                   }
@@ -14463,13 +15210,19 @@
             "description": "Port entity with custom serialization that flattens PortType fields.",
             "example": {
               "created_at": "2026-01-15T10:30:00Z",
+              "first_discovery_id": null,
               "host_id": "550e8400-e29b-41d4-a716-446655440003",
               "id": "550e8400-e29b-41d4-a716-446655440006",
+              "last_discovery_id": null,
+              "last_seen_at": "2026-01-15T10:30:00Z",
+              "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "number": 80,
               "protocol": "Tcp",
               "type": "Http",
-              "updated_at": "2026-01-15T10:30:00Z"
+              "updated_at": "2026-01-15T10:30:00Z",
+              "valid_from": "2026-01-15T10:30:00Z",
+              "valid_to": null
             }
           },
           "error": {
@@ -14540,6 +15293,7 @@
               "disable_password_login",
               "oidc_providers",
               "billing_enabled",
+              "discount_save_offer_available",
               "has_integrated_daemon",
               "has_email_service",
               "has_email_opt_in",
@@ -14560,6 +15314,10 @@
               },
               "disable_registration": {
                 "type": "boolean"
+              },
+              "discount_save_offer_available": {
+                "type": "boolean",
+                "description": "`STRIPE_SAVE_OFFER_COUPON_ID` env var is set. When false, the\ncancel modal hides the discount save-offer panel so the user\ndoesn't see an option the deployment can't fulfil."
               },
               "has_email_opt_in": {
                 "type": "boolean"
@@ -14615,6 +15373,15 @@
               "server_port": {
                 "type": "integer",
                 "format": "int32",
+                "minimum": 0
+              },
+              "snapshot_retention_days_override": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int32",
+                "description": "`SCANOPY_SNAPSHOT_RETENTION_DAYS_OVERRIDE` if set on this instance.\nFrontend uses it inside the plan-comparison view to display the\neffective retention for this deployment rather than the per-plan\nfixture default.",
                 "minimum": 0
               }
             }
@@ -14758,13 +15525,55 @@
                     "format": "date-time",
                     "readOnly": true
                   },
+                  "first_discovery_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
                   "id": {
                     "type": "string",
                     "format": "uuid",
                     "readOnly": true
                   },
+                  "last_discovery_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
+                  "last_seen_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "lineage_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
                   "updated_at": {
                     "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "valid_from": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "valid_to": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
                     "format": "date-time",
                     "readOnly": true
                   }
@@ -14774,28 +15583,40 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-04-22T15:57:37.851712Z",
-                  "id": "c6fccd0d-a3b0-42cd-a038-5354a135769b",
+                  "created_at": "2026-06-16T13:44:04.764011Z",
+                  "first_discovery_id": null,
+                  "id": "653da009-4fc8-49d2-90d1-eb5c85bc60ca",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
+                  "last_discovery_id": null,
+                  "last_seen_at": "2026-06-16T13:44:04.764011Z",
+                  "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-04-22T15:57:37.851712Z"
+                  "updated_at": "2026-06-16T13:44:04.764011Z",
+                  "valid_from": "2026-06-16T13:44:04.764011Z",
+                  "valid_to": null
                 }
               ],
               "created_at": "2026-01-15T10:30:00Z",
+              "first_discovery_id": null,
               "host_id": "550e8400-e29b-41d4-a716-446655440003",
               "id": "550e8400-e29b-41d4-a716-446655440007",
+              "last_discovery_id": null,
+              "last_seen_at": "2026-01-15T10:30:00Z",
+              "lineage_id": null,
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Portainer",
+              "service_definition": "Telnet",
               "source": {
                 "type": "Manual"
               },
               "tags": [],
               "updated_at": "2026-01-15T10:30:00Z",
+              "valid_from": "2026-01-15T10:30:00Z",
+              "valid_to": null,
               "virtualization": null
             }
           },
@@ -14938,6 +15759,59 @@
           }
         }
       },
+      "ApiResponse_Snapshot": {
+        "type": "object",
+        "required": [
+          "success",
+          "meta"
+        ],
+        "properties": {
+          "data": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SnapshotBase"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "id",
+                  "created_at",
+                  "updated_at"
+                ],
+                "properties": {
+                  "created_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "readOnly": true
+                  },
+                  "updated_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  }
+                }
+              }
+            ]
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ApiMeta"
+          },
+          "success": {
+            "type": "boolean"
+          }
+        }
+      },
       "ApiResponse_String": {
         "type": "object",
         "required": [
@@ -14987,13 +15861,55 @@
                     "format": "date-time",
                     "readOnly": true
                   },
+                  "first_discovery_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
                   "id": {
                     "type": "string",
                     "format": "uuid",
                     "readOnly": true
                   },
+                  "last_discovery_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
+                  "last_seen_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "lineage_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
                   "updated_at": {
                     "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "valid_from": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "valid_to": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
                     "format": "date-time",
                     "readOnly": true
                   }
@@ -15004,7 +15920,11 @@
               "cidr": "192.168.1.0/24",
               "created_at": "2026-01-15T10:30:00Z",
               "description": "Local area network",
+              "first_discovery_id": null,
               "id": "550e8400-e29b-41d4-a716-446655440004",
+              "last_discovery_id": null,
+              "last_seen_at": "2026-01-15T10:30:00Z",
+              "lineage_id": null,
               "name": "LAN",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "source": {
@@ -15012,7 +15932,9 @@
               },
               "subnet_type": "Lan",
               "tags": [],
-              "updated_at": "2026-01-15T10:30:00Z"
+              "updated_at": "2026-01-15T10:30:00Z",
+              "valid_from": "2026-01-15T10:30:00Z",
+              "valid_to": null
             }
           },
           "error": {
@@ -15059,8 +15981,29 @@
                     "format": "uuid",
                     "readOnly": true
                   },
+                  "lineage_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
                   "updated_at": {
                     "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "valid_from": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "valid_to": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
                     "format": "date-time",
                     "readOnly": true
                   }
@@ -15073,9 +16016,12 @@
               "description": "Production environment resources",
               "id": "550e8400-e29b-41d4-a716-44665544000a",
               "is_application": false,
+              "lineage_id": null,
               "name": "production",
               "organization_id": "550e8400-e29b-41d4-a716-446655440001",
-              "updated_at": "2026-01-15T10:30:00Z"
+              "updated_at": "2026-01-15T10:30:00Z",
+              "valid_from": "2026-01-15T10:30:00Z",
+              "valid_to": null
             }
           },
           "error": {
@@ -15178,6 +16124,105 @@
                 }
               }
             ]
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ApiMeta"
+          },
+          "success": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ApiResponse_TopologyData": {
+        "type": "object",
+        "required": [
+          "success",
+          "meta"
+        ],
+        "properties": {
+          "data": {
+            "type": "object",
+            "description": "Bundle of entities that feed `build_graph` and the topology export pipeline.\n\nLoaded by [`crate::server::topology::service::main::TopologyService::get_topology_data`]\nfor either the live view (`at = None`) or a point-in-time snapshot\n(`at = Some(taken_at)`). Replaces the entity-blob columns previously\npersisted on the topology row.",
+            "required": [
+              "hosts",
+              "ip_addresses",
+              "subnets",
+              "dependencies",
+              "ports",
+              "bindings",
+              "interfaces",
+              "services",
+              "vlans",
+              "tags"
+            ],
+            "properties": {
+              "bindings": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Binding"
+                }
+              },
+              "dependencies": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Dependency"
+                }
+              },
+              "hosts": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Host"
+                }
+              },
+              "interfaces": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Interface"
+                }
+              },
+              "ip_addresses": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/IPAddress"
+                }
+              },
+              "ports": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Port"
+                }
+              },
+              "services": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Service"
+                }
+              },
+              "subnets": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Subnet"
+                }
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Tag"
+                }
+              },
+              "vlans": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Vlan"
+                }
+              }
+            }
           },
           "error": {
             "type": [
@@ -15687,6 +16732,17 @@
                   "format": "int32",
                   "minimum": 0
                 },
+                "scanned": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ScannedEntityIds",
+                      "description": "Canonical IDs of entities scanned in this session, populated daemon-\nside at terminal. **Transient**: stripped at `SqlValue::RunType` bind\ntime so it doesn't persist into the historical Discovery row's JSONB.\nAvailable in-memory through the `EntityOperation::Created` event\npublished for the historical Discovery row (the event scope carries\n`Entity::Discovery(...)`, the full in-memory struct), where per-entity\nFK-update subscribers consume it.\n\n`Some(...)` when the daemon is sending the terminal payload over the\nwire. `None` when read back from a persisted historical row, or when\nnot yet set."
+                    }
+                  ]
+                },
                 "session_id": {
                   "type": "string",
                   "format": "uuid"
@@ -15845,13 +16901,55 @@
                     "format": "date-time",
                     "readOnly": true
                   },
+                  "first_discovery_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
                   "id": {
                     "type": "string",
                     "format": "uuid",
                     "readOnly": true
                   },
+                  "last_discovery_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
+                  "last_seen_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "lineage_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid",
+                    "readOnly": true
+                  },
                   "updated_at": {
                     "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "valid_from": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "valid_to": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
                     "format": "date-time",
                     "readOnly": true
                   }
@@ -16154,13 +17252,55 @@
                 "format": "date-time",
                 "readOnly": true
               },
+              "first_discovery_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
               "id": {
                 "type": "string",
                 "format": "uuid",
                 "readOnly": true
               },
+              "last_discovery_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
+              "last_seen_at": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "lineage_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
               "updated_at": {
                 "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "valid_from": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "valid_to": {
+                "type": [
+                  "string",
+                  "null"
+                ],
                 "format": "date-time",
                 "readOnly": true
               }
@@ -16169,14 +17309,20 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-04-22T15:57:37.843118Z",
-          "id": "1aa2632c-fd09-40b1-b2fa-94a09ab2befb",
+          "created_at": "2026-06-16T13:44:04.756663Z",
+          "first_discovery_id": null,
+          "id": "89b5561b-1b91-4309-a9ec-e2271a8dc362",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
+          "last_discovery_id": null,
+          "last_seen_at": "2026-06-16T13:44:04.756663Z",
+          "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-04-22T15:57:37.843118Z"
+          "updated_at": "2026-06-16T13:44:04.756663Z",
+          "valid_from": "2026-06-16T13:44:04.756663Z",
+          "valid_to": null
         }
       },
       "BindingBase": {
@@ -16383,6 +17529,65 @@
             "type": "integer",
             "description": "Number of entities affected",
             "minimum": 0
+          }
+        }
+      },
+      "CancelReason": {
+        "type": "string",
+        "description": "Cancellation reason captured in `SubscriptionCancelled` /\n`CancellationInitiated` events. Mirrors the values surfaced in the\nin-app cancel flow (Phase 5).",
+        "enum": [
+          "too_expensive",
+          "missing_features",
+          "switched_service",
+          "unused",
+          "customer_service",
+          "low_quality",
+          "too_complex",
+          "other"
+        ]
+      },
+      "CancelSubscriptionRequest": {
+        "type": "object",
+        "required": [
+          "reason_code"
+        ],
+        "properties": {
+          "comment": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reason_code": {
+            "$ref": "#/components/schemas/CancelReason"
+          },
+          "save_offer_redeemed": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SaveOffer"
+              }
+            ]
+          },
+          "save_offer_shown": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SaveOffer"
+            }
+          }
+        }
+      },
+      "CancelSubscriptionResponse": {
+        "type": "object",
+        "required": [
+          "period_end"
+        ],
+        "properties": {
+          "period_end": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       },
@@ -16706,7 +17911,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Portainer",
+              "service_definition": "Telnet",
               "tags": [],
               "virtualization": null
             }
@@ -16795,6 +18000,18 @@
                 "$ref": "#/components/schemas/ServiceVirtualization"
               }
             ]
+          }
+        }
+      },
+      "CreateSnapshotRequest": {
+        "type": "object",
+        "required": [
+          "network_id"
+        ],
+        "properties": {
+          "network_id": {
+            "type": "string",
+            "format": "uuid"
           }
         }
       },
@@ -17555,8 +18772,29 @@
                 "format": "uuid",
                 "readOnly": true
               },
+              "lineage_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
               "updated_at": {
                 "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "valid_from": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "valid_to": {
+                "type": [
+                  "string",
+                  "null"
+                ],
                 "format": "date-time",
                 "readOnly": true
               }
@@ -17570,6 +18808,7 @@
           "description": "HTTP/HTTPS services dependency",
           "edge_style": "Bezier",
           "id": "550e8400-e29b-41d4-a716-446655440008",
+          "lineage_id": null,
           "members": {
             "service_ids": [],
             "type": "Services"
@@ -17580,7 +18819,9 @@
             "type": "Manual"
           },
           "tags": [],
-          "updated_at": "2026-01-15T10:30:00Z"
+          "updated_at": "2026-01-15T10:30:00Z",
+          "valid_from": "2026-01-15T10:30:00Z",
+          "valid_to": null
         }
       },
       "DependencyBase": {
@@ -17877,33 +19118,10 @@
           }
         }
       },
-      "DiscoveryMetadata": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/DiscoveryType"
-          },
-          {
-            "type": "object",
-            "required": [
-              "daemon_id",
-              "date"
-            ],
-            "properties": {
-              "daemon_id": {
-                "type": "string",
-                "format": "uuid"
-              },
-              "date": {
-                "type": "string",
-                "format": "date-time"
-              }
-            }
-          }
-        ]
-      },
       "DiscoveryPhase": {
         "type": "string",
         "enum": [
+          "AwaitingSnapshot",
           "Queued",
           "Pending",
           "Starting",
@@ -18113,6 +19331,17 @@
             "type": "integer",
             "format": "int32",
             "minimum": 0
+          },
+          "scanned": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ScannedEntityIds",
+                "description": "Canonical IDs of entities scanned in this session, populated daemon-\nside at terminal. **Transient**: stripped at `SqlValue::RunType` bind\ntime so it doesn't persist into the historical Discovery row's JSONB.\nAvailable in-memory through the `EntityOperation::Created` event\npublished for the historical Discovery row (the event scope carries\n`Entity::Discovery(...)`, the full in-memory struct), where per-entity\nFK-update subscribers consume it.\n\n`Some(...)` when the daemon is sending the terminal payload over the\nwire. `None` when read back from a persisted historical row, or when\nnot yet set."
+              }
+            ]
           },
           "session_id": {
             "type": "string",
@@ -18585,6 +19814,17 @@
           }
         }
       },
+      "EmailSettings": {
+        "type": "object",
+        "required": [
+          "discovery_digest"
+        ],
+        "properties": {
+          "discovery_digest": {
+            "type": "boolean"
+          }
+        }
+      },
       "EnterpriseInquiryRequest": {
         "type": "object",
         "description": "Enterprise plan inquiry request",
@@ -18664,6 +19904,7 @@
           "Vlan",
           "Dependency",
           "Topology",
+          "Snapshot",
           "Unknown"
         ]
       },
@@ -18703,16 +19944,9 @@
             "type": "object",
             "title": "Discovery",
             "required": [
-              "metadata",
               "type"
             ],
             "properties": {
-              "metadata": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/DiscoveryMetadata"
-                }
-              },
               "type": {
                 "type": "string",
                 "enum": [
@@ -18725,19 +19959,12 @@
             "type": "object",
             "title": "DiscoveryWithMatch",
             "required": [
-              "metadata",
               "details",
               "type"
             ],
             "properties": {
               "details": {
                 "$ref": "#/components/schemas/MatchDetails"
-              },
-              "metadata": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/DiscoveryMetadata"
-                }
               },
               "type": {
                 "type": "string",
@@ -18835,14 +20062,62 @@
                 "format": "date-time",
                 "readOnly": true
               },
+              "first_discovery_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "description": "Discovery (historical row) that first observed this entity. Set once\n(post-terminal); immutable thereafter via the `IS NULL` guard in\n`update_discovery_fks`.",
+                "readOnly": true
+              },
               "id": {
                 "type": "string",
                 "format": "uuid",
                 "readOnly": true
               },
+              "last_discovery_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "description": "Discovery (historical row) that last touched this entity. Populated\npost-terminal by the per-entity-service subscriber on\n`DiscoveryProcessed`. NULL until the first successful discovery\nsession terminates after this row was created.",
+                "readOnly": true
+              },
+              "last_seen_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "Last successful natural-key match by daemon discovery against this\nlive row. Refreshed every scan, regardless of field changes.",
+                "readOnly": true
+              },
+              "lineage_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "description": "Lineage pointer on closed historical rows back to the live row whose\nstate they capture. NULL on live rows.",
+                "readOnly": true
+              },
               "updated_at": {
                 "type": "string",
                 "format": "date-time",
+                "readOnly": true
+              },
+              "valid_from": {
+                "type": "string",
+                "format": "date-time",
+                "description": "SCD2: when this row version became live. Equal to `created_at` for\nrows that have never ridden a snapshot; advanced to the snapshot's\n`taken_at` for live rows after a network snapshot fires.",
+                "readOnly": true
+              },
+              "valid_to": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time",
+                "description": "SCD2: when this row was closed by a snapshot. NULL = currently live.",
                 "readOnly": true
               }
             }
@@ -18852,9 +20127,13 @@
           "created_at": "2026-01-15T10:30:00Z",
           "credential_assignments": [],
           "description": "Primary web server",
+          "first_discovery_id": null,
           "hidden": false,
           "hostname": "web-server-01.local",
           "id": "550e8400-e29b-41d4-a716-446655440003",
+          "last_discovery_id": null,
+          "last_seen_at": "2026-01-15T10:30:00Z",
+          "lineage_id": null,
           "name": "web-server-01",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "source": {
@@ -18862,6 +20141,8 @@
           },
           "tags": [],
           "updated_at": "2026-01-15T10:30:00Z",
+          "valid_from": "2026-01-15T10:30:00Z",
+          "valid_to": null,
           "virtualization": null
         }
       },
@@ -19176,6 +20457,7 @@
               "cdp_platform": null,
               "cdp_port_id": null,
               "created_at": "2026-01-15T10:30:00Z",
+              "first_discovery_id": null,
               "host_id": "550e8400-e29b-41d4-a716-446655440003",
               "id": "550e8400-e29b-41d4-a716-44665544000f",
               "if_alias": "Uplink to Core Switch",
@@ -19184,6 +20466,9 @@
               "if_name": "Gi0/1",
               "if_type": 6,
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
+              "last_discovery_id": null,
+              "last_seen_at": "2026-01-15T10:30:00Z",
+              "lineage_id": null,
               "lldp_chassis_id": null,
               "lldp_mgmt_addr": null,
               "lldp_port_desc": null,
@@ -19195,21 +20480,29 @@
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "oper_status": "Up",
               "speed_bps": 1000000000,
-              "updated_at": "2026-01-15T10:30:00Z"
+              "updated_at": "2026-01-15T10:30:00Z",
+              "valid_from": "2026-01-15T10:30:00Z",
+              "valid_to": null
             }
           ],
           "ip_addresses": [
             {
               "created_at": "2026-01-15T10:30:00Z",
+              "first_discovery_id": null,
               "host_id": "550e8400-e29b-41d4-a716-446655440003",
               "id": "550e8400-e29b-41d4-a716-446655440005",
               "ip_address": "192.168.1.100",
+              "last_discovery_id": null,
+              "last_seen_at": "2026-01-15T10:30:00Z",
+              "lineage_id": null,
               "mac_address": "DE:AD:BE:EF:CA:FE",
               "name": "eth0",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
               "subnet_id": "550e8400-e29b-41d4-a716-446655440004",
-              "updated_at": "2026-01-15T10:30:00Z"
+              "updated_at": "2026-01-15T10:30:00Z",
+              "valid_from": "2026-01-15T10:30:00Z",
+              "valid_to": null
             }
           ],
           "name": "web-server-01",
@@ -19217,41 +20510,59 @@
           "ports": [
             {
               "created_at": "2026-01-15T10:30:00Z",
+              "first_discovery_id": null,
               "host_id": "550e8400-e29b-41d4-a716-446655440003",
               "id": "550e8400-e29b-41d4-a716-446655440006",
+              "last_discovery_id": null,
+              "last_seen_at": "2026-01-15T10:30:00Z",
+              "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "number": 80,
               "protocol": "Tcp",
               "type": "Http",
-              "updated_at": "2026-01-15T10:30:00Z"
+              "updated_at": "2026-01-15T10:30:00Z",
+              "valid_from": "2026-01-15T10:30:00Z",
+              "valid_to": null
             }
           ],
           "services": [
             {
               "bindings": [
                 {
-                  "created_at": "2026-04-22T15:57:37.842617Z",
-                  "id": "5dcf3f92-04de-4250-8a9f-69b634017f58",
+                  "created_at": "2026-06-16T13:44:04.756134Z",
+                  "first_discovery_id": null,
+                  "id": "1a8439e5-bf43-463e-9ade-26bce6ecdb9e",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
+                  "last_discovery_id": null,
+                  "last_seen_at": "2026-06-16T13:44:04.756134Z",
+                  "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-04-22T15:57:37.842617Z"
+                  "updated_at": "2026-06-16T13:44:04.756134Z",
+                  "valid_from": "2026-06-16T13:44:04.756134Z",
+                  "valid_to": null
                 }
               ],
               "created_at": "2026-01-15T10:30:00Z",
+              "first_discovery_id": null,
               "host_id": "550e8400-e29b-41d4-a716-446655440003",
               "id": "550e8400-e29b-41d4-a716-446655440007",
+              "last_discovery_id": null,
+              "last_seen_at": "2026-01-15T10:30:00Z",
+              "lineage_id": null,
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Portainer",
+              "service_definition": "Telnet",
               "source": {
                 "type": "Manual"
               },
               "tags": [],
               "updated_at": "2026-01-15T10:30:00Z",
+              "valid_from": "2026-01-15T10:30:00Z",
+              "valid_to": null,
               "virtualization": null
             }
           ],
@@ -19305,13 +20616,55 @@
                 "format": "date-time",
                 "readOnly": true
               },
+              "first_discovery_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
               "id": {
                 "type": "string",
                 "format": "uuid",
                 "readOnly": true
               },
+              "last_discovery_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
+              "last_seen_at": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "lineage_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
               "updated_at": {
                 "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "valid_from": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "valid_to": {
+                "type": [
+                  "string",
+                  "null"
+                ],
                 "format": "date-time",
                 "readOnly": true
               }
@@ -19320,15 +20673,21 @@
         ],
         "example": {
           "created_at": "2026-01-15T10:30:00Z",
+          "first_discovery_id": null,
           "host_id": "550e8400-e29b-41d4-a716-446655440003",
           "id": "550e8400-e29b-41d4-a716-446655440005",
           "ip_address": "192.168.1.100",
+          "last_discovery_id": null,
+          "last_seen_at": "2026-01-15T10:30:00Z",
+          "lineage_id": null,
           "mac_address": "DE:AD:BE:EF:CA:FE",
           "name": "eth0",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
           "subnet_id": "550e8400-e29b-41d4-a716-446655440004",
-          "updated_at": "2026-01-15T10:30:00Z"
+          "updated_at": "2026-01-15T10:30:00Z",
+          "valid_from": "2026-01-15T10:30:00Z",
+          "valid_to": null
         }
       },
       "IPAddressBase": {
@@ -19668,13 +21027,55 @@
                 "format": "date-time",
                 "readOnly": true
               },
+              "first_discovery_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
               "id": {
                 "type": "string",
                 "format": "uuid",
                 "readOnly": true
               },
+              "last_discovery_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
+              "last_seen_at": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "lineage_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
               "updated_at": {
                 "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "valid_from": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "valid_to": {
+                "type": [
+                  "string",
+                  "null"
+                ],
                 "format": "date-time",
                 "readOnly": true
               }
@@ -20826,7 +22227,7 @@
           }
         }
       },
-      "OnboardingOperation": {
+      "OnboardingOperationDiscriminants": {
         "type": "string",
         "enum": [
           "OrgCreated",
@@ -20843,6 +22244,7 @@
           "FirstSnmpCredentialCreated",
           "FirstApplicationTagCreated",
           "FirstCredentialCreated",
+          "FirstSnapshotCreated",
           "InviteSent",
           "InviteAccepted",
           "ProfileCompleted",
@@ -20887,11 +22289,15 @@
             "description": "Current onboarding step (if any)"
           },
           "use_case": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Use case selection (homelab, company, msp)"
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/UseCase",
+                "description": "Use case selection (homelab, company, msp)"
+              }
+            ]
           }
         }
       },
@@ -20902,29 +22308,19 @@
           "step"
         ],
         "properties": {
-          "referral_source": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Referral source (how they heard about Scanopy)"
-          },
-          "referral_source_other": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Free-text referral source (when \"other\" is selected)"
-          },
           "step": {
             "type": "string"
           },
           "use_case": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Use case selection (homelab, company, msp)"
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/UseCase",
+                "description": "Use case selection (homelab, company, msp)"
+              }
+            ]
           }
         }
       },
@@ -20977,8 +22373,64 @@
           "onboarding"
         ],
         "properties": {
+          "discount_save_offer_active_until": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the currently-active save-offer discount window expires. The\nBillingTab chip renders only while `> now()`; expiry needs no\ncleanup job.",
+            "readOnly": true
+          },
+          "discount_save_offer_percent_off": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Percent off the currently-active save-offer discount applies. Read\nlive by the BillingTab chip so a future coupon swap renders the new\nvalue without a code change.",
+            "readOnly": true
+          },
           "has_payment_method": {
             "type": "boolean",
+            "readOnly": true
+          },
+          "last_discount_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Most recent save-offer-discount application. NULL = never. Drives the\nonce-per-org eligibility check in `apply_discount_save_offer` and\nhides the Discount panel on the cancel modal for any return visit.",
+            "readOnly": true
+          },
+          "last_downgrade_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Most recent downgrade event timestamp (paid→cheaper, or paid→cancelled);\npowers the 14-day downgrade banner.",
+            "readOnly": true
+          },
+          "last_downgrade_from_plan": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/BillingPlan",
+                "description": "Plan downgraded from at `last_downgrade_at`; pairs with the timestamp\nso the banner can render \"you downgraded from Pro\"."
+              }
+            ]
+          },
+          "last_paused_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Most recent `Paused` billing event's timestamp; powers the 6-month\nrolling pause cooldown.",
             "readOnly": true
           },
           "name": {
@@ -20987,7 +22439,7 @@
           "onboarding": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/OnboardingOperation"
+              "$ref": "#/components/schemas/OnboardingOperationDiscriminants"
             }
           },
           "plan": {
@@ -21001,11 +22453,14 @@
             ]
           },
           "plan_status": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "readOnly": true
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PlanStatus"
+              }
+            ]
           },
           "trial_end_date": {
             "type": [
@@ -21013,6 +22468,11 @@
               "null"
             ],
             "format": "date-time",
+            "readOnly": true
+          },
+          "trial_extended_used": {
+            "type": "boolean",
+            "description": "Whether the org has used its one-time trial-extend perk.",
             "readOnly": true
           },
           "use_case": {
@@ -21043,7 +22503,7 @@
           "server_version": {
             "type": "string",
             "description": "Server version (semver)",
-            "example": "0.16.1"
+            "example": "0.16.2"
           }
         },
         "example": {
@@ -21054,7 +22514,7 @@
             "offset": 0,
             "total_count": 142
           },
-          "server_version": "0.16.1"
+          "server_version": "0.16.2"
         }
       },
       "PaginatedApiResponse_Credential": {
@@ -21210,8 +22670,29 @@
                       "format": "uuid",
                       "readOnly": true
                     },
+                    "lineage_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "uuid",
+                      "readOnly": true
+                    },
                     "updated_at": {
                       "type": "string",
+                      "format": "date-time",
+                      "readOnly": true
+                    },
+                    "valid_from": {
+                      "type": "string",
+                      "format": "date-time",
+                      "readOnly": true
+                    },
+                    "valid_to": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
                       "format": "date-time",
                       "readOnly": true
                     }
@@ -21225,6 +22706,7 @@
                 "description": "HTTP/HTTPS services dependency",
                 "edge_style": "Bezier",
                 "id": "550e8400-e29b-41d4-a716-446655440008",
+                "lineage_id": null,
                 "members": {
                   "service_ids": [],
                   "type": "Services"
@@ -21235,7 +22717,9 @@
                   "type": "Manual"
                 },
                 "tags": [],
-                "updated_at": "2026-01-15T10:30:00Z"
+                "updated_at": "2026-01-15T10:30:00Z",
+                "valid_from": "2026-01-15T10:30:00Z",
+                "valid_to": null
               }
             }
           },
@@ -21419,6 +22903,7 @@
                     "cdp_platform": null,
                     "cdp_port_id": null,
                     "created_at": "2026-01-15T10:30:00Z",
+                    "first_discovery_id": null,
                     "host_id": "550e8400-e29b-41d4-a716-446655440003",
                     "id": "550e8400-e29b-41d4-a716-44665544000f",
                     "if_alias": "Uplink to Core Switch",
@@ -21427,6 +22912,9 @@
                     "if_name": "Gi0/1",
                     "if_type": 6,
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
+                    "last_discovery_id": null,
+                    "last_seen_at": "2026-01-15T10:30:00Z",
+                    "lineage_id": null,
                     "lldp_chassis_id": null,
                     "lldp_mgmt_addr": null,
                     "lldp_port_desc": null,
@@ -21438,21 +22926,29 @@
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "oper_status": "Up",
                     "speed_bps": 1000000000,
-                    "updated_at": "2026-01-15T10:30:00Z"
+                    "updated_at": "2026-01-15T10:30:00Z",
+                    "valid_from": "2026-01-15T10:30:00Z",
+                    "valid_to": null
                   }
                 ],
                 "ip_addresses": [
                   {
                     "created_at": "2026-01-15T10:30:00Z",
+                    "first_discovery_id": null,
                     "host_id": "550e8400-e29b-41d4-a716-446655440003",
                     "id": "550e8400-e29b-41d4-a716-446655440005",
                     "ip_address": "192.168.1.100",
+                    "last_discovery_id": null,
+                    "last_seen_at": "2026-01-15T10:30:00Z",
+                    "lineage_id": null,
                     "mac_address": "DE:AD:BE:EF:CA:FE",
                     "name": "eth0",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
                     "subnet_id": "550e8400-e29b-41d4-a716-446655440004",
-                    "updated_at": "2026-01-15T10:30:00Z"
+                    "updated_at": "2026-01-15T10:30:00Z",
+                    "valid_from": "2026-01-15T10:30:00Z",
+                    "valid_to": null
                   }
                 ],
                 "name": "web-server-01",
@@ -21460,41 +22956,59 @@
                 "ports": [
                   {
                     "created_at": "2026-01-15T10:30:00Z",
+                    "first_discovery_id": null,
                     "host_id": "550e8400-e29b-41d4-a716-446655440003",
                     "id": "550e8400-e29b-41d4-a716-446655440006",
+                    "last_discovery_id": null,
+                    "last_seen_at": "2026-01-15T10:30:00Z",
+                    "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "number": 80,
                     "protocol": "Tcp",
                     "type": "Http",
-                    "updated_at": "2026-01-15T10:30:00Z"
+                    "updated_at": "2026-01-15T10:30:00Z",
+                    "valid_from": "2026-01-15T10:30:00Z",
+                    "valid_to": null
                   }
                 ],
                 "services": [
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-04-22T15:57:37.836277Z",
-                        "id": "304f4abd-1864-4b3f-9bee-2595b8ecb429",
+                        "created_at": "2026-06-16T13:44:04.750254Z",
+                        "first_discovery_id": null,
+                        "id": "1c7e53e8-29c6-4af0-98ec-32388c4a6874",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
+                        "last_discovery_id": null,
+                        "last_seen_at": "2026-06-16T13:44:04.750254Z",
+                        "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-04-22T15:57:37.836277Z"
+                        "updated_at": "2026-06-16T13:44:04.750254Z",
+                        "valid_from": "2026-06-16T13:44:04.750254Z",
+                        "valid_to": null
                       }
                     ],
                     "created_at": "2026-01-15T10:30:00Z",
+                    "first_discovery_id": null,
                     "host_id": "550e8400-e29b-41d4-a716-446655440003",
                     "id": "550e8400-e29b-41d4-a716-446655440007",
+                    "last_discovery_id": null,
+                    "last_seen_at": "2026-01-15T10:30:00Z",
+                    "lineage_id": null,
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Portainer",
+                    "service_definition": "Telnet",
                     "source": {
                       "type": "Manual"
                     },
                     "tags": [],
                     "updated_at": "2026-01-15T10:30:00Z",
+                    "valid_from": "2026-01-15T10:30:00Z",
+                    "valid_to": null,
                     "virtualization": null
                   }
                 ],
@@ -21550,13 +23064,55 @@
                       "format": "date-time",
                       "readOnly": true
                     },
+                    "first_discovery_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "uuid",
+                      "readOnly": true
+                    },
                     "id": {
                       "type": "string",
                       "format": "uuid",
                       "readOnly": true
                     },
+                    "last_discovery_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "uuid",
+                      "readOnly": true
+                    },
+                    "last_seen_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "readOnly": true
+                    },
+                    "lineage_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "uuid",
+                      "readOnly": true
+                    },
                     "updated_at": {
                       "type": "string",
+                      "format": "date-time",
+                      "readOnly": true
+                    },
+                    "valid_from": {
+                      "type": "string",
+                      "format": "date-time",
+                      "readOnly": true
+                    },
+                    "valid_to": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
                       "format": "date-time",
                       "readOnly": true
                     }
@@ -21566,28 +23122,40 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-04-22T15:57:37.850695Z",
-                    "id": "31679246-99e8-452c-9ddf-2dbdf87e9182",
+                    "created_at": "2026-06-16T13:44:04.763278Z",
+                    "first_discovery_id": null,
+                    "id": "91b7134a-9509-4939-a943-b18dce86ed9e",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
+                    "last_discovery_id": null,
+                    "last_seen_at": "2026-06-16T13:44:04.763278Z",
+                    "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-04-22T15:57:37.850695Z"
+                    "updated_at": "2026-06-16T13:44:04.763278Z",
+                    "valid_from": "2026-06-16T13:44:04.763278Z",
+                    "valid_to": null
                   }
                 ],
                 "created_at": "2026-01-15T10:30:00Z",
+                "first_discovery_id": null,
                 "host_id": "550e8400-e29b-41d4-a716-446655440003",
                 "id": "550e8400-e29b-41d4-a716-446655440007",
+                "last_discovery_id": null,
+                "last_seen_at": "2026-01-15T10:30:00Z",
+                "lineage_id": null,
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Portainer",
+                "service_definition": "Telnet",
                 "source": {
                   "type": "Manual"
                 },
                 "tags": [],
                 "updated_at": "2026-01-15T10:30:00Z",
+                "valid_from": "2026-01-15T10:30:00Z",
+                "valid_to": null,
                 "virtualization": null
               }
             }
@@ -21635,13 +23203,55 @@
                       "format": "date-time",
                       "readOnly": true
                     },
+                    "first_discovery_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "uuid",
+                      "readOnly": true
+                    },
                     "id": {
                       "type": "string",
                       "format": "uuid",
                       "readOnly": true
                     },
+                    "last_discovery_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "uuid",
+                      "readOnly": true
+                    },
+                    "last_seen_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "readOnly": true
+                    },
+                    "lineage_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "uuid",
+                      "readOnly": true
+                    },
                     "updated_at": {
                       "type": "string",
+                      "format": "date-time",
+                      "readOnly": true
+                    },
+                    "valid_from": {
+                      "type": "string",
+                      "format": "date-time",
+                      "readOnly": true
+                    },
+                    "valid_to": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
                       "format": "date-time",
                       "readOnly": true
                     }
@@ -21652,7 +23262,11 @@
                 "cidr": "192.168.1.0/24",
                 "created_at": "2026-01-15T10:30:00Z",
                 "description": "Local area network",
+                "first_discovery_id": null,
                 "id": "550e8400-e29b-41d4-a716-446655440004",
+                "last_discovery_id": null,
+                "last_seen_at": "2026-01-15T10:30:00Z",
+                "lineage_id": null,
                 "name": "LAN",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "source": {
@@ -21660,7 +23274,9 @@
                 },
                 "subnet_type": "Lan",
                 "tags": [],
-                "updated_at": "2026-01-15T10:30:00Z"
+                "updated_at": "2026-01-15T10:30:00Z",
+                "valid_from": "2026-01-15T10:30:00Z",
+                "valid_to": null
               }
             }
           },
@@ -21712,8 +23328,29 @@
                       "format": "uuid",
                       "readOnly": true
                     },
+                    "lineage_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "uuid",
+                      "readOnly": true
+                    },
                     "updated_at": {
                       "type": "string",
+                      "format": "date-time",
+                      "readOnly": true
+                    },
+                    "valid_from": {
+                      "type": "string",
+                      "format": "date-time",
+                      "readOnly": true
+                    },
+                    "valid_to": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
                       "format": "date-time",
                       "readOnly": true
                     }
@@ -21726,9 +23363,12 @@
                 "description": "Production environment resources",
                 "id": "550e8400-e29b-41d4-a716-44665544000a",
                 "is_application": false,
+                "lineage_id": null,
                 "name": "production",
                 "organization_id": "550e8400-e29b-41d4-a716-446655440001",
-                "updated_at": "2026-01-15T10:30:00Z"
+                "updated_at": "2026-01-15T10:30:00Z",
+                "valid_from": "2026-01-15T10:30:00Z",
+                "valid_to": null
               }
             }
           },
@@ -21949,13 +23589,55 @@
                       "format": "date-time",
                       "readOnly": true
                     },
+                    "first_discovery_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "uuid",
+                      "readOnly": true
+                    },
                     "id": {
                       "type": "string",
                       "format": "uuid",
                       "readOnly": true
                     },
+                    "last_discovery_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "uuid",
+                      "readOnly": true
+                    },
+                    "last_seen_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "readOnly": true
+                    },
+                    "lineage_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "uuid",
+                      "readOnly": true
+                    },
                     "updated_at": {
                       "type": "string",
+                      "format": "date-time",
+                      "readOnly": true
+                    },
+                    "valid_from": {
+                      "type": "string",
+                      "format": "date-time",
+                      "readOnly": true
+                    },
+                    "valid_to": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
                       "format": "date-time",
                       "readOnly": true
                     }
@@ -22042,6 +23724,26 @@
           }
         }
       },
+      "PauseDuration": {
+        "type": "string",
+        "description": "Pause subscription duration. The cancel modal's `RadioGroup` posts\none of these enum variants verbatim — no integer parsing at the API\nboundary, the type is the contract.",
+        "enum": [
+          "days30",
+          "days60",
+          "days90"
+        ]
+      },
+      "PauseSubscriptionRequest": {
+        "type": "object",
+        "required": [
+          "duration_days"
+        ],
+        "properties": {
+          "duration_days": {
+            "$ref": "#/components/schemas/PauseDuration"
+          }
+        }
+      },
       "PlanConfig": {
         "type": "object",
         "required": [
@@ -22108,6 +23810,18 @@
             "minimum": 0
           }
         }
+      },
+      "PlanStatus": {
+        "type": "string",
+        "description": "Derived subscription status — our domain enum, never Stripe's raw status.\nStripe webhook events map to typed `BillingOperation` variants at reception\n(in `billing/service.rs`); each variant deterministically implies a\n`PlanStatus` for downstream feature gates via\n`BillingOperation::implied_status`.\n\n`FromStr` is derived (via strum) so the storage layer can round-trip a\nsnake_case `text` column back into the typed value; `ToSchema` exposes\nthe enum as a stricter string union in the generated OpenAPI schema so\nthe frontend's `org.plan_status === 'paused'` comparisons are\ncompile-checked against the canonical variant list.",
+        "enum": [
+          "active",
+          "trialing",
+          "past_due",
+          "paused",
+          "pending_cancellation",
+          "cancelled"
+        ]
       },
       "PlanUsage": {
         "type": "object",
@@ -22177,13 +23891,55 @@
                 "format": "date-time",
                 "readOnly": true
               },
+              "first_discovery_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
               "id": {
                 "type": "string",
                 "format": "uuid",
                 "readOnly": true
               },
+              "last_discovery_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
+              "last_seen_at": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "lineage_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
               "updated_at": {
                 "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "valid_from": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "valid_to": {
+                "type": [
+                  "string",
+                  "null"
+                ],
                 "format": "date-time",
                 "readOnly": true
               }
@@ -22193,13 +23949,19 @@
         "description": "Port entity with custom serialization that flattens PortType fields.",
         "example": {
           "created_at": "2026-01-15T10:30:00Z",
+          "first_discovery_id": null,
           "host_id": "550e8400-e29b-41d4-a716-446655440003",
           "id": "550e8400-e29b-41d4-a716-446655440006",
+          "last_discovery_id": null,
+          "last_seen_at": "2026-01-15T10:30:00Z",
+          "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "number": 80,
           "protocol": "Tcp",
           "type": "Http",
-          "updated_at": "2026-01-15T10:30:00Z"
+          "updated_at": "2026-01-15T10:30:00Z",
+          "valid_from": "2026-01-15T10:30:00Z",
+          "valid_to": null
         }
       },
       "PortBase": {
@@ -22369,6 +24131,7 @@
           "disable_password_login",
           "oidc_providers",
           "billing_enabled",
+          "discount_save_offer_available",
           "has_integrated_daemon",
           "has_email_service",
           "has_email_opt_in",
@@ -22389,6 +24152,10 @@
           },
           "disable_registration": {
             "type": "boolean"
+          },
+          "discount_save_offer_available": {
+            "type": "boolean",
+            "description": "`STRIPE_SAVE_OFFER_COUPON_ID` env var is set. When false, the\ncancel modal hides the discount save-offer panel so the user\ndoesn't see an option the deployment can't fulfil."
           },
           "has_email_opt_in": {
             "type": "boolean"
@@ -22444,6 +24211,15 @@
           "server_port": {
             "type": "integer",
             "format": "int32",
+            "minimum": 0
+          },
+          "snapshot_retention_days_override": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "`SCANOPY_SNAPSHOT_RETENTION_DAYS_OVERRIDE` if set on this instance.\nFrontend uses it inside the plan-comparison view to display the\neffective retention for this deployment rather than the per-plan\nfixture default.",
             "minimum": 0
           }
         }
@@ -22662,6 +24438,15 @@
           }
         ]
       },
+      "SaveOffer": {
+        "type": "string",
+        "description": "Save-offer choices presented during in-app cancellation (Phase 5).",
+        "enum": [
+          "pause",
+          "discount",
+          "downgrade"
+        ]
+      },
       "ScanSettings": {
         "type": "object",
         "description": "Scan performance settings. Lives on the discovery entity.\nNumeric fields are `Option<T>` — `None` means \"use daemon default\".\nThe daemon unwraps with defaults at point of use.",
@@ -22730,6 +24515,68 @@
           "use_npcap_arp": {
             "type": "boolean",
             "description": "On Windows, use Npcap broadcast ARP instead of SendARP (default: false)"
+          }
+        }
+      },
+      "ScannedEntityIds": {
+        "type": "object",
+        "description": "Canonical IDs of entities scanned in a discovery session.\n\nPopulated daemon-side at terminal phase from `EntityBuffer`'s `Created`\nentries. Travels with the terminal `DiscoveryUpdatePayload` to the server,\nrides the in-memory `EntityOperation::Created` event published for the\nhistorical Discovery row (the event scope carries `Entity::Discovery` with\nthe full struct, including `run_type::Historical { results }`), then is\nstripped before persisting into the historical Discovery row's JSONB (see\nthe `SqlValue::RunType` bind_value handler in\n`backend/src/server/shared/storage/generic.rs`). Per-entity-service\nsubscribers extract `results.scanned` from the in-memory event and call\n`DiscoveryFkUpdater::update_discovery_fks` to backfill\n`last_discovery_id` / `first_discovery_id` on the matched rows.\n\nNaming: `scanned_*` because the daemon scans entities — some submissions\nmatch existing rows (refresh), others insert new rows. Both populate the\nEntityBuffer with canonical (server-assigned) IDs.",
+        "properties": {
+          "binding_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "host_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "interface_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "ip_address_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "port_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "service_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "subnet_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "vlan_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         }
       },
@@ -22817,13 +24664,55 @@
                 "format": "date-time",
                 "readOnly": true
               },
+              "first_discovery_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
               "id": {
                 "type": "string",
                 "format": "uuid",
                 "readOnly": true
               },
+              "last_discovery_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
+              "last_seen_at": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "lineage_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
               "updated_at": {
                 "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "valid_from": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "valid_to": {
+                "type": [
+                  "string",
+                  "null"
+                ],
                 "format": "date-time",
                 "readOnly": true
               }
@@ -22833,28 +24722,40 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-04-22T15:57:37.843045Z",
-              "id": "30177052-1c1c-4ab1-9772-5b24bafe1534",
+              "created_at": "2026-06-16T13:44:04.756614Z",
+              "first_discovery_id": null,
+              "id": "623822b1-995d-45d9-98ff-2a51dae8f994",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
+              "last_discovery_id": null,
+              "last_seen_at": "2026-06-16T13:44:04.756614Z",
+              "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-04-22T15:57:37.843045Z"
+              "updated_at": "2026-06-16T13:44:04.756614Z",
+              "valid_from": "2026-06-16T13:44:04.756614Z",
+              "valid_to": null
             }
           ],
           "created_at": "2026-01-15T10:30:00Z",
+          "first_discovery_id": null,
           "host_id": "550e8400-e29b-41d4-a716-446655440003",
           "id": "550e8400-e29b-41d4-a716-446655440007",
+          "last_discovery_id": null,
+          "last_seen_at": "2026-01-15T10:30:00Z",
+          "lineage_id": null,
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Portainer",
+          "service_definition": "Telnet",
           "source": {
             "type": "Manual"
           },
           "tags": [],
           "updated_at": "2026-01-15T10:30:00Z",
+          "valid_from": "2026-01-15T10:30:00Z",
+          "valid_to": null,
           "virtualization": null
         }
       },
@@ -23266,10 +25167,10 @@
           }
         }
       },
-      "Subnet": {
+      "Snapshot": {
         "allOf": [
           {
-            "$ref": "#/components/schemas/SubnetBase"
+            "$ref": "#/components/schemas/SnapshotBase"
           },
           {
             "type": "object",
@@ -23296,12 +25197,114 @@
               }
             }
           }
+        ]
+      },
+      "SnapshotBase": {
+        "type": "object",
+        "required": [
+          "network_id",
+          "taken_at"
+        ],
+        "properties": {
+          "created_by_user_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "network_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "taken_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Subnet": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/SubnetBase"
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "created_at",
+              "updated_at"
+            ],
+            "properties": {
+              "created_at": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "first_discovery_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "readOnly": true
+              },
+              "last_discovery_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
+              "last_seen_at": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "lineage_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
+              "updated_at": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "valid_from": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "valid_to": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time",
+                "readOnly": true
+              }
+            }
+          }
         ],
         "example": {
           "cidr": "192.168.1.0/24",
           "created_at": "2026-01-15T10:30:00Z",
           "description": "Local area network",
+          "first_discovery_id": null,
           "id": "550e8400-e29b-41d4-a716-446655440004",
+          "last_discovery_id": null,
+          "last_seen_at": "2026-01-15T10:30:00Z",
+          "lineage_id": null,
           "name": "LAN",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "source": {
@@ -23309,7 +25312,9 @@
           },
           "subnet_type": "Lan",
           "tags": [],
-          "updated_at": "2026-01-15T10:30:00Z"
+          "updated_at": "2026-01-15T10:30:00Z",
+          "valid_from": "2026-01-15T10:30:00Z",
+          "valid_to": null
         }
       },
       "SubnetBase": {
@@ -23451,8 +25456,29 @@
                 "format": "uuid",
                 "readOnly": true
               },
+              "lineage_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
               "updated_at": {
                 "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "valid_from": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "valid_to": {
+                "type": [
+                  "string",
+                  "null"
+                ],
                 "format": "date-time",
                 "readOnly": true
               }
@@ -23465,9 +25491,12 @@
           "description": "Production environment resources",
           "id": "550e8400-e29b-41d4-a716-44665544000a",
           "is_application": false,
+          "lineage_id": null,
           "name": "production",
           "organization_id": "550e8400-e29b-41d4-a716-446655440001",
-          "updated_at": "2026-01-15T10:30:00Z"
+          "updated_at": "2026-01-15T10:30:00Z",
+          "valid_from": "2026-01-15T10:30:00Z",
+          "valid_to": null
         }
       },
       "TagBase": {
@@ -23589,32 +25618,55 @@
       "TopologyBase": {
         "type": "object",
         "required": [
-          "name",
-          "options",
           "network_id",
-          "tags",
+          "options",
           "nodes",
-          "edges",
+          "edges"
+        ],
+        "properties": {
+          "edges": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Edge"
+            }
+          },
+          "network_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "nodes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Node"
+            }
+          },
+          "options": {
+            "$ref": "#/components/schemas/TopologyOptions"
+          },
+          "snapshot_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "FK to `snapshots.id`. NULL = live view; Some = snapshot row."
+          }
+        }
+      },
+      "TopologyData": {
+        "type": "object",
+        "description": "Bundle of entities that feed `build_graph` and the topology export pipeline.\n\nLoaded by [`crate::server::topology::service::main::TopologyService::get_topology_data`]\nfor either the live view (`at = None`) or a point-in-time snapshot\n(`at = Some(taken_at)`). Replaces the entity-blob columns previously\npersisted on the topology row.",
+        "required": [
           "hosts",
           "ip_addresses",
+          "subnets",
+          "dependencies",
           "ports",
           "bindings",
-          "subnets",
-          "services",
-          "dependencies",
           "interfaces",
-          "entity_tags",
-          "is_stale",
-          "last_refreshed",
-          "is_locked",
-          "removed_hosts",
-          "removed_ip_addresses",
-          "removed_subnets",
-          "removed_services",
-          "removed_dependencies",
-          "removed_ports",
-          "removed_bindings",
-          "removed_interfaces"
+          "services",
+          "vlans",
+          "tags"
         ],
         "properties": {
           "bindings": {
@@ -23627,18 +25679,6 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/Dependency"
-            }
-          },
-          "edges": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Edge"
-            }
-          },
-          "entity_tags": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Tag"
             }
           },
           "hosts": {
@@ -23659,113 +25699,10 @@
               "$ref": "#/components/schemas/IPAddress"
             }
           },
-          "is_locked": {
-            "type": "boolean"
-          },
-          "is_stale": {
-            "type": "boolean"
-          },
-          "last_refreshed": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "locked_at": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time"
-          },
-          "locked_by": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "uuid"
-          },
-          "name": {
-            "type": "string"
-          },
-          "network_id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "nodes": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Node"
-            }
-          },
-          "options": {
-            "$ref": "#/components/schemas/TopologyOptions"
-          },
-          "parent_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "uuid"
-          },
           "ports": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/Port"
-            }
-          },
-          "removed_bindings": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          "removed_dependencies": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          "removed_hosts": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          "removed_interfaces": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          "removed_ip_addresses": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          "removed_ports": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          "removed_services": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          "removed_subnets": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "format": "uuid"
             }
           },
           "services": {
@@ -23783,8 +25720,7 @@
           "tags": {
             "type": "array",
             "items": {
-              "type": "string",
-              "format": "uuid"
+              "$ref": "#/components/schemas/Tag"
             }
           },
           "vlans": {
@@ -23849,33 +25785,6 @@
           },
           "tag_filter": {
             "$ref": "#/components/schemas/TopologyTagFilter"
-          }
-        }
-      },
-      "TopologyMetadataUpdate": {
-        "type": "object",
-        "description": "Lightweight request type for updating topology metadata.\n\nUsed for editing topology name/parent - instead of sending the entire topology\n(which includes all hosts, ip_addresses, services, etc.), only sends the metadata fields.\nFixes HTTP 413 errors on metadata edit operations.",
-        "required": [
-          "network_id",
-          "name"
-        ],
-        "properties": {
-          "name": {
-            "type": "string",
-            "description": "New name for the topology"
-          },
-          "network_id": {
-            "type": "string",
-            "format": "uuid",
-            "description": "Network ID for authorization"
-          },
-          "parent_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "uuid",
-            "description": "New parent topology ID (optional)"
           }
         }
       },
@@ -23946,39 +25855,6 @@
           },
           "request": {
             "$ref": "#/components/schemas/TopologyRequestOptions"
-          }
-        }
-      },
-      "TopologyRebuildRequest": {
-        "type": "object",
-        "description": "Lightweight request type for topology rebuild/refresh operations.\n\nThis type only includes the fields actually needed by the server - entity data\n(hosts, ip_addresses, services, etc.) is fetched fresh from the database.\nUsing this instead of the full Topology dramatically reduces payload size\nfor large networks (from MBs to KBs), fixing HTTP 413 errors.",
-        "required": [
-          "network_id",
-          "options"
-        ],
-        "properties": {
-          "edges": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Edge"
-            },
-            "description": "Existing edges for reference during rebuild"
-          },
-          "network_id": {
-            "type": "string",
-            "format": "uuid",
-            "description": "Network ID for authorization and data fetching"
-          },
-          "nodes": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Node"
-            },
-            "description": "Existing nodes for position preservation during rebuild"
-          },
-          "options": {
-            "$ref": "#/components/schemas/TopologyOptions",
-            "description": "Topology options for graph building"
           }
         }
       },
@@ -24076,6 +25952,7 @@
                   "Vlan",
                   "Dependency",
                   "Topology",
+                  "Snapshot",
                   "Unknown"
                 ]
               }
@@ -24427,6 +26304,10 @@
           "email": {
             "type": "string"
           },
+          "email_settings": {
+            "$ref": "#/components/schemas/EmailSettings",
+            "description": "Per-user email preferences"
+          },
           "email_verified": {
             "type": "boolean",
             "description": "Whether the user has verified their email address"
@@ -24567,13 +26448,55 @@
                 "format": "date-time",
                 "readOnly": true
               },
+              "first_discovery_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
               "id": {
                 "type": "string",
                 "format": "uuid",
                 "readOnly": true
               },
+              "last_discovery_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
+              "last_seen_at": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "lineage_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "readOnly": true
+              },
               "updated_at": {
                 "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "valid_from": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true
+              },
+              "valid_to": {
+                "type": [
+                  "string",
+                  "null"
+                ],
                 "format": "date-time",
                 "readOnly": true
               }

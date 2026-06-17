@@ -2,11 +2,11 @@ use std::{collections::HashMap, sync::Arc};
 
 use anyhow::Error;
 use async_trait::async_trait;
-use chrono::Utc;
 use petgraph::{Graph, graph::NodeIndex, visit::EdgeRef};
 use tokio::sync::broadcast;
 use uuid::Uuid;
 
+use crate::server::shared::events::traits::{EntityEventFlags, EntityScope, Event};
 use crate::server::{
     auth::middleware::auth::AuthenticatedEntity,
     bindings::{r#impl::base::Binding, service::BindingService},
@@ -17,13 +17,11 @@ use crate::server::{
         service::InterfaceService,
     },
     ip_addresses::{r#impl::base::IPAddress, service::IPAddressService},
+    networks::service::NetworkService,
     ports::{r#impl::base::Port, service::PortService},
     services::{r#impl::base::Service, service::ServiceService},
     shared::{
-        events::{
-            bus::EventBus,
-            types::{EntityEvent, EntityOperation},
-        },
+        events::{bus::EventBus, types::EntityOperation},
         services::traits::{CrudService, EventBusService},
         storage::{
             filter::StorableFilter,
@@ -36,9 +34,10 @@ use crate::server::{
     topology::{
         service::{context::TopologyContext, edge_builder::EdgeBuilder},
         types::{
-            base::{SetEntitiesParams, Topology, TopologyOptions},
+            api::TopologyData,
+            base::{Topology, TopologyOptions},
             edges::{Edge, EdgeHandle},
-            grouping::{ElementRule, GroupingConfig, IdentifiedRule},
+            grouping::GroupingConfig,
             nodes::Node,
             views::{TopologyView, TopologyViewSupport},
         },
@@ -48,19 +47,22 @@ use crate::server::{
 
 pub struct TopologyService {
     storage: Arc<GenericPostgresStorage<Topology>>,
-    host_service: Arc<HostService>,
-    ip_address_service: Arc<IPAddressService>,
-    subnet_service: Arc<SubnetService>,
-    dependency_service: Arc<DependencyService>,
-    service_service: Arc<ServiceService>,
-    port_service: Arc<PortService>,
-    binding_service: Arc<BindingService>,
-    interface_service: Arc<InterfaceService>,
-    tag_service: Arc<TagService>,
-    vlan_service: Arc<VlanService>,
-    pub(crate) network_service: Arc<crate::server::networks::service::NetworkService>,
+    pub(crate) host_service: Arc<HostService>,
+    pub(crate) ip_address_service: Arc<IPAddressService>,
+    pub(crate) subnet_service: Arc<SubnetService>,
+    pub(crate) dependency_service: Arc<DependencyService>,
+    pub(crate) service_service: Arc<ServiceService>,
+    pub(crate) port_service: Arc<PortService>,
+    pub(crate) binding_service: Arc<BindingService>,
+    pub(crate) interface_service: Arc<InterfaceService>,
+    pub(crate) tag_service: Arc<TagService>,
+    pub(crate) vlan_service: Arc<VlanService>,
+    pub(crate) network_service: Arc<NetworkService>,
     event_bus: Arc<EventBus>,
-    pub staleness_tx: broadcast::Sender<Topology>,
+    /// Broadcast channel emitting `network_id`s whose live entity set has
+    /// just changed. Frontend SSE consumers refetch the live topology row +
+    /// entity data on receipt. Replaces the legacy staleness state machine.
+    pub live_update_tx: broadcast::Sender<Uuid>,
 }
 
 impl EventBusService<Topology> for TopologyService {
@@ -86,7 +88,12 @@ impl CrudService<Topology> for TopologyService {
         None
     }
 
-    /// Create entity
+    /// Create a topology row.
+    ///
+    /// Live-view rows: caller passes `snapshot_id = None`. Snapshot rows:
+    /// caller passes `snapshot_id = Some(snapshot.id)` and is responsible for
+    /// supplying the entity data (via the `Snapshot` subscriber path) — the
+    /// service no longer fetches+caches entities on the topology row.
     async fn create(
         &self,
         entity: Topology,
@@ -98,77 +105,52 @@ impl CrudService<Topology> for TopologyService {
             entity
         };
 
-        let (hosts, ip_addresses, subnets, dependencies, ports, bindings, interfaces) =
-            self.get_entity_data(topology.base.network_id).await?;
-
-        let services = self.get_service_data(topology.base.network_id).await?;
-
-        // Fetch tag definitions for all tags used by entities and element rules
-        let entity_tags = self
-            .get_entity_tags(
-                &hosts,
-                &services,
-                &subnets,
-                &topology.base.options.request.element_rules,
-            )
-            .await?;
-
-        // Fetch VLANs for the network
-        let vlans = self.get_vlans(topology.base.network_id).await?;
-
-        let params = BuildGraphParams {
-            hosts: &hosts,
-            ip_addresses: &ip_addresses,
-            services: &services,
-            subnets: &subnets,
-            dependencies: &dependencies,
-            ports: &ports,
-            bindings: &bindings,
-            interfaces: &interfaces,
-            entity_tags: &entity_tags,
-            vlans: &vlans,
-            old_edges: &[],
-            old_nodes: &[],
-            options: &topology.base.options,
-            old_view: None,
-        };
-
-        let (nodes, edges) = self.build_graph(params);
-
-        topology.set_entities(SetEntitiesParams {
-            hosts,
-            ip_addresses,
-            services,
-            subnets,
-            dependencies,
-            interfaces,
-            entity_tags,
-            vlans,
-            ports,
-            bindings,
-        });
-
-        topology.set_graph(nodes, edges);
-        topology.clear_stale();
+        // For live-view rows we still seed nodes/edges from the current
+        // entity state so the first render after network creation has a
+        // graph to display. Snapshot rows are inserted directly by the
+        // subscriber with already-built nodes/edges and don't pass through
+        // here as `id == nil`.
+        if topology.base.snapshot_id.is_none()
+            && topology.base.nodes.is_empty()
+            && topology.base.edges.is_empty()
+        {
+            let data = self
+                .get_topology_data(topology.base.network_id, None)
+                .await?;
+            let (nodes, edges) = self.build_graph(BuildGraphParams {
+                hosts: &data.hosts,
+                ip_addresses: &data.ip_addresses,
+                services: &data.services,
+                subnets: &data.subnets,
+                dependencies: &data.dependencies,
+                ports: &data.ports,
+                bindings: &data.bindings,
+                interfaces: &data.interfaces,
+                entity_tags: &data.tags,
+                vlans: &data.vlans,
+                old_edges: &[],
+                old_nodes: &[],
+                options: &topology.base.options,
+                old_view: None,
+            });
+            topology.set_graph(nodes, edges);
+        }
 
         let created = self.storage().create(&topology).await?;
 
-        self.event_bus()
-            .publish_entity(EntityEvent {
-                id: Uuid::new_v4(),
-                entity_id: created.id(),
-                network_id: self.get_network_id(&created),
-                organization_id: self.get_organization_id(&created),
-                entity_type: created.clone().into(),
-                operation: EntityOperation::Created,
-                timestamp: Utc::now(),
-                metadata: serde_json::json!({
-                    "clear_stale": true
-                }),
-
-                authentication,
-            })
-            .await?;
+        if let Some(scope) = EntityScope::from_ids(
+            created.id(),
+            created.clone().into(),
+            self.get_network_id(&created),
+            self.get_organization_id(&created),
+        ) {
+            self.event_bus()
+                .publish(
+                    Event::new(scope, EntityOperation::Created, authentication)
+                        .with_flags(EntityEventFlags::default()),
+                )
+                .await?;
+        }
 
         Ok(created)
     }
@@ -192,51 +174,6 @@ pub struct BuildGraphParams<'a> {
 }
 
 impl TopologyService {
-    /// Returns true if changes to this tag should mark topologies stale.
-    /// Fires for either: application tags, or tags referenced by any ByTag
-    /// element rule in any topology in the given org.
-    pub async fn tag_affects_any_topology(&self, tag_id: Uuid, org_id: Uuid) -> bool {
-        let is_app = self
-            .tag_service
-            .get_by_id(&tag_id)
-            .await
-            .ok()
-            .flatten()
-            .map(|t| t.base.is_application)
-            .unwrap_or(false);
-        if is_app {
-            return true;
-        }
-        let Ok(networks) = self
-            .network_service
-            .get_all(
-                StorableFilter::<crate::server::networks::r#impl::Network>::new_from_org_id(
-                    &org_id,
-                ),
-            )
-            .await
-        else {
-            return false;
-        };
-        let network_ids: Vec<Uuid> = networks.iter().map(|n| n.id).collect();
-        if network_ids.is_empty() {
-            return false;
-        }
-        let Ok(topologies) = self
-            .get_all(StorableFilter::<Topology>::new_from_network_ids(
-                &network_ids,
-            ))
-            .await
-        else {
-            return false;
-        };
-        topologies.iter().any(|t| {
-            t.base.options.request.element_rules.iter().any(|r| {
-                matches!(&r.rule, ElementRule::ByTag { tag_ids, .. } if tag_ids.contains(&tag_id))
-            })
-        })
-    }
-
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         host_service: Arc<HostService>,
@@ -249,11 +186,11 @@ impl TopologyService {
         interface_service: Arc<InterfaceService>,
         tag_service: Arc<TagService>,
         vlan_service: Arc<VlanService>,
-        network_service: Arc<crate::server::networks::service::NetworkService>,
+        network_service: Arc<NetworkService>,
         storage: Arc<GenericPostgresStorage<Topology>>,
         event_bus: Arc<EventBus>,
     ) -> Self {
-        let (staleness_tx, _) = broadcast::channel(100);
+        let (live_update_tx, _) = broadcast::channel(100);
         Self {
             host_service,
             ip_address_service,
@@ -268,73 +205,96 @@ impl TopologyService {
             vlan_service,
             network_service,
             event_bus,
-            staleness_tx,
+            live_update_tx,
         }
     }
 
-    pub fn subscribe_staleness_changes(&self) -> broadcast::Receiver<Topology> {
-        self.staleness_tx.subscribe()
+    /// Subscribe to live-topology update pings. Each emitted `Uuid` is a
+    /// network whose live entity set just changed; consumers refetch the
+    /// live topology row + entity data.
+    pub fn subscribe_live_topology_updates(&self) -> broadcast::Receiver<Uuid> {
+        self.live_update_tx.subscribe()
     }
 
-    pub async fn get_entity_data(
+    /// Unified entity-set loader for live + snapshot topology reads.
+    ///
+    /// `snapshot_id = None` reads live entity rows (`valid_to IS NULL`).
+    /// `snapshot_id = Some(id)` reads closed copies stamped at that snapshot
+    /// (`snapshot_id = id`) — those have distinct ids from their live
+    /// counterparts and survive live-row deletion.
+    pub async fn get_topology_data(
         &self,
         network_id: Uuid,
-    ) -> Result<
-        (
-            Vec<Host>,
-            Vec<IPAddress>,
-            Vec<Subnet>,
-            Vec<Dependency>,
-            Vec<Port>,
-            Vec<Binding>,
-            Vec<Interface>,
-        ),
-        Error,
-    > {
-        // Fetch all data - each service needs its own properly typed filter
+        snapshot_id: Option<Uuid>,
+    ) -> Result<TopologyData, Error> {
         let hosts = self
             .host_service
-            .get_all(StorableFilter::<Host>::new_from_network_ids(&[network_id]).hidden_is(false))
+            .get_all(apply_snapshot(
+                StorableFilter::<Host>::new_from_network_ids(&[network_id]).hidden_is(false),
+                snapshot_id,
+            ))
             .await?;
-
         let ip_addresses = self
             .ip_address_service
-            .get_all(StorableFilter::<IPAddress>::new_from_network_ids(&[
-                network_id,
-            ]))
+            .get_all(apply_snapshot(
+                StorableFilter::<IPAddress>::new_from_network_ids(&[network_id]),
+                snapshot_id,
+            ))
             .await?;
         let subnets = self
             .subnet_service
-            .get_all(StorableFilter::<Subnet>::new_from_network_ids(&[
-                network_id,
-            ]))
+            .get_all(apply_snapshot(
+                StorableFilter::<Subnet>::new_from_network_ids(&[network_id]),
+                snapshot_id,
+            ))
             .await?;
         let dependencies = self
             .dependency_service
-            .get_all(StorableFilter::<Dependency>::new_from_network_ids(&[
-                network_id,
-            ]))
+            .get_all(apply_snapshot(
+                StorableFilter::<Dependency>::new_from_network_ids(&[network_id]),
+                snapshot_id,
+            ))
             .await?;
-
         let ports = self
             .port_service
-            .get_all(StorableFilter::<Port>::new_from_network_ids(&[network_id]))
+            .get_all(apply_snapshot(
+                StorableFilter::<Port>::new_from_network_ids(&[network_id]),
+                snapshot_id,
+            ))
             .await?;
         let bindings = self
             .binding_service
-            .get_all(StorableFilter::<Binding>::new_from_network_ids(&[
-                network_id,
-            ]))
+            .get_all(apply_snapshot(
+                StorableFilter::<Binding>::new_from_network_ids(&[network_id]),
+                snapshot_id,
+            ))
             .await?;
-
         let interfaces = self
             .interface_service
-            .get_all(StorableFilter::<Interface>::new_from_network_ids(&[
-                network_id,
-            ]))
+            .get_all(apply_snapshot(
+                StorableFilter::<Interface>::new_from_network_ids(&[network_id]),
+                snapshot_id,
+            ))
+            .await?;
+        let services = self
+            .service_service
+            .get_all(apply_snapshot(
+                StorableFilter::<Service>::new_from_network_ids(&[network_id]),
+                snapshot_id,
+            ))
+            .await?;
+        let vlans = self
+            .vlan_service
+            .get_all(apply_snapshot(
+                StorableFilter::<Vlan>::new_from_uuid_column("network_id", &network_id),
+                snapshot_id,
+            ))
+            .await?;
+        let tags = self
+            .get_entity_tags(&hosts, &services, &subnets, snapshot_id)
             .await?;
 
-        Ok((
+        Ok(TopologyData {
             hosts,
             ip_addresses,
             subnets,
@@ -342,26 +302,26 @@ impl TopologyService {
             ports,
             bindings,
             interfaces,
-        ))
-    }
-
-    pub async fn get_service_data(&self, network_id: Uuid) -> Result<Vec<Service>, Error> {
-        self.service_service
-            .get_all(StorableFilter::<Service>::new_from_network_ids(&[
-                network_id,
-            ]))
-            .await
+            services,
+            vlans,
+            tags,
+        })
     }
 
     /// Fetch tag definitions for all tags used by hosts, services, and subnets.
+    ///
+    /// Live view: `tag_id IN <referenced> AND valid_to IS NULL`.
+    /// Snapshot view: the entities themselves came from close-and-clone, and
+    /// their `tags` field already references the snapshot's closed tag rows
+    /// (close-and-clone rewrites `tags` to point at the new ids via the
+    /// `FkMaps` remap). So we filter by the referenced ids + `snapshot_id`.
     pub async fn get_entity_tags(
         &self,
         hosts: &[Host],
         services: &[Service],
         subnets: &[Subnet],
-        element_rules: &[IdentifiedRule<ElementRule>],
+        snapshot_id: Option<Uuid>,
     ) -> Result<Vec<Tag>, Error> {
-        // Collect all unique tag IDs from entities
         let mut tag_ids: Vec<Uuid> = Vec::new();
         for host in hosts {
             tag_ids.extend(&host.base.tags);
@@ -373,19 +333,6 @@ impl TopologyService {
             tag_ids.extend(&subnet.base.tags);
         }
 
-        // Include tags referenced by ByTag element rules so their metadata
-        // is available in the response even if no entities currently have them
-        for rule in element_rules {
-            if let ElementRule::ByTag {
-                tag_ids: rule_tag_ids,
-                ..
-            } = &rule.rule
-            {
-                tag_ids.extend(rule_tag_ids);
-            }
-        }
-
-        // Deduplicate
         tag_ids.sort();
         tag_ids.dedup();
 
@@ -393,31 +340,19 @@ impl TopologyService {
             return Ok(vec![]);
         }
 
-        // Fetch the tag definitions
-        let tags = self
-            .tag_service
-            .get_all(StorableFilter::<Tag>::new_from_entity_ids(&tag_ids))
-            .await?;
+        let filter = match snapshot_id {
+            None => StorableFilter::<Tag>::new_from_entity_ids(&tag_ids).live(),
+            Some(id) => StorableFilter::<Tag>::new_from_entity_ids(&tag_ids).snapshot_id(&id),
+        };
+        let tags = self.tag_service.get_all(filter).await?;
 
         Ok(tags)
     }
 
-    /// Fetch all VLANs for a network.
-    pub async fn get_vlans(&self, network_id: Uuid) -> Result<Vec<Vlan>, Error> {
-        let filter = StorableFilter::<Vlan>::new_from_uuid_column("network_id", &network_id);
-        self.vlan_service.storage().get_all(filter).await
-    }
-
     /// Compute per-view data-support flags for a network's topology by
     /// querying raw entity tables — independent of whatever the topology
-    /// was last rebuilt under. Used by the share handlers to decide which
-    /// views to expose; previously this was read from the persisted
-    /// `topology.base.edges` / `entity_tags` snapshot, which flips based
-    /// on the most recently rendered view.
+    /// was last rebuilt under.
     pub async fn get_view_support(&self, network_id: Uuid) -> Result<TopologyViewSupport, Error> {
-        // L2 physical support: any interface in this network has an LLDP/CDP
-        // neighbor pointing at another interface. The `neighbor` field on
-        // Interface is raw discovery data — unchanged by topology rebuilds.
         let interfaces = self
             .interface_service
             .get_all(StorableFilter::<Interface>::new_from_network_ids(&[
@@ -428,13 +363,6 @@ impl TopologyService {
             .iter()
             .any(|i| matches!(i.base.neighbor, Some(Neighbor::Interface(_))));
 
-        // Application support: the topology's organization has at least one
-        // application-flagged tag defined. We deliberately do NOT require the
-        // tag to be applied to an entity in this specific network — the main
-        // app always exposes the Application view (rendering services as
-        // "Ungrouped" when no app tags are assigned yet), and the share must
-        // match that behavior. If the org has no application tags at all,
-        // Application grouping is meaningless and we gate it out.
         let application = match self.network_service.get_by_id(&network_id).await? {
             Some(network) => self
                 .tag_service
@@ -451,67 +379,6 @@ impl TopologyService {
             l2_physical,
             application,
         })
-    }
-
-    /// Rebuild a topology: fetch entities from DB, compute nodes/edges, persist.
-    /// Used by the rebuild handler and demo data seeder.
-    pub async fn rebuild(
-        &self,
-        topology: &mut Topology,
-        authentication: AuthenticatedEntity,
-    ) -> Result<(), Error> {
-        let (hosts, ip_addresses, subnets, dependencies, ports, bindings, interfaces) =
-            self.get_entity_data(topology.base.network_id).await?;
-
-        let services = self.get_service_data(topology.base.network_id).await?;
-
-        let entity_tags = self
-            .get_entity_tags(
-                &hosts,
-                &services,
-                &subnets,
-                &topology.base.options.request.element_rules,
-            )
-            .await?;
-
-        let vlans = self.get_vlans(topology.base.network_id).await?;
-
-        let (nodes, edges) = self.build_graph(BuildGraphParams {
-            options: &topology.base.options,
-            hosts: &hosts,
-            ip_addresses: &ip_addresses,
-            subnets: &subnets,
-            services: &services,
-            dependencies: &dependencies,
-            ports: &ports,
-            bindings: &bindings,
-            interfaces: &interfaces,
-            entity_tags: &entity_tags,
-            vlans: &vlans,
-            old_nodes: &[],
-            old_edges: &[],
-            old_view: None,
-        });
-
-        topology.set_entities(SetEntitiesParams {
-            hosts,
-            ip_addresses,
-            services,
-            subnets,
-            dependencies,
-            ports,
-            bindings,
-            interfaces,
-            entity_tags,
-            vlans,
-        });
-
-        topology.set_graph(nodes, edges);
-        topology.clear_stale();
-
-        self.update(topology, authentication).await?;
-
-        Ok(())
     }
 
     pub fn build_graph(&self, params: BuildGraphParams) -> (Vec<Node>, Vec<Edge>) {
@@ -645,5 +512,19 @@ impl TopologyService {
             graph.node_weights().cloned().collect(),
             graph.edge_weights().cloned().collect(),
         )
+    }
+}
+
+/// Switch a filter between live and snapshot modes based on `snapshot_id`.
+/// Live view: live rows (`valid_to IS NULL`). Snapshot view: closed copies
+/// stamped with the snapshot's id (distinct rows from the live versions, and
+/// survive live-row hard-deletes).
+fn apply_snapshot<T: Storable>(
+    f: StorableFilter<T>,
+    snapshot_id: Option<Uuid>,
+) -> StorableFilter<T> {
+    match snapshot_id {
+        None => f.live(),
+        Some(id) => f.snapshot_id(&id),
     }
 }

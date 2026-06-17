@@ -96,6 +96,9 @@ pub struct ServiceFilterQuery {
     /// Number of results to skip. Default: 0.
     #[param(minimum = 0)]
     pub offset: Option<u32>,
+    /// As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+    /// instant (snapshot view) instead of live state.
+    pub at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 impl ServiceFilterQuery {
@@ -198,6 +201,10 @@ async fn get_all_services(
 
     let base_filter = StorableFilter::<Service>::new_from_network_ids(&network_ids);
     let filter = query.apply_to_filter(base_filter, &network_ids, organization_id);
+
+    // SCD2 read path: live by default, or as-of the snapshot timestamp when set.
+    // Hides close-and-clone's closed historical copies from the services list.
+    let filter = filter.live_or_as_of(query.at);
 
     // Apply tag filter if specified
     let filter = match &query.tag_ids {

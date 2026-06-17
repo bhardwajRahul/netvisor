@@ -1,6 +1,6 @@
 <script lang="ts" module>
 	import { edgeTypes, serviceDefinitions } from '$lib/shared/stores/metadata';
-	import type { Topology, TopologyEdge } from '$lib/features/topology/types/base';
+	import type { EnrichedTopology, TopologyEdge } from '$lib/features/topology/types/base';
 
 	export const ContainerRuntimeEdgeDisplay: EntityDisplayComponent<
 		TopologyEdge,
@@ -45,7 +45,7 @@
 	};
 
 	export interface EdgeDisplayContext {
-		topology?: Topology;
+		topology?: EnrichedTopology;
 	}
 </script>
 

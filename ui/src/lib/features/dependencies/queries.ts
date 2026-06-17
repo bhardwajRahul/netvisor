@@ -11,19 +11,22 @@ import type { Topology } from '$lib/features/topology/types/base';
 /**
  * Query hook for fetching all dependencies
  */
-export function useDependenciesQuery() {
-	return createQuery(() => ({
-		queryKey: queryKeys.dependencies.all,
-		queryFn: async () => {
-			const { data } = await apiClient.GET('/api/v1/dependencies', {
-				params: { query: { limit: 0 } }
-			});
-			if (!data?.success || !data.data) {
-				throw new Error(data?.error || 'Failed to fetch dependencies');
+export function useDependenciesQuery(atGetter?: () => string | undefined) {
+	return createQuery(() => {
+		const at = atGetter?.();
+		return {
+			queryKey: at ? [...queryKeys.dependencies.all, 'asOf', at] : queryKeys.dependencies.all,
+			queryFn: async () => {
+				const { data } = await apiClient.GET('/api/v1/dependencies', {
+					params: { query: { limit: 0, at } }
+				});
+				if (!data?.success || !data.data) {
+					throw new Error(data?.error || 'Failed to fetch dependencies');
+				}
+				return data.data;
 			}
-			return data.data;
-		}
-	}));
+		};
+	});
 }
 
 /**
@@ -100,11 +103,12 @@ export function useDeleteDependencyMutation() {
 				queryKeys.dependencies.all,
 				(old) => old?.filter((d) => d.id !== id) ?? []
 			);
-			// Optimistically strip the dependency and its edges from topology cache
+			// Optimistically strip the dependency's edges from the topology graph
+			// (dependency rows themselves now live in the dedicated dependencies cache,
+			// not on the topology row).
 			queryClient.setQueryData<Topology[]>(queryKeys.topology.all, (old) =>
 				old?.map((t) => ({
 					...t,
-					dependencies: t.dependencies.filter((d) => d.id !== id),
 					edges: t.edges.filter(
 						(e) =>
 							!(

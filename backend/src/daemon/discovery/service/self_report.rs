@@ -13,7 +13,6 @@ use crate::daemon::discovery::service::base::DiscoveryRunner;
 use crate::daemon::discovery::service::ops::DiscoveryOps;
 use crate::daemon::utils::base::DaemonUtils;
 use crate::server::bindings::r#impl::base::Binding;
-use crate::server::discovery::r#impl::types::DiscoveryType;
 use crate::server::hosts::r#impl::base::{Host, HostBase};
 use crate::server::ip_addresses::r#impl::base::{ALL_IP_ADDRESSES_IP, IPAddress};
 use crate::server::ports::r#impl::base::Port;
@@ -23,7 +22,7 @@ use crate::server::services::r#impl::base::{Service, ServiceBase};
 use crate::server::services::r#impl::definitions::ServiceDefinition;
 use crate::server::services::r#impl::patterns::MatchDetails;
 use crate::server::shared::storage::traits::Storable;
-use crate::server::shared::types::entities::{DiscoveryMetadata, EntitySource};
+use crate::server::shared::types::entities::EntitySource;
 use crate::server::subnets::r#impl::base::Subnet;
 
 impl DiscoveryRunner {
@@ -39,7 +38,6 @@ impl DiscoveryRunner {
             return Err(anyhow::anyhow!("Discovery cancelled"));
         }
 
-        let daemon_id = self.service.config_store.get_id().await?;
         let network_id = self
             .service
             .config_store
@@ -56,12 +54,7 @@ impl DiscoveryRunner {
         // Get ip_addresses
         let interface_filter = self.service.config_store.get_interfaces().await?;
         let (ip_addresses, _, _) = utils
-            .get_own_interfaces(
-                DiscoveryType::from(self),
-                daemon_id,
-                network_id,
-                &interface_filter,
-            )
+            .get_own_interfaces(network_id, &interface_filter)
             .await?;
 
         if cancel.is_cancelled() {
@@ -107,9 +100,7 @@ impl DiscoveryRunner {
             network_id,
             description: Some("Scanopy daemon".to_string()),
             tags: Vec::new(),
-            source: EntitySource::Discovery {
-                metadata: vec![DiscoveryMetadata::new(DiscoveryType::from(self), daemon_id)],
-            },
+            source: EntitySource::Discovery,
             hidden: false,
             virtualization: None,
             sys_descr: None,
@@ -146,7 +137,6 @@ impl DiscoveryRunner {
             host_id: host.id,
             virtualization: None,
             source: EntitySource::DiscoveryWithMatch {
-                metadata: vec![DiscoveryMetadata::new(DiscoveryType::from(self), daemon_id)],
                 details: MatchDetails::new_certain("Scanopy Daemon self-report"),
             },
             position: 0,

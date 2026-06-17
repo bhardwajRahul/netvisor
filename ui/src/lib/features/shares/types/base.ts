@@ -1,6 +1,6 @@
 // Re-export generated types from OpenAPI schema
 import type { components } from '$lib/api/schema';
-import type { Topology } from '$lib/features/topology/types/base';
+import type { EnrichedTopology } from '$lib/features/topology/types/base';
 import { utcTimeZoneSentinel, uuidv4Sentinel } from '$lib/shared/utils/formatting';
 
 export type Share = components['schemas']['Share'];
@@ -18,10 +18,14 @@ export interface ExportFeatures {
 	remove_created_with: boolean;
 }
 
-// Frontend-specific type: combines share metadata with topology data
+// Frontend-specific type: combines share metadata with topology data.
+// The backend's shared-topology endpoint returns the topology row plus
+// the entity arrays the read-only viewer needs (shared users can't load
+// them via the per-entity endpoints with their own credentials), so the
+// frontend treats the payload as the enriched shape.
 export interface ShareWithTopology {
 	share: PublicShareMetadata;
-	topology: Topology;
+	topology: EnrichedTopology;
 	export_features: ExportFeatures;
 }
 

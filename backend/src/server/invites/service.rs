@@ -3,15 +3,13 @@ use std::sync::Arc;
 use chrono::Utc;
 use uuid::Uuid;
 
+use crate::server::shared::events::traits::{EntityEventFlags, EntityScope, Event};
 use crate::server::{
     auth::middleware::auth::AuthenticatedEntity,
     invites::r#impl::base::Invite,
     shared::{
         entities::ChangeTriggersTopologyStaleness,
-        events::{
-            bus::EventBus,
-            types::{EntityEvent, EntityOperation},
-        },
+        events::{bus::EventBus, types::EntityOperation},
         services::traits::{CrudService, EventBusService},
         storage::{filter::StorableFilter, generic::GenericPostgresStorage, traits::Storage},
     },
@@ -85,21 +83,22 @@ impl InviteService {
 
         let trigger_stale = invite.triggers_staleness(None);
 
-        self.event_bus()
-            .publish_entity(EntityEvent {
-                id: Uuid::new_v4(),
-                entity_id: invite.id,
-                organization_id: Some(invite.base.organization_id),
-                entity_type: invite.clone().into(),
-                network_id: None,
-                operation: EntityOperation::Deleted,
-                timestamp: Utc::now(),
-                metadata: serde_json::json!({
-                    "trigger_stale": trigger_stale
-                }),
-                authentication: AuthenticatedEntity::System,
-            })
-            .await?;
+        if let Some(scope) = EntityScope::from_ids(
+            invite.id,
+            invite.clone().into(),
+            None,
+            Some(invite.base.organization_id),
+        ) {
+            self.event_bus()
+                .publish(
+                    Event::new(scope, EntityOperation::Deleted, AuthenticatedEntity::System)
+                        .with_flags(EntityEventFlags {
+                            trigger_stale,
+                            ..Default::default()
+                        }),
+                )
+                .await?;
+        }
 
         Ok(invite)
     }

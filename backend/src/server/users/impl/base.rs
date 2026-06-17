@@ -7,7 +7,7 @@ use crate::server::{
         entity_metadata::EntityCategory,
         storage::traits::{Entity, SqlValue, Storable},
     },
-    users::r#impl::permissions::UserOrgPermissions,
+    users::r#impl::{email_settings::EmailSettings, permissions::UserOrgPermissions},
 };
 use anyhow::{Error, Result};
 use chrono::{DateTime, Utc};
@@ -76,6 +76,9 @@ pub struct UserBase {
     /// Pending email address for email change flow - never exposed to client
     #[serde(skip)]
     pub pending_email: Option<EmailAddress>,
+    /// Per-user email preferences
+    #[serde(default)]
+    pub email_settings: EmailSettings,
 }
 
 impl Default for UserBase {
@@ -97,6 +100,7 @@ impl Default for UserBase {
             password_reset_token: None,
             password_reset_expires: None,
             pending_email: None,
+            email_settings: EmailSettings::default(),
         }
     }
 }
@@ -129,11 +133,13 @@ impl UserBase {
             password_reset_token: None,
             password_reset_expires: None,
             pending_email: None,
+            email_settings: EmailSettings::default(),
         }
     }
 
     pub fn new_password(
         email: EmailAddress,
+        email_verified: bool,
         password_hash: String,
         organization_id: Uuid,
         permissions: UserOrgPermissions,
@@ -151,13 +157,13 @@ impl UserBase {
             oidc_subject: None,
             network_ids,
             terms_accepted_at,
-            // Email must be verified before login
-            email_verified: false,
+            email_verified,
             email_verification_token: None,
             email_verification_expires: None,
             password_reset_token: None,
             password_reset_expires: None,
             pending_email: None,
+            email_settings: EmailSettings::default(),
         }
     }
 }
@@ -243,6 +249,7 @@ impl Storable for User {
                     password_reset_token,
                     password_reset_expires,
                     pending_email,
+                    email_settings,
                     ..
                 },
         } = self.clone();
@@ -267,6 +274,7 @@ impl Storable for User {
                 "password_reset_token",
                 "password_reset_expires",
                 "pending_email",
+                "email_settings",
             ],
             vec![
                 SqlValue::Uuid(id),
@@ -286,6 +294,7 @@ impl Storable for User {
                 SqlValue::OptionalString(password_reset_token),
                 SqlValue::OptionTimestamp(password_reset_expires),
                 SqlValue::OptionalString(pending_email.map(|e| e.to_string())),
+                SqlValue::EmailSettings(email_settings),
             ],
         ))
     }
@@ -328,6 +337,11 @@ impl Storable for User {
                 password_reset_token: row.get("password_reset_token"),
                 password_reset_expires: row.get("password_reset_expires"),
                 pending_email,
+                email_settings: row
+                    .try_get::<serde_json::Value, _>("email_settings")
+                    .ok()
+                    .and_then(|v| serde_json::from_value(v).ok())
+                    .unwrap_or_default(),
             },
         })
     }

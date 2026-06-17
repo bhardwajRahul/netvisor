@@ -63,18 +63,13 @@ impl<'a> DockerScanner<'a> {
     /// Create Docker bridge subnets from Docker networks.
     /// Returns the created subnets (with server-assigned IDs) for use in container interface resolution.
     pub async fn create_docker_bridge_subnets(&self) -> Result<Vec<Subnet>, Error> {
-        let daemon_id = self.ops.daemon_id().await?;
         let network_id = self.ops.network_id().await?;
-
-        let discovery_type = self.ops.discovery_type.clone();
 
         let docker_subnets = self
             .utils
             .get_subnets_from_docker_networks(
-                daemon_id,
                 network_id,
                 self.docker_client,
-                discovery_type,
                 self.docker_service_id,
             )
             .await

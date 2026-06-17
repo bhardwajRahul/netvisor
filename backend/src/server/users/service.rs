@@ -1,11 +1,9 @@
+use crate::server::shared::events::traits::{EntityEventFlags, EntityScope, Event};
 use crate::server::{
     auth::middleware::auth::AuthenticatedEntity,
     shared::{
         entities::ChangeTriggersTopologyStaleness,
-        events::{
-            bus::EventBus,
-            types::{EntityEvent, EntityOperation},
-        },
+        events::{bus::EventBus, types::EntityOperation},
         services::traits::{CrudService, EventBusService},
         storage::{
             filter::StorableFilter,
@@ -21,7 +19,6 @@ use crate::server::{
 use anyhow::Error;
 use anyhow::Result;
 use async_trait::async_trait;
-use chrono::Utc;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -84,24 +81,23 @@ impl CrudService<User> for UserService {
 
         let trigger_stale = created.triggers_staleness(None);
 
-        let metadata = serde_json::json!({
-            "trigger_stale": trigger_stale
-        });
-
-        self.event_bus()
-            .publish_entity(EntityEvent {
-                id: Uuid::new_v4(),
-                entity_id: created.id,
-                network_id: self.get_network_id(&created),
-                organization_id: self.get_organization_id(&created),
-                entity_type: created.clone().into(),
-                operation: EntityOperation::Created,
-                timestamp: Utc::now(),
-                metadata,
-
-                authentication,
-            })
-            .await?;
+        if let Some(scope) = EntityScope::from_ids(
+            created.id,
+            created.clone().into(),
+            self.get_network_id(&created),
+            self.get_organization_id(&created),
+        ) {
+            self.event_bus()
+                .publish(
+                    Event::new(scope, EntityOperation::Created, authentication).with_flags(
+                        EntityEventFlags {
+                            trigger_stale,
+                            ..Default::default()
+                        },
+                    ),
+                )
+                .await?;
+        }
 
         Ok(created)
     }
@@ -130,6 +126,50 @@ impl UserService {
             .user_permissions(&UserOrgPermissions::Owner);
 
         self.user_storage.get_all(filter).await
+    }
+
+    /// Returns all users with access to `network_id` within `organization_id`.
+    ///
+    /// Access is the union of:
+    /// - Users with an explicit row in the `user_network_access` junction.
+    /// - Org Owners and Admins, who have implicit access to every network in
+    ///   their organization regardless of the junction table.
+    ///
+    /// Deduplicates users that fall into both sets. The org-id parameter is
+    /// required so the implicit set is scoped — junction rows alone don't
+    /// carry the org context the way `User.organization_id` does.
+    pub async fn get_users_with_network_access(
+        &self,
+        network_id: &Uuid,
+        organization_id: &Uuid,
+    ) -> Result<Vec<User>> {
+        let explicit_user_ids = self
+            .network_access_storage
+            .get_user_ids_for_network(network_id)
+            .await?;
+
+        let explicit = if explicit_user_ids.is_empty() {
+            Vec::new()
+        } else {
+            // The users table's PK is `id`; the `user_id` column lives on the
+            // user_network_access junction. Filter on entity ids.
+            let filter = StorableFilter::<User>::new_from_entity_ids(&explicit_user_ids);
+            self.user_storage.get_all(filter).await?
+        };
+
+        let implicit_filter = StorableFilter::<User>::new_from_org_id(organization_id)
+            .user_permissions_in(&[UserOrgPermissions::Owner, UserOrgPermissions::Admin]);
+        let implicit = self.user_storage.get_all(implicit_filter).await?;
+
+        let mut seen: std::collections::HashSet<Uuid> =
+            std::collections::HashSet::with_capacity(explicit.len() + implicit.len());
+        let mut out: Vec<User> = Vec::with_capacity(explicit.len() + implicit.len());
+        for user in explicit.into_iter().chain(implicit.into_iter()) {
+            if seen.insert(user.id) {
+                out.push(user);
+            }
+        }
+        Ok(out)
     }
 
     /// Get network_ids for a user from the user_network_access junction table

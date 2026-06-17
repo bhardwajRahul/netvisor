@@ -8,11 +8,10 @@ use anyhow::{Error, anyhow};
 use async_trait::async_trait;
 use email_address::EmailAddress;
 
-use crate::server::email::{
-    templates::{EMAIL_VERIFICATION_TITLE, PASSWORD_RESET_TITLE},
-    traits::{EmailProvider, strip_html_tags},
-};
+use super::{messages::Email, transport::EmailTransport};
 
+/// SMTP-based email transport (lettre), used as the fallback when Brevo is
+/// not configured.
 pub struct SmtpEmailProvider {
     mailer: AsyncSmtpTransport<Tokio1Executor>,
     from: Mailbox,
@@ -41,8 +40,11 @@ impl SmtpEmailProvider {
 
         Ok(Self { mailer, from })
     }
+}
 
-    async fn send_email(&self, to: EmailAddress, title: String, body: String) -> Result<(), Error> {
+#[async_trait]
+impl EmailTransport for SmtpEmailProvider {
+    async fn send(&self, to: EmailAddress, email: &dyn Email, base_url: &str) -> Result<(), Error> {
         let to_mbox = Mailbox::new(
             None,
             to.email()
@@ -50,75 +52,24 @@ impl SmtpEmailProvider {
                 .map_err(|e| anyhow!("Invalid recipient email address: {}", e))?,
         );
 
-        let email = lettre::Message::builder()
+        let html = email.render_html(base_url);
+        let text = email.render_text(base_url);
+
+        let message = lettre::Message::builder()
             .from(self.from.clone())
             .to(to_mbox)
-            .subject(title)
+            .subject(email.subject())
             .multipart(
                 MultiPart::alternative()
-                    .singlepart(SinglePart::plain(strip_html_tags(body.clone())))
-                    .singlepart(SinglePart::html(body)),
+                    .singlepart(SinglePart::plain(text))
+                    .singlepart(SinglePart::html(html)),
             )?;
 
         self.mailer
-            .send(email)
+            .send(message)
             .await
             .map_err(|e| anyhow!("Failed to send email: {}", e))?;
 
         Ok(())
-    }
-}
-
-#[async_trait]
-impl EmailProvider for SmtpEmailProvider {
-    async fn send_invite(
-        &self,
-        to: EmailAddress,
-        from: EmailAddress,
-        url: String,
-    ) -> Result<(), Error> {
-        self.send_email(
-            to,
-            self.build_invite_title(from.clone()),
-            self.build_invite_email(url, from),
-        )
-        .await
-    }
-
-    async fn send_password_reset(
-        &self,
-        to: EmailAddress,
-        url: String,
-        token: String,
-    ) -> Result<(), Error> {
-        self.send_email(
-            to,
-            PASSWORD_RESET_TITLE.to_string(),
-            self.build_password_reset_email(url, token),
-        )
-        .await
-    }
-
-    async fn send_verification_email(
-        &self,
-        to: EmailAddress,
-        url: String,
-        token: String,
-    ) -> Result<(), Error> {
-        self.send_email(
-            to,
-            EMAIL_VERIFICATION_TITLE.to_string(),
-            self.build_verification_email(url, token),
-        )
-        .await
-    }
-
-    async fn send_billing_email(
-        &self,
-        to: EmailAddress,
-        subject: String,
-        body: String,
-    ) -> Result<(), Error> {
-        self.send_email(to, subject, body).await
     }
 }

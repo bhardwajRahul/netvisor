@@ -5,7 +5,7 @@
  * remains in local component state or a separate UI store.
  */
 
-import { createQuery, createMutation, useQueryClient } from '@tanstack/svelte-query';
+import { createQuery, createMutation } from '@tanstack/svelte-query';
 import { queryClient, queryKeys } from '$lib/api/query-client';
 import { apiClient } from '$lib/api/client';
 import type { Topology, TopologyEdge, TopologyOptions } from './types/base';
@@ -15,7 +15,6 @@ import type { ContainerRule } from './types/grouping';
 import _containerRuleTypes from '$lib/data/container-rule-types.json';
 import _elementRuleTypes from '$lib/data/element-rule-types.json';
 import type { Organization } from '$lib/features/organizations/types';
-import { uuidv4Sentinel, utcTimeZoneSentinel } from '$lib/shared/utils/formatting';
 import { BaseSSEManager, type SSEConfig } from '$lib/shared/utils/sse';
 import { writable, derived, get } from 'svelte/store';
 import { UNTAGGED_SENTINEL } from './interactions';
@@ -185,6 +184,40 @@ export function useTopologiesQuery(enabled?: () => boolean) {
 }
 
 /**
+ * Query hook for fetching the topology entity bundle for the selected view.
+ *
+ * `snapshot_id = undefined` → live entity set.
+ * `snapshot_id = <id>`      → entity set as-of that snapshot's `taken_at`.
+ *
+ * Single endpoint, single code path. The cache key includes the snapshot id
+ * so live vs snapshot data don't collide. The SSE `live_topology_updates_stream`
+ * consumer invalidates this query on live-view network updates.
+ */
+export function useTopologyDataQuery(
+	networkId: () => string | undefined,
+	snapshotId: () => string | undefined
+) {
+	return createQuery(() => ({
+		queryKey: queryKeys.topology.data(networkId() ?? '', snapshotId()),
+		queryFn: async () => {
+			const network_id = networkId();
+			if (!network_id) {
+				throw new Error('No network ID provided');
+			}
+			const snapshot_id = snapshotId();
+			const { data } = await apiClient.GET('/api/v1/topology/data', {
+				params: { query: { network_id, snapshot_id } }
+			});
+			if (!data?.success || !data.data) {
+				throw new Error(data?.error || 'Failed to fetch topology data');
+			}
+			return data.data;
+		},
+		enabled: () => !!networkId()
+	}));
+}
+
+/**
  * Query hook for fetching a single topology
  */
 export function useTopologyQuery(id: () => string | undefined) {
@@ -208,30 +241,13 @@ export function useTopologyQuery(id: () => string | undefined) {
 }
 
 /**
- * Mutation hook for creating a topology
- */
-export function useCreateTopologyMutation() {
-	const queryClient = useQueryClient();
-
-	return createMutation(() => ({
-		mutationFn: async (topology: Topology) => {
-			const { data } = await apiClient.POST('/api/v1/topology', { body: topology });
-			if (!data?.success || !data.data) {
-				throw new Error(data?.error || 'Failed to create topology');
-			}
-			return data.data;
-		},
-		onSuccess: (newTopology: Topology) => {
-			queryClient.setQueryData<Topology[]>(queryKeys.topology.all, (old) =>
-				old ? [...old, newTopology] : [newTopology]
-			);
-		}
-	}));
-}
-
-/**
- * Mutation hook for updating a topology
- * Note: Updated topology returns through SSE, so we don't update cache here
+ * Mutation hook for updating a topology's layout state.
+ *
+ * After the snapshot refactor, the PUT endpoint only accepts updates to
+ * `nodes` / `edges` / `options` — there's no separate rebuild/refresh/lock
+ * surface. Live data updates flow through `live_topology_updates_stream`
+ * (see TopologySSEManager below); option/layout edits are saved by callers
+ * via this mutation.
  */
 export function useUpdateTopologyMutation() {
 	return createMutation(() => ({
@@ -241,134 +257,6 @@ export function useUpdateTopologyMutation() {
 				body: topology
 			});
 			return topology;
-		}
-	}));
-}
-
-/**
- * Mutation hook for deleting a topology
- */
-export function useDeleteTopologyMutation() {
-	const queryClient = useQueryClient();
-
-	return createMutation(() => ({
-		mutationFn: async (id: string) => {
-			const { data } = await apiClient.DELETE('/api/v1/topology/{id}', {
-				params: { path: { id } }
-			});
-			if (!data?.success) {
-				throw new Error(data?.error || 'Failed to delete topology');
-			}
-			return id;
-		},
-		onSuccess: (id: string) => {
-			queryClient.setQueryData<Topology[]>(
-				queryKeys.topology.all,
-				(old) => old?.filter((t) => t.id !== id) ?? []
-			);
-		}
-	}));
-}
-
-/**
- * Mutation hook for refreshing a topology
- * Note: Updated topology returns through SSE
- * Uses lightweight request - only sends fields the server actually needs
- */
-export function useRefreshTopologyMutation() {
-	return createMutation(() => ({
-		mutationFn: async (topology: Topology) => {
-			await apiClient.POST('/api/v1/topology/{id}/refresh', {
-				params: { path: { id: topology.id } },
-				body: {
-					network_id: topology.network_id,
-					options: buildOptionsForApi(),
-					nodes: [],
-					edges: []
-				}
-			});
-			return topology.id;
-		}
-	}));
-}
-
-/**
- * Mutation hook for rebuilding a topology
- * Note: Updated topology returns through SSE
- * Uses lightweight request - only sends fields the server actually needs
- * (network_id, options, nodes/edges for position preservation)
- */
-export function useRebuildTopologyMutation() {
-	const queryClient = useQueryClient();
-
-	return createMutation(() => ({
-		mutationFn: async (topology: Topology) => {
-			await apiClient.POST('/api/v1/topology/{id}/rebuild', {
-				params: { path: { id: topology.id } },
-				body: {
-					network_id: topology.network_id,
-					options: buildOptionsForApi(),
-					nodes: topology.nodes,
-					edges: topology.edges
-				}
-			});
-			return topology.id;
-		},
-		onSuccess: () => {
-			const org = queryClient.getQueryData<Organization>(queryKeys.organizations.current());
-			if (org && !org.onboarding.includes('FirstTopologyRebuild')) {
-				queryClient.invalidateQueries({ queryKey: queryKeys.organizations.current() });
-			}
-		}
-	}));
-}
-
-/**
- * Mutation hook for locking a topology
- */
-export function useLockTopologyMutation() {
-	const queryClient = useQueryClient();
-
-	return createMutation(() => ({
-		mutationFn: async (topology: Topology) => {
-			const { data } = await apiClient.POST('/api/v1/topology/{id}/lock', {
-				params: { path: { id: topology.id } }
-			});
-			if (!data?.success || !data.data) {
-				throw new Error(data?.error || 'Failed to lock topology');
-			}
-			return data.data;
-		},
-		onSuccess: (updatedTopology: Topology) => {
-			queryClient.setQueryData<Topology[]>(
-				queryKeys.topology.all,
-				(old) => old?.map((t) => (t.id === updatedTopology.id ? updatedTopology : t)) ?? []
-			);
-		}
-	}));
-}
-
-/**
- * Mutation hook for unlocking a topology
- */
-export function useUnlockTopologyMutation() {
-	const queryClient = useQueryClient();
-
-	return createMutation(() => ({
-		mutationFn: async (topology: Topology) => {
-			const { data } = await apiClient.POST('/api/v1/topology/{id}/unlock', {
-				params: { path: { id: topology.id } }
-			});
-			if (!data?.success || !data.data) {
-				throw new Error(data?.error || 'Failed to unlock topology');
-			}
-			return data.data;
-		},
-		onSuccess: (updatedTopology: Topology) => {
-			queryClient.setQueryData<Topology[]>(
-				queryKeys.topology.all,
-				(old) => old?.map((t) => (t.id === updatedTopology.id ? updatedTopology : t)) ?? []
-			);
 		}
 	}));
 }
@@ -461,90 +349,6 @@ export function useUpdateEdgeHandlesMutation() {
 	}));
 }
 
-/**
- * Mutation hook for updating topology metadata (name, parent)
- * Lightweight endpoint - only sends metadata fields instead of full topology
- * Fixes HTTP 413 errors on metadata edit operations for large topologies
- */
-export function useUpdateMetadataMutation() {
-	return createMutation(() => ({
-		mutationFn: async (params: {
-			topologyId: string;
-			networkId: string;
-			name: string;
-			parentId: string | null;
-		}) => {
-			const { data } = await apiClient.POST('/api/v1/topology/{id}/metadata', {
-				params: { path: { id: params.topologyId } },
-				body: {
-					network_id: params.networkId,
-					name: params.name,
-					parent_id: params.parentId
-				}
-			});
-			if (!data?.success) {
-				throw new Error(data?.error || 'Failed to update topology metadata');
-			}
-		}
-	}));
-}
-
-/**
- * Helper to update topologies in the query cache (for SSE updates)
- */
-export function updateTopologyInCache(
-	queryClient: ReturnType<typeof useQueryClient>,
-	topology: Topology
-) {
-	queryClient.setQueryData<Topology[]>(
-		queryKeys.topology.all,
-		(old) => old?.map((t) => (t.id === topology.id ? topology : t)) ?? []
-	);
-}
-
-/**
- * Create empty topology form data
- */
-export function createEmptyTopologyFormData(networkId: string): Topology {
-	return {
-		id: uuidv4Sentinel,
-		created_at: utcTimeZoneSentinel,
-		updated_at: utcTimeZoneSentinel,
-		name: '',
-		network_id: networkId,
-		edges: [],
-		nodes: [],
-		options: {
-			local: getDefaultLocalOptions('L3Logical'),
-			request: defaultRequestOptions()
-		},
-		hosts: [],
-		ip_addresses: [],
-		services: [],
-		subnets: [],
-		dependencies: [],
-		ports: [],
-		bindings: [],
-		is_stale: false,
-		last_refreshed: utcTimeZoneSentinel,
-		is_locked: false,
-		removed_dependencies: [],
-		removed_hosts: [],
-		removed_ip_addresses: [],
-		removed_services: [],
-		removed_subnets: [],
-		removed_bindings: [],
-		removed_ports: [],
-		interfaces: [],
-		removed_interfaces: [],
-		locked_at: null,
-		locked_by: null,
-		parent_id: null,
-		tags: [],
-		entity_tags: []
-	};
-}
-
 // ============================================================================
 // UI State (not server data - kept as Svelte stores)
 // ============================================================================
@@ -553,11 +357,16 @@ import { browser } from '$app/environment';
 import { type Edge, type Node } from '@xyflow/svelte';
 
 const EXPANDED_STORAGE_KEY = 'scanopy_topology_options_expanded_state';
-const AUTO_REBUILD_STORAGE_KEY = 'scanopy_topology_auto_rebuild';
 const PREFERRED_NETWORK_KEY = 'scanopy_preferred_network_id';
+const SELECTED_NETWORK_KEY = 'scanopy_topology_selected_network_id';
 
 // UI-only state
 export const selectedTopologyId = writable<string | null>(null);
+/** Currently selected network in the topology tab. The tab now owns the
+ *  network choice (no global network selector exists yet). */
+export const selectedNetworkId = writable<string | null>(null);
+/** Currently selected snapshot id, or `null` for the live view. */
+export const selectedSnapshotId = writable<string | null>(null);
 export const selectedNode = writable<Node | null>(null);
 export const selectedEdge = writable<Edge | null>(null);
 export const selectedNodes = writable<Node[]>([]);
@@ -573,7 +382,6 @@ export const previewEdges = writable<Edge[]>([]);
  *  by the dependency editor (for looking up real-edge handles when building
  *  preview edges for the same source/target pair). */
 export const baseFlowEdges = writable<Edge[]>([]);
-export const autoRebuild = writable<boolean>(loadAutoRebuildFromStorage());
 export const activeView = writable<TopologyView>('L3Logical');
 
 // Tutorial / hint flags (set by nudges, consumed by topology components)
@@ -838,18 +646,6 @@ export function resetTopologyOptions(): void {
 	}
 }
 
-export function hasConflicts(topology: Topology): boolean {
-	return (
-		topology.removed_hosts.length > 0 ||
-		topology.removed_services.length > 0 ||
-		topology.removed_subnets.length > 0 ||
-		topology.removed_bindings.length > 0 ||
-		topology.removed_ports.length > 0 ||
-		topology.removed_interfaces.length > 0 ||
-		topology.removed_dependencies.length > 0
-	);
-}
-
 function loadExpandedFromStorage(): boolean {
 	if (!browser) return false;
 
@@ -874,65 +670,56 @@ function saveExpandedToStorage(expanded: boolean): void {
 	}
 }
 
-function loadAutoRebuildFromStorage(): boolean {
-	if (!browser) return true;
-
+/** Persist the topology tab's selected network id across reloads. */
+function loadSelectedNetworkFromStorage(): string | null {
+	if (!browser) return null;
 	try {
-		const stored = localStorage.getItem(AUTO_REBUILD_STORAGE_KEY);
-		if (stored !== null) {
-			return JSON.parse(stored);
-		}
+		return localStorage.getItem(SELECTED_NETWORK_KEY);
 	} catch (error) {
-		console.warn('Failed to load auto rebuild state from localStorage:', error);
+		console.warn('Failed to load selected network from localStorage:', error);
+		return null;
 	}
-	return true;
 }
 
-function saveAutoRebuildToStorage(value: boolean): void {
+function saveSelectedNetworkToStorage(networkId: string | null): void {
 	if (!browser) return;
-
 	try {
-		localStorage.setItem(AUTO_REBUILD_STORAGE_KEY, JSON.stringify(value));
+		if (networkId) localStorage.setItem(SELECTED_NETWORK_KEY, networkId);
+		else localStorage.removeItem(SELECTED_NETWORK_KEY);
 	} catch (error) {
-		console.error('Failed to save auto rebuild state to localStorage:', error);
+		console.error('Failed to save selected network to localStorage:', error);
 	}
 }
 
-// Set up subscriptions for rebuild triggers and UI pref persistence
+// Save options/layout edits when the user changes options. Bound to the
+// `topologyOptionsStore` change subscription with debouncing so rapid
+// toggles in the options panel collapse into a single PUT.
+let saveOptionsTimer: ReturnType<typeof setTimeout> | undefined;
+function saveOptionsForCurrentTopology(): void {
+	if (!browser) return;
+	clearTimeout(saveOptionsTimer);
+	saveOptionsTimer = setTimeout(() => {
+		const topologyId = get(selectedTopologyId);
+		if (!topologyId) return;
+		const topologies = queryClient.getQueryData<Topology[]>(queryKeys.topology.all);
+		const topology = topologies?.find((t) => t.id === topologyId);
+		if (!topology) return;
+		apiClient.PUT('/api/v1/topology/{id}', {
+			params: { path: { id: topologyId } },
+			body: { ...topology, options: buildOptionsForApi() }
+		});
+	}, 500);
+}
+
+// Set up subscriptions for UI pref persistence + option-change auto-save
 let optionsInitialized = false;
 let expandedInitialized = false;
-let autoRebuildInitialized = false;
-let viewInitialized = false;
+let networkInitialized = false;
 
 if (browser) {
-	let rebuildTimeout: ReturnType<typeof setTimeout>;
-
-	function triggerRebuild(debounceMs = 500, force = false): void {
-		clearTimeout(rebuildTimeout);
-		rebuildTimeout = setTimeout(() => {
-			if (!force && !get(autoRebuild)) return;
-			const topologyId = get(selectedTopologyId);
-			if (!topologyId) return;
-
-			const topologies = queryClient.getQueryData<Topology[]>(queryKeys.topology.all);
-			const topology = topologies?.find((t) => t.id === topologyId);
-			if (!topology) return;
-
-			apiClient.POST('/api/v1/topology/{id}/rebuild', {
-				params: { path: { id: topologyId } },
-				body: {
-					network_id: topology.network_id,
-					options: buildOptionsForApi(),
-					nodes: topology.nodes,
-					edges: topology.edges
-				}
-			});
-		}, debounceMs);
-	}
-
 	topologyOptionsStore.subscribe(() => {
 		if (optionsInitialized && !hydrating) {
-			triggerRebuild();
+			saveOptionsForCurrentTopology();
 		}
 		optionsInitialized = true;
 	});
@@ -944,18 +731,21 @@ if (browser) {
 		expandedInitialized = true;
 	});
 
-	autoRebuild.subscribe((value) => {
-		if (autoRebuildInitialized) {
-			saveAutoRebuildToStorage(value);
+	selectedNetworkId.subscribe((id) => {
+		if (networkInitialized) {
+			saveSelectedNetworkToStorage(id);
 		}
-		autoRebuildInitialized = true;
+		networkInitialized = true;
 	});
 
+	// Hydrate the persisted network selection on first load
+	const persistedNetwork = loadSelectedNetworkFromStorage();
+	if (persistedNetwork) selectedNetworkId.set(persistedNetwork);
+
 	activeView.subscribe(() => {
-		if (viewInitialized && !hydrating) {
-			triggerRebuild(0, true);
+		if (!hydrating) {
+			saveOptionsForCurrentTopology();
 		}
-		viewInitialized = true;
 	});
 
 	// Sync stores → URL (replaceState, no history entry)
@@ -974,104 +764,56 @@ if (browser) {
 }
 
 // ============================================================================
-// Topology SSE Manager
+// Topology SSE Manager — live data updates
 // ============================================================================
 
-class TopologySSEManager extends BaseSSEManager<Topology> {
-	private stalenessTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
-	private readonly DEBOUNCE_MS = 300;
-	private readonly REBUILD_DEBOUNCE_MS = 2000;
+/**
+ * Payload of the `live_topology_updates_stream` SSE: the network whose
+ * live entity set just changed. The frontend invalidates the topology +
+ * snapshot lists for that network so TanStack Query refetches and xyflow
+ * re-renders.
+ */
+interface LiveTopologyUpdate {
+	network_id: string;
+}
 
-	protected createConfig(): SSEConfig<Topology> {
+class TopologySSEManager extends BaseSSEManager<LiveTopologyUpdate> {
+	protected createConfig(): SSEConfig<LiveTopologyUpdate> {
 		return {
 			url: '/api/v1/topology/stream',
 			onMessage: (update) => {
-				// If the update says it's NOT stale, apply immediately (it's a full refresh)
-				if (!update.is_stale) {
-					this.applyFullUpdate(update);
-					return;
-				}
-
-				// For stale updates with autoRebuild enabled, trigger a debounced rebuild
-				if (get(autoRebuild)) {
-					const currentId = get(selectedTopologyId);
-					if (currentId === update.id && !update.is_locked) {
-						const timerKey = `rebuild:${update.id}`;
-						const existingTimer = this.stalenessTimers.get(timerKey);
-						if (existingTimer) {
-							clearTimeout(existingTimer);
+				// Live data changed for this network — invalidate the topology
+				// list (the live row's nodes/edges may have shifted), the
+				// snapshots-for-network list (taking a snapshot would have
+				// added a row), and the LIVE entity bundle for the affected
+				// network. Snapshot bundles are immutable; predicate keeps
+				// their cache entries intact.
+				queryClient.invalidateQueries({
+					predicate: (query) => {
+						const key = query.queryKey as readonly unknown[];
+						if (key[0] !== 'topology') return false;
+						if (key[1] === 'data') {
+							// key shape: ['topology', 'data', networkId, snapshotId | null]
+							return key[2] === update.network_id && key[3] == null;
 						}
-						const timer = setTimeout(() => {
-							apiClient.POST('/api/v1/topology/{id}/rebuild', {
-								params: { path: { id: update.id } },
-								body: {
-									network_id: update.network_id,
-									options: buildOptionsForApi(),
-									nodes: update.nodes,
-									edges: update.edges
-								}
-							});
-							this.stalenessTimers.delete(timerKey);
-						}, this.REBUILD_DEBOUNCE_MS);
-						this.stalenessTimers.set(timerKey, timer);
+						return true;
 					}
-					return;
+				});
+				queryClient.invalidateQueries({
+					queryKey: queryKeys.snapshots.byNetwork(update.network_id)
+				});
+
+				// Invalidate org cache until FirstTopologyRebuild milestone appears
+				const org = queryClient.getQueryData<Organization>(queryKeys.organizations.current());
+				if (org && !org.onboarding.includes('FirstTopologyRebuild')) {
+					queryClient.invalidateQueries({ queryKey: queryKeys.organizations.current() });
 				}
-
-				// For staleness updates, debounce them
-				const existingTimer = this.stalenessTimers.get(update.id);
-				if (existingTimer) {
-					clearTimeout(existingTimer);
-				}
-
-				const timer = setTimeout(() => {
-					this.applyPartialUpdate(update.id, {
-						removed_dependencies: update.removed_dependencies,
-						removed_hosts: update.removed_hosts,
-						removed_services: update.removed_services,
-						removed_subnets: update.removed_subnets,
-						removed_bindings: update.removed_bindings,
-						removed_interfaces: update.removed_interfaces,
-						removed_ports: update.removed_ports,
-						is_stale: update.is_stale,
-						options: update.options
-					});
-					this.stalenessTimers.delete(update.id);
-				}, this.DEBOUNCE_MS);
-
-				this.stalenessTimers.set(update.id, timer);
 			},
 			onError: (error) => {
 				console.error('Topology SSE error:', error);
 			},
 			onOpen: () => {}
 		};
-	}
-
-	private applyFullUpdate(update: Topology) {
-		queryClient.setQueryData<Topology[]>(queryKeys.topology.all, (old) => {
-			if (!old) return [update];
-			return old.map((topo) => (topo.id === update.id ? update : topo));
-		});
-
-		// Hydrate stores from the updated topology if it's the selected one.
-		// Not initial — don't reset view on SSE updates.
-		if (update.id === get(selectedTopologyId)) {
-			hydrateStoresFromTopology(update, false);
-		}
-
-		// Invalidate org cache until FirstTopologyRebuild milestone appears
-		const org = queryClient.getQueryData<Organization>(queryKeys.organizations.current());
-		if (org && !org.onboarding.includes('FirstTopologyRebuild')) {
-			queryClient.invalidateQueries({ queryKey: queryKeys.organizations.current() });
-		}
-	}
-
-	private applyPartialUpdate(topologyId: string, updates: Partial<Topology>) {
-		queryClient.setQueryData<Topology[]>(queryKeys.topology.all, (old) => {
-			if (!old) return [];
-			return old.map((topo) => (topo.id === topologyId ? { ...topo, ...updates } : topo));
-		});
 	}
 }
 

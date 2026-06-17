@@ -2,35 +2,34 @@ use crate::server::auth::middleware::auth::AuthenticatedEntity;
 use crate::server::billing::plans::YEARLY_DISCOUNT;
 use crate::server::billing::plans::get_enterprise_plan;
 use crate::server::billing::plans::get_free_plan;
-use crate::server::billing::types::api::ChangePlanPreview;
-use crate::server::billing::types::base::BillingPlan;
+use crate::server::billing::types::api::{
+    CancelSubscriptionRequest, CancelSubscriptionResponse, ChangePlanPreview, PauseDuration,
+};
+use crate::server::billing::types::base::{BillingInvoice, BillingPlan, CancelReason, PlanStatus};
 use crate::server::billing::types::features::Feature;
-use crate::server::daemons::service::DaemonService;
-use crate::server::discovery::service::DiscoveryService;
-use crate::server::email::traits::{EmailService, format_plan_price};
+use crate::server::billing::types::stripe_metadata::StripeSubscriptionMetadata;
 use crate::server::hosts::r#impl::base::Host;
 use crate::server::hosts::service::HostService;
-use crate::server::invites::service::InviteService;
 use crate::server::networks::r#impl::Network;
 use crate::server::networks::service::NetworkService;
 use crate::server::organizations::r#impl::base::Organization;
 use crate::server::organizations::service::OrganizationService;
 use crate::server::shared::events::bus::EventBus;
+use crate::server::shared::events::traits::{Event, OrgScope};
 use crate::server::shared::events::types::{
-    BillingEvent, BillingOperation, OnboardingEvent, OnboardingOperation,
+    BillingOperation, OnboardingOperation, OnboardingOperationDiscriminants,
 };
 use crate::server::shared::services::traits::CrudService;
 use crate::server::shared::storage::filter::StorableFilter;
 use crate::server::shared::types::metadata::TypeMetadataProvider;
-use crate::server::shares::service::ShareService;
 use crate::server::users::service::UserService;
 use anyhow::Error;
 use anyhow::anyhow;
 use chrono::Utc;
-use serde_json::json;
 use std::sync::Arc;
 use std::sync::OnceLock;
 use stripe::Client;
+use stripe_billing::CancellationDetailsFeedback;
 use stripe_billing::billing_portal_session::CreateBillingPortalSession;
 use stripe_billing::subscription::CancelSubscription;
 use stripe_billing::subscription::CreateSubscription;
@@ -38,11 +37,18 @@ use stripe_billing::subscription::CreateSubscriptionItems;
 use stripe_billing::subscription::CreateSubscriptionTrialSettings;
 use stripe_billing::subscription::CreateSubscriptionTrialSettingsEndBehavior;
 use stripe_billing::subscription::CreateSubscriptionTrialSettingsEndBehaviorMissingPaymentMethod;
+use stripe_billing::subscription::DiscountsDataParam;
 use stripe_billing::subscription::ListSubscription;
 use stripe_billing::subscription::UpdateSubscription;
+use stripe_billing::subscription::UpdateSubscriptionCancelAt;
+use stripe_billing::subscription::UpdateSubscriptionCancellationDetails;
+use stripe_billing::subscription::UpdateSubscriptionCancellationDetailsFeedback;
 use stripe_billing::subscription::UpdateSubscriptionItems;
+use stripe_billing::subscription::UpdateSubscriptionPauseCollection;
+use stripe_billing::subscription::UpdateSubscriptionPauseCollectionBehavior;
 use stripe_billing::subscription::UpdateSubscriptionProrationBehavior;
-use stripe_billing::{InvoiceBillingReason, Subscription, SubscriptionStatus};
+use stripe_billing::subscription::UpdateSubscriptionTrialEnd;
+use stripe_billing::{Subscription, SubscriptionStatus};
 use stripe_checkout::checkout_session::CreateCheckoutSessionCustomerUpdate;
 use stripe_checkout::checkout_session::CreateCheckoutSessionCustomerUpdateAddress;
 use stripe_checkout::checkout_session::CreateCheckoutSessionCustomerUpdateName;
@@ -56,11 +62,13 @@ use stripe_checkout::{
     CheckoutSessionPaymentMethodCollection,
 };
 use stripe_core::customer::CreateCustomer;
+use stripe_core::customer::DeleteCustomer;
 use stripe_core::customer::ListPaymentMethodsCustomer;
 use stripe_core::customer::UpdateCustomer;
 use stripe_core::customer::UpdateCustomerInvoiceSettings;
 use stripe_core::{CustomerId, EventType};
 use stripe_product::Price;
+use stripe_product::coupon::RetrieveCoupon;
 use stripe_product::price::CreatePriceRecurring;
 use stripe_product::price::SearchPrice;
 use stripe_product::price::{CreatePrice, CreatePriceRecurringUsageType};
@@ -68,18 +76,14 @@ use stripe_product::product::Features;
 use stripe_product::product::{CreateProduct, RetrieveProduct};
 use stripe_webhook::{EventObject, Webhook};
 use uuid::Uuid;
+
 pub struct BillingService {
     pub stripe: stripe::Client,
     pub webhook_secret: String,
     pub organization_service: Arc<OrganizationService>,
-    pub invite_service: Arc<InviteService>,
     pub user_service: Arc<UserService>,
     pub network_service: Arc<NetworkService>,
     pub host_service: Arc<HostService>,
-    pub daemon_service: Arc<DaemonService>,
-    pub discovery_service: Arc<DiscoveryService>,
-    pub share_service: Arc<ShareService>,
-    pub email_service: Option<Arc<EmailService>>,
     pub plans: OnceLock<Vec<BillingPlan>>,
     pub event_bus: Arc<EventBus>,
 }
@@ -93,14 +97,9 @@ pub struct BillingServiceParams {
     pub stripe_secret: String,
     pub webhook_secret: String,
     pub organization_service: Arc<OrganizationService>,
-    pub invite_service: Arc<InviteService>,
     pub user_service: Arc<UserService>,
     pub network_service: Arc<NetworkService>,
     pub host_service: Arc<HostService>,
-    pub daemon_service: Arc<DaemonService>,
-    pub discovery_service: Arc<DiscoveryService>,
-    pub share_service: Arc<ShareService>,
-    pub email_service: Option<Arc<EmailService>>,
     pub event_bus: Arc<EventBus>,
 }
 
@@ -110,14 +109,9 @@ impl BillingService {
             stripe_secret,
             webhook_secret,
             organization_service,
-            invite_service,
             user_service,
             network_service,
             host_service,
-            daemon_service,
-            discovery_service,
-            share_service,
-            email_service,
             event_bus,
         } = params;
 
@@ -125,13 +119,8 @@ impl BillingService {
             stripe: Client::new(stripe_secret),
             webhook_secret,
             organization_service,
-            invite_service,
             network_service,
             host_service,
-            daemon_service,
-            discovery_service,
-            share_service,
-            email_service,
             user_service,
             plans: OnceLock::new(),
             event_bus,
@@ -380,7 +369,6 @@ impl BillingService {
         // Clone authentication for event publishing later
         let auth_for_event = authentication.clone();
 
-        // Check if this is a returning customer (has had a non-Free paid plan or has trialed before)
         let is_returning_customer = if let Some(organization) = self
             .organization_service
             .get_by_id(&organization_id)
@@ -392,13 +380,13 @@ impl BillingService {
                 .as_ref()
                 .is_some_and(|p| !p.is_free());
             let has_trialed = organization.base.trial_end_date.is_some();
-            Ok(has_non_free_plan || has_trialed)
+            has_non_free_plan || has_trialed
         } else {
-            Err(anyhow!(
+            return Err(anyhow!(
                 "Could not find an organization with id {}",
                 organization_id
-            ))
-        }?;
+            ));
+        };
 
         // Get or create Stripe customer
         let (_, customer_id) = self
@@ -478,73 +466,54 @@ impl BillingService {
 
         // Publish checkout_started event for email automation
         self.event_bus
-            .publish_billing(BillingEvent::new(
-                Uuid::new_v4(),
-                organization_id,
-                BillingOperation::CheckoutStarted,
-                Utc::now(),
+            .publish(Event::new(
+                OrgScope { organization_id },
+                BillingOperation::CheckoutStarted {
+                    plan,
+                    has_trial: plan.config().trial_days > 0,
+                },
                 auth_for_event,
-                json!({
-                    "checkout_status": "pending",
-                    "plan_name": plan.name(),
-                    "is_commercial": plan.is_commercial(),
-                    "has_trial": plan.config().trial_days > 0,
-                    "org_id": organization_id.to_string(),
-                }),
             ))
             .await?;
 
         Ok(session)
     }
 
-    /// Activate the Free plan directly without Stripe
+    /// Activate the Free plan directly without Stripe.
+    /// Plan/status is now derived from the subscriptions ledger via the
+    /// CheckoutCompleted billing event below.
     pub async fn activate_free_plan(
         &self,
         organization_id: Uuid,
         plan: BillingPlan,
         authentication: AuthenticatedEntity,
     ) -> Result<String, Error> {
-        let mut organization = self.get_organization(organization_id).await?;
-
-        organization.base.plan = Some(plan);
-        organization.base.plan_status = Some("active".to_string());
-
-        self.organization_service
-            .update(&mut organization, AuthenticatedEntity::System)
-            .await?;
+        let organization = self.get_organization(organization_id).await?;
 
         // Publish PlanSelected onboarding event
-        if organization.not_onboarded(&OnboardingOperation::PlanSelected) {
+        if organization.not_onboarded(&OnboardingOperationDiscriminants::PlanSelected) {
             self.event_bus
-                .publish_onboarding(OnboardingEvent {
-                    id: Uuid::new_v4(),
-                    organization_id,
-                    operation: OnboardingOperation::PlanSelected,
-                    timestamp: Utc::now(),
-                    metadata: json!({
-                        "plan": plan.to_string(),
-                        "is_commercial": plan.is_commercial()
-                    }),
-                    authentication: authentication.clone(),
-                })
+                .publish(Event::new(
+                    OrgScope { organization_id },
+                    OnboardingOperation::PlanSelected { plan },
+                    authentication.clone(),
+                ))
                 .await?;
         }
 
         // Publish CheckoutCompleted billing event
+        let plan_config = plan.config();
         self.event_bus
-            .publish_billing(BillingEvent::new(
-                Uuid::new_v4(),
-                organization_id,
-                BillingOperation::CheckoutCompleted,
-                Utc::now(),
+            .publish(Event::new(
+                OrgScope { organization_id },
+                BillingOperation::CheckoutCompleted {
+                    plan,
+                    included_networks: plan_config.included_networks,
+                    included_seats: plan_config.included_seats,
+                    mrr_amount_cents: 0,
+                    is_trialing: false,
+                },
                 authentication,
-                json!({
-                    "checkout_status": "completed",
-                    "plan_name": plan.name(),
-                    "is_commercial": plan.is_commercial(),
-                    "has_trial": false,
-                    "org_id": organization_id.to_string(),
-                }),
             ))
             .await?;
 
@@ -564,9 +533,15 @@ impl BillingService {
         plan: BillingPlan,
         authentication: AuthenticatedEntity,
     ) -> Result<String, Error> {
-        // Guard: prevent trial reuse — org can only trial once
-        let organization = self.get_organization(organization_id).await?;
-        if organization.base.trial_end_date.is_some() {
+        // Guard: prevent trial reuse — org can only trial once.
+        // `trial_end_date` is set when a trial starts and never cleared.
+        let has_ever_trialed = self
+            .organization_service
+            .get_by_id(&organization_id)
+            .await?
+            .and_then(|o| o.base.trial_end_date)
+            .is_some();
+        if has_ever_trialed {
             return Err(anyhow!(
                 "Organization {} has already used a trial",
                 organization_id
@@ -614,19 +589,13 @@ impl BillingService {
 
         // Publish checkout_started event for email automation
         self.event_bus
-            .publish_billing(BillingEvent::new(
-                Uuid::new_v4(),
-                organization_id,
-                BillingOperation::CheckoutStarted,
-                Utc::now(),
+            .publish(Event::new(
+                OrgScope { organization_id },
+                BillingOperation::CheckoutStarted {
+                    plan,
+                    has_trial: true,
+                },
                 auth_for_event,
-                json!({
-                    "checkout_status": "pending",
-                    "plan_name": plan.name(),
-                    "is_commercial": plan.is_commercial(),
-                    "has_trial": true,
-                    "org_id": organization_id.to_string(),
-                }),
             ))
             .await?;
 
@@ -646,18 +615,24 @@ impl BillingService {
             "Updating addon prices"
         );
 
-        let plan = organization.base.plan.ok_or_else(|| {
-            anyhow!(
-                "Organization {} doesn't have a billing plan",
-                organization.base.name
-            )
-        })?;
-        let customer_id = organization.base.stripe_customer_id.ok_or_else(|| {
-            anyhow!(
-                "Organization {} doesn't have a Stripe customer ID",
-                organization.base.name
-            )
-        })?;
+        let plan = organization
+            .base
+            .plan
+            .unwrap_or_else(crate::server::billing::plans::get_free_plan);
+        if plan.is_free() {
+            // Free plan has no addons to update.
+            return Ok(());
+        }
+        let customer_id = organization
+            .base
+            .stripe_customer_id
+            .clone()
+            .ok_or_else(|| {
+                anyhow!(
+                    "Organization {} doesn't have a Stripe customer ID",
+                    organization.base.name
+                )
+            })?;
 
         let extra_networks = if let Some(included_networks) = plan.config().included_networks {
             network_count.saturating_sub(included_networks)
@@ -832,6 +807,16 @@ impl BillingService {
         Ok((organization, customer.id))
     }
 
+    /// Permanently delete the Stripe customer. Stripe auto-cancels active
+    /// subscriptions and retains invoices/charges as a deleted-customer
+    /// tombstone for accounting.
+    pub async fn delete_stripe_customer(&self, customer_id: &str) -> Result<(), Error> {
+        DeleteCustomer::new(CustomerId::from(customer_id.to_owned()))
+            .send(&self.stripe)
+            .await?;
+        Ok(())
+    }
+
     /// Handle webhook events
     pub async fn handle_webhook(&self, payload: &str, signature: &str) -> Result<(), Error> {
         let event = Webhook::construct_event(payload, signature, &self.webhook_secret)?;
@@ -957,7 +942,7 @@ impl BillingService {
 
         let org_id = Uuid::parse_str(org_id)?;
 
-        let mut organization = match self.organization_service.get_by_id(&org_id).await? {
+        let organization = match self.organization_service.get_by_id(&org_id).await? {
             Some(org) => org,
             None => {
                 // Organization was deleted - acknowledge webhook to stop retries
@@ -974,12 +959,70 @@ impl BillingService {
             .get_organization_owners(&organization.id)
             .await?;
 
-        // Pending cancellation — user keeps current plan until period ends
-        if sub.cancel_at_period_end {
-            organization.base.plan_status = Some("pending_cancellation".to_string());
-            self.organization_service
-                .update(&mut organization, AuthenticatedEntity::System)
-                .await?;
+        // Snapshot pre-webhook state from the org row so we can detect
+        // transitions (None plan, was-trialing, etc.) before applying
+        // webhook updates.
+        let prior_plan = organization
+            .base
+            .plan
+            .unwrap_or_else(crate::server::billing::plans::get_free_plan);
+        let prior_status = organization.base.plan_status;
+        let prior_was_free = prior_plan.is_free();
+        let prior_was_trialing = prior_status == Some(PlanStatus::Trialing);
+
+        // Typed view of `sub.metadata`. Phase 5 Scanopy-only context
+        // (cancel reason, save-offer state, etc.) rides here from the
+        // endpoint and is read back in the detection arms below.
+        let meta = StripeSubscriptionMetadata::from_stripe(&sub.metadata);
+
+        // Pending cancellation — user keeps current plan until period ends.
+        // `sub.cancel_at` is the universal signal for "scheduled
+        // cancellation": Stripe sets it on every scheduled-cancel path
+        // (Portal cancel, our cancel_subscription endpoint via
+        // .cancel_at(MaxPeriodEnd), dashboard "cancel at end of period").
+        // `cancel_at_period_end` is asymmetric — only set when WE pass it
+        // explicitly via the API — so we don't gate on it.
+        //
+        // Idempotency: only emit on the false→true transition. Subsequent
+        // updates while still pending (e.g., user changes their email)
+        // would otherwise re-emit; the subscriber's plan_status mirror
+        // hides the duplicate from `implied_status`, but downstream
+        // analytics see two CancellationInitiated events for one decision.
+        if let Some(period_end_ts) = sub.cancel_at {
+            if prior_status == Some(PlanStatus::PendingCancellation) {
+                tracing::debug!(
+                    organization_id = %organization.id,
+                    "Subscription already pending cancellation, skipping re-emit"
+                );
+                return Ok(());
+            }
+            if let Some(owner) = owners.first() {
+                let authentication: AuthenticatedEntity = owner.clone().into();
+                let planned_period_end = chrono::DateTime::<Utc>::from_timestamp(period_end_ts, 0)
+                    .unwrap_or_else(Utc::now);
+                let (stripe_feedback, comment, stripe_reason) =
+                    extract_cancellation_details(sub.cancellation_details.as_ref());
+                self.event_bus
+                    .publish(Event::new(
+                        OrgScope {
+                            organization_id: organization.id,
+                        },
+                        BillingOperation::CancellationInitiated {
+                            reason_code: meta.scanopy_cancel_reason,
+                            stripe_feedback,
+                            stripe_reason,
+                            comment,
+                            save_offer_shown: meta
+                                .scanopy_cancel_save_offer_shown
+                                .clone()
+                                .unwrap_or_default(),
+                            save_offer_redeemed: meta.scanopy_cancel_save_offer_redeemed,
+                            planned_period_end,
+                        },
+                        authentication,
+                    ))
+                    .await?;
+            }
             tracing::info!(
                 organization_id = %org_id,
                 "Subscription marked as pending cancellation"
@@ -989,23 +1032,18 @@ impl BillingService {
 
         // First time signing up for a plan
         if let Some(owner) = owners.first()
-            && organization.base.plan.is_none()
-            && organization.not_onboarded(&OnboardingOperation::PlanSelected)
+            && (prior_plan.is_free() || prior_status.is_none())
+            && organization.not_onboarded(&OnboardingOperationDiscriminants::PlanSelected)
         {
             let authentication: AuthenticatedEntity = owner.clone().into();
             self.event_bus
-                .publish_onboarding(OnboardingEvent {
-                    id: Uuid::new_v4(),
-                    organization_id: organization.id,
-                    operation: OnboardingOperation::PlanSelected,
-                    timestamp: Utc::now(),
-                    metadata: serde_json::json!({
-                        "plan": plan.to_string(),
-                        "is_commercial": plan.is_commercial()
-                    }),
-
+                .publish(Event::new(
+                    OrgScope {
+                        organization_id: organization.id,
+                    },
+                    OnboardingOperation::PlanSelected { plan },
                     authentication,
-                })
+                ))
                 .await?;
         }
 
@@ -1013,136 +1051,68 @@ impl BillingService {
         if let Some(owner) = owners.first() {
             let authentication: AuthenticatedEntity = owner.clone().into();
             let is_trialing = sub.status == SubscriptionStatus::Trialing;
-            let trial_end_date = sub.trial_end.map(|t| t.to_string());
 
             // Checkout completed (first subscription creation, or upgrade from Free)
-            if organization.base.plan.is_none()
-                || organization.base.plan.as_ref().is_some_and(|p| p.is_free())
-            {
+            if prior_status.is_none() || prior_was_free {
                 let plan_config = plan.config();
                 self.event_bus
-                    .publish_billing(BillingEvent::new(
-                        Uuid::new_v4(),
-                        organization.id,
-                        BillingOperation::CheckoutCompleted,
-                        Utc::now(),
+                    .publish(Event::new(
+                        OrgScope {
+                            organization_id: organization.id,
+                        },
+                        BillingOperation::CheckoutCompleted {
+                            plan,
+                            included_networks: plan_config.included_networks,
+                            included_seats: plan_config.included_seats,
+                            mrr_amount_cents: mrr_from_subscription(&sub),
+                            is_trialing,
+                        },
                         authentication.clone(),
-                        json!({
-                            "checkout_status": "completed",
-                            "plan_name": plan.name(),
-                            "is_commercial": plan.is_commercial(),
-                            "has_trial": is_trialing,
-                            "org_id": organization.id.to_string(),
-                            "included_networks": plan_config.included_networks,
-                            "included_seats": plan_config.included_seats,
-                        }),
                     ))
                     .await?;
 
                 // Trial started (if subscription is in trialing state)
                 if is_trialing {
                     let trial_days = plan.config().trial_days;
+                    let trial_end_dt = sub
+                        .trial_end
+                        .and_then(|t| chrono::DateTime::<Utc>::from_timestamp(t, 0))
+                        .unwrap_or_else(Utc::now);
                     self.event_bus
-                        .publish_billing(BillingEvent::new(
-                            Uuid::new_v4(),
-                            organization.id,
-                            BillingOperation::TrialStarted,
-                            Utc::now(),
-                            authentication.clone(),
-                            json!({
-                                "trial_status": "active",
-                                "plan_name": plan.name(),
-                                "is_commercial": plan.is_commercial(),
-                                "trial_end_date": trial_end_date,
-                                "trial_days": trial_days,
-                                "org_id": organization.id.to_string(),
-                            }),
-                        ))
-                        .await?;
-
-                    if let Some(ref email_service) = self.email_service
-                        && let Err(e) = email_service
-                            .send_trial_started_email(
-                                owner.base.email.clone(),
-                                plan.name(),
+                        .publish(Event::new(
+                            OrgScope {
+                                organization_id: organization.id,
+                            },
+                            BillingOperation::TrialStarted {
+                                plan,
+                                trial_end: trial_end_dt,
                                 trial_days,
-                                plan.config().rate.billing_period(),
-                                &format_plan_price(&plan),
-                            )
-                            .await
-                    {
-                        tracing::warn!(error = %e, "Failed to send trial_started email");
-                    }
-                }
-            }
-
-            // Trial ended (transition from trialing to active or canceled)
-            if let Some(old_status) = &organization.base.plan_status {
-                let was_trialing = old_status == "trialing";
-                let now_active = sub.status == SubscriptionStatus::Active;
-                if was_trialing && now_active {
-                    self.event_bus
-                        .publish_billing(BillingEvent::new(
-                            Uuid::new_v4(),
-                            organization.id,
-                            BillingOperation::TrialEnded,
-                            Utc::now(),
-                            authentication,
-                            json!({
-                                "trial_status": "ended",
-                                "converted": true,
-                                "plan_name": plan.name(),
-                                "org_id": organization.id.to_string(),
-                            }),
+                            },
+                            authentication.clone(),
                         ))
                         .await?;
-
-                    if let Some(ref email_service) = self.email_service
-                        && let Err(e) = email_service
-                            .send_trial_converted_email(
-                                owner.base.email.clone(),
-                                plan.name(),
-                                plan.config().rate.billing_period(),
-                                &format_plan_price(&plan),
-                            )
-                            .await
-                    {
-                        tracing::warn!(error = %e, "Failed to send trial_converted email");
-                    }
                 }
             }
-        }
 
-        // Detect plan changes for notification (capture old plan before overwriting)
-        let old_plan_name = organization
-            .base
-            .plan
-            .as_ref()
-            .map(|p| p.name().to_string());
-
-        organization.base.plan = Some(plan);
-
-        // Free plan has no trial — always active, but preserve trial_end_date
-        // to prevent trial abuse (is_returning_customer check uses trial_end_date)
-        if plan.is_free() {
-            organization.base.plan_status = Some("active".to_string());
-        } else {
-            organization.base.plan_status = Some(sub.status.to_string());
-            // Only set trial_end_date when the subscription has a trial — never clear it.
-            // Clearing it erases the record that a trial was used, allowing trial reuse.
-            if let Some(trial_end) = sub.trial_end {
-                organization.base.trial_end_date = chrono::DateTime::from_timestamp(trial_end, 0);
+            // Trial ended (transition from trialing to active)
+            if prior_was_trialing && sub.status == SubscriptionStatus::Active {
+                self.event_bus
+                    .publish(Event::new(
+                        OrgScope {
+                            organization_id: organization.id,
+                        },
+                        BillingOperation::TrialEnded {
+                            plan,
+                            converted: true,
+                        },
+                        authentication,
+                    ))
+                    .await?;
             }
         }
 
-        // Note: has_payment_method is NOT synced from sub.default_payment_method here.
-        // That field only tracks subscription-level overrides, not customer-level payment methods.
-        // has_payment_method is set to true by handle_checkout_completed (when Checkout collects
-        // payment) and set to false by handle_subscription_deleted (on genuine cancellation).
-
-        self.organization_service
-            .update(&mut organization, AuthenticatedEntity::System)
-            .await?;
+        // Detect plan changes — emit PlanChanged so the ledger reflects the
+        // new plan as derived state. Skip if plan hasn't changed.
 
         // Cancel duplicate subscriptions — when Stripe Checkout creates a new subscription
         // for an existing customer, the old subscription still exists. Clean it up.
@@ -1176,37 +1146,123 @@ impl BillingService {
             }
         }
 
-        // Publish PlanChanged event if plan type actually changed (covers upgrades, downgrades, tier switches)
-        if let Some(ref old_name) = old_plan_name {
-            let new_name = plan.name();
-            if old_name != new_name
-                && let Some(owner) = owners.first()
-            {
-                self.event_bus
-                    .publish_billing(BillingEvent::new(
-                        Uuid::new_v4(),
-                        org_id,
-                        BillingOperation::PlanChanged,
-                        Utc::now(),
-                        owner.clone().into(),
-                        json!({
-                            "old_plan": old_name,
-                            "new_plan": new_name,
-                            "is_downgrade": plan.is_free(),
-                            "org_id": org_id.to_string(),
-                            "plan_status": if plan.is_free() { "active".to_string() } else { sub.status.to_string() },
-                        }),
-                    ))
-                    .await?;
+        // Publish PlanChanged event if plan type actually changed (covers upgrades, downgrades, tier switches).
+        // Only emit if the prior state had a real subscription history (not the
+        // synthetic Free default returned when no events exist).
+        if prior_status.is_some()
+            && prior_plan.name() != plan.name()
+            && let Some(owner) = owners.first()
+        {
+            self.event_bus
+                .publish(Event::new(
+                    OrgScope {
+                        organization_id: org_id,
+                    },
+                    BillingOperation::PlanChanged {
+                        from: prior_plan,
+                        to: plan,
+                        is_downgrade: plan.is_free(),
+                    },
+                    owner.clone().into(),
+                ))
+                .await?;
+        }
 
-                if let Some(ref email_service) = self.email_service
-                    && let Err(e) = email_service
-                        .send_plan_changed_email(owner.base.email.clone(), new_name)
-                        .await
-                {
-                    tracing::warn!(error = %e, "Failed to send plan_changed email");
-                }
-            }
+        // Phase 5 transition arms — each one fires on the false→true edge
+        // and is gated by the prior org state so a subsequent unrelated
+        // `customer.subscription.updated` event doesn't re-emit. See
+        // `StripeSubscriptionMetadata::from_stripe` for the shape of `meta`.
+
+        // Paused arm — endpoint stashed `scanopy_pause_duration_days` and
+        // set Stripe's `pause_collection`. Webhook reads both.
+        if prior_status != Some(PlanStatus::Paused)
+            && let Some(pause_collection) = sub.pause_collection.as_ref()
+            && let Some(owner) = owners.first()
+        {
+            let resumes_at = pause_collection
+                .resumes_at
+                .and_then(|t| chrono::DateTime::<Utc>::from_timestamp(t, 0))
+                .unwrap_or_else(Utc::now);
+            self.event_bus
+                .publish(Event::new(
+                    OrgScope {
+                        organization_id: org_id,
+                    },
+                    BillingOperation::Paused {
+                        plan,
+                        duration_days: meta.scanopy_pause_duration_days.unwrap_or(0),
+                        resumes_at,
+                    },
+                    owner.clone().into(),
+                ))
+                .await?;
+        }
+
+        // Resumed arm — pause_collection cleared. `was_early` degrades to
+        // `false` from the webhook because async-stripe-webhook doesn't
+        // surface Stripe's `previous_attributes` field through the current
+        // SDK plumbing, so we can't distinguish a user-clicked resume from
+        // a scheduled auto-resume. The signal remains useful: "this org
+        // resumed."
+        if prior_status == Some(PlanStatus::Paused)
+            && sub.pause_collection.is_none()
+            && let Some(owner) = owners.first()
+        {
+            self.event_bus
+                .publish(Event::new(
+                    OrgScope {
+                        organization_id: org_id,
+                    },
+                    BillingOperation::Resumed { was_early: false },
+                    owner.clone().into(),
+                ))
+                .await?;
+        }
+
+        // TrialExtended arm — endpoint stashed `scanopy_trial_extended_days`
+        // in metadata; subscriber flips `trial_extended_used` to true on
+        // emission so subsequent webhooks skip.
+        if !organization.base.trial_extended_used
+            && let Some(days_added) = meta.scanopy_trial_extended_days
+            && let Some(owner) = owners.first()
+        {
+            let new_trial_end = sub
+                .trial_end
+                .and_then(|t| chrono::DateTime::<Utc>::from_timestamp(t, 0))
+                .unwrap_or_else(Utc::now);
+            self.event_bus
+                .publish(Event::new(
+                    OrgScope {
+                        organization_id: org_id,
+                    },
+                    BillingOperation::TrialExtended {
+                        days_added,
+                        new_trial_end,
+                    },
+                    owner.clone().into(),
+                ))
+                .await?;
+        }
+
+        // Reactivated arm — pending cancellation cleared. Idempotency via
+        // `prior_status == pending_cancellation`; the subscriber then restores
+        // `plan_status` via `implied_status`. Carry the live trial state so a sub
+        // reactivated mid-trial returns to `trialing`, not `active`.
+        if prior_status == Some(PlanStatus::PendingCancellation)
+            && sub.cancel_at.is_none()
+            && let Some(owner) = owners.first()
+        {
+            self.event_bus
+                .publish(Event::new(
+                    OrgScope {
+                        organization_id: org_id,
+                    },
+                    BillingOperation::Reactivated {
+                        trialing: sub.status == SubscriptionStatus::Trialing,
+                    },
+                    owner.clone().into(),
+                ))
+                .await?;
         }
 
         tracing::info!(
@@ -1220,7 +1276,7 @@ impl BillingService {
     /// Handle trial_will_end webhook (3 days before trial expiry)
     async fn handle_trial_will_end(&self, sub: Subscription) -> Result<(), Error> {
         // Skip email if subscription is already marked for cancellation (e.g., user switched to Free)
-        if sub.cancel_at_period_end {
+        if sub.cancel_at.is_some() {
             tracing::info!(
                 "Trial ending soon but subscription is pending cancellation, skipping email"
             );
@@ -1239,11 +1295,14 @@ impl BillingService {
             .ok_or_else(|| anyhow!("No plan in subscription metadata"))?;
         let plan: BillingPlan = serde_json::from_str(plan_str)?;
 
-        let organization = self
-            .organization_service
-            .get_by_id(&org_id)
-            .await?
-            .ok_or_else(|| anyhow!("Organization not found for trial_will_end"))?;
+        let Some(organization) = self.organization_service.get_by_id(&org_id).await? else {
+            tracing::warn!(
+                organization_id = %org_id,
+                event = "trial_will_end",
+                "Stripe webhook for deleted organization — skipping"
+            );
+            return Ok(());
+        };
 
         tracing::info!(
             organization_id = %org_id,
@@ -1259,34 +1318,17 @@ impl BillingService {
 
         if let Some(owner) = owners.first() {
             self.event_bus
-                .publish_billing(BillingEvent::new(
-                    Uuid::new_v4(),
-                    org_id,
-                    BillingOperation::TrialWillEnd,
-                    Utc::now(),
+                .publish(Event::new(
+                    OrgScope {
+                        organization_id: org_id,
+                    },
+                    BillingOperation::TrialWillEnd {
+                        plan,
+                        has_payment_method: organization.base.has_payment_method,
+                    },
                     owner.clone().into(),
-                    json!({
-                        "trial_status": "ending_soon",
-                        "plan_name": plan.name(),
-                        "org_id": org_id.to_string(),
-                        "has_payment_method": organization.base.has_payment_method,
-                    }),
                 ))
                 .await?;
-
-            if let Some(ref email_service) = self.email_service
-                && let Err(e) = email_service
-                    .send_trial_ending_email(
-                        owner.base.email.clone(),
-                        plan.name(),
-                        organization.base.has_payment_method,
-                        plan.config().rate.billing_period(),
-                        &format_plan_price(&plan),
-                    )
-                    .await
-            {
-                tracing::warn!(error = %e, "Failed to send trial_ending email");
-            }
         }
 
         Ok(())
@@ -1329,11 +1371,14 @@ impl BillingService {
             .ok_or_else(|| anyhow!("No organization_id in checkout session metadata"))?;
         let org_id = Uuid::parse_str(org_id)?;
 
-        let mut organization = self
-            .organization_service
-            .get_by_id(&org_id)
-            .await?
-            .ok_or_else(|| anyhow!("Organization not found for checkout completed"))?;
+        let Some(mut organization) = self.organization_service.get_by_id(&org_id).await? else {
+            tracing::warn!(
+                organization_id = %org_id,
+                event = "checkout_session_completed",
+                "Stripe webhook for deleted organization — skipping"
+            );
+            return Ok(());
+        };
 
         organization.base.has_payment_method = true;
 
@@ -1383,6 +1428,16 @@ impl BillingService {
             "Payment method attached — has_payment_method set to true, default invoice payment method updated"
         );
 
+        self.event_bus
+            .publish(Event::new(
+                OrgScope {
+                    organization_id: organization.id,
+                },
+                BillingOperation::PaymentMethodAdded,
+                AuthenticatedEntity::System,
+            ))
+            .await?;
+
         Ok(())
     }
 
@@ -1419,6 +1474,16 @@ impl BillingService {
             );
         }
 
+        self.event_bus
+            .publish(Event::new(
+                OrgScope {
+                    organization_id: organization.id,
+                },
+                BillingOperation::PaymentMethodRemoved,
+                AuthenticatedEntity::System,
+            ))
+            .await?;
+
         Ok(())
     }
 
@@ -1428,6 +1493,19 @@ impl BillingService {
             .get("organization_id")
             .ok_or_else(|| anyhow!("No organization_id in subscription metadata"))?;
         let org_id = Uuid::parse_str(org_id)?;
+
+        // Guard: this handler is bound to both `customer.subscription.paused`
+        // and `customer.subscription.deleted`. A paused sub is not deleted —
+        // our /pause endpoint already emitted `BillingOperation::Paused`,
+        // so the webhook is a no-op here.
+        if sub.pause_collection.is_some() {
+            tracing::info!(
+                organization_id = %org_id,
+                subscription_id = %sub.id,
+                "Subscription is paused, not deleted — skipping auto-Free"
+            );
+            return Ok(());
+        }
 
         // Guard 1: Skip auto-Free if this cancellation was triggered by an upgrade
         let is_upgrade = sub
@@ -1443,43 +1521,39 @@ impl BillingService {
             return Ok(());
         }
 
-        // --- Synchronous phase: downgrade immediately, return 200 to Stripe ---
+        // --- Snapshot prior subscription state, then publish the cancellation
+        // event. The org's plan/status/has_payment_method downgrade to Free is
+        // owned by the `SubscriptionCancelled` arm of the org billing subscriber
+        // (single writer); this handler does not touch the org row. ---
 
-        let mut organization = self
-            .organization_service
-            .get_by_id(&org_id)
-            .await?
-            .ok_or_else(|| anyhow!("Could not find organization to update subscriptions status"))?;
+        let Some(organization) = self.organization_service.get_by_id(&org_id).await? else {
+            tracing::warn!(
+                organization_id = %org_id,
+                subscription_id = %sub.id,
+                event = "subscription_deleted",
+                "Stripe webhook for deleted organization — skipping"
+            );
+            return Ok(());
+        };
 
-        let cancelled_plan = organization.base.plan;
-        let cancelled_plan_name = cancelled_plan
-            .as_ref()
-            .map(|p| p.name().to_string())
-            .unwrap_or_default();
-        let cancelled_billing_period = cancelled_plan
-            .as_ref()
-            .map(|p| p.config().rate.billing_period())
-            .unwrap_or("Monthly")
-            .to_string();
-        let was_trialing = organization
+        let cancelled_plan = organization
             .base
-            .plan_status
-            .as_ref()
-            .is_some_and(|s| s == "trialing");
+            .plan
+            .unwrap_or_else(crate::server::billing::plans::get_free_plan);
+        let was_trialing = organization.base.plan_status == Some(PlanStatus::Trialing);
         let customer_id = organization.base.stripe_customer_id.clone();
+        let (stripe_feedback, cancel_comment, stripe_reason) =
+            extract_cancellation_details(sub.cancellation_details.as_ref());
+        let internal_reason = sub.metadata.get("cancel_reason").cloned();
+        let mrr_amount_cents = mrr_from_subscription(&sub);
+        let tenure_days = (Utc::now() - organization.created_at).num_days().max(0) as u32;
 
         let free_plan = get_free_plan();
-        organization.base.plan = Some(free_plan);
-        organization.base.plan_status = Some("active".to_string());
-        organization.base.has_payment_method = false;
-        self.organization_service
-            .update(&mut organization, AuthenticatedEntity::System)
-            .await?;
 
         tracing::info!(
             organization_id = %org_id,
             subscription_id = %sub.id,
-            "Subscription canceled, downgraded to Free plan"
+            "Subscription canceled — publishing SubscriptionCancelled (subscriber downgrades to Free)"
         );
 
         // --- Async phase: side effects that don't need to block the webhook response ---
@@ -1487,8 +1561,6 @@ impl BillingService {
         let sub_id = sub.id.to_string();
         let organization_service = Arc::clone(&self.organization_service);
         let user_service = Arc::clone(&self.user_service);
-        let invite_service = Arc::clone(&self.invite_service);
-        let email_service = self.email_service.clone();
         let event_bus = Arc::clone(&self.event_bus);
         let stripe = self.stripe.clone();
 
@@ -1497,15 +1569,21 @@ impl BillingService {
                 org_id,
                 sub_id,
                 customer_id,
-                cancelled_plan_name,
-                cancelled_billing_period,
                 was_trialing,
                 free_plan,
-                cancelled_plan,
+                Some(cancelled_plan),
+                stripe_feedback,
+                stripe_reason,
+                internal_reason,
+                cancel_comment,
+                sub.ended_at
+                    .or(sub.canceled_at)
+                    .or(sub.cancel_at)
+                    .unwrap_or_else(|| Utc::now().timestamp()),
+                mrr_amount_cents,
+                tenure_days,
                 organization_service,
                 user_service,
-                invite_service,
-                email_service,
                 event_bus,
                 stripe,
             )
@@ -1523,21 +1601,26 @@ impl BillingService {
     }
 
     /// Async side effects after subscription deletion: guard 2 (revert if needed),
-    /// plan restriction enforcement, invite revocation, event publishing, and emails.
+    /// plan restriction enforcement, event publishing, and emails. Invite
+    /// revocation runs separately via `InviteService::Subscriber<BillingOperation>`
+    /// triggered by the `SubscriptionCancelled` event published below.
     #[allow(clippy::too_many_arguments)]
     async fn process_subscription_deleted_side_effects(
         org_id: Uuid,
         sub_id: String,
         customer_id: Option<String>,
-        cancelled_plan_name: String,
-        cancelled_billing_period: String,
         was_trialing: bool,
         free_plan: BillingPlan,
         cancelled_plan: Option<BillingPlan>,
+        stripe_feedback: Option<CancellationDetailsFeedback>,
+        stripe_reason: Option<stripe_billing::CancellationDetailsReason>,
+        internal_reason: Option<String>,
+        cancel_comment: Option<String>,
+        period_end_ts: i64,
+        mrr_amount_cents: i64,
+        tenure_days: u32,
         organization_service: Arc<OrganizationService>,
         user_service: Arc<UserService>,
-        invite_service: Arc<InviteService>,
-        email_service: Option<Arc<EmailService>>,
         event_bus: Arc<EventBus>,
         stripe: stripe::Client,
     ) -> Result<(), Error> {
@@ -1554,10 +1637,12 @@ impl BillingService {
                         SubscriptionStatus::Active | SubscriptionStatus::Trialing
                     )
             }) {
-                // Revert: restore previous plan
+                // Revert: another active subscription exists, so the cancel
+                // was an upgrade-side-effect. Restore has_payment_method;
+                // the plan/status derivation already reflects the surviving
+                // subscription via the ledger (no PlanChanged event is needed
+                // because the prior CheckoutCompleted is still the latest).
                 if let Some(mut organization) = organization_service.get_by_id(&org_id).await? {
-                    organization.base.plan = cancelled_plan;
-                    organization.base.plan_status = Some("active".to_string());
                     organization.base.has_payment_method = true;
                     organization_service
                         .update(&mut organization, AuthenticatedEntity::System)
@@ -1565,88 +1650,40 @@ impl BillingService {
                 }
                 tracing::info!(
                     organization_id = %org_id,
-                    "Org has another active subscription — reverted to previous plan"
+                    "Org has another active subscription — preserved previous plan derivation"
                 );
                 return Ok(());
             }
         }
 
-        // Revoke org invites
-        invite_service.revoke_org_invites(&org_id).await?;
-
-        // Publish events and send emails
+        // Publish events and send emails. Invites get revoked downstream
+        // by `InviteService::Subscriber<BillingOperation>` reacting to the
+        // `SubscriptionCancelled` event we publish below.
         let owners = user_service.get_organization_owners(&org_id).await?;
 
         if let Some(owner) = owners.first() {
             let authentication: AuthenticatedEntity = owner.clone().into();
 
+            let period_end =
+                chrono::DateTime::<Utc>::from_timestamp(period_end_ts, 0).unwrap_or_else(Utc::now);
             event_bus
-                .publish_billing(BillingEvent::new(
-                    Uuid::new_v4(),
-                    org_id,
-                    BillingOperation::SubscriptionCancelled,
-                    Utc::now(),
+                .publish(Event::new(
+                    OrgScope {
+                        organization_id: org_id,
+                    },
+                    BillingOperation::SubscriptionCancelled {
+                        plan: cancelled_plan.unwrap_or(free_plan),
+                        reason_code: None,
+                        stripe_feedback,
+                        stripe_reason,
+                        internal_reason: internal_reason.clone(),
+                        comment: cancel_comment.clone(),
+                        period_end,
+                        was_trialing,
+                        mrr_amount_cents,
+                        tenure_days,
+                    },
                     authentication.clone(),
-                    json!({
-                        "subscription_status": "cancelled",
-                        "plan_name": &cancelled_plan_name,
-                        "org_id": org_id.to_string(),
-                    }),
-                ))
-                .await?;
-
-            if let Some(ref email_service) = email_service
-                && let Err(e) = email_service
-                    .send_subscription_cancelled_email(owner.base.email.clone())
-                    .await
-            {
-                tracing::warn!(error = %e, "Failed to send subscription_cancelled email");
-            }
-
-            if was_trialing {
-                event_bus
-                    .publish_billing(BillingEvent::new(
-                        Uuid::new_v4(),
-                        org_id,
-                        BillingOperation::TrialEnded,
-                        Utc::now(),
-                        authentication.clone(),
-                        json!({
-                            "trial_status": "ended",
-                            "converted": false,
-                            "plan_name": &cancelled_plan_name,
-                            "org_id": org_id.to_string(),
-                        }),
-                    ))
-                    .await?;
-
-                if let Some(ref email_service) = email_service
-                    && let Err(e) = email_service
-                        .send_trial_expired_email(
-                            owner.base.email.clone(),
-                            &cancelled_plan_name,
-                            &cancelled_billing_period,
-                        )
-                        .await
-                {
-                    tracing::warn!(error = %e, "Failed to send trial_expired email");
-                }
-            }
-
-            // Sync the Free plan to Brevo
-            event_bus
-                .publish_billing(BillingEvent::new(
-                    Uuid::new_v4(),
-                    org_id,
-                    BillingOperation::PlanChanged,
-                    Utc::now(),
-                    owner.clone().into(),
-                    json!({
-                        "old_plan": cancelled_plan_name,
-                        "new_plan": free_plan.name(),
-                        "is_downgrade": true,
-                        "plan_status": "active",
-                    }),
                 ))
                 .await?;
         }
@@ -1727,25 +1764,33 @@ impl BillingService {
     ///
     /// Returns `false` for:
     /// - Free / self-hosted (Community + CommercialSelfHosted) plans (no Stripe subscription)
-    /// - Subscriptions where `cancel_at_period_end` was set (`plan_status == "pending_cancellation"`)
-    /// - Terminal Stripe statuses (`canceled`, `incomplete`, etc.)
-    pub fn has_active_paid_subscription(org: &Organization) -> bool {
-        let plan = match &org.base.plan {
-            Some(p) => p,
-            None => return false,
+    /// - Pending-cancellation, paused, or cancelled status
+    /// - Orgs with no subscription history at all
+    pub async fn has_active_paid_subscription(&self, organization_id: Uuid) -> Result<bool, Error> {
+        let Some(org) = self
+            .organization_service
+            .get_by_id(&organization_id)
+            .await?
+        else {
+            return Ok(false);
         };
+        let plan = org
+            .base
+            .plan
+            .unwrap_or_else(crate::server::billing::plans::get_free_plan);
         if plan.is_free() || plan.is_self_hosted() {
-            return false;
+            return Ok(false);
         }
-        matches!(
-            org.base.plan_status.as_deref(),
-            Some("active") | Some("trialing") | Some("past_due")
-        )
+        Ok(matches!(
+            org.base.plan_status,
+            Some(PlanStatus::Active) | Some(PlanStatus::Trialing) | Some(PlanStatus::PastDue)
+        ))
     }
 
     /// Schedule a downgrade to Free at the end of the billing cycle.
     ///
-    /// Sets `cancel_at_period_end: true` on the active subscription. Stripe keeps the
+    /// Sets `cancel_at = MaxPeriodEnd` on the active subscription (Stripe
+    /// computes the period-end and writes it to `cancel_at`). Stripe keeps the
     /// subscription active until the period ends, then fires `customer.subscription.deleted`
     /// which triggers auto-Free creation via `handle_subscription_deleted`.
     pub async fn schedule_downgrade(
@@ -1773,7 +1818,7 @@ impl BillingService {
             let is_trialing = sub.status == SubscriptionStatus::Trialing;
 
             UpdateSubscription::new(&sub.id)
-                .cancel_at_period_end(true)
+                .cancel_at(UpdateSubscriptionCancelAt::MaxPeriodEnd)
                 .send(&self.stripe)
                 .await?;
 
@@ -1900,7 +1945,15 @@ impl BillingService {
                     ("organization_id".to_string(), organization_id.to_string()),
                 ])
                 .proration_behavior(proration)
-                .cancel_at_period_end(false) // Clear any pending cancellation
+                // Clear any pending cancellation. We standardize on `cancel_at`
+                // everywhere we SET or READ scheduled-cancellation state, but
+                // async-stripe-billing's UpdateSubscription has no way to send
+                // `cancel_at: null` (Option::is_none is skip-serialized), so the
+                // documented canonical clear `cancel_at_period_end(false)` is
+                // the only SDK-supported path. Stripe interprets it as "clear
+                // all scheduled cancellation state" regardless of how cancel_at
+                // was originally set.
+                .cancel_at_period_end(false)
                 .send(&self.stripe)
                 .await?;
 
@@ -1948,7 +2001,7 @@ impl BillingService {
         };
 
         // Skip for Free plan orgs — legacy $0 subscriptions may still generate invoices
-        if organization.base.plan.as_ref().is_some_and(|p| p.is_free()) {
+        if organization.base.plan.as_ref().is_none_or(|p| p.is_free()) {
             tracing::info!(organization_id = %organization.id, "Skipping payment_failed — Free plan (legacy subscription)");
             return Ok(());
         }
@@ -1966,29 +2019,23 @@ impl BillingService {
         );
 
         self.event_bus
-            .publish_billing(BillingEvent::new(
-                Uuid::new_v4(),
-                organization.id,
-                BillingOperation::PaymentFailed,
-                Utc::now(),
+            .publish(Event::new(
+                OrgScope {
+                    organization_id: organization.id,
+                },
+                BillingOperation::PaymentFailed {
+                    invoice_id: invoice
+                        .id
+                        .as_ref()
+                        .map(|i| i.to_string())
+                        .unwrap_or_default(),
+                    amount_cents: invoice.amount_due,
+                    plan: organization.base.plan.unwrap_or_else(get_free_plan),
+                    attempt_count: invoice.attempt_count as u32,
+                },
                 AuthenticatedEntity::System,
-                json!({ "org_id": organization.id.to_string() }),
             ))
             .await?;
-
-        if let Some(ref email_service) = self.email_service {
-            let owners = self
-                .user_service
-                .get_organization_owners(&organization.id)
-                .await?;
-            if let Some(owner) = owners.first()
-                && let Err(e) = email_service
-                    .send_payment_failed_email(owner.base.email.clone())
-                    .await
-            {
-                tracing::warn!(error = %e, "Failed to send payment failed email");
-            }
-        }
 
         Ok(())
     }
@@ -2003,7 +2050,7 @@ impl BillingService {
         };
 
         // Skip for Free plan orgs — legacy $0 subscriptions may still generate invoices
-        if organization.base.plan.as_ref().is_some_and(|p| p.is_free()) {
+        if organization.base.plan.as_ref().is_none_or(|p| p.is_free()) {
             tracing::info!(organization_id = %organization.id, "Skipping payment_action_required — Free plan (legacy subscription)");
             return Ok(());
         }
@@ -2020,31 +2067,452 @@ impl BillingService {
         );
 
         self.event_bus
-            .publish_billing(BillingEvent::new(
-                Uuid::new_v4(),
-                organization.id,
-                BillingOperation::PaymentActionRequired,
-                Utc::now(),
+            .publish(Event::new(
+                OrgScope {
+                    organization_id: organization.id,
+                },
+                BillingOperation::PaymentActionRequired {
+                    invoice_id: invoice
+                        .id
+                        .as_ref()
+                        .map(|i| i.to_string())
+                        .unwrap_or_default(),
+                    hosted_invoice_url: invoice.hosted_invoice_url.clone(),
+                },
                 AuthenticatedEntity::System,
-                json!({ "org_id": organization.id.to_string() }),
             ))
             .await?;
 
-        if let Some(ref email_service) = self.email_service {
-            let owners = self
-                .user_service
-                .get_organization_owners(&organization.id)
-                .await?;
-            if let Some(owner) = owners.first()
-                && let Err(e) = email_service
-                    .send_payment_action_required_email(owner.base.email.clone())
-                    .await
-            {
-                tracing::warn!(error = %e, "Failed to send payment action required email");
+        Ok(())
+    }
+
+    /// Find the active / trialing / paused subscription for an org. Used by
+    /// pause/resume/extend-trial/cancel — all operate on the org's current
+    /// Stripe subscription regardless of state.
+    async fn find_current_subscription(
+        &self,
+        organization: &Organization,
+    ) -> Result<Subscription, Error> {
+        let customer_id = organization
+            .base
+            .stripe_customer_id
+            .clone()
+            .ok_or_else(|| anyhow!("No Stripe customer ID"))?;
+
+        let subs = ListSubscription::new()
+            .customer(CustomerId::from(customer_id))
+            .send(&self.stripe)
+            .await?;
+
+        subs.data
+            .into_iter()
+            .find(|s| {
+                matches!(
+                    s.status,
+                    SubscriptionStatus::Active
+                        | SubscriptionStatus::Trialing
+                        | SubscriptionStatus::Paused
+                        | SubscriptionStatus::PastDue
+                )
+            })
+            .ok_or_else(|| anyhow!("No active subscription found"))
+    }
+
+    /// Pause subscription billing for the requested duration. Eligibility:
+    /// rolling 6-month cooldown anchored on `last_paused_at`.
+    ///
+    /// Pattern A: this endpoint calls Stripe (with the duration stashed in
+    /// `metadata.scanopy_pause_duration_days`) and returns. The resulting
+    /// `customer.subscription.updated` webhook detects the transition and
+    /// emits `BillingOperation::Paused`. The org subscriber then mirrors
+    /// `plan_status` to `paused` via `implied_status`.
+    pub async fn pause_subscription(
+        &self,
+        organization_id: Uuid,
+        duration: PauseDuration,
+        _authentication: AuthenticatedEntity,
+    ) -> Result<String, Error> {
+        let organization = self.get_organization(organization_id).await?;
+
+        if let Some(last) = organization.base.last_paused_at {
+            let cooldown_end = last + chrono::Duration::days(180);
+            if cooldown_end > Utc::now() {
+                return Err(anyhow!(
+                    "You can pause again on {}",
+                    cooldown_end.format("%B %-d, %Y")
+                ));
             }
         }
 
-        Ok(())
+        let sub = self.find_current_subscription(&organization).await?;
+
+        // Eligibility: Stripe rejects `pause_collection` on non-Active subs
+        // (trialing, paused, past_due, etc.). Catch that pre-flight with a
+        // clear message instead of letting the SDK call fail with a raw
+        // Stripe error.
+        if sub.status != SubscriptionStatus::Active {
+            return Err(anyhow!(
+                "Subscription must be active to pause; current status: {}",
+                sub.status
+            ));
+        }
+
+        let resumes_at = Utc::now() + chrono::Duration::days(duration.days() as i64);
+
+        let meta = StripeSubscriptionMetadata {
+            scanopy_pause_duration_days: Some(duration.days()),
+            ..Default::default()
+        };
+
+        let updated = UpdateSubscription::new(&sub.id)
+            .pause_collection(UpdateSubscriptionPauseCollection {
+                behavior: UpdateSubscriptionPauseCollectionBehavior::KeepAsDraft,
+                resumes_at: Some(resumes_at.timestamp()),
+            })
+            .metadata(meta.to_stripe())
+            .send(&self.stripe)
+            .await
+            .map_err(|e| {
+                tracing::error!(
+                    organization_id = %organization_id,
+                    subscription_id = %sub.id,
+                    subscription_status = %sub.status,
+                    duration_days = duration.days(),
+                    error = ?e,
+                    "Stripe rejected pause_collection"
+                );
+                anyhow!("Stripe rejected the pause request: {e}")
+            })?;
+
+        tracing::info!(
+            organization_id = %organization_id,
+            subscription_id = %updated.id,
+            subscription_status = %updated.status,
+            pause_collection_set = updated.pause_collection.is_some(),
+            pause_collection_resumes_at = ?updated.pause_collection.as_ref().and_then(|p| p.resumes_at),
+            "Stripe accepted pause_collection"
+        );
+
+        Ok(format!(
+            "Subscription paused until {}.",
+            resumes_at.format("%B %-d, %Y")
+        ))
+    }
+
+    /// Resume a paused subscription via Stripe's dedicated `resume` endpoint.
+    /// Pattern A: endpoint calls Stripe only; the webhook detects the
+    /// pause-collection clearing and emits `BillingOperation::Resumed`.
+    pub async fn resume_subscription(
+        &self,
+        organization_id: Uuid,
+        _authentication: AuthenticatedEntity,
+    ) -> Result<String, Error> {
+        let organization = self.get_organization(organization_id).await?;
+        let sub = self.find_current_subscription(&organization).await?;
+
+        if sub.pause_collection.is_none() {
+            return Err(anyhow!("Subscription is not paused; nothing to resume."));
+        }
+
+        stripe_billing::subscription::ResumeSubscription::new(&sub.id)
+            .send(&self.stripe)
+            .await
+            .map_err(|e| {
+                tracing::error!(
+                    organization_id = %organization_id,
+                    subscription_id = %sub.id,
+                    subscription_status = %sub.status,
+                    error = ?e,
+                    "Stripe rejected resume"
+                );
+                anyhow!("Stripe rejected the resume request: {e}")
+            })?;
+
+        Ok("Subscription resumed.".to_string())
+    }
+
+    /// Self-serve trial extend (+7 days, once per org lifetime).
+    ///
+    /// Pattern A: the endpoint stashes `scanopy_trial_extended_days` in
+    /// metadata and calls Stripe. The webhook recognizes the key as a
+    /// Scanopy-driven extend and emits `BillingOperation::TrialExtended`;
+    /// the subscriber flips `trial_extended_used` to true.
+    pub async fn extend_trial(
+        &self,
+        organization_id: Uuid,
+        _authentication: AuthenticatedEntity,
+    ) -> Result<String, Error> {
+        let organization = self.get_organization(organization_id).await?;
+
+        if organization.base.trial_extended_used {
+            return Err(anyhow!("Trial has already been extended."));
+        }
+        if organization.base.plan_status != Some(PlanStatus::Trialing) {
+            return Err(anyhow!("Trial extend is only available during a trial."));
+        }
+        let current_trial_end = organization
+            .base
+            .trial_end_date
+            .ok_or_else(|| anyhow!("Organization has no trial end date"))?;
+
+        let new_trial_end = current_trial_end + chrono::Duration::days(7);
+        let sub = self.find_current_subscription(&organization).await?;
+
+        let meta = StripeSubscriptionMetadata {
+            scanopy_trial_extended_days: Some(7),
+            ..Default::default()
+        };
+
+        UpdateSubscription::new(&sub.id)
+            .trial_end(UpdateSubscriptionTrialEnd::Timestamp(
+                new_trial_end.timestamp(),
+            ))
+            .metadata(meta.to_stripe())
+            .send(&self.stripe)
+            .await?;
+
+        Ok(format!(
+            "Trial extended to {}.",
+            new_trial_end.format("%B %-d, %Y")
+        ))
+    }
+
+    /// In-app subscription cancellation. Sets Stripe `cancel_at` (via the
+    /// `MaxPeriodEnd` sentinel — Stripe computes the period-end timestamp),
+    /// stashes the canonical Scanopy reason + save-offer context in
+    /// subscription metadata, and returns the period end so the modal can
+    /// render the retention disclosure inline.
+    ///
+    /// Pattern A: the webhook handler detects `sub.cancel_at.is_some()` and
+    /// emits `BillingOperation::CancellationInitiated` with the
+    /// metadata-derived payload. The subscriber then mirrors `plan_status`
+    /// to `pending_cancellation`. We standardize on `cancel_at` because it's
+    /// the universal scheduled-cancel signal across all Stripe paths (in-app,
+    /// Customer Portal, dashboard); `cancel_at_period_end` is only set when
+    /// we explicitly request it via the API, so we don't gate on it.
+    pub async fn cancel_subscription(
+        &self,
+        organization_id: Uuid,
+        request: CancelSubscriptionRequest,
+        _authentication: AuthenticatedEntity,
+    ) -> Result<CancelSubscriptionResponse, Error> {
+        let organization = self.get_organization(organization_id).await?;
+        let sub = self.find_current_subscription(&organization).await?;
+
+        // Eligibility: only Active or Trialing subs may schedule a
+        // period-end cancellation. Past-due, paused, or already-pending
+        // subs reach this endpoint only by manual API call or a UI bug;
+        // refuse cleanly.
+        if !matches!(
+            sub.status,
+            SubscriptionStatus::Active | SubscriptionStatus::Trialing
+        ) {
+            return Err(anyhow!(
+                "Subscription must be active or trialing to cancel; current status: {}",
+                sub.status
+            ));
+        }
+        if sub.cancel_at_period_end {
+            return Err(anyhow!("Subscription is already pending cancellation."));
+        }
+
+        let stripe_feedback: Option<UpdateSubscriptionCancellationDetailsFeedback> =
+            map_cancel_reason_to_stripe(request.reason_code);
+
+        let mut cancellation_details = UpdateSubscriptionCancellationDetails::new();
+        cancellation_details.feedback = stripe_feedback;
+        cancellation_details.comment = request.comment;
+
+        let meta = StripeSubscriptionMetadata {
+            scanopy_cancel_reason: Some(request.reason_code),
+            scanopy_cancel_save_offer_shown: Some(request.save_offer_shown),
+            scanopy_cancel_save_offer_redeemed: request.save_offer_redeemed,
+            ..Default::default()
+        };
+
+        let updated = UpdateSubscription::new(&sub.id)
+            .cancel_at(UpdateSubscriptionCancelAt::MaxPeriodEnd)
+            .cancellation_details(cancellation_details)
+            .metadata(meta.to_stripe())
+            .send(&self.stripe)
+            .await
+            .map_err(|e| {
+                tracing::error!(
+                    organization_id = %organization_id,
+                    subscription_id = %sub.id,
+                    subscription_status = %sub.status,
+                    reason_code = ?request.reason_code,
+                    error = ?e,
+                    "Stripe rejected cancel_at_period_end"
+                );
+                anyhow!("Stripe rejected the cancel request: {e}")
+            })?;
+
+        tracing::info!(
+            organization_id = %organization_id,
+            subscription_id = %updated.id,
+            cancel_at_period_end = updated.cancel_at_period_end,
+            cancel_at = ?updated.cancel_at,
+            "Stripe accepted cancel_at_period_end"
+        );
+
+        // Period end: read back the cancel_at Stripe just set. Fall back to
+        // the first item's current_period_end in the unlikely event the API
+        // response omits cancel_at.
+        let period_end_ts = updated
+            .cancel_at
+            .or_else(|| updated.items.data.first().map(|i| i.current_period_end))
+            .ok_or_else(|| anyhow!("Stripe did not return a period end"))?;
+        let period_end = chrono::DateTime::<Utc>::from_timestamp(period_end_ts, 0)
+            .ok_or_else(|| anyhow!("Invalid period_end timestamp from Stripe"))?;
+
+        Ok(CancelSubscriptionResponse { period_end })
+    }
+
+    /// Clear a pending cancellation. Pattern A: endpoint calls Stripe to
+    /// clear the scheduled cancellation (see in-line comment about the SDK
+    /// constraint that forces us to use `cancel_at_period_end(false)` for
+    /// the clear-only path); the webhook detects `sub.cancel_at` flipping
+    /// back to `None` and emits `BillingOperation::Reactivated`. The
+    /// subscriber mirrors `plan_status` back to `active`.
+    pub async fn reactivate_subscription(
+        &self,
+        organization_id: Uuid,
+        _authentication: AuthenticatedEntity,
+    ) -> Result<String, Error> {
+        let organization = self.get_organization(organization_id).await?;
+        let sub = self.find_current_subscription(&organization).await?;
+
+        // Eligibility: there must be a pending cancellation to clear.
+        if sub.cancel_at.is_none() {
+            return Err(anyhow!(
+                "Subscription is not pending cancellation; nothing to reactivate."
+            ));
+        }
+
+        // Clear the scheduled cancellation. We standardize on `cancel_at`
+        // everywhere we SET or READ scheduled-cancellation state, but
+        // async-stripe-billing's UpdateSubscription has no way to send
+        // `cancel_at: null` (Option::is_none is skip-serialized), so the
+        // documented canonical clear `cancel_at_period_end(false)` is the
+        // only SDK-supported path. Stripe interprets it as "clear all
+        // scheduled cancellation state" regardless of how cancel_at was
+        // originally set.
+        let updated = UpdateSubscription::new(&sub.id)
+            .cancel_at_period_end(false)
+            .send(&self.stripe)
+            .await
+            .map_err(|e| {
+                tracing::error!(
+                    organization_id = %organization_id,
+                    subscription_id = %sub.id,
+                    subscription_status = %sub.status,
+                    error = ?e,
+                    "Stripe rejected reactivate (cancel_at_period_end=false)"
+                );
+                anyhow!("Stripe rejected the reactivate request: {e}")
+            })?;
+
+        tracing::info!(
+            organization_id = %organization_id,
+            subscription_id = %updated.id,
+            cancel_at_period_end = updated.cancel_at_period_end,
+            "Stripe accepted reactivate"
+        );
+
+        Ok("Subscription reactivated.".to_string())
+    }
+
+    /// Apply the discount save offer. Reads coupon ID from
+    /// `STRIPE_SAVE_OFFER_COUPON_ID` env var. The cancel modal hides the
+    /// discount panel when the env var is unset; this guard is
+    /// defense-in-depth.
+    pub async fn apply_discount_save_offer(
+        &self,
+        organization_id: Uuid,
+        authentication: AuthenticatedEntity,
+    ) -> Result<String, Error> {
+        let coupon_id = std::env::var("STRIPE_SAVE_OFFER_COUPON_ID")
+            .map_err(|_| anyhow!("Discount save offer is not configured"))?;
+
+        let organization = self.get_organization(organization_id).await?;
+
+        // Eligibility: once-per-org. If the org has ever redeemed the
+        // save-offer discount, refuse — the cancel modal also hides the
+        // panel client-side, so this is defense in depth.
+        if organization.base.last_discount_at.is_some() {
+            return Err(anyhow!("You've already used your one-time discount."));
+        }
+
+        let sub = self.find_current_subscription(&organization).await?;
+
+        if sub.status != SubscriptionStatus::Active {
+            return Err(anyhow!(
+                "Subscription must be active to apply the discount; current status: {}",
+                sub.status
+            ));
+        }
+
+        let updated = UpdateSubscription::new(&sub.id)
+            .discounts(vec![DiscountsDataParam {
+                coupon: Some(coupon_id.clone()),
+                discount: None,
+                promotion_code: None,
+            }])
+            .send(&self.stripe)
+            .await
+            .map_err(|e| {
+                tracing::error!(
+                    organization_id = %organization_id,
+                    subscription_id = %sub.id,
+                    subscription_status = %sub.status,
+                    coupon_id = %coupon_id,
+                    error = ?e,
+                    "Stripe rejected discount apply"
+                );
+                anyhow!("Stripe rejected the discount: {e}")
+            })?;
+
+        tracing::info!(
+            organization_id = %organization_id,
+            subscription_id = %updated.id,
+            discounts_count = updated.discounts.len(),
+            first_discount_id = ?updated.discounts.first().map(|d| d.id()),
+            "Stripe accepted discount apply"
+        );
+
+        // Look up the coupon to read percent_off + duration_in_months so the
+        // DiscountApplied event carries the live values. This lets the
+        // BillingTab chip render the actual percent (not a hard-coded one)
+        // and the expires_at gate stays accurate for any future coupon.
+        let coupon = RetrieveCoupon::new(coupon_id.clone())
+            .send(&self.stripe)
+            .await
+            .map_err(|e| {
+                tracing::error!(
+                    organization_id = %organization_id,
+                    coupon_id = %coupon_id,
+                    error = ?e,
+                    "Failed to retrieve coupon details after apply"
+                );
+                anyhow!("Failed to read coupon details: {e}")
+            })?;
+        let percent_off = coupon.percent_off.unwrap_or(0.0).round() as i64;
+        let duration_in_months = coupon.duration_in_months.unwrap_or(12);
+        let expires_at = Utc::now() + chrono::Duration::days(duration_in_months * 30);
+
+        self.event_bus
+            .publish(Event::new(
+                OrgScope { organization_id },
+                BillingOperation::DiscountApplied {
+                    percent_off,
+                    expires_at,
+                },
+                authentication,
+            ))
+            .await?;
+
+        Ok("Discount applied to your subscription.".to_string())
     }
 
     async fn handle_invoice_paid(&self, invoice: stripe_billing::Invoice) -> Result<(), Error> {
@@ -2053,46 +2521,38 @@ impl BillingService {
             return Ok(());
         };
 
-        // Send usage summary for recurring billing cycles
-        if invoice.billing_reason == Some(InvoiceBillingReason::SubscriptionCycle)
-            && let Some(ref email_service) = self.email_service
-        {
-            let owners = self
-                .user_service
-                .get_organization_owners(&organization.id)
+        let was_past_due = organization.base.plan_status == Some(PlanStatus::PastDue);
+
+        if was_past_due {
+            self.event_bus
+                .publish(Event::new(
+                    OrgScope {
+                        organization_id: organization.id,
+                    },
+                    BillingOperation::PaymentRecovered {
+                        invoice_id: invoice
+                            .id
+                            .as_ref()
+                            .map(|i| i.to_string())
+                            .unwrap_or_default(),
+                        amount_cents: invoice.amount_paid,
+                        plan: organization.base.plan.unwrap_or_else(get_free_plan),
+                        attempt_count: invoice.attempt_count as u32,
+                    },
+                    AuthenticatedEntity::System,
+                ))
                 .await?;
-            if let Some(owner) = owners.first()
-                && let Err(e) = email_service
-                    .send_usage_summary_email(owner.base.email.clone(), &invoice)
-                    .await
-            {
-                tracing::warn!(error = %e, "Failed to send usage summary email");
-            }
         }
-
-        let was_past_due = organization
-            .base
-            .plan_status
-            .as_ref()
-            .is_some_and(|s| s == "past_due");
-
-        if !was_past_due {
-            return Ok(());
-        }
-
-        tracing::info!(
-            organization_id = %organization.id,
-            "Payment recovered for past-due organization"
-        );
 
         self.event_bus
-            .publish_billing(BillingEvent::new(
-                Uuid::new_v4(),
-                organization.id,
-                BillingOperation::PaymentRecovered,
-                Utc::now(),
+            .publish(Event::new(
+                OrgScope {
+                    organization_id: organization.id,
+                },
+                BillingOperation::PaymentSucceeded {
+                    invoice: BillingInvoice::from(&invoice),
+                },
                 AuthenticatedEntity::System,
-                json!({ "org_id": organization.id.to_string() }),
             ))
             .await?;
 
@@ -2100,91 +2560,146 @@ impl BillingService {
     }
 }
 
+fn extract_cancellation_details(
+    details: Option<&stripe_billing::CancellationDetails>,
+) -> (
+    Option<stripe_billing::CancellationDetailsFeedback>,
+    Option<String>,
+    Option<stripe_billing::CancellationDetailsReason>,
+) {
+    let feedback = details.and_then(|d| d.feedback);
+    let comment = details.and_then(|d| d.comment.clone());
+    let reason = details.and_then(|d| d.reason);
+    (feedback, comment, reason)
+}
+
+/// Monthly equivalent (in cents) for a single line: unit * qty, divided by 12
+/// when yearly. Weekly/daily are not sold so collapse into the monthly bucket.
+fn line_monthly_cents(unit_amount: Option<i64>, quantity: Option<u64>, is_yearly: bool) -> i64 {
+    let line = unit_amount.unwrap_or(0) * (quantity.unwrap_or(0) as i64);
+    if is_yearly { line / 12 } else { line }
+}
+
+/// Sum monthly recurring revenue (in cents) across all line items of a Stripe
+/// subscription.
+fn mrr_from_subscription(sub: &stripe_billing::Subscription) -> i64 {
+    sub.items
+        .data
+        .iter()
+        .map(|item| {
+            let is_yearly = item
+                .price
+                .recurring
+                .as_ref()
+                .map(|r| matches!(r.interval, stripe_product::RecurringInterval::Year))
+                .unwrap_or(false);
+            line_monthly_cents(item.price.unit_amount, item.quantity, is_yearly)
+        })
+        .sum()
+}
+
+/// Map our canonical `CancelReason` to the Stripe-side feedback enum.
+/// Variant names match by string identity in both crates.
+fn map_cancel_reason_to_stripe(
+    reason: CancelReason,
+) -> Option<UpdateSubscriptionCancellationDetailsFeedback> {
+    use UpdateSubscriptionCancellationDetailsFeedback as F;
+    Some(match reason {
+        CancelReason::TooExpensive => F::TooExpensive,
+        CancelReason::MissingFeatures => F::MissingFeatures,
+        CancelReason::SwitchedService => F::SwitchedService,
+        CancelReason::Unused => F::Unused,
+        CancelReason::CustomerService => F::CustomerService,
+        CancelReason::LowQuality => F::LowQuality,
+        CancelReason::TooComplex => F::TooComplex,
+        CancelReason::Other => F::Other,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::server::billing::plans::{
-        get_commercial_self_hosted_plan, get_community_plan, get_free_plan,
-    };
 
-    fn org_with(plan: Option<BillingPlan>, status: Option<&str>) -> Organization {
-        let mut org = Organization::default();
-        org.base.plan = plan;
-        org.base.plan_status = status.map(|s| s.to_string());
-        org
-    }
-
-    fn pro_plan() -> BillingPlan {
-        BillingPlan::Pro(crate::server::billing::types::base::PlanConfig {
-            base_cents: 4999,
-            rate: crate::server::billing::types::base::BillingRate::Month,
-            trial_days: 14,
-            seat_cents: None,
-            network_cents: Some(1000),
-            host_cents: None,
-            included_seats: Some(1),
-            included_networks: Some(3),
-            included_hosts: None,
-        })
+    #[test]
+    fn extract_cancellation_details_none_input() {
+        assert_eq!(extract_cancellation_details(None), (None, None, None));
     }
 
     #[test]
-    fn no_plan_is_not_active() {
-        let org = org_with(None, None);
-        assert!(!BillingService::has_active_paid_subscription(&org));
+    fn extract_cancellation_details_all_inner_none() {
+        let details = stripe_billing::CancellationDetails {
+            comment: None,
+            feedback: None,
+            reason: None,
+        };
+        assert_eq!(
+            extract_cancellation_details(Some(&details)),
+            (None, None, None)
+        );
     }
 
     #[test]
-    fn free_plan_is_not_active() {
-        let org = org_with(Some(get_free_plan()), Some("active"));
-        assert!(!BillingService::has_active_paid_subscription(&org));
+    fn extract_cancellation_details_fully_populated() {
+        let details = stripe_billing::CancellationDetails {
+            comment: Some("too pricey for our team".to_string()),
+            feedback: Some(stripe_billing::CancellationDetailsFeedback::TooExpensive),
+            reason: Some(stripe_billing::CancellationDetailsReason::CancellationRequested),
+        };
+        assert_eq!(
+            extract_cancellation_details(Some(&details)),
+            (
+                Some(CancellationDetailsFeedback::TooExpensive),
+                Some("too pricey for our team".to_string()),
+                Some(stripe_billing::CancellationDetailsReason::CancellationRequested),
+            )
+        );
     }
 
     #[test]
-    fn community_self_hosted_is_not_active() {
-        let org = org_with(Some(get_community_plan()), Some("active"));
-        assert!(!BillingService::has_active_paid_subscription(&org));
+    fn line_monthly_cents_monthly_passthrough() {
+        assert_eq!(line_monthly_cents(Some(2900), Some(1), false), 2900);
     }
 
     #[test]
-    fn commercial_self_hosted_is_not_active() {
-        let org = org_with(Some(get_commercial_self_hosted_plan()), Some("active"));
-        assert!(!BillingService::has_active_paid_subscription(&org));
+    fn line_monthly_cents_yearly_divides_by_12() {
+        // $290.00/yr * 1 = $290.00/yr -> 29000 cents -> 2416 cents/mo (truncated)
+        assert_eq!(line_monthly_cents(Some(29000), Some(1), true), 2416);
     }
 
     #[test]
-    fn paid_active_is_active() {
-        let org = org_with(Some(pro_plan()), Some("active"));
-        assert!(BillingService::has_active_paid_subscription(&org));
+    fn line_monthly_cents_quantity_multiplies() {
+        assert_eq!(line_monthly_cents(Some(500), Some(7), false), 3500);
     }
 
     #[test]
-    fn paid_trialing_is_active() {
-        let org = org_with(Some(pro_plan()), Some("trialing"));
-        assert!(BillingService::has_active_paid_subscription(&org));
+    fn line_monthly_cents_missing_fields_zero() {
+        assert_eq!(line_monthly_cents(None, Some(3), false), 0);
+        assert_eq!(line_monthly_cents(Some(500), None, false), 0);
+        assert_eq!(line_monthly_cents(None, None, true), 0);
     }
 
     #[test]
-    fn paid_past_due_is_active() {
-        let org = org_with(Some(pro_plan()), Some("past_due"));
-        assert!(BillingService::has_active_paid_subscription(&org));
+    fn pause_duration_days_mapping() {
+        assert_eq!(PauseDuration::Days30.days(), 30);
+        assert_eq!(PauseDuration::Days60.days(), 60);
+        assert_eq!(PauseDuration::Days90.days(), 90);
     }
 
     #[test]
-    fn paid_pending_cancellation_is_not_active() {
-        let org = org_with(Some(pro_plan()), Some("pending_cancellation"));
-        assert!(!BillingService::has_active_paid_subscription(&org));
-    }
-
-    #[test]
-    fn paid_canceled_is_not_active() {
-        let org = org_with(Some(pro_plan()), Some("canceled"));
-        assert!(!BillingService::has_active_paid_subscription(&org));
-    }
-
-    #[test]
-    fn paid_no_status_is_not_active() {
-        let org = org_with(Some(pro_plan()), None);
-        assert!(!BillingService::has_active_paid_subscription(&org));
+    fn cancel_reason_maps_to_stripe_feedback() {
+        use UpdateSubscriptionCancellationDetailsFeedback as F;
+        let cases = [
+            (CancelReason::TooExpensive, F::TooExpensive),
+            (CancelReason::MissingFeatures, F::MissingFeatures),
+            (CancelReason::SwitchedService, F::SwitchedService),
+            (CancelReason::Unused, F::Unused),
+            (CancelReason::CustomerService, F::CustomerService),
+            (CancelReason::LowQuality, F::LowQuality),
+            (CancelReason::TooComplex, F::TooComplex),
+            (CancelReason::Other, F::Other),
+        ];
+        for (reason, expected) in cases {
+            assert_eq!(map_cancel_reason_to_stripe(reason), Some(expected));
+        }
     }
 }

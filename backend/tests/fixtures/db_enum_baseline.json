@@ -1,4 +1,31 @@
 {
+  "AuthenticatedEntity": [
+    "User",
+    "Daemon",
+    "ApiKey",
+    "ExternalService",
+    "System",
+    "Anonymous"
+  ],
+  "BillingOperation": [
+    "CheckoutStarted",
+    "CheckoutCompleted",
+    "TrialStarted",
+    "TrialWillEnd",
+    "TrialEnded",
+    "PlanChanged",
+    "SubscriptionCancelled",
+    "PaymentFailed",
+    "PaymentActionRequired",
+    "PaymentRecovered",
+    "FeatureLimitHit",
+    "Paused",
+    "Resumed",
+    "TrialExtended",
+    "CancellationInitiated",
+    "PaymentMethodAdded",
+    "PaymentMethodRemoved"
+  ],
   "BillingPlan": [
     "Community",
     "Free",
@@ -52,6 +79,7 @@
     "Vlan",
     "Dependency",
     "Topology",
+    "Snapshot",
     "Unknown"
   ],
   "EntitySource": [
@@ -81,6 +109,27 @@
     "InterfaceName",
     "AgentCircuitId",
     "LocallyAssigned"
+  ],
+  "OnboardingOperationDiscriminants": [
+    "OrgCreated",
+    "OnboardingModalCompleted",
+    "PlanSelected",
+    "FirstDaemonRegistered",
+    "FirstTopologyRebuild",
+    "FirstDiscoveryCompleted",
+    "FirstHostDiscovered",
+    "SecondNetworkCreated",
+    "FirstTagCreated",
+    "FirstDependencyCreated",
+    "FirstUserApiKeyCreated",
+    "FirstSnmpCredentialCreated",
+    "FirstApplicationTagCreated",
+    "FirstCredentialCreated",
+    "FirstSnapshotCreated",
+    "InviteSent",
+    "InviteAccepted",
+    "ProfileCompleted",
+    "ReferralSourceCompleted"
   ],
   "RunType": [
     "Scheduled",

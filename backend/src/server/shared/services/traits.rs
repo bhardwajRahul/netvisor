@@ -1,19 +1,16 @@
 use anyhow::{Error, anyhow};
 use async_trait::async_trait;
-use chrono::Utc;
 use std::{fmt::Display, sync::Arc};
 use uuid::Uuid;
 
 use std::collections::HashMap;
 
+use crate::server::shared::events::traits::{EntityEventFlags, EntityScope, Event as TypedEvent};
 use crate::server::{
     auth::middleware::auth::AuthenticatedEntity,
     shared::{
         entities::{ChangeTriggersTopologyStaleness, Entity as EntityEnum},
-        events::{
-            bus::EventBus,
-            types::{EntityEvent, EntityOperation},
-        },
+        events::{bus::EventBus, types::EntityOperation},
         storage::{
             child::ChildStorableEntity,
             filter::StorableFilter,
@@ -24,7 +21,7 @@ use crate::server::{
     tags::entity_tags::EntityTagService,
 };
 
-pub trait EventBusService<T: Into<EntityEnum> + Default> {
+pub trait EventBusService<T: Into<EntityEnum> + Default + Clone> {
     /// Event bus and helpers
     fn event_bus(&self) -> &Arc<EventBus>;
 
@@ -41,6 +38,27 @@ pub trait EventBusService<T: Into<EntityEnum> + Default> {
     fn suppress_logs(&self, _current: Option<&T>, _updated: Option<&T>) -> bool {
         false
     }
+}
+
+/// Build a typed entity event from the per-service identity helpers + entity.
+/// Returns `None` if neither network_id nor organization_id is available — in
+/// that case the publish should be skipped.
+fn build_entity_event<T, S>(
+    bus_service: &S,
+    entity: T,
+    entity_id: Uuid,
+    operation: EntityOperation,
+    flags: EntityEventFlags,
+    authentication: AuthenticatedEntity,
+) -> Option<TypedEvent<EntityOperation>>
+where
+    T: Into<EntityEnum> + Default + Clone,
+    S: EventBusService<T> + ?Sized,
+{
+    let network_id = bus_service.get_network_id(&entity);
+    let organization_id = bus_service.get_organization_id(&entity);
+    let scope = EntityScope::from_ids(entity_id, entity.into(), network_id, organization_id)?;
+    Some(TypedEvent::new(scope, operation, authentication).with_flags(flags))
 }
 
 /// Helper trait for services that use generic storage
@@ -154,22 +172,20 @@ where
                     .await?;
             }
 
-            self.event_bus()
-                .publish_entity(EntityEvent {
-                    id: Uuid::new_v4(),
-                    entity_id: *id,
-                    network_id: self.get_network_id(&entity),
-                    organization_id: self.get_organization_id(&entity),
-                    entity_type: entity.into(),
-                    operation: EntityOperation::Deleted,
-                    timestamp: Utc::now(),
-                    metadata: serde_json::json!({
-                        "trigger_stale": trigger_stale,
-                        "suppress_logs": suppress_logs
-                    }),
-                    authentication,
-                })
-                .await?;
+            if let Some(event) = build_entity_event(
+                self,
+                entity,
+                *id,
+                EntityOperation::Deleted,
+                EntityEventFlags {
+                    trigger_stale,
+                    suppress_logs,
+                    ..Default::default()
+                },
+                authentication,
+            ) {
+                self.event_bus().publish(event).await?;
+            }
 
             Ok(())
         } else {
@@ -207,22 +223,20 @@ where
                 .await?;
         }
 
-        self.event_bus()
-            .publish_entity(EntityEvent {
-                id: Uuid::new_v4(),
-                entity_id: created.id(),
-                network_id: self.get_network_id(&created),
-                organization_id: self.get_organization_id(&created),
-                entity_type: created.clone().into(),
-                operation: EntityOperation::Created,
-                timestamp: Utc::now(),
-                metadata: serde_json::json!({
-                    "trigger_stale": trigger_stale,
-                    "suppress_logs": suppress_logs
-                }),
-                authentication,
-            })
-            .await?;
+        if let Some(event) = build_entity_event(
+            self,
+            created.clone(),
+            created.id(),
+            EntityOperation::Created,
+            EntityEventFlags {
+                trigger_stale,
+                suppress_logs,
+                ..Default::default()
+            },
+            authentication,
+        ) {
+            self.event_bus().publish(event).await?;
+        }
 
         Ok(created)
     }
@@ -248,20 +262,16 @@ where
         let created = self.storage().create_many(entities).await?;
 
         for entity in &created {
-            let _ = self
-                .event_bus()
-                .publish_entity(EntityEvent {
-                    id: Uuid::new_v4(),
-                    entity_id: entity.id(),
-                    network_id: self.get_network_id(entity),
-                    organization_id: self.get_organization_id(entity),
-                    entity_type: entity.clone().into(),
-                    operation: EntityOperation::Created,
-                    timestamp: Utc::now(),
-                    metadata: serde_json::json!({}),
-                    authentication: authentication.clone(),
-                })
-                .await;
+            if let Some(event) = build_entity_event(
+                self,
+                entity.clone(),
+                entity.id(),
+                EntityOperation::Created,
+                EntityEventFlags::default(),
+                authentication.clone(),
+            ) {
+                let _ = self.event_bus().publish(event).await;
+            }
         }
 
         Ok(created)
@@ -291,22 +301,20 @@ where
                 .await?;
         }
 
-        self.event_bus()
-            .publish_entity(EntityEvent {
-                id: Uuid::new_v4(),
-                entity_id: updated.id(),
-                network_id: self.get_network_id(&updated),
-                organization_id: self.get_organization_id(&updated),
-                entity_type: updated.clone().into(),
-                operation: EntityOperation::Updated,
-                timestamp: Utc::now(),
-                metadata: serde_json::json!({
-                    "trigger_stale": trigger_stale,
-                    "suppress_logs": suppress_logs
-                }),
-                authentication,
-            })
-            .await?;
+        if let Some(event) = build_entity_event(
+            self,
+            updated.clone(),
+            updated.id(),
+            EntityOperation::Updated,
+            EntityEventFlags {
+                trigger_stale,
+                suppress_logs,
+                ..Default::default()
+            },
+            authentication,
+        ) {
+            self.event_bus().publish(event).await?;
+        }
 
         Ok(updated)
     }
@@ -332,22 +340,20 @@ where
                         .await?;
                 }
 
-                self.event_bus()
-                    .publish_entity(EntityEvent {
-                        id: Uuid::new_v4(),
-                        entity_id: *id,
-                        network_id: self.get_network_id(&entity),
-                        organization_id: self.get_organization_id(&entity),
-                        entity_type: entity.into(),
-                        operation: EntityOperation::Deleted,
-                        timestamp: Utc::now(),
-                        metadata: serde_json::json!({
-                            "trigger_stale": trigger_stale,
-                            "suppress_logs": suppress_logs
-                        }),
-                        authentication: authentication.clone(),
-                    })
-                    .await?;
+                if let Some(event) = build_entity_event(
+                    self,
+                    entity,
+                    *id,
+                    EntityOperation::Deleted,
+                    EntityEventFlags {
+                        trigger_stale,
+                        suppress_logs,
+                        ..Default::default()
+                    },
+                    authentication.clone(),
+                ) {
+                    self.event_bus().publish(event).await?;
+                }
             }
         }
 
@@ -383,22 +389,20 @@ where
                     .await?;
             }
 
-            self.event_bus()
-                .publish_entity(EntityEvent {
-                    id: Uuid::new_v4(),
-                    entity_id: entity.id(),
-                    network_id: self.get_network_id(entity),
-                    organization_id: self.get_organization_id(entity),
-                    entity_type: entity.clone().into(),
-                    operation: EntityOperation::Deleted,
-                    timestamp: Utc::now(),
-                    metadata: serde_json::json!({
-                        "trigger_stale": trigger_stale,
-                        "suppress_logs": suppress_logs
-                    }),
-                    authentication: authentication.clone(),
-                })
-                .await?;
+            if let Some(event) = build_entity_event(
+                self,
+                entity.clone(),
+                entity.id(),
+                EntityOperation::Deleted,
+                EntityEventFlags {
+                    trigger_stale,
+                    suppress_logs,
+                    ..Default::default()
+                },
+                authentication.clone(),
+            ) {
+                self.event_bus().publish(event).await?;
+            }
         }
 
         // Delete all matching entities
@@ -528,24 +532,153 @@ where
                     .await?;
             }
 
-            self.event_bus()
-                .publish_entity(EntityEvent {
-                    id: Uuid::new_v4(),
-                    entity_id: entity.id(),
-                    network_id: entity.network_id(),
-                    organization_id: entity.organization_id(),
-                    entity_type: entity.clone().into(),
-                    operation: EntityOperation::Deleted,
-                    timestamp: Utc::now(),
-                    metadata: serde_json::json!({
-                        "trigger_stale": trigger_stale,
-                        "suppress_logs": suppress_logs
-                    }),
-                    authentication: authentication.clone(),
-                })
-                .await?;
+            if let Some(scope) = EntityScope::from_ids(
+                entity.id(),
+                entity.clone().into(),
+                entity.network_id(),
+                entity.organization_id(),
+            ) {
+                let event =
+                    TypedEvent::new(scope, EntityOperation::Deleted, authentication.clone())
+                        .with_flags(EntityEventFlags {
+                            trigger_stale,
+                            suppress_logs,
+                            ..Default::default()
+                        });
+                self.event_bus().publish(event).await?;
+            }
         }
 
         self.storage().delete_by_filter(filter).await
+    }
+}
+
+// =============================================================================
+// SCD2 service-trait extensions
+// =============================================================================
+
+use crate::server::daemons::r#impl::api::ScannedEntityIds;
+use crate::server::shared::storage::snapshot::{DiscoveryTracked, Snapshotable};
+
+/// Per-action close-and-clone for service-driven mutations
+/// (`TagService::update`, `EntityTagsService` lifecycle, etc.).
+///
+/// Closes the existing live row by inserting a closed historical copy with a
+/// synthetic id and `lineage_id` pointing back to the live row, then advances
+/// the live row's `valid_from` to NOW and applies the new field values. The
+/// live row's id is stable across mutations — external FKs continue to work.
+#[async_trait]
+pub trait SnapshotMutator<E: Snapshotable + Display> {
+    async fn close_and_clone(&self, new_entity: E) -> Result<E, Error>;
+}
+
+#[async_trait]
+impl<S, E> SnapshotMutator<E> for S
+where
+    S: CrudService<E> + Sync,
+    E: Entity
+        + Into<EntityEnum>
+        + Default
+        + Display
+        + ChangeTriggersTopologyStaleness<E>
+        + Snapshotable
+        + Send
+        + Sync,
+{
+    async fn close_and_clone(&self, mut new_entity: E) -> Result<E, Error> {
+        let mut tx = self.storage().begin_transaction().await?;
+        let live = tx
+            .get_by_id(&Snapshotable::id_value(&new_entity))
+            .await?
+            .ok_or_else(|| anyhow!("close_and_clone: live row not found"))?;
+        let now = chrono::Utc::now();
+        // Closed historical copy: synthetic id, lineage_id pointing at live id.
+        let mut closed = live.make_closed_copy(now);
+        closed.set_id_value(uuid::Uuid::new_v4());
+        tx.create(&closed).await?;
+        // Advance live row's valid_from; new field values come from the input.
+        new_entity.set_valid_from(now);
+        let updated = tx.update(&mut new_entity).await?;
+        tx.commit().await?;
+        Ok(updated)
+    }
+}
+
+/// Pull the in-memory `ScannedEntityIds` payload off an
+/// `EntityOperation::Created` event for the historical Discovery row, plus
+/// the row's id (used as `last_discovery_id` / `first_discovery_id`).
+///
+/// Returns `None` when the event isn't for a Discovery, isn't a
+/// `RunType::Historical`, or carries `scanned: None` (which happens for
+/// rows read back from the DB after the strip in
+/// `SqlValue::RunType::bind_value`). Per-entity subscribers iterate events
+/// and skip on `None`.
+pub fn extract_scanned_from_discovery_event(
+    event: &crate::server::shared::events::traits::Event<
+        crate::server::shared::events::types::EntityOperation,
+    >,
+) -> Option<(&crate::server::daemons::r#impl::api::ScannedEntityIds, Uuid)> {
+    use crate::server::discovery::r#impl::types::RunType;
+    use crate::server::shared::entities::{Entity, EntityDiscriminants};
+
+    if event.scope.entity_discriminant() != EntityDiscriminants::Discovery {
+        return None;
+    }
+    let Entity::Discovery(discovery) = event.scope.entity_type() else {
+        return None;
+    };
+    let RunType::Historical { results } = &discovery.base.run_type else {
+        return None;
+    };
+    let scanned = results.scanned.as_ref()?;
+    Some((scanned, event.scope.entity_id()))
+}
+
+/// Subscriber-driven post-terminal FK update for `DiscoveryTracked` entities.
+/// Called from per-entity-service subscribers on the `EntityOperation::Created`
+/// event published for the historical Discovery row (whose scope carries
+/// `Entity::Discovery(...)` with `run_type::Historical { results: { scanned, .. } }`)
+/// to set `last_discovery_id` (always) and `first_discovery_id` (only when
+/// currently NULL).
+#[async_trait]
+pub trait DiscoveryFkUpdater<E: DiscoveryTracked + Display> {
+    async fn update_discovery_fks(
+        &self,
+        scanned: &ScannedEntityIds,
+        discovery_id: Uuid,
+    ) -> Result<(), Error>;
+}
+
+#[async_trait]
+impl<S, E> DiscoveryFkUpdater<E> for S
+where
+    S: CrudService<E> + Sync,
+    E: Entity
+        + Into<EntityEnum>
+        + Default
+        + Display
+        + ChangeTriggersTopologyStaleness<E>
+        + DiscoveryTracked
+        + Send
+        + Sync,
+{
+    async fn update_discovery_fks(
+        &self,
+        scanned: &ScannedEntityIds,
+        discovery_id: Uuid,
+    ) -> Result<(), Error> {
+        let filter = E::scanned_in_session_filter(scanned);
+        let mut entities = self.storage().get_all(filter).await?;
+        if entities.is_empty() {
+            return Ok(());
+        }
+        for e in entities.iter_mut() {
+            e.set_last_discovery_id(Some(discovery_id));
+            if e.first_discovery_id().is_none() {
+                e.set_first_discovery_id(Some(discovery_id));
+            }
+        }
+        self.storage().update_many(&entities).await?;
+        Ok(())
     }
 }

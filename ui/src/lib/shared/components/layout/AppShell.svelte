@@ -4,7 +4,7 @@
 	import type { Snippet } from 'svelte';
 	import { queryClient, queryKeys } from '$lib/api/query-client';
 	import { useCurrentUserQuery } from '$lib/features/auth/queries';
-	import { useOrganizationQuery, fetchOrganization } from '$lib/features/organizations/queries';
+	import { fetchOrganization, useOrganizationQuery } from '$lib/features/organizations/queries';
 	import {
 		identifyUser,
 		trackEvent,
@@ -24,9 +24,12 @@
 		hasAnalyticsConsent
 	} from '$lib/shared/components/feedback/CookieConsent.svelte';
 	import {
+		billing_paymentMethodAdded,
 		billing_subscriptionActivated,
 		billing_subscriptionDelayed
 	} from '$lib/paraglide/messages';
+	import { markPlanActivated } from '$lib/shared/billing/plan-activation-marker';
+	import { waitForOrgUpdate } from '$lib/shared/billing/wait-for-org-update';
 
 	let { children }: { children: Snippet } = $props();
 
@@ -108,25 +111,18 @@
 	});
 
 	async function waitForBillingActivation(maxAttempts = 10) {
-		for (let i = 0; i < maxAttempts; i++) {
-			// Invalidate cache then fetch fresh organization data
-			await queryClient.invalidateQueries({ queryKey: queryKeys.organizations.current() });
+		const ok = await waitForOrgUpdate(isBillingPlanActive, { maxAttempts });
+
+		if (ok) {
 			const orgData = await fetchOrganization();
-
-			if (orgData && isBillingPlanActive(orgData)) {
-				// Track billing completion for funnel analytics
-				trackEvent('billing_completed', {
-					plan: orgData.plan?.type ?? 'unknown',
-					amount: orgData.plan?.base_cents ?? 0,
-					plan_status: orgData.plan_status
-				});
-
-				pushSuccess(billing_subscriptionActivated());
-				return true;
-			}
-
-			// Wait 2 seconds before next check
-			await new Promise((r) => setTimeout(r, 2000));
+			trackEvent('billing_completed', {
+				plan: orgData?.plan?.type ?? 'unknown',
+				amount: orgData?.plan?.base_cents ?? 0,
+				plan_status: orgData?.plan_status
+			});
+			markPlanActivated();
+			pushSuccess(billing_subscriptionActivated());
+			return true;
 		}
 
 		pushError(billing_subscriptionDelayed());
@@ -208,6 +204,7 @@
 					amount: organization.plan?.base_cents ?? 0,
 					plan_status: organization.plan_status
 				});
+				markPlanActivated();
 				pushSuccess(billing_subscriptionActivated());
 			} else {
 				// Webhook hasn't processed yet — poll until activation
@@ -233,6 +230,9 @@
 			const cleanUrl = new URL($page.url);
 			cleanUrl.searchParams.delete('billing_flow');
 			window.history.replaceState({}, '', cleanUrl.toString());
+
+			markPlanActivated();
+			pushSuccess(billing_paymentMethodAdded());
 
 			// Refresh org data to update has_payment_method
 			queryClient.invalidateQueries({ queryKey: queryKeys.organizations.current() });

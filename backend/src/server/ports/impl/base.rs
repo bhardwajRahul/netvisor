@@ -95,6 +95,24 @@ pub struct Port {
     #[serde(default)]
     #[schema(read_only, required)]
     pub updated_at: DateTime<Utc>,
+    #[serde(default)]
+    #[schema(read_only)]
+    pub valid_from: DateTime<Utc>,
+    #[serde(default)]
+    #[schema(read_only)]
+    pub valid_to: Option<DateTime<Utc>>,
+    #[serde(default)]
+    #[schema(read_only)]
+    pub lineage_id: Option<Uuid>,
+    #[serde(default)]
+    #[schema(read_only)]
+    pub last_seen_at: DateTime<Utc>,
+    #[serde(default)]
+    #[schema(read_only)]
+    pub last_discovery_id: Option<Uuid>,
+    #[serde(default)]
+    #[schema(read_only)]
+    pub first_discovery_id: Option<Uuid>,
     #[serde(flatten)]
     #[validate(nested)]
     pub base: PortBase,
@@ -143,6 +161,12 @@ impl Port {
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             base,
         }
     }

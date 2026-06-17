@@ -1,9 +1,11 @@
 use crate::server::auth::middleware::auth::AuthenticatedEntity;
 use crate::server::auth::middleware::permissions::{Admin, Authorized, Member, Viewer};
-use crate::server::shared::entities::EntityDiscriminants;
+use crate::server::shared::entities::{Entity as EntityEnum, EntityDiscriminants};
+use crate::server::shared::events::traits::{EntityEventFlags, EntityScope, Event, OrgScope};
 use crate::server::shared::events::types::{
-    EntityEvent, EntityOperation, OnboardingEvent, OnboardingOperation,
+    EntityOperation, OnboardingOperation, OnboardingOperationDiscriminants,
 };
+use crate::server::shared::extractors::Query;
 use crate::server::shared::handlers::ordering::OrderField;
 use crate::server::shared::handlers::query::{
     FilterQueryExtractor, OrderDirection, PaginationParams,
@@ -19,7 +21,6 @@ use crate::server::{
     shared::types::api::{ApiResponse, ApiResult, EmptyApiResponse},
 };
 use axum::{extract::State, response::Json};
-use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
@@ -73,6 +74,9 @@ pub struct TagFilterQuery {
     /// Number of results to skip. Default: 0.
     #[param(minimum = 0)]
     pub offset: Option<u32>,
+    /// As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+    /// instant (snapshot view) instead of live state.
+    pub at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 impl TagFilterQuery {
@@ -150,15 +154,16 @@ pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
 async fn get_all_tags(
     State(state): State<Arc<AppState>>,
     auth: Authorized<Viewer>,
-    crate::server::shared::extractors::Query(query): crate::server::shared::extractors::Query<
-        TagFilterQuery,
-    >,
+    Query(query): Query<TagFilterQuery>,
 ) -> ApiResult<Json<PaginatedApiResponse<Tag>>> {
     let organization_id = auth
         .organization_id()
         .ok_or_else(|| ApiError::forbidden("Organization context required"))?;
 
-    let base_filter = StorableFilter::<Tag>::new_from_org_id(&organization_id);
+    // SCD2 read path: live by default, or as-of the snapshot timestamp when set.
+    // Hides close-and-clone's closed historical tag copies from the tag list.
+    let base_filter =
+        StorableFilter::<Tag>::new_from_org_id(&organization_id).live_or_as_of(query.at);
 
     // Apply pagination
     let pagination = query.pagination();
@@ -242,37 +247,32 @@ pub async fn create_tag(
             .await?;
 
         if let Some(ref organization) = organization {
-            if organization.not_onboarded(&OnboardingOperation::FirstTagCreated) {
+            if organization.not_onboarded(&OnboardingOperationDiscriminants::FirstTagCreated) {
                 state
                     .services
                     .tag_service
                     .event_bus()
-                    .publish_onboarding(OnboardingEvent {
-                        id: Uuid::new_v4(),
-                        organization_id,
-                        operation: OnboardingOperation::FirstTagCreated,
-                        timestamp: Utc::now(),
-                        metadata: serde_json::json!({}),
-                        authentication: entity.clone(),
-                    })
+                    .publish(Event::new(
+                        OrgScope { organization_id },
+                        OnboardingOperation::FirstTagCreated,
+                        entity.clone(),
+                    ))
                     .await?;
             }
 
             if created_tag.base.is_application
-                && organization.not_onboarded(&OnboardingOperation::FirstApplicationTagCreated)
+                && organization
+                    .not_onboarded(&OnboardingOperationDiscriminants::FirstApplicationTagCreated)
             {
                 state
                     .services
                     .tag_service
                     .event_bus()
-                    .publish_onboarding(OnboardingEvent {
-                        id: Uuid::new_v4(),
-                        organization_id,
-                        operation: OnboardingOperation::FirstApplicationTagCreated,
-                        timestamp: Utc::now(),
-                        metadata: serde_json::json!({}),
-                        authentication: entity,
-                    })
+                    .publish(Event::new(
+                        OrgScope { organization_id },
+                        OnboardingOperation::FirstApplicationTagCreated,
+                        entity,
+                    ))
                     .await?;
             }
         }
@@ -288,7 +288,7 @@ async fn resolve_scope<T>(
 ) -> (Option<Uuid>, Option<Uuid>)
 where
     T: Entity
-        + Into<crate::server::shared::entities::Entity>
+        + Into<EntityEnum>
         + std::fmt::Display
         + crate::server::shared::entities::ChangeTriggersTopologyStaleness<T>,
 {
@@ -348,6 +348,8 @@ async fn resolve_entity_scope(
             resolve_scope(s.credential_service.as_ref(), entity_id).await
         }
         EntityDiscriminants::Vlan => resolve_scope(s.vlan_service.as_ref(), entity_id).await,
+        // Snapshots aren't user-taggable, but the match must be exhaustive.
+        EntityDiscriminants::Snapshot => (None, None),
         EntityDiscriminants::Unknown => (None, None),
     }
 }
@@ -363,32 +365,33 @@ async fn emit_tag_change_events(
     auth: &AuthenticatedEntity,
     entity_ids: &[Uuid],
     entity_type: EntityDiscriminants,
-    trigger_stale: bool,
+    _trigger_stale: bool,
 ) {
-    let default_entity: crate::server::shared::entities::Entity = entity_type.into();
+    let default_entity: EntityEnum = entity_type.into();
 
     for entity_id in entity_ids {
         let (network_id, organization_id) =
             resolve_entity_scope(state, entity_id, entity_type).await;
 
-        let _ = state
-            .services
-            .event_bus
-            .publish_entity(EntityEvent {
-                id: Uuid::new_v4(),
-                entity_id: *entity_id,
-                network_id,
-                organization_id: organization_id.or(auth.organization_id()),
-                entity_type: default_entity.clone(),
-                operation: EntityOperation::Updated,
-                timestamp: Utc::now(),
-                metadata: serde_json::json!({
-                    "trigger_stale": trigger_stale,
-                    "suppress_logs": true
-                }),
-                authentication: auth.clone(),
-            })
-            .await;
+        if let Some(scope) = EntityScope::from_ids(
+            *entity_id,
+            default_entity.clone(),
+            network_id,
+            organization_id.or(auth.organization_id()),
+        ) {
+            let _ = state
+                .services
+                .event_bus
+                .publish(
+                    Event::new(scope, EntityOperation::Updated, auth.clone()).with_flags(
+                        EntityEventFlags {
+                            suppress_logs: true,
+                            ..Default::default()
+                        },
+                    ),
+                )
+                .await;
+        }
     }
 }
 
@@ -471,17 +474,15 @@ pub async fn bulk_add_tag(
         .await?;
 
     if affected_count > 0 {
-        let trigger_stale = state
-            .services
-            .topology_service
-            .tag_affects_any_topology(request.tag_id, organization_id)
-            .await;
+        // Topology staleness model is gone — fire tag-change events
+        // unconditionally; the topology subscriber broadcasts a live-update
+        // ping for the affected network(s) on receipt.
         emit_tag_change_events(
             &state,
             &auth.entity,
             &request.entity_ids,
             request.entity_type,
-            trigger_stale,
+            false,
         )
         .await;
     }
@@ -523,7 +524,9 @@ pub async fn bulk_remove_tag(
         )));
     }
 
-    let organization_id = auth
+    // Assert auth context has an organization — bulk-remove is org-scoped
+    // even though we no longer thread the id through to the staleness check.
+    let _organization_id = auth
         .organization_id()
         .ok_or_else(|| ApiError::forbidden("Organization context required"))?;
 
@@ -534,17 +537,12 @@ pub async fn bulk_remove_tag(
         .await?;
 
     if affected_count > 0 {
-        let trigger_stale = state
-            .services
-            .topology_service
-            .tag_affects_any_topology(request.tag_id, organization_id)
-            .await;
         emit_tag_change_events(
             &state,
             &auth.entity,
             &request.entity_ids,
             request.entity_type,
-            trigger_stale,
+            false,
         )
         .await;
     }
@@ -591,17 +589,6 @@ pub async fn set_entity_tags(
         .organization_id()
         .ok_or_else(|| ApiError::forbidden("Organization context required"))?;
 
-    // Snapshot prior tags so we can detect app-tag adds/removes after set_tags.
-    let prior_tag_ids: std::collections::HashSet<Uuid> = state
-        .services
-        .entity_tag_service
-        .get_tags(&request.entity_id, &request.entity_type)
-        .await
-        .map_err(|e| ApiError::internal_error(&format!("Failed to read prior tags: {}", e)))?
-        .into_iter()
-        .collect();
-    let new_tag_ids: std::collections::HashSet<Uuid> = request.tag_ids.iter().copied().collect();
-
     state
         .services
         .entity_tag_service
@@ -613,26 +600,15 @@ pub async fn set_entity_tags(
         )
         .await?;
 
-    // Trigger stale only if a topology-affecting tag was actually added or removed.
-    let mut trigger_stale = false;
-    for tag_id in prior_tag_ids.symmetric_difference(&new_tag_ids) {
-        if state
-            .services
-            .topology_service
-            .tag_affects_any_topology(*tag_id, organization_id)
-            .await
-        {
-            trigger_stale = true;
-            break;
-        }
-    }
-
+    // Topology staleness model is gone — emit tag-change events
+    // unconditionally; the topology subscriber broadcasts a live-update
+    // ping for the affected network(s) on receipt.
     emit_tag_change_events(
         &state,
         &auth.entity,
         &[request.entity_id],
         request.entity_type,
-        trigger_stale,
+        false,
     )
     .await;
 

@@ -15,6 +15,7 @@ use crate::server::shared::entities::EntityDiscriminants;
 use crate::server::shared::storage::{
     filter::StorableFilter,
     generic::GenericPostgresStorage,
+    snapshot::{FkMaps, Snapshotable},
     traits::{Entity, SqlValue, Storable, Storage},
 };
 use crate::server::shared::types::api::ApiError;
@@ -47,14 +48,24 @@ impl EntityTagBase {
 pub struct EntityTag {
     pub id: Uuid,
     pub created_at: DateTime<Utc>,
+    #[serde(default)]
+    pub valid_from: DateTime<Utc>,
+    #[serde(default)]
+    pub valid_to: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub lineage_id: Option<Uuid>,
     pub base: EntityTagBase,
 }
 
 impl EntityTag {
     pub fn new(base: EntityTagBase) -> Self {
+        let now = Utc::now();
         Self {
             id: Uuid::new_v4(),
-            created_at: Utc::now(),
+            created_at: now,
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
             base,
         }
     }
@@ -87,13 +98,25 @@ impl Storable for EntityTag {
 
     fn to_params(&self) -> Result<(Vec<&'static str>, Vec<SqlValue>)> {
         Ok((
-            vec!["id", "entity_id", "entity_type", "tag_id", "created_at"],
+            vec![
+                "id",
+                "entity_id",
+                "entity_type",
+                "tag_id",
+                "created_at",
+                "valid_from",
+                "valid_to",
+                "lineage_id",
+            ],
             vec![
                 SqlValue::Uuid(self.id),
                 SqlValue::Uuid(self.base.entity_id),
                 SqlValue::EntityDiscriminant(self.base.entity_type),
                 SqlValue::Uuid(self.base.tag_id),
                 SqlValue::Timestamp(self.created_at),
+                SqlValue::Timestamp(self.valid_from),
+                SqlValue::OptionTimestamp(self.valid_to),
+                SqlValue::OptionalUuid(self.lineage_id),
             ],
         ))
     }
@@ -106,12 +129,55 @@ impl Storable for EntityTag {
         Ok(EntityTag {
             id: row.get("id"),
             created_at: row.get("created_at"),
+            valid_from: row.get("valid_from"),
+            valid_to: row.get("valid_to"),
+            lineage_id: row.get("lineage_id"),
             base: EntityTagBase {
                 entity_id: row.get("entity_id"),
                 entity_type,
                 tag_id: row.get("tag_id"),
             },
         })
+    }
+}
+
+impl Snapshotable for EntityTag {
+    fn id_value(&self) -> Uuid {
+        self.id
+    }
+    fn set_id_value(&mut self, id: Uuid) {
+        self.id = id;
+    }
+    fn valid_from(&self) -> DateTime<Utc> {
+        self.valid_from
+    }
+    fn valid_to(&self) -> Option<DateTime<Utc>> {
+        self.valid_to
+    }
+    fn lineage_id(&self) -> Option<Uuid> {
+        self.lineage_id
+    }
+    fn set_valid_from(&mut self, t: DateTime<Utc>) {
+        self.valid_from = t;
+    }
+    fn set_valid_to(&mut self, t: Option<DateTime<Utc>>) {
+        self.valid_to = t;
+    }
+    fn set_lineage_id(&mut self, id: Option<Uuid>) {
+        self.lineage_id = id;
+    }
+
+    fn remap_fks_for_clone(&mut self, maps: &FkMaps) {
+        // Only remap entity_id when the row's entity_type is one of the
+        // network-scoped entities cloned at network snapshot. Org-scoped
+        // entity_types (Daemon, User, DaemonApiKey, UserApiKey, etc.) are
+        // filtered out at fetch time by SnapshotService — those rows aren't
+        // cloned. tag_id stays pointing at the live tag (tags follow per-
+        // action lifecycle, not network-snapshot lifecycle).
+        if let Some(closed) = maps.lookup_by_entity_type(self.base.entity_type, self.base.entity_id)
+        {
+            self.base.entity_id = closed;
+        }
     }
 }
 
@@ -132,20 +198,22 @@ impl EntityTagStorage {
         }
     }
 
-    /// Get all tag IDs for a single entity
+    /// Get all tag IDs for a single entity. SCD2: live rows only.
     pub async fn get_for_entity(
         &self,
         entity_id: &Uuid,
         entity_type: &EntityDiscriminants,
     ) -> Result<Vec<Uuid>> {
         let filter = StorableFilter::<EntityTag>::new_from_uuid_column("entity_id", entity_id)
-            .entity_type(entity_type);
+            .entity_type(entity_type)
+            .live();
         let records = self.storage.get_all(filter).await?;
         Ok(records.iter().map(|r| r.base.tag_id).collect())
     }
 
-    /// Get tag IDs for multiple entities of the same type (batch loading)
-    /// Returns a map of entity_id -> Vec<tag_id>
+    /// Get tag IDs for multiple entities of the same type (batch loading).
+    /// SCD2: live rows only — soft-closed associations are excluded.
+    /// Returns a map of entity_id -> Vec<tag_id>.
     pub async fn get_for_entities(
         &self,
         entity_ids: &[Uuid],
@@ -156,7 +224,8 @@ impl EntityTagStorage {
         }
 
         let filter = StorableFilter::<EntityTag>::new_from_uuids_column("entity_id", entity_ids)
-            .entity_type(entity_type);
+            .entity_type(entity_type)
+            .live();
         let records = self.storage.get_all(filter).await?;
 
         let mut result: HashMap<Uuid, Vec<Uuid>> = HashMap::new();
@@ -193,8 +262,10 @@ impl EntityTagStorage {
         }
     }
 
-    /// Remove a tag from an entity
-    /// Returns Ok(true) if removed, Ok(false) if didn't exist
+    /// Remove a tag from an entity (soft-close — `valid_to = NOW()` on the
+    /// live junction row). Hard delete would break as-of joins for any
+    /// snapshot taken while the association was live.
+    /// Returns Ok(true) if a live row was closed, Ok(false) if none existed.
     pub async fn remove(
         &self,
         entity_id: Uuid,
@@ -203,47 +274,96 @@ impl EntityTagStorage {
     ) -> Result<bool> {
         let filter = StorableFilter::<EntityTag>::new_from_uuid_column("entity_id", &entity_id)
             .entity_type(&entity_type)
-            .tag_id(&tag_id);
+            .tag_id(&tag_id)
+            .live();
 
-        let deleted = self.storage.delete_by_filter(filter).await?;
-        Ok(deleted > 0)
+        let mut rows = self.storage.get_all(filter).await?;
+        if rows.is_empty() {
+            return Ok(false);
+        }
+
+        let now = chrono::Utc::now();
+        for row in rows.iter_mut() {
+            row.valid_to = Some(now);
+        }
+        self.storage.update_many(&rows).await?;
+        Ok(true)
     }
 
-    /// Replace all tags for an entity with a new set.
-    /// Uses a transaction to ensure atomicity - if any insert fails, the delete is rolled back.
+    /// Replace all tags for an entity with a new set. Soft-closes existing
+    /// live junction rows that aren't in the new set, INSERTs new live
+    /// rows for additions, and leaves rows that are unchanged alone.
+    ///
+    /// Reads existing live rows OUTSIDE the transaction (one short SELECT)
+    /// then opens a transaction only for the writes. Tag sets per entity
+    /// are small (typically < 10), so per-row inside the transaction is
+    /// fine — the bulk-in-tx APIs used by SnapshotService aren't needed
+    /// here.
     pub async fn set(
         &self,
         entity_id: Uuid,
         entity_type: EntityDiscriminants,
         tag_ids: Vec<Uuid>,
     ) -> Result<()> {
+        let existing_filter =
+            StorableFilter::<EntityTag>::new_from_uuid_column("entity_id", &entity_id)
+                .entity_type(&entity_type)
+                .live();
+        let existing = self.storage.get_all(existing_filter).await?;
+
+        let new_set: std::collections::HashSet<Uuid> = tag_ids.iter().copied().collect();
+        let existing_tag_ids: std::collections::HashSet<Uuid> =
+            existing.iter().map(|r| r.base.tag_id).collect();
+
+        let now = chrono::Utc::now();
         let mut tx = self.storage.begin_transaction().await?;
 
-        // Delete existing tags
-        let filter = StorableFilter::<EntityTag>::new_from_uuid_column("entity_id", &entity_id)
-            .entity_type(&entity_type);
-        tx.delete_by_filter(filter).await?;
+        // Soft-close rows for tags removed from the set.
+        for row in existing
+            .iter()
+            .filter(|row| !new_set.contains(&row.base.tag_id))
+        {
+            let mut closed = row.clone();
+            closed.valid_to = Some(now);
+            tx.update(&mut closed).await?;
+        }
 
-        // Insert new tags
-        for tag_id in tag_ids {
-            let entity_tag = EntityTag::new(EntityTagBase::new(entity_id, entity_type, tag_id));
-            tx.create(&entity_tag).await?;
+        // INSERT live rows for tags newly assigned. Existing live rows whose
+        // tag_id is still in the set are left untouched.
+        for tid in tag_ids
+            .into_iter()
+            .filter(|t| !existing_tag_ids.contains(t))
+        {
+            let new_row = EntityTag::new(EntityTagBase::new(entity_id, entity_type, tid));
+            tx.create(&new_row).await?;
         }
 
         tx.commit().await?;
         Ok(())
     }
 
-    /// Remove all tags for an entity (used when entity is deleted)
+    /// Remove all tags for an entity (used when an entity is deleted).
+    /// Soft-close the live junction rows so as-of reads can still resolve
+    /// the associations that existed before deletion.
     pub async fn remove_all_for_entity(
         &self,
         entity_id: Uuid,
         entity_type: EntityDiscriminants,
     ) -> Result<()> {
         let filter = StorableFilter::<EntityTag>::new_from_uuid_column("entity_id", &entity_id)
-            .entity_type(&entity_type);
+            .entity_type(&entity_type)
+            .live();
 
-        self.storage.delete_by_filter(filter).await?;
+        let mut rows = self.storage.get_all(filter).await?;
+        if rows.is_empty() {
+            return Ok(());
+        }
+
+        let now = chrono::Utc::now();
+        for row in rows.iter_mut() {
+            row.valid_to = Some(now);
+        }
+        self.storage.update_many(&rows).await?;
         Ok(())
     }
 
@@ -275,7 +395,8 @@ impl EntityTagStorage {
         Ok(added)
     }
 
-    /// Bulk remove a tag from multiple entities
+    /// Bulk remove a tag from multiple entities (soft-close).
+    /// Returns the number of live junction rows that were closed.
     pub async fn bulk_remove(
         &self,
         entity_ids: &[Uuid],
@@ -288,9 +409,21 @@ impl EntityTagStorage {
 
         let filter = StorableFilter::<EntityTag>::new_from_uuids_column("entity_id", entity_ids)
             .entity_type(&entity_type)
-            .tag_id(&tag_id);
+            .tag_id(&tag_id)
+            .live();
 
-        self.storage.delete_by_filter(filter).await
+        let mut rows = self.storage.get_all(filter).await?;
+        if rows.is_empty() {
+            return Ok(0);
+        }
+
+        let now = chrono::Utc::now();
+        for row in rows.iter_mut() {
+            row.valid_to = Some(now);
+        }
+        let count = rows.len();
+        self.storage.update_many(&rows).await?;
+        Ok(count)
     }
 }
 

@@ -1,14 +1,20 @@
 use std::net::IpAddr;
 
+use crate::server::auth::middleware::auth::AuthenticatedEntity;
 use crate::server::bindings::r#impl::base::Binding;
 use crate::server::credentials::r#impl::types::CredentialType;
 use crate::server::dependencies::r#impl::base::Dependency;
 use crate::server::services::r#impl::base::Service;
 use crate::server::shared::entities::EntityDiscriminants;
 use crate::server::shared::entity_metadata::EntityCategory;
-use crate::server::shared::events::types::OnboardingOperation;
+use crate::server::shared::events::types::{BillingOperation, OnboardingOperationDiscriminants};
+use crate::server::shares::r#impl::base::ShareOptions;
+use crate::server::snmp::resolution::lldp::{LldpChassisId, LldpPortId};
 use crate::server::subnets::r#impl::base::Subnet;
+use crate::server::subnets::r#impl::virtualization::SubnetVirtualization;
 use crate::server::tags::r#impl::base::Tag;
+use crate::server::topology::types::views::TopologyView;
+use crate::server::vlans::r#impl::base::Vlan;
 use crate::server::{
     billing::types::base::BillingPlan,
     daemons::r#impl::{api::DaemonCapabilities, base::DaemonMode},
@@ -25,7 +31,7 @@ use crate::server::{
         edges::{Edge, EdgeStyle},
         nodes::Node,
     },
-    users::r#impl::permissions::UserOrgPermissions,
+    users::r#impl::{email_settings::EmailSettings, permissions::UserOrgPermissions},
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -66,6 +72,7 @@ pub trait Storage<T: Storable>: Send + Sync {
     async fn update(&self, entity: &mut T) -> Result<T, anyhow::Error>;
     async fn delete(&self, id: &Uuid) -> Result<(), anyhow::Error>;
     async fn create_many(&self, entities: &[T]) -> Result<Vec<T>, anyhow::Error>;
+    async fn update_many(&self, entities: &[T]) -> Result<Vec<T>, anyhow::Error>;
     async fn delete_many(&self, ids: &[Uuid]) -> Result<usize, anyhow::Error>;
     async fn delete_by_filter(&self, filter: StorableFilter<T>) -> Result<usize, anyhow::Error>;
 }
@@ -87,6 +94,21 @@ pub trait Storable: Sized + Clone + Send + Sync + 'static + Default {
 
     /// Deserialization from database
     fn from_row(row: &PgRow) -> Result<Self, anyhow::Error>;
+
+    /// Whether this entity carries SCD2 columns (`valid_from` / `valid_to`).
+    /// When `true`, frontend-facing GET handlers automatically filter to live
+    /// rows (`valid_to IS NULL`) so closed historical copies don't leak into
+    /// list responses, and direct `GET /{id}` of a closed row returns 404.
+    /// Default `false`; the 13 Snapshotable entity types override to `true`.
+    const HAS_SCD2: bool = false;
+
+    /// Whether this entity instance is a live row (i.e. `valid_to IS NULL`).
+    /// Default `true` for non-SCD2 entities; SCD2 types override to consult
+    /// the `valid_to` field on `self`. Used by `get_by_id_handler` to 404
+    /// closed historical copies.
+    fn is_live_row(&self) -> bool {
+        true
+    }
 }
 
 /// Extended trait for user-facing domain entities (excludes junction tables).
@@ -208,17 +230,18 @@ pub enum SqlValue {
     ServiceDefinition(Box<dyn ServiceDefinition>),
     OptionalServiceVirtualization(Option<ServiceVirtualization>),
     OptionalHostVirtualization(Option<HostVirtualization>),
-    OptionalSubnetVirtualization(
-        Option<crate::server::subnets::r#impl::virtualization::SubnetVirtualization>,
-    ),
+    OptionalSubnetVirtualization(Option<SubnetVirtualization>),
     Ports(Vec<Port>),
     IPAddresses(Vec<IPAddress>),
     RunType(RunType),
     DiscoveryType(DiscoveryType),
     DaemonCapabilities(DaemonCapabilities),
     UserOrgPermissions(UserOrgPermissions),
+    EmailSettings(EmailSettings),
     OptionBillingPlan(Option<BillingPlan>),
     OptionBillingPlanStatus(Option<SubscriptionStatus>),
+    BillingOperation(BillingOperation),
+    AuthenticatedEntity(AuthenticatedEntity),
     EdgeStyle(EdgeStyle),
     DaemonMode(DaemonMode),
     Nodes(Vec<Node>),
@@ -229,22 +252,22 @@ pub enum SqlValue {
     Services(Vec<Service>),
     Bindings(Vec<Binding>),
     Dependencies(Vec<Dependency>),
-    OnboardingOperation(Vec<OnboardingOperation>),
+    OnboardingOperation(Vec<OnboardingOperationDiscriminants>),
     StringArray(Vec<String>),
     OptionalStringArray(Option<Vec<String>>),
-    OptionalLldpChassisId(Option<crate::server::snmp::resolution::lldp::LldpChassisId>),
-    OptionalLldpPortId(Option<crate::server::snmp::resolution::lldp::LldpPortId>),
+    OptionalLldpChassisId(Option<LldpChassisId>),
+    OptionalLldpPortId(Option<LldpPortId>),
     OptionalFdbMacs(Option<Vec<String>>),
     OptionVecU16(Option<Vec<u16>>),
     OptionVecUuid(Option<Vec<Uuid>>),
-    ShareOptions(crate::server::shares::r#impl::base::ShareOptions),
-    EnabledViews(Option<Vec<crate::server::topology::types::views::TopologyView>>),
+    ShareOptions(ShareOptions),
+    EnabledViews(Option<Vec<TopologyView>>),
     CredentialType(CredentialType),
     MacAddress(MacAddress),
     OptionalMacAddress(Option<MacAddress>),
     Interfaces(Vec<Interface>),
     Tags(Vec<Tag>),
-    Vlans(Vec<crate::server::vlans::r#impl::base::Vlan>),
+    Vlans(Vec<Vlan>),
     PlanLimitNotifications(PlanLimitNotifications),
     OptionalIpAddrArray(Option<Vec<IpAddr>>),
     OptionalUuidVec(Option<Vec<Uuid>>),
@@ -364,10 +387,10 @@ impl DbEnumContributor for Box<dyn ServiceDefinition> {
 impl_db_enum_contributor_empty!(
     DaemonCapabilities,
     UserOrgPermissions,
+    EmailSettings,
     TopologyOptions,
-    crate::server::shares::r#impl::base::ShareOptions,
+    ShareOptions,
     PlanLimitNotifications,
-    OnboardingOperation,
     Port,
     IPAddress,
     Host,
@@ -377,7 +400,7 @@ impl_db_enum_contributor_empty!(
     Dependency,
     Interface,
     Tag,
-    crate::server::vlans::r#impl::base::Vlan,
+    Vlan,
     Node,
     Edge,
 );
@@ -393,17 +416,54 @@ impl_db_enum_contributor_via_variant_names!(
     EntitySource,
     HostVirtualization,
     ServiceVirtualization,
-    crate::server::subnets::r#impl::virtualization::SubnetVirtualization,
+    SubnetVirtualization,
     RunType,
     DiscoveryType,
     BillingPlan,
     EdgeStyle,
     DaemonMode,
     CredentialType,
-    crate::server::snmp::resolution::lldp::LldpChassisId,
-    crate::server::snmp::resolution::lldp::LldpPortId,
-    crate::server::topology::types::views::TopologyView,
+    LldpChassisId,
+    LldpPortId,
+    TopologyView,
+    crate::server::billing::types::base::CancelReason,
+    crate::server::billing::types::base::SaveOffer,
+    crate::server::billing::types::base::LimitType,
+    crate::server::billing::types::base::LimitSource,
+    AuthenticatedEntity,
+    OnboardingOperationDiscriminants,
 );
+
+// BillingOperation is a typed sum with payload-bearing variants. Its
+// `Discriminants` enum carries the variant names; we contribute via that.
+impl DbEnumContributor for BillingOperation {
+    fn contribute(out: &mut std::collections::BTreeMap<&'static str, Vec<String>>) {
+        // BillingOperation itself doesn't impl VariantNames (struct variants
+        // confuse strum::VariantNames), but the Discriminants enum does not
+        // either by default — list variant names explicitly to keep the
+        // backward-compat baseline accurate.
+        let variants = vec![
+            "CheckoutStarted".to_string(),
+            "CheckoutCompleted".to_string(),
+            "TrialStarted".to_string(),
+            "TrialWillEnd".to_string(),
+            "TrialEnded".to_string(),
+            "PlanChanged".to_string(),
+            "SubscriptionCancelled".to_string(),
+            "PaymentFailed".to_string(),
+            "PaymentActionRequired".to_string(),
+            "PaymentRecovered".to_string(),
+            "FeatureLimitHit".to_string(),
+            "Paused".to_string(),
+            "Resumed".to_string(),
+            "TrialExtended".to_string(),
+            "CancellationInitiated".to_string(),
+            "PaymentMethodAdded".to_string(),
+            "PaymentMethodRemoved".to_string(),
+        ];
+        out.insert(db_enum_key_for::<Self>(), variants);
+    }
+}
 
 // SubscriptionStatus: foreign type from stripe_billing. Empty impl.
 impl DbEnumContributor for SubscriptionStatus {
@@ -430,11 +490,11 @@ impl SqlValue {
         kind: SqlValueDiscriminants,
         out: &mut std::collections::BTreeMap<&'static str, Vec<String>>,
     ) {
-        use crate::server::shares::r#impl::base::ShareOptions;
         use crate::server::snmp::resolution::lldp::{LldpChassisId, LldpPortId};
-        use crate::server::subnets::r#impl::virtualization::SubnetVirtualization;
-        use crate::server::topology::types::views::TopologyView;
-        use crate::server::vlans::r#impl::base::Vlan;
+        use ShareOptions;
+        use SubnetVirtualization;
+        use TopologyView;
+        use Vlan;
 
         match kind {
             SqlValueDiscriminants::Uuid
@@ -484,8 +544,11 @@ impl SqlValue {
             SqlValueDiscriminants::DiscoveryType => DiscoveryType::contribute(out),
             SqlValueDiscriminants::DaemonCapabilities => DaemonCapabilities::contribute(out),
             SqlValueDiscriminants::UserOrgPermissions => UserOrgPermissions::contribute(out),
+            SqlValueDiscriminants::EmailSettings => EmailSettings::contribute(out),
             SqlValueDiscriminants::OptionBillingPlan => BillingPlan::contribute(out),
             SqlValueDiscriminants::OptionBillingPlanStatus => SubscriptionStatus::contribute(out),
+            SqlValueDiscriminants::BillingOperation => BillingOperation::contribute(out),
+            SqlValueDiscriminants::AuthenticatedEntity => AuthenticatedEntity::contribute(out),
             SqlValueDiscriminants::EdgeStyle => EdgeStyle::contribute(out),
             SqlValueDiscriminants::DaemonMode => DaemonMode::contribute(out),
             SqlValueDiscriminants::Nodes => Node::contribute(out),
@@ -496,7 +559,9 @@ impl SqlValue {
             SqlValueDiscriminants::Services => Service::contribute(out),
             SqlValueDiscriminants::Bindings => Binding::contribute(out),
             SqlValueDiscriminants::Dependencies => Dependency::contribute(out),
-            SqlValueDiscriminants::OnboardingOperation => OnboardingOperation::contribute(out),
+            SqlValueDiscriminants::OnboardingOperation => {
+                OnboardingOperationDiscriminants::contribute(out)
+            }
             SqlValueDiscriminants::OptionalLldpChassisId => LldpChassisId::contribute(out),
             SqlValueDiscriminants::OptionalLldpPortId => LldpPortId::contribute(out),
             SqlValueDiscriminants::ShareOptions => ShareOptions::contribute(out),

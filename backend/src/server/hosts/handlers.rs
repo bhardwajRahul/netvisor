@@ -1,12 +1,14 @@
 use crate::daemon::runtime::state::BufferedEntities;
 use crate::server::auth::middleware::auth::AuthenticatedEntity;
 use crate::server::auth::middleware::permissions::{Authorized, IsDaemon, Member, Or, Viewer};
+use crate::server::billing::types::base::{LimitSource, LimitType};
 use crate::server::interfaces::r#impl::base::Interface;
 use crate::server::ip_addresses::r#impl::base::IPAddress;
 use crate::server::ports::r#impl::base::Port;
 use crate::server::services::r#impl::base::Service;
 use crate::server::shared::entities::EntityDiscriminants;
-use crate::server::shared::events::types::{BillingEvent, BillingOperation};
+use crate::server::shared::events::traits::{Event, OrgScope};
+use crate::server::shared::events::types::BillingOperation;
 use crate::server::shared::extractors::Query;
 use crate::server::shared::handlers::ordering::OrderField;
 use crate::server::shared::handlers::query::{
@@ -20,7 +22,6 @@ use crate::server::shared::storage::traits::Entity;
 use crate::server::shared::storage::{filter::StorableFilter, traits::Storable};
 use crate::server::shared::types::api::{ApiErrorResponse, EmptyApiResponse};
 use crate::server::shared::types::error_codes::ErrorCode;
-use crate::server::shared::types::metadata::TypeMetadataProvider;
 use crate::server::shared::validation::{validate_network_access, validate_read_access};
 use crate::server::{
     config::AppState,
@@ -37,7 +38,6 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::http::{HeaderMap, HeaderValue, header};
 use axum::response::{IntoResponse, Json};
-use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::io::{Cursor, Write};
 use std::sync::Arc;
@@ -125,6 +125,9 @@ pub struct HostFilterQuery {
     /// Number of results to skip. Default: 0.
     #[param(minimum = 0)]
     pub offset: Option<u32>,
+    /// As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+    /// instant (snapshot view) instead of live state.
+    pub at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 impl HostFilterQuery {
@@ -215,6 +218,11 @@ async fn get_all_hosts(
     let base_filter = StorableFilter::<Host>::new_from_network_ids(&network_ids);
     let filter = query.apply_to_filter(base_filter, &network_ids, organization_id);
 
+    // SCD2 read path: live by default, or as-of the snapshot timestamp when set.
+    // Without this, close-and-clone's closed historical copies leak into the
+    // host list as empty-shell duplicates.
+    let filter = filter.live_or_as_of(query.at);
+
     // Apply tag filter if specified
     let filter = match &query.tag_ids {
         Some(tag_ids) if !tag_ids.is_empty() => {
@@ -233,7 +241,7 @@ async fn get_all_hosts(
     let mut result = state
         .services
         .host_service
-        .get_all_host_responses_paginated(filter, &order_by)
+        .get_all_host_responses_paginated(filter, &order_by, query.at)
         .await?;
 
     // Hydrate credential assignments from junction table
@@ -371,41 +379,42 @@ async fn create_host(
                 })?;
 
             // Check host limit on plan
-            if let Some(org_id) = organization_id
-                && let Some(org) = state
+            if let Some(org_id) = organization_id {
+                let plan = state
                     .services
                     .organization_service
                     .get_by_id(&org_id)
                     .await?
-                && let Some(plan) = &org.base.plan
-                && let Some(limit) = plan.host_limit()
-            {
-                let org_filter = StorableFilter::<Host>::new_from_network_ids(&network_ids);
-                let current_hosts =
-                    state.services.host_service.get_all(org_filter).await?.len() as u64;
-                if current_hosts >= limit {
-                    let _ = state
-                        .services
-                        .event_bus
-                        .publish_billing(BillingEvent::new(
-                            Uuid::new_v4(),
-                            org_id,
-                            BillingOperation::FeatureLimitHit,
-                            Utc::now(),
-                            entity.clone(),
-                            serde_json::json!({
-                                "limit_type": "hosts",
-                                "current_count": current_hosts,
-                                "limit": limit,
-                                "plan_type": plan.name(),
-                            }),
-                        ))
-                        .await;
+                    .and_then(|o| o.base.plan)
+                    .unwrap_or_else(crate::server::billing::plans::get_free_plan);
+                if let Some(limit) = plan.host_limit() {
+                    let org_filter = StorableFilter::<Host>::new_from_network_ids(&network_ids);
+                    let current_hosts =
+                        state.services.host_service.get_all(org_filter).await?.len() as u64;
+                    if current_hosts >= limit {
+                        let _ = state
+                            .services
+                            .event_bus
+                            .publish(Event::new(
+                                OrgScope {
+                                    organization_id: org_id,
+                                },
+                                BillingOperation::FeatureLimitHit {
+                                    limit_type: LimitType::Hosts,
+                                    current_count: current_hosts,
+                                    limit,
+                                    plan,
+                                    source: LimitSource::Api,
+                                },
+                                entity.clone(),
+                            ))
+                            .await;
 
-                    return Err(ApiError::coded(
-                        StatusCode::FORBIDDEN,
-                        ErrorCode::BillingHostLimitReached { limit },
-                    ));
+                        return Err(ApiError::coded(
+                            StatusCode::FORBIDDEN,
+                            ErrorCode::BillingHostLimitReached { limit },
+                        ));
+                    }
                 }
             }
 
@@ -468,6 +477,10 @@ async fn create_host(
                 subnets,
             } = discovery_request;
 
+            // Capture one scan_time for the whole submission so all entities
+            // share consistent SCD2 timestamps. See ScanContext for rationale.
+            let scan_ctx =
+                crate::server::shared::services::scan_context::ScanContext::new(*daemon_id);
             let host_response = host_service
                 .discover_host(
                     host,
@@ -476,6 +489,7 @@ async fn create_host(
                     services,
                     interfaces,
                     subnets,
+                    Some(&scan_ctx),
                     entity,
                     None,
                 )
@@ -883,6 +897,11 @@ async fn export_hosts_zip(
     // Build host filter (same as CSV export)
     let base_filter = StorableFilter::<Host>::new_from_network_ids(&network_ids);
     let filter = query.apply_to_filter(base_filter, &network_ids, organization_id);
+
+    // SCD2 read path: live by default, or as-of the snapshot timestamp when set.
+    // Without this, close-and-clone's closed historical copies leak into the
+    // host list as empty-shell duplicates.
+    let filter = filter.live_or_as_of(query.at);
 
     // Apply tag filter if specified
     let filter = match &query.tag_ids {

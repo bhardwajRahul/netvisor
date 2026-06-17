@@ -1,3 +1,4 @@
+use super::api::TopologyData;
 use super::base::Topology;
 use super::edges::EdgeType;
 use super::nodes::{ElementEntityType, NodeType};
@@ -28,19 +29,14 @@ fn edge_type_name(edge_type: &EdgeType) -> &'static str {
     }
 }
 
-pub fn topology_to_mermaid(topology: &Topology) -> String {
+pub fn topology_to_mermaid(topology: &Topology, data: &TopologyData) -> String {
     let mut output = String::new();
     writeln!(output, "flowchart TD").unwrap();
 
     // Build lookup maps
-    let subnets: HashMap<Uuid, _> = topology.base.subnets.iter().map(|s| (s.id, s)).collect();
-    let hosts: HashMap<Uuid, _> = topology.base.hosts.iter().map(|h| (h.id, h)).collect();
-    let ip_addresses: HashMap<Uuid, _> = topology
-        .base
-        .ip_addresses
-        .iter()
-        .map(|i| (i.id, i))
-        .collect();
+    let subnets: HashMap<Uuid, _> = data.subnets.iter().map(|s| (s.id, s)).collect();
+    let hosts: HashMap<Uuid, _> = data.hosts.iter().map(|h| (h.id, h)).collect();
+    let ip_addresses: HashMap<Uuid, _> = data.ip_addresses.iter().map(|i| (i.id, i)).collect();
 
     // Group Element nodes by subnet_id (only Interface elements have subnet_id)
     let mut nodes_by_subnet: HashMap<Uuid, Vec<_>> = HashMap::new();
@@ -151,18 +147,18 @@ pub fn topology_to_mermaid(topology: &Topology) -> String {
     output
 }
 
-pub fn topology_to_confluence(topology: &Topology) -> String {
+pub fn topology_to_confluence(topology: &Topology, data: &TopologyData) -> String {
     let mut output = String::new();
 
     // Header
-    writeln!(output, "h1. Network Topology: {}", topology.base.name).unwrap();
+    writeln!(output, "h1. Network Topology").unwrap();
     writeln!(output).unwrap();
 
     // Subnets table
     writeln!(output, "h2. Subnets").unwrap();
     writeln!(output).unwrap();
     writeln!(output, "|| Name || CIDR || Type || Description ||").unwrap();
-    for subnet in &topology.base.subnets {
+    for subnet in &data.subnets {
         let description = subnet.base.description.as_deref().unwrap_or("");
         writeln!(
             output,
@@ -175,7 +171,7 @@ pub fn topology_to_confluence(topology: &Topology) -> String {
 
     // Build lookup maps for hosts table
     let mut ip_addresses_by_host: HashMap<Uuid, Vec<String>> = HashMap::new();
-    for iface in &topology.base.ip_addresses {
+    for iface in &data.ip_addresses {
         ip_addresses_by_host
             .entry(iface.base.host_id)
             .or_default()
@@ -183,7 +179,7 @@ pub fn topology_to_confluence(topology: &Topology) -> String {
     }
 
     let mut services_by_host: HashMap<Uuid, Vec<String>> = HashMap::new();
-    for svc in &topology.base.services {
+    for svc in &data.services {
         services_by_host
             .entry(svc.base.host_id)
             .or_default()
@@ -194,7 +190,7 @@ pub fn topology_to_confluence(topology: &Topology) -> String {
     writeln!(output, "h2. Hosts").unwrap();
     writeln!(output).unwrap();
     writeln!(output, "|| Name || Hostname || IP Addresses || Services ||").unwrap();
-    for host in &topology.base.hosts {
+    for host in &data.hosts {
         let hostname = host.base.hostname.as_deref().unwrap_or("");
         let ips = ip_addresses_by_host
             .get(&host.id)
@@ -219,8 +215,7 @@ pub fn topology_to_confluence(topology: &Topology) -> String {
     writeln!(output).unwrap();
 
     // Build node_id -> host name map
-    let hosts_map: HashMap<Uuid, &str> = topology
-        .base
+    let hosts_map: HashMap<Uuid, &str> = data
         .hosts
         .iter()
         .map(|h| (h.id, h.base.name.as_str()))
@@ -265,23 +260,25 @@ mod tests {
     #[test]
     fn test_mermaid_empty_topology() {
         let topology = Topology {
-            base: TopologyBase::new("Test Topology".to_string(), Uuid::new_v4()),
+            base: TopologyBase::new(Uuid::new_v4()),
             ..Default::default()
         };
+        let data = TopologyData::default();
 
-        let result = topology_to_mermaid(&topology);
+        let result = topology_to_mermaid(&topology, &data);
         assert!(result.contains("flowchart TD"));
     }
 
     #[test]
     fn test_confluence_empty_topology() {
         let topology = Topology {
-            base: TopologyBase::new("Test Topology".to_string(), Uuid::new_v4()),
+            base: TopologyBase::new(Uuid::new_v4()),
             ..Default::default()
         };
+        let data = TopologyData::default();
 
-        let result = topology_to_confluence(&topology);
-        assert!(result.contains("h1. Network Topology: Test Topology"));
+        let result = topology_to_confluence(&topology, &data);
+        assert!(result.contains("h1. Network Topology"));
         assert!(result.contains("|| Name || CIDR || Type || Description ||"));
         assert!(result.contains("|| Name || Hostname || IP Addresses || Services ||"));
     }

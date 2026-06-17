@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
-	import type { TopologyEdge } from '$lib/features/topology/types/base';
+	import type { TopologyEdge, EnrichedTopology } from '$lib/features/topology/types/base';
 	import { useTopology, selectedTopologyId } from '$lib/features/topology/context';
 	import { edgeTypes } from '$lib/shared/stores/metadata';
 	import { topology_connectionsCount, common_dependenciesLabel } from '$lib/paraglide/messages';
@@ -22,7 +22,11 @@
 	const topo = useTopology();
 	const topoStore = topo.fromContext ? topo.store : null;
 	let topology = $derived(
-		topoStore ? $topoStore : topo.query?.data?.find((t) => t.id === $selectedTopologyId)
+		topoStore
+			? $topoStore
+			: (topo.query?.data?.find((t) => t.id === $selectedTopologyId) as
+					| EnrichedTopology
+					| undefined)
 	);
 
 	// Group edges by type

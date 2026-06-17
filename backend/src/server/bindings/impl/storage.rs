@@ -8,7 +8,10 @@ use crate::server::{
     shared::{
         entities::EntityDiscriminants,
         entity_metadata::EntityCategory,
-        storage::traits::{Entity, SqlValue, Storable},
+        storage::{
+            snapshot::{DiscoveryTracked, FkMaps, Snapshotable},
+            traits::{Entity, SqlValue, Storable},
+        },
     },
 };
 
@@ -30,6 +33,12 @@ impl Storable for Binding {
 
     fn table_name() -> &'static str {
         "bindings"
+    }
+
+    const HAS_SCD2: bool = true;
+
+    fn is_live_row(&self) -> bool {
+        self.valid_to.is_none()
     }
 
     fn new(base: Self::BaseData) -> Self {
@@ -59,6 +68,12 @@ impl Storable for Binding {
                 "port_id",
                 "created_at",
                 "updated_at",
+                "valid_from",
+                "valid_to",
+                "lineage_id",
+                "last_seen_at",
+                "last_discovery_id",
+                "first_discovery_id",
             ],
             vec![
                 SqlValue::Uuid(self.id),
@@ -69,6 +84,12 @@ impl Storable for Binding {
                 SqlValue::OptionalUuid(port_id),
                 SqlValue::Timestamp(self.created_at),
                 SqlValue::Timestamp(self.updated_at),
+                SqlValue::Timestamp(self.valid_from),
+                SqlValue::OptionTimestamp(self.valid_to),
+                SqlValue::OptionalUuid(self.lineage_id),
+                SqlValue::Timestamp(self.last_seen_at),
+                SqlValue::OptionalUuid(self.last_discovery_id),
+                SqlValue::OptionalUuid(self.first_discovery_id),
             ],
         ))
     }
@@ -109,12 +130,102 @@ impl Storable for Binding {
             id,
             created_at,
             updated_at,
+            valid_from: row.get("valid_from"),
+            valid_to: row.get("valid_to"),
+            lineage_id: row.get("lineage_id"),
+            last_seen_at: row.get("last_seen_at"),
+            last_discovery_id: row.get("last_discovery_id"),
+            first_discovery_id: row.get("first_discovery_id"),
             base: BindingBase {
                 service_id,
                 network_id,
                 binding_type,
             },
         })
+    }
+}
+
+impl Snapshotable for Binding {
+    fn id_value(&self) -> Uuid {
+        self.id
+    }
+    fn set_id_value(&mut self, id: Uuid) {
+        self.id = id;
+    }
+    fn valid_from(&self) -> DateTime<Utc> {
+        self.valid_from
+    }
+    fn valid_to(&self) -> Option<DateTime<Utc>> {
+        self.valid_to
+    }
+    fn lineage_id(&self) -> Option<Uuid> {
+        self.lineage_id
+    }
+    fn set_valid_from(&mut self, t: DateTime<Utc>) {
+        self.valid_from = t;
+    }
+    fn set_valid_to(&mut self, t: Option<DateTime<Utc>>) {
+        self.valid_to = t;
+    }
+    fn set_lineage_id(&mut self, id: Option<Uuid>) {
+        self.lineage_id = id;
+    }
+
+    fn remap_fks_for_clone(&mut self, maps: &FkMaps) {
+        if let Some(closed) = maps.services.get(&self.base.service_id) {
+            self.base.service_id = *closed;
+        }
+        // Remap inside the binding_type variant.
+        match &mut self.base.binding_type {
+            BindingType::IPAddress { ip_address_id } => {
+                if let Some(closed) = maps.ip_addresses.get(ip_address_id) {
+                    *ip_address_id = *closed;
+                }
+            }
+            BindingType::Port {
+                port_id,
+                ip_address_id,
+            } => {
+                if let Some(closed) = maps.ports.get(port_id) {
+                    *port_id = *closed;
+                }
+                if let Some(ip) = ip_address_id
+                    && let Some(closed) = maps.ip_addresses.get(ip)
+                {
+                    *ip_address_id = Some(*closed);
+                }
+            }
+        }
+    }
+}
+
+impl DiscoveryTracked for Binding {
+    fn last_seen_at(&self) -> DateTime<Utc> {
+        self.last_seen_at
+    }
+    fn last_discovery_id(&self) -> Option<Uuid> {
+        self.last_discovery_id
+    }
+    fn first_discovery_id(&self) -> Option<Uuid> {
+        self.first_discovery_id
+    }
+    fn set_last_seen_at(&mut self, t: DateTime<Utc>) {
+        self.last_seen_at = t;
+    }
+    fn set_last_discovery_id(&mut self, id: Option<Uuid>) {
+        self.last_discovery_id = id;
+    }
+    fn set_first_discovery_id(&mut self, id: Option<Uuid>) {
+        self.first_discovery_id = id;
+    }
+
+    fn scanned_in_session_filter(
+        scanned: &crate::server::daemons::r#impl::api::ScannedEntityIds,
+    ) -> crate::server::shared::storage::filter::StorableFilter<Self> {
+        crate::server::shared::storage::filter::StorableFilter::<Self>::new_from_uuids_column(
+            "id",
+            &scanned.binding_ids,
+        )
     }
 }
 
@@ -183,5 +294,97 @@ impl Entity for Binding {
 
     fn set_updated_at(&mut self, time: DateTime<Utc>) {
         self.updated_at = time;
+    }
+}
+
+#[cfg(test)]
+mod remap_tests {
+    use super::*;
+    use crate::server::bindings::r#impl::base::{Binding, BindingBase, BindingType};
+    use crate::server::shared::storage::snapshot::{FkMaps, Snapshotable};
+
+    // Snapshot close-and-clone must rewrite a cloned binding's FK columns to the
+    // closed copies of its service / ip_address / port, so the historical binding
+    // references the historical parents (not the live ones). This is the
+    // `service_bindings -> ip_addresses` cascade the task called out.
+    #[test]
+    fn ip_address_binding_remaps_service_and_ip_address() {
+        let (live_service, closed_service) = (Uuid::new_v4(), Uuid::new_v4());
+        let (live_ip, closed_ip) = (Uuid::new_v4(), Uuid::new_v4());
+
+        let mut binding = Binding::new(BindingBase::new(
+            live_service,
+            Uuid::new_v4(),
+            BindingType::IPAddress {
+                ip_address_id: live_ip,
+            },
+        ));
+
+        let mut maps = FkMaps::default();
+        maps.services.insert(live_service, closed_service);
+        maps.ip_addresses.insert(live_ip, closed_ip);
+
+        binding.remap_fks_for_clone(&maps);
+
+        assert_eq!(binding.base.service_id, closed_service);
+        match binding.base.binding_type {
+            BindingType::IPAddress { ip_address_id } => assert_eq!(ip_address_id, closed_ip),
+            other => panic!("unexpected binding type: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn port_binding_remaps_port_and_optional_ip_address() {
+        let (live_port, closed_port) = (Uuid::new_v4(), Uuid::new_v4());
+        let (live_ip, closed_ip) = (Uuid::new_v4(), Uuid::new_v4());
+
+        let mut binding = Binding::new(BindingBase::new(
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            BindingType::Port {
+                port_id: live_port,
+                ip_address_id: Some(live_ip),
+            },
+        ));
+
+        let mut maps = FkMaps::default();
+        maps.ports.insert(live_port, closed_port);
+        maps.ip_addresses.insert(live_ip, closed_ip);
+
+        binding.remap_fks_for_clone(&maps);
+
+        match binding.base.binding_type {
+            BindingType::Port {
+                port_id,
+                ip_address_id,
+            } => {
+                assert_eq!(port_id, closed_port);
+                assert_eq!(ip_address_id, Some(closed_ip));
+            }
+            other => panic!("unexpected binding type: {other:?}"),
+        }
+    }
+
+    // FKs with no entry in the maps (e.g. a parent outside this network's
+    // snapshot) must be left untouched rather than zeroed.
+    #[test]
+    fn unmapped_fks_are_left_unchanged() {
+        let live_service = Uuid::new_v4();
+        let live_ip = Uuid::new_v4();
+        let mut binding = Binding::new(BindingBase::new(
+            live_service,
+            Uuid::new_v4(),
+            BindingType::IPAddress {
+                ip_address_id: live_ip,
+            },
+        ));
+
+        binding.remap_fks_for_clone(&FkMaps::default());
+
+        assert_eq!(binding.base.service_id, live_service);
+        match binding.base.binding_type {
+            BindingType::IPAddress { ip_address_id } => assert_eq!(ip_address_id, live_ip),
+            other => panic!("unexpected binding type: {other:?}"),
+        }
     }
 }

@@ -187,7 +187,7 @@
 				{/if}
 				{#if canInviteUsers}
 					{#if isAtSeatLimit}
-						<UpgradeButton feature="seats" />
+						<UpgradeButton feature="seats" surface="users_tab" gate_type="limit_hit" />
 					{:else if currentUser && !currentUser.email_verified}
 						<span data-tooltip="Please verify email to invite users" use:tooltip>
 							<button class="btn-primary flex items-center opacity-50" disabled>

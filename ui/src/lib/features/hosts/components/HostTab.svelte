@@ -59,7 +59,7 @@
 	import type { components } from '$lib/api/schema';
 	import { hasDaemon } from '$lib/shared/onboarding/checklist';
 
-	type OnboardingOperation = components['schemas']['OnboardingOperation'];
+	type OnboardingOperation = components['schemas']['OnboardingOperationDiscriminants'];
 	type HostOrderField = components['schemas']['HostOrderField'];
 	type OrderDirection = components['schemas']['OrderDirection'];
 
@@ -371,10 +371,10 @@
 					{/if}
 					{#if !isReadOnly}
 						{#if isAtHostLimit}
-							<UpgradeButton feature="hosts" />
+							<UpgradeButton feature="hosts" surface="hosts_tab" gate_type="limit_hit" />
 						{:else}
 							{#if isNearHostLimit}
-								<UpgradeButton feature="hosts" />
+								<UpgradeButton feature="hosts" surface="hosts_tab" gate_type="limit_hit" />
 							{/if}
 							<button class="btn-primary flex items-center" onclick={handleCreateHost}
 								><Plus class="h-5 w-5" />{common_create()}</button

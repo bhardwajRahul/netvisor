@@ -45,7 +45,7 @@
 		discovery_runType
 	} from '$lib/paraglide/messages';
 
-	type OnboardingOperation = components['schemas']['OnboardingOperation'];
+	type OnboardingOperation = components['schemas']['OnboardingOperationDiscriminants'];
 
 	let { isReadOnly = false }: TabProps = $props();
 

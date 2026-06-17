@@ -1,18 +1,33 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Deserializer, Serialize};
 use std::fmt::Display;
+use strum::{Display, IntoStaticStr};
 use strum_macros::EnumIter;
 use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::Validate;
 
 use crate::server::{
-    billing::types::base::BillingPlan,
-    shared::{entities::ChangeTriggersTopologyStaleness, events::types::OnboardingOperation},
+    billing::types::base::{BillingPlan, PlanStatus},
+    shared::{
+        entities::ChangeTriggersTopologyStaleness, events::types::OnboardingOperationDiscriminants,
+    },
 };
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default, EnumIter, ToSchema,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    Serialize,
+    Deserialize,
+    Default,
+    EnumIter,
+    ToSchema,
+    IntoStaticStr,
+    Display,
 )]
 #[serde(rename_all = "lowercase")]
 pub enum UseCase {
@@ -68,15 +83,52 @@ pub struct OrganizationBase {
     pub plan: Option<BillingPlan>,
     #[serde(default)]
     #[schema(read_only, required)]
-    pub plan_status: Option<String>,
+    pub plan_status: Option<PlanStatus>,
     #[schema(read_only, required)]
-    pub onboarding: Vec<OnboardingOperation>,
+    pub onboarding: Vec<OnboardingOperationDiscriminants>,
     #[serde(default)]
     #[schema(read_only)]
     pub has_payment_method: bool,
     #[serde(default)]
     #[schema(read_only)]
     pub trial_end_date: Option<DateTime<Utc>>,
+    /// Most recent `Paused` billing event's timestamp; powers the 6-month
+    /// rolling pause cooldown.
+    #[serde(default)]
+    #[schema(read_only)]
+    pub last_paused_at: Option<DateTime<Utc>>,
+    /// Whether the org has used its one-time trial-extend perk.
+    #[serde(default)]
+    #[schema(read_only)]
+    pub trial_extended_used: bool,
+    /// Most recent downgrade event timestamp (paid→cheaper, or paid→cancelled);
+    /// powers the 14-day downgrade banner.
+    #[serde(default)]
+    #[schema(read_only)]
+    pub last_downgrade_at: Option<DateTime<Utc>>,
+    /// Plan downgraded from at `last_downgrade_at`; pairs with the timestamp
+    /// so the banner can render "you downgraded from Pro".
+    #[serde(default)]
+    #[schema(read_only)]
+    pub last_downgrade_from_plan: Option<BillingPlan>,
+    /// Most recent save-offer-discount application. NULL = never. Drives the
+    /// once-per-org eligibility check in `apply_discount_save_offer` and
+    /// hides the Discount panel on the cancel modal for any return visit.
+    #[serde(default)]
+    #[schema(read_only)]
+    pub last_discount_at: Option<DateTime<Utc>>,
+    /// Percent off the currently-active save-offer discount applies. Read
+    /// live by the BillingTab chip so a future coupon swap renders the new
+    /// value without a code change.
+    #[serde(default)]
+    #[schema(read_only)]
+    pub discount_save_offer_percent_off: Option<i64>,
+    /// When the currently-active save-offer discount window expires. The
+    /// BillingTab chip renders only while `> now()`; expiry needs no
+    /// cleanup job.
+    #[serde(default)]
+    #[schema(read_only)]
+    pub discount_save_offer_active_until: Option<DateTime<Utc>>,
     /// Brevo company ID - internal, not exposed to API
     #[serde(default, skip_serializing)]
     pub brevo_company_id: Option<String>,
@@ -107,11 +159,11 @@ pub struct Organization {
 }
 
 impl Organization {
-    pub fn not_onboarded(&self, step: &OnboardingOperation) -> bool {
+    pub fn not_onboarded(&self, step: &OnboardingOperationDiscriminants) -> bool {
         !self.base.onboarding.contains(step)
     }
 
-    pub fn has_onboarded(&self, step: &OnboardingOperation) -> bool {
+    pub fn has_onboarded(&self, step: &OnboardingOperationDiscriminants) -> bool {
         self.base.onboarding.contains(step)
     }
 }

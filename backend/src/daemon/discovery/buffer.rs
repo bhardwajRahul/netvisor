@@ -1,4 +1,8 @@
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+    time::Duration,
+};
 use tokio::sync::RwLock;
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
@@ -7,6 +11,7 @@ use uuid::Uuid;
 use crate::{
     daemon::runtime::state::BufferedEntities,
     server::{
+        daemons::r#impl::api::ScannedEntityIds,
         hosts::r#impl::{api::DiscoveryHostRequest, api::HostResponse, base::Host},
         subnets::r#impl::base::Subnet,
     },
@@ -48,6 +53,11 @@ pub struct EntityBuffer {
     subnets: Arc<RwLock<HashMap<Uuid, BufferedEntity<Subnet>>>>,
     /// Hosts keyed by daemon-generated ID
     hosts: Arc<RwLock<HashMap<Uuid, BufferedEntity<DiscoveryHostRequest>>>>,
+    /// Canonical (server-assigned) VLAN IDs scanned during this session.
+    /// VLAN upserts return server-side IDs synchronously, so there's no
+    /// Pending → Created lifecycle — push the IDs directly after the upsert
+    /// call returns. Cleared by `clear_all` at session end.
+    vlans: Arc<RwLock<HashSet<Uuid>>>,
 }
 
 impl EntityBuffer {
@@ -55,6 +65,7 @@ impl EntityBuffer {
         Self {
             subnets: Arc::new(RwLock::new(HashMap::new())),
             hosts: Arc::new(RwLock::new(HashMap::new())),
+            vlans: Arc::new(RwLock::new(HashSet::new())),
         }
     }
 
@@ -250,6 +261,76 @@ impl EntityBuffer {
         BufferedEntities { hosts, subnets }
     }
 
+    // ========================================================================
+    // VLAN methods
+    // ========================================================================
+
+    /// Record canonical VLAN IDs returned by the server's VLAN upsert endpoint.
+    /// Daemon collects these so `get_scanned_ids` can include vlan_ids in the
+    /// terminal payload's `ScannedEntityIds`.
+    pub async fn push_scanned_vlans(&self, ids: impl IntoIterator<Item = Uuid>) {
+        let mut vlans = self.vlans.write().await;
+        vlans.extend(ids);
+    }
+
+    /// Collect canonical IDs of every entity confirmed (`Created`) by the
+    /// server during this session. Called at terminal phase so the result
+    /// rides the terminal `DiscoveryUpdatePayload.scanned` field over the
+    /// wire to the server, where per-entity FK-update subscribers consume
+    /// it via the in-memory `EntityOperation::Created` event scope.
+    ///
+    /// Notes:
+    /// - host children (ip_addresses, ports, services, interfaces) are
+    ///   reachable nested inside each `Created` host entry; bindings are
+    ///   nested one level further inside `service.base.bindings`.
+    /// - `subnet_vlan_ids` is left empty: subnet_vlan rows are created
+    ///   server-side from interface SNMP vlan info; the daemon never sees
+    ///   their canonical IDs. The SubnetVlan FK-update subscriber no-ops
+    ///   for now; server-side enrichment can fill this in later.
+    pub async fn get_scanned_ids(&self) -> ScannedEntityIds {
+        let mut out = ScannedEntityIds::default();
+
+        {
+            let subnets = self.subnets.read().await;
+            for entry in subnets.values() {
+                if let BufferedEntity::Created { actual, .. } = entry {
+                    out.subnet_ids.push(actual.id);
+                }
+            }
+        }
+
+        {
+            let hosts = self.hosts.read().await;
+            for entry in hosts.values() {
+                if let BufferedEntity::Created { actual, .. } = entry {
+                    out.host_ids.push(actual.host.id);
+                    for ip in &actual.ip_addresses {
+                        out.ip_address_ids.push(ip.id);
+                    }
+                    for port in &actual.ports {
+                        out.port_ids.push(port.id);
+                    }
+                    for service in &actual.services {
+                        out.service_ids.push(service.id);
+                        for binding in &service.base.bindings {
+                            out.binding_ids.push(binding.id());
+                        }
+                    }
+                    for iface in &actual.interfaces {
+                        out.interface_ids.push(iface.id);
+                    }
+                }
+            }
+        }
+
+        {
+            let vlans = self.vlans.read().await;
+            out.vlan_ids = vlans.iter().copied().collect();
+        }
+
+        out
+    }
+
     /// Clear all entities from buffer (both pending and created).
     /// Call at session boundaries when all await_*() calls have completed.
     ///
@@ -264,6 +345,10 @@ impl EntityBuffer {
         {
             let mut subnets = self.subnets.write().await;
             subnets.clear();
+        }
+        {
+            let mut vlans = self.vlans.write().await;
+            vlans.clear();
         }
     }
 
@@ -419,6 +504,12 @@ mod tests {
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             base: SubnetBase {
                 name: "test-subnet".to_string(),
                 cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(192, 168, 1, 0), 24).unwrap()),
@@ -465,6 +556,12 @@ mod tests {
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             base: SubnetBase {
                 name: "subnet-1".to_string(),
                 cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(192, 168, 1, 0), 24).unwrap()),
@@ -480,6 +577,12 @@ mod tests {
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             base: SubnetBase {
                 name: "subnet-2".to_string(),
                 cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(192, 168, 2, 0), 24).unwrap()),
@@ -526,6 +629,12 @@ mod tests {
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             base: SubnetBase {
                 name: "subnet-1".to_string(),
                 cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(192, 168, 1, 0), 24).unwrap()),
@@ -541,6 +650,12 @@ mod tests {
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             base: SubnetBase {
                 name: "subnet-2".to_string(),
                 cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(192, 168, 2, 0), 24).unwrap()),
@@ -600,6 +715,12 @@ mod tests {
             id: pending_id,
             created_at: now,
             updated_at: now,
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             base: SubnetBase {
                 name: "discovered-subnet".to_string(),
                 cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(192, 168, 1, 0), 24).unwrap()),
@@ -629,6 +750,12 @@ mod tests {
             id: actual_id,
             created_at: now,
             updated_at: now,
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             base: subnet.base.clone(),
         };
 
@@ -698,6 +825,12 @@ mod tests {
                     id: Uuid::new_v4(),
                     created_at: now,
                     updated_at: now,
+                    valid_from: now,
+                    valid_to: None,
+                    lineage_id: None,
+                    last_seen_at: now,
+                    last_discovery_id: None,
+                    first_discovery_id: None,
                     base: IPAddressBase {
                         network_id,
                         host_id,
@@ -712,6 +845,12 @@ mod tests {
                     id: Uuid::new_v4(),
                     created_at: now,
                     updated_at: now,
+                    valid_from: now,
+                    valid_to: None,
+                    lineage_id: None,
+                    last_seen_at: now,
+                    last_discovery_id: None,
+                    first_discovery_id: None,
                     base: IPAddressBase {
                         network_id,
                         host_id,
@@ -728,6 +867,12 @@ mod tests {
                 id: Uuid::new_v4(),
                 created_at: now,
                 updated_at: now,
+                valid_from: now,
+                valid_to: None,
+                lineage_id: None,
+                last_seen_at: now,
+                last_discovery_id: None,
+                first_discovery_id: None,
                 base: ServiceBase {
                     network_id,
                     host_id,
@@ -770,6 +915,12 @@ mod tests {
                 id: Uuid::new_v4(),
                 created_at: now,
                 updated_at: now,
+                valid_from: now,
+                valid_to: None,
+                lineage_id: None,
+                last_seen_at: now,
+                last_discovery_id: None,
+                first_discovery_id: None,
                 base: IPAddressBase {
                     network_id,
                     host_id,
@@ -785,6 +936,12 @@ mod tests {
                 id: Uuid::new_v4(),
                 created_at: now,
                 updated_at: now,
+                valid_from: now,
+                valid_to: None,
+                lineage_id: None,
+                last_seen_at: now,
+                last_discovery_id: None,
+                first_discovery_id: None,
                 base: ServiceBase {
                     network_id,
                     host_id,
@@ -826,5 +983,214 @@ mod tests {
         let service_names: Vec<_> = host.services.iter().map(|s| s.base.name.clone()).collect();
         assert!(service_names.contains(&"container-1".to_string()));
         assert!(service_names.contains(&"container-2".to_string()));
+    }
+
+    #[tokio::test]
+    async fn get_scanned_ids_empty_buffer_returns_default() {
+        let buffer = EntityBuffer::new();
+        let scanned = buffer.get_scanned_ids().await;
+        assert!(scanned.host_ids.is_empty());
+        assert!(scanned.subnet_ids.is_empty());
+        assert!(scanned.vlan_ids.is_empty());
+        assert!(scanned.ip_address_ids.is_empty());
+        assert!(scanned.port_ids.is_empty());
+        assert!(scanned.service_ids.is_empty());
+        assert!(scanned.interface_ids.is_empty());
+        assert!(scanned.binding_ids.is_empty());
+    }
+
+    #[tokio::test]
+    async fn get_scanned_ids_excludes_pending_only_includes_created() {
+        use crate::server::subnets::r#impl::{base::SubnetBase, types::SubnetType};
+        use chrono::Utc;
+        use cidr::{IpCidr, Ipv4Cidr};
+        use std::net::Ipv4Addr;
+
+        let buffer = EntityBuffer::new();
+        let now = Utc::now();
+        let network_id = Uuid::new_v4();
+
+        // One Pending subnet, one Created subnet — only Created should be reported.
+        let pending_subnet = Subnet {
+            id: Uuid::new_v4(),
+            created_at: now,
+            updated_at: now,
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
+            base: SubnetBase {
+                name: "pending".to_string(),
+                cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(10, 0, 1, 0), 24).unwrap()),
+                network_id,
+                description: None,
+                subnet_type: SubnetType::Unknown,
+                virtualization: None,
+                source: EntitySource::Manual,
+                tags: vec![],
+            },
+        };
+        buffer.push_subnet(pending_subnet).await;
+
+        let created_subnet = Subnet {
+            id: Uuid::new_v4(),
+            created_at: now,
+            updated_at: now,
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
+            base: SubnetBase {
+                name: "created".to_string(),
+                cidr: IpCidr::V4(Ipv4Cidr::new(Ipv4Addr::new(10, 0, 2, 0), 24).unwrap()),
+                network_id,
+                description: None,
+                subnet_type: SubnetType::Unknown,
+                virtualization: None,
+                source: EntitySource::Manual,
+                tags: vec![],
+            },
+        };
+        let pending_id = created_subnet.id;
+        buffer.push_subnet(created_subnet.clone()).await;
+        buffer
+            .mark_subnet_created(pending_id, created_subnet.clone())
+            .await;
+
+        let scanned = buffer.get_scanned_ids().await;
+        assert_eq!(
+            scanned.subnet_ids,
+            vec![pending_id],
+            "Only Created subnets should be in scanned"
+        );
+    }
+
+    #[tokio::test]
+    async fn get_scanned_ids_collects_host_children_recursively() {
+        use crate::server::ip_addresses::r#impl::base::{IPAddress, IPAddressBase};
+        use crate::server::services::r#impl::base::{Service, ServiceBase};
+        use chrono::Utc;
+        use std::net::{IpAddr, Ipv4Addr};
+
+        let buffer = EntityBuffer::new();
+        let now = Utc::now();
+        let network_id = Uuid::new_v4();
+        let host_id = Uuid::new_v4();
+        let subnet_id = Uuid::new_v4();
+
+        let ip_id = Uuid::new_v4();
+        let service_id = Uuid::new_v4();
+
+        let host_req = DiscoveryHostRequest {
+            host: Host::new(HostBase {
+                name: "test-host".to_string(),
+                hostname: None,
+                tags: vec![],
+                network_id,
+                description: None,
+                source: EntitySource::Manual,
+                virtualization: None,
+                hidden: false,
+                sys_descr: None,
+                sys_object_id: None,
+                sys_location: None,
+                sys_contact: None,
+                management_url: None,
+                chassis_id: None,
+                sys_name: None,
+                manufacturer: None,
+                model: None,
+                serial_number: None,
+                credential_assignments: vec![],
+            }),
+            ip_addresses: vec![IPAddress {
+                id: ip_id,
+                created_at: now,
+                updated_at: now,
+                valid_from: now,
+                valid_to: None,
+                lineage_id: None,
+                last_seen_at: now,
+                last_discovery_id: None,
+                first_discovery_id: None,
+                base: IPAddressBase {
+                    network_id,
+                    host_id,
+                    subnet_id,
+                    ip_address: IpAddr::V4(Ipv4Addr::new(10, 0, 1, 5)),
+                    mac_address: None,
+                    name: None,
+                    position: 0,
+                },
+            }],
+            ports: vec![],
+            services: vec![Service {
+                id: service_id,
+                created_at: now,
+                updated_at: now,
+                valid_from: now,
+                valid_to: None,
+                lineage_id: None,
+                last_seen_at: now,
+                last_discovery_id: None,
+                first_discovery_id: None,
+                base: ServiceBase {
+                    network_id,
+                    host_id,
+                    name: "svc".to_string(),
+                    ..Default::default()
+                },
+            }],
+            interfaces: vec![],
+            subnets: vec![],
+        };
+        let mut host_req = host_req;
+        host_req.host.id = host_id;
+
+        buffer.push_host(host_req.clone()).await;
+
+        // Convert pending → Created via mark_host_created. mark_host_created
+        // wants a HostResponse, so synthesize one from the request data.
+        let host_response =
+            crate::server::hosts::r#impl::api::HostResponse::from_host_with_children(
+                host_req.host.clone(),
+                host_req.ip_addresses.clone(),
+                host_req.ports.clone(),
+                host_req.services.clone(),
+                host_req.interfaces.clone(),
+            );
+        buffer.mark_host_created(host_id, host_response).await;
+
+        let scanned = buffer.get_scanned_ids().await;
+        assert_eq!(scanned.host_ids, vec![host_id]);
+        assert_eq!(scanned.ip_address_ids, vec![ip_id]);
+        assert_eq!(scanned.service_ids, vec![service_id]);
+    }
+
+    #[tokio::test]
+    async fn push_scanned_vlans_round_trips_through_get_scanned_ids() {
+        let buffer = EntityBuffer::new();
+        let v1 = Uuid::new_v4();
+        let v2 = Uuid::new_v4();
+
+        buffer.push_scanned_vlans([v1, v2]).await;
+
+        let scanned = buffer.get_scanned_ids().await;
+        assert_eq!(scanned.vlan_ids.len(), 2);
+        assert!(scanned.vlan_ids.contains(&v1));
+        assert!(scanned.vlan_ids.contains(&v2));
+    }
+
+    #[tokio::test]
+    async fn clear_all_clears_vlan_ids_too() {
+        let buffer = EntityBuffer::new();
+        buffer.push_scanned_vlans([Uuid::new_v4()]).await;
+        buffer.clear_all().await;
+        let scanned = buffer.get_scanned_ids().await;
+        assert!(scanned.vlan_ids.is_empty());
     }
 }

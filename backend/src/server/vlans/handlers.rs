@@ -60,6 +60,9 @@ pub struct VlanFilterQuery {
     pub offset: Option<u32>,
     /// Filter by network ID
     pub network_id: Option<Uuid>,
+    /// As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+    /// instant (snapshot view) instead of live state.
+    pub at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 impl VlanFilterQuery {
@@ -147,7 +150,9 @@ async fn get_all_vlans(
     let network_ids = auth.network_ids();
 
     let base_filter = StorableFilter::<Vlan>::new_from_network_ids(&network_ids);
-    let filter = query.apply_to_filter(base_filter, &network_ids, Uuid::nil());
+    let filter = query
+        .apply_to_filter(base_filter, &network_ids, Uuid::nil())
+        .live_or_as_of(query.at);
 
     let pagination = query.pagination();
     let filter = pagination.apply_to_filter(filter);
@@ -287,6 +292,12 @@ pub async fn discovery_upsert_vlans(
         ));
     }
 
+    // Capture one scan_time for the whole submission so all VLANs share
+    // consistent SCD2 origination timestamps. See ScanContext for rationale.
+    let scan_ctx = auth.daemon_id().map(|daemon_id| {
+        crate::server::shared::services::scan_context::ScanContext::new(daemon_id)
+    });
+
     let mut response_items = Vec::with_capacity(request.vlans.len());
 
     for item in request.vlans {
@@ -298,6 +309,7 @@ pub async fn discovery_upsert_vlans(
                 organization_id,
                 item.vlan_number,
                 item.name,
+                scan_ctx.as_ref(),
             )
             .await
             .map_err(|e| ApiError::internal_error(&format!("Failed to upsert VLAN: {}", e)))?;

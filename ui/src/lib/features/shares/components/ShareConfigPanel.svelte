@@ -201,7 +201,7 @@
 				{#if !hasEmbedsFeature}
 					<InlineInfo title={shares_embedsRequirePlan()} body={shares_upgradeForEmbeds()} />
 					<div class="mt-2">
-						<UpgradeButton feature="embeds" />
+						<UpgradeButton feature="embeds" surface="share_panel" />
 					</div>
 				{:else}
 					<CodeContainer

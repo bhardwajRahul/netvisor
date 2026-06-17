@@ -6,7 +6,9 @@ use uuid::Uuid;
 use crate::server::auth::middleware::permissions::{Authorized, Member, Viewer};
 use crate::server::config::AppState;
 use crate::server::dependencies::r#impl::base::{Dependency, DependencyMembers};
-use crate::server::shared::events::types::{OnboardingEvent, OnboardingOperation};
+use crate::server::shared::events::traits::{Event, OrgScope};
+use crate::server::shared::events::types::{OnboardingOperation, OnboardingOperationDiscriminants};
+use crate::server::shared::extractors::Query;
 use crate::server::shared::handlers::ordering::OrderField;
 use crate::server::shared::handlers::query::{
     FilterQueryExtractor, OrderDirection, PaginationParams,
@@ -18,7 +20,6 @@ use crate::server::shared::storage::traits::{Entity, Storable};
 use crate::server::shared::types::api::{
     ApiError, ApiErrorResponse, ApiResponse, ApiResult, PaginatedApiResponse,
 };
-use chrono::Utc;
 use std::sync::Arc;
 use utoipa::IntoParams;
 use utoipa_axum::{router::OpenApiRouter, routes};
@@ -72,6 +73,9 @@ pub struct DependencyFilterQuery {
     /// Number of results to skip. Default: 0.
     #[param(minimum = 0)]
     pub offset: Option<u32>,
+    /// As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+    /// instant (snapshot view) instead of live state.
+    pub at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 impl DependencyFilterQuery {
@@ -151,9 +155,7 @@ pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
 async fn get_all_dependencies(
     State(state): State<Arc<AppState>>,
     auth: Authorized<Viewer>,
-    crate::server::shared::extractors::Query(query): crate::server::shared::extractors::Query<
-        DependencyFilterQuery,
-    >,
+    Query(query): Query<DependencyFilterQuery>,
 ) -> ApiResult<Json<PaginatedApiResponse<Dependency>>> {
     let network_ids = auth.network_ids();
     let organization_id = auth
@@ -161,7 +163,9 @@ async fn get_all_dependencies(
         .ok_or_else(|| ApiError::forbidden("Organization context required"))?;
 
     let base_filter = StorableFilter::<Dependency>::new_from_network_ids(&network_ids);
-    let filter = query.apply_to_filter(base_filter, &network_ids, organization_id);
+    let filter = query
+        .apply_to_filter(base_filter, &network_ids, organization_id)
+        .live_or_as_of(query.at);
 
     // Apply pagination
     let pagination = query.pagination();
@@ -226,20 +230,17 @@ async fn create_dependency(
             .await?;
 
         if let Some(organization) = organization
-            && organization.not_onboarded(&OnboardingOperation::FirstDependencyCreated)
+            && organization.not_onboarded(&OnboardingOperationDiscriminants::FirstDependencyCreated)
         {
             state
                 .services
                 .dependency_service
                 .event_bus()
-                .publish_onboarding(OnboardingEvent {
-                    id: Uuid::new_v4(),
-                    organization_id,
-                    operation: OnboardingOperation::FirstDependencyCreated,
-                    timestamp: Utc::now(),
-                    metadata: serde_json::json!({}),
-                    authentication: entity,
-                })
+                .publish(Event::new(
+                    OrgScope { organization_id },
+                    OnboardingOperation::FirstDependencyCreated,
+                    entity,
+                ))
                 .await?;
         }
     }

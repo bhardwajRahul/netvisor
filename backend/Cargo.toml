@@ -178,7 +178,7 @@ rlimit = "0.10.2"
 libc = "0.2.177"
 async-stripe = { version = "1.0.0-alpha.2", default-features = false, features = ["rustls-tls-webpki-roots"] }
 async-stripe-core = { version = "1.0.0-alpha.2", default-features = false,features = ["customer"] }
-async-stripe-product = { version = "1.0.0-alpha.2", default-features = false,features = ["product", "price"] }
+async-stripe-product = { version = "1.0.0-alpha.2", default-features = false,features = ["product", "price", "coupon"] }
 async-stripe-billing = { version = "1.0.0-alpha.2", default-features = false,features = ["plan", "subscription", "deserialize", "serialize", "billing_portal_session"] }
 async-stripe-checkout = { version = "1.0.0-alpha.2", default-features = false,features = ["checkout_session"] }
 async-stripe-types = { version = "1.0.0-alpha.2", default-features = false }

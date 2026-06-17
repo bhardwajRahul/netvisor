@@ -3,7 +3,7 @@
 	import BaseTopologyViewer from '$lib/features/topology/components/visualization/BaseTopologyViewer.svelte';
 	import SearchOverlay from '$lib/features/topology/components/visualization/SearchOverlay.svelte';
 	import ShortcutsHelpOverlay from '$lib/features/topology/components/visualization/ShortcutsHelpOverlay.svelte';
-	import type { Topology } from '$lib/features/topology/types/base';
+	import type { EnrichedTopology } from '$lib/features/topology/types/base';
 	import { setContext } from 'svelte';
 	import { writable } from 'svelte/store';
 	import ReadOnlyInspectorPanel from './ReadOnlyInspectorPanel.svelte';
@@ -22,7 +22,7 @@
 	import { createTopologyKeydownHandler } from '$lib/features/topology/keyboard';
 	import { views } from '$lib/shared/stores/metadata';
 
-	export let topology: Topology;
+	export let topology: EnrichedTopology;
 	export let showControls: boolean = true;
 	export let showInspectPanel: boolean = true;
 	export let showExport: boolean = false;
@@ -59,7 +59,7 @@
 	hydrateStoresFromTopology(topology, true, true);
 
 	// Create a context store for the topology so child components (inspectors) can access it
-	const topologyContext = writable<Topology>(topology);
+	const topologyContext = writable<EnrichedTopology>(topology);
 	setContext('topology', topologyContext);
 
 	// Create local stores for selected node/edge (instead of using global store).

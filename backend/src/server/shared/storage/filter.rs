@@ -25,8 +25,14 @@ pub struct StorableFilter<T: Storable> {
     joins: Vec<String>,
 }
 
+impl<T: Storable> Default for StorableFilter<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<T: Storable> StorableFilter<T> {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             _marker: PhantomData,
             conditions: Vec::new(),
@@ -39,6 +45,12 @@ impl<T: Storable> StorableFilter<T> {
 
     pub fn new_from_org_id(org_id: &Uuid) -> Self {
         Self::new().organization_id(org_id)
+    }
+
+    /// Empty filter (no WHERE conditions). Useful for chaining ad-hoc helper
+    /// methods like `id_or_lineage_in` + `as_of` without an initial scope.
+    pub fn new_unfiltered() -> Self {
+        Self::new()
     }
 
     pub fn new_from_network_ids(network_ids: &[Uuid]) -> Self {
@@ -322,6 +334,99 @@ impl<T: Storable> StorableFilter<T> {
         self
     }
 
+    /// SCD2 current-state filter: only live rows (`valid_to IS NULL`).
+    /// Used by the topology read path and reconciliation natural-key
+    /// matching to ignore closed historical copies.
+    pub fn live(mut self) -> Self {
+        let col = self.qualify_column("valid_to");
+        self.conditions.push(format!("{} IS NULL", col));
+        self
+    }
+
+    /// SCD2 as-of filter: rows that were live at timestamp `t`.
+    /// Used by snapshot-view consumers to read historical state.
+    pub fn as_of(mut self, t: chrono::DateTime<chrono::Utc>) -> Self {
+        let valid_from = self.qualify_column("valid_from");
+        let valid_to = self.qualify_column("valid_to");
+        let from_idx = self.values.len() + 1;
+        let to_idx = self.values.len() + 2;
+        self.conditions.push(format!(
+            "{vf} <= ${fi} AND ({vt} IS NULL OR {vt} > ${ti})",
+            vf = valid_from,
+            vt = valid_to,
+            fi = from_idx,
+            ti = to_idx,
+        ));
+        self.values.push(SqlValue::Timestamp(t));
+        self.values.push(SqlValue::Timestamp(t));
+        self
+    }
+
+    /// SCD2 read-path filter: `as_of(t)` when a snapshot timestamp is supplied,
+    /// otherwise current-state `live()`. Frontend-facing GETs use this so they
+    /// hide closed historical copies by default and read snapshot-pinned state
+    /// when `at` is set.
+    pub fn live_or_as_of(self, at: Option<chrono::DateTime<chrono::Utc>>) -> Self {
+        match at {
+            Some(t) => self.as_of(t),
+            None => self.live(),
+        }
+    }
+
+    /// Lineage filter for "all closed copies tracking back to this live id."
+    /// Used to walk version history of a single logical entity.
+    pub fn lineage_id(mut self, id: &Uuid) -> Self {
+        let col = self.qualify_column("lineage_id");
+        self.conditions
+            .push(format!("{} = ${}", col, self.values.len() + 1));
+        self.values.push(SqlValue::Uuid(*id));
+        self
+    }
+
+    /// Filter to closed copies stamped by a specific snapshot. Snapshot views
+    /// read these directly: the closed copies have distinct ids from their
+    /// live counterparts and survive live-row deletion.
+    pub fn snapshot_id(mut self, id: &Uuid) -> Self {
+        let col = self.qualify_column("snapshot_id");
+        self.conditions
+            .push(format!("{} = ${}", col, self.values.len() + 1));
+        self.values.push(SqlValue::Uuid(*id));
+        self
+    }
+
+    /// Match rows whose `id` or `lineage_id` is in the supplied set. Used by
+    /// the as-of tag-name resolver: when a tag was close-and-cloned, the live
+    /// id and the closed id both refer to the same logical tag — a single
+    /// `id IN (...)` check would miss the closed copies. The OR-join keeps the
+    /// caller's id list compact (no need to expand into the lineage set first).
+    pub fn id_or_lineage_in(mut self, ids: &[Uuid]) -> Self {
+        if ids.is_empty() {
+            self.conditions.push("FALSE".to_string());
+            return self;
+        }
+        let id_col = self.qualify_column("id");
+        let lineage_col = self.qualify_column("lineage_id");
+        let id_idx = self.values.len() + 1;
+        let lineage_idx = self.values.len() + 2;
+        self.conditions.push(format!(
+            "({} = ANY(${}) OR {} = ANY(${}))",
+            id_col, id_idx, lineage_col, lineage_idx
+        ));
+        self.values.push(SqlValue::UuidArray(ids.to_vec()));
+        self.values.push(SqlValue::UuidArray(ids.to_vec()));
+        self
+    }
+
+    /// Filter snapshots / similar timestamped rows by `taken_at < t`. Used by
+    /// the daily retention task to identify rows past the retention window.
+    pub fn taken_at_lt(mut self, t: DateTime<Utc>) -> Self {
+        let col = self.qualify_column("taken_at");
+        self.conditions
+            .push(format!("{} < ${}", col, self.values.len() + 1));
+        self.values.push(SqlValue::Timestamp(t));
+        self
+    }
+
     pub fn host_id(mut self, id: &Uuid) -> Self {
         let col = self.qualify_column("host_id");
         self.conditions
@@ -532,6 +637,25 @@ impl<T: Storable> StorableFilter<T> {
         self
     }
 
+    pub fn user_permissions_in(mut self, permissions: &[UserOrgPermissions]) -> Self {
+        if permissions.is_empty() {
+            self.conditions.push("FALSE".to_string());
+            return self;
+        }
+        let col = self.qualify_column("permissions");
+        let placeholders: Vec<String> = permissions
+            .iter()
+            .enumerate()
+            .map(|(i, _)| format!("${}", self.values.len() + i + 1))
+            .collect();
+        self.conditions
+            .push(format!("{} IN ({})", col, placeholders.join(", ")));
+        for p in permissions {
+            self.values.push(SqlValue::UserOrgPermissions(*p));
+        }
+        self
+    }
+
     pub fn expires_before(mut self, timestamp: DateTime<Utc>) -> Self {
         let col = self.qualify_column("expires_at");
         self.conditions
@@ -545,6 +669,66 @@ impl<T: Storable> StorableFilter<T> {
         self.conditions
             .push(format!("{} < ${}", col, self.values.len() + 1));
         self.values.push(SqlValue::Timestamp(timestamp));
+        self
+    }
+
+    pub fn last_seen_before(mut self, timestamp: DateTime<Utc>) -> Self {
+        let col = self.qualify_column("last_seen_at");
+        self.conditions
+            .push(format!("{} < ${}", col, self.values.len() + 1));
+        self.values.push(SqlValue::Timestamp(timestamp));
+        self
+    }
+
+    pub fn updated_before(mut self, timestamp: DateTime<Utc>) -> Self {
+        let col = self.qualify_column("updated_at");
+        self.conditions
+            .push(format!("{} < ${}", col, self.values.len() + 1));
+        self.values.push(SqlValue::Timestamp(timestamp));
+        self
+    }
+
+    pub fn created_between(mut self, start: DateTime<Utc>, end: DateTime<Utc>) -> Self {
+        let col = self.qualify_column("created_at");
+        let start_idx = self.values.len() + 1;
+        let end_idx = self.values.len() + 2;
+        self.conditions
+            .push(format!("{col} >= ${start_idx} AND {col} <= ${end_idx}"));
+        self.values.push(SqlValue::Timestamp(start));
+        self.values.push(SqlValue::Timestamp(end));
+        self
+    }
+
+    pub fn updated_between(mut self, start: DateTime<Utc>, end: DateTime<Utc>) -> Self {
+        let col = self.qualify_column("updated_at");
+        let start_idx = self.values.len() + 1;
+        let end_idx = self.values.len() + 2;
+        self.conditions
+            .push(format!("{col} >= ${start_idx} AND {col} <= ${end_idx}"));
+        self.values.push(SqlValue::Timestamp(start));
+        self.values.push(SqlValue::Timestamp(end));
+        self
+    }
+
+    pub fn valid_to_between(mut self, start: DateTime<Utc>, end: DateTime<Utc>) -> Self {
+        let col = self.qualify_column("valid_to");
+        let start_idx = self.values.len() + 1;
+        let end_idx = self.values.len() + 2;
+        self.conditions
+            .push(format!("{col} >= ${start_idx} AND {col} <= ${end_idx}"));
+        self.values.push(SqlValue::Timestamp(start));
+        self.values.push(SqlValue::Timestamp(end));
+        self
+    }
+
+    pub fn last_seen_between(mut self, start: DateTime<Utc>, end: DateTime<Utc>) -> Self {
+        let col = self.qualify_column("last_seen_at");
+        let start_idx = self.values.len() + 1;
+        let end_idx = self.values.len() + 2;
+        self.conditions
+            .push(format!("{col} >= ${start_idx} AND {col} <= ${end_idx}"));
+        self.values.push(SqlValue::Timestamp(start));
+        self.values.push(SqlValue::Timestamp(end));
         self
     }
 
@@ -878,5 +1062,208 @@ impl<T: Storable> StorableFilter<T> {
         let col = self.qualify_column("target_ips");
         self.conditions.push(format!("{} IS NOT NULL", col));
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::server::hosts::r#impl::base::Host;
+    use crate::server::snapshots::types::base::Snapshot;
+    use crate::server::tags::r#impl::base::Tag;
+    use chrono::TimeZone;
+
+    fn ts(secs: i64) -> DateTime<Utc> {
+        Utc.timestamp_opt(secs, 0).unwrap()
+    }
+
+    #[test]
+    fn id_or_lineage_in_emits_or_clause() {
+        let ids = vec![Uuid::new_v4(), Uuid::new_v4()];
+        let filter = StorableFilter::<Tag>::new_unfiltered().id_or_lineage_in(&ids);
+
+        let where_clause = filter.to_where_clause();
+        assert!(
+            where_clause.contains("tags.id = ANY($1)"),
+            "expected id ANY clause in: {}",
+            where_clause
+        );
+        assert!(
+            where_clause.contains("tags.lineage_id = ANY($2)"),
+            "expected lineage_id ANY clause in: {}",
+            where_clause
+        );
+        assert!(
+            where_clause.contains(" OR "),
+            "expected OR-join in: {}",
+            where_clause
+        );
+        assert_eq!(
+            filter.values().len(),
+            2,
+            "expected two array params (id_set, lineage_set)"
+        );
+    }
+
+    #[test]
+    fn id_or_lineage_in_empty_input_matches_nothing() {
+        let filter = StorableFilter::<Tag>::new_unfiltered().id_or_lineage_in(&[]);
+        let where_clause = filter.to_where_clause();
+        assert!(
+            where_clause.contains("FALSE"),
+            "empty id list should produce FALSE: {}",
+            where_clause
+        );
+        assert_eq!(
+            filter.values().len(),
+            0,
+            "no params should be bound for empty input"
+        );
+    }
+
+    #[test]
+    fn taken_at_lt_emits_less_than_clause() {
+        let cutoff = chrono::Utc::now();
+        let filter = StorableFilter::<Snapshot>::new_unfiltered().taken_at_lt(cutoff);
+
+        let where_clause = filter.to_where_clause();
+        assert!(
+            where_clause.contains("snapshots.taken_at < $1"),
+            "expected `taken_at < $N` in: {}",
+            where_clause
+        );
+        assert_eq!(filter.values().len(), 1);
+    }
+
+    #[test]
+    fn live_filter_emits_valid_to_is_null() {
+        let filter = StorableFilter::<Tag>::new_unfiltered().live();
+        let where_clause = filter.to_where_clause();
+        assert!(
+            where_clause.contains("tags.valid_to IS NULL"),
+            "expected `valid_to IS NULL` in: {}",
+            where_clause
+        );
+    }
+
+    #[test]
+    fn as_of_filter_emits_window_predicate() {
+        let t = chrono::Utc::now();
+        let filter = StorableFilter::<Tag>::new_unfiltered().as_of(t);
+        let where_clause = filter.to_where_clause();
+        assert!(
+            where_clause.contains("tags.valid_from <= $1"),
+            "expected lower bound in: {}",
+            where_clause
+        );
+        assert!(
+            where_clause.contains("tags.valid_to IS NULL OR tags.valid_to > $2"),
+            "expected upper bound in: {}",
+            where_clause
+        );
+    }
+
+    #[test]
+    fn live_or_as_of_none_is_live() {
+        // `at = None` (live view) must hide closed historical copies, i.e. behave
+        // exactly like `.live()`. This is the read-path guard that stops snapshot
+        // close-and-clone copies leaking into entity lists as empty-shell dupes.
+        let filter = StorableFilter::<Tag>::new_unfiltered().live_or_as_of(None);
+        let where_clause = filter.to_where_clause();
+        assert!(
+            where_clause.contains("tags.valid_to IS NULL"),
+            "expected live predicate in: {}",
+            where_clause
+        );
+        assert!(
+            !where_clause.contains("valid_from <="),
+            "live view must not emit an as-of window: {}",
+            where_clause
+        );
+    }
+
+    #[test]
+    fn live_or_as_of_some_is_as_of() {
+        // `at = Some(t)` (snapshot view) must read SCD2 state as of `t`.
+        let t = chrono::Utc::now();
+        let filter = StorableFilter::<Tag>::new_unfiltered().live_or_as_of(Some(t));
+        let where_clause = filter.to_where_clause();
+        assert!(
+            where_clause.contains("tags.valid_from <= $1"),
+            "expected as-of lower bound in: {}",
+            where_clause
+        );
+        assert!(
+            where_clause.contains("tags.valid_to IS NULL OR tags.valid_to > $2"),
+            "expected as-of upper bound in: {}",
+            where_clause
+        );
+    }
+
+    #[test]
+    fn created_between_emits_inclusive_range() {
+        let f = StorableFilter::<Host>::new().created_between(ts(100), ts(200));
+        assert_eq!(f.conditions.len(), 1);
+        let c = &f.conditions[0];
+        assert!(c.contains("created_at"), "condition was: {c}");
+        assert!(
+            c.contains(">= $1") && c.contains("<= $2"),
+            "condition was: {c}"
+        );
+        assert_eq!(f.values.len(), 2);
+        match (&f.values[0], &f.values[1]) {
+            (SqlValue::Timestamp(a), SqlValue::Timestamp(b)) => {
+                assert_eq!(*a, ts(100));
+                assert_eq!(*b, ts(200));
+            }
+            _ => panic!("expected two Timestamp values"),
+        }
+    }
+
+    #[test]
+    fn updated_between_uses_updated_at_column() {
+        let f = StorableFilter::<Host>::new().updated_between(ts(0), ts(1));
+        assert!(f.conditions[0].contains("updated_at"));
+    }
+
+    #[test]
+    fn valid_to_between_uses_valid_to_column() {
+        let f = StorableFilter::<Host>::new().valid_to_between(ts(0), ts(1));
+        assert!(f.conditions[0].contains("valid_to"));
+    }
+
+    #[test]
+    fn last_seen_between_uses_last_seen_at_column() {
+        let f = StorableFilter::<Host>::new().last_seen_between(ts(0), ts(1));
+        assert!(f.conditions[0].contains("last_seen_at"));
+    }
+
+    #[test]
+    fn between_helpers_advance_param_index() {
+        let f = StorableFilter::<Host>::new()
+            .created_between(ts(10), ts(20))
+            .updated_between(ts(30), ts(40));
+        assert_eq!(f.values.len(), 4);
+        assert!(f.conditions[0].contains("$1") && f.conditions[0].contains("$2"));
+        assert!(f.conditions[1].contains("$3") && f.conditions[1].contains("$4"));
+    }
+
+    #[test]
+    fn user_permissions_in_emits_in_clause() {
+        let f = StorableFilter::<crate::server::users::r#impl::base::User>::new()
+            .user_permissions_in(&[UserOrgPermissions::Owner, UserOrgPermissions::Admin]);
+        assert_eq!(f.conditions.len(), 1);
+        let c = &f.conditions[0];
+        assert!(c.contains("permissions"));
+        assert!(c.contains("IN ($1, $2)"), "condition was: {c}");
+        assert_eq!(f.values.len(), 2);
+    }
+
+    #[test]
+    fn user_permissions_in_empty_emits_false() {
+        let f = StorableFilter::<crate::server::users::r#impl::base::User>::new()
+            .user_permissions_in(&[]);
+        assert_eq!(f.conditions, vec!["FALSE".to_string()]);
+        assert_eq!(f.values.len(), 0);
     }
 }

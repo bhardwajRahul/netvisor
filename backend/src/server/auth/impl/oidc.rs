@@ -54,7 +54,7 @@ pub struct OidcProviderConfig {
     pub client_secret: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, PartialEq, Eq, Hash)]
 pub struct OidcProviderMetadata {
     pub name: String,
     pub slug: String,
@@ -80,6 +80,16 @@ pub struct OidcProvider {
     client_id: String,
     client_secret: String,
     redirect_url: String,
+}
+
+impl From<&OidcProvider> for OidcProviderMetadata {
+    fn from(provider: &OidcProvider) -> Self {
+        Self {
+            name: provider.name.clone(),
+            slug: provider.slug.clone(),
+            logo: provider.logo.clone(),
+        }
+    }
 }
 
 impl OidcProvider {

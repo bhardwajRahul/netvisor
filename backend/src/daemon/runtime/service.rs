@@ -345,7 +345,6 @@ impl DaemonRuntimeService {
     async fn detect_interfaced_subnets(
         &self,
     ) -> Result<Vec<crate::server::subnets::r#impl::base::Subnet>> {
-        let daemon_id = self.config.get_id().await?;
         let network_id = match self.config.get_network_id().await? {
             Some(id) => id,
             None => return Ok(Vec::new()),
@@ -354,14 +353,7 @@ impl DaemonRuntimeService {
 
         let (_, subnets, _) = self
             .utils
-            .get_own_interfaces(
-                crate::server::discovery::r#impl::types::DiscoveryType::SelfReport {
-                    host_id: daemon_id,
-                },
-                daemon_id,
-                network_id,
-                &interface_filter,
-            )
+            .get_own_interfaces(network_id, &interface_filter)
             .await?;
 
         Ok(subnets)

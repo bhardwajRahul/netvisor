@@ -8,6 +8,7 @@ import { apiClient } from '$lib/api/client';
 import { pushError, pushSuccess } from '$lib/shared/stores/feedback';
 import { resetIdentity } from '$lib/shared/utils/analytics';
 import type { User } from '../users/types';
+import type { components } from '$lib/api/schema';
 import type {
 	ForgotPasswordRequest,
 	LoginRequest,
@@ -299,10 +300,11 @@ export function isAuthenticated(user: User | null | undefined): boolean {
  * Mutation hook for saving onboarding step (and optionally use_case)
  */
 export function useOnboardingStepMutation() {
+	type UseCase = components['schemas']['UseCase'];
 	return createMutation(() => ({
 		mutationFn: async (params: {
 			step: string;
-			use_case?: string;
+			use_case?: UseCase;
 			referral_source?: string;
 			referral_source_other?: string;
 		}) => {

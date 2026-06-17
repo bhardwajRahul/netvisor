@@ -2,7 +2,7 @@ import type { components } from '$lib/api/schema';
 import { openModal } from '$lib/shared/stores/modal-registry';
 import { trackEvent } from '$lib/shared/utils/analytics';
 
-type OnboardingOperation = components['schemas']['OnboardingOperation'];
+type OnboardingOperation = components['schemas']['OnboardingOperationDiscriminants'];
 
 export interface ChecklistStep {
 	id: string;

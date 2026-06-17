@@ -44,7 +44,7 @@
 	import ElementNode from './ElementNode.svelte';
 	import CustomEdge from './CustomEdge.svelte';
 	import TopologySidebarControls from './TopologySidebarControls.svelte';
-	import type { Topology } from '../../types/base';
+	import type { EnrichedTopology } from '../../types/base';
 	import { collapsedContainers, collapseLevel, stepExpand, stepCollapse } from '../../collapse';
 	import type { CollapseLevel } from '../../collapse';
 	import {
@@ -96,7 +96,7 @@
 		onToggleEditMode = null,
 		sidebarCollapsed = false
 	}: {
-		topology: Topology;
+		topology: EnrichedTopology;
 		readonly?: boolean;
 		showControls?: boolean;
 		isEmbed?: boolean;
@@ -115,7 +115,7 @@
 	// The effect below keeps the store in sync with the prop across updates;
 	// the initial read of `topology` here is just seeding the store.
 	// svelte-ignore state_referenced_locally
-	const topologyContext = svelteWritable<Topology>(topology);
+	const topologyContext = svelteWritable<EnrichedTopology>(topology);
 	setContext('topology', topologyContext);
 	$effect(() => {
 		topologyContext.set(topology);

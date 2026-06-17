@@ -11,7 +11,6 @@
 	import { entityRef } from '$lib/shared/components/data/types';
 	import {
 		common_consolidate,
-		common_containers,
 		common_credentials,
 		common_delete,
 		common_description,
@@ -21,6 +20,7 @@
 		common_ipAddresses,
 		common_services,
 		common_tags,
+		hosts_containerizedServices,
 		hosts_noContainers,
 		hosts_noInterfaces,
 		hosts_noServicesAssigned,
@@ -145,7 +145,7 @@
 					emptyText: hosts_noServicesAssigned()
 				},
 				{
-					label: common_containers(),
+					label: hosts_containerizedServices(),
 					value: containers
 						.map((c) => ({
 							id: c.id,

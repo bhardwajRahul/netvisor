@@ -1,7 +1,7 @@
 <script lang="ts">
 	import GenericModal from '$lib/shared/components/layout/GenericModal.svelte';
 	import ModalHeaderIcon from '$lib/shared/components/layout/ModalHeaderIcon.svelte';
-	import { User, Building2, CreditCard, Settings, Monitor } from 'lucide-svelte';
+	import { User, Building2, CreditCard, Mail, Settings, Monitor } from 'lucide-svelte';
 	import { useCurrentUserQuery } from '$lib/features/auth/queries';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
 	import { useConfigQuery } from '$lib/shared/stores/config-query';
@@ -9,10 +9,12 @@
 	import AccountTab from './AccountTab.svelte';
 	import OrganizationTab from './OrganizationTab.svelte';
 	import BillingTab from './BillingTab.svelte';
+	import EmailTab from './EmailTab.svelte';
 	import SystemTab from './SystemTab.svelte';
 	import {
 		common_account,
 		common_billing,
+		common_email,
 		common_organization,
 		common_settings,
 		common_system
@@ -45,7 +47,8 @@
 	let billingNeedsAttention = $derived(
 		!org?.plan ||
 			org?.plan_status === 'past_due' ||
-			org?.plan_status === 'canceled' ||
+			org?.plan_status === 'paused' ||
+			org?.plan_status === 'cancelled' ||
 			(org?.plan_status === 'trialing' && !org?.has_payment_method)
 	);
 
@@ -57,6 +60,7 @@
 	// Define base tabs
 	let baseTabs = $derived<ModalTab[]>([
 		{ id: 'account', label: common_account(), icon: User },
+		{ id: 'email', label: common_email(), icon: Mail },
 		{ id: 'organization', label: common_organization(), icon: Building2 },
 		{
 			id: 'billing',
@@ -119,6 +123,8 @@
 	<div class="flex h-[calc(100vh-16rem)] flex-col">
 		{#if activeTab === 'account'}
 			<AccountTab bind:subView={accountSubView} onClose={handleClose} />
+		{:else if activeTab === 'email'}
+			<EmailTab />
 		{:else if activeTab === 'organization'}
 			<OrganizationTab bind:subView={orgSubView} onClose={handleClose} />
 		{:else if activeTab === 'billing'}

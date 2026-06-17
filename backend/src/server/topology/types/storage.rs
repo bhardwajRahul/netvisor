@@ -1,15 +1,5 @@
-use crate::server::bindings::r#impl::base::Binding;
-use crate::server::dependencies::r#impl::base::Dependency;
-use crate::server::interfaces::r#impl::base::Interface;
-use crate::server::ip_addresses::r#impl::base::IPAddress;
-use crate::server::ports::r#impl::base::Port;
-use crate::server::services::r#impl::base::Service;
 use crate::server::shared::entities::EntityDiscriminants;
-use crate::server::subnets::r#impl::base::Subnet;
-use crate::server::tags::r#impl::base::Tag;
-use crate::server::vlans::r#impl::base::Vlan;
 use crate::server::{
-    hosts::r#impl::base::Host,
     shared::{
         entity_metadata::EntityCategory,
         storage::traits::{Entity, SqlValue, Storable},
@@ -26,18 +16,13 @@ use sqlx::Row;
 use sqlx::postgres::PgRow;
 use uuid::Uuid;
 
-/// CSV row representation for Topology export (metadata only, excludes nested entities)
+/// CSV row representation for Topology export (slimmed: nodes/edges/options live in JSONB,
+/// snapshot_id surfaces the captured-vs-live distinction without exposing layout JSON).
 #[derive(Serialize)]
 pub struct TopologyCsvRow {
     pub id: Uuid,
-    pub name: String,
     pub network_id: Uuid,
-    pub is_stale: bool,
-    pub is_locked: bool,
-    pub locked_by: Option<Uuid>,
-    pub locked_at: Option<DateTime<Utc>>,
-    pub last_refreshed: DateTime<Utc>,
-    pub parent_id: Option<Uuid>,
+    pub snapshot_id: Option<Uuid>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -71,36 +56,11 @@ impl Storable for Topology {
             updated_at,
             base:
                 Self::BaseData {
-                    name,
                     network_id,
                     nodes,
                     edges,
                     options,
-                    hosts,
-                    ip_addresses,
-                    ports,
-                    bindings,
-                    services,
-                    subnets,
-                    dependencies,
-                    interfaces,
-                    is_stale,
-                    last_refreshed,
-                    is_locked,
-                    locked_at,
-                    locked_by,
-                    removed_hosts,
-                    removed_ip_addresses,
-                    removed_services,
-                    removed_subnets,
-                    removed_dependencies,
-                    removed_bindings,
-                    removed_ports,
-                    removed_interfaces,
-                    parent_id,
-                    tags,
-                    entity_tags,
-                    vlans,
+                    snapshot_id,
                 },
         } = self.clone();
 
@@ -109,77 +69,26 @@ impl Storable for Topology {
                 "id",
                 "created_at",
                 "updated_at",
-                "name",
                 "network_id",
                 "nodes",
                 "edges",
                 "options",
-                "hosts",
-                "ip_addresses",
-                "subnets",
-                "dependencies",
-                "services",
-                "bindings",
-                "ports",
-                "interfaces",
-                "is_stale",
-                "last_refreshed",
-                "is_locked",
-                "locked_at",
-                "locked_by",
-                "removed_hosts",
-                "removed_ip_addresses",
-                "removed_services",
-                "removed_subnets",
-                "removed_dependencies",
-                "removed_bindings",
-                "removed_ports",
-                "removed_interfaces",
-                "parent_id",
-                "tags",
-                "entity_tags",
-                "vlans",
+                "snapshot_id",
             ],
             vec![
                 SqlValue::Uuid(id),
                 SqlValue::Timestamp(created_at),
                 SqlValue::Timestamp(updated_at),
-                SqlValue::String(name),
                 SqlValue::Uuid(network_id),
                 SqlValue::Nodes(nodes),
                 SqlValue::Edges(edges),
                 SqlValue::TopologyOptions(options),
-                SqlValue::Hosts(hosts),
-                SqlValue::IPAddresses(ip_addresses),
-                SqlValue::Subnets(subnets),
-                SqlValue::Dependencies(dependencies),
-                SqlValue::Services(services),
-                SqlValue::Bindings(bindings),
-                SqlValue::Ports(ports),
-                SqlValue::Interfaces(interfaces),
-                SqlValue::Bool(is_stale),
-                SqlValue::Timestamp(last_refreshed),
-                SqlValue::Bool(is_locked),
-                SqlValue::OptionTimestamp(locked_at),
-                SqlValue::OptionalUuid(locked_by),
-                SqlValue::UuidArray(removed_hosts),
-                SqlValue::UuidArray(removed_ip_addresses),
-                SqlValue::UuidArray(removed_services),
-                SqlValue::UuidArray(removed_subnets),
-                SqlValue::UuidArray(removed_dependencies),
-                SqlValue::UuidArray(removed_bindings),
-                SqlValue::UuidArray(removed_ports),
-                SqlValue::UuidArray(removed_interfaces),
-                SqlValue::OptionalUuid(parent_id),
-                SqlValue::UuidArray(tags),
-                SqlValue::Tags(entity_tags),
-                SqlValue::Vlans(vlans),
+                SqlValue::OptionalUuid(snapshot_id),
             ],
         ))
     }
 
     fn from_row(row: &PgRow) -> Result<Self, anyhow::Error> {
-        // Parse JSON fields safely
         let nodes: Vec<Node> = serde_json::from_value(row.get::<serde_json::Value, _>("nodes"))
             .map_err(|e| anyhow::anyhow!("Failed to deserialize nodes: {}", e))?;
         let edges: Vec<Edge> = serde_json::from_value(row.get::<serde_json::Value, _>("edges"))
@@ -188,74 +97,16 @@ impl Storable for Topology {
             serde_json::from_value(row.get::<serde_json::Value, _>("options"))
                 .map_err(|e| anyhow::anyhow!("Failed to deserialize options: {}", e))?;
 
-        let hosts: Vec<Host> = serde_json::from_value(row.get::<serde_json::Value, _>("hosts"))
-            .map_err(|e| anyhow::anyhow!("Failed to deserialize hosts: {}", e))?;
-        let ip_addresses: Vec<IPAddress> =
-            serde_json::from_value(row.get::<serde_json::Value, _>("ip_addresses"))
-                .map_err(|e| anyhow::anyhow!("Failed to deserialize ip_addresses: {}", e))?;
-        let subnets: Vec<Subnet> =
-            serde_json::from_value(row.get::<serde_json::Value, _>("subnets"))
-                .map_err(|e| anyhow::anyhow!("Failed to deserialize subnets: {}", e))?;
-        let services: Vec<Service> =
-            serde_json::from_value(row.get::<serde_json::Value, _>("services"))
-                .map_err(|e| anyhow::anyhow!("Failed to deserialize services: {}", e))?;
-        let dependencies: Vec<Dependency> =
-            serde_json::from_value(row.get::<serde_json::Value, _>("dependencies"))
-                .map_err(|e| anyhow::anyhow!("Failed to deserialize dependencies: {}", e))?;
-
-        let ports: Vec<Port> = serde_json::from_value(row.get::<serde_json::Value, _>("ports"))
-            .map_err(|e| anyhow::anyhow!("Failed to deserialize ports: {}", e))?;
-
-        let bindings: Vec<Binding> =
-            serde_json::from_value(row.get::<serde_json::Value, _>("bindings"))
-                .map_err(|e| anyhow::anyhow!("Failed to deserialize bindings: {}", e))?;
-
-        let interfaces: Vec<Interface> =
-            serde_json::from_value(row.get::<serde_json::Value, _>("interfaces"))
-                .map_err(|e| anyhow::anyhow!("Failed to deserialize interfaces: {}", e))?;
-
-        let entity_tags: Vec<Tag> =
-            serde_json::from_value(row.get::<serde_json::Value, _>("entity_tags"))
-                .map_err(|e| anyhow::anyhow!("Failed to deserialize entity_tags: {}", e))?;
-
-        let vlans: Vec<Vlan> =
-            serde_json::from_value(row.get::<serde_json::Value, _>("vlans")).unwrap_or_default();
-
         Ok(Topology {
             id: row.get("id"),
             created_at: row.get("created_at"),
             updated_at: row.get("updated_at"),
             base: TopologyBase {
-                name: row.get("name"),
                 network_id: row.get("network_id"),
-                is_stale: row.get("is_stale"),
-                last_refreshed: row.get("last_refreshed"),
-                is_locked: row.get("is_locked"),
-                locked_at: row.get("locked_at"),
-                locked_by: row.get("locked_by"),
-                removed_dependencies: row.get("removed_dependencies"),
-                removed_hosts: row.get("removed_hosts"),
-                removed_ip_addresses: row.get("removed_ip_addresses"),
-                removed_services: row.get("removed_services"),
-                removed_subnets: row.get("removed_subnets"),
-                removed_ports: row.get("removed_ports"),
-                removed_bindings: row.get("removed_bindings"),
-                removed_interfaces: row.get("removed_interfaces"),
-                parent_id: row.get("parent_id"),
                 nodes,
                 edges,
-                hosts,
-                ip_addresses,
-                subnets,
-                bindings,
-                ports,
-                services,
-                dependencies,
-                interfaces,
                 options,
-                tags: row.get("tags"),
-                entity_tags,
-                vlans,
+                snapshot_id: row.get("snapshot_id"),
             },
         })
     }
@@ -283,14 +134,8 @@ impl Entity for Topology {
     fn to_csv_row(&self) -> Self::CsvRow {
         TopologyCsvRow {
             id: self.id,
-            name: self.base.name.clone(),
             network_id: self.base.network_id,
-            is_stale: self.base.is_stale,
-            is_locked: self.base.is_locked,
-            locked_by: self.base.locked_by,
-            locked_at: self.base.locked_at,
-            last_refreshed: self.base.last_refreshed,
-            parent_id: self.base.parent_id,
+            snapshot_id: self.base.snapshot_id,
             created_at: self.created_at,
             updated_at: self.updated_at,
         }
@@ -327,16 +172,18 @@ impl Entity for Topology {
 
     fn preserve_immutable_fields(&mut self, existing: &Self) {
         self.id = existing.id;
-        self.base.parent_id = existing.base.parent_id;
+        // snapshot_id is immutable — set at insert and never changes.
+        self.base.snapshot_id = existing.base.snapshot_id;
         self.created_at = existing.created_at;
         self.updated_at = existing.updated_at;
     }
 
     fn get_tags(&self) -> Option<&Vec<Uuid>> {
-        Some(&self.base.tags)
+        None
     }
 
-    fn set_tags(&mut self, tags: Vec<Uuid>) {
-        self.base.tags = tags;
+    fn set_tags(&mut self, _tags: Vec<Uuid>) {
+        // Topology no longer carries tags directly; entity-specific tags live
+        // on hosts/services/subnets and surface via TopologyData.
     }
 }

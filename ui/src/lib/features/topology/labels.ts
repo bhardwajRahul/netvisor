@@ -1,6 +1,6 @@
 import type { Node } from '@xyflow/svelte';
 import type { components } from '$lib/api/schema';
-import type { Topology, TopologyNode } from './types/base';
+import type { EnrichedTopology, TopologyNode } from './types/base';
 import { entities, views } from '$lib/shared/stores/metadata';
 import { lowercasePreservingAcronyms } from '$lib/shared/utils/formatting';
 import { tags_entityTags, tags_noCommonTagsHint } from '$lib/paraglide/messages';
@@ -97,7 +97,7 @@ function tallyByEntityType(nodes: Iterable<TopologyNode>): Map<Entity, number> {
  *  `resolveInlineServiceIds`. */
 export function tallyContainerElements(
 	containerId: string,
-	topology: Topology
+	topology: EnrichedTopology
 ): Map<Entity, number> {
 	const { elementNodeIds } = getContainerContents(containerId, topology.nodes);
 	const counts = tallyByEntityType(topology.nodes.filter((n) => elementNodeIds.has(n.id)));
@@ -112,7 +112,10 @@ export function tallyContainerElements(
  *  equals `containerId` (i.e. not in any subcontainer), plus services
  *  inlined on those elements. Used for the "ungrouped" summary on
  *  collapsed-root containers. */
-export function tallyDirectElements(containerId: string, topology: Topology): Map<Entity, number> {
+export function tallyDirectElements(
+	containerId: string,
+	topology: EnrichedTopology
+): Map<Entity, number> {
 	const directElementIds = new Set<string>(
 		topology.nodes
 			.filter(

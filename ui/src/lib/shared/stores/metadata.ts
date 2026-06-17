@@ -7,6 +7,7 @@ import dependencyTypesJson from '$lib/data/dependency-types.json';
 import entitiesJson from '$lib/data/entities.json';
 import portsJson from '$lib/data/ports.json';
 import discoveryTypesJson from '$lib/data/discovery-types.json';
+import discoveryPhasesJson from '$lib/data/discovery-phases.json';
 import billingPlansJson from '$lib/data/billing-plans-all.json';
 import featuresJson from '$lib/data/features.json';
 import permissionsJson from '$lib/data/permissions.json';
@@ -76,6 +77,7 @@ export interface MetadataRegistry {
 	entities: TypeMetadata[];
 	ports: TypeMetadata[];
 	discovery_types: TypeMetadata[];
+	discovery_phases: TypeMetadata[];
 	billing_plans: TypeMetadata[];
 	features: TypeMetadata[];
 	permissions: TypeMetadata[];
@@ -118,12 +120,19 @@ export interface BillingPlanFeatures {
 	confluence_export: boolean;
 	pdf_export: boolean;
 	html_export: boolean;
+	snapshot_retention_days: number;
 }
 
 export type FeatureId = keyof BillingPlanFeatures;
 
 /** Feature IDs plus resource-based upgrade reasons */
-export type UpgradeFeature = FeatureId | 'seats' | 'networks' | 'hosts' | 'plan_usage';
+export type UpgradeFeature =
+	| FeatureId
+	| 'seats'
+	| 'networks'
+	| 'hosts'
+	| 'plan_usage'
+	| 'snapshots';
 
 export interface BillingPlanMetadata {
 	features: BillingPlanFeatures;
@@ -187,6 +196,9 @@ export interface PortTypeMetadata {
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface DiscoveryTypeMetadata {}
 
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+export interface DiscoveryPhaseMetadata {}
+
 export interface ContainerTypeMetadata {
 	title_style: 'External' | 'Inline';
 	is_subcontainer: boolean;
@@ -206,6 +218,7 @@ export const metadata = writable<MetadataRegistry>({
 	entities: entitiesJson,
 	ports: portsJson,
 	discovery_types: discoveryTypesJson,
+	discovery_phases: discoveryPhasesJson,
 	billing_plans: billingPlansJson,
 	features: featuresJson,
 	permissions: permissionsJson,
@@ -392,6 +405,10 @@ export const ports = createTypeMetadataHelpers<'ports', PortTypeMetadata>('ports
 export const discoveryTypes = createTypeMetadataHelpers<'discovery_types', DiscoveryTypeMetadata>(
 	'discovery_types'
 );
+export const discoveryPhases = createTypeMetadataHelpers<
+	'discovery_phases',
+	DiscoveryPhaseMetadata
+>('discovery_phases');
 export const billingPlans = createTypeMetadataHelpers<'billing_plans', BillingPlanMetadata>(
 	'billing_plans'
 );

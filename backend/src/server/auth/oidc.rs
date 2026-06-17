@@ -1,5 +1,4 @@
 use anyhow::{Error, Result, anyhow};
-use chrono::Utc;
 use email_address::EmailAddress;
 use std::{collections::HashMap, net::IpAddr, str::FromStr, sync::Arc};
 use uuid::Uuid;
@@ -7,7 +6,7 @@ use uuid::Uuid;
 use crate::server::{
     auth::{
         r#impl::{
-            base::{LoginRegisterParams, PendingSetup, ProvisionUserParams},
+            base::{LoginRegisterParams, ProvisionUserParams},
             oidc::{
                 OidcPendingAuth, OidcProvider, OidcProviderConfig, OidcProviderMetadata,
                 OidcRegisterParams,
@@ -20,9 +19,11 @@ use crate::server::{
     shared::{
         events::{
             bus::EventBus,
-            types::{AuthEvent, AuthOperation},
+            traits::{AuthScope, Event},
+            types::{AuthMethod, AuthOperation},
         },
         services::traits::CrudService,
+        storage::filter::StorableFilter,
     },
     users::{r#impl::base::User, service::UserService},
 };
@@ -108,7 +109,6 @@ impl OidcService {
         pending_auth: OidcPendingAuth,
         params: LoginRegisterParams,
         oidc_register_params: OidcRegisterParams<'_>,
-        pending_setup: Option<PendingSetup>,
     ) -> Result<OidcRegisterResult> {
         let OidcRegisterParams {
             provider_slug,
@@ -124,7 +124,7 @@ impl OidcService {
             .ok_or_else(|| anyhow!("Provider '{}' not found", provider_slug))?;
 
         let LoginRegisterParams {
-            org_id,
+            provision_org,
             permissions,
             ip,
             user_agent,
@@ -142,22 +142,19 @@ impl OidcService {
         {
             let authentication: AuthenticatedEntity = existing_user.clone().into();
             self.event_bus
-                .publish_auth(AuthEvent {
-                    id: Uuid::new_v4(),
-                    user_id: Some(existing_user.id),
-                    organization_id: Some(existing_user.base.organization_id),
-                    timestamp: Utc::now(),
-                    operation: AuthOperation::LoginSuccess,
-                    ip_address: ip,
-                    user_agent,
-                    metadata: serde_json::json!({
-                        "method": "oidc",
-                        "provider": provider.slug,
-                        "provider_name": provider.name,
-                        "via_register_flow": true
-                    }),
+                .publish(Event::new(
+                    AuthScope {
+                        user_id: Some(existing_user.id),
+                        organization_id: Some(existing_user.base.organization_id),
+                        ip_address: ip,
+                        user_agent,
+                    },
+                    AuthOperation::LoginSuccess {
+                        method: AuthMethod::Oidc((&**provider).into()),
+                        via_register_flow: true,
+                    },
                     authentication,
-                })
+                ))
                 .await?;
             return Ok(OidcRegisterResult::ExistingUser(existing_user));
         }
@@ -182,11 +179,7 @@ impl OidcService {
         // Check if email is already in use by another account
         let existing = self
             .user_service
-            .get_all(
-                crate::server::shared::storage::filter::StorableFilter::<User>::new_from_email(
-                    &email,
-                ),
-            )
+            .get_all(StorableFilter::<User>::new_from_email(&email))
             .await?;
         if !existing.is_empty() {
             return Ok(OidcRegisterResult::EmailAlreadyExists);
@@ -195,42 +188,38 @@ impl OidcService {
         // Register new user
         let user = self
             .auth_service
-            .provision_user(
-                ProvisionUserParams {
-                    email,
-                    password_hash: None,
-                    oidc_subject: Some(user_info.subject),
-                    oidc_provider: Some(provider.slug.clone()),
-                    org_id,
-                    permissions,
-                    network_ids,
-                    terms_accepted_at,
-                    billing_enabled,
-                    marketing_opt_in,
-                },
-                pending_setup,
-            )
+            .provision_user(ProvisionUserParams {
+                email,
+                password_hash: None,
+                oidc_subject: Some(user_info.subject),
+                oidc_provider: Some(provider.slug.clone()),
+                provision_org,
+                email_verified: true,
+                permissions,
+                network_ids,
+                terms_accepted_at,
+                billing_enabled,
+            })
             .await?;
 
         // Publish event
         let authentication: AuthenticatedEntity = user.clone().into();
         self.event_bus
-            .publish_auth(AuthEvent {
-                id: Uuid::new_v4(),
-                user_id: Some(user.id),
-                organization_id: Some(user.base.organization_id),
-                timestamp: Utc::now(),
-                operation: AuthOperation::Register,
-                ip_address: ip,
-                user_agent,
-                metadata: serde_json::json!({
-                    "method": "oidc",
-                    "provider": provider.slug,
-                    "provider_name": provider.name
-                }),
-
+            .publish(Event::new(
+                AuthScope {
+                    user_id: Some(user.id),
+                    organization_id: Some(user.base.organization_id),
+                    ip_address: ip,
+                    user_agent,
+                },
+                AuthOperation::Register {
+                    method: AuthMethod::Oidc((&**provider).into()),
+                    marketing_opt_in,
+                    // No email verification sent for OIDC logins
+                    email_and_token: None,
+                },
                 authentication,
-            })
+            ))
             .await?;
 
         Ok(OidcRegisterResult::NewUser(user))
@@ -264,12 +253,10 @@ impl OidcService {
                 if let Some(email_str) = &user_info.email
                     && let Ok(email) = EmailAddress::from_str(email_str)
                 {
-                    let existing =
-                        self.user_service
-                            .get_all(crate::server::shared::storage::filter::StorableFilter::<
-                                User,
-                            >::new_from_email(&email))
-                            .await?;
+                    let existing = self
+                        .user_service
+                        .get_all(StorableFilter::<User>::new_from_email(&email))
+                        .await?;
                     if !existing.is_empty() {
                         return Err(anyhow!(
                             "An account with this email exists but isn't linked to {}. Please sign in with email first, then link your {} account from settings.",
@@ -288,22 +275,19 @@ impl OidcService {
         // Publish event
         let authentication: AuthenticatedEntity = user.clone().into();
         self.event_bus
-            .publish_auth(AuthEvent {
-                id: Uuid::new_v4(),
-                user_id: Some(user.id),
-                organization_id: Some(user.base.organization_id),
-                timestamp: Utc::now(),
-                operation: AuthOperation::LoginSuccess,
-                ip_address: ip,
-                user_agent,
-                metadata: serde_json::json!({
-                    "method": "oidc",
-                    "provider": provider.slug,
-                    "provider_name": provider.name
-                }),
-
+            .publish(Event::new(
+                AuthScope {
+                    user_id: Some(user.id),
+                    organization_id: Some(user.base.organization_id),
+                    ip_address: ip,
+                    user_agent,
+                },
+                AuthOperation::LoginSuccess {
+                    method: AuthMethod::Oidc((&**provider).into()),
+                    via_register_flow: false,
+                },
                 authentication,
-            })
+            ))
             .await?;
 
         Ok(user)
@@ -385,32 +369,22 @@ impl OidcService {
 
         // Publish event
         self.event_bus
-            .publish_auth(AuthEvent {
-                id: Uuid::new_v4(),
-                user_id: Some(user.id),
-                organization_id: Some(user.base.organization_id),
-                timestamp: Utc::now(),
-                operation: AuthOperation::OidcLinked,
-                ip_address: ip,
-                user_agent,
-                metadata: serde_json::json!({
-                    "method": "oidc",
-                    "provider": provider.slug,
-                    "provider_name": provider.name
-                }),
-
-                authentication: authentication.clone(),
-            })
+            .publish(Event::new(
+                AuthScope {
+                    user_id: Some(user.id),
+                    organization_id: Some(user.base.organization_id),
+                    ip_address: ip,
+                    user_agent,
+                },
+                AuthOperation::OidcLinked {
+                    provider: (&**provider).into(),
+                    email: user.base.email.clone(),
+                },
+                authentication.clone(),
+            ))
             .await?;
 
-        let result = self.user_service.update(&mut user, authentication).await?;
-
-        // Send notification email
-        self.auth_service
-            .send_oidc_linked_notification(result.base.email.clone(), &provider.name)
-            .await;
-
-        Ok(result)
+        self.user_service.update(&mut user, authentication).await
     }
 
     /// Unlink OIDC from user
@@ -448,31 +422,21 @@ impl OidcService {
 
         // Publish event
         self.event_bus
-            .publish_auth(AuthEvent {
-                id: Uuid::new_v4(),
-                user_id: Some(user.id),
-                organization_id: Some(user.base.organization_id),
-                timestamp: Utc::now(),
-                operation: AuthOperation::OidcUnlinked,
-                ip_address: ip,
-                user_agent,
-                metadata: serde_json::json!({
-                    "method": "oidc",
-                    "provider": provider.slug,
-                    "provider_name": provider.name
-                }),
-
-                authentication: authentication.clone(),
-            })
+            .publish(Event::new(
+                AuthScope {
+                    user_id: Some(user.id),
+                    organization_id: Some(user.base.organization_id),
+                    ip_address: ip,
+                    user_agent,
+                },
+                AuthOperation::OidcUnlinked {
+                    provider: (&**provider).into(),
+                    email: user.base.email.clone(),
+                },
+                authentication.clone(),
+            ))
             .await?;
 
-        let result = self.user_service.update(&mut user, authentication).await?;
-
-        // Send notification email
-        self.auth_service
-            .send_oidc_unlinked_notification(result.base.email.clone(), &provider.name)
-            .await;
-
-        Ok(result)
+        self.user_service.update(&mut user, authentication).await
     }
 }

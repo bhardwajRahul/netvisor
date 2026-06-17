@@ -1,5 +1,9 @@
 import type { components } from '$lib/api/schema';
 import type { Service } from '$lib/features/services/types/base';
+import type { Host, IPAddress, Interface, Port } from '$lib/features/hosts/types/base';
+import type { Subnet } from '$lib/features/subnets/types/base';
+import type { Dependency } from '$lib/features/dependencies/types/base';
+import type { Tag } from '$lib/features/tags/types/base';
 
 // Re-export generated types
 export type Topology = components['schemas']['Topology'];
@@ -10,6 +14,38 @@ export type TopologyRequestOptions = components['schemas']['TopologyRequestOptio
 export type TopologyEdge = components['schemas']['Edge'];
 export type TopologyNode = components['schemas']['Node'];
 export type EdgeHandle = components['schemas']['EdgeHandle'];
+export type Binding = components['schemas']['Binding'];
+export type Vlan = components['schemas']['Vlan'];
+
+/**
+ * Topology graph row plus the live entity arrays needed for inspectors,
+ * resolvers, and rendering. The slim backend `Topology` only carries
+ * `{ id, network_id, snapshot_id, nodes, edges, options, ... }`. Entity
+ * data (hosts, services, subnets, etc.) is loaded separately via per-entity
+ * queries and bundled here so consumers can read everything off a single
+ * object — preserving the pre-refactor field shape used across many
+ * components.
+ *
+ * Always loaded live: snapshot rows still receive live entity data because
+ * the snapshot's nodes/edges already encode the captured visual state, and
+ * inspectors are expected to show current entity details.
+ *
+ * `name` is a UI-side display string (network name for live, formatted
+ * `taken_at` for snapshots, share name for shared topologies).
+ */
+export interface EnrichedTopology extends Topology {
+	hosts: Host[];
+	services: Service[];
+	subnets: Subnet[];
+	ip_addresses: IPAddress[];
+	ports: Port[];
+	bindings: Binding[];
+	interfaces: Interface[];
+	dependencies: Dependency[];
+	vlans: Vlan[];
+	entity_tags: Tag[];
+	name: string;
+}
 
 // Variant types from Node union
 export type ElementNode = Extract<TopologyNode, { node_type: 'Element' }>;

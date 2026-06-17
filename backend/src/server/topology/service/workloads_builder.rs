@@ -726,6 +726,7 @@ mod tests {
                 name: name.to_string(),
                 ..Default::default()
             },
+            ..Default::default()
         }
     }
 
@@ -743,6 +744,7 @@ mod tests {
                 })),
                 ..Default::default()
             },
+            ..Default::default()
         }
     }
 
@@ -757,6 +759,7 @@ mod tests {
                 name: "Proxmox VE".to_string(),
                 ..Default::default()
             },
+            ..Default::default()
         }
     }
 
@@ -771,6 +774,7 @@ mod tests {
                 name: "Docker".to_string(),
                 ..Default::default()
             },
+            ..Default::default()
         }
     }
 
@@ -791,6 +795,7 @@ mod tests {
                 })),
                 ..Default::default()
             },
+            ..Default::default()
         }
     }
 
@@ -822,6 +827,7 @@ mod tests {
                 name: name.to_string(),
                 ..Default::default()
             },
+            ..Default::default()
         }
     }
 
@@ -836,6 +842,7 @@ mod tests {
                 name: name.to_string(),
                 ..Default::default()
             },
+            ..Default::default()
         }
     }
 
@@ -850,6 +857,7 @@ mod tests {
                 name: name.to_string(),
                 ..Default::default()
             },
+            ..Default::default()
         }
     }
 

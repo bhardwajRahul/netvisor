@@ -149,6 +149,14 @@ pub struct ServerConfig {
 
     // License key for commercial self-hosted deployments
     pub license_key: Option<String>,
+
+    /// Override the snapshot retention window for self-hosted / community /
+    /// enterprise / demo plans. Default 90 days when unset. Ignored for the
+    /// SaaS-tier plans (Free / Starter / Pro / Business / Team) which carry
+    /// fixed per-tier retention values. Picks up `SCANOPY_SNAPSHOT_RETENTION_DAYS_OVERRIDE`
+    /// from the env automatically via the existing Figment env-var pipeline.
+    #[serde(default)]
+    pub snapshot_retention_days_override: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema, PartialEq)]
@@ -166,6 +174,10 @@ pub struct PublicConfigResponse {
     pub disable_password_login: bool,
     pub oidc_providers: Vec<OidcProviderMetadata>,
     pub billing_enabled: bool,
+    /// `STRIPE_SAVE_OFFER_COUPON_ID` env var is set. When false, the
+    /// cancel modal hides the discount save-offer panel so the user
+    /// doesn't see an option the deployment can't fulfil.
+    pub discount_save_offer_available: bool,
     pub has_integrated_daemon: bool,
     pub has_email_service: bool,
     pub has_email_opt_in: bool,
@@ -184,6 +196,11 @@ pub struct PublicConfigResponse {
     /// True when the license is past `intended_exp` but not yet past
     /// the hard `exp` — the silent grace window.
     pub license_in_grace_period: bool,
+    /// `SCANOPY_SNAPSHOT_RETENTION_DAYS_OVERRIDE` if set on this instance.
+    /// Frontend uses it inside the plan-comparison view to display the
+    /// effective retention for this deployment rather than the per-plan
+    /// fixture default.
+    pub snapshot_retention_days_override: Option<u32>,
 }
 
 impl Default for ServerConfig {
@@ -214,6 +231,7 @@ impl Default for ServerConfig {
             brevo_api_key: None,
             external_service_allowed_ips: HashMap::new(),
             license_key: None,
+            snapshot_retention_days_override: None,
         }
     }
 }
@@ -351,7 +369,7 @@ impl AppState {
     pub async fn new(config: ServerConfig) -> Result<Arc<Self>, Error> {
         let storage =
             StorageFactory::new(&config.database_url(), config.use_secure_session_cookies).await?;
-        let services = ServiceFactory::new(&storage, Some(config.clone())).await?;
+        let services = ServiceFactory::new(&storage, config.clone()).await?;
 
         let is_commercial = cfg!(feature = "commercial");
         let license_service = Arc::new(LicenseService::new(
@@ -418,6 +436,7 @@ pub async fn get_public_config(State(state): State<Arc<AppState>>) -> impl IntoR
             disable_password_login: state.config.disable_password_login,
             oidc_providers,
             billing_enabled: state.config.stripe_secret.is_some(),
+            discount_save_offer_available: std::env::var("STRIPE_SAVE_OFFER_COUPON_ID").is_ok(),
             has_integrated_daemon: state.config.integrated_daemon_url.is_some(),
             has_email_service: state.config.brevo_api_key.is_some()
                 || (state.config.smtp_password.is_some()
@@ -434,6 +453,7 @@ pub async fn get_public_config(State(state): State<Arc<AppState>>) -> impl IntoR
             license_expiry,
             license_intended_expiry,
             license_in_grace_period,
+            snapshot_retention_days_override: state.config.snapshot_retention_days_override,
         })),
     )
 }
