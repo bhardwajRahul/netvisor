@@ -2,6 +2,7 @@
 	import { CreditCard } from 'lucide-svelte';
 	import AppBanner from './AppBanner.svelte';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
+	import { isStripeManagedPlan } from '$lib/features/organizations/types';
 	import { useSetupPaymentMethodMutation } from '$lib/features/billing/queries';
 	import { startSetupPayment } from '$lib/shared/billing/setup-payment';
 	import { getTrialDaysLeft, isTrialingWithoutPayment } from '$lib/shared/utils/trial';
@@ -17,15 +18,20 @@
 	let org = $derived(organizationQuery.data);
 	let trialDaysLeft = $derived(getTrialDaysLeft(org));
 
-	// `plan_status` is non-null only for live Stripe self-serve subscriptions;
-	// non-Stripe plans (Free/Community/Demo/SelfHosted/Enterprise) are null and
-	// excluded automatically. The final clause defers to TrialEndingBanner in its
-	// window (trialing + no card + <= 3 days) so the two never render together.
+	// Show only for plans that actually require a card: a Stripe-managed plan
+	// (excludes Demo/Community/CommercialSelfHosted) that isn't Free (Free is
+	// Stripe-managed but $0). plan_status alone isn't enough — a Free org can
+	// still carry plan_status='active'. The final clause defers to
+	// TrialEndingBanner in its window (trialing + no card + <= 3 days) so the
+	// two never render together.
 	let shouldShow = $derived(
-		(org?.plan_status === 'trialing' ||
-			org?.plan_status === 'active' ||
-			org?.plan_status === 'past_due') &&
-			!(org?.has_payment_method ?? false) &&
+		org != null &&
+			isStripeManagedPlan(org) &&
+			org.plan?.type !== 'Free' &&
+			(org.plan_status === 'trialing' ||
+				org.plan_status === 'active' ||
+				org.plan_status === 'past_due') &&
+			!(org.has_payment_method ?? false) &&
 			!(isTrialingWithoutPayment(org) && trialDaysLeft !== null && trialDaysLeft <= 3)
 	);
 
