@@ -1094,6 +1094,7 @@
 	"settings_email_digestLabel": "Discovery scan summary",
 	"settings_email_intro": "Choose which emails you'd like to receive from Scanopy.",
 	"settings_email_updateFailed": "Failed to update email preferences",
+	"settings_email_updated": "Email preferences updated",
 	"settings_org_delete": "Delete Organization",
 	"settings_org_deleteConfirm": "This will permanently delete your organization, all data, and all user accounts. This action cannot be undone.",
 	"settings_org_deleteHelp": "Permanently delete this organization and all its data. This cannot be undone.",

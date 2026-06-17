@@ -16,6 +16,7 @@
 	import {
 		useTopologiesQuery,
 		useTopologyDataQuery,
+		markTopologyViewed,
 		selectedTopologyId,
 		selectedNetworkId,
 		selectedSnapshotId,
@@ -278,12 +279,13 @@
 		onboarding.length === 0 || onboarding.includes('FirstDiscoveryCompleted')
 	);
 
-	// Complete the "View your topology" onboarding step the first time the user opens the
-	// topology tab and there are hosts to look at. The backend emits FirstTopologyRebuild
-	// from the topology-data GET, but that query is cache/SSE-driven and won't necessarily
-	// re-hit the server on plain navigation — so force a one-shot refetch at view time to
-	// guarantee the emit, then poll the org until the milestone lands so the checklist
-	// updates. The guard stops it once the milestone exists.
+	// Complete the "View your topology" onboarding step the first time the user is focused on
+	// the topology tab with hosts to look at (and discovery already done). markTopologyViewed
+	// is a one-shot GET carrying mark_viewed=true — only sent here, never by the background
+	// data query — so the milestone only fires from an actual on-tab view, never from other
+	// tabs. Then poll the org until the milestone lands so the checklist updates. The
+	// `tracked` flag only flips once we actually call, so if discovery completes later while
+	// the user is on the tab, the effect re-fires.
 	let firstTopologyMilestoneTracked = $state(false);
 	$effect(() => {
 		const hasHosts = (topologyDataQuery.data?.hosts.length ?? 0) > 0;
@@ -291,12 +293,14 @@
 			isActive &&
 			$selectedNetworkId &&
 			hasHosts &&
+			onboarding.includes('FirstDiscoveryCompleted') &&
 			!firstTopologyMilestoneTracked &&
 			!onboarding.includes('FirstTopologyRebuild')
 		) {
 			firstTopologyMilestoneTracked = true;
+			const networkId = $selectedNetworkId;
 			void (async () => {
-				await topologyDataQuery.refetch();
+				await markTopologyViewed(networkId);
 				void waitForOrgUpdate((o) => o.onboarding.includes('FirstTopologyRebuild'));
 			})();
 		}
