@@ -129,6 +129,16 @@ pub struct OrganizationBase {
     #[serde(default)]
     #[schema(read_only)]
     pub discount_save_offer_active_until: Option<DateTime<Utc>>,
+    /// Stripe `subscription.items.data[0].current_period_end`, mirrored on
+    /// every billing event that re-anchors the period (checkout, trial start
+    /// / end, plan change, renewal, pause/resume, reactivate). Cleared by
+    /// SubscriptionCancelled. Powers the "Next renewal on …" line in
+    /// BillingPlanModal; the UI interprets the value based on plan_status
+    /// (hide for paused/cancelled/past_due where the stored value can be
+    /// stale or meaningless).
+    #[serde(default)]
+    #[schema(read_only)]
+    pub next_renewal_at: Option<DateTime<Utc>>,
     /// Brevo company ID - internal, not exposed to API
     #[serde(default, skip_serializing)]
     pub brevo_company_id: Option<String>,

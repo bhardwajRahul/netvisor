@@ -241,6 +241,7 @@ impl Subscriber<BillingOperation> for PosthogService {
             BillingOperationDiscriminants::PaymentActionRequired,
             BillingOperationDiscriminants::PaymentRecovered,
             BillingOperationDiscriminants::FeatureLimitHit,
+            BillingOperationDiscriminants::StripeCustomerCreated,
         ])
     }
 

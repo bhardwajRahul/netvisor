@@ -61,6 +61,8 @@
 	"billing_addPaymentMethod": "Add Payment Method",
 	"billing_everythingInPlanPlus": "Everything in {planName}, plus:",
 	"billing_firstInvoiceOn": "First invoice on {date}",
+	"billing_nextRenewalOn": "Next renewal on {date}",
+	"billing_subscriptionEndsOn": "Subscription ends on {date}",
 	"billing_hideFeatures": "Hide features",
 	"billing_noPaymentMethodBannerBody": "Your subscription has no payment method on file. Add one to avoid losing access.",
 	"billing_paymentMethodAdded": "Payment method added.",

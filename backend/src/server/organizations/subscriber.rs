@@ -82,9 +82,19 @@ impl Subscriber<BillingOperation> for OrganizationService {
                     organization.base.last_paused_at = Some(event.timestamp);
                     changed = true;
                 }
-                BillingOperation::CheckoutCompleted { plan, .. } => {
+                BillingOperation::CheckoutCompleted {
+                    plan,
+                    next_renewal_at,
+                    ..
+                } => {
                     if organization.base.plan.as_ref() != Some(plan) {
                         organization.base.plan = Some(*plan);
+                        changed = true;
+                    }
+                    if next_renewal_at.is_some()
+                        && organization.base.next_renewal_at != *next_renewal_at
+                    {
+                        organization.base.next_renewal_at = *next_renewal_at;
                         changed = true;
                     }
                 }
@@ -99,6 +109,13 @@ impl Subscriber<BillingOperation> for OrganizationService {
                         organization.base.trial_end_date = Some(*trial_end);
                         changed = true;
                     }
+                    // Stripe sets the trialing sub's current_period_end to
+                    // trial_end; mirror it onto next_renewal_at so the UI
+                    // shows "First invoice on <trial_end>".
+                    if organization.base.next_renewal_at != Some(*trial_end) {
+                        organization.base.next_renewal_at = Some(*trial_end);
+                        changed = true;
+                    }
                 }
                 BillingOperation::TrialExtended { new_trial_end, .. } => {
                     if !organization.base.trial_extended_used {
@@ -109,12 +126,31 @@ impl Subscriber<BillingOperation> for OrganizationService {
                         organization.base.trial_end_date = Some(*new_trial_end);
                         changed = true;
                     }
+                    // Trial extension shifts the trialing sub's period_end too.
+                    if organization.base.next_renewal_at != Some(*new_trial_end) {
+                        organization.base.next_renewal_at = Some(*new_trial_end);
+                        changed = true;
+                    }
+                }
+                BillingOperation::TrialEnded {
+                    converted: true,
+                    next_renewal_at,
+                    ..
+                } => {
+                    // Trial converted to paid; Stripe re-anchored
+                    // current_period_end. Mirror it.
+                    if next_renewal_at.is_some()
+                        && organization.base.next_renewal_at != *next_renewal_at
+                    {
+                        organization.base.next_renewal_at = *next_renewal_at;
+                        changed = true;
+                    }
                 }
                 BillingOperation::PlanChanged {
                     from,
                     to,
                     is_downgrade,
-                    ..
+                    next_renewal_at,
                 } => {
                     if organization.base.plan.as_ref() != Some(to) {
                         organization.base.plan = Some(*to);
@@ -123,6 +159,32 @@ impl Subscriber<BillingOperation> for OrganizationService {
                     if *is_downgrade {
                         organization.base.last_downgrade_at = Some(event.timestamp);
                         organization.base.last_downgrade_from_plan = Some(*from);
+                        changed = true;
+                    }
+                    if next_renewal_at.is_some()
+                        && organization.base.next_renewal_at != *next_renewal_at
+                    {
+                        organization.base.next_renewal_at = *next_renewal_at;
+                        changed = true;
+                    }
+                }
+                BillingOperation::Reactivated {
+                    next_renewal_at, ..
+                } => {
+                    if next_renewal_at.is_some()
+                        && organization.base.next_renewal_at != *next_renewal_at
+                    {
+                        organization.base.next_renewal_at = *next_renewal_at;
+                        changed = true;
+                    }
+                }
+                BillingOperation::PaymentRecovered {
+                    next_renewal_at, ..
+                } => {
+                    if next_renewal_at.is_some()
+                        && organization.base.next_renewal_at != *next_renewal_at
+                    {
+                        organization.base.next_renewal_at = *next_renewal_at;
                         changed = true;
                     }
                 }
@@ -145,6 +207,10 @@ impl Subscriber<BillingOperation> for OrganizationService {
                         organization.base.plan = Some(free_plan);
                     }
                     organization.base.has_payment_method = false;
+                    // Subscription is gone; clear the renewal mirror.
+                    if organization.base.next_renewal_at.is_some() {
+                        organization.base.next_renewal_at = None;
+                    }
                     changed = true;
                 }
                 BillingOperation::DiscountApplied {
@@ -155,6 +221,25 @@ impl Subscriber<BillingOperation> for OrganizationService {
                     organization.base.discount_save_offer_percent_off = Some(*percent_off);
                     organization.base.discount_save_offer_active_until = Some(*expires_at);
                     changed = true;
+                }
+                BillingOperation::PaymentMethodAdded => {
+                    if !organization.base.has_payment_method {
+                        organization.base.has_payment_method = true;
+                        changed = true;
+                    }
+                }
+                BillingOperation::PaymentMethodRemoved => {
+                    if organization.base.has_payment_method {
+                        organization.base.has_payment_method = false;
+                        changed = true;
+                    }
+                }
+                BillingOperation::StripeCustomerCreated { customer_id } => {
+                    if organization.base.stripe_customer_id.as_deref() != Some(customer_id.as_str())
+                    {
+                        organization.base.stripe_customer_id = Some(customer_id.clone());
+                        changed = true;
+                    }
                 }
                 _ => {}
             }
