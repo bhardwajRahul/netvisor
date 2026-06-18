@@ -3097,19 +3097,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-06-18T14:21:58.855744Z",
+             *       "created_at": "2026-06-18T18:11:52.635298Z",
              *       "first_discovery_id": null,
-             *       "id": "f518232d-838b-4ded-8d7d-752daaef0c38",
+             *       "id": "3eb9c6f0-7e9d-4055-9bbe-842cce529a58",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-06-18T14:21:58.855744Z",
+             *       "last_seen_at": "2026-06-18T18:11:52.635298Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-06-18T14:21:58.855744Z",
-             *       "valid_from": "2026-06-18T14:21:58.855744Z",
+             *       "updated_at": "2026-06-18T18:11:52.635298Z",
+             *       "valid_from": "2026-06-18T18:11:52.635298Z",
              *       "valid_to": null
              *     }
              */
@@ -3446,19 +3446,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-06-18T14:21:58.834373Z",
+             *               "created_at": "2026-06-18T18:11:52.615910Z",
              *               "first_discovery_id": null,
-             *               "id": "951e7fe0-b044-46ac-bd13-b8d4e72f2def",
+             *               "id": "6d410d81-27dc-4118-9f62-da9f589633af",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-06-18T14:21:58.834373Z",
+             *               "last_seen_at": "2026-06-18T18:11:52.615910Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-06-18T14:21:58.834373Z",
-             *               "valid_from": "2026-06-18T14:21:58.834373Z",
+             *               "updated_at": "2026-06-18T18:11:52.615910Z",
+             *               "valid_from": "2026-06-18T18:11:52.615910Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3472,7 +3472,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Frigate",
+             *           "service_definition": "Ollama",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3828,19 +3828,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-06-18T14:21:58.848617Z",
+             *           "created_at": "2026-06-18T18:11:52.629210Z",
              *           "first_discovery_id": null,
-             *           "id": "6d5652c6-26cb-49fc-b51f-776252c255f5",
+             *           "id": "08a50502-acf4-4aef-9e36-254a1c1b41c7",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-06-18T14:21:58.848617Z",
+             *           "last_seen_at": "2026-06-18T18:11:52.629210Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-06-18T14:21:58.848617Z",
-             *           "valid_from": "2026-06-18T14:21:58.848617Z",
+             *           "updated_at": "2026-06-18T18:11:52.629210Z",
+             *           "valid_from": "2026-06-18T18:11:52.629210Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -3854,7 +3854,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Frigate",
+             *       "service_definition": "Ollama",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4307,19 +4307,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-06-18T14:21:58.834795Z",
+         *       "created_at": "2026-06-18T18:11:52.616343Z",
          *       "first_discovery_id": null,
-         *       "id": "a2834703-32fa-43ae-a487-937f8a9bcf4e",
+         *       "id": "24ba28d3-332b-4613-9f7c-ed1adf314293",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-06-18T14:21:58.834795Z",
+         *       "last_seen_at": "2026-06-18T18:11:52.616343Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-06-18T14:21:58.834795Z",
-         *       "valid_from": "2026-06-18T14:21:58.834795Z",
+         *       "updated_at": "2026-06-18T18:11:52.616343Z",
+         *       "valid_from": "2026-06-18T18:11:52.616343Z",
          *       "valid_to": null
          *     }
          */
@@ -4534,7 +4534,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Frigate",
+         *           "service_definition": "Ollama",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -5484,19 +5484,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-06-18T14:21:58.833856Z",
+         *               "created_at": "2026-06-18T18:11:52.615427Z",
          *               "first_discovery_id": null,
-         *               "id": "3a929cf1-6f78-407b-8676-03bbb218f4b5",
+         *               "id": "d7da403e-7bf1-4f7f-bbd1-b27f90255d96",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-06-18T14:21:58.833856Z",
+         *               "last_seen_at": "2026-06-18T18:11:52.615427Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-06-18T14:21:58.833856Z",
-         *               "valid_from": "2026-06-18T14:21:58.833856Z",
+         *               "updated_at": "2026-06-18T18:11:52.615427Z",
+         *               "valid_from": "2026-06-18T18:11:52.615427Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -5510,7 +5510,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Frigate",
+         *           "service_definition": "Ollama",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -6190,6 +6190,17 @@ export interface components {
              */
             readonly last_paused_at?: string | null;
             name: string;
+            /**
+             * Format: date-time
+             * @description Stripe `subscription.items.data[0].current_period_end`, mirrored on
+             *     every billing event that re-anchors the period (checkout, trial start
+             *     / end, plan change, renewal, pause/resume, reactivate). Cleared by
+             *     SubscriptionCancelled. Powers the "Next renewal on …" line in
+             *     BillingPlanModal; the UI interprets the value based on plan_status
+             *     (hide for paused/cancelled/past_due where the stored value can be
+             *     stale or meaningless).
+             */
+            readonly next_renewal_at?: string | null;
             onboarding: components["schemas"]["OnboardingOperationDiscriminants"][];
             plan: null | components["schemas"]["BillingPlan"];
             plan_status: null | components["schemas"]["PlanStatus"];
@@ -6914,19 +6925,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-06-18T14:21:58.834706Z",
+         *           "created_at": "2026-06-18T18:11:52.616257Z",
          *           "first_discovery_id": null,
-         *           "id": "7eda050b-0234-4083-9701-28eda27a3f83",
+         *           "id": "60608f1c-bb21-4afc-b007-89df1b4437a9",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-06-18T14:21:58.834706Z",
+         *           "last_seen_at": "2026-06-18T18:11:52.616257Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-06-18T14:21:58.834706Z",
-         *           "valid_from": "2026-06-18T14:21:58.834706Z",
+         *           "updated_at": "2026-06-18T18:11:52.616257Z",
+         *           "valid_from": "2026-06-18T18:11:52.616257Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -6940,7 +6951,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Frigate",
+         *       "service_definition": "Ollama",
          *       "source": {
          *         "type": "Manual"
          *       },

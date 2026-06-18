@@ -10891,19 +10891,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-06-18T14:21:58.855742Z",
+              "created_at": "2026-06-18T18:11:52.635297Z",
               "first_discovery_id": null,
-              "id": "6925797d-7d4b-4a94-b48e-5af8b02c7f02",
+              "id": "d08e41c9-d7f3-45fc-b03d-9d6cbc6c92b1",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-18T14:21:58.855742Z",
+              "last_seen_at": "2026-06-18T18:11:52.635297Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-18T14:21:58.855742Z",
-              "valid_from": "2026-06-18T14:21:58.855742Z",
+              "updated_at": "2026-06-18T18:11:52.635297Z",
+              "valid_from": "2026-06-18T18:11:52.635297Z",
               "valid_to": null
             }
           },
@@ -11889,19 +11889,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-06-18T14:21:58.834375Z",
+                      "created_at": "2026-06-18T18:11:52.615925Z",
                       "first_discovery_id": null,
-                      "id": "1961b43e-d245-4352-8bc6-b87562338d43",
+                      "id": "d3d531c8-2764-41ab-b681-b278f6bf00b5",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-06-18T14:21:58.834375Z",
+                      "last_seen_at": "2026-06-18T18:11:52.615925Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-06-18T14:21:58.834375Z",
-                      "valid_from": "2026-06-18T14:21:58.834375Z",
+                      "updated_at": "2026-06-18T18:11:52.615925Z",
+                      "valid_from": "2026-06-18T18:11:52.615925Z",
                       "valid_to": null
                     }
                   ],
@@ -11915,7 +11915,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Frigate",
+                  "service_definition": "Ollama",
                   "source": {
                     "type": "Manual"
                   },
@@ -12906,19 +12906,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-06-18T14:21:58.848576Z",
+                  "created_at": "2026-06-18T18:11:52.629182Z",
                   "first_discovery_id": null,
-                  "id": "1a99f1ba-5b39-4da5-b486-a62e8ff4c2e9",
+                  "id": "1bafbdc0-fe74-4483-be6b-156c853e375b",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-18T14:21:58.848576Z",
+                  "last_seen_at": "2026-06-18T18:11:52.629182Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-18T14:21:58.848576Z",
-                  "valid_from": "2026-06-18T14:21:58.848576Z",
+                  "updated_at": "2026-06-18T18:11:52.629182Z",
+                  "valid_from": "2026-06-18T18:11:52.629182Z",
                   "valid_to": null
                 }
               ],
@@ -12932,7 +12932,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Frigate",
+              "service_definition": "Ollama",
               "source": {
                 "type": "Manual"
               },
@@ -14632,19 +14632,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-06-18T14:21:58.834809Z",
+          "created_at": "2026-06-18T18:11:52.616364Z",
           "first_discovery_id": null,
-          "id": "eb5b2641-f41d-4e51-aea0-7f51b4f2a97b",
+          "id": "88af60bf-5f90-40af-a3d4-ea6d3bcbef3d",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-06-18T14:21:58.834809Z",
+          "last_seen_at": "2026-06-18T18:11:52.616364Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-06-18T14:21:58.834809Z",
-          "valid_from": "2026-06-18T14:21:58.834809Z",
+          "updated_at": "2026-06-18T18:11:52.616364Z",
+          "valid_from": "2026-06-18T18:11:52.616364Z",
           "valid_to": null
         }
       },
@@ -15234,7 +15234,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Frigate",
+              "service_definition": "Ollama",
               "tags": [],
               "virtualization": null
             }
@@ -17872,19 +17872,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-06-18T14:21:58.833863Z",
+                  "created_at": "2026-06-18T18:11:52.615434Z",
                   "first_discovery_id": null,
-                  "id": "8ce7b347-9ff8-4cd6-8a2a-557ccc1e6a0b",
+                  "id": "2b90f9a3-eac6-4374-a265-22fc3e1b0ca0",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-18T14:21:58.833863Z",
+                  "last_seen_at": "2026-06-18T18:11:52.615434Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-18T14:21:58.833863Z",
-                  "valid_from": "2026-06-18T14:21:58.833863Z",
+                  "updated_at": "2026-06-18T18:11:52.615434Z",
+                  "valid_from": "2026-06-18T18:11:52.615434Z",
                   "valid_to": null
                 }
               ],
@@ -17898,7 +17898,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Frigate",
+              "service_definition": "Ollama",
               "source": {
                 "type": "Manual"
               },
@@ -19781,6 +19781,15 @@
           "name": {
             "type": "string"
           },
+          "next_renewal_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Stripe `subscription.items.data[0].current_period_end`, mirrored on\nevery billing event that re-anchors the period (checkout, trial start\n/ end, plan change, renewal, pause/resume, reactivate). Cleared by\nSubscriptionCancelled. Powers the \"Next renewal on …\" line in\nBillingPlanModal; the UI interprets the value based on plan_status\n(hide for paused/cancelled/past_due where the stored value can be\nstale or meaningless).",
+            "readOnly": true
+          },
           "onboarding": {
             "type": "array",
             "items": {
@@ -20320,19 +20329,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-06-18T14:21:58.823016Z",
+                        "created_at": "2026-06-18T18:11:52.603680Z",
                         "first_discovery_id": null,
-                        "id": "916ed259-652a-411a-8ada-277a9ef6c3f3",
+                        "id": "9b6e1f41-65b4-4b1a-870c-aa0c97a4fbeb",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-06-18T14:21:58.823016Z",
+                        "last_seen_at": "2026-06-18T18:11:52.603680Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-06-18T14:21:58.823016Z",
-                        "valid_from": "2026-06-18T14:21:58.823016Z",
+                        "updated_at": "2026-06-18T18:11:52.603680Z",
+                        "valid_from": "2026-06-18T18:11:52.603680Z",
                         "valid_to": null
                       }
                     ],
@@ -20346,7 +20355,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Frigate",
+                    "service_definition": "Ollama",
                     "source": {
                       "type": "Manual"
                     },
@@ -20467,19 +20476,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-06-18T14:21:58.847310Z",
+                    "created_at": "2026-06-18T18:11:52.627991Z",
                     "first_discovery_id": null,
-                    "id": "ba10cdaf-1075-4e76-ba34-69bde2ec1049",
+                    "id": "c6bab76a-bec4-425a-b516-fbddc8d01d7e",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-06-18T14:21:58.847310Z",
+                    "last_seen_at": "2026-06-18T18:11:52.627991Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-06-18T14:21:58.847310Z",
-                    "valid_from": "2026-06-18T14:21:58.847310Z",
+                    "updated_at": "2026-06-18T18:11:52.627991Z",
+                    "valid_from": "2026-06-18T18:11:52.627991Z",
                     "valid_to": null
                   }
                 ],
@@ -20493,7 +20502,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Frigate",
+                "service_definition": "Ollama",
                 "source": {
                   "type": "Manual"
                 },
@@ -22094,19 +22103,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-06-18T14:21:58.834717Z",
+              "created_at": "2026-06-18T18:11:52.616275Z",
               "first_discovery_id": null,
-              "id": "dd3eeed1-6f33-4320-ba8d-7fabd53d2d23",
+              "id": "5654cfef-bdbd-4b60-a3ce-6de84d2a0dbc",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-18T14:21:58.834717Z",
+              "last_seen_at": "2026-06-18T18:11:52.616275Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-18T14:21:58.834717Z",
-              "valid_from": "2026-06-18T14:21:58.834717Z",
+              "updated_at": "2026-06-18T18:11:52.616275Z",
+              "valid_from": "2026-06-18T18:11:52.616275Z",
               "valid_to": null
             }
           ],
@@ -22120,7 +22129,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Frigate",
+          "service_definition": "Ollama",
           "source": {
             "type": "Manual"
           },
