@@ -1223,6 +1223,17 @@ impl BillingService {
         // SDK plumbing, so we can't distinguish a user-clicked resume from
         // a scheduled auto-resume. The signal remains useful: "this org
         // resumed."
+        //
+        // KNOWN LIMITATION: when Stripe auto-resumes at `resumes_at`
+        // (versus the user clicking Resume now, which routes through
+        // `resume_subscription` and shifts the billing_cycle_anchor),
+        // the next renewal date is NOT pushed forward by the paused
+        // duration here — we just emit the event. The webhook would
+        // need an extra UpdateSubscription call to mirror the manual-
+        // resume shift, with metadata-based idempotency to avoid
+        // double-shifting when the manual path's own Stripe call
+        // re-enters this arm. Punted to a follow-up once manual resume
+        // is validated against Stripe.
         if prior_status == Some(PlanStatus::Paused)
             && sub.pause_collection.is_none()
             && let Some(owner) = owners.first()
@@ -2177,10 +2188,12 @@ impl BillingService {
             ));
         }
 
-        let resumes_at = Utc::now() + chrono::Duration::days(duration.days() as i64);
+        let now = Utc::now();
+        let resumes_at = now + chrono::Duration::days(duration.days() as i64);
 
         let meta = StripeSubscriptionMetadata {
             scanopy_pause_duration_days: Some(duration.days()),
+            scanopy_paused_at: Some(now.timestamp()),
             ..Default::default()
         };
 
@@ -2247,20 +2260,18 @@ impl BillingService {
             return Err(anyhow!("Subscription is not paused; nothing to resume."));
         }
 
-        ClearPauseCollection::new(sub.id.clone())
-            .customize()
-            .send(&self.stripe)
-            .await
-            .map_err(|e| {
-                tracing::error!(
-                    organization_id = %organization_id,
-                    subscription_id = %sub.id,
-                    subscription_status = %sub.status,
-                    error = ?e,
-                    "Stripe rejected resume"
-                );
-                anyhow!("Stripe rejected the resume request: {e}")
-            })?;
+        let request = build_resume_from_pause_request(&sub);
+
+        request.customize().send(&self.stripe).await.map_err(|e| {
+            tracing::error!(
+                organization_id = %organization_id,
+                subscription_id = %sub.id,
+                subscription_status = %sub.status,
+                error = ?e,
+                "Stripe rejected resume"
+            );
+            anyhow!("Stripe rejected the resume request: {e}")
+        })?;
 
         Ok("Subscription resumed.".to_string())
     }
@@ -2513,9 +2524,14 @@ impl BillingService {
         let percent_off = coupon.percent_off.unwrap_or(0.0).round() as i64;
         let duration_in_months = coupon.duration_in_months.unwrap_or(12);
 
-        // The coupon is "active" for `duration_in_months` from now; if the
-        // next renewal lands after that window, no invoice falls inside the
-        // discount window so the offer is functionally a no-op. Hide it.
+        // Per Stripe's repeating-coupon docs, a `duration_in_months=N` coupon
+        // applies to every invoice generated in the N months after the coupon
+        // is first applied. For a yearly sub the discount, when it catches an
+        // invoice, applies to the full yearly amount — but if the next renewal
+        // lands after the coupon's N-month window, no invoice falls inside
+        // and the offer is functionally a no-op. Hide it in that case so we
+        // don't promise the user something we can't deliver.
+        // See: https://docs.stripe.com/billing/subscriptions/coupons
         let coupon_window_end =
             Utc::now() + chrono::Months::new(u32::try_from(duration_in_months).unwrap_or(12));
         if next_renewal_at > coupon_window_end {
@@ -2729,38 +2745,118 @@ fn map_cancel_reason_to_stripe(
     })
 }
 
-/// Form body for clearing `pause_collection` via the Stripe REST API.
+/// Build the resume request for a paused subscription, shifting the next
+/// renewal forward by the actual paused days when we have the metadata to
+/// compute it. Falls back to a plain `pause_collection=` clear if the
+/// metadata is missing or the sub has no items (legacy / unexpected state).
 ///
-/// Stripe accepts an empty form value (`pause_collection=`) as the documented
-/// "clear this field" convention. The SDK's `UpdateSubscription::pause_collection`
-/// setter takes a typed struct and can't produce that wire representation.
-#[derive(serde::Serialize)]
-struct ClearPauseCollectionForm {
-    pause_collection: &'static str,
+/// Actual paused days = clamp(now - scanopy_paused_at, 0, scanopy_pause_duration_days).
+/// Clamping at the requested duration prevents an over-shift if the webhook
+/// fires late after Stripe auto-resumed.
+fn build_resume_from_pause_request(sub: &stripe_billing::Subscription) -> ResumeFromPause {
+    let meta = StripeSubscriptionMetadata::from_stripe(&sub.metadata);
+    let Some(paused_at_ts) = meta.scanopy_paused_at else {
+        tracing::warn!(
+            subscription_id = %sub.id,
+            "Resume: scanopy_paused_at missing; clearing pause_collection without renewal shift",
+        );
+        return ResumeFromPause::clear_only(sub.id.clone());
+    };
+    let Some(current_period_end) = sub.items.data.first().map(|i| i.current_period_end) else {
+        tracing::warn!(
+            subscription_id = %sub.id,
+            "Resume: subscription has no items; clearing pause_collection without renewal shift",
+        );
+        return ResumeFromPause::clear_only(sub.id.clone());
+    };
+
+    let now_ts = Utc::now().timestamp();
+    let raw_elapsed = (now_ts - paused_at_ts).max(0);
+    let cap = meta
+        .scanopy_pause_duration_days
+        .map(|d| i64::from(d) * 86_400)
+        .unwrap_or(raw_elapsed);
+    let actual_paused_secs = raw_elapsed.min(cap);
+    let new_anchor = current_period_end + actual_paused_secs;
+
+    tracing::info!(
+        subscription_id = %sub.id,
+        paused_at_ts,
+        now_ts,
+        actual_paused_secs,
+        original_period_end = current_period_end,
+        new_anchor,
+        "Resume: shifting billing_cycle_anchor forward by actual paused duration",
+    );
+
+    ResumeFromPause::with_shifted_anchor(sub.id.clone(), new_anchor)
 }
 
-/// Custom Stripe request used by [`BillingService::resume_subscription`].
+/// Form body for the resume-from-pause Stripe REST request.
+///
+/// Two pieces the SDK builder can't express directly:
+///  - `pause_collection=` (empty value): Stripe's documented "clear this
+///    field" convention. The SDK's typed `pause_collection` setter can't
+///    produce that wire representation.
+///  - `billing_cycle_anchor=<unix_ts>`: a future timestamp to shift the
+///    next renewal forward by the actual paused days. The alpha.7 SDK's
+///    `UpdateSubscriptionBillingCycleAnchor` enum is `Now | Unchanged`
+///    only and doesn't accept an absolute timestamp.
+#[derive(serde::Serialize)]
+struct ResumeFromPauseForm {
+    pause_collection: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    billing_cycle_anchor: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    proration_behavior: Option<&'static str>,
+}
+
+/// Custom Stripe request used by [`BillingService::resume_subscription`] and
+/// the auto-resume webhook arm.
 ///
 /// Implements [`StripeRequest`] directly so it reuses the existing
 /// `stripe::Client` (auth, retries, response decoding) without dropping to raw
 /// HTTP or stashing the Stripe secret on `BillingService`.
-struct ClearPauseCollection {
+struct ResumeFromPause {
     sub_id: stripe_billing::SubscriptionId,
-    body: ClearPauseCollectionForm,
+    body: ResumeFromPauseForm,
 }
 
-impl ClearPauseCollection {
-    fn new(sub_id: stripe_billing::SubscriptionId) -> Self {
+impl ResumeFromPause {
+    /// Clear `pause_collection` without shifting the billing cycle. Used as
+    /// a fallback when we can't compute a renewal shift (e.g. metadata
+    /// missing, or the sub has no items to read `current_period_end` from).
+    fn clear_only(sub_id: stripe_billing::SubscriptionId) -> Self {
         Self {
             sub_id,
-            body: ClearPauseCollectionForm {
+            body: ResumeFromPauseForm {
                 pause_collection: "",
+                billing_cycle_anchor: None,
+                proration_behavior: None,
+            },
+        }
+    }
+
+    /// Clear `pause_collection` AND shift the next renewal forward by the
+    /// actual paused duration via `billing_cycle_anchor`. `proration_behavior`
+    /// is `none` so the shift doesn't charge or credit the customer at
+    /// resume time — Stripe just pushes the next invoice date forward.
+    fn with_shifted_anchor(
+        sub_id: stripe_billing::SubscriptionId,
+        new_anchor_unix_ts: i64,
+    ) -> Self {
+        Self {
+            sub_id,
+            body: ResumeFromPauseForm {
+                pause_collection: "",
+                billing_cycle_anchor: Some(new_anchor_unix_ts),
+                proration_behavior: Some("none"),
             },
         }
     }
 }
 
-impl StripeRequest for ClearPauseCollection {
+impl StripeRequest for ResumeFromPause {
     type Output = stripe_billing::Subscription;
 
     fn build(&self) -> RequestBuilder {

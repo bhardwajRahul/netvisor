@@ -29,6 +29,7 @@
 		settings_billing_contactUs,
 		settings_billing_currentPlan,
 		settings_billing_discount_active,
+		settings_billing_discount_active_yearly,
 		settings_billing_downgrade_pending,
 		settings_billing_manageSubscription,
 		settings_billing_needHelp,
@@ -169,6 +170,7 @@
 		if (expiresAt.getTime() <= Date.now()) return null;
 		return {
 			percentOff: percent,
+			rate: org.plan?.rate ?? 'Month',
 			expiresAt: expiresAt.toLocaleDateString(undefined, {
 				month: 'long',
 				day: 'numeric',
@@ -398,10 +400,16 @@
 											<p
 												class="mt-1 inline-block rounded-md bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-300"
 											>
-												{settings_billing_discount_active({
-													percentOff: activeDiscount.percentOff,
-													expiresAt: activeDiscount.expiresAt
-												})}
+												{#if activeDiscount.rate === 'Year'}
+													{settings_billing_discount_active_yearly({
+														percentOff: activeDiscount.percentOff
+													})}
+												{:else}
+													{settings_billing_discount_active({
+														percentOff: activeDiscount.percentOff,
+														expiresAt: activeDiscount.expiresAt
+													})}
+												{/if}
 											</p>
 										{/if}
 									</div>
@@ -578,17 +586,25 @@
 										>
 											{settings_billing_reactivateSubscription()}
 										</button>
-										<button onclick={handleManageSubscription} class="btn-secondary w-full">
+										<button
+											type="button"
+											onclick={handleManageSubscription}
+											class="text-link self-center text-sm hover:underline"
+										>
 											{settings_billing_manageSubscription()}
 										</button>
 									</div>
 								{:else if org.plan_status === 'active' || org.plan_status === 'trialing'}
 									<div class="flex flex-col gap-2">
-										<button onclick={handleManageSubscription} class="btn-secondary w-full">
-											{settings_billing_manageSubscription()}
-										</button>
 										<button onclick={openCancelModal} class="btn-secondary w-full">
 											{settings_billing_cancelSubscription()}
+										</button>
+										<button
+											type="button"
+											onclick={handleManageSubscription}
+											class="text-link self-center text-sm hover:underline"
+										>
+											{settings_billing_manageSubscription()}
 										</button>
 									</div>
 								{/if}
