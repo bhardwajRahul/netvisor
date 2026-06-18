@@ -985,67 +985,97 @@ impl BillingService {
         // `cancel_at_period_end` is asymmetric — only set when WE pass it
         // explicitly via the API — so we don't gate on it.
         //
-        // Idempotency: only emit on the false→true transition. Subsequent
-        // updates while still pending (e.g., user changes their email)
-        // would otherwise re-emit; the subscriber's plan_status mirror
-        // hides the duplicate from `implied_status`, but downstream
-        // analytics see two CancellationInitiated events for one decision.
+        // Stripe Portal-with-reason fires TWO update webhooks ~hundreds of ms
+        // apart: the first carries only Stripe's internal `reason`; the second
+        // carries the user-provided `feedback` + `comment`. We model these as
+        // two distinct events:
+        //   - `CancellationInitiated`: the cancel-scheduled signal (always
+        //     fires on the false→true plan_status transition).
+        //   - `CancellationFeedbackProvided`: the user-input signal (fires
+        //     when cancellation_details carries feedback or comment).
+        // Modeling them separately avoids the dedup-via-flag dance and matches
+        // Stripe's actual two-webhook reality.
         if let Some(period_end_ts) = sub.cancel_at {
-            // Diagnostic 2026-06-17: stripe_feedback/comment are coming through
-            // as null on CancellationInitiated even when the Portal collected
-            // them (subscription_cancelled fired later carries them correctly).
-            // Trace the actual cancellation_details Stripe sends on each
-            // cancel-scheduled webhook to distinguish:
-            //   A) Portal fires the update webhook BEFORE writing details
-            //   B) Two webhooks fire back-to-back; first lacks details; our
-            //      idempotency guard below skips the second
-            tracing::info!(
-                organization_id = %organization.id,
-                subscription_id = %sub.id,
-                period_end_ts,
-                prior_plan_status = ?prior_status,
-                cancellation_details = ?sub.cancellation_details,
-                "Subscription update webhook: scheduled cancel detected"
-            );
-            if prior_status == Some(PlanStatus::PendingCancellation) {
+            let (stripe_feedback, comment, stripe_reason) =
+                extract_cancellation_details(sub.cancellation_details.as_ref());
+            let has_user_feedback = stripe_feedback.is_some() || comment.is_some();
+
+            if prior_status != Some(PlanStatus::PendingCancellation) {
+                // First cancel-scheduled webhook — emit CancellationInitiated.
+                if let Some(owner) = owners.first() {
+                    let authentication: AuthenticatedEntity = owner.clone().into();
+                    let planned_period_end =
+                        chrono::DateTime::<Utc>::from_timestamp(period_end_ts, 0)
+                            .unwrap_or_else(Utc::now);
+                    self.event_bus
+                        .publish(Event::new(
+                            OrgScope {
+                                organization_id: organization.id,
+                            },
+                            BillingOperation::CancellationInitiated {
+                                reason_code: meta.scanopy_cancel_reason,
+                                stripe_feedback,
+                                stripe_reason,
+                                comment: comment.clone(),
+                                save_offer_shown: meta
+                                    .scanopy_cancel_save_offer_shown
+                                    .clone()
+                                    .unwrap_or_default(),
+                                save_offer_redeemed: meta.scanopy_cancel_save_offer_redeemed,
+                                planned_period_end,
+                            },
+                            authentication.clone(),
+                        ))
+                        .await?;
+                    // In-app modal may set feedback in the same Stripe call,
+                    // so the first webhook can already carry user input.
+                    // Portal-with-reason's first webhook never does.
+                    if has_user_feedback {
+                        self.event_bus
+                            .publish(Event::new(
+                                OrgScope {
+                                    organization_id: organization.id,
+                                },
+                                BillingOperation::CancellationFeedbackProvided {
+                                    stripe_feedback,
+                                    stripe_reason,
+                                    comment,
+                                },
+                                authentication,
+                            ))
+                            .await?;
+                    }
+                }
                 tracing::info!(
-                    organization_id = %organization.id,
-                    cancellation_details = ?sub.cancellation_details,
-                    "Subscription already pending cancellation, skipping re-emit"
+                    organization_id = %org_id,
+                    "Subscription marked as pending cancellation"
                 );
-                return Ok(());
+            } else if has_user_feedback {
+                // Follow-up webhook with user input — emit only the feedback
+                // event. The cancellation itself was already announced.
+                if let Some(owner) = owners.first() {
+                    let authentication: AuthenticatedEntity = owner.clone().into();
+                    self.event_bus
+                        .publish(Event::new(
+                            OrgScope {
+                                organization_id: organization.id,
+                            },
+                            BillingOperation::CancellationFeedbackProvided {
+                                stripe_feedback,
+                                stripe_reason,
+                                comment,
+                            },
+                            authentication,
+                        ))
+                        .await?;
+                }
+                tracing::info!(
+                    organization_id = %org_id,
+                    "Cancellation feedback provided",
+                );
             }
-            if let Some(owner) = owners.first() {
-                let authentication: AuthenticatedEntity = owner.clone().into();
-                let planned_period_end = chrono::DateTime::<Utc>::from_timestamp(period_end_ts, 0)
-                    .unwrap_or_else(Utc::now);
-                let (stripe_feedback, comment, stripe_reason) =
-                    extract_cancellation_details(sub.cancellation_details.as_ref());
-                self.event_bus
-                    .publish(Event::new(
-                        OrgScope {
-                            organization_id: organization.id,
-                        },
-                        BillingOperation::CancellationInitiated {
-                            reason_code: meta.scanopy_cancel_reason,
-                            stripe_feedback,
-                            stripe_reason,
-                            comment,
-                            save_offer_shown: meta
-                                .scanopy_cancel_save_offer_shown
-                                .clone()
-                                .unwrap_or_default(),
-                            save_offer_redeemed: meta.scanopy_cancel_save_offer_redeemed,
-                            planned_period_end,
-                        },
-                        authentication,
-                    ))
-                    .await?;
-            }
-            tracing::info!(
-                organization_id = %org_id,
-                "Subscription marked as pending cancellation"
-            );
+            // Otherwise: already initiated, no user feedback on this webhook
+            // — nothing to emit.
             return Ok(());
         }
 
