@@ -14,6 +14,7 @@
 		useExtendTrialMutation
 	} from '$lib/features/billing/queries';
 	import CancelSubscriptionModal from '$lib/features/billing/CancelSubscriptionModal.svelte';
+	import { renewalLabel } from '$lib/features/billing/renewal';
 	import InfoCard from '$lib/shared/components/data/InfoCard.svelte';
 	import { useDashboardQuery } from '$lib/features/home/queries';
 	import {
@@ -148,6 +149,11 @@
 
 	let hasPaymentMethod = $derived(org?.has_payment_method ?? false);
 	let trialEndDate = $derived(org?.trial_end_date ? new Date(org.trial_end_date) : null);
+
+	// Renewal / subscription-ends label for the current plan; null when not
+	// applicable (trialing has its own dedicated trial-ends-on line above;
+	// Free / paused / past_due / cancelled don't surface a date here).
+	let currentPlanRenewalLine = $derived(renewalLabel(org));
 	let trialDaysLeft = $derived.by(() => {
 		if (!trialEndDate) return null;
 		const now = new Date();
@@ -395,6 +401,8 @@
 													})
 												})}
 											</p>
+										{:else if currentPlanRenewalLine}
+											<p class="text-secondary mt-1 text-xs">{currentPlanRenewalLine}</p>
 										{/if}
 										{#if activeDiscount}
 											<p
