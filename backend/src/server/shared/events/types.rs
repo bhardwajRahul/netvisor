@@ -214,6 +214,16 @@ pub enum BillingOperation {
         save_offer_redeemed: Option<SaveOffer>,
         planned_period_end: DateTime<Utc>,
     },
+    /// User-provided cancellation reason/comment, captured on a follow-up
+    /// Stripe webhook (Portal-with-reason flow) ~hundreds of ms after the
+    /// initial `CancellationInitiated`. Separate event because Stripe persists
+    /// the two pieces of state at different times and either may fire alone
+    /// — no-reason Portal cancels never produce this event.
+    CancellationFeedbackProvided {
+        stripe_feedback: Option<CancellationDetailsFeedback>,
+        stripe_reason: Option<CancellationDetailsReason>,
+        comment: Option<String>,
+    },
     /// User cleared a pending cancellation (via in-app reactivate). Stripe's
     /// `cancel_at` flips from `Some(period_end)` back to `None`; we emit this
     /// so the org subscriber's `implied_status` mirror restores `plan_status`
@@ -318,6 +328,7 @@ impl BillingOperation {
             | Self::FeatureLimitHit { .. }
             | Self::PaymentSucceeded { .. }
             | Self::DiscountApplied { .. }
+            | Self::CancellationFeedbackProvided { .. }
             | Self::PaymentMethodAdded
             | Self::PaymentMethodRemoved => None,
         }
@@ -496,6 +507,15 @@ mod tests {
             save_offer_shown: vec![],
             save_offer_redeemed: None,
             planned_period_end: DateTime::<Utc>::from_timestamp(1_700_000_000, 0).unwrap(),
+        });
+    }
+
+    #[test]
+    fn cancellation_feedback_provided_round_trip() {
+        round_trip(BillingOperation::CancellationFeedbackProvided {
+            stripe_feedback: Some(CancellationDetailsFeedback::TooExpensive),
+            stripe_reason: Some(CancellationDetailsReason::CancellationRequested),
+            comment: Some("test 6/18".to_string()),
         });
     }
 
