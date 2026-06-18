@@ -2215,11 +2215,23 @@ impl BillingService {
 
         let sub = self.find_current_subscription(&organization).await?;
 
-        // Eligibility: Stripe rejects `pause_collection` on non-Active subs
-        // (trialing, paused, past_due, etc.). Catch that pre-flight with a
-        // clear message instead of letting the SDK call fail with a raw
-        // Stripe error.
-        if sub.status != SubscriptionStatus::Active {
+        // Eligibility: pause_collection is sensible on subs that are
+        // actively billing or about to bill (Active / Trialing). Stripe
+        // refuses it on past_due / canceled / incomplete / etc. — catch
+        // those pre-flight with a clear message instead of letting the
+        // SDK call fail with a raw Stripe error.
+        //
+        // Trialing is allowed because (a) Stripe accepts pause_collection
+        // on trialing subs, and (b) a resume that shifted the renewal via
+        // `trial_end` leaves the Stripe sub in `trialing` status even
+        // while our typed `plan_status` mirror says `active`. The cancel
+        // modal already hides save offers when `plan_status === trialing`,
+        // so the user only reaches this code path when our model
+        // considers the org active.
+        if !matches!(
+            sub.status,
+            SubscriptionStatus::Active | SubscriptionStatus::Trialing
+        ) {
             return Err(anyhow!(
                 "Subscription must be active to pause; current status: {}",
                 sub.status
@@ -2613,7 +2625,16 @@ impl BillingService {
 
         let sub = self.find_current_subscription(&organization).await?;
 
-        if sub.status != SubscriptionStatus::Active {
+        // Same Active/Trialing allowlist as pause: Stripe accepts coupons
+        // on either; only block states where Stripe would reject anyway
+        // (past_due / canceled / incomplete). Trialing is included so
+        // that resumed-after-pause subs (whose Stripe status stays
+        // `trialing` due to the trial_end-based renewal shift) can still
+        // redeem the discount when our model considers them active.
+        if !matches!(
+            sub.status,
+            SubscriptionStatus::Active | SubscriptionStatus::Trialing
+        ) {
             return Err(anyhow!(
                 "Subscription must be active to apply the discount; current status: {}",
                 sub.status
