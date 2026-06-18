@@ -10,6 +10,7 @@ The output is supporting evidence for a Section 889 compliance attestation.
 | File | Role |
 |------|------|
 | `scripts/check-889.sh` | Matcher. POSIX shell + `jq`, no network. Scans CycloneDX SBOM(s), fails on a hit. |
+| `scripts/attest-889.sh` | On-demand attestation bundler. Generates SBOMs + runs the matcher + emits a hash-anchored evidence bundle for a customer. |
 | `scripts/889-vendors.txt` | Maintained prohibited-vendor pattern list (single source of truth). |
 | `scripts/889-allow.txt` | Reviewed false-positive exceptions (only subtracts, never broadens). |
 | `.github/workflows/889-check.yml` | PR gate — analyze-only source SBOM, blocks merge on a hit. |
@@ -33,6 +34,39 @@ syft scan registry:ghcr.io/scanopy/scanopy/server:latest -o cyclonedx-json | jq 
 `file:line` in hit output points at the offending component. The matcher falls
 back to line 1 on minified input. `./scripts/check-889.sh --help` documents all
 options. Exit codes: `0` clean, `1` hit found, `2` usage/dependency error.
+
+## Producing an attestation artifact (between releases)
+
+To hand a customer evidence that the SBOM has been assessed against the 889 list
+— without waiting for a release — run the bundler:
+
+```sh
+# Assess source + the three :latest published images, write a dated bundle.
+./scripts/attest-889.sh
+
+# A specific released tag, or source-only, or an explicit image:
+./scripts/attest-889.sh --tag v1.4.2
+./scripts/attest-889.sh --no-images
+./scripts/attest-889.sh --image ghcr.io/scanopy/scanopy/server:latest
+```
+
+It writes `889-attestation-<date>/` (gitignored) containing:
+
+- `ATTESTATION.md` / `attestation.json` — the signed-off result: standard,
+  PASS/FAIL, assessed commit, components count, tool + vendor-list versions,
+  per-image assessed/not-assessed status.
+- `sbom-*.cdx.json` — the CycloneDX SBOMs assessed (source + each image).
+- `889-vendors.txt` / `889-allow.txt` — the exact policy used, by digest.
+- `summary.txt`, `hits.jsonl` — matcher output (hits empty on PASS).
+- `SHA256SUMS` — digests of everything above (`sha256sum -c SHA256SUMS`).
+
+The script **exits non-zero on a hit**, so it can never emit a PASS bundle for a
+tree that actually contains a covered-entity component. Tar the directory
+(`tar czf 889-attestation-<date>.tar.gz 889-attestation-<date>/`) to hand over.
+
+A private image (e.g. `server-commercial`) is recorded as `not-assessed` unless
+syft can pull it — run `docker login ghcr.io` first, or run the script in CI
+where `GITHUB_TOKEN` has access, to include it.
 
 ## Vendor list — seed methodology
 
