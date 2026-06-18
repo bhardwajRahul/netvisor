@@ -311,8 +311,18 @@ impl EmailService {
         &self,
         to: EmailAddress,
         resumes_at: &str,
+        is_yearly: bool,
+        duration_days: u32,
     ) -> Result<()> {
-        self.dispatch(to, &SubscriptionPaused { resumes_at }).await
+        self.dispatch(
+            to,
+            &SubscriptionPaused {
+                resumes_at,
+                is_yearly,
+                duration_days,
+            },
+        )
+        .await
     }
 
     pub async fn send_subscription_resumed_email(&self, to: EmailAddress) -> Result<()> {

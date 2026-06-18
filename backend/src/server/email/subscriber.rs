@@ -167,10 +167,23 @@ impl Subscriber<BillingOperation> for EmailService {
                 BillingOperation::Reactivated { .. } => {
                     self.send_subscription_reactivated_email(org_owner).await?;
                 }
-                BillingOperation::Paused { resumes_at, .. } => {
+                BillingOperation::Paused {
+                    resumes_at,
+                    plan,
+                    duration_days,
+                } => {
                     let resumes_at_str = resumes_at.format("%B %-d, %Y").to_string();
-                    self.send_subscription_paused_email(org_owner, &resumes_at_str)
-                        .await?;
+                    let is_yearly = matches!(
+                        plan.config().rate,
+                        crate::server::billing::types::base::BillingRate::Year
+                    );
+                    self.send_subscription_paused_email(
+                        org_owner,
+                        &resumes_at_str,
+                        is_yearly,
+                        duration_days,
+                    )
+                    .await?;
                 }
                 BillingOperation::Resumed { .. } => {
                     self.send_subscription_resumed_email(org_owner).await?;
