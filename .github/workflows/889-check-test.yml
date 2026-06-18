@@ -1,0 +1,108 @@
+name: 889 Check (test)
+
+# One-off, manually triggered end-to-end exercise of the NDAA Section 889
+# supply-chain check. Generates a source SBOM and a container-image SBOM with
+# syft, then runs scripts/check-889.sh against both. Fully offline matcher; no
+# secrets required. Run this from the Actions tab and watch it go green before
+# relying on the release/PR wiring.
+
+on:
+  workflow_dispatch:
+    inputs:
+      image:
+        description: 'Container image to scan (registry ref)'
+        required: false
+        default: 'ghcr.io/scanopy/scanopy/server:latest'
+      fail_open_image:
+        description: 'Continue if the image cannot be pulled (source SBOM still checked)'
+        type: boolean
+        required: false
+        default: true
+
+permissions:
+  contents: read
+  packages: read
+
+env:
+  SYFT_VERSION: v1.45.1
+
+jobs:
+  check:
+    name: 889-check-test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install syft
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh \
+            | sh -s -- -b /usr/local/bin "${SYFT_VERSION}"
+          syft version
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate source SBOM
+        run: |
+          syft scan dir:. -o cyclonedx-json | jq . > sbom-source.cdx.json
+          echo "source components: $(jq '.components | length' sbom-source.cdx.json)"
+
+      - name: Generate image SBOM
+        id: image_sbom
+        run: |
+          set -o pipefail
+          if syft scan "registry:${{ inputs.image }}" -o cyclonedx-json | jq . > sbom-image.cdx.json; then
+            echo "image components: $(jq '.components | length' sbom-image.cdx.json)"
+            echo "scanned=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::could not scan image ${{ inputs.image }}"
+            echo "scanned=false" >> "$GITHUB_OUTPUT"
+            if [ "${{ inputs.fail_open_image }}" != "true" ]; then exit 1; fi
+          fi
+
+      - name: Run 889 check
+        run: |
+          SBOMS="sbom-source.cdx.json"
+          if [ "${{ steps.image_sbom.outputs.scanned }}" = "true" ]; then
+            SBOMS="$SBOMS sbom-image.cdx.json"
+          fi
+          # --json writes machine-readable hits to stdout and the human summary
+          # to stderr. Capture the exit code, surface both, then fail on a hit.
+          set +e
+          # shellcheck disable=SC2086
+          ./scripts/check-889.sh --json $SBOMS > hits.jsonl
+          rc=$?
+          set -e
+          cat hits.jsonl
+          exit "$rc"
+
+      - name: Upload SBOMs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sboms-889-test
+          path: |
+            sbom-source.cdx.json
+            sbom-image.cdx.json
+            hits.jsonl
+          if-no-files-found: ignore
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## NDAA Section 889 check (test)"
+            echo ""
+            echo "- Source SBOM components: $(jq '.components | length' sbom-source.cdx.json 2>/dev/null || echo n/a)"
+            if [ "${{ steps.image_sbom.outputs.scanned }}" = "true" ]; then
+              echo "- Image (\`${{ inputs.image }}\`) components: $(jq '.components | length' sbom-image.cdx.json 2>/dev/null || echo n/a)"
+            else
+              echo "- Image \`${{ inputs.image }}\`: not scanned"
+            fi
+            echo "- Hits: $(wc -l < hits.jsonl 2>/dev/null | tr -d ' ' || echo 0)"
+          } >> "$GITHUB_STEP_SUMMARY"

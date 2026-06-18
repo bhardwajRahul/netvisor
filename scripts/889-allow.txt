@@ -1,0 +1,25 @@
+# ==============================================================================
+# 889-allow.txt — reviewed false-positive exceptions for check-889.sh
+# ==============================================================================
+#
+# Components listed here are flagged by a vendor pattern in 889-vendors.txt but
+# have been reviewed and confirmed NOT to originate with an NDAA Section 889
+# covered entity. Each is suppressed from failures and reported as an exception.
+#
+# This list only ever SUBTRACTS documented false positives. Strict-by-default:
+# never add an entry to silence a real or unexamined hit. Every entry must cite
+# why the component is not a covered-entity component.
+#
+# FORMAT (same as 889-vendors.txt): pattern;reviewer;date;reason
+#   pattern is an ERE matched (case-insensitively) against the component's
+#   identity (name, group, publisher, author, supplier, purl, URLs, bom-ref).
+#   Prefer a version-independent name match so version bumps don't reopen it.
+# ==============================================================================
+
+# esbuild and rollup publish one optional platform package per cross-compilation
+# target; one target is Huawei's OpenHarmony OS. These packages are published by
+# the esbuild / rollup OSS projects (not Huawei) and contain only that bundler's
+# prebuilt binary for the OpenHarmony target. They match the "openharmony"
+# vendor pattern but are not covered-entity components.
+@esbuild/openharmony;internal review;2026-06-18;esbuild OSS cross-compile target stub, not a Huawei component
+@rollup/rollup-openharmony;internal review;2026-06-18;rollup OSS cross-compile target stub, not a Huawei component
