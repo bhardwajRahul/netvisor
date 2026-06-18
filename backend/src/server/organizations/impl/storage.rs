@@ -68,6 +68,7 @@ impl Storable for Organization {
                     last_discount_at,
                     discount_save_offer_percent_off,
                     discount_save_offer_active_until,
+                    next_renewal_at,
                     brevo_company_id,
                     plan_limit_notifications,
                     use_case,
@@ -93,6 +94,7 @@ impl Storable for Organization {
                 "last_discount_at",
                 "discount_save_offer_percent_off",
                 "discount_save_offer_active_until",
+                "next_renewal_at",
                 "brevo_company_id",
                 "plan_limit_notifications",
                 "use_case",
@@ -115,6 +117,7 @@ impl Storable for Organization {
                 SqlValue::OptionTimestamp(last_discount_at),
                 SqlValue::OptionalI64(discount_save_offer_percent_off),
                 SqlValue::OptionTimestamp(discount_save_offer_active_until),
+                SqlValue::OptionTimestamp(next_renewal_at),
                 SqlValue::OptionalString(brevo_company_id),
                 SqlValue::PlanLimitNotifications(plan_limit_notifications),
                 SqlValue::OptionalString(Some(
@@ -173,6 +176,7 @@ impl Storable for Organization {
                 discount_save_offer_active_until: row
                     .try_get("discount_save_offer_active_until")
                     .unwrap_or(None),
+                next_renewal_at: row.try_get("next_renewal_at").unwrap_or(None),
                 brevo_company_id: row.get("brevo_company_id"),
                 plan_limit_notifications: row
                     .try_get::<serde_json::Value, _>("plan_limit_notifications")
@@ -252,6 +256,7 @@ impl Entity for Organization {
         self.base.stripe_customer_id = existing.base.stripe_customer_id.clone();
         self.base.plan = existing.base.plan;
         self.base.plan_status = existing.base.plan_status;
+        self.base.next_renewal_at = existing.base.next_renewal_at;
         // Onboarding state is server-managed
         self.base.onboarding = existing.base.onboarding.clone();
         // Brevo company ID is server-managed

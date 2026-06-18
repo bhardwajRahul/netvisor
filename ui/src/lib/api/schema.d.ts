@@ -3097,19 +3097,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-06-17T14:59:21.638569Z",
+             *       "created_at": "2026-06-18T17:58:35.104587Z",
              *       "first_discovery_id": null,
-             *       "id": "78fbeb41-8bc4-4e17-8bea-367ec2b1fa91",
+             *       "id": "026717f7-eb8c-468b-8c75-b1db2a033bd7",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-06-17T14:59:21.638569Z",
+             *       "last_seen_at": "2026-06-18T17:58:35.104587Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-06-17T14:59:21.638569Z",
-             *       "valid_from": "2026-06-17T14:59:21.638569Z",
+             *       "updated_at": "2026-06-18T17:58:35.104587Z",
+             *       "valid_from": "2026-06-18T17:58:35.104587Z",
              *       "valid_to": null
              *     }
              */
@@ -3446,19 +3446,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-06-17T14:59:21.619097Z",
+             *               "created_at": "2026-06-18T17:58:35.084906Z",
              *               "first_discovery_id": null,
-             *               "id": "40cdaa2a-20d0-4517-aa00-fb8011e8fbab",
+             *               "id": "9c676e79-6652-4c25-a793-8baabfe14555",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-06-17T14:59:21.619097Z",
+             *               "last_seen_at": "2026-06-18T17:58:35.084906Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-06-17T14:59:21.619097Z",
-             *               "valid_from": "2026-06-17T14:59:21.619097Z",
+             *               "updated_at": "2026-06-18T17:58:35.084906Z",
+             *               "valid_from": "2026-06-18T17:58:35.084906Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3472,7 +3472,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Confluence",
+             *           "service_definition": "BackRest",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3825,19 +3825,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-06-17T14:59:21.632151Z",
+             *           "created_at": "2026-06-18T17:58:35.097964Z",
              *           "first_discovery_id": null,
-             *           "id": "af42b3dc-8a68-4976-a31b-41e14c8fb179",
+             *           "id": "294550a2-409a-45b2-82dd-d54294cc41ea",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-06-17T14:59:21.632151Z",
+             *           "last_seen_at": "2026-06-18T17:58:35.097964Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-06-17T14:59:21.632151Z",
-             *           "valid_from": "2026-06-17T14:59:21.632151Z",
+             *           "updated_at": "2026-06-18T17:58:35.097964Z",
+             *           "valid_from": "2026-06-18T17:58:35.097964Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -3851,7 +3851,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Confluence",
+             *       "service_definition": "BackRest",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4304,19 +4304,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-06-17T14:59:21.619522Z",
+         *       "created_at": "2026-06-18T17:58:35.085364Z",
          *       "first_discovery_id": null,
-         *       "id": "7574a6a5-2e59-47b5-ab6d-c1959e872204",
+         *       "id": "72b75280-89b0-45a4-9840-c7cddbdde8b3",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-06-17T14:59:21.619522Z",
+         *       "last_seen_at": "2026-06-18T17:58:35.085364Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-06-17T14:59:21.619522Z",
-         *       "valid_from": "2026-06-17T14:59:21.619522Z",
+         *       "updated_at": "2026-06-18T17:58:35.085364Z",
+         *       "valid_from": "2026-06-18T17:58:35.085364Z",
          *       "valid_to": null
          *     }
          */
@@ -4531,7 +4531,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Confluence",
+         *           "service_definition": "BackRest",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -5481,19 +5481,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-06-17T14:59:21.618596Z",
+         *               "created_at": "2026-06-18T17:58:35.084413Z",
          *               "first_discovery_id": null,
-         *               "id": "e90874b3-4fd8-4c70-9e34-bce9e419ea76",
+         *               "id": "50a75164-989c-41c6-8bb0-7301643251ed",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-06-17T14:59:21.618596Z",
+         *               "last_seen_at": "2026-06-18T17:58:35.084413Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-06-17T14:59:21.618596Z",
-         *               "valid_from": "2026-06-17T14:59:21.618596Z",
+         *               "updated_at": "2026-06-18T17:58:35.084413Z",
+         *               "valid_from": "2026-06-18T17:58:35.084413Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -5507,7 +5507,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Confluence",
+         *           "service_definition": "BackRest",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -6187,6 +6187,17 @@ export interface components {
              */
             readonly last_paused_at?: string | null;
             name: string;
+            /**
+             * Format: date-time
+             * @description Stripe `subscription.items.data[0].current_period_end`, mirrored on
+             *     every billing event that re-anchors the period (checkout, trial start
+             *     / end, plan change, renewal, pause/resume, reactivate). Cleared by
+             *     SubscriptionCancelled. Powers the "Next renewal on …" line in
+             *     BillingPlanModal; the UI interprets the value based on plan_status
+             *     (hide for paused/cancelled/past_due where the stored value can be
+             *     stale or meaningless).
+             */
+            readonly next_renewal_at?: string | null;
             onboarding: components["schemas"]["OnboardingOperationDiscriminants"][];
             plan: null | components["schemas"]["BillingPlan"];
             plan_status: null | components["schemas"]["PlanStatus"];
@@ -6898,19 +6909,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-06-17T14:59:21.619434Z",
+         *           "created_at": "2026-06-18T17:58:35.085272Z",
          *           "first_discovery_id": null,
-         *           "id": "dc0106eb-dafc-4a83-835a-c952aa6308fa",
+         *           "id": "369cad89-72a7-4969-b020-8a521ad29e02",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-06-17T14:59:21.619434Z",
+         *           "last_seen_at": "2026-06-18T17:58:35.085272Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-06-17T14:59:21.619434Z",
-         *           "valid_from": "2026-06-17T14:59:21.619434Z",
+         *           "updated_at": "2026-06-18T17:58:35.085272Z",
+         *           "valid_from": "2026-06-18T17:58:35.085272Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -6924,7 +6935,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Confluence",
+         *       "service_definition": "BackRest",
          *       "source": {
          *         "type": "Manual"
          *       },

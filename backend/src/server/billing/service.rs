@@ -26,7 +26,7 @@ use crate::server::shared::types::metadata::TypeMetadataProvider;
 use crate::server::users::service::UserService;
 use anyhow::Error;
 use anyhow::anyhow;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use std::sync::Arc;
 use std::sync::OnceLock;
 use stripe::Client;
@@ -391,7 +391,7 @@ impl BillingService {
         };
 
         // Get or create Stripe customer
-        let (_, customer_id) = self
+        let customer_id = self
             .get_or_create_customer(organization_id, authentication)
             .await?;
 
@@ -514,6 +514,8 @@ impl BillingService {
                     included_seats: plan_config.included_seats,
                     mrr_amount_cents: 0,
                     is_trialing: false,
+                    // Free direct-activation has no Stripe sub.
+                    next_renewal_at: None,
                 },
                 authentication,
             ))
@@ -552,7 +554,7 @@ impl BillingService {
 
         let auth_for_event = authentication.clone();
 
-        let (_, customer_id) = self
+        let customer_id = self
             .get_or_create_customer(organization_id, authentication)
             .await?;
 
@@ -760,21 +762,23 @@ impl BillingService {
         Ok(())
     }
 
-    /// Get existing customer or create new one
+    /// Get existing customer or create new one. On create, publishes
+    /// `StripeCustomerCreated` so the org-service subscriber mirrors the
+    /// customer id onto `organizations.stripe_customer_id`.
     async fn get_or_create_customer(
         &self,
         organization_id: Uuid,
-        authentication: AuthenticatedEntity,
-    ) -> Result<(Organization, CustomerId), Error> {
+        _authentication: AuthenticatedEntity,
+    ) -> Result<CustomerId, Error> {
         // Check if org already has stripe_customer_id
-        let mut organization = self
+        let organization = self
             .organization_service
             .get_by_id(&organization_id)
             .await?
             .ok_or_else(|| anyhow!("Organization {} doesn't exist.", organization_id))?;
 
         if let Some(customer_id) = organization.base.stripe_customer_id.clone() {
-            return Ok((organization, CustomerId::from(customer_id.to_owned())));
+            return Ok(CustomerId::from(customer_id.to_owned()));
         }
 
         let organization_owners = self
@@ -800,13 +804,17 @@ impl BillingService {
             "Created new Stripe customer"
         );
 
-        organization.base.stripe_customer_id = Some(customer.id.to_string());
-
-        self.organization_service
-            .update(&mut organization, authentication)
+        self.event_bus
+            .publish(Event::new(
+                OrgScope { organization_id },
+                BillingOperation::StripeCustomerCreated {
+                    customer_id: customer.id.to_string(),
+                },
+                AuthenticatedEntity::System,
+            ))
             .await?;
 
-        Ok((organization, customer.id))
+        Ok(customer.id)
     }
 
     /// Permanently delete the Stripe customer. Stripe auto-cancels active
@@ -1115,6 +1123,7 @@ impl BillingService {
                             included_seats: plan_config.included_seats,
                             mrr_amount_cents: mrr_from_subscription(&sub),
                             is_trialing,
+                            next_renewal_at: next_renewal_from_subscription(&sub),
                         },
                         authentication.clone(),
                     ))
@@ -1153,6 +1162,7 @@ impl BillingService {
                         BillingOperation::TrialEnded {
                             plan,
                             converted: true,
+                            next_renewal_at: next_renewal_from_subscription(&sub),
                         },
                         authentication,
                     ))
@@ -1211,6 +1221,7 @@ impl BillingService {
                         from: prior_plan,
                         to: plan,
                         is_downgrade: plan.is_free(),
+                        next_renewal_at: next_renewal_from_subscription(&sub),
                     },
                     owner.clone().into(),
                 ))
@@ -1308,6 +1319,7 @@ impl BillingService {
                     },
                     BillingOperation::Reactivated {
                         trialing: sub.status == SubscriptionStatus::Trialing,
+                        next_renewal_at: next_renewal_from_subscription(&sub),
                     },
                     owner.clone().into(),
                 ))
@@ -1420,19 +1432,32 @@ impl BillingService {
             .ok_or_else(|| anyhow!("No organization_id in checkout session metadata"))?;
         let org_id = Uuid::parse_str(org_id)?;
 
-        let Some(mut organization) = self.organization_service.get_by_id(&org_id).await? else {
+        // Verify the org exists (Stripe webhook can race a deleted org).
+        if self
+            .organization_service
+            .get_by_id(&org_id)
+            .await?
+            .is_none()
+        {
             tracing::warn!(
                 organization_id = %org_id,
                 event = "checkout_session_completed",
                 "Stripe webhook for deleted organization — skipping"
             );
             return Ok(());
-        };
+        }
 
-        organization.base.has_payment_method = true;
-
-        self.organization_service
-            .update(&mut organization, AuthenticatedEntity::System)
+        // Card was added via Stripe Checkout; semantically equivalent to
+        // payment_method.attached. Emit the same event and let the org
+        // subscriber mirror has_payment_method = true.
+        self.event_bus
+            .publish(Event::new(
+                OrgScope {
+                    organization_id: org_id,
+                },
+                BillingOperation::PaymentMethodAdded,
+                AuthenticatedEntity::System,
+            ))
             .await?;
 
         tracing::info!(
@@ -1450,18 +1475,13 @@ impl BillingService {
         payment_method_id: String,
     ) -> Result<(), Error> {
         let filter = StorableFilter::<Organization>::new_with_stripe_customer_id(&customer_id);
-        let Some(mut organization) = self.organization_service.get_one(filter).await? else {
+        let Some(organization) = self.organization_service.get_one(filter).await? else {
             tracing::debug!(
                 stripe_customer_id = %customer_id,
                 "No organization found for payment_method.attached — ignoring"
             );
             return Ok(());
         };
-
-        organization.base.has_payment_method = true;
-        self.organization_service
-            .update(&mut organization, AuthenticatedEntity::System)
-            .await?;
 
         // Set as default payment method for future invoices so Stripe can
         // charge it when the trial ends or the next billing cycle occurs
@@ -1474,7 +1494,7 @@ impl BillingService {
 
         tracing::info!(
             organization_id = %organization.id,
-            "Payment method attached — has_payment_method set to true, default invoice payment method updated"
+            "Payment method attached — default invoice payment method updated; emitting PaymentMethodAdded so subscriber flips has_payment_method"
         );
 
         self.event_bus
@@ -1492,7 +1512,7 @@ impl BillingService {
 
     async fn handle_payment_method_detached(&self, customer_id: String) -> Result<(), Error> {
         let filter = StorableFilter::<Organization>::new_with_stripe_customer_id(&customer_id);
-        let Some(mut organization) = self.organization_service.get_one(filter).await? else {
+        let Some(organization) = self.organization_service.get_one(filter).await? else {
             tracing::debug!(
                 stripe_customer_id = %customer_id,
                 "No organization found for payment_method.detached — ignoring"
@@ -1505,23 +1525,19 @@ impl BillingService {
             .send(&self.stripe)
             .await?;
 
-        if remaining.data.is_empty() {
-            organization.base.has_payment_method = false;
-            self.organization_service
-                .update(&mut organization, AuthenticatedEntity::System)
-                .await?;
-
-            tracing::info!(
-                organization_id = %organization.id,
-                "Last payment method detached — has_payment_method set to false"
-            );
-        } else {
+        if !remaining.data.is_empty() {
             tracing::info!(
                 organization_id = %organization.id,
                 remaining_count = remaining.data.len(),
-                "Payment method detached but customer still has others"
+                "Payment method detached but customer still has others — not emitting PaymentMethodRemoved"
             );
+            return Ok(());
         }
+
+        tracing::info!(
+            organization_id = %organization.id,
+            "Last payment method detached — emitting PaymentMethodRemoved so subscriber flips has_payment_method"
+        );
 
         self.event_bus
             .publish(Event::new(
@@ -1608,7 +1624,6 @@ impl BillingService {
         // --- Async phase: side effects that don't need to block the webhook response ---
 
         let sub_id = sub.id.to_string();
-        let organization_service = Arc::clone(&self.organization_service);
         let user_service = Arc::clone(&self.user_service);
         let event_bus = Arc::clone(&self.event_bus);
         let stripe = self.stripe.clone();
@@ -1631,7 +1646,6 @@ impl BillingService {
                     .unwrap_or_else(|| Utc::now().timestamp()),
                 mrr_amount_cents,
                 tenure_days,
-                organization_service,
                 user_service,
                 event_bus,
                 stripe,
@@ -1668,7 +1682,6 @@ impl BillingService {
         period_end_ts: i64,
         mrr_amount_cents: i64,
         tenure_days: u32,
-        organization_service: Arc<OrganizationService>,
         user_service: Arc<UserService>,
         event_bus: Arc<EventBus>,
         stripe: stripe::Client,
@@ -1686,17 +1699,12 @@ impl BillingService {
                         SubscriptionStatus::Active | SubscriptionStatus::Trialing
                     )
             }) {
-                // Revert: another active subscription exists, so the cancel
-                // was an upgrade-side-effect. Restore has_payment_method;
-                // the plan/status derivation already reflects the surviving
-                // subscription via the ledger (no PlanChanged event is needed
-                // because the prior CheckoutCompleted is still the latest).
-                if let Some(mut organization) = organization_service.get_by_id(&org_id).await? {
-                    organization.base.has_payment_method = true;
-                    organization_service
-                        .update(&mut organization, AuthenticatedEntity::System)
-                        .await?;
-                }
+                // Another active subscription exists, so the cancel was an
+                // upgrade-side-effect. Suppress SubscriptionCancelled here;
+                // the subscriber consequently never runs for this deletion,
+                // so has_payment_method stays at its pre-deletion value
+                // (true, given another active sub). No defensive revert
+                // needed — the subscriber is the sole writer for this field.
                 tracing::info!(
                     organization_id = %org_id,
                     "Org has another active subscription — preserved previous plan derivation"
@@ -1752,7 +1760,7 @@ impl BillingService {
         cancel_url: String,
         authentication: AuthenticatedEntity,
     ) -> Result<CheckoutSession, Error> {
-        let (_, customer_id) = self
+        let customer_id = self
             .get_or_create_customer(organization_id, authentication)
             .await?;
 
@@ -2630,6 +2638,16 @@ impl BillingService {
                         amount_cents: invoice.amount_paid,
                         plan: organization.base.plan.unwrap_or_else(get_free_plan),
                         attempt_count: invoice.attempt_count as u32,
+                        // The sub object isn't in scope here; Stripe fires
+                        // customer.subscription.updated right after this
+                        // webhook for renewals, and the handler-side emits
+                        // (CheckoutCompleted / PlanChanged / Reactivated /
+                        // TrialEnded) carry next_renewal_at. For a pure
+                        // renewal without a status/plan change, the org
+                        // value lags by ~one webhook tick; acceptable for
+                        // the UI use case (BillingPlanModal is glanced
+                        // at occasionally, not real-time).
+                        next_renewal_at: None,
                     },
                     AuthenticatedEntity::System,
                 ))
@@ -2688,6 +2706,18 @@ fn mrr_from_subscription(sub: &stripe_billing::Subscription) -> i64 {
             line_monthly_cents(item.price.unit_amount, item.quantity, is_yearly)
         })
         .sum()
+}
+
+/// `sub.items.data[0].current_period_end` decoded to a chrono timestamp,
+/// or `None` if the subscription has no items / no period. This is the
+/// canonical "next renewal" timestamp surfaced on `org.next_renewal_at`
+/// and on `BillingOperation::*::next_renewal_at` payload fields.
+fn next_renewal_from_subscription(sub: &stripe_billing::Subscription) -> Option<DateTime<Utc>> {
+    sub.items
+        .data
+        .first()
+        .map(|i| i.current_period_end)
+        .and_then(|ts| DateTime::<Utc>::from_timestamp(ts, 0))
 }
 
 /// Map our canonical `CancelReason` to the Stripe-side feedback enum.

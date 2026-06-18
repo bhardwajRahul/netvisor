@@ -82,7 +82,11 @@ impl Subscriber<BillingOperation> for EmailService {
                     )
                     .await?;
                 }
-                BillingOperation::TrialEnded { plan, converted } => {
+                BillingOperation::TrialEnded {
+                    plan,
+                    converted,
+                    next_renewal_at: _,
+                } => {
                     if converted {
                         self.send_trial_converted_email(
                             org_owner,

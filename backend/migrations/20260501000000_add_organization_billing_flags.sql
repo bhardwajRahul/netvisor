@@ -22,4 +22,12 @@ ALTER TABLE organizations
     -- chip's render condition (`> now()`); the row is otherwise inert.
     ADD COLUMN last_discount_at                 timestamptz,
     ADD COLUMN discount_save_offer_percent_off  bigint,
-    ADD COLUMN discount_save_offer_active_until timestamptz;
+    ADD COLUMN discount_save_offer_active_until timestamptz,
+    -- Mirror of Stripe sub.items.data[0].current_period_end, written by the
+    -- OrganizationBillingSubscriber on every event that re-anchors the
+    -- billing period (checkout, trial start/end, plan change, renewal,
+    -- pause/resume, reactivate). Cleared by SubscriptionCancelled. Powers
+    -- the "Next renewal on …" / "First invoice on …" / "Subscription ends
+    -- on …" line in BillingPlanModal; the UI interprets the value based
+    -- on plan_status.
+    ADD COLUMN next_renewal_at                  timestamptz;

@@ -262,6 +262,7 @@ impl AuthService {
                             last_discount_at: None,
                             discount_save_offer_percent_off: None,
                             discount_save_offer_active_until: None,
+                            next_renewal_at: None,
                             brevo_company_id: None,
                             plan_limit_notifications: Default::default(),
                             use_case,

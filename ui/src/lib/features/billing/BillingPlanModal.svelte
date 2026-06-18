@@ -18,6 +18,7 @@
 	import { isBillingPlanActive } from '$lib/features/organizations/types';
 	import GenericModal from '$lib/shared/components/layout/GenericModal.svelte';
 	import { upgradeContext } from '$lib/features/billing/stores';
+	import { renewalLabel } from '$lib/features/billing/renewal';
 
 	let {
 		isOpen = false,
@@ -73,6 +74,11 @@
 	let organization = $derived(organizationQuery.data);
 
 	let isCurrentlyTrialing = $derived(organization?.plan_status === 'trialing');
+
+	// Renewal / first-invoice / subscription-ends date for the current plan.
+	// Null when the field isn't populated or plan_status isn't one we surface
+	// the date for (past_due / paused / cancelled / Free).
+	let renewalLine = $derived(renewalLabel(organization));
 
 	// Only show trial offers to orgs that have never had a non-Free paid plan and never trialed.
 	// trial_end_date is set by Stripe webhook only for subscriptions with trial periods
@@ -195,6 +201,9 @@
 	compactPadding={true}
 >
 	<div class="flex min-h-0 flex-1 flex-col">
+		{#if renewalLine}
+			<p class="px-6 pt-4 text-center text-sm text-gray-500">{renewalLine}</p>
+		{/if}
 		<BillingPlanForm
 			plans={billingPlanHelpers.getMetadata(organization?.plan?.type ?? null)?.is_free
 				? plansData
