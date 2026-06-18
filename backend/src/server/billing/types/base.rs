@@ -1095,7 +1095,7 @@ impl EntityMetadataProvider for BillingPlan {
 impl TypeMetadataProvider for BillingPlan {
     fn name(&self) -> &'static str {
         match self {
-            BillingPlan::Community { .. } => "Community",
+            BillingPlan::Community { .. } => "Community Edition",
             BillingPlan::Free { .. } => "Free",
             BillingPlan::Starter { .. } => "Starter",
             BillingPlan::Pro { .. } => "Pro",
@@ -1103,14 +1103,14 @@ impl TypeMetadataProvider for BillingPlan {
             BillingPlan::Business { .. } => "Business",
             BillingPlan::Enterprise { .. } => "Enterprise",
             BillingPlan::Demo { .. } => "Demo",
-            BillingPlan::CommercialSelfHosted { .. } => "On-Premise",
+            BillingPlan::CommercialSelfHosted { .. } => "Commercial Edition",
         }
     }
 
     fn description(&self) -> &'static str {
         match self {
             BillingPlan::Community { .. } => {
-                "Community plan for individuals self-hosting Scanopy - full control over configuration and integrations"
+                "Community edition for self-hosting and open-source enthusiasts"
             }
             BillingPlan::Free { .. } => "For hobbyists exploring a small network",
             BillingPlan::Starter { .. } => "For homelabbers automating documentation",
@@ -1122,7 +1122,7 @@ impl TypeMetadataProvider for BillingPlan {
             BillingPlan::Enterprise { .. } => "For organizations needing custom deployment",
             BillingPlan::Demo { .. } => "Demo mode",
             BillingPlan::CommercialSelfHosted { .. } => {
-                "Commercial license for self-managed deployments — full control over configuration and integrations"
+                "Commercial edition for businesses with on-premise deployments"
             }
         }
     }
