@@ -11,6 +11,7 @@
 	import { Check, X, ChevronDown, ChevronUp, Loader2, Minus, Plus } from 'lucide-svelte';
 	import {
 		billing_everythingInPlanPlus,
+		billing_firstInvoiceOn,
 		billing_showFeatures,
 		billing_hideFeatures,
 		billing_startTrialNoCreditCard
@@ -22,6 +23,9 @@
 	import type { ColorStyle, Color } from '$lib/shared/utils/styling';
 	import type { IconComponent } from '$lib/shared/utils/types';
 	import { tooltip } from '$lib/shared/actions/tooltip';
+	import { useConfigQuery } from '$lib/shared/stores/config-query';
+
+	const configQuery = useConfigQuery();
 
 	/**
 	 * Interface for metadata helpers props.
@@ -73,6 +77,16 @@
 
 	let loadingPlanType = $state<string | null>(null);
 	let showFullComparison = $state(false);
+
+	function firstInvoiceCaption(plan: BillingPlan): string {
+		const ms = Date.now() + plan.trial_days * 24 * 60 * 60 * 1000;
+		const dateStr = new Date(ms).toLocaleDateString(undefined, {
+			month: 'long',
+			day: 'numeric',
+			year: 'numeric'
+		});
+		return billing_firstInvoiceOn({ date: dateStr });
+	}
 
 	type BillingPeriod = 'monthly' | 'yearly';
 	let billingPeriod = $state<BillingPeriod>('yearly');
@@ -155,6 +169,14 @@
 	// ============================================================================
 
 	function getFeatureValue(planType: string, featureKey: string): boolean | string | number | null {
+		// `snapshot_retention_days` is a per-plan fixture value with a universal
+		// env-var escape hatch (`SCANOPY_SNAPSHOT_RETENTION_DAYS_OVERRIDE`).
+		// When the override is set on this deployment, it wins for every plan
+		// — mirrors the backend's `BillingPlan::snapshot_retention_days`.
+		if (featureKey === 'snapshot_retention_days') {
+			const override = configQuery.data?.snapshot_retention_days_override;
+			if (override != null) return override;
+		}
 		const metadata = billingPlanHelpers.getMetadata(planType);
 		const features = metadata?.features as unknown as
 			| Record<string, boolean | string | number | null>
@@ -311,6 +333,12 @@
 	function formatIncludedValue(value: number | null | undefined, plan?: BillingPlan): string {
 		if (value == null && plan && hasCustomPrice(plan)) return 'Custom';
 		return value == null ? 'Unlimited' : String(value);
+	}
+
+	function formatSnapshotRetention(value: boolean | string | number | null): string {
+		if (value === 0) return 'Not included';
+		if (typeof value === 'number') return `${value} days`;
+		return '—';
 	}
 
 	function sortFeaturesByCategory(features: string[]): string[] {
@@ -488,6 +516,11 @@
 										{trial ? billing_startTrialNoCreditCard() : 'Get Started'}
 									{/if}
 								</button>
+								{#if trial && !isCurrentlyTrialing}
+									<div class="text-tertiary pt-2 text-center text-xs">
+										{firstInvoiceCaption(plan)}
+									</div>
+								{/if}
 							{:else if hosting === 'SelfHosted'}
 								{#if commercial && onPlanInquiry}
 									<button
@@ -604,6 +637,14 @@
 								</div>
 								<span class="text-primary font-medium">
 									{formatIncludedValue(plan.included_hosts, plan)}
+								</span>
+							</div>
+
+							<!-- Snapshot Retention -->
+							<div class="flex items-center justify-between text-sm">
+								<span class="text-secondary">Snapshot Retention</span>
+								<span class="text-primary font-medium">
+									{formatSnapshotRetention(getFeatureValue(plan.type, 'snapshot_retention_days'))}
 								</span>
 							</div>
 						</div>
@@ -729,6 +770,8 @@
 										{:else}
 											<X class="text-muted mx-auto h-4 w-4 lg:h-5 lg:w-5" />
 										{/if}
+									{:else if typeof value === 'number' && value === 0}
+										<X class="text-muted mx-auto h-4 w-4 lg:h-5 lg:w-5" />
 									{:else if value === null}
 										<span class="text-tertiary">&mdash;</span>
 									{:else}

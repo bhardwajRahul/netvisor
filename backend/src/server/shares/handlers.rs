@@ -13,9 +13,6 @@ use utoipa::ToSchema;
 use utoipa_axum::{router::OpenApiRouter, routes};
 use uuid::Uuid;
 
-use chrono::Utc;
-use serde_json::json;
-
 use crate::server::{
     auth::{
         middleware::{
@@ -29,10 +26,12 @@ use crate::server::{
     config::AppState,
     credentials::r#impl::types::REDACTED_SECRET_SENTINEL,
     networks::r#impl::Network,
-    organizations::r#impl::base::Organization,
     shared::validation::validate_csp_domain,
     shared::{
-        events::types::{AnalyticsEvent, AnalyticsOperation},
+        events::{
+            traits::{Event, OrgScope},
+            types::AnalyticsOperation,
+        },
         handlers::traits::{CrudHandlers, create_handler, update_handler},
         services::traits::CrudService,
         storage::traits::{Entity, Storage},
@@ -247,16 +246,14 @@ async fn get_share_org_plan(state: &AppState, share: &Share) -> Result<BillingPl
         .map_err(|e| ApiError::internal_error(&e.to_string()))?
         .ok_or_else(|| ApiError::entity_not_found::<Network>(share.base.network_id))?;
 
-    // Get organization to find plan
-    let org = state
+    Ok(state
         .services
         .organization_service
         .get_by_id(&network.base.organization_id)
         .await
         .map_err(|e| ApiError::internal_error(&e.to_string()))?
-        .ok_or_else(|| ApiError::entity_not_found::<Organization>(network.base.organization_id))?;
-
-    Ok(org.base.plan.unwrap_or_default())
+        .and_then(|o| o.base.plan)
+        .unwrap_or_else(crate::server::billing::plans::get_free_plan))
 }
 
 /// Get share metadata
@@ -454,68 +451,40 @@ async fn get_share_topology(
         )));
     }
 
-    // If requested view differs from stored view, do an ephemeral rebuild
+    // Load entity data for the topology. Today shares only target live-view
+    // topologies; snapshot-pinned shares are deferred until the snapshots
+    // service is fully wired into AppState.
+    let service = &state.services.topology_service;
+    let network_id = topology.base.network_id;
+    let data = service
+        .get_topology_data(network_id, None)
+        .await
+        .map_err(|e| ApiError::internal_error(&e.to_string()))?;
+
+    // If requested view differs from stored view, rebuild graph ephemerally.
     let stored_view = topology.base.options.request.view;
     if stored_view != body.view {
-        let service = &state.services.topology_service;
-        let network_id = topology.base.network_id;
-
-        let (hosts, ip_addresses, subnets, dependencies, ports, bindings, interfaces) = service
-            .get_entity_data(network_id)
-            .await
-            .map_err(|e| ApiError::internal_error(&e.to_string()))?;
-
-        let services = service
-            .get_service_data(network_id)
-            .await
-            .map_err(|e| ApiError::internal_error(&e.to_string()))?;
-
-        let entity_tags = service
-            .get_entity_tags(
-                &hosts,
-                &services,
-                &subnets,
-                &topology.base.options.request.element_rules,
-            )
-            .await
-            .map_err(|e| ApiError::internal_error(&e.to_string()))?;
-
-        let vlans = service.get_vlans(network_id).await.unwrap_or_default();
-
-        // Build graph with requested view
         let mut options = topology.base.options.clone();
         options.request.view = body.view;
 
         let (nodes, edges) =
             service.build_graph(crate::server::topology::service::main::BuildGraphParams {
                 options: &options,
-                hosts: &hosts,
-                ip_addresses: &ip_addresses,
-                subnets: &subnets,
-                services: &services,
-                dependencies: &dependencies,
-                ports: &ports,
-                bindings: &bindings,
-                interfaces: &interfaces,
-                entity_tags: &entity_tags,
-                vlans: &vlans,
+                hosts: &data.hosts,
+                ip_addresses: &data.ip_addresses,
+                subnets: &data.subnets,
+                services: &data.services,
+                dependencies: &data.dependencies,
+                ports: &data.ports,
+                bindings: &data.bindings,
+                interfaces: &data.interfaces,
+                entity_tags: &data.tags,
+                vlans: &data.vlans,
                 old_nodes: &[],
                 old_edges: &[],
                 old_view: Some(stored_view),
             });
 
-        topology.set_entities(crate::server::topology::types::base::SetEntitiesParams {
-            hosts,
-            ip_addresses,
-            services,
-            subnets,
-            dependencies,
-            ports,
-            bindings,
-            interfaces,
-            entity_tags,
-            vlans,
-        });
         topology.set_graph(nodes, edges);
         topology.base.options = options;
     }
@@ -530,10 +499,67 @@ async fn get_share_topology(
         remove_created_with: plan_features.remove_created_with,
     };
 
+    // Topology entity blobs are no longer part of the slim Topology struct;
+    // re-merge the loaded TopologyData into the topology JSON so the existing
+    // share frontend keeps working without a wire-protocol change.
+    let mut topology_value =
+        serde_json::to_value(&topology).map_err(|e| ApiError::internal_error(&e.to_string()))?;
+    if let Some(obj) = topology_value.as_object_mut() {
+        obj.insert(
+            "hosts".to_string(),
+            serde_json::to_value(&data.hosts)
+                .map_err(|e| ApiError::internal_error(&e.to_string()))?,
+        );
+        obj.insert(
+            "ip_addresses".to_string(),
+            serde_json::to_value(&data.ip_addresses)
+                .map_err(|e| ApiError::internal_error(&e.to_string()))?,
+        );
+        obj.insert(
+            "subnets".to_string(),
+            serde_json::to_value(&data.subnets)
+                .map_err(|e| ApiError::internal_error(&e.to_string()))?,
+        );
+        obj.insert(
+            "services".to_string(),
+            serde_json::to_value(&data.services)
+                .map_err(|e| ApiError::internal_error(&e.to_string()))?,
+        );
+        obj.insert(
+            "dependencies".to_string(),
+            serde_json::to_value(&data.dependencies)
+                .map_err(|e| ApiError::internal_error(&e.to_string()))?,
+        );
+        obj.insert(
+            "ports".to_string(),
+            serde_json::to_value(&data.ports)
+                .map_err(|e| ApiError::internal_error(&e.to_string()))?,
+        );
+        obj.insert(
+            "bindings".to_string(),
+            serde_json::to_value(&data.bindings)
+                .map_err(|e| ApiError::internal_error(&e.to_string()))?,
+        );
+        obj.insert(
+            "interfaces".to_string(),
+            serde_json::to_value(&data.interfaces)
+                .map_err(|e| ApiError::internal_error(&e.to_string()))?,
+        );
+        obj.insert(
+            "vlans".to_string(),
+            serde_json::to_value(&data.vlans)
+                .map_err(|e| ApiError::internal_error(&e.to_string()))?,
+        );
+        obj.insert(
+            "entity_tags".to_string(),
+            serde_json::to_value(&data.tags)
+                .map_err(|e| ApiError::internal_error(&e.to_string()))?,
+        );
+    }
+
     let response_data = ShareWithTopology {
         share: PublicShareMetadata::new(&share, enabled_views),
-        topology: serde_json::to_value(&topology)
-            .map_err(|e| ApiError::internal_error(&e.to_string()))?,
+        topology: topology_value,
         export_features,
     };
 
@@ -550,24 +576,27 @@ async fn get_share_topology(
             .map(|n| n.base.organization_id);
 
         if let Some(org_id) = org_id {
+            let has_password = share.requires_password();
             let operation = if query.embed {
-                AnalyticsOperation::TopologyEmbedViewed
+                AnalyticsOperation::TopologyEmbedViewed {
+                    share_id: id,
+                    has_password,
+                }
             } else {
-                AnalyticsOperation::TopologyShareViewed
+                AnalyticsOperation::TopologyShareViewed {
+                    share_id: id,
+                    has_password,
+                }
             };
             let _ = state
                 .services
                 .event_bus
-                .publish_analytics(AnalyticsEvent::new(
-                    Uuid::new_v4(),
-                    org_id,
+                .publish(Event::new(
+                    OrgScope {
+                        organization_id: org_id,
+                    },
                     operation,
-                    Utc::now(),
                     AuthenticatedEntity::System,
-                    json!({
-                        "share_id": id.to_string(),
-                        "has_password": share.requires_password(),
-                    }),
                 ))
                 .await;
         }

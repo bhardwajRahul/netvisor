@@ -1,11 +1,9 @@
+use crate::server::shared::events::traits::{EntityEventFlags, EntityScope, Event};
 use crate::server::{
     auth::middleware::auth::AuthenticatedEntity,
     shared::{
         entities::{ChangeTriggersTopologyStaleness, EntityDiscriminants},
-        events::{
-            bus::EventBus,
-            types::{EntityEvent, EntityOperation},
-        },
+        events::{bus::EventBus, types::EntityOperation},
         services::traits::{CrudService, EventBusService},
         storage::{
             filter::StorableFilter,
@@ -19,7 +17,6 @@ use crate::server::{
 };
 use anyhow::Result;
 use async_trait::async_trait;
-use chrono::Utc;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -57,7 +54,10 @@ impl CrudService<Subnet> for SubnetService {
         subnet: Subnet,
         authentication: AuthenticatedEntity,
     ) -> Result<Subnet, anyhow::Error> {
-        let filter = StorableFilter::<Subnet>::new_from_network_ids(&[subnet.base.network_id]);
+        // SCD2: natural-key match (CIDR + virtualization) runs against live
+        // subnets only; closed historical copies must not match.
+        let filter =
+            StorableFilter::<Subnet>::new_from_network_ids(&[subnet.base.network_id]).live();
         let all_subnets = self.storage.get_all(filter).await?;
 
         let subnet = if subnet.id == Uuid::nil() {
@@ -74,15 +74,6 @@ impl CrudService<Subnet> for SubnetService {
             "Creating subnet"
         );
 
-        // Validate discovery metadata upfront — a discovered subnet must have at least one metadata entry
-        if let EntitySource::Discovery { metadata } = &subnet.base.source
-            && metadata.is_empty()
-        {
-            return Err(anyhow::anyhow!(
-                "Error comparing discovered subnets during creation: subnet missing discovery metadata"
-            ));
-        }
-
         let subnet_from_storage = match all_subnets.iter().find(|existing_subnet| {
             // CIDR must match first
             if !subnet.eq(existing_subnet) {
@@ -91,41 +82,30 @@ impl CrudService<Subnet> for SubnetService {
 
             // Docker will default to the same subnet range for bridge networks, so we need a way
             // to distinguish docker bridge subnets with the same CIDR but which originate from
-            // different hosts. This returns true for docker bridge subnets created from the same
-            // host (same service_id), and true for all other sources provided CIDRs match.
+            // different hosts. The dedup uses subnet virtualization (which carries service_id
+            // for Docker bridges); discovery metadata used to live on EntitySource but moved to
+            // FK columns post-terminal.
             match (&existing_subnet.base.source, &subnet.base.source) {
-                (
-                    EntitySource::Discovery {
-                        metadata: existing_metadata,
-                    },
-                    EntitySource::Discovery { .. },
-                ) => {
-                    existing_metadata.iter().any(|_other_m| {
-                        use crate::server::subnets::r#impl::virtualization::SubnetVirtualization;
+                (EntitySource::Discovery, EntitySource::Discovery) => {
+                    use crate::server::subnets::r#impl::virtualization::SubnetVirtualization;
 
-                        // Docker bridge subnets need per-service dedup: same CIDR on
-                        // different Docker daemons are distinct subnets.
-                        if subnet.base.subnet_type.is_docker_bridge()
-                            && existing_subnet.base.subnet_type.is_docker_bridge()
-                        {
-                            match (
-                                &subnet.base.virtualization,
-                                &existing_subnet.base.virtualization,
-                            ) {
-                                (
-                                    Some(SubnetVirtualization::Docker(a)),
-                                    Some(SubnetVirtualization::Docker(b)),
-                                ) => a.service_id == b.service_id,
-                                // One or both missing virtualization — treat as same
-                                _ => true,
-                            }
-                        } else {
-                            // Non-DockerBridge: always deduplicate by CIDR
-                            true
+                    if subnet.base.subnet_type.is_docker_bridge()
+                        && existing_subnet.base.subnet_type.is_docker_bridge()
+                    {
+                        match (
+                            &subnet.base.virtualization,
+                            &existing_subnet.base.virtualization,
+                        ) {
+                            (
+                                Some(SubnetVirtualization::Docker(a)),
+                                Some(SubnetVirtualization::Docker(b)),
+                            ) => a.service_id == b.service_id,
+                            _ => true,
                         }
-                    })
+                    } else {
+                        true
+                    }
                 }
-                // System subnets are never going to be upserted to or from
                 (EntitySource::System, _) | (_, EntitySource::System) => false,
                 _ => true,
             }
@@ -137,12 +117,30 @@ impl CrudService<Subnet> for SubnetService {
                     new_subnet_id = %subnet.id,
                     new_subnet_name = %subnet.base.name,
                     subnet_cidr = %subnet.base.cidr,
-                    "Duplicate subnet found, returning existing"
+                    "Duplicate subnet found, refreshing last_seen_at and returning existing"
                 );
-                existing_subnet.clone()
+                // SCD2 semantics: every successful natural-key match advances
+                // last_seen_at, even when no field changes. Otherwise
+                // unchanged subnets falsely look stale to (future) staleness
+                // consumers. The incoming `subnet` was pre-stamped by
+                // `HostService::discover_host` when called via discovery (see
+                // `ScanContext`) so all entities in one submission share one
+                // timestamp; for non-discovery callers the value is whatever
+                // they put on the entity.
+                let mut refreshed = existing_subnet.clone();
+                refreshed.last_seen_at = subnet.last_seen_at;
+                self.storage.update(&mut refreshed).await?;
+                refreshed
             }
             // If there's no existing subnet, create a new one
             None => {
+                // SCD2 origin: this row is being inserted for the first
+                // time. Stamp created_at + valid_from to the entity's
+                // already-refreshed `last_seen_at`. See
+                // `DiscoveryTracked::originate_scan_timestamps`.
+                use crate::server::shared::storage::snapshot::DiscoveryTracked;
+                let mut subnet = subnet;
+                subnet.originate_scan_timestamps(subnet.last_seen_at);
                 let mut created = self.storage.create(&subnet).await?;
 
                 // Save tags to junction table
@@ -162,22 +160,23 @@ impl CrudService<Subnet> for SubnetService {
 
                 let trigger_stale = created.triggers_staleness(None);
 
-                self.event_bus()
-                    .publish_entity(EntityEvent {
-                        id: Uuid::new_v4(),
-                        entity_id: created.id,
-                        network_id: self.get_network_id(&created),
-                        organization_id: self.get_organization_id(&created),
-                        entity_type: created.into(),
-                        operation: EntityOperation::Created,
-                        timestamp: Utc::now(),
-                        metadata: serde_json::json!({
-                            "trigger_stale": trigger_stale
-                        }),
-
-                        authentication,
-                    })
-                    .await?;
+                if let Some(scope) = EntityScope::from_ids(
+                    created.id,
+                    created.clone().into(),
+                    self.get_network_id(&created),
+                    self.get_organization_id(&created),
+                ) {
+                    self.event_bus()
+                        .publish(
+                            Event::new(scope, EntityOperation::Created, authentication).with_flags(
+                                EntityEventFlags {
+                                    trigger_stale,
+                                    ..Default::default()
+                                },
+                            ),
+                        )
+                        .await?;
+                }
 
                 subnet
             }
@@ -209,7 +208,9 @@ impl SubnetService {
     ) -> Result<()> {
         use crate::server::subnets::r#impl::virtualization::SubnetVirtualization;
 
-        let filter = StorableFilter::<Subnet>::new_from_network_ids(&[*network_id]);
+        // SCD2: only patch live subnets; closed historical copies retain
+        // their as-of state.
+        let filter = StorableFilter::<Subnet>::new_from_network_ids(&[*network_id]).live();
         let subnets = self.storage.get_all(filter).await?;
 
         for mut subnet in subnets {

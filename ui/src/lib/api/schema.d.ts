@@ -242,6 +242,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/billing/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel subscription
+         * @description In-app cancel modal endpoint. Sets Stripe `cancel_at_period_end`, stashes
+         *     the canonical Scanopy reason in subscription metadata, returns the period
+         *     end so the modal can render the retention disclosure.
+         */
+        post: operations["cancel_subscription"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/billing/cancel/apply-discount": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply the discount save offer
+         * @description Applies the configured Stripe coupon to the subscription. Returns 400
+         *     when `STRIPE_SAVE_OFFER_COUPON_ID` is unset.
+         */
+        post: operations["apply_discount_save_offer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/billing/change-plan": {
         parameters: {
             query?: never;
@@ -296,6 +339,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/billing/extend-trial": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Self-serve trial extend (+7 days, once per org lifetime) */
+        post: operations["extend_trial"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/billing/inquiry": {
         parameters: {
             query?: never;
@@ -312,6 +372,27 @@ export interface paths {
          *     link the inquiry to an organization.
          */
         post: operations["submit_enterprise_inquiry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/billing/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pause subscription billing
+         * @description Pauses billing for a 30/60/90 day window. Eligibility: rolling 6-month
+         *     cooldown anchored on the org's `last_paused_at`.
+         */
+        post: operations["pause_subscription"];
         delete?: never;
         options?: never;
         head?: never;
@@ -346,6 +427,48 @@ export interface paths {
         put?: never;
         /** Create a billing portal session */
         post: operations["create_portal_session"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/billing/reactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reactivate a subscription pending cancellation
+         * @description Clears Stripe's `cancel_at_period_end`. Available while
+         *     `plan_status === 'pending_cancellation'`.
+         */
+        post: operations["reactivate_subscription"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/billing/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume a paused subscription
+         * @description Clears Stripe pause collection and re-activates billing. Available while
+         *     `plan_status === 'paused'`.
+         */
+        post: operations["resume_subscription"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2217,6 +2340,51 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/snapshots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List snapshots for a network, sorted by `taken_at` DESC. */
+        get: operations["get_all_snapshots"];
+        put?: never;
+        /**
+         * Take a snapshot of the current live topology + entity state for a network.
+         *     Acquires the discovery snapshot lock, creates the snapshots row, runs
+         *     close-and-clone to stamp every Snapshotable entity row with `snapshot_id`
+         *     and close them. The topology subscriber inserts the snapshot's topology
+         *     row off the back of the `Snapshot::Created` event.
+         */
+        post: operations["create_snapshot"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/snapshots/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a snapshot by ID. */
+        get: operations["get_snapshot_by_id"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete a snapshot. The cascade FK on closed entity rows + topology rows
+         *     reaps everything tied to this snapshot automatically.
+         */
+        delete: operations["delete_snapshot"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/subnets": {
         parameters: {
             query?: never;
@@ -2471,11 +2639,37 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get all topologies */
+        /**
+         * Get all topologies for the authenticated user's networks.
+         * @description Returns both live-view rows (`snapshot_id IS NULL`) and snapshot-pinned
+         *     rows. The frontend renders the live one by default and renders snapshot
+         *     rows when the user picks one from the snapshots dropdown.
+         */
         get: operations["get_all_topologies"];
         put?: never;
-        /** Create topology */
-        post: operations["create_topology"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/topology/data": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Unified entity-set endpoint for the topology view.
+         * @description `?snapshot_id=<id>` resolves to the snapshot's `taken_at` and returns the
+         *     as-of-T entity set; otherwise returns live entities. The frontend
+         *     `TopologyTab` is the sole intended consumer.
+         */
+        get: operations["get_topology_data"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2513,11 +2707,7 @@ export interface paths {
         get: operations["get_topology_by_id"];
         put: operations["update_topology"];
         post?: never;
-        /**
-         * Delete a topology
-         * @description Prevents deletion of the last topology on a network.
-         */
-        delete: operations["delete_topology"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -2532,12 +2722,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Update an edge's handles
-         * @description Lightweight endpoint for edge reconnect operations. Instead of sending the entire
-         *     topology, only sends the edge ID and new handle positions.
-         *     Fixes HTTP 413 errors on edge reconnect operations for large topologies.
-         */
+        /** Update an edge's handles */
         post: operations["update_edge_handles"];
         delete?: never;
         options?: never;
@@ -2579,46 +2764,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/topology/{id}/lock": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Lock a topology */
-        post: operations["lock"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/topology/{id}/metadata": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Update topology metadata
-         * @description Lightweight endpoint for editing topology name and parent. Instead of sending
-         *     the entire topology (which includes all hosts, ip_addresses, services, etc.),
-         *     only sends the metadata fields.
-         *     Fixes HTTP 413 errors on metadata edit operations for large topologies.
-         */
-        post: operations["update_metadata"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/topology/{id}/node-position": {
         parameters: {
             query?: never;
@@ -2628,12 +2773,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Update a single node's position
-         * @description Lightweight endpoint for drag operations. Instead of sending the entire topology
-         *     (which can be several megabytes), only sends the node ID and new position.
-         *     Fixes HTTP 413 errors on drag operations for large topologies.
-         */
+        /** Update a single node's position */
         post: operations["update_node_position"];
         delete?: never;
         options?: never;
@@ -2650,64 +2790,8 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Update a node's size and position
-         * @description Lightweight endpoint for subnet resize operations. Instead of sending the entire
-         *     topology, only sends the node ID, new size, and new position.
-         *     Fixes HTTP 413 errors on resize operations for large topologies.
-         */
+        /** Update a node's size and position */
         post: operations["update_node_resize"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/topology/{id}/rebuild": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Rebuild topology layout */
-        post: operations["rebuild"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/topology/{id}/refresh": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Refresh topology data */
-        post: operations["refresh"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/topology/{id}/unlock": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Unlock a topology */
-        post: operations["unlock"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2943,7 +3027,7 @@ export interface components {
          * @description API metadata included in all responses
          * @example {
          *       "api_version": 1,
-         *       "server_version": "0.16.1"
+         *       "server_version": "0.16.2"
          *     }
          */
         ApiMeta: {
@@ -2954,7 +3038,7 @@ export interface components {
             api_version: number;
             /**
              * @description Server version (semver)
-             * @example 0.16.1
+             * @example 0.16.2
              */
             server_version: string;
         };
@@ -2968,23 +3052,41 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-04-22T15:57:37.855455Z",
-             *       "id": "884790f4-3e17-4623-a93a-8a9928de57f7",
+             *       "created_at": "2026-06-16T13:44:04.768141Z",
+             *       "first_discovery_id": null,
+             *       "id": "cc060e6b-35fd-41f2-af5b-2184adfdeed3",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
+             *       "last_discovery_id": null,
+             *       "last_seen_at": "2026-06-16T13:44:04.768141Z",
+             *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-04-22T15:57:37.855455Z"
+             *       "updated_at": "2026-06-16T13:44:04.768141Z",
+             *       "valid_from": "2026-06-16T13:44:04.768141Z",
+             *       "valid_to": null
              *     }
              */
             data?: components["schemas"]["BindingBase"] & {
                 /** Format: date-time */
                 readonly created_at: string;
                 /** Format: uuid */
+                readonly first_discovery_id?: string | null;
+                /** Format: uuid */
                 readonly id: string;
+                /** Format: uuid */
+                readonly last_discovery_id?: string | null;
+                /** Format: date-time */
+                readonly last_seen_at?: string;
+                /** Format: uuid */
+                readonly lineage_id?: string | null;
                 /** Format: date-time */
                 readonly updated_at: string;
+                /** Format: date-time */
+                readonly valid_from?: string;
+                /** Format: date-time */
+                readonly valid_to?: string | null;
             };
             error?: string | null;
             meta: components["schemas"]["ApiMeta"];
@@ -3004,6 +3106,15 @@ export interface components {
             data?: {
                 /** @description Number of entities affected */
                 affected_count: number;
+            };
+            error?: string | null;
+            meta: components["schemas"]["ApiMeta"];
+            success: boolean;
+        };
+        ApiResponse_CancelSubscriptionResponse: {
+            data?: {
+                /** Format: date-time */
+                period_end: string;
             };
             error?: string | null;
             meta: components["schemas"]["ApiMeta"];
@@ -3106,6 +3217,7 @@ export interface components {
              *       "description": "HTTP/HTTPS services dependency",
              *       "edge_style": "Bezier",
              *       "id": "550e8400-e29b-41d4-a716-446655440008",
+             *       "lineage_id": null,
              *       "members": {
              *         "service_ids": [],
              *         "type": "Services"
@@ -3116,7 +3228,9 @@ export interface components {
              *         "type": "Manual"
              *       },
              *       "tags": [],
-             *       "updated_at": "2026-01-15T10:30:00Z"
+             *       "updated_at": "2026-01-15T10:30:00Z",
+             *       "valid_from": "2026-01-15T10:30:00Z",
+             *       "valid_to": null
              *     }
              */
             data?: components["schemas"]["DependencyBase"] & {
@@ -3124,8 +3238,14 @@ export interface components {
                 readonly created_at: string;
                 /** Format: uuid */
                 readonly id: string;
+                /** Format: uuid */
+                readonly lineage_id?: string | null;
                 /** Format: date-time */
                 readonly updated_at: string;
+                /** Format: date-time */
+                readonly valid_from?: string;
+                /** Format: date-time */
+                readonly valid_to?: string | null;
             };
             error?: string | null;
             meta: components["schemas"]["ApiMeta"];
@@ -3180,6 +3300,7 @@ export interface components {
                 phase: components["schemas"]["DiscoveryPhase"];
                 /** Format: int32 */
                 progress: number;
+                scanned?: null | components["schemas"]["ScannedEntityIds"];
                 /** Format: uuid */
                 session_id: string;
                 /** Format: date-time */
@@ -3208,6 +3329,7 @@ export interface components {
              *           "cdp_platform": null,
              *           "cdp_port_id": null,
              *           "created_at": "2026-01-15T10:30:00Z",
+             *           "first_discovery_id": null,
              *           "host_id": "550e8400-e29b-41d4-a716-446655440003",
              *           "id": "550e8400-e29b-41d4-a716-44665544000f",
              *           "if_alias": "Uplink to Core Switch",
@@ -3216,6 +3338,9 @@ export interface components {
              *           "if_name": "Gi0/1",
              *           "if_type": 6,
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
+             *           "last_discovery_id": null,
+             *           "last_seen_at": "2026-01-15T10:30:00Z",
+             *           "lineage_id": null,
              *           "lldp_chassis_id": null,
              *           "lldp_mgmt_addr": null,
              *           "lldp_port_desc": null,
@@ -3227,21 +3352,29 @@ export interface components {
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "oper_status": "Up",
              *           "speed_bps": 1000000000,
-             *           "updated_at": "2026-01-15T10:30:00Z"
+             *           "updated_at": "2026-01-15T10:30:00Z",
+             *           "valid_from": "2026-01-15T10:30:00Z",
+             *           "valid_to": null
              *         }
              *       ],
              *       "ip_addresses": [
              *         {
              *           "created_at": "2026-01-15T10:30:00Z",
+             *           "first_discovery_id": null,
              *           "host_id": "550e8400-e29b-41d4-a716-446655440003",
              *           "id": "550e8400-e29b-41d4-a716-446655440005",
              *           "ip_address": "192.168.1.100",
+             *           "last_discovery_id": null,
+             *           "last_seen_at": "2026-01-15T10:30:00Z",
+             *           "lineage_id": null,
              *           "mac_address": "DE:AD:BE:EF:CA:FE",
              *           "name": "eth0",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
              *           "subnet_id": "550e8400-e29b-41d4-a716-446655440004",
-             *           "updated_at": "2026-01-15T10:30:00Z"
+             *           "updated_at": "2026-01-15T10:30:00Z",
+             *           "valid_from": "2026-01-15T10:30:00Z",
+             *           "valid_to": null
              *         }
              *       ],
              *       "name": "web-server-01",
@@ -3249,41 +3382,59 @@ export interface components {
              *       "ports": [
              *         {
              *           "created_at": "2026-01-15T10:30:00Z",
+             *           "first_discovery_id": null,
              *           "host_id": "550e8400-e29b-41d4-a716-446655440003",
              *           "id": "550e8400-e29b-41d4-a716-446655440006",
+             *           "last_discovery_id": null,
+             *           "last_seen_at": "2026-01-15T10:30:00Z",
+             *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "number": 80,
              *           "protocol": "Tcp",
              *           "type": "Http",
-             *           "updated_at": "2026-01-15T10:30:00Z"
+             *           "updated_at": "2026-01-15T10:30:00Z",
+             *           "valid_from": "2026-01-15T10:30:00Z",
+             *           "valid_to": null
              *         }
              *       ],
              *       "services": [
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-04-22T15:57:37.842909Z",
-             *               "id": "00326136-141c-4cc4-bd84-88a80e4cd640",
+             *               "created_at": "2026-06-16T13:44:04.756405Z",
+             *               "first_discovery_id": null,
+             *               "id": "1180f806-9cab-4ced-922f-14b88c273291",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
+             *               "last_discovery_id": null,
+             *               "last_seen_at": "2026-06-16T13:44:04.756405Z",
+             *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-04-22T15:57:37.842909Z"
+             *               "updated_at": "2026-06-16T13:44:04.756405Z",
+             *               "valid_from": "2026-06-16T13:44:04.756405Z",
+             *               "valid_to": null
              *             }
              *           ],
              *           "created_at": "2026-01-15T10:30:00Z",
+             *           "first_discovery_id": null,
              *           "host_id": "550e8400-e29b-41d4-a716-446655440003",
              *           "id": "550e8400-e29b-41d4-a716-446655440007",
+             *           "last_discovery_id": null,
+             *           "last_seen_at": "2026-01-15T10:30:00Z",
+             *           "lineage_id": null,
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Portainer",
+             *           "service_definition": "Telnet",
              *           "source": {
              *             "type": "Manual"
              *           },
              *           "tags": [],
              *           "updated_at": "2026-01-15T10:30:00Z",
+             *           "valid_from": "2026-01-15T10:30:00Z",
+             *           "valid_to": null,
              *           "virtualization": null
              *         }
              *       ],
@@ -3332,24 +3483,42 @@ export interface components {
             /**
              * @example {
              *       "created_at": "2026-01-15T10:30:00Z",
+             *       "first_discovery_id": null,
              *       "host_id": "550e8400-e29b-41d4-a716-446655440003",
              *       "id": "550e8400-e29b-41d4-a716-446655440005",
              *       "ip_address": "192.168.1.100",
+             *       "last_discovery_id": null,
+             *       "last_seen_at": "2026-01-15T10:30:00Z",
+             *       "lineage_id": null,
              *       "mac_address": "DE:AD:BE:EF:CA:FE",
              *       "name": "eth0",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
              *       "subnet_id": "550e8400-e29b-41d4-a716-446655440004",
-             *       "updated_at": "2026-01-15T10:30:00Z"
+             *       "updated_at": "2026-01-15T10:30:00Z",
+             *       "valid_from": "2026-01-15T10:30:00Z",
+             *       "valid_to": null
              *     }
              */
             data?: components["schemas"]["IPAddressBase"] & {
                 /** Format: date-time */
                 readonly created_at: string;
                 /** Format: uuid */
+                readonly first_discovery_id?: string | null;
+                /** Format: uuid */
                 readonly id: string;
+                /** Format: uuid */
+                readonly last_discovery_id?: string | null;
+                /** Format: date-time */
+                readonly last_seen_at?: string;
+                /** Format: uuid */
+                readonly lineage_id?: string | null;
                 /** Format: date-time */
                 readonly updated_at: string;
+                /** Format: date-time */
+                readonly valid_from?: string;
+                /** Format: date-time */
+                readonly valid_to?: string | null;
             };
             error?: string | null;
             meta: components["schemas"]["ApiMeta"];
@@ -3360,9 +3529,21 @@ export interface components {
                 /** Format: date-time */
                 readonly created_at: string;
                 /** Format: uuid */
+                readonly first_discovery_id?: string | null;
+                /** Format: uuid */
                 readonly id: string;
+                /** Format: uuid */
+                readonly last_discovery_id?: string | null;
+                /** Format: date-time */
+                readonly last_seen_at?: string;
+                /** Format: uuid */
+                readonly lineage_id?: string | null;
                 /** Format: date-time */
                 readonly updated_at: string;
+                /** Format: date-time */
+                readonly valid_from?: string;
+                /** Format: date-time */
+                readonly valid_to?: string | null;
             };
             error?: string | null;
             meta: components["schemas"]["ApiMeta"];
@@ -3418,8 +3599,7 @@ export interface components {
                 org_name?: string | null;
                 /** @description Current onboarding step (if any) */
                 step?: string | null;
-                /** @description Use case selection (homelab, company, msp) */
-                use_case?: string | null;
+                use_case?: null | components["schemas"]["UseCase"];
             };
             error?: string | null;
             meta: components["schemas"]["ApiMeta"];
@@ -3443,22 +3623,40 @@ export interface components {
              * @description Port entity with custom serialization that flattens PortType fields.
              * @example {
              *       "created_at": "2026-01-15T10:30:00Z",
+             *       "first_discovery_id": null,
              *       "host_id": "550e8400-e29b-41d4-a716-446655440003",
              *       "id": "550e8400-e29b-41d4-a716-446655440006",
+             *       "last_discovery_id": null,
+             *       "last_seen_at": "2026-01-15T10:30:00Z",
+             *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "number": 80,
              *       "protocol": "Tcp",
              *       "type": "Http",
-             *       "updated_at": "2026-01-15T10:30:00Z"
+             *       "updated_at": "2026-01-15T10:30:00Z",
+             *       "valid_from": "2026-01-15T10:30:00Z",
+             *       "valid_to": null
              *     }
              */
             data?: components["schemas"]["PortBase"] & {
                 /** Format: date-time */
                 readonly created_at: string;
                 /** Format: uuid */
+                readonly first_discovery_id?: string | null;
+                /** Format: uuid */
                 readonly id: string;
+                /** Format: uuid */
+                readonly last_discovery_id?: string | null;
+                /** Format: date-time */
+                readonly last_seen_at?: string;
+                /** Format: uuid */
+                readonly lineage_id?: string | null;
                 /** Format: date-time */
                 readonly updated_at: string;
+                /** Format: date-time */
+                readonly valid_from?: string;
+                /** Format: date-time */
+                readonly valid_to?: string | null;
             };
             error?: string | null;
             meta: components["schemas"]["ApiMeta"];
@@ -3488,6 +3686,12 @@ export interface components {
                 deployment_type: components["schemas"]["DeploymentType"];
                 disable_password_login: boolean;
                 disable_registration: boolean;
+                /**
+                 * @description `STRIPE_SAVE_OFFER_COUPON_ID` env var is set. When false, the
+                 *     cancel modal hides the discount save-offer panel so the user
+                 *     doesn't see an option the deployment can't fulfil.
+                 */
+                discount_save_offer_available: boolean;
                 has_email_opt_in: boolean;
                 has_email_service: boolean;
                 has_integrated_daemon: boolean;
@@ -3514,6 +3718,14 @@ export interface components {
                 public_url: string;
                 /** Format: int32 */
                 server_port: number;
+                /**
+                 * Format: int32
+                 * @description `SCANOPY_SNAPSHOT_RETENTION_DAYS_OVERRIDE` if set on this instance.
+                 *     Frontend uses it inside the plan-comparison view to display the
+                 *     effective retention for this deployment rather than the per-plan
+                 *     fixture default.
+                 */
+                snapshot_retention_days_override?: number | null;
             };
             error?: string | null;
             meta: components["schemas"]["ApiMeta"];
@@ -3557,28 +3769,40 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-04-22T15:57:37.851712Z",
-             *           "id": "c6fccd0d-a3b0-42cd-a038-5354a135769b",
+             *           "created_at": "2026-06-16T13:44:04.764011Z",
+             *           "first_discovery_id": null,
+             *           "id": "653da009-4fc8-49d2-90d1-eb5c85bc60ca",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
+             *           "last_discovery_id": null,
+             *           "last_seen_at": "2026-06-16T13:44:04.764011Z",
+             *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-04-22T15:57:37.851712Z"
+             *           "updated_at": "2026-06-16T13:44:04.764011Z",
+             *           "valid_from": "2026-06-16T13:44:04.764011Z",
+             *           "valid_to": null
              *         }
              *       ],
              *       "created_at": "2026-01-15T10:30:00Z",
+             *       "first_discovery_id": null,
              *       "host_id": "550e8400-e29b-41d4-a716-446655440003",
              *       "id": "550e8400-e29b-41d4-a716-446655440007",
+             *       "last_discovery_id": null,
+             *       "last_seen_at": "2026-01-15T10:30:00Z",
+             *       "lineage_id": null,
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Portainer",
+             *       "service_definition": "Telnet",
              *       "source": {
              *         "type": "Manual"
              *       },
              *       "tags": [],
              *       "updated_at": "2026-01-15T10:30:00Z",
+             *       "valid_from": "2026-01-15T10:30:00Z",
+             *       "valid_to": null,
              *       "virtualization": null
              *     }
              */
@@ -3586,9 +3810,21 @@ export interface components {
                 /** Format: date-time */
                 readonly created_at: string;
                 /** Format: uuid */
+                readonly first_discovery_id?: string | null;
+                /** Format: uuid */
                 readonly id: string;
+                /** Format: uuid */
+                readonly last_discovery_id?: string | null;
+                /** Format: date-time */
+                readonly last_seen_at?: string;
+                /** Format: uuid */
+                readonly lineage_id?: string | null;
                 /** Format: date-time */
                 readonly updated_at: string;
+                /** Format: date-time */
+                readonly valid_from?: string;
+                /** Format: date-time */
+                readonly valid_to?: string | null;
             };
             error?: string | null;
             meta: components["schemas"]["ApiMeta"];
@@ -3633,6 +3869,19 @@ export interface components {
             meta: components["schemas"]["ApiMeta"];
             success: boolean;
         };
+        ApiResponse_Snapshot: {
+            data?: components["schemas"]["SnapshotBase"] & {
+                /** Format: date-time */
+                readonly created_at: string;
+                /** Format: uuid */
+                readonly id: string;
+                /** Format: date-time */
+                readonly updated_at: string;
+            };
+            error?: string | null;
+            meta: components["schemas"]["ApiMeta"];
+            success: boolean;
+        };
         ApiResponse_String: {
             data?: string;
             error?: string | null;
@@ -3645,7 +3894,11 @@ export interface components {
              *       "cidr": "192.168.1.0/24",
              *       "created_at": "2026-01-15T10:30:00Z",
              *       "description": "Local area network",
+             *       "first_discovery_id": null,
              *       "id": "550e8400-e29b-41d4-a716-446655440004",
+             *       "last_discovery_id": null,
+             *       "last_seen_at": "2026-01-15T10:30:00Z",
+             *       "lineage_id": null,
              *       "name": "LAN",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "source": {
@@ -3653,16 +3906,30 @@ export interface components {
              *       },
              *       "subnet_type": "Lan",
              *       "tags": [],
-             *       "updated_at": "2026-01-15T10:30:00Z"
+             *       "updated_at": "2026-01-15T10:30:00Z",
+             *       "valid_from": "2026-01-15T10:30:00Z",
+             *       "valid_to": null
              *     }
              */
             data?: components["schemas"]["SubnetBase"] & {
                 /** Format: date-time */
                 readonly created_at: string;
                 /** Format: uuid */
+                readonly first_discovery_id?: string | null;
+                /** Format: uuid */
                 readonly id: string;
+                /** Format: uuid */
+                readonly last_discovery_id?: string | null;
+                /** Format: date-time */
+                readonly last_seen_at?: string;
+                /** Format: uuid */
+                readonly lineage_id?: string | null;
                 /** Format: date-time */
                 readonly updated_at: string;
+                /** Format: date-time */
+                readonly valid_from?: string;
+                /** Format: date-time */
+                readonly valid_to?: string | null;
             };
             error?: string | null;
             meta: components["schemas"]["ApiMeta"];
@@ -3676,9 +3943,12 @@ export interface components {
              *       "description": "Production environment resources",
              *       "id": "550e8400-e29b-41d4-a716-44665544000a",
              *       "is_application": false,
+             *       "lineage_id": null,
              *       "name": "production",
              *       "organization_id": "550e8400-e29b-41d4-a716-446655440001",
-             *       "updated_at": "2026-01-15T10:30:00Z"
+             *       "updated_at": "2026-01-15T10:30:00Z",
+             *       "valid_from": "2026-01-15T10:30:00Z",
+             *       "valid_to": null
              *     }
              */
             data?: components["schemas"]["TagBase"] & {
@@ -3686,8 +3956,14 @@ export interface components {
                 readonly created_at: string;
                 /** Format: uuid */
                 readonly id: string;
+                /** Format: uuid */
+                readonly lineage_id?: string | null;
                 /** Format: date-time */
                 readonly updated_at: string;
+                /** Format: date-time */
+                readonly valid_from?: string;
+                /** Format: date-time */
+                readonly valid_to?: string | null;
             };
             error?: string | null;
             meta: components["schemas"]["ApiMeta"];
@@ -3715,6 +3991,31 @@ export interface components {
                 readonly id: string;
                 /** Format: date-time */
                 readonly updated_at: string;
+            };
+            error?: string | null;
+            meta: components["schemas"]["ApiMeta"];
+            success: boolean;
+        };
+        ApiResponse_TopologyData: {
+            /**
+             * @description Bundle of entities that feed `build_graph` and the topology export pipeline.
+             *
+             *     Loaded by [`crate::server::topology::service::main::TopologyService::get_topology_data`]
+             *     for either the live view (`at = None`) or a point-in-time snapshot
+             *     (`at = Some(taken_at)`). Replaces the entity-blob columns previously
+             *     persisted on the topology row.
+             */
+            data?: {
+                bindings: components["schemas"]["Binding"][];
+                dependencies: components["schemas"]["Dependency"][];
+                hosts: components["schemas"]["Host"][];
+                interfaces: components["schemas"]["Interface"][];
+                ip_addresses: components["schemas"]["IPAddress"][];
+                ports: components["schemas"]["Port"][];
+                services: components["schemas"]["Service"][];
+                subnets: components["schemas"]["Subnet"][];
+                tags: components["schemas"]["Tag"][];
+                vlans: components["schemas"]["Vlan"][];
             };
             error?: string | null;
             meta: components["schemas"]["ApiMeta"];
@@ -3829,6 +4130,7 @@ export interface components {
                 phase: components["schemas"]["DiscoveryPhase"];
                 /** Format: int32 */
                 progress: number;
+                scanned?: null | components["schemas"]["ScannedEntityIds"];
                 /** Format: uuid */
                 session_id: string;
                 /** Format: date-time */
@@ -3876,9 +4178,21 @@ export interface components {
                 /** Format: date-time */
                 readonly created_at: string;
                 /** Format: uuid */
+                readonly first_discovery_id?: string | null;
+                /** Format: uuid */
                 readonly id: string;
+                /** Format: uuid */
+                readonly last_discovery_id?: string | null;
+                /** Format: date-time */
+                readonly last_seen_at?: string;
+                /** Format: uuid */
+                readonly lineage_id?: string | null;
                 /** Format: date-time */
                 readonly updated_at: string;
+                /** Format: date-time */
+                readonly valid_from?: string;
+                /** Format: date-time */
+                readonly valid_to?: string | null;
             };
             error?: string | null;
             meta: components["schemas"]["ApiMeta"];
@@ -3934,23 +4248,41 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-04-22T15:57:37.843118Z",
-         *       "id": "1aa2632c-fd09-40b1-b2fa-94a09ab2befb",
+         *       "created_at": "2026-06-16T13:44:04.756663Z",
+         *       "first_discovery_id": null,
+         *       "id": "89b5561b-1b91-4309-a9ec-e2271a8dc362",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
+         *       "last_discovery_id": null,
+         *       "last_seen_at": "2026-06-16T13:44:04.756663Z",
+         *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-04-22T15:57:37.843118Z"
+         *       "updated_at": "2026-06-16T13:44:04.756663Z",
+         *       "valid_from": "2026-06-16T13:44:04.756663Z",
+         *       "valid_to": null
          *     }
          */
         Binding: components["schemas"]["BindingBase"] & {
             /** Format: date-time */
             readonly created_at: string;
             /** Format: uuid */
+            readonly first_discovery_id?: string | null;
+            /** Format: uuid */
             readonly id: string;
+            /** Format: uuid */
+            readonly last_discovery_id?: string | null;
+            /** Format: date-time */
+            readonly last_seen_at?: string;
+            /** Format: uuid */
+            readonly lineage_id?: string | null;
             /** Format: date-time */
             readonly updated_at: string;
+            /** Format: date-time */
+            readonly valid_from?: string;
+            /** Format: date-time */
+            readonly valid_to?: string | null;
         };
         /** @description The base data for a Binding entity (everything except id, created_at, updated_at) */
         BindingBase: components["schemas"]["BindingType"] & {
@@ -4041,6 +4373,23 @@ export interface components {
             /** @description Number of entities affected */
             affected_count: number;
         };
+        /**
+         * @description Cancellation reason captured in `SubscriptionCancelled` /
+         *     `CancellationInitiated` events. Mirrors the values surfaced in the
+         *     in-app cancel flow (Phase 5).
+         * @enum {string}
+         */
+        CancelReason: "too_expensive" | "missing_features" | "switched_service" | "unused" | "customer_service" | "low_quality" | "too_complex" | "other";
+        CancelSubscriptionRequest: {
+            comment?: string | null;
+            reason_code: components["schemas"]["CancelReason"];
+            save_offer_redeemed?: null | components["schemas"]["SaveOffer"];
+            save_offer_shown?: components["schemas"]["SaveOffer"][];
+        };
+        CancelSubscriptionResponse: {
+            /** Format: date-time */
+            period_end: string;
+        };
         ChangePlanPreview: {
             /** Format: int64 */
             excess_hosts: number;
@@ -4126,7 +4475,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Portainer",
+         *           "service_definition": "Telnet",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -4186,6 +4535,10 @@ export interface components {
             service_definition: string;
             tags: string[];
             virtualization?: null | components["schemas"]["ServiceVirtualization"];
+        };
+        CreateSnapshotRequest: {
+            /** Format: uuid */
+            network_id: string;
         };
         CreateUpdateShareRequest: {
             share: components["schemas"]["Share"];
@@ -4452,6 +4805,7 @@ export interface components {
          *       "description": "HTTP/HTTPS services dependency",
          *       "edge_style": "Bezier",
          *       "id": "550e8400-e29b-41d4-a716-446655440008",
+         *       "lineage_id": null,
          *       "members": {
          *         "service_ids": [],
          *         "type": "Services"
@@ -4462,7 +4816,9 @@ export interface components {
          *         "type": "Manual"
          *       },
          *       "tags": [],
-         *       "updated_at": "2026-01-15T10:30:00Z"
+         *       "updated_at": "2026-01-15T10:30:00Z",
+         *       "valid_from": "2026-01-15T10:30:00Z",
+         *       "valid_to": null
          *     }
          */
         Dependency: components["schemas"]["DependencyBase"] & {
@@ -4470,8 +4826,14 @@ export interface components {
             readonly created_at: string;
             /** Format: uuid */
             readonly id: string;
+            /** Format: uuid */
+            readonly lineage_id?: string | null;
             /** Format: date-time */
             readonly updated_at: string;
+            /** Format: date-time */
+            readonly valid_from?: string;
+            /** Format: date-time */
+            readonly valid_to?: string | null;
         };
         DependencyBase: {
             color: components["schemas"]["Color"];
@@ -4578,14 +4940,8 @@ export interface components {
              */
             subnets?: components["schemas"]["Subnet"][];
         };
-        DiscoveryMetadata: components["schemas"]["DiscoveryType"] & {
-            /** Format: uuid */
-            daemon_id: string;
-            /** Format: date-time */
-            date: string;
-        };
         /** @enum {string} */
-        DiscoveryPhase: "Queued" | "Pending" | "Starting" | "Started" | "Scanning" | "Complete" | "Failed" | "Cancelled";
+        DiscoveryPhase: "AwaitingSnapshot" | "Queued" | "Pending" | "Starting" | "Started" | "Scanning" | "Complete" | "Failed" | "Cancelled";
         /**
          * @description Protocol that discovered the physical link between network devices
          * @enum {string}
@@ -4650,6 +5006,7 @@ export interface components {
             phase: components["schemas"]["DiscoveryPhase"];
             /** Format: int32 */
             progress: number;
+            scanned?: null | components["schemas"]["ScannedEntityIds"];
             /** Format: uuid */
             session_id: string;
             /** Format: date-time */
@@ -4795,6 +5152,9 @@ export interface components {
             install_command: string;
             os: string;
         };
+        EmailSettings: {
+            discovery_digest: boolean;
+        };
         /** @description Enterprise plan inquiry request */
         EnterpriseInquiryRequest: {
             /** @description Company name */
@@ -4818,7 +5178,7 @@ export interface components {
             urgency?: string | null;
         };
         /** @enum {string} */
-        EntityDiscriminants: "Organization" | "Invite" | "Share" | "Network" | "DaemonApiKey" | "UserApiKey" | "User" | "Tag" | "Discovery" | "Daemon" | "Host" | "Service" | "Port" | "Binding" | "IPAddress" | "Interface" | "Credential" | "Subnet" | "Vlan" | "Dependency" | "Topology" | "Unknown";
+        EntityDiscriminants: "Organization" | "Invite" | "Share" | "Network" | "DaemonApiKey" | "UserApiKey" | "User" | "Tag" | "Discovery" | "Daemon" | "Host" | "Service" | "Port" | "Binding" | "IPAddress" | "Interface" | "Credential" | "Subnet" | "Vlan" | "Dependency" | "Topology" | "Snapshot" | "Unknown";
         EntitySource: {
             /** @enum {string} */
             type: "Manual";
@@ -4826,12 +5186,10 @@ export interface components {
             /** @enum {string} */
             type: "System";
         } | {
-            metadata: components["schemas"]["DiscoveryMetadata"][];
             /** @enum {string} */
             type: "Discovery";
         } | {
             details: components["schemas"]["MatchDetails"];
-            metadata: components["schemas"]["DiscoveryMetadata"][];
             /** @enum {string} */
             type: "DiscoveryWithMatch";
         } | {
@@ -4857,9 +5215,13 @@ export interface components {
          *       "created_at": "2026-01-15T10:30:00Z",
          *       "credential_assignments": [],
          *       "description": "Primary web server",
+         *       "first_discovery_id": null,
          *       "hidden": false,
          *       "hostname": "web-server-01.local",
          *       "id": "550e8400-e29b-41d4-a716-446655440003",
+         *       "last_discovery_id": null,
+         *       "last_seen_at": "2026-01-15T10:30:00Z",
+         *       "lineage_id": null,
          *       "name": "web-server-01",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "source": {
@@ -4867,16 +5229,57 @@ export interface components {
          *       },
          *       "tags": [],
          *       "updated_at": "2026-01-15T10:30:00Z",
+         *       "valid_from": "2026-01-15T10:30:00Z",
+         *       "valid_to": null,
          *       "virtualization": null
          *     }
          */
         Host: components["schemas"]["HostBase"] & {
             /** Format: date-time */
             readonly created_at: string;
+            /**
+             * Format: uuid
+             * @description Discovery (historical row) that first observed this entity. Set once
+             *     (post-terminal); immutable thereafter via the `IS NULL` guard in
+             *     `update_discovery_fks`.
+             */
+            readonly first_discovery_id?: string | null;
             /** Format: uuid */
             readonly id: string;
+            /**
+             * Format: uuid
+             * @description Discovery (historical row) that last touched this entity. Populated
+             *     post-terminal by the per-entity-service subscriber on
+             *     `DiscoveryProcessed`. NULL until the first successful discovery
+             *     session terminates after this row was created.
+             */
+            readonly last_discovery_id?: string | null;
+            /**
+             * Format: date-time
+             * @description Last successful natural-key match by daemon discovery against this
+             *     live row. Refreshed every scan, regardless of field changes.
+             */
+            readonly last_seen_at?: string;
+            /**
+             * Format: uuid
+             * @description Lineage pointer on closed historical rows back to the live row whose
+             *     state they capture. NULL on live rows.
+             */
+            readonly lineage_id?: string | null;
             /** Format: date-time */
             readonly updated_at: string;
+            /**
+             * Format: date-time
+             * @description SCD2: when this row version became live. Equal to `created_at` for
+             *     rows that have never ridden a snapshot; advanced to the snapshot's
+             *     `taken_at` for live rows after a network snapshot fires.
+             */
+            readonly valid_from?: string;
+            /**
+             * Format: date-time
+             * @description SCD2: when this row was closed by a snapshot. NULL = currently live.
+             */
+            readonly valid_to?: string | null;
         };
         /**
          * @description Base data for a Host entity (stored in database).
@@ -4941,6 +5344,7 @@ export interface components {
          *           "cdp_platform": null,
          *           "cdp_port_id": null,
          *           "created_at": "2026-01-15T10:30:00Z",
+         *           "first_discovery_id": null,
          *           "host_id": "550e8400-e29b-41d4-a716-446655440003",
          *           "id": "550e8400-e29b-41d4-a716-44665544000f",
          *           "if_alias": "Uplink to Core Switch",
@@ -4949,6 +5353,9 @@ export interface components {
          *           "if_name": "Gi0/1",
          *           "if_type": 6,
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
+         *           "last_discovery_id": null,
+         *           "last_seen_at": "2026-01-15T10:30:00Z",
+         *           "lineage_id": null,
          *           "lldp_chassis_id": null,
          *           "lldp_mgmt_addr": null,
          *           "lldp_port_desc": null,
@@ -4960,21 +5367,29 @@ export interface components {
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "oper_status": "Up",
          *           "speed_bps": 1000000000,
-         *           "updated_at": "2026-01-15T10:30:00Z"
+         *           "updated_at": "2026-01-15T10:30:00Z",
+         *           "valid_from": "2026-01-15T10:30:00Z",
+         *           "valid_to": null
          *         }
          *       ],
          *       "ip_addresses": [
          *         {
          *           "created_at": "2026-01-15T10:30:00Z",
+         *           "first_discovery_id": null,
          *           "host_id": "550e8400-e29b-41d4-a716-446655440003",
          *           "id": "550e8400-e29b-41d4-a716-446655440005",
          *           "ip_address": "192.168.1.100",
+         *           "last_discovery_id": null,
+         *           "last_seen_at": "2026-01-15T10:30:00Z",
+         *           "lineage_id": null,
          *           "mac_address": "DE:AD:BE:EF:CA:FE",
          *           "name": "eth0",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
          *           "subnet_id": "550e8400-e29b-41d4-a716-446655440004",
-         *           "updated_at": "2026-01-15T10:30:00Z"
+         *           "updated_at": "2026-01-15T10:30:00Z",
+         *           "valid_from": "2026-01-15T10:30:00Z",
+         *           "valid_to": null
          *         }
          *       ],
          *       "name": "web-server-01",
@@ -4982,41 +5397,59 @@ export interface components {
          *       "ports": [
          *         {
          *           "created_at": "2026-01-15T10:30:00Z",
+         *           "first_discovery_id": null,
          *           "host_id": "550e8400-e29b-41d4-a716-446655440003",
          *           "id": "550e8400-e29b-41d4-a716-446655440006",
+         *           "last_discovery_id": null,
+         *           "last_seen_at": "2026-01-15T10:30:00Z",
+         *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "number": 80,
          *           "protocol": "Tcp",
          *           "type": "Http",
-         *           "updated_at": "2026-01-15T10:30:00Z"
+         *           "updated_at": "2026-01-15T10:30:00Z",
+         *           "valid_from": "2026-01-15T10:30:00Z",
+         *           "valid_to": null
          *         }
          *       ],
          *       "services": [
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-04-22T15:57:37.842617Z",
-         *               "id": "5dcf3f92-04de-4250-8a9f-69b634017f58",
+         *               "created_at": "2026-06-16T13:44:04.756134Z",
+         *               "first_discovery_id": null,
+         *               "id": "1a8439e5-bf43-463e-9ade-26bce6ecdb9e",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
+         *               "last_discovery_id": null,
+         *               "last_seen_at": "2026-06-16T13:44:04.756134Z",
+         *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-04-22T15:57:37.842617Z"
+         *               "updated_at": "2026-06-16T13:44:04.756134Z",
+         *               "valid_from": "2026-06-16T13:44:04.756134Z",
+         *               "valid_to": null
          *             }
          *           ],
          *           "created_at": "2026-01-15T10:30:00Z",
+         *           "first_discovery_id": null,
          *           "host_id": "550e8400-e29b-41d4-a716-446655440003",
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
+         *           "last_discovery_id": null,
+         *           "last_seen_at": "2026-01-15T10:30:00Z",
+         *           "lineage_id": null,
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Portainer",
+         *           "service_definition": "Telnet",
          *           "source": {
          *             "type": "Manual"
          *           },
          *           "tags": [],
          *           "updated_at": "2026-01-15T10:30:00Z",
+         *           "valid_from": "2026-01-15T10:30:00Z",
+         *           "valid_to": null,
          *           "virtualization": null
          *         }
          *       ],
@@ -5066,24 +5499,42 @@ export interface components {
         /**
          * @example {
          *       "created_at": "2026-01-15T10:30:00Z",
+         *       "first_discovery_id": null,
          *       "host_id": "550e8400-e29b-41d4-a716-446655440003",
          *       "id": "550e8400-e29b-41d4-a716-446655440005",
          *       "ip_address": "192.168.1.100",
+         *       "last_discovery_id": null,
+         *       "last_seen_at": "2026-01-15T10:30:00Z",
+         *       "lineage_id": null,
          *       "mac_address": "DE:AD:BE:EF:CA:FE",
          *       "name": "eth0",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
          *       "subnet_id": "550e8400-e29b-41d4-a716-446655440004",
-         *       "updated_at": "2026-01-15T10:30:00Z"
+         *       "updated_at": "2026-01-15T10:30:00Z",
+         *       "valid_from": "2026-01-15T10:30:00Z",
+         *       "valid_to": null
          *     }
          */
         IPAddress: components["schemas"]["IPAddressBase"] & {
             /** Format: date-time */
             readonly created_at: string;
             /** Format: uuid */
+            readonly first_discovery_id?: string | null;
+            /** Format: uuid */
             readonly id: string;
+            /** Format: uuid */
+            readonly last_discovery_id?: string | null;
+            /** Format: date-time */
+            readonly last_seen_at?: string;
+            /** Format: uuid */
+            readonly lineage_id?: string | null;
             /** Format: date-time */
             readonly updated_at: string;
+            /** Format: date-time */
+            readonly valid_from?: string;
+            /** Format: date-time */
+            readonly valid_to?: string | null;
         };
         IPAddressBase: {
             /** Format: uuid */
@@ -5199,9 +5650,21 @@ export interface components {
             /** Format: date-time */
             readonly created_at: string;
             /** Format: uuid */
+            readonly first_discovery_id?: string | null;
+            /** Format: uuid */
             readonly id: string;
+            /** Format: uuid */
+            readonly last_discovery_id?: string | null;
+            /** Format: date-time */
+            readonly last_seen_at?: string;
+            /** Format: uuid */
+            readonly lineage_id?: string | null;
             /** Format: date-time */
             readonly updated_at: string;
+            /** Format: date-time */
+            readonly valid_from?: string;
+            /** Format: date-time */
+            readonly valid_to?: string | null;
         };
         InterfaceBase: {
             /** @description SNMP ifAdminStatus: 1=up, 2=down, 3=testing */
@@ -5589,7 +6052,7 @@ export interface components {
             snmp_version?: string | null;
         };
         /** @enum {string} */
-        OnboardingOperation: "OrgCreated" | "OnboardingModalCompleted" | "PlanSelected" | "FirstDaemonRegistered" | "FirstTopologyRebuild" | "FirstDiscoveryCompleted" | "FirstHostDiscovered" | "SecondNetworkCreated" | "FirstTagCreated" | "FirstDependencyCreated" | "FirstUserApiKeyCreated" | "FirstSnmpCredentialCreated" | "FirstApplicationTagCreated" | "FirstCredentialCreated" | "InviteSent" | "InviteAccepted" | "ProfileCompleted" | "ReferralSourceCompleted";
+        OnboardingOperationDiscriminants: "OrgCreated" | "OnboardingModalCompleted" | "PlanSelected" | "FirstDaemonRegistered" | "FirstTopologyRebuild" | "FirstDiscoveryCompleted" | "FirstHostDiscovered" | "SecondNetworkCreated" | "FirstTagCreated" | "FirstDependencyCreated" | "FirstUserApiKeyCreated" | "FirstSnmpCredentialCreated" | "FirstApplicationTagCreated" | "FirstCredentialCreated" | "FirstSnapshotCreated" | "InviteSent" | "InviteAccepted" | "ProfileCompleted" | "ReferralSourceCompleted";
         /** @description Response from onboarding state endpoint */
         OnboardingStateResponse: {
             network?: null | components["schemas"]["OnboardingNetworkState"];
@@ -5602,18 +6065,12 @@ export interface components {
             org_name?: string | null;
             /** @description Current onboarding step (if any) */
             step?: string | null;
-            /** @description Use case selection (homelab, company, msp) */
-            use_case?: string | null;
+            use_case?: null | components["schemas"]["UseCase"];
         };
         /** @description Request to save onboarding step */
         OnboardingStepRequest: {
-            /** @description Referral source (how they heard about Scanopy) */
-            referral_source?: string | null;
-            /** @description Free-text referral source (when "other" is selected) */
-            referral_source_other?: string | null;
             step: string;
-            /** @description Use case selection (homelab, company, msp) */
-            use_case?: string | null;
+            use_case?: null | components["schemas"]["UseCase"];
         };
         /**
          * @description Direction for ORDER BY clauses.
@@ -5629,13 +6086,49 @@ export interface components {
             readonly updated_at: string;
         };
         OrganizationBase: {
+            /**
+             * Format: date-time
+             * @description When the currently-active save-offer discount window expires. The
+             *     BillingTab chip renders only while `> now()`; expiry needs no
+             *     cleanup job.
+             */
+            readonly discount_save_offer_active_until?: string | null;
+            /**
+             * Format: int32
+             * @description Percent off the currently-active save-offer discount applies. Read
+             *     live by the BillingTab chip so a future coupon swap renders the new
+             *     value without a code change.
+             */
+            readonly discount_save_offer_percent_off?: number | null;
             readonly has_payment_method?: boolean;
+            /**
+             * Format: date-time
+             * @description Most recent save-offer-discount application. NULL = never. Drives the
+             *     once-per-org eligibility check in `apply_discount_save_offer` and
+             *     hides the Discount panel on the cancel modal for any return visit.
+             */
+            readonly last_discount_at?: string | null;
+            /**
+             * Format: date-time
+             * @description Most recent downgrade event timestamp (paid→cheaper, or paid→cancelled);
+             *     powers the 14-day downgrade banner.
+             */
+            readonly last_downgrade_at?: string | null;
+            last_downgrade_from_plan?: null | components["schemas"]["BillingPlan"];
+            /**
+             * Format: date-time
+             * @description Most recent `Paused` billing event's timestamp; powers the 6-month
+             *     rolling pause cooldown.
+             */
+            readonly last_paused_at?: string | null;
             name: string;
-            onboarding: components["schemas"]["OnboardingOperation"][];
+            onboarding: components["schemas"]["OnboardingOperationDiscriminants"][];
             plan: null | components["schemas"]["BillingPlan"];
-            readonly plan_status: string | null;
+            plan_status: null | components["schemas"]["PlanStatus"];
             /** Format: date-time */
             readonly trial_end_date?: string | null;
+            /** @description Whether the org has used its one-time trial-extend perk. */
+            readonly trial_extended_used?: boolean;
             /** @description Use case selection (homelab, company, msp, other) */
             use_case?: components["schemas"]["UseCase"];
         };
@@ -5649,7 +6142,7 @@ export interface components {
          *         "offset": 0,
          *         "total_count": 142
          *       },
-         *       "server_version": "0.16.1"
+         *       "server_version": "0.16.2"
          *     }
          */
         PaginatedApiMeta: {
@@ -5662,7 +6155,7 @@ export interface components {
             pagination: components["schemas"]["PaginationMeta"];
             /**
              * @description Server version (semver)
-             * @example 0.16.1
+             * @example 0.16.2
              */
             server_version: string;
         };
@@ -5703,8 +6196,14 @@ export interface components {
                 readonly created_at: string;
                 /** Format: uuid */
                 readonly id: string;
+                /** Format: uuid */
+                readonly lineage_id?: string | null;
                 /** Format: date-time */
                 readonly updated_at: string;
+                /** Format: date-time */
+                readonly valid_from?: string;
+                /** Format: date-time */
+                readonly valid_to?: string | null;
             })[];
             error?: string | null;
             meta: components["schemas"]["PaginatedApiMeta"];
@@ -5751,9 +6250,21 @@ export interface components {
                 /** Format: date-time */
                 readonly created_at: string;
                 /** Format: uuid */
+                readonly first_discovery_id?: string | null;
+                /** Format: uuid */
                 readonly id: string;
+                /** Format: uuid */
+                readonly last_discovery_id?: string | null;
+                /** Format: date-time */
+                readonly last_seen_at?: string;
+                /** Format: uuid */
+                readonly lineage_id?: string | null;
                 /** Format: date-time */
                 readonly updated_at: string;
+                /** Format: date-time */
+                readonly valid_from?: string;
+                /** Format: date-time */
+                readonly valid_to?: string | null;
             })[];
             error?: string | null;
             meta: components["schemas"]["PaginatedApiMeta"];
@@ -5765,9 +6276,21 @@ export interface components {
                 /** Format: date-time */
                 readonly created_at: string;
                 /** Format: uuid */
+                readonly first_discovery_id?: string | null;
+                /** Format: uuid */
                 readonly id: string;
+                /** Format: uuid */
+                readonly last_discovery_id?: string | null;
+                /** Format: date-time */
+                readonly last_seen_at?: string;
+                /** Format: uuid */
+                readonly lineage_id?: string | null;
                 /** Format: date-time */
                 readonly updated_at: string;
+                /** Format: date-time */
+                readonly valid_from?: string;
+                /** Format: date-time */
+                readonly valid_to?: string | null;
             })[];
             error?: string | null;
             meta: components["schemas"]["PaginatedApiMeta"];
@@ -5780,8 +6303,14 @@ export interface components {
                 readonly created_at: string;
                 /** Format: uuid */
                 readonly id: string;
+                /** Format: uuid */
+                readonly lineage_id?: string | null;
                 /** Format: date-time */
                 readonly updated_at: string;
+                /** Format: date-time */
+                readonly valid_from?: string;
+                /** Format: date-time */
+                readonly valid_to?: string | null;
             })[];
             error?: string | null;
             meta: components["schemas"]["PaginatedApiMeta"];
@@ -5835,9 +6364,21 @@ export interface components {
                 /** Format: date-time */
                 readonly created_at: string;
                 /** Format: uuid */
+                readonly first_discovery_id?: string | null;
+                /** Format: uuid */
                 readonly id: string;
+                /** Format: uuid */
+                readonly last_discovery_id?: string | null;
+                /** Format: date-time */
+                readonly last_seen_at?: string;
+                /** Format: uuid */
+                readonly lineage_id?: string | null;
                 /** Format: date-time */
                 readonly updated_at: string;
+                /** Format: date-time */
+                readonly valid_from?: string;
+                /** Format: date-time */
+                readonly valid_to?: string | null;
             })[];
             error?: string | null;
             meta: components["schemas"]["PaginatedApiMeta"];
@@ -5892,6 +6433,16 @@ export interface components {
              */
             offset?: number | null;
         };
+        /**
+         * @description Pause subscription duration. The cancel modal's `RadioGroup` posts
+         *     one of these enum variants verbatim — no integer parsing at the API
+         *     boundary, the type is the contract.
+         * @enum {string}
+         */
+        PauseDuration: "days30" | "days60" | "days90";
+        PauseSubscriptionRequest: {
+            duration_days: components["schemas"]["PauseDuration"];
+        };
         PlanConfig: {
             /** Format: int64 */
             base_cents: number;
@@ -5911,6 +6462,21 @@ export interface components {
             /** Format: int32 */
             trial_days: number;
         };
+        /**
+         * @description Derived subscription status — our domain enum, never Stripe's raw status.
+         *     Stripe webhook events map to typed `BillingOperation` variants at reception
+         *     (in `billing/service.rs`); each variant deterministically implies a
+         *     `PlanStatus` for downstream feature gates via
+         *     `BillingOperation::implied_status`.
+         *
+         *     `FromStr` is derived (via strum) so the storage layer can round-trip a
+         *     snake_case `text` column back into the typed value; `ToSchema` exposes
+         *     the enum as a stricter string union in the generated OpenAPI schema so
+         *     the frontend's `org.plan_status === 'paused'` comparisons are
+         *     compile-checked against the canonical variant list.
+         * @enum {string}
+         */
+        PlanStatus: "active" | "trialing" | "past_due" | "paused" | "pending_cancellation" | "cancelled";
         /** @description Plan usage limits and current counts */
         PlanUsage: {
             /** Format: int64 */
@@ -5930,22 +6496,40 @@ export interface components {
          * @description Port entity with custom serialization that flattens PortType fields.
          * @example {
          *       "created_at": "2026-01-15T10:30:00Z",
+         *       "first_discovery_id": null,
          *       "host_id": "550e8400-e29b-41d4-a716-446655440003",
          *       "id": "550e8400-e29b-41d4-a716-446655440006",
+         *       "last_discovery_id": null,
+         *       "last_seen_at": "2026-01-15T10:30:00Z",
+         *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "number": 80,
          *       "protocol": "Tcp",
          *       "type": "Http",
-         *       "updated_at": "2026-01-15T10:30:00Z"
+         *       "updated_at": "2026-01-15T10:30:00Z",
+         *       "valid_from": "2026-01-15T10:30:00Z",
+         *       "valid_to": null
          *     }
          */
         Port: components["schemas"]["PortBase"] & {
             /** Format: date-time */
             readonly created_at: string;
             /** Format: uuid */
+            readonly first_discovery_id?: string | null;
+            /** Format: uuid */
             readonly id: string;
+            /** Format: uuid */
+            readonly last_discovery_id?: string | null;
+            /** Format: date-time */
+            readonly last_seen_at?: string;
+            /** Format: uuid */
+            readonly lineage_id?: string | null;
             /** Format: date-time */
             readonly updated_at: string;
+            /** Format: date-time */
+            readonly valid_from?: string;
+            /** Format: date-time */
+            readonly valid_to?: string | null;
         };
         /** @description The base data for a Port entity (everything except id, created_at, updated_at) */
         PortBase: components["schemas"]["PortType"] & {
@@ -6025,6 +6609,12 @@ export interface components {
             deployment_type: components["schemas"]["DeploymentType"];
             disable_password_login: boolean;
             disable_registration: boolean;
+            /**
+             * @description `STRIPE_SAVE_OFFER_COUPON_ID` env var is set. When false, the
+             *     cancel modal hides the discount save-offer panel so the user
+             *     doesn't see an option the deployment can't fulfil.
+             */
+            discount_save_offer_available: boolean;
             has_email_opt_in: boolean;
             has_email_service: boolean;
             has_integrated_daemon: boolean;
@@ -6051,6 +6641,14 @@ export interface components {
             public_url: string;
             /** Format: int32 */
             server_port: number;
+            /**
+             * Format: int32
+             * @description `SCANOPY_SNAPSHOT_RETENTION_DAYS_OVERRIDE` if set on this instance.
+             *     Frontend uses it inside the plan-comparison view to display the
+             *     effective retention for this deployment rather than the per-plan
+             *     fixture default.
+             */
+            snapshot_retention_days_override?: number | null;
         };
         /** @description Public share metadata (returned without authentication) */
         PublicShareMetadata: {
@@ -6119,6 +6717,11 @@ export interface components {
             type: "AdHoc";
         };
         /**
+         * @description Save-offer choices presented during in-app cancellation (Phase 5).
+         * @enum {string}
+         */
+        SaveOffer: "pause" | "discount" | "downgrade";
+        /**
          * @description Scan performance settings. Lives on the discovery entity.
          *     Numeric fields are `Option<T>` — `None` means "use daemon default".
          *     The daemon unwraps with defaults at point of use.
@@ -6167,6 +6770,35 @@ export interface components {
             /** @description On Windows, use Npcap broadcast ARP instead of SendARP (default: false) */
             use_npcap_arp?: boolean;
         };
+        /**
+         * @description Canonical IDs of entities scanned in a discovery session.
+         *
+         *     Populated daemon-side at terminal phase from `EntityBuffer`'s `Created`
+         *     entries. Travels with the terminal `DiscoveryUpdatePayload` to the server,
+         *     rides the in-memory `EntityOperation::Created` event published for the
+         *     historical Discovery row (the event scope carries `Entity::Discovery` with
+         *     the full struct, including `run_type::Historical { results }`), then is
+         *     stripped before persisting into the historical Discovery row's JSONB (see
+         *     the `SqlValue::RunType` bind_value handler in
+         *     `backend/src/server/shared/storage/generic.rs`). Per-entity-service
+         *     subscribers extract `results.scanned` from the in-memory event and call
+         *     `DiscoveryFkUpdater::update_discovery_fks` to backfill
+         *     `last_discovery_id` / `first_discovery_id` on the matched rows.
+         *
+         *     Naming: `scanned_*` because the daemon scans entities — some submissions
+         *     match existing rows (refresh), others insert new rows. Both populate the
+         *     EntityBuffer with canonical (server-assigned) IDs.
+         */
+        ScannedEntityIds: {
+            binding_ids?: string[];
+            host_ids?: string[];
+            interface_ids?: string[];
+            ip_address_ids?: string[];
+            port_ids?: string[];
+            service_ids?: string[];
+            subnet_ids?: string[];
+            vlan_ids?: string[];
+        };
         /** @description Secret value that can be either inline content or a file path on the daemon host. */
         SecretValue: {
             /** @enum {string} */
@@ -6190,28 +6822,40 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-04-22T15:57:37.843045Z",
-         *           "id": "30177052-1c1c-4ab1-9772-5b24bafe1534",
+         *           "created_at": "2026-06-16T13:44:04.756614Z",
+         *           "first_discovery_id": null,
+         *           "id": "623822b1-995d-45d9-98ff-2a51dae8f994",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
+         *           "last_discovery_id": null,
+         *           "last_seen_at": "2026-06-16T13:44:04.756614Z",
+         *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-04-22T15:57:37.843045Z"
+         *           "updated_at": "2026-06-16T13:44:04.756614Z",
+         *           "valid_from": "2026-06-16T13:44:04.756614Z",
+         *           "valid_to": null
          *         }
          *       ],
          *       "created_at": "2026-01-15T10:30:00Z",
+         *       "first_discovery_id": null,
          *       "host_id": "550e8400-e29b-41d4-a716-446655440003",
          *       "id": "550e8400-e29b-41d4-a716-446655440007",
+         *       "last_discovery_id": null,
+         *       "last_seen_at": "2026-01-15T10:30:00Z",
+         *       "lineage_id": null,
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Portainer",
+         *       "service_definition": "Telnet",
          *       "source": {
          *         "type": "Manual"
          *       },
          *       "tags": [],
          *       "updated_at": "2026-01-15T10:30:00Z",
+         *       "valid_from": "2026-01-15T10:30:00Z",
+         *       "valid_to": null,
          *       "virtualization": null
          *     }
          */
@@ -6219,9 +6863,21 @@ export interface components {
             /** Format: date-time */
             readonly created_at: string;
             /** Format: uuid */
+            readonly first_discovery_id?: string | null;
+            /** Format: uuid */
             readonly id: string;
+            /** Format: uuid */
+            readonly last_discovery_id?: string | null;
+            /** Format: date-time */
+            readonly last_seen_at?: string;
+            /** Format: uuid */
+            readonly lineage_id?: string | null;
             /** Format: date-time */
             readonly updated_at: string;
+            /** Format: date-time */
+            readonly valid_from?: string;
+            /** Format: date-time */
+            readonly valid_to?: string | null;
         };
         ServiceBase: {
             bindings: components["schemas"]["Binding"][];
@@ -6361,12 +7017,32 @@ export interface components {
             show_minimap: boolean;
             show_zoom_controls: boolean;
         };
+        Snapshot: components["schemas"]["SnapshotBase"] & {
+            /** Format: date-time */
+            readonly created_at: string;
+            /** Format: uuid */
+            readonly id: string;
+            /** Format: date-time */
+            readonly updated_at: string;
+        };
+        SnapshotBase: {
+            /** Format: uuid */
+            created_by_user_id?: string | null;
+            /** Format: uuid */
+            network_id: string;
+            /** Format: date-time */
+            taken_at: string;
+        };
         /**
          * @example {
          *       "cidr": "192.168.1.0/24",
          *       "created_at": "2026-01-15T10:30:00Z",
          *       "description": "Local area network",
+         *       "first_discovery_id": null,
          *       "id": "550e8400-e29b-41d4-a716-446655440004",
+         *       "last_discovery_id": null,
+         *       "last_seen_at": "2026-01-15T10:30:00Z",
+         *       "lineage_id": null,
          *       "name": "LAN",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "source": {
@@ -6374,16 +7050,30 @@ export interface components {
          *       },
          *       "subnet_type": "Lan",
          *       "tags": [],
-         *       "updated_at": "2026-01-15T10:30:00Z"
+         *       "updated_at": "2026-01-15T10:30:00Z",
+         *       "valid_from": "2026-01-15T10:30:00Z",
+         *       "valid_to": null
          *     }
          */
         Subnet: components["schemas"]["SubnetBase"] & {
             /** Format: date-time */
             readonly created_at: string;
             /** Format: uuid */
+            readonly first_discovery_id?: string | null;
+            /** Format: uuid */
             readonly id: string;
+            /** Format: uuid */
+            readonly last_discovery_id?: string | null;
+            /** Format: date-time */
+            readonly last_seen_at?: string;
+            /** Format: uuid */
+            readonly lineage_id?: string | null;
             /** Format: date-time */
             readonly updated_at: string;
+            /** Format: date-time */
+            readonly valid_from?: string;
+            /** Format: date-time */
+            readonly valid_to?: string | null;
         };
         SubnetBase: {
             cidr: string;
@@ -6420,9 +7110,12 @@ export interface components {
          *       "description": "Production environment resources",
          *       "id": "550e8400-e29b-41d4-a716-44665544000a",
          *       "is_application": false,
+         *       "lineage_id": null,
          *       "name": "production",
          *       "organization_id": "550e8400-e29b-41d4-a716-446655440001",
-         *       "updated_at": "2026-01-15T10:30:00Z"
+         *       "updated_at": "2026-01-15T10:30:00Z",
+         *       "valid_from": "2026-01-15T10:30:00Z",
+         *       "valid_to": null
          *     }
          */
         Tag: components["schemas"]["TagBase"] & {
@@ -6430,8 +7123,14 @@ export interface components {
             readonly created_at: string;
             /** Format: uuid */
             readonly id: string;
+            /** Format: uuid */
+            readonly lineage_id?: string | null;
             /** Format: date-time */
             readonly updated_at: string;
+            /** Format: date-time */
+            readonly valid_from?: string;
+            /** Format: date-time */
+            readonly valid_to?: string | null;
         };
         TagBase: {
             color: components["schemas"]["Color"];
@@ -6471,41 +7170,36 @@ export interface components {
             readonly updated_at: string;
         };
         TopologyBase: {
-            bindings: components["schemas"]["Binding"][];
-            dependencies: components["schemas"]["Dependency"][];
             edges: components["schemas"]["Edge"][];
-            entity_tags: components["schemas"]["Tag"][];
-            hosts: components["schemas"]["Host"][];
-            interfaces: components["schemas"]["Interface"][];
-            ip_addresses: components["schemas"]["IPAddress"][];
-            is_locked: boolean;
-            is_stale: boolean;
-            /** Format: date-time */
-            last_refreshed: string;
-            /** Format: date-time */
-            locked_at?: string | null;
-            /** Format: uuid */
-            locked_by?: string | null;
-            name: string;
             /** Format: uuid */
             network_id: string;
             nodes: components["schemas"]["Node"][];
             options: components["schemas"]["TopologyOptions"];
-            /** Format: uuid */
-            parent_id?: string | null;
+            /**
+             * Format: uuid
+             * @description FK to `snapshots.id`. NULL = live view; Some = snapshot row.
+             */
+            snapshot_id?: string | null;
+        };
+        /**
+         * @description Bundle of entities that feed `build_graph` and the topology export pipeline.
+         *
+         *     Loaded by [`crate::server::topology::service::main::TopologyService::get_topology_data`]
+         *     for either the live view (`at = None`) or a point-in-time snapshot
+         *     (`at = Some(taken_at)`). Replaces the entity-blob columns previously
+         *     persisted on the topology row.
+         */
+        TopologyData: {
+            bindings: components["schemas"]["Binding"][];
+            dependencies: components["schemas"]["Dependency"][];
+            hosts: components["schemas"]["Host"][];
+            interfaces: components["schemas"]["Interface"][];
+            ip_addresses: components["schemas"]["IPAddress"][];
             ports: components["schemas"]["Port"][];
-            removed_bindings: string[];
-            removed_dependencies: string[];
-            removed_hosts: string[];
-            removed_interfaces: string[];
-            removed_ip_addresses: string[];
-            removed_ports: string[];
-            removed_services: string[];
-            removed_subnets: string[];
             services: components["schemas"]["Service"][];
             subnets: components["schemas"]["Subnet"][];
-            tags: string[];
-            vlans?: components["schemas"]["Vlan"][];
+            tags: components["schemas"]["Tag"][];
+            vlans: components["schemas"]["Vlan"][];
         };
         /**
          * @description Lightweight request type for updating an edge's handles.
@@ -6536,27 +7230,6 @@ export interface components {
             no_fade_edges: boolean;
             show_minimap?: boolean;
             tag_filter?: components["schemas"]["TopologyTagFilter"];
-        };
-        /**
-         * @description Lightweight request type for updating topology metadata.
-         *
-         *     Used for editing topology name/parent - instead of sending the entire topology
-         *     (which includes all hosts, ip_addresses, services, etc.), only sends the metadata fields.
-         *     Fixes HTTP 413 errors on metadata edit operations.
-         */
-        TopologyMetadataUpdate: {
-            /** @description New name for the topology */
-            name: string;
-            /**
-             * Format: uuid
-             * @description Network ID for authorization
-             */
-            network_id: string;
-            /**
-             * Format: uuid
-             * @description New parent topology ID (optional)
-             */
-            parent_id?: string | null;
         };
         /**
          * @description Lightweight request type for updating a single node's position.
@@ -6605,27 +7278,6 @@ export interface components {
         TopologyOptions: {
             local: components["schemas"]["TopologyLocalOptions"];
             request: components["schemas"]["TopologyRequestOptions"];
-        };
-        /**
-         * @description Lightweight request type for topology rebuild/refresh operations.
-         *
-         *     This type only includes the fields actually needed by the server - entity data
-         *     (hosts, ip_addresses, services, etc.) is fetched fresh from the database.
-         *     Using this instead of the full Topology dramatically reduces payload size
-         *     for large networks (from MBs to KBs), fixing HTTP 413 errors.
-         */
-        TopologyRebuildRequest: {
-            /** @description Existing edges for reference during rebuild */
-            edges?: components["schemas"]["Edge"][];
-            /**
-             * Format: uuid
-             * @description Network ID for authorization and data fetching
-             */
-            network_id: string;
-            /** @description Existing nodes for position preservation during rebuild */
-            nodes?: components["schemas"]["Node"][];
-            /** @description Topology options for graph building */
-            options: components["schemas"]["TopologyOptions"];
         };
         TopologyRequestOptions: {
             container_rules?: {
@@ -6771,6 +7423,8 @@ export interface components {
         };
         UserBase: {
             email: string;
+            /** @description Per-user email preferences */
+            email_settings?: components["schemas"]["EmailSettings"];
             /** @description Whether the user has verified their email address */
             email_verified?: boolean;
             /** @description Whether the user has a password set — computed from password_hash, never stored in DB */
@@ -6824,9 +7478,21 @@ export interface components {
             /** Format: date-time */
             readonly created_at: string;
             /** Format: uuid */
+            readonly first_discovery_id?: string | null;
+            /** Format: uuid */
             readonly id: string;
+            /** Format: uuid */
+            readonly last_discovery_id?: string | null;
+            /** Format: date-time */
+            readonly last_seen_at?: string;
+            /** Format: uuid */
+            readonly lineage_id?: string | null;
             /** Format: date-time */
             readonly updated_at: string;
+            /** Format: date-time */
+            readonly valid_from?: string;
+            /** Format: date-time */
+            readonly valid_to?: string | null;
         };
         VlanBase: {
             description?: string | null;
@@ -7393,6 +8059,68 @@ export interface operations {
             };
         };
     };
+    cancel_subscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CancelSubscriptionRequest"];
+            };
+        };
+        responses: {
+            /** @description Cancellation initiated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_CancelSubscriptionResponse"];
+                };
+            };
+            /** @description No active subscription or billing not enabled */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    apply_discount_save_offer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Discount applied */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_String"];
+                };
+            };
+            /** @description Discount not configured or billing not enabled */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
     change_plan: {
         parameters: {
             query?: never;
@@ -7491,6 +8219,35 @@ export interface operations {
             };
         };
     };
+    extend_trial: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Trial extended */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_String"];
+                };
+            };
+            /** @description Ineligible or billing not enabled */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
     submit_enterprise_inquiry: {
         parameters: {
             query?: never;
@@ -7524,6 +8281,39 @@ export interface operations {
             };
             /** @description Authentication required */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    pause_subscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PauseSubscriptionRequest"];
+            };
+        };
+        responses: {
+            /** @description Subscription paused */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_String"];
+                };
+            };
+            /** @description Ineligible or billing not enabled */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -7585,6 +8375,64 @@ export interface operations {
                 };
             };
             /** @description Billing not enabled */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    reactivate_subscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Subscription reactivated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_String"];
+                };
+            };
+            /** @description No pending cancellation or billing not enabled */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    resume_subscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Subscription resumed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_String"];
+                };
+            };
+            /** @description No paused subscription or billing not enabled */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -8470,6 +9318,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -8575,6 +9428,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -9342,6 +10200,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -9433,6 +10296,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -9930,6 +10798,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -10076,6 +10949,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -10113,6 +10991,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -10305,6 +11188,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -10399,6 +11287,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -10674,6 +11567,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -10776,6 +11674,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -11399,6 +12302,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -11493,6 +12401,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -11643,6 +12556,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -11742,6 +12660,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -12167,6 +13090,153 @@ export interface operations {
             };
         };
     };
+    get_all_snapshots: {
+        parameters: {
+            query?: {
+                /** @description Filter by network ID */
+                network_id?: string | null;
+                /** @description Filter by specific entity IDs (for selective loading) */
+                ids?: string[] | null;
+                /** @description Maximum number of results to return (1-1000, default: 50). Use 0 for no limit. */
+                limit?: number | null;
+                /** @description Number of results to skip. Default: 0. */
+                offset?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of snapshots */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: (components["schemas"]["SnapshotBase"] & {
+                            /** Format: date-time */
+                            readonly created_at: string;
+                            /** Format: uuid */
+                            readonly id: string;
+                            /** Format: date-time */
+                            readonly updated_at: string;
+                        })[];
+                        error?: string | null;
+                        meta: components["schemas"]["PaginatedApiMeta"];
+                        success: boolean;
+                    };
+                };
+            };
+        };
+    };
+    create_snapshot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateSnapshotRequest"];
+            };
+        };
+        responses: {
+            /** @description Snapshot created */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_Snapshot"];
+                };
+            };
+            /** @description Snapshots not available on plan */
+            402: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Network is busy with discovery; retry shortly */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    get_snapshot_by_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Snapshot ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Snapshot found */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_Snapshot"];
+                };
+            };
+            /** @description Snapshot not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_snapshot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Snapshot ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Snapshot deleted */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse"];
+                };
+            };
+            /** @description Snapshot not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
     list_subnets: {
         parameters: {
             query?: {
@@ -12182,6 +13252,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -12273,6 +13348,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -12413,6 +13493,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -12628,6 +13713,11 @@ export interface operations {
                 limit?: number | null;
                 /** @description Number of results to skip. Default: 0. */
                 offset?: number | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -12775,30 +13865,43 @@ export interface operations {
             };
         };
     };
-    create_topology: {
+    get_topology_data: {
         parameters: {
-            query?: never;
+            query: {
+                /** @description Network to read entities for. Required. */
+                network_id: string;
+                /**
+                 * @description When set, returns the entity set as it was when this snapshot was taken.
+                 *     When omitted, returns live entities.
+                 */
+                snapshot_id?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["Topology"];
-            };
-        };
+        requestBody?: never;
         responses: {
-            /** @description Topology created */
+            /** @description Topology entity bundle */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ApiResponse_Topology"];
+                    "application/json": components["schemas"]["ApiResponse_TopologyData"];
                 };
             };
-            /** @description Validation failed */
-            400: {
+            /** @description Access denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Snapshot not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -12896,47 +13999,6 @@ export interface operations {
             };
             /** @description Topology not found */
             404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiErrorResponse"];
-                };
-            };
-        };
-    };
-    delete_topology: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Topology ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Topology deleted */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse"];
-                };
-            };
-            /** @description Topology not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiErrorResponse"];
-                };
-            };
-            /** @description Cannot delete last topology */
-            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -13073,92 +14135,6 @@ export interface operations {
             };
         };
     };
-    lock: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Topology ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Topology locked */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_Topology"];
-                };
-            };
-            /** @description Access denied */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiErrorResponse"];
-                };
-            };
-            /** @description Topology not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiErrorResponse"];
-                };
-            };
-        };
-    };
-    update_metadata: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Topology ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TopologyMetadataUpdate"];
-            };
-        };
-        responses: {
-            /** @description Metadata updated */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse"];
-                };
-            };
-            /** @description Access denied */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiErrorResponse"];
-                };
-            };
-            /** @description Topology not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiErrorResponse"];
-                };
-            };
-        };
-    };
     update_node_position: {
         parameters: {
             query?: never;
@@ -13239,137 +14215,6 @@ export interface operations {
                 };
             };
             /** @description Topology or node not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiErrorResponse"];
-                };
-            };
-        };
-    };
-    rebuild: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Topology ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TopologyRebuildRequest"];
-            };
-        };
-        responses: {
-            /** @description Topology rebuilt */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse"];
-                };
-            };
-            /** @description Access denied */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiErrorResponse"];
-                };
-            };
-            /** @description Topology not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiErrorResponse"];
-                };
-            };
-        };
-    };
-    refresh: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Topology ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TopologyRebuildRequest"];
-            };
-        };
-        responses: {
-            /** @description Topology refreshed */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse"];
-                };
-            };
-            /** @description Access denied */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiErrorResponse"];
-                };
-            };
-            /** @description Topology not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiErrorResponse"];
-                };
-            };
-        };
-    };
-    unlock: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Topology ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Topology unlocked */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_Topology"];
-                };
-            };
-            /** @description Access denied */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiErrorResponse"];
-                };
-            };
-            /** @description Topology not found */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -13655,6 +14500,11 @@ export interface operations {
                 offset?: number | null;
                 /** @description Filter by network ID */
                 network_id?: string | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;
@@ -13783,6 +14633,11 @@ export interface operations {
                 offset?: number | null;
                 /** @description Filter by network ID */
                 network_id?: string | null;
+                /**
+                 * @description As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+                 *     instant (snapshot view) instead of live state.
+                 */
+                at?: string | null;
             };
             header?: never;
             path?: never;

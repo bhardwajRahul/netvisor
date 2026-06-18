@@ -59,14 +59,24 @@ impl DependencyMemberRecordBase {
 pub struct DependencyMemberRecord {
     pub id: Uuid,
     pub created_at: DateTime<Utc>,
+    #[serde(default)]
+    pub valid_from: DateTime<Utc>,
+    #[serde(default)]
+    pub valid_to: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub lineage_id: Option<Uuid>,
     pub base: DependencyMemberRecordBase,
 }
 
 impl DependencyMemberRecord {
     pub fn new(base: DependencyMemberRecordBase) -> Self {
+        let now = Utc::now();
         Self {
             id: Uuid::new_v4(),
-            created_at: Utc::now(),
+            created_at: now,
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
             base,
         }
     }
@@ -118,6 +128,9 @@ impl Storable for DependencyMemberRecord {
                 "binding_id",
                 "position",
                 "created_at",
+                "valid_from",
+                "valid_to",
+                "lineage_id",
             ],
             vec![
                 SqlValue::Uuid(self.id),
@@ -126,6 +139,9 @@ impl Storable for DependencyMemberRecord {
                 SqlValue::OptionalUuid(self.base.binding_id),
                 SqlValue::I32(self.base.position),
                 SqlValue::Timestamp(self.created_at),
+                SqlValue::Timestamp(self.valid_from),
+                SqlValue::OptionTimestamp(self.valid_to),
+                SqlValue::OptionalUuid(self.lineage_id),
             ],
         ))
     }
@@ -134,6 +150,9 @@ impl Storable for DependencyMemberRecord {
         Ok(DependencyMemberRecord {
             id: row.get("id"),
             created_at: row.get("created_at"),
+            valid_from: row.get("valid_from"),
+            valid_to: row.get("valid_to"),
+            lineage_id: row.get("lineage_id"),
             base: DependencyMemberRecordBase {
                 dependency_id: row.get("dependency_id"),
                 service_id: row.get("service_id"),
@@ -141,6 +160,51 @@ impl Storable for DependencyMemberRecord {
                 position: row.get("position"),
             },
         })
+    }
+}
+
+impl crate::server::shared::storage::snapshot::Snapshotable for DependencyMemberRecord {
+    fn id_value(&self) -> Uuid {
+        self.id
+    }
+    fn set_id_value(&mut self, id: Uuid) {
+        self.id = id;
+    }
+    fn valid_from(&self) -> DateTime<Utc> {
+        self.valid_from
+    }
+    fn valid_to(&self) -> Option<DateTime<Utc>> {
+        self.valid_to
+    }
+    fn lineage_id(&self) -> Option<Uuid> {
+        self.lineage_id
+    }
+    fn set_valid_from(&mut self, t: DateTime<Utc>) {
+        self.valid_from = t;
+    }
+    fn set_valid_to(&mut self, t: Option<DateTime<Utc>>) {
+        self.valid_to = t;
+    }
+    fn set_lineage_id(&mut self, id: Option<Uuid>) {
+        self.lineage_id = id;
+    }
+
+    fn remap_fks_for_clone(&mut self, maps: &crate::server::shared::storage::snapshot::FkMaps) {
+        if let Some(closed) = maps.dependencies.get(&self.base.dependency_id) {
+            self.base.dependency_id = *closed;
+        }
+        if let Some(closed) = maps.services.get(&self.base.service_id) {
+            self.base.service_id = *closed;
+        }
+        // Bindings are snapshotted earlier in CLONE_ORDER, so the closed-id
+        // is in the map. Without this remap, an as-of-T join through the
+        // closed dep_member would land on the live binding row whose state
+        // has moved past T.
+        if let Some(binding_id) = self.base.binding_id
+            && let Some(closed) = maps.bindings.get(&binding_id)
+        {
+            self.base.binding_id = Some(*closed);
+        }
     }
 }
 

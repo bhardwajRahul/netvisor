@@ -42,7 +42,7 @@
 	import { hasDaemon } from '$lib/shared/onboarding/checklist';
 	import { subnetTypes } from '$lib/shared/stores/metadata';
 
-	type OnboardingOperation = components['schemas']['OnboardingOperation'];
+	type OnboardingOperation = components['schemas']['OnboardingOperationDiscriminants'];
 	type SubnetOrderField = components['schemas']['SubnetOrderField'];
 
 	let { isReadOnly = false }: TabProps = $props();

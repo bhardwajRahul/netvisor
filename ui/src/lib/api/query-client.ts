@@ -151,7 +151,14 @@ export const queryKeys = {
 	},
 	topology: {
 		all: ['topology'] as const,
-		detail: (id: string) => [...queryKeys.topology.all, 'detail', id] as const
+		detail: (id: string) => [...queryKeys.topology.all, 'detail', id] as const,
+		data: (networkId: string, snapshotId: string | undefined) =>
+			[...queryKeys.topology.all, 'data', networkId, snapshotId ?? null] as const
+	},
+	snapshots: {
+		all: ['snapshots'] as const,
+		byNetwork: (networkId: string) => [...queryKeys.snapshots.all, 'network', networkId] as const,
+		detail: (id: string) => [...queryKeys.snapshots.all, 'detail', id] as const
 	},
 	billing: {
 		all: ['billing'] as const,

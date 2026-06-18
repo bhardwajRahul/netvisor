@@ -1,36 +1,44 @@
+//! PostHog subscriber for billing, onboarding, analytics, auth, entity, and
+//! discovery events.
+//!
+//! Captures product analytics: emits PostHog `capture` events keyed on
+//! distinct_id (user_id when known, else organization_id), updates person
+//! properties (plan, status), and groups events under the org.
+
 use crate::{
-    daemon::discovery::types::base::DiscoveryPhase,
+    daemon::discovery::types::base::{DiscoveryPhase, DiscoveryPhaseDiscriminants},
     server::{
+        auth::middleware::auth::AuthenticatedEntity,
         discovery::r#impl::types::DiscoveryType,
         posthog::service::PosthogService,
         shared::{
-            entities::EntityDiscriminants,
             events::{
-                bus::{EventFilter, EventSubscriber},
+                registry::SubscriberRegistration,
+                traits::{EntityEventFilter, Event, EventFilter, Subscriber},
                 types::{
-                    AnalyticsOperation, AuthOperation, BillingOperation, EntityOperation, Event,
-                    OnboardingOperation,
+                    AnalyticsOperation, AnalyticsOperationDiscriminants, AuthOperation,
+                    AuthOperationDiscriminants, BillingOperation, BillingOperationDiscriminants,
+                    EntityOperation, EntityOperationDiscriminants, OnboardingOperation,
+                    OnboardingOperationDiscriminants,
                 },
             },
+            types::metadata::TypeMetadataProvider,
         },
     },
 };
 use anyhow::Error;
 use async_trait::async_trait;
 use serde_json::json;
-use std::collections::HashMap;
 use uuid::Uuid;
 
 /// Demo org ID — filtered from noisy analytics events to avoid skewing metrics.
 const DEMO_ORG_ID: Uuid = uuid::uuid!("0380451f-a50b-41cd-ae76-6ce47214d8ff");
 
-/// Build common properties from the event's authentication context.
-fn auth_properties(event: &Event) -> serde_json::Value {
-    let auth = event.authentication();
+/// Build common properties from an event's `AuthenticatedEntity`.
+fn auth_properties(auth: &AuthenticatedEntity) -> serde_json::Value {
     let mut props = json!({
         "auth_type": auth.entity_name(),
     });
-
     if let Some(user_id) = auth.user_id() {
         props["user_id"] = json!(user_id.to_string());
     }
@@ -43,12 +51,9 @@ fn auth_properties(event: &Event) -> serde_json::Value {
     if let Some(daemon_id) = auth.daemon_id() {
         props["daemon_id"] = json!(daemon_id.to_string());
     }
-
     props
 }
 
-/// Convert a PascalCase entity discriminant name to snake_case.
-/// e.g. "DaemonApiKey" -> "daemon_api_key", "Host" -> "host"
 fn to_snake_case(s: &str) -> String {
     let mut result = String::with_capacity(s.len() + 4);
     for (i, ch) in s.chars().enumerate() {
@@ -60,7 +65,6 @@ fn to_snake_case(s: &str) -> String {
     result
 }
 
-/// Inject `$groups` property for PostHog group analytics when `organization_id` is present.
 fn inject_org_group(props: &mut serde_json::Value) {
     if let Some(org_id) = props.get("organization_id").and_then(|v| v.as_str()) {
         props["$groups"] = json!({"organization": org_id});
@@ -69,20 +73,36 @@ fn inject_org_group(props: &mut serde_json::Value) {
 
 impl PosthogService {
     /// Resolve a distinct_id for PostHog. Returns None if the event cannot be
-    /// attributed to a user or organization — caller should skip sending it.
-    async fn resolve_distinct_id(&self, event: &Event) -> Option<String> {
-        // 1. User/ApiKey auth → user_id
-        if let Some(user_id) = event.authentication().user_id() {
+    /// attributed.
+    async fn resolve_distinct_id_for_user(
+        &self,
+        auth: &AuthenticatedEntity,
+        org_id: Option<Uuid>,
+    ) -> Option<String> {
+        if let Some(user_id) = auth.user_id() {
             return Some(user_id.to_string());
         }
-        // 2. Event has org_id (Telemetry always does) → org:{org_id}
-        if let Some(org_id) = event.org_id() {
+        if let Some(org_id) = org_id {
             return Some(format!("org:{}", org_id));
         }
-        // 3. Event has network_id → resolve org via network service → org:{org_id}
-        if let Some(network_id) = event.network_id()
-            && let Some(org_id) = self.get_org_id_from_network(&network_id).await
-        {
+        if let Some(org_id) = auth.organization_id() {
+            return Some(format!("org:{}", org_id));
+        }
+        None
+    }
+
+    async fn resolve_distinct_id_via_network(
+        &self,
+        auth: &AuthenticatedEntity,
+        network_id: Uuid,
+    ) -> Option<String> {
+        if let Some(user_id) = auth.user_id() {
+            return Some(user_id.to_string());
+        }
+        if let Some(org_id) = self.get_org_id_from_network(&network_id).await {
+            return Some(format!("org:{}", org_id));
+        }
+        if let Some(org_id) = auth.organization_id() {
             return Some(format!("org:{}", org_id));
         }
         None
@@ -90,343 +110,421 @@ impl PosthogService {
 }
 
 #[async_trait]
-impl EventSubscriber for PosthogService {
-    fn event_filter(&self) -> EventFilter {
-        let ops = Some(vec![EntityOperation::Created, EntityOperation::Deleted]);
-        let mut entity_ops = HashMap::new();
-        entity_ops.insert(EntityDiscriminants::Network, ops.clone());
-        entity_ops.insert(EntityDiscriminants::Host, ops.clone());
-        entity_ops.insert(EntityDiscriminants::Subnet, ops.clone());
-        entity_ops.insert(EntityDiscriminants::Discovery, ops.clone());
-        entity_ops.insert(EntityDiscriminants::Dependency, ops.clone());
-        entity_ops.insert(EntityDiscriminants::Tag, ops.clone());
-        entity_ops.insert(EntityDiscriminants::Share, ops.clone());
-        entity_ops.insert(EntityDiscriminants::UserApiKey, ops.clone());
-        entity_ops.insert(EntityDiscriminants::DaemonApiKey, ops.clone());
-        entity_ops.insert(EntityDiscriminants::Daemon, ops.clone());
-        entity_ops.insert(EntityDiscriminants::Credential, ops.clone());
-        entity_ops.insert(EntityDiscriminants::Invite, ops.clone());
-        entity_ops.insert(EntityDiscriminants::User, ops);
-
-        EventFilter {
-            entity_operations: Some(entity_ops),
-            auth_operations: Some(vec![AuthOperation::LoginSuccess]),
-            billing_operations: Some(vec![
-                BillingOperation::CheckoutStarted,
-                BillingOperation::CheckoutCompleted,
-                BillingOperation::TrialStarted,
-                BillingOperation::TrialEnded,
-                BillingOperation::TrialWillEnd,
-                BillingOperation::SubscriptionCancelled,
-                BillingOperation::PlanChanged,
-                BillingOperation::PaymentFailed,
-                BillingOperation::PaymentActionRequired,
-                BillingOperation::PaymentRecovered,
-                BillingOperation::FeatureLimitHit,
-            ]),
-            onboarding_operations: Some(vec![
-                OnboardingOperation::OrgCreated,
-                OnboardingOperation::OnboardingModalCompleted,
-                OnboardingOperation::PlanSelected,
-                OnboardingOperation::FirstDaemonRegistered,
-                OnboardingOperation::FirstTopologyRebuild,
-                OnboardingOperation::FirstDiscoveryCompleted,
-                OnboardingOperation::FirstHostDiscovered,
-                OnboardingOperation::SecondNetworkCreated,
-                OnboardingOperation::FirstTagCreated,
-                OnboardingOperation::FirstDependencyCreated,
-                OnboardingOperation::FirstUserApiKeyCreated,
-                OnboardingOperation::FirstSnmpCredentialCreated,
-                OnboardingOperation::FirstCredentialCreated,
-                OnboardingOperation::InviteSent,
-                OnboardingOperation::InviteAccepted,
-                OnboardingOperation::ProfileCompleted,
-                OnboardingOperation::FirstApplicationTagCreated,
-                OnboardingOperation::ReferralSourceCompleted,
-            ]),
-            discovery_phases: Some(vec![
-                DiscoveryPhase::Pending,
-                DiscoveryPhase::Complete,
-                DiscoveryPhase::Failed,
-                DiscoveryPhase::Cancelled,
-            ]),
-            analytics_operations: Some(vec![
-                AnalyticsOperation::TopologyShareViewed,
-                AnalyticsOperation::TopologyEmbedViewed,
-            ]),
-            network_ids: None,
-        }
+impl Subscriber<EntityOperation> for PosthogService {
+    fn filter(&self) -> EntityEventFilter {
+        use crate::server::shared::entities::EntityDiscriminants;
+        let create_or_delete = Some(vec![
+            EntityOperationDiscriminants::Created,
+            EntityOperationDiscriminants::Deleted,
+        ]);
+        EntityEventFilter::by_entity(std::collections::HashMap::from([
+            (EntityDiscriminants::Network, create_or_delete.clone()),
+            (EntityDiscriminants::Host, create_or_delete.clone()),
+            (EntityDiscriminants::Subnet, create_or_delete.clone()),
+            (EntityDiscriminants::Discovery, create_or_delete.clone()),
+            (EntityDiscriminants::Dependency, create_or_delete.clone()),
+            (EntityDiscriminants::Tag, create_or_delete.clone()),
+            (EntityDiscriminants::Share, create_or_delete.clone()),
+            (EntityDiscriminants::Vlan, create_or_delete.clone()),
+            (EntityDiscriminants::UserApiKey, create_or_delete.clone()),
+            (EntityDiscriminants::DaemonApiKey, create_or_delete.clone()),
+            (EntityDiscriminants::Daemon, create_or_delete.clone()),
+            (EntityDiscriminants::Credential, create_or_delete.clone()),
+            (EntityDiscriminants::Invite, create_or_delete.clone()),
+            (EntityDiscriminants::User, create_or_delete),
+        ]))
     }
 
-    async fn handle_events(&self, events: Vec<Event>) -> Result<(), Error> {
-        for event in &events {
-            // Skip events with suppress_logs metadata (heartbeat-style updates)
-            if event.metadata().get("suppress_logs") == Some(&serde_json::Value::Bool(true)) {
+    async fn handle(&self, events: Vec<Event<EntityOperation>>) -> Result<(), Error> {
+        use strum::IntoDiscriminant;
+
+        for event in events {
+            if event.flags.suppress_logs {
                 continue;
             }
+            let entity_disc = event.scope.entity_type().discriminant();
 
-            match event {
-                Event::Entity(entity_event) => {
-                    let Some(distinct_id) = self.resolve_distinct_id(event).await else {
-                        tracing::debug!(
-                            entity_type = %entity_event.entity_type,
-                            entity_id = %entity_event.entity_id,
-                            "Skipping PostHog entity event — cannot attribute"
-                        );
-                        continue;
-                    };
+            let scope_org_id = event.scope.organization_id();
+            let scope_network_id = event.scope.network_id();
 
-                    let entity_type = to_snake_case(&entity_event.entity_type.to_string());
-                    let event_name = format!("{}_{}", entity_type, entity_event.operation);
+            let distinct_id = if let Some(network_id) = scope_network_id {
+                self.resolve_distinct_id_via_network(&event.authentication, network_id)
+                    .await
+            } else {
+                self.resolve_distinct_id_for_user(&event.authentication, scope_org_id)
+                    .await
+            };
+            let Some(distinct_id) = distinct_id else {
+                tracing::debug!(
+                    entity_type = %entity_disc,
+                    entity_id = %event.scope.entity_id(),
+                    "Skipping PostHog entity event — cannot attribute"
+                );
+                continue;
+            };
 
-                    let mut props = auth_properties(event);
-                    props["entity_id"] = json!(entity_event.entity_id.to_string());
-                    if let Some(network_id) = entity_event.network_id {
-                        props["network_id"] = json!(network_id.to_string());
-                        // Resolve org_id from network if not already present
-                        if entity_event.organization_id.is_none()
-                            && let Some(org_id) = self.get_org_id_from_network(&network_id).await
-                        {
-                            props["organization_id"] = json!(org_id.to_string());
-                        }
-                    }
-                    if let Some(org_id) = entity_event.organization_id {
-                        props["organization_id"] = json!(org_id.to_string());
-                    }
+            let entity_type_str = to_snake_case(&entity_disc.to_string());
+            let event_name = format!("{}_{}", entity_type_str, event.operation);
 
-                    inject_org_group(&mut props);
-                    self.capture(&event_name, &distinct_id, props).await;
-                }
-                Event::Auth(auth_event) => {
-                    let distinct_id = auth_event
-                        .user_id
-                        .map(|id| id.to_string())
-                        .unwrap_or_else(|| "unknown".to_string());
-
-                    let mut props = auth_properties(event);
-                    if let Some(org_id) = auth_event.organization_id {
-                        props["organization_id"] = json!(org_id.to_string());
-                    }
-
-                    inject_org_group(&mut props);
-                    self.capture("login", &distinct_id, props).await;
-                }
-                Event::Billing(billing_event) => {
-                    let Some(distinct_id) = self.resolve_distinct_id(event).await else {
-                        tracing::debug!(
-                            operation = %billing_event.operation,
-                            "Skipping PostHog billing event — cannot attribute"
-                        );
-                        continue;
-                    };
-
-                    let event_name = billing_event.operation.to_string();
-                    let org_id_str = billing_event.organization_id.to_string();
-
-                    let mut props = auth_properties(event);
-                    props["organization_id"] = json!(&org_id_str);
-                    props["metadata"] = billing_event.metadata.clone();
-
-                    inject_org_group(&mut props);
-                    self.capture(&event_name, &distinct_id, props).await;
-
-                    // Update person and group properties on billing events
-                    let plan_name = billing_event
-                        .metadata
-                        .get("plan_name")
-                        .cloned()
-                        .unwrap_or(json!(null));
-                    let plan_status = billing_event
-                        .metadata
-                        .get("plan_status")
-                        .cloned()
-                        .unwrap_or(json!(null));
-                    let has_payment_method = billing_event
-                        .metadata
-                        .get("has_payment_method")
-                        .cloned()
-                        .unwrap_or(json!(null));
-
-                    self.identify(
-                        &distinct_id,
-                        json!({
-                            "plan_type": plan_name,
-                            "plan_status": plan_status,
-                            "has_payment_method": has_payment_method,
-                        }),
-                    )
-                    .await;
-
-                    self.group_identify(
-                        "organization",
-                        &org_id_str,
-                        json!({
-                            "plan_type": plan_name,
-                            "plan_status": plan_status,
-                        }),
-                    )
-                    .await;
-                }
-                Event::Onboarding(onboarding_event) => {
-                    let Some(distinct_id) = self.resolve_distinct_id(event).await else {
-                        tracing::debug!(
-                            operation = %onboarding_event.operation,
-                            "Skipping PostHog onboarding event — cannot attribute"
-                        );
-                        continue;
-                    };
-
-                    let event_name = onboarding_event.operation.to_string();
-                    let org_id_str = onboarding_event.organization_id.to_string();
-
-                    let mut props = auth_properties(event);
-                    props["organization_id"] = json!(&org_id_str);
-                    props["metadata"] = onboarding_event.metadata.clone();
-
-                    inject_org_group(&mut props);
-                    self.capture(&event_name, &distinct_id, props).await;
-
-                    // Identify person and group on OrgCreated
-                    if onboarding_event.operation == OnboardingOperation::OrgCreated {
-                        let plan_type = onboarding_event
-                            .metadata
-                            .get("plan_type")
-                            .cloned()
-                            .unwrap_or(json!(null));
-                        let plan_status = onboarding_event
-                            .metadata
-                            .get("plan_status")
-                            .cloned()
-                            .unwrap_or(json!(null));
-                        let has_payment_method = onboarding_event
-                            .metadata
-                            .get("has_payment_method")
-                            .cloned()
-                            .unwrap_or(json!(false));
-                        let org_name = onboarding_event
-                            .metadata
-                            .get("org_name")
-                            .cloned()
-                            .unwrap_or(json!(null));
-                        let use_case = onboarding_event
-                            .metadata
-                            .get("use_case")
-                            .cloned()
-                            .unwrap_or(json!(null));
-
-                        self.identify(
-                            &distinct_id,
-                            json!({
-                                "plan_type": plan_type,
-                                "plan_status": plan_status,
-                                "has_payment_method": has_payment_method,
-                                "organization_id": &org_id_str,
-                                "use_case": use_case,
-                            }),
-                        )
-                        .await;
-
-                        self.group_identify(
-                            "organization",
-                            &org_id_str,
-                            json!({
-                                "plan_type": plan_type,
-                                "plan_status": plan_status,
-                                "name": org_name,
-                                "use_case": use_case,
-                                "created_at": onboarding_event.timestamp.to_rfc3339(),
-                            }),
-                        )
-                        .await;
-                    }
-                }
-                Event::Analytics(analytics_event) => {
-                    // Skip share/embed view events from the demo org to avoid skewing metrics
-                    if analytics_event.organization_id == DEMO_ORG_ID
-                        && matches!(
-                            analytics_event.operation,
-                            AnalyticsOperation::TopologyShareViewed
-                                | AnalyticsOperation::TopologyEmbedViewed
-                        )
-                    {
-                        continue;
-                    }
-
-                    let distinct_id = format!("org:{}", analytics_event.organization_id);
-                    let event_name = analytics_event.operation.to_string();
-
-                    let mut props = auth_properties(event);
-                    props["organization_id"] = json!(analytics_event.organization_id.to_string());
-                    if let Some(meta) = analytics_event.metadata.as_object() {
-                        for (k, v) in meta {
-                            props[k] = v.clone();
-                        }
-                    }
-
-                    inject_org_group(&mut props);
-                    self.capture(&event_name, &distinct_id, props).await;
-                }
-                Event::Discovery(discovery_event) => {
-                    let event_name = match discovery_event.phase {
-                        DiscoveryPhase::Pending => "discovery_started",
-                        DiscoveryPhase::Complete => "discovery_completed",
-                        DiscoveryPhase::Failed => "discovery_failed",
-                        DiscoveryPhase::Cancelled => "discovery_cancelled",
-                        _ => continue, // Filter should prevent this, but be safe
-                    };
-
-                    let Some(distinct_id) = self.resolve_distinct_id(event).await else {
-                        tracing::debug!(
-                            session_id = %discovery_event.session_id,
-                            "Skipping PostHog discovery event — cannot attribute"
-                        );
-                        continue;
-                    };
-
-                    let mut props = auth_properties(event);
-                    props["session_id"] = json!(discovery_event.session_id.to_string());
-                    props["network_id"] = json!(discovery_event.network_id.to_string());
-                    props["daemon_id"] = json!(discovery_event.daemon_id.to_string());
-
-                    // Flatten discovery_type to a simple string instead of serialized JSON object
-                    let type_name: &'static str = (&discovery_event.discovery_type).into();
-                    props["discovery_type"] = json!(type_name);
-                    if let DiscoveryType::Network { subnet_ids, .. } =
-                        &discovery_event.discovery_type
-                    {
-                        props["discovery_subnet_scan"] = json!(subnet_ids.is_some());
-                    }
-
-                    // Include error_reason from metadata for failed discoveries
-                    if let Some(error_reason) = discovery_event.metadata.get("error_reason") {
-                        props["error_reason"] = error_reason.clone();
-                    }
-
-                    // Resolve org_id from network for discovery events
-                    if let Some(org_id) = self
-                        .get_org_id_from_network(&discovery_event.network_id)
-                        .await
-                    {
-                        props["organization_id"] = json!(org_id.to_string());
-                    }
-
-                    inject_org_group(&mut props);
-                    self.capture(event_name, &distinct_id, props).await;
+            let mut props = auth_properties(&event.authentication);
+            props["entity_id"] = json!(event.scope.entity_id().to_string());
+            if let Some(network_id) = scope_network_id {
+                props["network_id"] = json!(network_id.to_string());
+                if let Some(org_id) = self.get_org_id_from_network(&network_id).await {
+                    props["organization_id"] = json!(org_id.to_string());
                 }
             }
+            if let Some(org_id) = scope_org_id {
+                props["organization_id"] = json!(org_id.to_string());
+            }
+
+            inject_org_group(&mut props);
+            self.capture(&event_name, &distinct_id, props).await;
         }
-
         Ok(())
-    }
-
-    fn name(&self) -> &str {
-        "posthog"
     }
 
     fn debounce_window_ms(&self) -> u64 {
         5000
     }
 }
+inventory::submit!(SubscriberRegistration::new::<PosthogService, EntityOperation>());
+
+#[async_trait]
+impl Subscriber<AuthOperation> for PosthogService {
+    fn filter(&self) -> EventFilter<AuthOperation> {
+        EventFilter::ops(vec![AuthOperationDiscriminants::LoginSuccess])
+    }
+
+    async fn handle(&self, events: Vec<Event<AuthOperation>>) -> Result<(), Error> {
+        for event in events {
+            if event.flags.suppress_logs {
+                continue;
+            }
+            let distinct_id = event
+                .scope
+                .user_id
+                .map(|id| id.to_string())
+                .unwrap_or_else(|| "unknown".to_string());
+
+            let mut props = auth_properties(&event.authentication);
+            if let Some(org_id) = event.scope.organization_id {
+                props["organization_id"] = json!(org_id.to_string());
+            }
+
+            inject_org_group(&mut props);
+            self.capture("login", &distinct_id, props).await;
+        }
+        Ok(())
+    }
+
+    fn debounce_window_ms(&self) -> u64 {
+        5000
+    }
+}
+inventory::submit!(SubscriberRegistration::new::<PosthogService, AuthOperation>());
+
+#[async_trait]
+impl Subscriber<BillingOperation> for PosthogService {
+    fn filter(&self) -> EventFilter<BillingOperation> {
+        EventFilter::ops(vec![
+            BillingOperationDiscriminants::CheckoutStarted,
+            BillingOperationDiscriminants::CheckoutCompleted,
+            BillingOperationDiscriminants::TrialStarted,
+            BillingOperationDiscriminants::TrialEnded,
+            BillingOperationDiscriminants::TrialWillEnd,
+            BillingOperationDiscriminants::SubscriptionCancelled,
+            BillingOperationDiscriminants::CancellationInitiated,
+            BillingOperationDiscriminants::PlanChanged,
+            BillingOperationDiscriminants::PaymentFailed,
+            BillingOperationDiscriminants::PaymentActionRequired,
+            BillingOperationDiscriminants::PaymentRecovered,
+            BillingOperationDiscriminants::FeatureLimitHit,
+        ])
+    }
+
+    async fn handle(&self, events: Vec<Event<BillingOperation>>) -> Result<(), Error> {
+        for event in events {
+            if event.flags.suppress_logs {
+                continue;
+            }
+
+            let org_id = event.scope.organization_id;
+            let Some(distinct_id) = self
+                .resolve_distinct_id_for_user(&event.authentication, Some(org_id))
+                .await
+            else {
+                tracing::debug!(
+                    operation = %event.operation,
+                    "Skipping PostHog billing event — cannot attribute"
+                );
+                continue;
+            };
+
+            let event_name = event.operation.to_string();
+            let org_id_str = org_id.to_string();
+
+            let mut props = auth_properties(&event.authentication);
+            props["organization_id"] = json!(&org_id_str);
+            props["metadata"] =
+                serde_json::to_value(&event.operation).unwrap_or(serde_json::Value::Null);
+
+            inject_org_group(&mut props);
+            self.capture(&event_name, &distinct_id, props).await;
+
+            // Update person and group properties.
+            let plan_name: serde_json::Value = event
+                .operation
+                .plan()
+                .map(|p| json!(p.name()))
+                .unwrap_or(json!(null));
+
+            self.identify(
+                &distinct_id,
+                json!({
+                    "plan_type": plan_name,
+                }),
+            )
+            .await;
+
+            self.group_identify(
+                "organization",
+                &org_id_str,
+                json!({
+                    "plan_type": plan_name,
+                }),
+            )
+            .await;
+        }
+        Ok(())
+    }
+
+    fn debounce_window_ms(&self) -> u64 {
+        5000
+    }
+}
+inventory::submit!(SubscriberRegistration::new::<
+    PosthogService,
+    BillingOperation,
+>());
+
+#[async_trait]
+impl Subscriber<OnboardingOperation> for PosthogService {
+    fn filter(&self) -> EventFilter<OnboardingOperation> {
+        EventFilter::ops(vec![
+            OnboardingOperationDiscriminants::OrgCreated,
+            OnboardingOperationDiscriminants::OnboardingModalCompleted,
+            OnboardingOperationDiscriminants::PlanSelected,
+            OnboardingOperationDiscriminants::FirstDaemonRegistered,
+            OnboardingOperationDiscriminants::FirstTopologyRebuild,
+            OnboardingOperationDiscriminants::FirstDiscoveryCompleted,
+            OnboardingOperationDiscriminants::FirstHostDiscovered,
+            OnboardingOperationDiscriminants::SecondNetworkCreated,
+            OnboardingOperationDiscriminants::FirstTagCreated,
+            OnboardingOperationDiscriminants::FirstDependencyCreated,
+            OnboardingOperationDiscriminants::FirstUserApiKeyCreated,
+            OnboardingOperationDiscriminants::FirstSnmpCredentialCreated,
+            OnboardingOperationDiscriminants::FirstCredentialCreated,
+            OnboardingOperationDiscriminants::InviteSent,
+            OnboardingOperationDiscriminants::InviteAccepted,
+            OnboardingOperationDiscriminants::ProfileCompleted,
+            OnboardingOperationDiscriminants::FirstApplicationTagCreated,
+            OnboardingOperationDiscriminants::FirstSnapshotCreated,
+            OnboardingOperationDiscriminants::ReferralSourceCompleted,
+        ])
+    }
+
+    async fn handle(&self, events: Vec<Event<OnboardingOperation>>) -> Result<(), Error> {
+        for event in events {
+            if event.flags.suppress_logs {
+                continue;
+            }
+            let org_id = event.scope.organization_id;
+            let Some(distinct_id) = self
+                .resolve_distinct_id_for_user(&event.authentication, Some(org_id))
+                .await
+            else {
+                tracing::debug!(
+                    operation = %event.operation,
+                    "Skipping PostHog onboarding event — cannot attribute"
+                );
+                continue;
+            };
+
+            let event_name = event.operation.to_string();
+            let org_id_str = org_id.to_string();
+
+            let mut props = auth_properties(&event.authentication);
+            props["organization_id"] = json!(&org_id_str);
+            props["metadata"] =
+                serde_json::to_value(&event.operation).unwrap_or(serde_json::Value::Null);
+
+            inject_org_group(&mut props);
+            self.capture(&event_name, &distinct_id, props).await;
+
+            if let OnboardingOperation::OrgCreated {
+                org_name,
+                plan,
+                use_case,
+                ..
+            } = &event.operation
+            {
+                let plan_type = json!(plan.name());
+
+                self.identify(
+                    &distinct_id,
+                    json!({
+                        "plan_type": plan_type,
+                        "organization_id": &org_id_str,
+                        "use_case": use_case,
+                    }),
+                )
+                .await;
+
+                self.group_identify(
+                    "organization",
+                    &org_id_str,
+                    json!({
+                        "plan_type": plan_type,
+                        "name": org_name,
+                        "use_case": use_case,
+                        "created_at": event.timestamp.to_rfc3339(),
+                    }),
+                )
+                .await;
+            }
+        }
+        Ok(())
+    }
+
+    fn debounce_window_ms(&self) -> u64 {
+        5000
+    }
+}
+inventory::submit!(SubscriberRegistration::new::<
+    PosthogService,
+    OnboardingOperation,
+>());
+
+#[async_trait]
+impl Subscriber<AnalyticsOperation> for PosthogService {
+    fn filter(&self) -> EventFilter<AnalyticsOperation> {
+        EventFilter::ops(vec![
+            AnalyticsOperationDiscriminants::TopologyShareViewed,
+            AnalyticsOperationDiscriminants::TopologyEmbedViewed,
+        ])
+    }
+
+    async fn handle(&self, events: Vec<Event<AnalyticsOperation>>) -> Result<(), Error> {
+        for event in events {
+            if event.flags.suppress_logs {
+                continue;
+            }
+            let org_id = event.scope.organization_id;
+            // Skip share/embed view events from the demo org to avoid skewing metrics
+            if org_id == DEMO_ORG_ID
+                && matches!(
+                    event.operation,
+                    AnalyticsOperation::TopologyShareViewed { .. }
+                        | AnalyticsOperation::TopologyEmbedViewed { .. }
+                )
+            {
+                continue;
+            }
+
+            let distinct_id = format!("org:{}", org_id);
+            let event_name = event.operation.to_string();
+
+            let mut props = auth_properties(&event.authentication);
+            props["organization_id"] = json!(org_id.to_string());
+            if let Ok(serde_json::Value::Object(payload)) = serde_json::to_value(&event.operation) {
+                for (k, v) in payload {
+                    if k != "type" {
+                        props[k] = v;
+                    }
+                }
+            }
+
+            inject_org_group(&mut props);
+            self.capture(&event_name, &distinct_id, props).await;
+        }
+        Ok(())
+    }
+
+    fn debounce_window_ms(&self) -> u64 {
+        5000
+    }
+}
+inventory::submit!(SubscriberRegistration::new::<
+    PosthogService,
+    AnalyticsOperation,
+>());
+
+#[async_trait]
+impl Subscriber<DiscoveryPhase> for PosthogService {
+    fn filter(&self) -> EventFilter<DiscoveryPhase> {
+        EventFilter::ops(vec![
+            DiscoveryPhaseDiscriminants::Pending,
+            DiscoveryPhaseDiscriminants::Complete,
+            DiscoveryPhaseDiscriminants::Failed,
+            DiscoveryPhaseDiscriminants::Cancelled,
+        ])
+    }
+
+    async fn handle(&self, events: Vec<Event<DiscoveryPhase>>) -> Result<(), Error> {
+        for event in events {
+            if event.flags.suppress_logs {
+                continue;
+            }
+            let event_name = match event.operation {
+                DiscoveryPhase::Pending => "discovery_started",
+                DiscoveryPhase::Complete => "discovery_completed",
+                DiscoveryPhase::Failed => "discovery_failed",
+                DiscoveryPhase::Cancelled => "discovery_cancelled",
+                _ => continue,
+            };
+
+            let Some(distinct_id) = self
+                .resolve_distinct_id_via_network(&event.authentication, event.scope.network_id)
+                .await
+            else {
+                tracing::debug!(
+                    session_id = %event.scope.session_id,
+                    "Skipping PostHog discovery event — cannot attribute"
+                );
+                continue;
+            };
+
+            let mut props = auth_properties(&event.authentication);
+            props["session_id"] = json!(event.scope.session_id.to_string());
+            props["network_id"] = json!(event.scope.network_id.to_string());
+            props["daemon_id"] = json!(event.scope.daemon_id.to_string());
+
+            let type_name: &'static str = (&event.scope.discovery_type).into();
+            props["discovery_type"] = json!(type_name);
+            if let DiscoveryType::Network { subnet_ids, .. } = &event.scope.discovery_type {
+                props["discovery_subnet_scan"] = json!(subnet_ids.is_some());
+            }
+
+            if let Some(error_reason) = &event.scope.error_reason {
+                props["error_reason"] = json!(error_reason);
+            }
+
+            if let Some(org_id) = self.get_org_id_from_network(&event.scope.network_id).await {
+                props["organization_id"] = json!(org_id.to_string());
+            }
+
+            inject_org_group(&mut props);
+            self.capture(event_name, &distinct_id, props).await;
+        }
+        Ok(())
+    }
+
+    fn debounce_window_ms(&self) -> u64 {
+        5000
+    }
+}
+inventory::submit!(SubscriberRegistration::new::<PosthogService, DiscoveryPhase>());
 
 #[cfg(test)]
 mod tests {

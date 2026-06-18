@@ -19,7 +19,8 @@ use crate::server::{
     shared::{
         events::{
             bus::EventBus,
-            types::{OnboardingEvent, OnboardingOperation},
+            traits::{Event, OrgScope},
+            types::{OnboardingOperation, OnboardingOperationDiscriminants},
         },
         services::traits::{CrudService, EventBusService},
         storage::{filter::StorableFilter, generic::GenericPostgresStorage},
@@ -28,7 +29,6 @@ use crate::server::{
 };
 use anyhow::Error;
 use async_trait::async_trait;
-use chrono::Utc;
 use secrecy::ExposeSecret;
 use std::sync::{Arc, OnceLock};
 use strum::IntoDiscriminant;
@@ -87,35 +87,29 @@ impl CrudService<Credential> for CredentialService {
             .get_by_id(&organization_id)
             .await?
         {
-            let now = Utc::now();
-
             // Generic event for any credential type
-            if organization.not_onboarded(&OnboardingOperation::FirstCredentialCreated) {
+            if organization.not_onboarded(&OnboardingOperationDiscriminants::FirstCredentialCreated)
+            {
                 self.event_bus
-                    .publish_onboarding(OnboardingEvent {
-                        id: Uuid::new_v4(),
-                        organization_id,
-                        operation: OnboardingOperation::FirstCredentialCreated,
-                        timestamp: now,
-                        metadata: serde_json::json!({}),
-                        authentication: authentication.clone(),
-                    })
+                    .publish(Event::new(
+                        OrgScope { organization_id },
+                        OnboardingOperation::FirstCredentialCreated,
+                        authentication.clone(),
+                    ))
                     .await?;
             }
 
             // SNMP-specific event (preserves existing Brevo tracking)
             if matches!(created.base.credential_type, CredentialType::SnmpV2c { .. })
-                && organization.not_onboarded(&OnboardingOperation::FirstSnmpCredentialCreated)
+                && organization
+                    .not_onboarded(&OnboardingOperationDiscriminants::FirstSnmpCredentialCreated)
             {
                 self.event_bus
-                    .publish_onboarding(OnboardingEvent {
-                        id: Uuid::new_v4(),
-                        organization_id,
-                        operation: OnboardingOperation::FirstSnmpCredentialCreated,
-                        timestamp: now,
-                        metadata: serde_json::json!({}),
+                    .publish(Event::new(
+                        OrgScope { organization_id },
+                        OnboardingOperation::FirstSnmpCredentialCreated,
                         authentication,
-                    })
+                    ))
                     .await?;
             }
         }

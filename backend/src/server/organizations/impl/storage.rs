@@ -5,12 +5,12 @@ use sqlx::postgres::PgRow;
 use uuid::Uuid;
 
 use crate::server::{
-    billing::types::base::BillingPlan,
+    billing::types::base::{BillingPlan, PlanStatus},
     organizations::r#impl::base::{Organization, OrganizationBase},
     shared::{
         entities::EntityDiscriminants,
         entity_metadata::EntityCategory,
-        events::types::OnboardingOperation,
+        events::types::OnboardingOperationDiscriminants,
         storage::traits::{Entity, SqlValue, Storable},
     },
 };
@@ -20,7 +20,7 @@ use crate::server::{
 pub struct OrganizationCsvRow {
     pub id: Uuid,
     pub name: String,
-    pub plan_status: Option<String>,
+    pub plan_status: Option<PlanStatus>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -61,6 +61,13 @@ impl Storable for Organization {
                     onboarding,
                     has_payment_method,
                     trial_end_date,
+                    last_paused_at,
+                    trial_extended_used,
+                    last_downgrade_at,
+                    last_downgrade_from_plan,
+                    last_discount_at,
+                    discount_save_offer_percent_off,
+                    discount_save_offer_active_until,
                     brevo_company_id,
                     plan_limit_notifications,
                     use_case,
@@ -79,6 +86,13 @@ impl Storable for Organization {
                 "onboarding",
                 "has_payment_method",
                 "trial_end_date",
+                "last_paused_at",
+                "trial_extended_used",
+                "last_downgrade_at",
+                "last_downgrade_from_plan",
+                "last_discount_at",
+                "discount_save_offer_percent_off",
+                "discount_save_offer_active_until",
                 "brevo_company_id",
                 "plan_limit_notifications",
                 "use_case",
@@ -90,10 +104,17 @@ impl Storable for Organization {
                 SqlValue::String(name),
                 SqlValue::OptionalString(stripe_customer_id),
                 SqlValue::OptionBillingPlan(plan),
-                SqlValue::OptionalString(plan_status),
+                SqlValue::OptionalString(plan_status.map(|s| s.to_string())),
                 SqlValue::OnboardingOperation(onboarding),
                 SqlValue::Bool(has_payment_method),
                 SqlValue::OptionTimestamp(trial_end_date),
+                SqlValue::OptionTimestamp(last_paused_at),
+                SqlValue::Bool(trial_extended_used),
+                SqlValue::OptionTimestamp(last_downgrade_at),
+                SqlValue::OptionBillingPlan(last_downgrade_from_plan),
+                SqlValue::OptionTimestamp(last_discount_at),
+                SqlValue::OptionalI64(discount_save_offer_percent_off),
+                SqlValue::OptionTimestamp(discount_save_offer_active_until),
                 SqlValue::OptionalString(brevo_company_id),
                 SqlValue::PlanLimitNotifications(plan_limit_notifications),
                 SqlValue::OptionalString(Some(
@@ -115,10 +136,15 @@ impl Storable for Organization {
         let raw: Vec<serde_json::Value> =
             serde_json::from_value(row.get::<serde_json::Value, _>("onboarding"))
                 .map_err(|e| anyhow::anyhow!("Failed to deserialize onboarding: {}", e))?;
-        let onboarding: Vec<OnboardingOperation> = raw
+        let onboarding: Vec<OnboardingOperationDiscriminants> = raw
             .into_iter()
             .filter_map(|v| serde_json::from_value(v).ok())
             .collect();
+
+        let last_downgrade_from_plan: Option<BillingPlan> = row
+            .try_get::<Option<serde_json::Value>, _>("last_downgrade_from_plan")
+            .unwrap_or(None)
+            .and_then(|v| serde_json::from_value(v).ok());
 
         Ok(Organization {
             id: row.get("id"),
@@ -128,10 +154,25 @@ impl Storable for Organization {
                 name: row.get("name"),
                 stripe_customer_id: row.get("stripe_customer_id"),
                 plan,
-                plan_status: row.get("plan_status"),
+                plan_status: row
+                    .try_get::<Option<String>, _>("plan_status")
+                    .ok()
+                    .flatten()
+                    .and_then(|s| s.parse().ok()),
                 onboarding,
                 has_payment_method: row.get("has_payment_method"),
                 trial_end_date: row.get("trial_end_date"),
+                last_paused_at: row.try_get("last_paused_at").unwrap_or(None),
+                trial_extended_used: row.try_get("trial_extended_used").unwrap_or(false),
+                last_downgrade_at: row.try_get("last_downgrade_at").unwrap_or(None),
+                last_downgrade_from_plan,
+                last_discount_at: row.try_get("last_discount_at").unwrap_or(None),
+                discount_save_offer_percent_off: row
+                    .try_get("discount_save_offer_percent_off")
+                    .unwrap_or(None),
+                discount_save_offer_active_until: row
+                    .try_get("discount_save_offer_active_until")
+                    .unwrap_or(None),
                 brevo_company_id: row.get("brevo_company_id"),
                 plan_limit_notifications: row
                     .try_get::<serde_json::Value, _>("plan_limit_notifications")
@@ -172,7 +213,7 @@ impl Entity for Organization {
         OrganizationCsvRow {
             id: self.id,
             name: self.base.name.clone(),
-            plan_status: self.base.plan_status.clone(),
+            plan_status: self.base.plan_status,
             created_at: self.created_at,
             updated_at: self.updated_at,
         }
@@ -210,7 +251,7 @@ impl Entity for Organization {
         // Billing fields are managed by Stripe integration, not user-editable
         self.base.stripe_customer_id = existing.base.stripe_customer_id.clone();
         self.base.plan = existing.base.plan;
-        self.base.plan_status = existing.base.plan_status.clone();
+        self.base.plan_status = existing.base.plan_status;
         // Onboarding state is server-managed
         self.base.onboarding = existing.base.onboarding.clone();
         // Brevo company ID is server-managed

@@ -74,6 +74,9 @@ pub struct SubnetFilterQuery {
     /// Number of results to skip. Default: 0.
     #[param(minimum = 0)]
     pub offset: Option<u32>,
+    /// As-of timestamp (ISO 8601). When set, returns SCD2 state as of this
+    /// instant (snapshot view) instead of live state.
+    pub at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 impl SubnetFilterQuery {
@@ -165,8 +168,9 @@ async fn get_all_subnets(
     match entity {
         AuthenticatedEntity::Daemon { network_id, .. } => {
             // Daemons can only access subnets in their network
-            // Return all results (no pagination applied)
-            let filter = StorableFilter::<Subnet>::new_from_network_ids(&[network_id]);
+            // Return all results (no pagination applied). SCD2: live rows only —
+            // daemons operate on current state and must never see closed copies.
+            let filter = StorableFilter::<Subnet>::new_from_network_ids(&[network_id]).live();
             let service = Subnet::get_service(&state);
             let result = service.get_all(filter).await.map_err(|e| {
                 tracing::error!(
@@ -188,7 +192,9 @@ async fn get_all_subnets(
             // Users/API keys - use standard filter with query params
             let org_id = organization_id.ok_or_else(ApiError::organization_required)?;
             let base_filter = StorableFilter::<Subnet>::new_from_network_ids(&network_ids);
-            let filter = query.apply_to_filter(base_filter, &network_ids, org_id);
+            let filter = query
+                .apply_to_filter(base_filter, &network_ids, org_id)
+                .live_or_as_of(query.at);
 
             // Apply pagination
             let pagination = query.pagination();

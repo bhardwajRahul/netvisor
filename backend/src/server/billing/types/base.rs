@@ -1,16 +1,200 @@
 use crate::server::{
     billing::types::features::Feature,
+    email::service::format_cents,
     shared::types::{
         Color, Icon,
         metadata::{EntityMetadataProvider, HasId, TypeMetadataProvider},
     },
 };
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::hash::Hash;
 use stripe_product::price::CreatePriceRecurringInterval;
 use strum::{Display, EnumDiscriminants, EnumIter, IntoDiscriminant, IntoStaticStr, VariantNames};
 use utoipa::ToSchema;
+
+// ===========================================================================
+// Component enums for typed BillingOperation payloads
+// ===========================================================================
+
+/// Cancellation reason captured in `SubscriptionCancelled` /
+/// `CancellationInitiated` events. Mirrors the values surfaced in the
+/// in-app cancel flow (Phase 5).
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Eq,
+    Hash,
+    Display,
+    EnumIter,
+    IntoStaticStr,
+    VariantNames,
+    ToSchema,
+)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
+pub enum CancelReason {
+    TooExpensive,
+    MissingFeatures,
+    SwitchedService,
+    Unused,
+    CustomerService,
+    LowQuality,
+    TooComplex,
+    Other,
+}
+
+impl HasId for CancelReason {
+    fn id(&self) -> &'static str {
+        self.into()
+    }
+}
+
+impl EntityMetadataProvider for CancelReason {
+    fn color(&self) -> Color {
+        // Visual differentiation isn't load-bearing here; the modal renders
+        // these as a list, not a chart. Use a single neutral palette so the
+        // fixture has stable values.
+        Color::Gray
+    }
+
+    fn icon(&self) -> Icon {
+        match self {
+            Self::TooExpensive => Icon::DollarSign,
+            Self::MissingFeatures => Icon::Layers,
+            Self::SwitchedService => Icon::ArrowRightLeft,
+            Self::Unused => Icon::CircleSlash,
+            Self::CustomerService => Icon::Headset,
+            Self::LowQuality => Icon::Frown,
+            Self::TooComplex => Icon::Puzzle,
+            Self::Other => Icon::MessageCircle,
+        }
+    }
+}
+
+impl TypeMetadataProvider for CancelReason {
+    fn name(&self) -> &'static str {
+        match self {
+            Self::TooExpensive => "Too expensive",
+            Self::MissingFeatures => "Missing features",
+            Self::SwitchedService => "Switched to another service",
+            Self::Unused => "Not using it enough",
+            Self::CustomerService => "Customer service",
+            Self::LowQuality => "Low quality",
+            Self::TooComplex => "Too complex",
+            Self::Other => "Other",
+        }
+    }
+
+    fn metadata(&self) -> serde_json::Value {
+        // Reason → save-offer mapping. The frontend reads this from
+        // `cancel-reasons.json` to drive step 2 of the cancel modal.
+        // `Discount` is included unconditionally; the UI filters it out
+        // when `discount_save_offer_available` is false on the org payload.
+        let save_offers: Vec<&'static str> = match self {
+            Self::TooExpensive => vec![SaveOffer::Pause.id(), SaveOffer::Discount.id()],
+            Self::Unused => vec![SaveOffer::Pause.id()],
+            _ => vec![],
+        };
+        serde_json::json!({ "save_offers": save_offers })
+    }
+}
+
+/// Save-offer choices presented during in-app cancellation (Phase 5).
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Eq,
+    Hash,
+    Display,
+    EnumIter,
+    IntoStaticStr,
+    VariantNames,
+    ToSchema,
+)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
+pub enum SaveOffer {
+    Pause,
+    Discount,
+    Downgrade,
+}
+
+impl HasId for SaveOffer {
+    fn id(&self) -> &'static str {
+        self.into()
+    }
+}
+
+impl EntityMetadataProvider for SaveOffer {
+    fn color(&self) -> Color {
+        match self {
+            Self::Pause => Color::Amber,
+            Self::Discount => Color::Green,
+            Self::Downgrade => Color::Blue,
+        }
+    }
+
+    fn icon(&self) -> Icon {
+        match self {
+            Self::Pause => Icon::Pause,
+            Self::Discount => Icon::BadgePercent,
+            Self::Downgrade => Icon::TrendingDown,
+        }
+    }
+}
+
+impl TypeMetadataProvider for SaveOffer {
+    fn name(&self) -> &'static str {
+        match self {
+            Self::Pause => "Pause subscription",
+            Self::Discount => "Apply a discount",
+            Self::Downgrade => "Switch to a smaller plan",
+        }
+    }
+
+    fn description(&self) -> &'static str {
+        match self {
+            Self::Pause => {
+                "Take a break for 30, 60, or 90 days. We'll keep your data and resume billing when you return."
+            }
+            Self::Discount => "Stay subscribed at a lower rate for the next few months.",
+            Self::Downgrade => "Move to a plan with fewer features but a lower price.",
+        }
+    }
+}
+
+/// Dimension hit when a `FeatureLimitHit` event fires.
+#[derive(
+    Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, Display, EnumIter, VariantNames,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum LimitType {
+    Networks,
+    Hosts,
+    Seats,
+    Snapshots,
+}
+
+/// Origin of the request that triggered the limit hit. `Api` covers
+/// user-initiated requests; `Discovery` covers automated discovery flows.
+#[derive(
+    Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, Display, EnumIter, VariantNames,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum LimitSource {
+    Api,
+    Discovery,
+}
 
 #[derive(
     Debug,
@@ -124,6 +308,20 @@ impl BillingPlan {
     fn round_to_99(cents: f32) -> i64 {
         Self::round_to_dollar(cents) - 1
     }
+
+    pub fn billing_period(&self) -> &str {
+        self.config().rate.billing_period()
+    }
+
+    /// Format a plan's base price for display in emails (e.g. "$14.99/mo")
+    pub fn base_price_formatted(&self) -> String {
+        let config = self.config();
+        let amount = format_cents(config.base_cents, "usd");
+        match config.rate {
+            BillingRate::Month => format!("{}/mo", amount),
+            BillingRate::Year => format!("{}/yr", amount),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Copy, PartialEq, Eq, Default, Hash, ToSchema)]
@@ -202,6 +400,11 @@ pub struct BillingPlanFeatures {
     pub scheduled_discovery: bool,
     pub discovery_integrations: bool,
     pub csv_export: bool,
+    /// How many days of snapshots the plan retains before the daily sweep
+    /// deletes them. `0` means snapshots are unavailable on this plan. The
+    /// env-var override (`SCANOPY_SNAPSHOT_RETENTION_DAYS_OVERRIDE`) takes
+    /// precedence at runtime — see `BillingPlan::snapshot_retention_days`.
+    pub snapshot_retention_days: u32,
 }
 
 impl BillingPlan {
@@ -272,6 +475,15 @@ impl BillingPlan {
 
     pub fn seat_limit(&self) -> Option<u64> {
         self.config().included_seats
+    }
+
+    /// Snapshot retention window in days for this plan. `0` means snapshots
+    /// are unavailable. `env_override` (`SCANOPY_SNAPSHOT_RETENTION_DAYS_OVERRIDE`)
+    /// is a universal escape hatch — when set it wins over the fixture value
+    /// for every plan tier. Self-hosted operators use it to extend retention
+    /// without forking the plan fixture.
+    pub fn snapshot_retention_days(&self, env_override: Option<u32>) -> u32 {
+        env_override.unwrap_or_else(|| self.features().snapshot_retention_days)
     }
 
     pub fn can_invite_users(&self) -> bool {
@@ -365,12 +577,18 @@ impl BillingPlan {
     }
 
     /// Whether the feature identified by `feature_id` is enabled on this plan.
+    /// Boolean features → true/false directly; numeric features (e.g.
+    /// `snapshot_retention_days`) are "enabled" when the value is > 0.
     pub fn has_feature(&self, feature_id: &str) -> bool {
         let features = self.features();
         let json = serde_json::to_value(&features).unwrap();
-        json.get(feature_id)
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false)
+        let Some(v) = json.get(feature_id) else {
+            return false;
+        };
+        if let Some(b) = v.as_bool() {
+            return b;
+        }
+        v.as_u64().map(|n| n > 0).unwrap_or(false)
     }
 
     /// Build a default plan instance for a given discriminant (monthly, default config).
@@ -461,6 +679,7 @@ impl BillingPlan {
                 scheduled_discovery: true,
                 discovery_integrations: true,
                 csv_export: true,
+                snapshot_retention_days: 90,
             },
             BillingPlan::Free { .. } => BillingPlanFeatures {
                 share_views: false,
@@ -486,6 +705,7 @@ impl BillingPlan {
                 scheduled_discovery: false,
                 discovery_integrations: true,
                 csv_export: true,
+                snapshot_retention_days: 0,
             },
             BillingPlan::Starter { .. } => BillingPlanFeatures {
                 share_views: true,
@@ -511,6 +731,7 @@ impl BillingPlan {
                 scheduled_discovery: true,
                 discovery_integrations: true,
                 csv_export: true,
+                snapshot_retention_days: 7,
             },
             BillingPlan::Pro { .. } => BillingPlanFeatures {
                 share_views: true,
@@ -536,6 +757,7 @@ impl BillingPlan {
                 scheduled_discovery: true,
                 discovery_integrations: true,
                 csv_export: true,
+                snapshot_retention_days: 30,
             },
             BillingPlan::Team { .. } => BillingPlanFeatures {
                 share_views: true,
@@ -561,6 +783,7 @@ impl BillingPlan {
                 scheduled_discovery: true,
                 discovery_integrations: true,
                 csv_export: true,
+                snapshot_retention_days: 90,
             },
             BillingPlan::Business { .. } => BillingPlanFeatures {
                 share_views: true,
@@ -586,6 +809,7 @@ impl BillingPlan {
                 scheduled_discovery: true,
                 discovery_integrations: true,
                 csv_export: true,
+                snapshot_retention_days: 90,
             },
             BillingPlan::Enterprise { .. } => BillingPlanFeatures {
                 share_views: true,
@@ -611,6 +835,7 @@ impl BillingPlan {
                 scheduled_discovery: true,
                 discovery_integrations: true,
                 csv_export: true,
+                snapshot_retention_days: 90,
             },
             BillingPlan::Demo { .. } => BillingPlanFeatures {
                 share_views: true,
@@ -636,6 +861,7 @@ impl BillingPlan {
                 scheduled_discovery: true,
                 discovery_integrations: true,
                 csv_export: true,
+                snapshot_retention_days: 90,
             },
             BillingPlan::CommercialSelfHosted { .. } => BillingPlanFeatures {
                 share_views: true,
@@ -661,6 +887,7 @@ impl BillingPlan {
                 scheduled_discovery: true,
                 discovery_integrations: true,
                 csv_export: true,
+                snapshot_retention_days: 90,
             },
         }
     }
@@ -695,6 +922,7 @@ impl Into<Vec<Feature>> for BillingPlanFeatures {
             scheduled_discovery,
             discovery_integrations,
             csv_export,
+            snapshot_retention_days,
         } = self;
 
         if share_views {
@@ -787,6 +1015,10 @@ impl Into<Vec<Feature>> for BillingPlanFeatures {
 
         if csv_export {
             features.push(Feature::CsvExport)
+        }
+
+        if snapshot_retention_days > 0 {
+            features.push(Feature::SnapshotRetentionDays)
         }
 
         features
@@ -891,5 +1123,305 @@ impl TypeMetadataProvider for BillingPlan {
             "incremental_features": self.incremental_features(),
             "previous_tier": previous_tier
         })
+    }
+}
+
+/// Derived subscription status — our domain enum, never Stripe's raw status.
+/// Stripe webhook events map to typed `BillingOperation` variants at reception
+/// (in `billing/service.rs`); each variant deterministically implies a
+/// `PlanStatus` for downstream feature gates via
+/// `BillingOperation::implied_status`.
+///
+/// `FromStr` is derived (via strum) so the storage layer can round-trip a
+/// snake_case `text` column back into the typed value; `ToSchema` exposes
+/// the enum as a stricter string union in the generated OpenAPI schema so
+/// the frontend's `org.plan_status === 'paused'` comparisons are
+/// compile-checked against the canonical variant list.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Eq,
+    Hash,
+    Display,
+    strum::EnumString,
+    EnumIter,
+    ToSchema,
+)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
+pub enum PlanStatus {
+    Active,
+    Trialing,
+    PastDue,
+    Paused,
+    PendingCancellation,
+    /// `canceled` (American) is the legacy spelling Stripe's
+    /// `SubscriptionStatus` serializes with, and pre-Phase-5 writers
+    /// echoed that value straight into `organizations.plan_status`. We
+    /// canonicalize on `cancelled` (British, matching the variant's
+    /// `serialize_all = "snake_case"` default) for new writes, but accept
+    /// the American spelling on read for any rows still carrying it.
+    #[serde(alias = "canceled")]
+    #[strum(serialize = "cancelled", serialize = "canceled")]
+    Cancelled,
+}
+
+// ===========================================================================
+// Domain invoice snapshot — typed projection of `stripe_billing::Invoice` for
+// event payloads. Carries exactly the fields the usage-summary email needs to
+// render the line-item breakdown without reaching back into Stripe.
+// ===========================================================================
+
+#[derive(
+    Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, Display, VariantNames,
+)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
+pub enum BillingReason {
+    /// Recurring renewal — triggers the usage-summary email.
+    SubscriptionCycle,
+    /// Initial subscription creation invoice.
+    SubscriptionCreate,
+    /// Plan change / proration invoice.
+    SubscriptionUpdate,
+    /// Manually-issued invoice.
+    Manual,
+    /// Anything else Stripe sends us.
+    Other,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub struct BillingInvoiceLineItem {
+    pub description: Option<String>,
+    pub amount_cents: i64,
+    pub period_start: DateTime<Utc>,
+    pub period_end: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub struct BillingInvoice {
+    pub stripe_invoice_id: String,
+    pub amount_paid_cents: i64,
+    pub currency: String,
+    pub created_at: DateTime<Utc>,
+    pub period_start: DateTime<Utc>,
+    pub period_end: DateTime<Utc>,
+    pub billing_reason: BillingReason,
+    pub line_items: Vec<BillingInvoiceLineItem>,
+}
+
+// Stripe ships unix-epoch i64 timestamps; fall back to `Utc::now()` on a
+// malformed value rather than failing the event publish.
+fn ts_to_chrono(ts: i64) -> DateTime<Utc> {
+    DateTime::<Utc>::from_timestamp(ts, 0).unwrap_or_else(Utc::now)
+}
+
+impl From<&stripe_billing::Invoice> for BillingInvoice {
+    fn from(inv: &stripe_billing::Invoice) -> Self {
+        Self {
+            stripe_invoice_id: inv.id.as_ref().map(|id| id.to_string()).unwrap_or_default(),
+            amount_paid_cents: inv.amount_paid,
+            currency: inv.currency.to_string(),
+            created_at: ts_to_chrono(inv.created),
+            period_start: ts_to_chrono(inv.period_start),
+            period_end: ts_to_chrono(inv.period_end),
+            billing_reason: inv.billing_reason.into(),
+            line_items: inv
+                .lines
+                .data
+                .iter()
+                .map(BillingInvoiceLineItem::from)
+                .collect(),
+        }
+    }
+}
+
+impl From<&stripe_billing::InvoiceLineItem> for BillingInvoiceLineItem {
+    fn from(item: &stripe_billing::InvoiceLineItem) -> Self {
+        Self {
+            description: item.description.clone(),
+            amount_cents: item.amount,
+            period_start: ts_to_chrono(item.period.start),
+            period_end: ts_to_chrono(item.period.end),
+        }
+    }
+}
+
+impl From<Option<stripe_billing::InvoiceBillingReason>> for BillingReason {
+    fn from(reason: Option<stripe_billing::InvoiceBillingReason>) -> Self {
+        use stripe_billing::InvoiceBillingReason::*;
+        match reason {
+            Some(SubscriptionCycle) => Self::SubscriptionCycle,
+            Some(SubscriptionCreate) => Self::SubscriptionCreate,
+            Some(SubscriptionUpdate) => Self::SubscriptionUpdate,
+            Some(Manual) => Self::Manual,
+            _ => Self::Other,
+        }
+    }
+}
+
+#[cfg(test)]
+mod cancel_modal_tests {
+    use super::*;
+
+    fn save_offers_for(reason: CancelReason) -> Vec<String> {
+        let metadata = reason.metadata();
+        metadata["save_offers"]
+            .as_array()
+            .expect("save_offers should be an array")
+            .iter()
+            .map(|v| v.as_str().expect("offer should be a string").to_string())
+            .collect()
+    }
+
+    #[test]
+    fn cancel_reason_too_expensive_offers_pause_and_discount() {
+        assert_eq!(
+            save_offers_for(CancelReason::TooExpensive),
+            vec!["pause", "discount"]
+        );
+    }
+
+    #[test]
+    fn cancel_reason_unused_offers_pause_only() {
+        assert_eq!(save_offers_for(CancelReason::Unused), vec!["pause"]);
+    }
+
+    #[test]
+    fn cancel_reasons_without_offers_return_empty_list() {
+        for reason in [
+            CancelReason::MissingFeatures,
+            CancelReason::SwitchedService,
+            CancelReason::CustomerService,
+            CancelReason::LowQuality,
+            CancelReason::TooComplex,
+            CancelReason::Other,
+        ] {
+            assert!(
+                save_offers_for(reason).is_empty(),
+                "{reason:?} should have no save offers"
+            );
+        }
+    }
+
+    #[test]
+    fn cancel_reason_id_is_snake_case() {
+        assert_eq!(CancelReason::TooExpensive.id(), "too_expensive");
+        assert_eq!(CancelReason::Other.id(), "other");
+    }
+
+    #[test]
+    fn save_offer_id_is_snake_case() {
+        assert_eq!(SaveOffer::Pause.id(), "pause");
+        assert_eq!(SaveOffer::Discount.id(), "discount");
+        assert_eq!(SaveOffer::Downgrade.id(), "downgrade");
+    }
+
+    #[test]
+    fn plan_status_writes_canonical_spelling() {
+        // Wire writes always use the British spelling so downstream
+        // string comparisons (frontend `'cancelled'`, Brevo sync, etc)
+        // stay consistent.
+        assert_eq!(PlanStatus::Cancelled.to_string(), "cancelled");
+        assert_eq!(
+            serde_json::to_string(&PlanStatus::Cancelled).unwrap(),
+            r#""cancelled""#
+        );
+    }
+
+    #[test]
+    fn plan_status_parses_either_spelling_from_storage() {
+        // Existing DB rows may carry either spelling: pre-Phase-5 writers
+        // echoed Stripe's American `"canceled"`; current writers use the
+        // canonical `"cancelled"`. Both must round-trip back to the
+        // typed variant on read.
+        use std::str::FromStr;
+        assert_eq!(PlanStatus::from_str("cancelled"), Ok(PlanStatus::Cancelled));
+        assert_eq!(PlanStatus::from_str("canceled"), Ok(PlanStatus::Cancelled));
+
+        // Serde path (JSONB, API request bodies) honors the alias too.
+        let from_canonical: PlanStatus = serde_json::from_str(r#""cancelled""#).unwrap();
+        let from_legacy: PlanStatus = serde_json::from_str(r#""canceled""#).unwrap();
+        assert_eq!(from_canonical, PlanStatus::Cancelled);
+        assert_eq!(from_legacy, PlanStatus::Cancelled);
+    }
+}
+
+#[cfg(test)]
+mod snapshot_retention_tests {
+    use super::*;
+    use crate::server::billing::types::base::PlanConfig;
+
+    fn cfg() -> PlanConfig {
+        PlanConfig::default()
+    }
+
+    #[test]
+    fn no_override_returns_plan_fixture_value() {
+        assert_eq!(BillingPlan::Free(cfg()).snapshot_retention_days(None), 0);
+        assert_eq!(BillingPlan::Starter(cfg()).snapshot_retention_days(None), 7);
+        assert_eq!(BillingPlan::Pro(cfg()).snapshot_retention_days(None), 30);
+        assert_eq!(
+            BillingPlan::Business(cfg()).snapshot_retention_days(None),
+            90
+        );
+        assert_eq!(BillingPlan::Team(cfg()).snapshot_retention_days(None), 90);
+        assert_eq!(
+            BillingPlan::Community(cfg()).snapshot_retention_days(None),
+            90
+        );
+        assert_eq!(
+            BillingPlan::Enterprise(cfg()).snapshot_retention_days(None),
+            90
+        );
+        assert_eq!(BillingPlan::Demo(cfg()).snapshot_retention_days(None), 90);
+        assert_eq!(
+            BillingPlan::CommercialSelfHosted(cfg()).snapshot_retention_days(None),
+            90
+        );
+    }
+
+    #[test]
+    fn env_override_wins_for_every_plan_tier() {
+        let override_value = Some(365);
+        assert_eq!(
+            BillingPlan::Free(cfg()).snapshot_retention_days(override_value),
+            365
+        );
+        assert_eq!(
+            BillingPlan::Starter(cfg()).snapshot_retention_days(override_value),
+            365
+        );
+        assert_eq!(
+            BillingPlan::Pro(cfg()).snapshot_retention_days(override_value),
+            365
+        );
+        assert_eq!(
+            BillingPlan::Business(cfg()).snapshot_retention_days(override_value),
+            365
+        );
+        assert_eq!(
+            BillingPlan::Community(cfg()).snapshot_retention_days(override_value),
+            365
+        );
+        assert_eq!(
+            BillingPlan::Enterprise(cfg()).snapshot_retention_days(override_value),
+            365
+        );
+    }
+
+    #[test]
+    fn override_of_zero_disables_snapshots() {
+        // Universal escape hatch: an operator can set the override to 0 to
+        // disable snapshots on every plan (e.g. to drain a self-hosted box).
+        assert_eq!(BillingPlan::Pro(cfg()).snapshot_retention_days(Some(0)), 0);
+        assert_eq!(
+            BillingPlan::Business(cfg()).snapshot_retention_days(Some(0)),
+            0
+        );
     }
 }

@@ -84,6 +84,15 @@
 		return !isShareView;
 	}
 
+	// Rasterize at >= 2× the device pixel ratio so node titles stay crisp on
+	// hi-DPI displays. A flat `pixelRatio: 2` looks blurry on a 2× Retina
+	// screen because it's effectively 1× of what the user sees. Floor of 2
+	// keeps non-DPI displays from rasterizing below the previous baseline.
+	function effectivePixelRatio(): number {
+		const dpr = typeof window !== 'undefined' ? (window.devicePixelRatio ?? 1) : 1;
+		return Math.max(2, dpr * 2);
+	}
+
 	let hideCreatedWith = $derived(hasFeature('remove_created_with'));
 	let hasSvgExport = $derived(hasFeature('svg_export'));
 	let hasMermaidExport = $derived(hasFeature('mermaid_export'));
@@ -463,7 +472,7 @@
 			const options = {
 				width: imageWidth,
 				height: imageHeight,
-				pixelRatio: 2,
+				pixelRatio: effectivePixelRatio(),
 				imagePlaceholder: LOGO_FALLBACK,
 				onImageErrorHandler: () => {}
 			};
@@ -494,7 +503,7 @@
 			const options = {
 				width: imageWidth,
 				height: imageHeight,
-				pixelRatio: 2,
+				pixelRatio: effectivePixelRatio(),
 				imagePlaceholder: LOGO_FALLBACK,
 				onImageErrorHandler: () => {}
 			};
@@ -631,7 +640,7 @@
 			const options = {
 				width: imageWidth,
 				height: imageHeight,
-				pixelRatio: 2,
+				pixelRatio: effectivePixelRatio(),
 				imagePlaceholder: LOGO_FALLBACK,
 				onImageErrorHandler: () => {}
 			};
@@ -694,6 +703,7 @@
 		triggerUpgrade({
 			feature,
 			source: 'export_modal',
+			surface: 'export_modal',
 			beforeModal: () => {
 				isOpen = false;
 			}

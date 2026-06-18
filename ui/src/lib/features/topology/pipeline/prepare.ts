@@ -1,5 +1,5 @@
 import { get } from 'svelte/store';
-import type { Topology } from '../types/base';
+import type { EnrichedTopology } from '../types/base';
 import type { LayoutState, PrepareResult } from './types';
 import { LayoutGraph } from '../layout/layout-graph';
 import {
@@ -26,7 +26,7 @@ import { buildTopologyParentIndex } from '../topology-parent-index';
  * "Service entities live in topology.services". Adding a new inlinable entity
  * type is a one-line append.
  */
-const INLINE_ENTITY_COLLECTIONS: Record<string, keyof Topology> = {
+const INLINE_ENTITY_COLLECTIONS: Record<string, keyof EnrichedTopology> = {
 	Service: 'services',
 	Port: 'ports',
 	Interface: 'interfaces',
@@ -47,7 +47,7 @@ const INLINE_ENTITY_COLLECTIONS: Record<string, keyof Topology> = {
  * design trade-off: view-agnostic, fully deterministic, bounded over-trigger
  * (a service name change that doesn't affect card height still re-layouts).
  */
-function getInlineContentKey(topo: Topology, view: string): string {
+function getInlineContentKey(topo: EnrichedTopology, view: string): string {
 	const meta = views.getMetadata(view) as {
 		element_config?: {
 			element_entities?: Array<{ entity_type: string; inline_entities: string[] }>;
@@ -91,7 +91,7 @@ function getHideStateKey(): string {
 	return [...hidden].sort().join(',');
 }
 
-function getStructureKey(topo: Topology, view: string): string {
+function getStructureKey(topo: EnrichedTopology, view: string): string {
 	const nodeKeys = topo.nodes
 		.map((n) => {
 			const parentId = n.node_type === 'Element' ? n.container_id : n.parent_container_id;
@@ -111,7 +111,7 @@ function getStructureKey(topo: Topology, view: string): string {
  * @returns null to signal "skip this run" (view mismatch, stale data)
  */
 export function prepareTopologyData(
-	topology: Topology,
+	topology: EnrichedTopology,
 	state: LayoutState,
 	getInfrastructureRuleId: () => string | null
 ): PrepareResult | null {

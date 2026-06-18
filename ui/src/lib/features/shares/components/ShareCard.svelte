@@ -72,6 +72,12 @@
 	let cardData = $derived.by(() => {
 		const topology = topologiesData.find((t) => t.id === share.topology_id);
 		const network = networksData.find((n) => n.id === share.network_id);
+		// Topology rows no longer carry a name (the field was dropped along with
+		// the rest of the legacy entity-blob columns). Fall back to the network
+		// name, which is what the live-view topology represents.
+		const topologyLabel = topology
+			? (network?.name ?? shares_unknownTopology())
+			: shares_unknownTopology();
 
 		return {
 			title: share.name,
@@ -84,7 +90,7 @@
 						? [
 								{
 									id: topology.id,
-									label: topology.name,
+									label: topologyLabel,
 									color: entities.getColorHelper('Topology').color,
 									entityRef: entityRef('Topology', topology.id, topology)
 								}

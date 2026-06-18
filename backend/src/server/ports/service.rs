@@ -7,7 +7,7 @@ use crate::server::{
     shared::{
         events::bus::EventBus,
         services::traits::{ChildCrudService, CrudService, EventBusService},
-        storage::generic::GenericPostgresStorage,
+        storage::{generic::GenericPostgresStorage, traits::Storage},
     },
     tags::entity_tags::EntityTagService,
 };
@@ -53,8 +53,28 @@ impl PortService {
         self.get_for_parent(host_id).await
     }
 
-    /// Get ports for multiple hosts (alias for get_for_parents)
-    pub async fn get_for_hosts(&self, host_ids: &[Uuid]) -> Result<HashMap<Uuid, Vec<Port>>> {
-        self.get_for_parents(host_ids).await
+    /// Get ports for multiple hosts. `at = None` reads live rows; `Some(t)`
+    /// reads SCD2 state as of `t` (snapshot-view hydration).
+    pub async fn get_for_hosts(
+        &self,
+        host_ids: &[Uuid],
+        at: Option<chrono::DateTime<chrono::Utc>>,
+    ) -> Result<HashMap<Uuid, Vec<Port>>> {
+        if host_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let filter =
+            crate::server::shared::storage::filter::StorableFilter::<Port>::new_from_host_ids(
+                host_ids,
+            )
+            .live_or_as_of(at);
+        let ports = self.storage.get_all(filter).await?;
+
+        let mut result: HashMap<Uuid, Vec<Port>> = HashMap::new();
+        for port in ports {
+            result.entry(port.base.host_id).or_default().push(port);
+        }
+        Ok(result)
     }
 }

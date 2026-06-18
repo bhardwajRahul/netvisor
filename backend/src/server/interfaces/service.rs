@@ -64,19 +64,26 @@ impl InterfaceService {
         }
     }
 
-    /// Get all if entries for a specific host, ordered by ifIndex
+    /// Get all if entries for a specific host, ordered by ifIndex.
+    /// SCD2: only live rows.
     pub async fn get_for_host(&self, host_id: &Uuid) -> Result<Vec<Interface>> {
-        let filter = StorableFilter::<Interface>::new_from_host_ids(&[*host_id]);
+        let filter = StorableFilter::<Interface>::new_from_host_ids(&[*host_id]).live();
         self.storage.get_all_ordered(filter, "if_index ASC").await
     }
 
-    /// Get if entries for multiple hosts, ordered by ifIndex within each host
-    pub async fn get_for_hosts(&self, host_ids: &[Uuid]) -> Result<HashMap<Uuid, Vec<Interface>>> {
+    /// Get if entries for multiple hosts, ordered by ifIndex within each host.
+    /// `at = None` reads live rows; `Some(t)` reads SCD2 state as of `t`
+    /// (snapshot-view hydration).
+    pub async fn get_for_hosts(
+        &self,
+        host_ids: &[Uuid],
+        at: Option<chrono::DateTime<chrono::Utc>>,
+    ) -> Result<HashMap<Uuid, Vec<Interface>>> {
         if host_ids.is_empty() {
             return Ok(HashMap::new());
         }
 
-        let filter = StorableFilter::<Interface>::new_from_host_ids(host_ids);
+        let filter = StorableFilter::<Interface>::new_from_host_ids(host_ids).live_or_as_of(at);
         let entries = self
             .storage
             .get_all_ordered(filter, "host_id ASC, if_index ASC")
@@ -167,7 +174,10 @@ impl InterfaceService {
         host_id: &Uuid,
         if_name: &str,
     ) -> Result<Option<Interface>> {
-        let filter = StorableFilter::<Interface>::new_from_host_ids(&[*host_id]).if_name(if_name);
+        // SCD2: only live rows participate in natural-key match.
+        let filter = StorableFilter::<Interface>::new_from_host_ids(&[*host_id])
+            .if_name(if_name)
+            .live();
         let mut rows = self.storage.get_all(filter).await?;
         Ok(rows.pop())
     }
@@ -178,7 +188,9 @@ impl InterfaceService {
         if ids.is_empty() {
             return Ok(vec![]);
         }
-        let filter = StorableFilter::<Interface>::new_from_uuids_column("ip_address_id", ids);
+        // SCD2: only live rows.
+        let filter =
+            StorableFilter::<Interface>::new_from_uuids_column("ip_address_id", ids).live();
         self.storage.get_all(filter).await
     }
 
@@ -209,6 +221,13 @@ impl InterfaceService {
             updated.preserve_immutable_fields(&existing_entry);
             self.update(&mut updated, authentication).await
         } else {
+            // SCD2 origin: no match found, this is a new insert. Stamp
+            // created_at + valid_from to the entity's already-refreshed
+            // `last_seen_at` (set by the discovery handler) so all four
+            // temporal columns line up at one canonical scan_time.
+            use crate::server::shared::storage::snapshot::DiscoveryTracked;
+            let mut entry = entry;
+            entry.originate_scan_timestamps(entry.last_seen_at);
             self.create(entry, authentication).await
         }
     }

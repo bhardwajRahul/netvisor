@@ -13,7 +13,9 @@
 	import { useCurrentUserQuery } from '$lib/features/auth/queries';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
 	import PlanInquiryModal from '$lib/features/billing/PlanInquiryModal.svelte';
-	import { storeEventForAfterRedirect } from '$lib/shared/utils/analytics';
+	import { trackEvent } from '$lib/shared/utils/analytics';
+	import { waitForOrgUpdate } from '$lib/shared/billing/wait-for-org-update';
+	import { isBillingPlanActive } from '$lib/features/organizations/types';
 	import GenericModal from '$lib/shared/components/layout/GenericModal.svelte';
 	import { upgradeContext } from '$lib/features/billing/stores';
 	import { useQueryClient } from '@tanstack/svelte-query';
@@ -115,10 +117,21 @@
 	let recommendedPlan = $derived(contextHighlightPlan ?? baseRecommendedPlan);
 
 	async function handlePlanSelect(plan: BillingPlan) {
+		// Only an immediate-payment selection (paid plan, no trial, no card on file)
+		// redirects to Stripe Checkout; trial signups / Free / plan changes activate
+		// in-app via a plain API call. Pre-open the tab synchronously (inside the
+		// click, so popup blockers allow it) only when a redirect is expected — so we
+		// don't flash a blank tab for the in-app cases. A misprediction (e.g. a
+		// returning customer who already used their trial) falls back to a same-tab
+		// redirect below. (No 'noopener' — that makes window.open return null.)
+		const expectsStripeCheckout =
+			plan.base_cents > 0 && plan.trial_days === 0 && !(organization?.has_payment_method ?? false);
+		const stripeTab = expectsStripeCheckout ? window.open('', '_blank') : null;
 		try {
-			// Store event to flush after Stripe redirect (hard navigation kills pending PostHog requests)
+			// New tab — this tab stays put, so track immediately rather than stashing
+			// the event for a post-redirect flush.
 			const metadata = billingPlanHelpers.getMetadata(plan.type);
-			storeEventForAfterRedirect('plan_selected', {
+			trackEvent('plan_selected', {
 				plan: plan.type,
 				is_commercial: metadata?.is_commercial ?? false
 			});
@@ -126,9 +139,21 @@
 			// Backend decides: new subscriber → checkout URL, existing → plan change message
 			const result = await checkoutMutation.mutateAsync(plan);
 			if (result?.startsWith('http')) {
-				// First-time checkout: redirect to Stripe
-				window.location.href = result;
+				// First-time checkout: open Stripe in a new tab and close the modal. This
+				// tab converges once the checkout webhook activates the plan.
+				if (stripeTab) {
+					stripeTab.location.href = result;
+					upgradeContext.set(null);
+					onClose();
+					void waitForOrgUpdate(isBillingPlanActive);
+				} else {
+					// No pre-opened tab (redirect not anticipated, or popup blocked) —
+					// fall back to a same-tab redirect.
+					window.location.href = result;
+				}
 			} else {
+				// Direct activation needs no Stripe tab.
+				stripeTab?.close();
 				// Plan activated directly (Free or trial) — refetch org so needsPlanSelection
 				// becomes false before we close the modal, preventing reactive reopening.
 				await queryClient.invalidateQueries({ queryKey: queryKeys.organizations.current() });
@@ -137,6 +162,7 @@
 			}
 		} catch {
 			// Error handled by mutation
+			stripeTab?.close();
 		}
 	}
 

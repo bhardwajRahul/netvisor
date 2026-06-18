@@ -111,10 +111,18 @@ pub struct LegacyIPAddress {
 impl LegacyIPAddress {
     /// Convert to new IPAddress format, filling in missing fields.
     pub fn into_ip_address(self, network_id: Uuid, host_id: Uuid) -> IPAddress {
+        let created = self.created_at.unwrap_or_else(Utc::now);
+        let updated = self.updated_at.unwrap_or_else(Utc::now);
         IPAddress {
             id: self.id,
-            created_at: self.created_at.unwrap_or_else(Utc::now),
-            updated_at: self.updated_at.unwrap_or_else(Utc::now),
+            created_at: created,
+            updated_at: updated,
+            valid_from: created,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: updated,
+            last_discovery_id: None,
+            first_discovery_id: None,
             base: IPAddressBase {
                 network_id,
                 host_id,
@@ -153,10 +161,18 @@ impl LegacyPort {
             PortType::new_tcp(self.number)
         };
 
+        let created = self.created_at.unwrap_or_else(Utc::now);
+        let updated = self.updated_at.unwrap_or_else(Utc::now);
         Port {
             id: self.id,
-            created_at: self.created_at.unwrap_or_else(Utc::now),
-            updated_at: self.updated_at.unwrap_or_else(Utc::now),
+            created_at: created,
+            updated_at: updated,
+            valid_from: created,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: updated,
+            last_discovery_id: None,
+            first_discovery_id: None,
             base: PortBase {
                 network_id,
                 host_id,
@@ -212,10 +228,18 @@ pub struct LegacyBinding {
 impl LegacyBinding {
     /// Convert to new Binding format, filling in service_id and network_id.
     pub fn into_binding(self, service_id: Uuid, network_id: Uuid) -> Binding {
+        let created = self.created_at.unwrap_or_else(Utc::now);
+        let updated = self.updated_at.unwrap_or_else(Utc::now);
         Binding {
             id: self.id,
-            created_at: self.created_at.unwrap_or_else(Utc::now),
-            updated_at: self.updated_at.unwrap_or_else(Utc::now),
+            created_at: created,
+            updated_at: updated,
+            valid_from: created,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: updated,
+            last_discovery_id: None,
+            first_discovery_id: None,
             base: BindingBase {
                 service_id,
                 network_id,
@@ -265,10 +289,18 @@ impl LegacyService {
         let service_definition = ServiceDefinitionRegistry::find_by_id(&self.service_definition)
             .unwrap_or_else(|| Box::new(DefaultServiceDefinition));
 
+        let created = self.created_at.unwrap_or_else(Utc::now);
+        let updated = self.updated_at.unwrap_or_else(Utc::now);
         Service {
             id: self.id,
-            created_at: self.created_at.unwrap_or_else(Utc::now),
-            updated_at: self.updated_at.unwrap_or_else(Utc::now),
+            created_at: created,
+            updated_at: updated,
+            valid_from: created,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: updated,
+            last_discovery_id: None,
+            first_discovery_id: None,
             base: ServiceBase {
                 host_id: self.host_id,
                 network_id: self.network_id,
@@ -276,7 +308,7 @@ impl LegacyService {
                 name: self.name,
                 bindings,
                 virtualization: None, // Old virtualization format ignored
-                source: EntitySource::Discovery { metadata: vec![] },
+                source: EntitySource::Discovery,
                 tags: self.tags,
                 position: 0,
             },
@@ -320,14 +352,18 @@ impl LegacyHostWithServicesRequest {
             id: host.id,
             created_at: host.created_at,
             updated_at: host.updated_at,
+            valid_from: host.created_at,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: host.updated_at,
+            last_discovery_id: None,
+            first_discovery_id: None,
             base: crate::server::hosts::r#impl::base::HostBase {
                 name: host.name,
                 network_id: host.network_id,
                 hostname: host.hostname,
                 description: host.description,
-                source: crate::server::shared::types::entities::EntitySource::Discovery {
-                    metadata: vec![],
-                },
+                source: crate::server::shared::types::entities::EntitySource::Discovery,
                 virtualization: None,
                 hidden: host.hidden,
                 tags: host.tags,

@@ -1,54 +1,139 @@
+//! Logging subscriber for every operation type.
+//!
+//! Renders each event as JSON via `Display for Event<Op>` and emits at the
+//! event's declared `log_level`. Honours `flags.suppress_logs` to keep noisy
+//! emissions out of structured logs.
+
 use anyhow::Error;
 use async_trait::async_trait;
 
-use crate::server::{
-    logging::service::LoggingService,
-    shared::events::{
-        bus::{EventFilter, EventSubscriber},
-        types::{Event, EventLogLevel},
+use crate::{
+    daemon::discovery::types::base::DiscoveryPhase,
+    server::{
+        logging::service::LoggingService,
+        shared::events::{
+            registry::SubscriberRegistration,
+            traits::{EntityEventFilter, Event, EventFilter, Operation, Subscriber},
+            types::{
+                AnalyticsOperation, AuthOperation, BillingOperation, EntityOperation,
+                EventLogLevel, OnboardingOperation,
+            },
+        },
     },
 };
 
+fn log_at_level(level: EventLogLevel, message: impl std::fmt::Display) {
+    match level {
+        EventLogLevel::Error => tracing::error!("{}", message),
+        EventLogLevel::Warn => tracing::warn!("{}", message),
+        EventLogLevel::Info => tracing::info!("{}", message),
+        EventLogLevel::Debug => tracing::debug!("{}", message),
+        EventLogLevel::Trace => tracing::trace!("{}", message),
+    }
+}
+
+fn log_event<Op: Operation>(event: &Event<Op>, suppress: bool) {
+    if suppress {
+        return;
+    }
+    log_at_level(event.operation.log_level(), event);
+}
+
 #[async_trait]
-impl EventSubscriber for LoggingService {
-    fn event_filter(&self) -> EventFilter {
+impl Subscriber<BillingOperation> for LoggingService {
+    fn filter(&self) -> EventFilter<BillingOperation> {
         EventFilter::all()
     }
 
-    async fn handle_events(&self, events: Vec<Event>) -> Result<(), Error> {
-        // Log each event individually
+    async fn handle(&self, events: Vec<Event<BillingOperation>>) -> Result<(), Error> {
         for event in events {
-            let suppress_logs = event
-                .metadata()
-                .get("suppress_logs")
-                .and_then(|v| serde_json::from_value::<bool>(v.clone()).ok())
-                .unwrap_or(false);
-
-            if !suppress_logs {
-                match event.operation().log_level() {
-                    EventLogLevel::Error => {
-                        tracing::error!("{}", event);
-                    }
-                    EventLogLevel::Warn => {
-                        tracing::warn!("{}", event);
-                    }
-                    EventLogLevel::Info => {
-                        tracing::info!("{}", event);
-                    }
-                    EventLogLevel::Debug => {
-                        tracing::debug!("{}", event);
-                    }
-                    EventLogLevel::Trace => {
-                        tracing::trace!("{}", event);
-                    }
-                }
-            }
+            log_event(&event, event.flags.suppress_logs);
         }
-
         Ok(())
     }
+}
+inventory::submit!(SubscriberRegistration::new::<
+    LoggingService,
+    BillingOperation,
+>());
 
-    fn name(&self) -> &str {
-        "logging"
+#[async_trait]
+impl Subscriber<OnboardingOperation> for LoggingService {
+    fn filter(&self) -> EventFilter<OnboardingOperation> {
+        EventFilter::all()
+    }
+
+    async fn handle(&self, events: Vec<Event<OnboardingOperation>>) -> Result<(), Error> {
+        for event in events {
+            log_event(&event, event.flags.suppress_logs);
+        }
+        Ok(())
     }
 }
+inventory::submit!(SubscriberRegistration::new::<
+    LoggingService,
+    OnboardingOperation,
+>());
+
+#[async_trait]
+impl Subscriber<AnalyticsOperation> for LoggingService {
+    fn filter(&self) -> EventFilter<AnalyticsOperation> {
+        EventFilter::all()
+    }
+
+    async fn handle(&self, events: Vec<Event<AnalyticsOperation>>) -> Result<(), Error> {
+        for event in events {
+            log_event(&event, event.flags.suppress_logs);
+        }
+        Ok(())
+    }
+}
+inventory::submit!(SubscriberRegistration::new::<
+    LoggingService,
+    AnalyticsOperation,
+>());
+
+#[async_trait]
+impl Subscriber<AuthOperation> for LoggingService {
+    fn filter(&self) -> EventFilter<AuthOperation> {
+        EventFilter::all()
+    }
+
+    async fn handle(&self, events: Vec<Event<AuthOperation>>) -> Result<(), Error> {
+        for event in events {
+            log_event(&event, event.flags.suppress_logs);
+        }
+        Ok(())
+    }
+}
+inventory::submit!(SubscriberRegistration::new::<LoggingService, AuthOperation>());
+
+#[async_trait]
+impl Subscriber<EntityOperation> for LoggingService {
+    fn filter(&self) -> EntityEventFilter {
+        EntityEventFilter::all()
+    }
+
+    async fn handle(&self, events: Vec<Event<EntityOperation>>) -> Result<(), Error> {
+        for event in events {
+            log_event(&event, event.flags.suppress_logs);
+        }
+        Ok(())
+    }
+}
+inventory::submit!(SubscriberRegistration::new::<LoggingService, EntityOperation>());
+
+#[async_trait]
+impl Subscriber<DiscoveryPhase> for LoggingService {
+    fn filter(&self) -> EventFilter<DiscoveryPhase> {
+        EventFilter::all()
+    }
+
+    async fn handle(&self, events: Vec<Event<DiscoveryPhase>>) -> Result<(), Error> {
+        for event in events {
+            log_event(&event, event.flags.suppress_logs);
+        }
+        Ok(())
+    }
+}
+inventory::submit!(SubscriberRegistration::new::<LoggingService, DiscoveryPhase>());

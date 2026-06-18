@@ -1,35 +1,178 @@
+//! Organizations subscriber for OnboardingOperation and BillingOperation events.
+//!
+//! Onboarding: persists milestone discriminants onto `organizations.onboarding`
+//! so the UI checklist renders without re-deriving from the event log.
+//!
+//! Billing: updates flag columns (`last_paused_at`, `trial_extended_used`,
+//! `last_downgrade_at`, `last_downgrade_from_plan`) on the variants that drive
+//! Phase 5 eligibility gates and the downgrade banner; mirrors
+//! `BillingOperation::implied_status()` onto `organizations.plan_status` so
+//! every billing event keeps the canonical status column in sync; and writes
+//! `organizations.plan` + `trial_end_date` from the variants that establish
+//! or change the current plan (`CheckoutCompleted`, `TrialStarted`,
+//! `PlanChanged`, `TrialExtended`).
+
 use anyhow::Error;
 use async_trait::async_trait;
+
+use strum::IntoDiscriminant;
 
 use crate::server::{
     auth::middleware::auth::AuthenticatedEntity,
     organizations::service::OrganizationService,
     shared::{
         events::{
-            bus::{EventFilter, EventSubscriber},
-            types::Event,
+            registry::SubscriberRegistration,
+            traits::{Event, EventFilter, Subscriber},
+            types::{BillingOperation, OnboardingOperation},
         },
         services::traits::CrudService,
     },
 };
 
 #[async_trait]
-impl EventSubscriber for OrganizationService {
-    fn event_filter(&self) -> EventFilter {
-        EventFilter::onboarding_only(None)
+impl Subscriber<OnboardingOperation> for OrganizationService {
+    fn filter(&self) -> EventFilter<OnboardingOperation> {
+        EventFilter::all()
     }
 
-    async fn handle_events(&self, events: Vec<Event>) -> Result<(), Error> {
+    async fn handle(&self, events: Vec<Event<OnboardingOperation>>) -> Result<(), Error> {
         if events.is_empty() {
             return Ok(());
         }
 
         for event in events {
-            if let Event::Onboarding(event) = event
-                && let Some(mut organization) = self.get_by_id(&event.organization_id).await?
-                && organization.not_onboarded(&event.operation)
-            {
-                organization.base.onboarding.push(event.operation);
+            if let Some(mut organization) = self.get_by_id(&event.scope.organization_id).await? {
+                let onboarding_step = event.operation.discriminant();
+                if organization.not_onboarded(&onboarding_step) {
+                    organization.base.onboarding.push(onboarding_step);
+                    self.update(&mut organization, AuthenticatedEntity::System)
+                        .await?;
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+inventory::submit!(SubscriberRegistration::new::<
+    OrganizationService,
+    OnboardingOperation,
+>());
+
+#[async_trait]
+impl Subscriber<BillingOperation> for OrganizationService {
+    fn filter(&self) -> EventFilter<BillingOperation> {
+        // Wildcard so every billing event participates in the plan_status
+        // mirror below; per-variant flag updates still gate themselves.
+        EventFilter::all()
+    }
+
+    async fn handle(&self, events: Vec<Event<BillingOperation>>) -> Result<(), Error> {
+        for event in events {
+            let org_id = event.scope.organization_id;
+            let Some(mut organization) = self.get_by_id(&org_id).await? else {
+                continue;
+            };
+
+            let implied = event.operation.implied_status();
+            let mut changed = false;
+            match &event.operation {
+                BillingOperation::Paused { .. } => {
+                    organization.base.last_paused_at = Some(event.timestamp);
+                    changed = true;
+                }
+                BillingOperation::CheckoutCompleted { plan, .. } => {
+                    if organization.base.plan.as_ref() != Some(plan) {
+                        organization.base.plan = Some(*plan);
+                        changed = true;
+                    }
+                }
+                BillingOperation::TrialStarted {
+                    plan, trial_end, ..
+                } => {
+                    if organization.base.plan.as_ref() != Some(plan) {
+                        organization.base.plan = Some(*plan);
+                        changed = true;
+                    }
+                    if organization.base.trial_end_date != Some(*trial_end) {
+                        organization.base.trial_end_date = Some(*trial_end);
+                        changed = true;
+                    }
+                }
+                BillingOperation::TrialExtended { new_trial_end, .. } => {
+                    if !organization.base.trial_extended_used {
+                        organization.base.trial_extended_used = true;
+                        changed = true;
+                    }
+                    if organization.base.trial_end_date != Some(*new_trial_end) {
+                        organization.base.trial_end_date = Some(*new_trial_end);
+                        changed = true;
+                    }
+                }
+                BillingOperation::PlanChanged {
+                    from,
+                    to,
+                    is_downgrade,
+                    ..
+                } => {
+                    if organization.base.plan.as_ref() != Some(to) {
+                        organization.base.plan = Some(*to);
+                        changed = true;
+                    }
+                    if *is_downgrade {
+                        organization.base.last_downgrade_at = Some(event.timestamp);
+                        organization.base.last_downgrade_from_plan = Some(*from);
+                        changed = true;
+                    }
+                }
+                BillingOperation::SubscriptionCancelled { plan, .. }
+                | BillingOperation::TrialEnded {
+                    converted: false,
+                    plan,
+                    ..
+                } => {
+                    // A full cancellation / unconverted trial always downgrades
+                    // the org to Free. The cancel-side-effects path used to chain
+                    // a separate PlanChanged event for this; we now do the write
+                    // here so the downgrade is owned by the source event. The
+                    // implied_status mirror below sets plan_status = Active (Free
+                    // is an active plan) in the same write — one owner, one write.
+                    let free_plan = crate::server::billing::plans::get_free_plan();
+                    organization.base.last_downgrade_at = Some(event.timestamp);
+                    organization.base.last_downgrade_from_plan = Some(*plan);
+                    if organization.base.plan.as_ref() != Some(&free_plan) {
+                        organization.base.plan = Some(free_plan);
+                    }
+                    organization.base.has_payment_method = false;
+                    changed = true;
+                }
+                BillingOperation::DiscountApplied {
+                    percent_off,
+                    expires_at,
+                } => {
+                    organization.base.last_discount_at = Some(event.timestamp);
+                    organization.base.discount_save_offer_percent_off = Some(*percent_off);
+                    organization.base.discount_save_offer_active_until = Some(*expires_at);
+                    changed = true;
+                }
+                _ => {}
+            }
+
+            // Mirror the canonical PlanStatus implied by every billing
+            // operation onto `plan_status`. Single source of truth via
+            // `BillingOperation::implied_status()`; downstream consumers
+            // (auth gates, BillingTab pills, Brevo sync) read the typed
+            // enum, set in one place.
+            if let Some(status) = implied {
+                let new_status = Some(status);
+                if organization.base.plan_status != new_status {
+                    organization.base.plan_status = new_status;
+                    changed = true;
+                }
+            }
+
+            if changed {
                 self.update(&mut organization, AuthenticatedEntity::System)
                     .await?;
             }
@@ -37,8 +180,8 @@ impl EventSubscriber for OrganizationService {
 
         Ok(())
     }
-
-    fn name(&self) -> &str {
-        "organization_onboarding"
-    }
 }
+inventory::submit!(SubscriberRegistration::new::<
+    OrganizationService,
+    BillingOperation,
+>());

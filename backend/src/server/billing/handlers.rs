@@ -1,6 +1,7 @@
 use crate::server::auth::middleware::permissions::{Authorized, Owner, RequireVerified, Viewer};
 use crate::server::billing::types::api::{
-    ChangePlanPreview, ChangePlanRequest, CreateCheckoutRequest, SetupPaymentMethodRequest,
+    CancelSubscriptionRequest, CancelSubscriptionResponse, ChangePlanPreview, ChangePlanRequest,
+    CreateCheckoutRequest, PauseSubscriptionRequest, SetupPaymentMethodRequest,
 };
 use crate::server::billing::types::base::BillingPlan;
 use crate::server::config::AppState;
@@ -53,6 +54,12 @@ pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
         .routes(routes!(handle_webhook))
         .routes(routes!(create_portal_session))
         .routes(routes!(submit_enterprise_inquiry))
+        .routes(routes!(pause_subscription))
+        .routes(routes!(resume_subscription))
+        .routes(routes!(extend_trial))
+        .routes(routes!(cancel_subscription))
+        .routes(routes!(reactivate_subscription))
+        .routes(routes!(apply_discount_save_offer))
 }
 
 /// Get available billing plans
@@ -115,8 +122,9 @@ async fn create_checkout_session(
 
         // Check if org already has a plan — route based on target plan and payment state
         let org = billing_service.get_organization(organization_id).await?;
+        let plan_status = org.base.plan_status;
 
-        if org.base.plan.is_some() && org.base.stripe_customer_id.is_some() {
+        if plan_status.is_some() && org.base.stripe_customer_id.is_some() {
             if request.plan.is_free() {
                 // Downgrade to Free — schedule cancellation at end of billing cycle
                 let result = billing_service
@@ -125,7 +133,8 @@ async fn create_checkout_session(
                 Ok(Json(ApiResponse::success(result)))
             } else {
                 // Paid target — check trial eligibility and payment state
-                let is_currently_trialing = org.base.plan_status.as_deref() == Some("trialing");
+                use crate::server::billing::types::base::PlanStatus;
+                let is_currently_trialing = plan_status == Some(PlanStatus::Trialing);
 
                 if is_currently_trialing {
                     // Currently trialing — switch plan via subscription update (preserves trial)
@@ -135,8 +144,8 @@ async fn create_checkout_session(
                     return Ok(Json(ApiResponse::success(result)));
                 }
 
-                let is_returning = org.base.trial_end_date.is_some()
-                    || org.base.plan.as_ref().is_some_and(|p| !p.is_free());
+                let has_non_free_plan = org.base.plan.as_ref().is_some_and(|p| !p.is_free());
+                let is_returning = has_non_free_plan || org.base.trial_end_date.is_some();
                 let is_trial_eligible = !is_returning && request.plan.config().trial_days > 0;
 
                 if is_trial_eligible {
@@ -485,4 +494,199 @@ async fn submit_enterprise_inquiry(
     );
 
     Ok(Json(ApiResponse::success(())))
+}
+
+/// Pause subscription billing
+///
+/// Pauses billing for a 30/60/90 day window. Eligibility: rolling 6-month
+/// cooldown anchored on the org's `last_paused_at`.
+#[utoipa::path(
+    post,
+    path = "/pause",
+    tags = ["billing", "internal"],
+    request_body = PauseSubscriptionRequest,
+    responses(
+        (status = 200, description = "Subscription paused", body = ApiResponse<String>),
+        (status = 400, description = "Ineligible or billing not enabled", body = ApiErrorResponse),
+    ),
+    security(("user_api_key" = []), ("session" = []))
+)]
+async fn pause_subscription(
+    State(state): State<Arc<AppState>>,
+    auth: Authorized<Owner>,
+    Json(request): Json<PauseSubscriptionRequest>,
+) -> ApiResult<Json<ApiResponse<String>>> {
+    let organization_id = auth
+        .organization_id()
+        .ok_or_else(ApiError::organization_required)?;
+
+    if let Some(billing_service) = state.services.billing_service.clone() {
+        let result = billing_service
+            .pause_subscription(organization_id, request.duration_days, auth.into_entity())
+            .await?;
+        Ok(Json(ApiResponse::success(result)))
+    } else {
+        Err(ApiError::billing_setup_incomplete())
+    }
+}
+
+/// Resume a paused subscription
+///
+/// Clears Stripe pause collection and re-activates billing. Available while
+/// `plan_status === 'paused'`.
+#[utoipa::path(
+    post,
+    path = "/resume",
+    tags = ["billing", "internal"],
+    responses(
+        (status = 200, description = "Subscription resumed", body = ApiResponse<String>),
+        (status = 400, description = "No paused subscription or billing not enabled", body = ApiErrorResponse),
+    ),
+    security(("user_api_key" = []), ("session" = []))
+)]
+async fn resume_subscription(
+    State(state): State<Arc<AppState>>,
+    auth: Authorized<Owner>,
+) -> ApiResult<Json<ApiResponse<String>>> {
+    let organization_id = auth
+        .organization_id()
+        .ok_or_else(ApiError::organization_required)?;
+
+    if let Some(billing_service) = state.services.billing_service.clone() {
+        let result = billing_service
+            .resume_subscription(organization_id, auth.into_entity())
+            .await?;
+        Ok(Json(ApiResponse::success(result)))
+    } else {
+        Err(ApiError::billing_setup_incomplete())
+    }
+}
+
+/// Reactivate a subscription pending cancellation
+///
+/// Clears Stripe's scheduled-cancellation state (`cancel_at` → None).
+/// Available while `plan_status === 'pending_cancellation'`.
+#[utoipa::path(
+    post,
+    path = "/reactivate",
+    tags = ["billing", "internal"],
+    responses(
+        (status = 200, description = "Subscription reactivated", body = ApiResponse<String>),
+        (status = 400, description = "No pending cancellation or billing not enabled", body = ApiErrorResponse),
+    ),
+    security(("user_api_key" = []), ("session" = []))
+)]
+async fn reactivate_subscription(
+    State(state): State<Arc<AppState>>,
+    auth: Authorized<Owner>,
+) -> ApiResult<Json<ApiResponse<String>>> {
+    let organization_id = auth
+        .organization_id()
+        .ok_or_else(ApiError::organization_required)?;
+
+    if let Some(billing_service) = state.services.billing_service.clone() {
+        let result = billing_service
+            .reactivate_subscription(organization_id, auth.into_entity())
+            .await?;
+        Ok(Json(ApiResponse::success(result)))
+    } else {
+        Err(ApiError::billing_setup_incomplete())
+    }
+}
+
+/// Self-serve trial extend (+7 days, once per org lifetime)
+#[utoipa::path(
+    post,
+    path = "/extend-trial",
+    tags = ["billing", "internal"],
+    responses(
+        (status = 200, description = "Trial extended", body = ApiResponse<String>),
+        (status = 400, description = "Ineligible or billing not enabled", body = ApiErrorResponse),
+    ),
+    security(("user_api_key" = []), ("session" = []))
+)]
+async fn extend_trial(
+    State(state): State<Arc<AppState>>,
+    auth: Authorized<Owner>,
+) -> ApiResult<Json<ApiResponse<String>>> {
+    let organization_id = auth
+        .organization_id()
+        .ok_or_else(ApiError::organization_required)?;
+
+    if let Some(billing_service) = state.services.billing_service.clone() {
+        let result = billing_service
+            .extend_trial(organization_id, auth.into_entity())
+            .await?;
+        Ok(Json(ApiResponse::success(result)))
+    } else {
+        Err(ApiError::billing_setup_incomplete())
+    }
+}
+
+/// Cancel subscription
+///
+/// In-app cancel modal endpoint. Sets Stripe `cancel_at` to the current
+/// period end (via Stripe's `MaxPeriodEnd` sentinel), stashes the canonical
+/// Scanopy reason in subscription metadata, returns the period end so the
+/// modal can render the retention disclosure.
+#[utoipa::path(
+    post,
+    path = "/cancel",
+    tags = ["billing", "internal"],
+    request_body = CancelSubscriptionRequest,
+    responses(
+        (status = 200, description = "Cancellation initiated", body = ApiResponse<CancelSubscriptionResponse>),
+        (status = 400, description = "No active subscription or billing not enabled", body = ApiErrorResponse),
+    ),
+    security(("user_api_key" = []), ("session" = []))
+)]
+async fn cancel_subscription(
+    State(state): State<Arc<AppState>>,
+    auth: Authorized<Owner>,
+    Json(request): Json<CancelSubscriptionRequest>,
+) -> ApiResult<Json<ApiResponse<CancelSubscriptionResponse>>> {
+    let organization_id = auth
+        .organization_id()
+        .ok_or_else(ApiError::organization_required)?;
+
+    if let Some(billing_service) = state.services.billing_service.clone() {
+        let result = billing_service
+            .cancel_subscription(organization_id, request, auth.into_entity())
+            .await?;
+        Ok(Json(ApiResponse::success(result)))
+    } else {
+        Err(ApiError::billing_setup_incomplete())
+    }
+}
+
+/// Apply the discount save offer
+///
+/// Applies the configured Stripe coupon to the subscription. Returns 400
+/// when `STRIPE_SAVE_OFFER_COUPON_ID` is unset.
+#[utoipa::path(
+    post,
+    path = "/cancel/apply-discount",
+    tags = ["billing", "internal"],
+    responses(
+        (status = 200, description = "Discount applied", body = ApiResponse<String>),
+        (status = 400, description = "Discount not configured or billing not enabled", body = ApiErrorResponse),
+    ),
+    security(("user_api_key" = []), ("session" = []))
+)]
+async fn apply_discount_save_offer(
+    State(state): State<Arc<AppState>>,
+    auth: Authorized<Owner>,
+) -> ApiResult<Json<ApiResponse<String>>> {
+    let organization_id = auth
+        .organization_id()
+        .ok_or_else(ApiError::organization_required)?;
+
+    if let Some(billing_service) = state.services.billing_service.clone() {
+        let result = billing_service
+            .apply_discount_save_offer(organization_id, auth.into_entity())
+            .await?;
+        Ok(Json(ApiResponse::success(result)))
+    } else {
+        Err(ApiError::billing_setup_incomplete())
+    }
 }

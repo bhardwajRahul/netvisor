@@ -1,5 +1,6 @@
 use crate::server::{
     auth::middleware::auth::AuthenticatedEntity,
+    billing::types::base::PlanStatus,
     brevo::{
         client::BrevoClient,
         types::{CompanyAttributes, ContactAttributes},
@@ -13,12 +14,13 @@ use crate::server::{
     networks::{r#impl::Network, service::NetworkService},
     organizations::{r#impl::base::Organization, service::OrganizationService},
     shared::{
-        events::types::{
-            AuthOperation, BillingEvent, BillingOperation, Event, OnboardingEvent,
-            OnboardingOperation,
+        events::{
+            traits::Event,
+            types::{AuthOperation, BillingOperation, OnboardingOperation},
         },
         services::traits::CrudService,
         storage::filter::StorableFilter,
+        types::metadata::TypeMetadataProvider,
     },
     tags::{r#impl::base::Tag, service::TagService},
     user_api_keys::{r#impl::base::UserApiKey, service::UserApiKeyService},
@@ -79,100 +81,78 @@ impl BrevoService {
         }
     }
 
-    /// Handle events and sync to Brevo
-    pub async fn handle_event(&self, event: &Event) -> Result<()> {
-        match event {
-            Event::Billing(billing) => self.handle_billing_event(billing).await,
-            Event::Onboarding(onboarding) => self.handle_onboarding_event(onboarding).await,
-            Event::Auth(auth) => {
-                if auth.operation == AuthOperation::LoginSuccess
-                    && let AuthenticatedEntity::User { email, user_id, .. } = &auth.authentication
-                {
-                    self.update_contact_last_login(email.to_string(), *user_id)
-                        .await?;
-                }
-                Ok(())
-            }
-            Event::Discovery(discovery) => {
-                if discovery.phase
-                    == crate::daemon::discovery::types::base::DiscoveryPhase::Scanning
-                    && let Some(org_id) = self.get_org_id_from_network(&discovery.network_id).await
-                {
-                    self.update_company_last_discovery(org_id).await?;
-                }
-                Ok(())
-            }
-            _ => Ok(()),
-        }
-    }
-
-    async fn handle_billing_event(&self, event: &BillingEvent) -> Result<()> {
+    pub(super) async fn handle_billing_event(&self, event: &Event<BillingOperation>) -> Result<()> {
         match &event.operation {
-            BillingOperation::CheckoutStarted => {
+            BillingOperation::CheckoutStarted { .. } => {
                 self.handle_checkout_started(event).await?;
             }
-            BillingOperation::CheckoutCompleted => {
+            BillingOperation::CheckoutCompleted { .. } => {
                 self.handle_checkout_completed(event).await?;
             }
-            BillingOperation::TrialStarted => {
+            BillingOperation::TrialStarted { .. } => {
                 self.handle_trial_started(event).await?;
             }
-            BillingOperation::TrialEnded => {
+            BillingOperation::TrialEnded { .. } => {
                 self.handle_trial_ended(event).await?;
             }
-            BillingOperation::SubscriptionCancelled => {
+            BillingOperation::SubscriptionCancelled { .. } => {
                 self.handle_subscription_cancelled(event).await?;
             }
-            BillingOperation::TrialWillEnd => {
+            BillingOperation::TrialWillEnd { .. } => {
                 self.handle_trial_will_end(event).await?;
             }
-            BillingOperation::PlanChanged => {
+            BillingOperation::PlanChanged { .. } => {
                 self.handle_plan_changed(event).await?;
             }
-            BillingOperation::PaymentFailed => {
-                self.update_company_by_org(
-                    event.organization_id,
-                    CompanyAttributes::new().with_plan_status("payment_failed"),
-                )
-                .await?;
+            // Variants whose only Brevo effect is updating plan_status — drive
+            // off `implied_status()` so the mapping stays canonical.
+            BillingOperation::PaymentFailed { .. }
+            | BillingOperation::PaymentActionRequired { .. }
+            | BillingOperation::PaymentRecovered { .. } => {
+                if let Some(status) = event.operation.implied_status() {
+                    self.update_company_by_org(
+                        event.scope.organization_id,
+                        CompanyAttributes::new().with_plan_status(status),
+                    )
+                    .await?;
+                }
             }
-            BillingOperation::PaymentActionRequired => {
-                self.update_company_by_org(
-                    event.organization_id,
-                    CompanyAttributes::new().with_plan_status("payment_action_required"),
-                )
-                .await?;
-            }
-            BillingOperation::PaymentRecovered => {
-                self.update_company_by_org(
-                    event.organization_id,
-                    CompanyAttributes::new().with_plan_status("active"),
-                )
-                .await?;
-            }
-            BillingOperation::FeatureLimitHit => {}
+            BillingOperation::FeatureLimitHit { .. } => {}
+            // Phase 5 additions — Brevo doesn't currently track these states explicitly.
+            BillingOperation::Paused { .. }
+            | BillingOperation::Resumed { .. }
+            | BillingOperation::Reactivated { .. }
+            | BillingOperation::DiscountApplied { .. }
+            | BillingOperation::PaymentSucceeded { .. }
+            | BillingOperation::TrialExtended { .. }
+            | BillingOperation::CancellationInitiated { .. }
+            | BillingOperation::PaymentMethodAdded
+            | BillingOperation::PaymentMethodRemoved => {}
         }
         Ok(())
     }
 
-    async fn handle_onboarding_event(&self, event: &OnboardingEvent) -> Result<()> {
+    pub(super) async fn handle_onboarding_event(
+        &self,
+        event: &Event<OnboardingOperation>,
+    ) -> Result<()> {
         match &event.operation {
-            OnboardingOperation::OrgCreated => {
+            OnboardingOperation::OrgCreated { .. } => {
                 self.handle_org_created(event).await?;
             }
-            OnboardingOperation::FirstDaemonRegistered => {
+            OnboardingOperation::FirstDaemonRegistered { .. } => {
                 self.handle_first_daemon_registered(event).await?;
             }
             OnboardingOperation::FirstTopologyRebuild => {
                 self.handle_first_topology_rebuild(event).await?;
             }
-            OnboardingOperation::FirstDiscoveryCompleted => {
+            OnboardingOperation::FirstDiscoveryCompleted { .. } => {
                 self.handle_first_discovery_completed(event).await?;
             }
-            OnboardingOperation::ProfileCompleted => {
+            OnboardingOperation::ProfileCompleted { .. } => {
                 self.handle_profile_completed(event).await?;
             }
-            OnboardingOperation::SecondNetworkCreated
+            OnboardingOperation::SecondNetworkCreated { .. }
             | OnboardingOperation::FirstHostDiscovered
             | OnboardingOperation::FirstTagCreated
             | OnboardingOperation::FirstDependencyCreated
@@ -180,9 +160,10 @@ impl BrevoService {
             | OnboardingOperation::FirstUserApiKeyCreated
             | OnboardingOperation::FirstSnmpCredentialCreated
             | OnboardingOperation::FirstCredentialCreated
+            | OnboardingOperation::FirstSnapshotCreated { .. }
             | OnboardingOperation::InviteSent
             | OnboardingOperation::InviteAccepted
-            | OnboardingOperation::ReferralSourceCompleted => {
+            | OnboardingOperation::ReferralSourceCompleted { .. } => {
                 self.handle_engagement_event(event).await?;
             }
             _ => {}
@@ -190,11 +171,11 @@ impl BrevoService {
         Ok(())
     }
 
-    async fn handle_engagement_event(&self, event: &OnboardingEvent) -> Result<()> {
+    async fn handle_engagement_event(&self, event: &Event<OnboardingOperation>) -> Result<()> {
         let mut company_attrs = CompanyAttributes::new();
 
         match &event.operation {
-            OnboardingOperation::SecondNetworkCreated => {
+            OnboardingOperation::SecondNetworkCreated { .. } => {
                 company_attrs = company_attrs.with_second_network_date(event.timestamp);
             }
             OnboardingOperation::FirstTagCreated => {
@@ -225,91 +206,73 @@ impl BrevoService {
             OnboardingOperation::FirstHostDiscovered => {
                 company_attrs = company_attrs.with_first_host_discovered_date(event.timestamp)
             }
+            OnboardingOperation::FirstSnapshotCreated { .. } => {
+                company_attrs = company_attrs.with_first_snapshot_date(event.timestamp);
+            }
             _ => return Ok(()),
         }
 
-        self.update_company_by_org(event.organization_id, company_attrs)
+        self.update_company_by_org(event.scope.organization_id, company_attrs)
             .await?;
 
         tracing::debug!(
-            organization_id = %event.organization_id,
+            organization_id = %event.scope.organization_id,
             operation = %event.operation,
             "Updated Brevo company: engagement milestone"
         );
         Ok(())
     }
 
-    async fn handle_profile_completed(&self, event: &OnboardingEvent) -> Result<()> {
+    async fn handle_profile_completed(&self, event: &Event<OnboardingOperation>) -> Result<()> {
         let email = match &event.authentication {
             AuthenticatedEntity::User { email, .. } => email.to_string(),
             _ => return Ok(()),
         };
 
-        if let Some(title) = event.metadata.get("job_title").and_then(|v| v.as_str()) {
+        let OnboardingOperation::ProfileCompleted {
+            job_title,
+            company_size,
+        } = &event.operation
+        else {
+            return Ok(());
+        };
+
+        if let Some(title) = job_title {
             let contact_attrs = ContactAttributes::new().with_job_title(title);
             let _ = self.client.upsert_contact(&email, contact_attrs).await;
         }
-        if let Some(size) = event.metadata.get("company_size").and_then(|v| v.as_str()) {
+        if let Some(size) = company_size {
             let company_attrs = CompanyAttributes::new().with_company_size(size);
             let _ = self
-                .update_company_by_org(event.organization_id, company_attrs)
+                .update_company_by_org(event.scope.organization_id, company_attrs)
                 .await;
         }
 
         tracing::debug!(
-            organization_id = %event.organization_id,
+            organization_id = %event.scope.organization_id,
             "Updated Brevo: profile completed"
         );
         Ok(())
     }
 
-    /// Handle org created - create contact and company, store company ID on org.
-    async fn handle_org_created(&self, event: &OnboardingEvent) -> Result<()> {
+    /// Handle Register events — sync the user's Brevo contact, list
+    /// subscriptions, and DOI flow if they opted into marketing. Fires for
+    /// every register flow (new org or invited user).
+    pub(super) async fn handle_register(&self, event: &Event<AuthOperation>) -> Result<()> {
+        let AuthOperation::Register {
+            marketing_opt_in, ..
+        } = &event.operation
+        else {
+            return Ok(());
+        };
+        let marketing_opt_in = *marketing_opt_in;
+
         let (email, user_id) = match &event.authentication {
             AuthenticatedEntity::User { email, user_id, .. } => (email.clone(), *user_id),
             _ => return Ok(()),
         };
 
-        let org_name = event
-            .metadata
-            .get("org_name")
-            .and_then(|v| v.as_str())
-            .unwrap_or("Unknown");
-        let use_case = event
-            .metadata
-            .get("use_case")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
-        let marketing_opt_in = event
-            .metadata
-            .get("marketing_opt_in")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-        let referral_source = event
-            .metadata
-            .get("referral_source")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
-        let referral_source_other = event
-            .metadata
-            .get("referral_source_other")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
-
-        // Format referral source for HubSpot (combine "other" with free text)
-        let formatted_referral_source = referral_source.map(|source| {
-            if source == "other" {
-                if let Some(ref other_text) = referral_source_other {
-                    format!("other: {}", other_text)
-                } else {
-                    source
-                }
-            } else {
-                source
-            }
-        });
-
-        let mut contact_attrs = ContactAttributes::new()
+        let contact_attrs = ContactAttributes::new()
             .with_email(email.to_string())
             .with_user_id(user_id)
             .with_role("owner")
@@ -319,34 +282,18 @@ impl BrevoService {
             .with_marketing_opt_in(marketing_opt_in)
             .with_marketing_opt_in_date(event.timestamp);
 
-        if let Some(use_case) = &use_case {
-            contact_attrs = contact_attrs.with_use_case(use_case);
-        }
-        if let Some(ref source) = formatted_referral_source {
-            contact_attrs = contact_attrs.with_referral_source(source);
-        }
-
-        let org_filter = StorableFilter::<Network>::new_from_org_id(&event.organization_id);
-        let network_count = self.network_service.get_all(org_filter).await?.len();
-
-        let mut company_attrs = CompanyAttributes::new()
-            .with_name(org_name)
-            .with_org_id(event.organization_id)
-            .with_created_date(event.timestamp)
-            .with_network_count(network_count as i64)
-            .with_host_count(0)
-            .with_user_count(1);
-
-        if let Some(use_case) = use_case {
-            company_attrs = company_attrs.with_org_type(use_case);
-        }
-
         let doi_attributes = contact_attrs.to_attributes();
 
-        let (_contact_id, company_id) = self
+        // Upsert the contact independently from the company (the company is
+        // created on OrgCreated; for invited users, no company is created and
+        // they're attached to an existing one elsewhere).
+        if let Err(e) = self
             .client
-            .sync_contact_and_company(email.as_ref(), contact_attrs, org_name, company_attrs)
-            .await?;
+            .upsert_contact(email.as_ref(), contact_attrs)
+            .await
+        {
+            tracing::warn!(error = %e, "Failed to upsert Brevo contact at register");
+        }
 
         // Add to "Product Updates" and "Onboarding" lists (all signups)
         if let Err(e) = self
@@ -380,10 +327,47 @@ impl BrevoService {
             tracing::warn!(error = %e, "Failed to trigger DOI for Marketing list");
         }
 
+        Ok(())
+    }
+
+    /// Handle org created — create the Brevo company and store its ID on the
+    /// organization. Contact-side work (including marketing_opt_in / DOI) is
+    /// handled by `handle_register` on the AuthOperation channel.
+    async fn handle_org_created(&self, event: &Event<OnboardingOperation>) -> Result<()> {
+        let OnboardingOperation::OrgCreated {
+            org_name,
+            plan: _,
+            use_case,
+        } = &event.operation
+        else {
+            return Ok(());
+        };
+        let org_name = org_name.clone();
+        let use_case = *use_case;
+
+        let owner_email = self.get_owner_email(event.scope.organization_id).await;
+
+        let org_filter = StorableFilter::<Network>::new_from_org_id(&event.scope.organization_id);
+        let network_count = self.network_service.get_all(org_filter).await?.len();
+
+        let company_attrs = CompanyAttributes::new()
+            .with_name(&org_name)
+            .with_org_id(event.scope.organization_id)
+            .with_created_date(event.timestamp)
+            .with_network_count(network_count as i64)
+            .with_host_count(0)
+            .with_user_count(1)
+            .with_org_type(use_case.to_string());
+
+        let company_id = self
+            .client
+            .create_company(&org_name, company_attrs, None)
+            .await?;
+
         // Store the company ID on the organization
         if let Some(mut org) = self
             .organization_service
-            .get_by_id(&event.organization_id)
+            .get_by_id(&event.scope.organization_id)
             .await?
         {
             org.base.brevo_company_id = Some(company_id.clone());
@@ -392,20 +376,17 @@ impl BrevoService {
                 .await?;
         }
 
-        // Track event for automation
-        if let Err(e) = self
-            .client
-            .track_event("org_created", email.as_ref(), None)
-            .await
+        // Track event for automation (uses owner email; OK to skip if missing)
+        if let Some(email) = owner_email
+            && let Err(e) = self.client.track_event("org_created", &email, None).await
         {
             tracing::warn!(error = %e, "Failed to track org_created event in Brevo");
         }
 
         tracing::info!(
-            organization_id = %event.organization_id,
+            organization_id = %event.scope.organization_id,
             brevo_company_id = %company_id,
-            email = %email,
-            "Synced new organization to Brevo"
+            "Synced new organization company to Brevo"
         );
 
         Ok(())
@@ -445,162 +426,191 @@ impl BrevoService {
         }
     }
 
-    async fn handle_checkout_started(&self, event: &BillingEvent) -> Result<()> {
-        let plan_name = event
-            .metadata
-            .get("plan_name")
-            .and_then(|v| v.as_str())
-            .unwrap_or("unknown");
+    async fn handle_checkout_started(&self, event: &Event<BillingOperation>) -> Result<()> {
+        let BillingOperation::CheckoutStarted { plan, .. } = &event.operation else {
+            return Ok(());
+        };
+        let plan_name = plan.name();
 
         let company_attrs = CompanyAttributes::new()
             .with_plan_type(plan_name)
-            .with_plan_status("checkout_started");
-        self.update_company_by_org(event.organization_id, company_attrs)
+            .with_lifecycle_marker("checkout_started");
+        self.update_company_by_org(event.scope.organization_id, company_attrs)
             .await?;
 
         tracing::debug!(
-            organization_id = %event.organization_id,
+            organization_id = %event.scope.organization_id,
             plan = %plan_name,
             "Updated Brevo company: checkout started"
         );
         Ok(())
     }
 
-    async fn handle_checkout_completed(&self, event: &BillingEvent) -> Result<()> {
-        let plan_name = event
-            .metadata
-            .get("plan_name")
-            .and_then(|v| v.as_str())
-            .unwrap_or("unknown");
-        let has_trial = event
-            .metadata
-            .get("has_trial")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-
+    async fn handle_checkout_completed(&self, event: &Event<BillingOperation>) -> Result<()> {
+        let BillingOperation::CheckoutCompleted {
+            plan,
+            included_networks,
+            included_seats,
+            mrr_amount_cents: _,
+            is_trialing: _,
+        } = &event.operation
+        else {
+            return Ok(());
+        };
+        let plan_name = plan.name();
+        // CheckoutCompleted is emitted whether or not the subscription is in
+        // trial — Brevo treats checkout_completed without a separate trial
+        // event as "active". TrialStarted handler updates to "trialing".
         let company_attrs = CompanyAttributes::new()
             .with_plan_type(plan_name)
-            .with_plan_status(if has_trial { "trialing" } else { "active" })
+            .with_plan_status(PlanStatus::Active)
             .with_checkout_completed_date(event.timestamp);
 
-        self.update_company_by_org(event.organization_id, company_attrs)
+        self.update_company_by_org(event.scope.organization_id, company_attrs)
             .await?;
 
-        let network_limit = event
-            .metadata
-            .get("included_networks")
-            .and_then(|v| v.as_u64())
-            .map(|n| n as i64);
-        let seat_limit = event
-            .metadata
-            .get("included_seats")
-            .and_then(|v| v.as_u64())
-            .map(|n| n as i64);
+        let network_limit = included_networks.map(|n| n as i64);
+        let seat_limit = included_seats.map(|n| n as i64);
 
         if network_limit.is_some() || seat_limit.is_some() {
-            self.sync_plan_limits(event.organization_id, network_limit, seat_limit)
+            self.sync_plan_limits(event.scope.organization_id, network_limit, seat_limit)
                 .await?;
         }
 
         // Track event for automation
-        if let Some(email) = self.get_owner_email(event.organization_id).await
+        if let Some(email) = self.get_owner_email(event.scope.organization_id).await
             && let Err(e) = self
                 .client
-                .track_event("checkout_completed", &email, Some(event.metadata.clone()))
+                .track_event(
+                    "checkout_completed",
+                    &email,
+                    serde_json::to_value(&event.operation).ok(),
+                )
                 .await
         {
             tracing::warn!(error = %e, "Failed to track checkout_completed event in Brevo");
         }
 
         tracing::info!(
-            organization_id = %event.organization_id,
+            organization_id = %event.scope.organization_id,
             plan = %plan_name,
             "Updated Brevo: checkout completed"
         );
         Ok(())
     }
 
-    async fn handle_trial_started(&self, event: &BillingEvent) -> Result<()> {
+    async fn handle_trial_started(&self, event: &Event<BillingOperation>) -> Result<()> {
         let company_attrs = CompanyAttributes::new()
-            .with_plan_status("trialing")
+            .with_plan_status(PlanStatus::Trialing)
             .with_trial_started_date(event.timestamp);
 
-        self.update_company_by_org(event.organization_id, company_attrs)
+        self.update_company_by_org(event.scope.organization_id, company_attrs)
             .await?;
 
-        if let Some(email) = self.get_owner_email(event.organization_id).await
+        if let Some(email) = self.get_owner_email(event.scope.organization_id).await
             && let Err(e) = self.client.track_event("trial_started", &email, None).await
         {
             tracing::warn!(error = %e, "Failed to track trial_started event in Brevo");
         }
 
         tracing::debug!(
-            organization_id = %event.organization_id,
+            organization_id = %event.scope.organization_id,
             "Updated Brevo: trial started"
         );
         Ok(())
     }
 
-    async fn handle_trial_ended(&self, event: &BillingEvent) -> Result<()> {
-        let converted = event
-            .metadata
-            .get("converted")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
+    async fn handle_trial_ended(&self, event: &Event<BillingOperation>) -> Result<()> {
+        let BillingOperation::TrialEnded { converted, .. } = &event.operation else {
+            return Ok(());
+        };
+        let converted = *converted;
 
+        use PlanStatus;
         let company_attrs = CompanyAttributes::new().with_plan_status(if converted {
-            "active"
+            PlanStatus::Active
         } else {
-            "trial_ended"
+            PlanStatus::Cancelled
         });
 
-        self.update_company_by_org(event.organization_id, company_attrs)
+        self.update_company_by_org(event.scope.organization_id, company_attrs)
             .await?;
 
-        if let Some(email) = self.get_owner_email(event.organization_id).await
+        if let Some(email) = self.get_owner_email(event.scope.organization_id).await
             && let Err(e) = self
                 .client
-                .track_event("trial_ended", &email, Some(event.metadata.clone()))
+                .track_event(
+                    "trial_ended",
+                    &email,
+                    serde_json::to_value(&event.operation).ok(),
+                )
                 .await
         {
             tracing::warn!(error = %e, "Failed to track trial_ended event in Brevo");
         }
 
         tracing::debug!(
-            organization_id = %event.organization_id,
+            organization_id = %event.scope.organization_id,
             converted = %converted,
             "Updated Brevo: trial ended"
         );
         Ok(())
     }
 
-    async fn handle_subscription_cancelled(&self, event: &BillingEvent) -> Result<()> {
-        let company_attrs = CompanyAttributes::new().with_plan_status("cancelled");
-        self.update_company_by_org(event.organization_id, company_attrs)
+    async fn handle_subscription_cancelled(&self, event: &Event<BillingOperation>) -> Result<()> {
+        // Cancellation always downgrades to Free. Used to ride a chained
+        // PlanChanged{to: Free} for the plan_type write; now folded in here
+        // so the cancel-side-effects path emits exactly one event.
+        let was_trialing = matches!(
+            &event.operation,
+            BillingOperation::SubscriptionCancelled {
+                was_trialing: true,
+                ..
+            }
+        );
+        let company_attrs = CompanyAttributes::new()
+            .with_plan_status(PlanStatus::Cancelled)
+            .with_plan_type("Free");
+        self.update_company_by_org(event.scope.organization_id, company_attrs)
             .await?;
 
-        if let Some(email) = self.get_owner_email(event.organization_id).await
-            && let Err(e) = self
+        if let Some(email) = self.get_owner_email(event.scope.organization_id).await {
+            if let Err(e) = self
                 .client
                 .track_event("subscription_cancelled", &email, None)
                 .await
-        {
-            tracing::warn!(error = %e, "Failed to track subscription_cancelled event in Brevo");
+            {
+                tracing::warn!(error = %e, "Failed to track subscription_cancelled event in Brevo");
+            }
+            // Mirror the trial-end analytics signal that used to come from
+            // the chained TrialEnded{converted:false} emission.
+            if was_trialing
+                && let Err(e) = self
+                    .client
+                    .track_event(
+                        "trial_ended",
+                        &email,
+                        serde_json::to_value(&event.operation).ok(),
+                    )
+                    .await
+            {
+                tracing::warn!(error = %e, "Failed to track trial_ended event in Brevo");
+            }
         }
 
         tracing::debug!(
-            organization_id = %event.organization_id,
+            organization_id = %event.scope.organization_id,
             "Updated Brevo: subscription cancelled"
         );
         Ok(())
     }
 
-    async fn handle_trial_will_end(&self, event: &BillingEvent) -> Result<()> {
-        let company_attrs = CompanyAttributes::new().with_plan_status("trial_ending_soon");
-        self.update_company_by_org(event.organization_id, company_attrs)
+    async fn handle_trial_will_end(&self, event: &Event<BillingOperation>) -> Result<()> {
+        let company_attrs = CompanyAttributes::new().with_lifecycle_marker("trial_ending_soon");
+        self.update_company_by_org(event.scope.organization_id, company_attrs)
             .await?;
 
-        if let Some(email) = self.get_owner_email(event.organization_id).await
+        if let Some(email) = self.get_owner_email(event.scope.organization_id).await
             && let Err(e) = self
                 .client
                 .track_event("trial_will_end", &email, None)
@@ -610,50 +620,59 @@ impl BrevoService {
         }
 
         tracing::debug!(
-            organization_id = %event.organization_id,
+            organization_id = %event.scope.organization_id,
             "Updated Brevo: trial ending soon"
         );
         Ok(())
     }
 
-    async fn handle_plan_changed(&self, event: &BillingEvent) -> Result<()> {
-        let new_plan = event
-            .metadata
-            .get("new_plan")
-            .and_then(|v| v.as_str())
-            .unwrap_or("unknown");
-        let plan_status = event.metadata.get("plan_status").and_then(|v| v.as_str());
-
-        let mut company_attrs = CompanyAttributes::new().with_plan_type(new_plan);
-        if let Some(status) = plan_status {
-            company_attrs = company_attrs.with_plan_status(status);
-        }
-        self.update_company_by_org(event.organization_id, company_attrs)
+    async fn handle_plan_changed(&self, event: &Event<BillingOperation>) -> Result<()> {
+        let BillingOperation::PlanChanged {
+            to, is_downgrade, ..
+        } = &event.operation
+        else {
+            return Ok(());
+        };
+        let new_plan = to.name();
+        // PlanChanged maps to PlanStatus::Active via implied_status — the
+        // typed mapping handles is_downgrade implicitly.
+        let _ = is_downgrade;
+        let company_attrs = CompanyAttributes::new()
+            .with_plan_type(new_plan)
+            .with_plan_status(PlanStatus::Active);
+        self.update_company_by_org(event.scope.organization_id, company_attrs)
             .await?;
 
-        if let Some(email) = self.get_owner_email(event.organization_id).await
+        if let Some(email) = self.get_owner_email(event.scope.organization_id).await
             && let Err(e) = self
                 .client
-                .track_event("plan_changed", &email, Some(event.metadata.clone()))
+                .track_event(
+                    "plan_changed",
+                    &email,
+                    serde_json::to_value(&event.operation).ok(),
+                )
                 .await
         {
             tracing::warn!(error = %e, "Failed to track plan_changed event in Brevo");
         }
 
         tracing::debug!(
-            organization_id = %event.organization_id,
+            organization_id = %event.scope.organization_id,
             new_plan = %new_plan,
             "Updated Brevo: plan changed"
         );
         Ok(())
     }
 
-    async fn handle_first_daemon_registered(&self, event: &OnboardingEvent) -> Result<()> {
+    async fn handle_first_daemon_registered(
+        &self,
+        event: &Event<OnboardingOperation>,
+    ) -> Result<()> {
         let company_attrs = CompanyAttributes::new().with_first_daemon_date(event.timestamp);
-        self.update_company_by_org(event.organization_id, company_attrs)
+        self.update_company_by_org(event.scope.organization_id, company_attrs)
             .await?;
 
-        if let Some(email) = self.get_owner_email(event.organization_id).await
+        if let Some(email) = self.get_owner_email(event.scope.organization_id).await
             && let Err(e) = self
                 .client
                 .track_event("first_daemon_registered", &email, None)
@@ -663,19 +682,22 @@ impl BrevoService {
         }
 
         tracing::debug!(
-            organization_id = %event.organization_id,
+            organization_id = %event.scope.organization_id,
             "Updated Brevo: first daemon registered"
         );
         Ok(())
     }
 
-    async fn handle_first_discovery_completed(&self, event: &OnboardingEvent) -> Result<()> {
+    async fn handle_first_discovery_completed(
+        &self,
+        event: &Event<OnboardingOperation>,
+    ) -> Result<()> {
         let company_attrs =
             CompanyAttributes::new().with_first_discovery_completed_date(event.timestamp);
-        self.update_company_by_org(event.organization_id, company_attrs)
+        self.update_company_by_org(event.scope.organization_id, company_attrs)
             .await?;
 
-        if let Some(email) = self.get_owner_email(event.organization_id).await
+        if let Some(email) = self.get_owner_email(event.scope.organization_id).await
             && let Err(e) = self
                 .client
                 .track_event("first_discovery_completed", &email, None)
@@ -685,26 +707,33 @@ impl BrevoService {
         }
 
         tracing::debug!(
-            organization_id = %event.organization_id,
+            organization_id = %event.scope.organization_id,
             "Updated Brevo: first discovery completed"
         );
         Ok(())
     }
 
-    async fn handle_first_topology_rebuild(&self, event: &OnboardingEvent) -> Result<()> {
+    async fn handle_first_topology_rebuild(
+        &self,
+        event: &Event<OnboardingOperation>,
+    ) -> Result<()> {
         let company_attrs =
             CompanyAttributes::new().with_first_topology_rebuild_date(event.timestamp);
-        self.update_company_by_org(event.organization_id, company_attrs)
+        self.update_company_by_org(event.scope.organization_id, company_attrs)
             .await?;
 
         tracing::debug!(
-            organization_id = %event.organization_id,
+            organization_id = %event.scope.organization_id,
             "Updated Brevo: first topology rebuild"
         );
         Ok(())
     }
 
-    async fn update_contact_last_login(&self, email: String, user_id: Uuid) -> Result<()> {
+    pub(super) async fn update_contact_last_login(
+        &self,
+        email: String,
+        user_id: Uuid,
+    ) -> Result<()> {
         let contact_attrs = ContactAttributes::new()
             .with_email(&email)
             .with_user_id(user_id)
@@ -716,7 +745,7 @@ impl BrevoService {
         Ok(())
     }
 
-    async fn update_company_last_discovery(&self, org_id: Uuid) -> Result<()> {
+    pub(super) async fn update_company_last_discovery(&self, org_id: Uuid) -> Result<()> {
         let company_attrs = CompanyAttributes::new().with_last_discovery_date(Utc::now());
         self.update_company_by_org(org_id, company_attrs).await?;
 

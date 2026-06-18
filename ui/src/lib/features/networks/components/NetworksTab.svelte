@@ -212,10 +212,10 @@
 				{/if}
 				{#if canManageNetworks}
 					{#if isAtNetworkLimit}
-						<UpgradeButton feature="networks" />
+						<UpgradeButton feature="networks" surface="networks_tab" gate_type="limit_hit" />
 					{:else}
 						{#if isNearNetworkLimit}
-							<UpgradeButton feature="networks" />
+							<UpgradeButton feature="networks" surface="networks_tab" gate_type="limit_hit" />
 						{/if}
 						<button class="btn-primary flex items-center" onclick={handleCreateNetwork}
 							><Plus class="h-5 w-5" />{common_create()}</button

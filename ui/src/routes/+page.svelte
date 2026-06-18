@@ -7,6 +7,10 @@
 	import LicenseLockedBanner from '$lib/shared/components/feedback/LicenseLockedBanner.svelte';
 	import LicenseGraceBanner from '$lib/shared/components/feedback/LicenseGraceBanner.svelte';
 	import LicenseExpiringBanner from '$lib/shared/components/feedback/LicenseExpiringBanner.svelte';
+	import TrialEndingBanner from '$lib/shared/components/feedback/TrialEndingBanner.svelte';
+	import NoPaymentMethodBanner from '$lib/shared/components/feedback/NoPaymentMethodBanner.svelte';
+	import TrialExpiryModal from '$lib/shared/components/feedback/TrialExpiryModal.svelte';
+	import PostStripeWelcomeBanner from '$lib/shared/components/feedback/PostStripeWelcomeBanner.svelte';
 	import Sidebar from '$lib/shared/components/layout/Sidebar.svelte';
 	import { onDestroy, onMount } from 'svelte';
 	import { discoverySSEManager } from '$lib/features/discovery/queries';
@@ -70,7 +74,13 @@
 	let sidebarCollapsed = $state(false);
 	let dataLoadingStarted = $state(false);
 	let showSettings = $state(false);
-	let isPastDue = $derived(organization?.plan_status === 'past_due');
+	// Billing-blocking states force the Settings modal open on the Billing tab
+	// and make it non-dismissible. Past-due users have to update payment; paused
+	// users have to click Resume Now before they can navigate elsewhere. The
+	// inline alerts in BillingTab carry the matching urgent copy.
+	let isBillingBlocking = $derived(
+		organization?.plan_status === 'past_due' || organization?.plan_status === 'paused'
+	);
 	let allTabs = $state<
 		Array<{
 			id: string;
@@ -122,9 +132,10 @@
 		}
 	});
 
-	// Auto-open settings modal to billing tab when past_due
+	// Auto-open settings modal to billing tab when past_due or paused —
+	// either state requires user action before they can resume normal use.
 	$effect(() => {
-		if (isPastDue && appInitialized) {
+		if (isBillingBlocking && appInitialized) {
 			openModal('settings', { tab: 'billing' });
 		}
 	});
@@ -211,8 +222,8 @@
 				bind:collapsed={sidebarCollapsed}
 				bind:allTabs
 				bind:showSettings
-				settingsInitialTab={isPastDue ? 'billing' : 'account'}
-				settingsDismissible={!isPastDue}
+				settingsInitialTab={isBillingBlocking ? 'billing' : 'account'}
+				settingsDismissible={!isBillingBlocking}
 			/>
 		</div>
 
@@ -225,6 +236,9 @@
 			{#if currentUserQuery.data && !currentUserQuery.data.email_verified}
 				<EmailVerificationBanner email={currentUserQuery.data.email} />
 			{/if}
+			<TrialEndingBanner />
+			<NoPaymentMethodBanner />
+			<PostStripeWelcomeBanner />
 			{#if organization?.plan?.type === 'Demo'}
 				<DemoBanner />
 			{/if}
@@ -261,6 +275,8 @@
 			<Toast />
 		</main>
 	</div>
+
+	<TrialExpiryModal />
 
 	<!-- Billing modal rendered last so it stacks on top of other modals -->
 	<BillingPlanModal

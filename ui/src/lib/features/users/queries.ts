@@ -32,6 +32,32 @@ export function useUsersQuery(options?: { enabled?: boolean | (() => boolean) })
 }
 
 /**
+ * Mutation hook for the current user to update their own record. Hits the
+ * existing `PUT /api/v1/users/{id}` self-update path. The backend rejects
+ * cross-user writes (`auth_user_id != id`) and silently preserves
+ * email/password/OIDC/permission/org fields.
+ */
+export function useUpdateSelfMutation() {
+	const queryClient = useQueryClient();
+
+	return createMutation(() => ({
+		mutationFn: async (user: User) => {
+			const { data } = await apiClient.PUT('/api/v1/users/{id}', {
+				params: { path: { id: user.id } },
+				body: user
+			});
+			if (!data?.success || !data.data) {
+				throw new Error(data?.error || 'Failed to update user');
+			}
+			return data.data;
+		},
+		onSuccess: (updatedUser: User) => {
+			queryClient.setQueryData(queryKeys.auth.currentUser(), updatedUser);
+		}
+	}));
+}
+
+/**
  * Mutation hook for updating a user as admin
  */
 export function useUpdateUserAsAdminMutation() {

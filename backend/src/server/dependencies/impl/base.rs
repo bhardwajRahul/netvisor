@@ -92,6 +92,15 @@ pub struct Dependency {
     #[serde(default)]
     #[schema(read_only, required)]
     pub updated_at: DateTime<Utc>,
+    #[serde(default)]
+    #[schema(read_only)]
+    pub valid_from: DateTime<Utc>,
+    #[serde(default)]
+    #[schema(read_only)]
+    pub valid_to: Option<DateTime<Utc>>,
+    #[serde(default)]
+    #[schema(read_only)]
+    pub lineage_id: Option<Uuid>,
     #[serde(flatten)]
     #[validate(nested)]
     pub base: DependencyBase,

@@ -5,15 +5,17 @@
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
 	import { isBillingPlanActive } from '$lib/features/organizations/types';
 	import { billingPlans } from '$lib/shared/stores/metadata';
-	import { trackEvent, storeEventForAfterRedirect } from '$lib/shared/utils/analytics';
+	import { trackEvent, trackOncePerSession } from '$lib/shared/utils/analytics';
 	import {
 		useCustomerPortalMutation,
-		useSetupPaymentMethodMutation
+		useSetupPaymentMethodMutation,
+		useResumeSubscriptionMutation,
+		useReactivateSubscriptionMutation,
+		useExtendTrialMutation
 	} from '$lib/features/billing/queries';
-	import { useHostsQuery } from '$lib/features/hosts/queries';
+	import CancelSubscriptionModal from '$lib/features/billing/CancelSubscriptionModal.svelte';
 	import InfoCard from '$lib/shared/components/data/InfoCard.svelte';
-	import { useUsersQuery } from '$lib/features/users/queries';
-	import { useNetworksQuery } from '$lib/features/networks/queries';
+	import { useDashboardQuery } from '$lib/features/home/queries';
 	import {
 		common_billingExtra,
 		common_billingUsage,
@@ -26,22 +28,34 @@
 		settings_billing_canceled,
 		settings_billing_contactUs,
 		settings_billing_currentPlan,
+		settings_billing_discount_active,
 		settings_billing_downgrade_pending,
 		settings_billing_manageSubscription,
 		settings_billing_needHelp,
 		settings_billing_pastDue,
+		settings_billing_paused_status,
+		settings_billing_cancelSubscription,
 		settings_billing_per,
 		settings_billing_trialActive,
 		settings_billing_unableToLoad,
 		settings_billing_upgradePlan,
-		settings_billing_upgradePlanDescription,
 		settings_billing_changePlan,
-		settings_billing_changePlanDescription,
-		common_viewPlans
+		settings_billing_resume_button,
+		settings_billing_resume_confirmBody,
+		settings_billing_reactivateSubscription,
+		settings_billing_extendTrial_link,
+		settings_billing_extendTrial_confirmBody,
+		settings_billing_addPaymentMethodSubtitle,
+		settings_billing_trialCountdown,
+		settings_billing_trialEndsOn,
+		billing_addPaymentMethod
 	} from '$lib/paraglide/messages';
 	import InlineWarning from '$lib/shared/components/feedback/InlineWarning.svelte';
 	import InlineInfo from '$lib/shared/components/feedback/InlineInfo.svelte';
 	import InlineDanger from '$lib/shared/components/feedback/InlineDanger.svelte';
+	import { pushSuccess, pushWarning } from '$lib/shared/stores/feedback';
+	import { startSetupPayment } from '$lib/shared/billing/setup-payment';
+	import { waitForOrgUpdate } from '$lib/shared/billing/wait-for-org-update';
 
 	let {
 		isOpen = false,
@@ -53,28 +67,28 @@
 		dismissible?: boolean;
 	} = $props();
 
-	// TanStack Query for users - only fetch when modal is open (Owner only)
-	const usersQuery = useUsersQuery({ enabled: () => isOpen });
-	let usersData = $derived(usersQuery.data ?? []);
-
-	// TanStack Query for networks
-	const networksQuery = useNetworksQuery();
-	let networksData = $derived(networksQuery.data ?? []);
+	// Dashboard summary aggregates host/network/seat counts into one query —
+	// reuse it here instead of re-counting users/networks/hosts independently.
+	const dashboardQuery = useDashboardQuery();
+	let planUsage = $derived(dashboardQuery.data?.plan_usage);
 
 	// TanStack Query for organization
 	const organizationQuery = useOrganizationQuery();
 	let org = $derived(organizationQuery.data);
 
-	// Host count query (limit 1 to get total count from pagination)
-	const hostsQuery = useHostsQuery({ limit: 1 });
-	let hostCount = $derived(hostsQuery.data?.pagination?.total_count ?? 0);
-
 	// Customer portal mutation
 	const customerPortalMutation = useCustomerPortalMutation();
 	const setupPaymentMutation = useSetupPaymentMethodMutation();
+	const resumeMutation = useResumeSubscriptionMutation();
+	const reactivateMutation = useReactivateSubscriptionMutation();
+	const extendTrialMutation = useExtendTrialMutation();
 
-	let seatCount = $derived(usersData.length);
-	let networkCount = $derived(networksData.length);
+	// Cancel modal state. Replaces the legacy Stripe-Portal handoff.
+	let showCancelModal = $state(false);
+
+	let seatCount = $derived(planUsage?.seat_count ?? 0);
+	let networkCount = $derived(planUsage?.network_count ?? 0);
+	let hostCount = $derived(planUsage?.host_count ?? 0);
 
 	let extraSeats = $derived.by(() => {
 		if (!org?.plan?.included_seats) return 0;
@@ -107,8 +121,9 @@
 				return 'text-red-600 dark:text-red-400';
 			case 'pending_cancellation':
 				return 'text-amber-600 dark:text-amber-400';
-			case 'canceled':
-			case 'incomplete':
+			case 'paused':
+				return 'text-orange-600 dark:text-orange-400';
+			case 'cancelled':
 				return 'text-yellow-600 dark:text-yellow-400';
 			default:
 				return 'text-gray-600 dark:text-gray-400';
@@ -116,6 +131,21 @@
 	}
 
 	let isFree = $derived(org?.plan?.type === 'Free');
+
+	// Live Stripe subscription whose lifecycle these CTAs can act on. Non-Stripe
+	// plans (Free/Community/Demo/SelfHosted/Enterprise) have plan_status === null;
+	// a fully-cancelled subscription is 'cancelled' (org.plan still holds the old
+	// paid plan) — neither is manageable here, so neither should show
+	// Manage/Cancel/Resume/Reactivate.
+	let hasManageableSubscription = $derived(
+		!isFree &&
+			(org?.plan_status === 'active' ||
+				org?.plan_status === 'trialing' ||
+				org?.plan_status === 'past_due' ||
+				org?.plan_status === 'paused' ||
+				org?.plan_status === 'pending_cancellation')
+	);
+
 	let hasPaymentMethod = $derived(org?.has_payment_method ?? false);
 	let trialEndDate = $derived(org?.trial_end_date ? new Date(org.trial_end_date) : null);
 	let trialDaysLeft = $derived.by(() => {
@@ -123,6 +153,25 @@
 		const now = new Date();
 		const diff = trialEndDate.getTime() - now.getTime();
 		return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+	});
+
+	// Render the active save-offer discount chip only while the discount
+	// window is still in the future. After expiry the row stays in the DB
+	// but the chip naturally disappears — no cleanup job required.
+	let activeDiscount = $derived.by(() => {
+		const until = org?.discount_save_offer_active_until;
+		const percent = org?.discount_save_offer_percent_off;
+		if (!until || percent == null) return null;
+		const expiresAt = new Date(until);
+		if (expiresAt.getTime() <= Date.now()) return null;
+		return {
+			percentOff: percent,
+			expiresAt: expiresAt.toLocaleDateString(undefined, {
+				month: 'long',
+				day: 'numeric',
+				year: 'numeric'
+			})
+		};
 	});
 
 	// Track billing tab view
@@ -135,31 +184,118 @@
 		}
 	});
 
+	// Trial-card impression: once per browser tab session
+	$effect(() => {
+		if (org?.plan_status === 'trialing' && trialDaysLeft !== null && !hasPaymentMethod) {
+			trackOncePerSession('trial_card_impression', 'trial_card_impression', {
+				trial_days_left: trialDaysLeft,
+				has_payment_method: hasPaymentMethod
+			});
+		}
+	});
+
 	async function handleManageSubscription() {
-		storeEventForAfterRedirect('billing_portal_opened', { plan_type: org?.plan?.type });
+		// New tab — this tab stays put, so track immediately rather than stashing
+		// the event for a post-redirect flush.
+		trackEvent('billing_portal_opened', { plan_type: org?.plan?.type });
+		// Snapshot the billing-relevant fields so the poller can detect whatever the
+		// user changes in the (open-ended) Stripe portal.
+		const before = {
+			plan_status: org?.plan_status,
+			plan_type: org?.plan?.type,
+			has_payment_method: org?.has_payment_method
+		};
+		// Open synchronously so popup blockers allow it; point it at Stripe once ready.
+		// (No 'noopener' — that makes window.open return null, losing the handle.)
+		const stripeTab = window.open('', '_blank');
 		try {
 			const url = await customerPortalMutation.mutateAsync();
-			if (url) {
+			if (!url) {
+				stripeTab?.close();
+				return;
+			}
+			if (stripeTab) {
+				stripeTab.location.href = url;
+				void waitForOrgUpdate(
+					(o) =>
+						o.plan_status !== before.plan_status ||
+						o.plan?.type !== before.plan_type ||
+						(o.has_payment_method ?? false) !== (before.has_payment_method ?? false)
+				);
+			} else {
 				window.location.href = url;
 			}
 		} catch {
+			stripeTab?.close();
 			// Error handling is done by the mutation's onError
 		}
 	}
 
-	async function handleSetupPayment() {
-		storeEventForAfterRedirect('payment_method_setup_initiated', {
-			plan_status: org?.plan_status,
-			trial_days_left: trialDaysLeft
-		});
+	function openCancelModal() {
+		trackEvent('cancel_modal_opened', { plan_type: org?.plan?.type });
+		showCancelModal = true;
+	}
+
+	async function handleResume() {
+		if (!confirm(settings_billing_resume_confirmBody())) return;
 		try {
-			const url = await setupPaymentMutation.mutateAsync();
-			if (url) {
-				window.location.href = url;
+			await resumeMutation.mutateAsync();
+			const flipped = await waitForOrgUpdate((o) => o.plan_status === 'active');
+			if (flipped) {
+				pushSuccess('Subscription resumed.');
+			} else {
+				pushWarning(
+					'Resume request accepted. It may take a moment to reflect across your account.'
+				);
 			}
+			organizationQuery.refetch();
 		} catch {
-			// Error handling is done by the mutation's onError
+			// Mutation onError handles toast.
 		}
+	}
+
+	async function handleReactivate() {
+		try {
+			await reactivateMutation.mutateAsync();
+			const flipped = await waitForOrgUpdate((o) => o.plan_status === 'active');
+			if (flipped) {
+				pushSuccess('Subscription reactivated.');
+			} else {
+				pushWarning(
+					'Reactivate request accepted. It may take a moment to reflect across your account.'
+				);
+			}
+			organizationQuery.refetch();
+		} catch {
+			// Mutation onError handles toast.
+		}
+	}
+
+	async function handleExtendTrial() {
+		if (!confirm(settings_billing_extendTrial_confirmBody())) return;
+		try {
+			await extendTrialMutation.mutateAsync();
+			const flipped = await waitForOrgUpdate((o) => o.trial_extended_used === true);
+			if (flipped) {
+				pushSuccess('Trial extended.');
+			} else {
+				pushWarning(
+					'Trial extend request accepted. It may take a moment to reflect across your account.'
+				);
+			}
+			organizationQuery.refetch();
+		} catch {
+			// Mutation onError handles toast.
+		}
+	}
+
+	function handleSetupPayment() {
+		return startSetupPayment({
+			mutation: setupPaymentMutation,
+			org,
+			source: 'trial_card',
+			trialDaysLeft
+		});
 	}
 </script>
 
@@ -175,13 +311,18 @@
 								<AlertTriangle class="h-5 w-5 text-amber-500" />
 								<div>
 									<p class="text-primary text-sm font-medium">
-										Trial ends in {trialDaysLeft} days ({trialEndDate?.toLocaleDateString(
-											undefined,
-											{ month: 'long', day: 'numeric', year: 'numeric' }
-										)})
+										{settings_billing_trialCountdown({
+											days: trialDaysLeft,
+											date:
+												trialEndDate?.toLocaleDateString(undefined, {
+													month: 'long',
+													day: 'numeric',
+													year: 'numeric'
+												}) ?? ''
+										})}
 									</p>
 									<p class="text-secondary mt-1 text-xs">
-										Add a payment method to continue after the trial
+										{settings_billing_addPaymentMethodSubtitle()}
 									</p>
 								</div>
 							</div>
@@ -190,9 +331,21 @@
 								class="btn-primary flex items-center gap-1.5 text-sm"
 							>
 								<CreditCard size={14} />
-								Add Payment Method
+								{billing_addPaymentMethod()}
 							</button>
 						</div>
+						{#if !org.trial_extended_used && trialDaysLeft !== null && trialDaysLeft <= 3}
+							<div class="mt-3 border-t pt-3" style="border-color: var(--color-border)">
+								<button
+									type="button"
+									onclick={handleExtendTrial}
+									class="text-link text-sm hover:underline disabled:opacity-50"
+									disabled={extendTrialMutation.isPending}
+								>
+									{settings_billing_extendTrial_link()}
+								</button>
+							</div>
+						{/if}
 					</InfoCard>
 				{/if}
 
@@ -223,10 +376,22 @@
 										</p>
 										{#if org.plan_status === 'trialing' && trialEndDate}
 											<p class="text-secondary mt-1 text-xs">
-												Trial ends on {trialEndDate.toLocaleDateString(undefined, {
-													month: 'long',
-													day: 'numeric',
-													year: 'numeric'
+												{settings_billing_trialEndsOn({
+													date: trialEndDate.toLocaleDateString(undefined, {
+														month: 'long',
+														day: 'numeric',
+														year: 'numeric'
+													})
+												})}
+											</p>
+										{/if}
+										{#if activeDiscount}
+											<p
+												class="mt-1 inline-block rounded-md bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-300"
+											>
+												{settings_billing_discount_active({
+													percentOff: activeDiscount.percentOff,
+													expiresAt: activeDiscount.expiresAt
 												})}
 											</p>
 										{/if}
@@ -346,49 +511,74 @@
 								<InlineInfo title={settings_billing_trialActive()} />
 							{:else if org.plan_status === 'past_due'}
 								<InlineDanger title={settings_billing_pastDue()} />
-							{:else if org.plan_status === 'canceled'}
+							{:else if org.plan_status === 'cancelled'}
 								<InlineWarning title={settings_billing_canceled()} />
 							{:else if org.plan_status === 'pending_cancellation'}
 								<InlineWarning title={settings_billing_downgrade_pending()} />
+							{:else if org.plan_status === 'paused'}
+								<InlineDanger title={settings_billing_paused_status()} />
 							{/if}
 
-							{#if !isFree}
+							<!-- While downgrading (pending_cancellation), push users to Reactivate
+							     instead of re-picking a plan — so the plan-change button is hidden. -->
+							{#if org.plan_status !== 'pending_cancellation'}
 								<button
-									onclick={handleManageSubscription}
-									class="{org.plan_status === 'past_due' ? 'btn-primary' : 'btn-secondary'} w-full"
+									onclick={() =>
+										triggerUpgrade({
+											source: 'settings_billing',
+											surface: 'billing_tab',
+											reopenSettings: true,
+											beforeModal: () => onClose()
+										})}
+									class="btn-primary w-full"
 								>
-									{settings_billing_manageSubscription()}
+									{hasManageableSubscription
+										? settings_billing_changePlan()
+										: settings_billing_upgradePlan()}
 								</button>
+							{/if}
+
+							{#if hasManageableSubscription}
+								{#if org.plan_status === 'paused'}
+									<button
+										type="button"
+										onclick={handleResume}
+										class="btn-primary w-full"
+										disabled={resumeMutation.isPending}
+									>
+										{settings_billing_resume_button()}
+									</button>
+								{:else if org.plan_status === 'past_due'}
+									<button onclick={handleManageSubscription} class="btn-primary w-full">
+										{settings_billing_manageSubscription()}
+									</button>
+								{:else if org.plan_status === 'pending_cancellation'}
+									<div class="flex flex-col gap-2">
+										<button
+											type="button"
+											onclick={handleReactivate}
+											class="btn-primary w-full"
+											disabled={reactivateMutation.isPending}
+										>
+											{settings_billing_reactivateSubscription()}
+										</button>
+										<button onclick={handleManageSubscription} class="btn-secondary w-full">
+											{settings_billing_manageSubscription()}
+										</button>
+									</div>
+								{:else if org.plan_status === 'active' || org.plan_status === 'trialing'}
+									<div class="flex flex-col gap-2">
+										<button onclick={handleManageSubscription} class="btn-secondary w-full">
+											{settings_billing_manageSubscription()}
+										</button>
+										<button onclick={openCancelModal} class="btn-secondary w-full">
+											{settings_billing_cancelSubscription()}
+										</button>
+									</div>
+								{/if}
 							{/if}
 						</div>
 					</svelte:fragment>
-				</InfoCard>
-
-				<!-- View Plans -->
-				<InfoCard>
-					<div class="flex items-center justify-between">
-						<div>
-							<p class="text-primary text-sm font-medium">
-								{isFree ? settings_billing_upgradePlan() : settings_billing_changePlan()}
-							</p>
-							<p class="text-secondary mt-1 text-xs">
-								{isFree
-									? settings_billing_upgradePlanDescription()
-									: settings_billing_changePlanDescription()}
-							</p>
-						</div>
-						<button
-							onclick={() =>
-								triggerUpgrade({
-									source: 'settings_billing',
-									reopenSettings: true,
-									beforeModal: () => onClose()
-								})}
-							class="btn-primary whitespace-nowrap text-sm"
-						>
-							{common_viewPlans()}
-						</button>
-					</div>
 				</InfoCard>
 
 				<!-- Additional Info -->
@@ -419,3 +609,12 @@
 		</div>
 	{/if}
 </div>
+
+<CancelSubscriptionModal
+	isOpen={showCancelModal}
+	onClose={() => (showCancelModal = false)}
+	lastPausedAt={org?.last_paused_at ?? null}
+	lastDiscountAt={org?.last_discount_at ?? null}
+	planStatus={org?.plan_status ?? null}
+	onSubscriptionChanged={() => organizationQuery.refetch()}
+/>

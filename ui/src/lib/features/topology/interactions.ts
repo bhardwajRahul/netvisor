@@ -9,7 +9,7 @@ import {
 	serviceDefinitions,
 	subnetTypes
 } from '$lib/shared/stores/metadata';
-import type { TopologyEdge, TopologyNode, Topology } from './types/base';
+import type { TopologyEdge, TopologyNode, EnrichedTopology } from './types/base';
 import {
 	isDisabledEdge,
 	getHighlightBehavior,
@@ -204,7 +204,10 @@ export const FILTER_VALUE_EXTRACTORS: Record<string, Record<string, FilterValueE
 };
 
 /** Collections on Topology indexed by the entity-type key used in filters. */
-function collectionFor(topo: Topology, entityType: string): Array<{ id: string }> | undefined {
+function collectionFor(
+	topo: EnrichedTopology,
+	entityType: string
+): Array<{ id: string }> | undefined {
 	switch (entityType) {
 		case 'Service':
 			return topo.services as Array<{ id: string }>;
@@ -221,7 +224,7 @@ function collectionFor(topo: Topology, entityType: string): Array<{ id: string }
 }
 
 export function updateTagFilter(
-	topology: Topology | undefined,
+	topology: EnrichedTopology | undefined,
 	tagFilter: TagFilter | undefined,
 	view?: string,
 	/** hide_metadata_values[activeView] — a nested map keyed by entity type, then filter type, to hidden value ids. */
@@ -437,7 +440,7 @@ function relatesToEntity(node: TopologyNode, entityType: string, entityId: strin
 function getVirtualizedContainerNodes(
 	dockerHostInterfaceId: string,
 	queryClient: QueryClient,
-	topology?: Topology
+	topology?: EnrichedTopology
 ): Set<string> {
 	const connected = new Set<string>();
 
@@ -501,7 +504,11 @@ function getVirtualizedContainerNodes(
  * When a container has connected elements inside it, highlight that container.
  * Uses topology data to find elements hidden by collapsed containers.
  */
-function addContainerHighlights(connected: Set<string>, allNodes: Node[], topology?: Topology) {
+function addContainerHighlights(
+	connected: Set<string>,
+	allNodes: Node[],
+	topology?: EnrichedTopology
+) {
 	const topoNodes = topology?.nodes ?? allNodes.map((n) => n.data as TopologyNode);
 
 	for (const nd of topoNodes) {
@@ -536,7 +543,7 @@ export function updateConnectedNodes(
 	allEdges: Edge[],
 	allNodes: Node[],
 	queryClient: QueryClient,
-	topology?: Topology,
+	topology?: EnrichedTopology,
 	multiSelectedNodes?: Node[],
 	hiddenEdgeTypes?: string[]
 ) {
@@ -896,7 +903,7 @@ function resolveEntityToNodes(
 	entityId: string,
 	config: ViewElementConfig,
 	index: EntityNodeIndex,
-	topology: Topology
+	topology: EnrichedTopology
 ): EntityResolution {
 	const elementNodeIds: string[] = [];
 	const containerNodeIds: string[] = [];
@@ -958,7 +965,11 @@ function resolveEntityToNodes(
  * Searches hosts (name/hostname), ip addresses (ip_address/name), services (name),
  * subnets (name/cidr), and tags (name matched to entities).
  */
-export function updateSearchFilter(topology: Topology | undefined, query: string, view?: string) {
+export function updateSearchFilter(
+	topology: EnrichedTopology | undefined,
+	query: string,
+	view?: string
+) {
 	if (!topology || !query.trim()) {
 		searchHiddenNodeIds.set(new Set());
 		searchMatchNodeIds.set([]);

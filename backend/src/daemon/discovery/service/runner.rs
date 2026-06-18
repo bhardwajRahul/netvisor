@@ -130,7 +130,6 @@ impl DiscoveryRunner {
         ops: &DiscoveryOps,
         cancel: &CancellationToken,
     ) -> Result<Vec<Subnet>, Error> {
-        let daemon_id = self.service.config_store.get_id().await?;
         let network_id = self
             .service
             .config_store
@@ -142,12 +141,7 @@ impl DiscoveryRunner {
 
         let interface_filter = self.service.config_store.get_interfaces().await?;
         let (_, subnets, _) = utils
-            .get_own_interfaces(
-                DiscoveryType::from(self),
-                daemon_id,
-                network_id,
-                &interface_filter,
-            )
+            .get_own_interfaces(network_id, &interface_filter)
             .await?;
 
         // Get docker subnets for merging
@@ -170,13 +164,7 @@ impl DiscoveryRunner {
         {
             self.service
                 .utils
-                .get_subnets_from_docker_networks(
-                    daemon_id,
-                    network_id,
-                    &docker_client,
-                    DiscoveryType::from(self),
-                    Uuid::nil(),
-                )
+                .get_subnets_from_docker_networks(network_id, &docker_client, Uuid::nil())
                 .await
                 .unwrap_or_default()
         } else {
@@ -439,7 +427,7 @@ impl DiscoveryRunner {
         let utils = &self.service.utils;
 
         let network_subnets = network_discovery
-            .resolve_scan_subnets(&ops, utils, DiscoveryType::from(self), cancel)
+            .resolve_scan_subnets(&ops, utils, cancel)
             .await?;
 
         tracing::info!(

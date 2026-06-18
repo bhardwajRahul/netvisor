@@ -1,5 +1,8 @@
-use crate::server::shared::events::types::OnboardingOperation;
-use crate::server::shared::types::metadata::TypeMetadataProvider;
+use crate::server::auth::r#impl::base::ProvisionOrg;
+use crate::server::billing::types::base::BillingPlan;
+use crate::server::shared::events::types::{
+    EmailAndToken, OnboardingOperation, OnboardingOperationDiscriminants,
+};
 use crate::server::{
     auth::{
         r#impl::{
@@ -8,15 +11,15 @@ use crate::server::{
         },
         middleware::auth::AuthenticatedEntity,
     },
-    email::traits::EmailService,
     organizations::{
-        r#impl::base::{Organization, OrganizationBase, UseCase},
+        r#impl::base::{Organization, OrganizationBase},
         service::OrganizationService,
     },
     shared::{
         events::{
             bus::EventBus,
-            types::{AuthEvent, AuthOperation, OnboardingEvent},
+            traits::{AuthScope, Event, OrgScope},
+            types::{AuthMethod, AuthOperation},
         },
         services::traits::CrudService,
         storage::{filter::StorableFilter, traits::Storable},
@@ -46,12 +49,11 @@ use validator::Validate;
 pub struct AuthService {
     pub user_service: Arc<UserService>,
     organization_service: Arc<OrganizationService>,
-    email_service: Option<Arc<EmailService>>,
+    has_email_service: bool,
     login_attempts: Arc<RwLock<HashMap<EmailAddress, (u32, Instant)>>>,
     /// Rate limiting for verification email resend (not token storage - tokens stored in DB)
     verification_resend_cooldown: Arc<RwLock<HashMap<EmailAddress, Instant>>>,
     event_bus: Arc<EventBus>,
-    public_url: String,
 }
 
 impl AuthService {
@@ -71,58 +73,50 @@ impl AuthService {
     pub fn new(
         user_service: Arc<UserService>,
         organization_service: Arc<OrganizationService>,
-        email_service: Option<Arc<EmailService>>,
+        has_email_service: bool,
         event_bus: Arc<EventBus>,
-        public_url: String,
     ) -> Self {
         Self {
             user_service,
             organization_service,
-            email_service,
+            has_email_service,
             login_attempts: Arc::new(RwLock::new(HashMap::new())),
             verification_resend_cooldown: Arc::new(RwLock::new(HashMap::new())),
             event_bus,
-            public_url,
         }
     }
 
-    /// Check if email service is configured
-    pub fn has_email_service(&self) -> bool {
-        self.email_service.is_some()
-    }
+    // /// Send OIDC linked notification email (non-blocking)
+    // pub async fn send_oidc_linked_notification(&self, email: EmailAddress, provider_name: &str) {
+    //     if let Some(email_service) = &self.email_service
+    //         && let Err(e) = email_service
+    //             .send_oidc_linked_email(email, provider_name)
+    //             .await
+    //     {
+    //         tracing::warn!(error = %e, "Failed to send OIDC linked notification email");
+    //     }
+    // }
 
-    /// Send OIDC linked notification email (non-blocking)
-    pub async fn send_oidc_linked_notification(&self, email: EmailAddress, provider_name: &str) {
-        if let Some(email_service) = &self.email_service
-            && let Err(e) = email_service
-                .send_oidc_linked_email(email, provider_name)
-                .await
-        {
-            tracing::warn!(error = %e, "Failed to send OIDC linked notification email");
-        }
-    }
-
-    /// Send OIDC unlinked notification email (non-blocking)
-    pub async fn send_oidc_unlinked_notification(&self, email: EmailAddress, provider_name: &str) {
-        if let Some(email_service) = &self.email_service
-            && let Err(e) = email_service
-                .send_oidc_unlinked_email(email, provider_name)
-                .await
-        {
-            tracing::warn!(error = %e, "Failed to send OIDC unlinked notification email");
-        }
-    }
+    // /// Send OIDC unlinked notification email (non-blocking)
+    // pub async fn send_oidc_unlinked_notification(&self, email: EmailAddress, provider_name: &str) {
+    //     if let Some(email_service) = &self.email_service
+    //         && let Err(e) = email_service
+    //             .send_oidc_unlinked_email(email, provider_name)
+    //             .await
+    //     {
+    //         tracing::warn!(error = %e, "Failed to send OIDC unlinked notification email");
+    //     }
+    // }
 
     /// Register a new user with password
     pub async fn register(
         &self,
         request: RegisterRequest,
         params: LoginRegisterParams,
-        pending_setup: Option<PendingSetup>,
         billing_enabled: bool,
     ) -> Result<User> {
         let LoginRegisterParams {
-            org_id,
+            provision_org,
             permissions,
             ip,
             user_agent,
@@ -149,63 +143,61 @@ impl AuthService {
             None
         };
 
+        // Auto-verify when:
+        // - invited user joining existing org (invite link proves email ownership), or
+        // - no email service is configured (self-hosted without SMTP/Brevo —
+        //   no other way for the user to receive a verification token).
+        // Otherwise leave `email_verified = false` and emit a verification email.
+        let auto_verify = provision_org.is_existing() || !self.has_email_service;
+
         // Provision user with password
         let mut user = self
-            .provision_user(
-                ProvisionUserParams {
-                    email: request.email,
-                    password_hash: Some(hash_password(&request.password)?),
-                    oidc_subject: None,
-                    oidc_provider: None,
-                    org_id,
-                    permissions,
-                    network_ids,
-                    terms_accepted_at,
-                    billing_enabled,
-                    marketing_opt_in: request.marketing_opt_in,
-                },
-                pending_setup,
-            )
+            .provision_user(ProvisionUserParams {
+                email: request.email,
+                password_hash: Some(hash_password(&request.password)?),
+                oidc_subject: None,
+                oidc_provider: None,
+                email_verified: auto_verify,
+                provision_org,
+                permissions,
+                network_ids,
+                terms_accepted_at,
+                billing_enabled,
+            })
             .await?;
 
-        // Handle email verification based on context
-        if org_id.is_some() {
-            // Invited user joining existing org: auto-verify (invite link proves email ownership)
-            user.base.email_verified = true;
-            self.user_service
-                .update(&mut user, AuthenticatedEntity::System)
-                .await?;
-        } else if self.email_service.is_some() {
-            // New org registration with email service: send verification email
-            if let Err(e) = self.send_verification_email_internal(&mut user).await {
-                tracing::warn!("Failed to send verification email: {}", e);
-                // Don't fail registration if email fails - user can resend later
-            }
+        // Generate the verification token (and persist it on the user record)
+        // before emitting the event so the email subscriber receives the token
+        // in the payload. If token generation fails, log and continue — the
+        // user can request a new verification email via the resend endpoint.
+        let email_and_token = if auto_verify {
+            None
         } else {
-            // No email service (self-hosted): auto-verify user
-            user.base.email_verified = true;
-            self.user_service
-                .update(&mut user, AuthenticatedEntity::System)
-                .await?;
-        }
+            match self.set_user_email_verification_params(&mut user).await {
+                Ok(params) => Some(params),
+                Err(e) => {
+                    tracing::warn!(error = %e, "Failed to set email verification params");
+                    None
+                }
+            }
+        };
 
         let authentication: AuthenticatedEntity = user.clone().into();
         self.event_bus
-            .publish_auth(AuthEvent {
-                id: Uuid::new_v4(),
-                user_id: Some(user.id),
-                organization_id: Some(user.base.organization_id),
-                timestamp: Utc::now(),
-                operation: AuthOperation::Register,
-                ip_address: ip,
-                user_agent,
-                metadata: serde_json::json!({
-                    "method": "password",
-                    "email_verified": user.base.email_verified
-                }),
-
+            .publish(Event::new(
+                AuthScope {
+                    user_id: Some(user.id),
+                    organization_id: Some(user.base.organization_id),
+                    ip_address: ip,
+                    user_agent,
+                },
+                AuthOperation::Register {
+                    method: AuthMethod::Password,
+                    marketing_opt_in: request.marketing_opt_in,
+                    email_and_token,
+                },
                 authentication,
-            })
+            ))
             .await?;
 
         Ok(user)
@@ -214,92 +206,72 @@ impl AuthService {
     /// Core user provisioning logic - handles both password and OIDC registration
     /// If pending_setup is provided, uses setup.org_name and marks OnboardingModalCompleted
     /// If billing_enabled is false (self-hosted), sets default billing plan
-    pub async fn provision_user(
-        &self,
-        params: ProvisionUserParams,
-        pending_setup: Option<PendingSetup>,
-    ) -> Result<User> {
+    pub async fn provision_user(&self, params: ProvisionUserParams) -> Result<User> {
         let ProvisionUserParams {
             email,
             password_hash,
             oidc_subject,
             oidc_provider,
-            org_id,
+            provision_org,
+            email_verified,
             permissions,
             network_ids,
             terms_accepted_at,
             billing_enabled,
-            marketing_opt_in,
         } = params;
 
-        let mut is_new_org = false;
-        // Plan type at org creation time, used for PostHog identify on OrgCreated
-        let mut new_org_plan_type: Option<String> = None;
+        // Plan at org creation time — surfaced on the OrgCreated onboarding
+        // event for downstream Brevo/PostHog identify.
+        let mut new_org_plan: Option<BillingPlan> = None;
 
-        // If being invited, use provided org ID, otherwise create a new one
-        let organization_id = if let Some(org_id) = org_id {
-            org_id
-        } else {
-            is_new_org = true;
+        let (organization_id, permissions) = match provision_org.clone() {
+            ProvisionOrg::Existing(org_id) => {
+                (org_id, permissions.unwrap_or(UserOrgPermissions::Viewer))
+            }
+            ProvisionOrg::New(PendingSetup {
+                use_case, org_name, ..
+            }) => {
+                let onboarding = vec![OnboardingOperationDiscriminants::OnboardingModalCompleted];
 
-            // Use org name from setup if provided, otherwise default
-            let org_name = pending_setup
-                .as_ref()
-                .map(|s| s.org_name.clone())
-                .unwrap_or_else(|| "My Organization".to_string());
+                // Cloud: no plan until user selects one via billing modal → Stripe checkout → webhook
+                // Self-hosted: emit a CheckoutCompleted event below so the ledger
+                // reflects the default plan immediately.
+                let self_hosted_plan = if billing_enabled {
+                    None
+                } else {
+                    Some(BillingPlan::default())
+                };
+                new_org_plan = self_hosted_plan;
 
-            // Mark OnboardingModalCompleted if setup was provided (pre-registration setup flow)
-            let onboarding = if pending_setup.is_some() {
-                vec![OnboardingOperation::OnboardingModalCompleted]
-            } else {
-                vec![]
-            };
+                // Create new organization for this user
+                let organization = self
+                    .organization_service
+                    .create(
+                        Organization::new(OrganizationBase {
+                            stripe_customer_id: None,
+                            name: org_name,
+                            plan: self_hosted_plan,
+                            plan_status: None,
+                            onboarding,
+                            has_payment_method: false,
+                            trial_end_date: None,
+                            last_paused_at: None,
+                            trial_extended_used: false,
+                            last_downgrade_at: None,
+                            last_downgrade_from_plan: None,
+                            last_discount_at: None,
+                            discount_save_offer_percent_off: None,
+                            discount_save_offer_active_until: None,
+                            brevo_company_id: None,
+                            plan_limit_notifications: Default::default(),
+                            use_case,
+                        }),
+                        AuthenticatedEntity::System,
+                    )
+                    .await?;
 
-            // Cloud: no plan until user selects one via billing modal → Stripe checkout → webhook
-            // Self-hosted: set default plan immediately
-            let (plan, plan_status) = if billing_enabled {
-                (None, None)
-            } else {
-                (
-                    Some(crate::server::billing::types::base::BillingPlan::default()),
-                    None,
-                )
-            };
-            new_org_plan_type = plan.as_ref().map(|p| p.name().to_string());
-
-            let use_case = pending_setup
-                .as_ref()
-                .and_then(|s| s.use_case.as_deref())
-                .and_then(|s| serde_json::from_value::<UseCase>(serde_json::json!(s)).ok())
-                .unwrap_or_default();
-
-            // Create new organization for this user
-            let organization = self
-                .organization_service
-                .create(
-                    Organization::new(OrganizationBase {
-                        stripe_customer_id: None,
-                        name: org_name,
-                        plan,
-                        plan_status,
-                        onboarding,
-                        has_payment_method: false,
-                        trial_end_date: None,
-                        brevo_company_id: None,
-                        plan_limit_notifications: Default::default(),
-                        use_case,
-                    }),
-                    AuthenticatedEntity::System,
-                )
-                .await?;
-            organization.id
-        };
-
-        // If being invited, will have permissions (default to Viewer in case permissions were lost for some reason); otherwise, new user and should be owner of org
-        let permissions = if is_new_org {
-            UserOrgPermissions::Owner
-        } else {
-            permissions.unwrap_or(UserOrgPermissions::Viewer)
+                (organization.id, UserOrgPermissions::Owner)
+            }
         };
 
         // Create user based on auth method
@@ -309,6 +281,7 @@ impl AuthService {
                 .create(
                     User::new(UserBase::new_password(
                         email,
+                        email_verified,
                         hash,
                         organization_id,
                         permissions,
@@ -338,48 +311,23 @@ impl AuthService {
             Err(anyhow!("Must provide either password or OIDC credentials"))
         }?;
 
-        if is_new_org {
+        if let ProvisionOrg::New(PendingSetup {
+            org_name, use_case, ..
+        }) = provision_org
+        {
             let authentication: AuthenticatedEntity = user.clone().into();
-
-            // Include org_name and onboarding data in metadata for Brevo sync
-            let org_name = pending_setup
-                .as_ref()
-                .map(|s| s.org_name.clone())
-                .unwrap_or_else(|| "My Organization".to_string());
-            let use_case = pending_setup.as_ref().and_then(|s| s.use_case.clone());
-            let referral_source = pending_setup
-                .as_ref()
-                .and_then(|s| s.referral_source.clone());
-            let referral_source_other = pending_setup
-                .as_ref()
-                .and_then(|s| s.referral_source_other.clone());
-
-            let mut metadata = serde_json::json!({
-                "org_name": org_name,
-                "marketing_opt_in": marketing_opt_in,
-                "plan_type": &new_org_plan_type,
-                "plan_status": serde_json::Value::Null,
-                "has_payment_method": false
-            });
-            if let Some(use_case) = use_case {
-                metadata["use_case"] = serde_json::json!(use_case);
-            }
-            if let Some(referral_source) = referral_source {
-                metadata["referral_source"] = serde_json::json!(referral_source);
-            }
-            if let Some(referral_source_other) = referral_source_other {
-                metadata["referral_source_other"] = serde_json::json!(referral_source_other);
-            }
+            let plan = new_org_plan.unwrap_or_default();
 
             self.event_bus
-                .publish_onboarding(OnboardingEvent {
-                    id: Uuid::new_v4(),
-                    organization_id: user.base.organization_id,
-                    operation: OnboardingOperation::OrgCreated,
-                    timestamp: Utc::now(),
-                    metadata,
+                .publish(Event::new(
+                    OrgScope { organization_id },
+                    OnboardingOperation::OrgCreated {
+                        org_name,
+                        plan,
+                        use_case,
+                    },
                     authentication,
-                })
+                ))
                 .await?;
         }
 
@@ -411,20 +359,19 @@ impl AuthService {
 
                 let authentication: AuthenticatedEntity = user.clone().into();
                 self.event_bus
-                    .publish_auth(AuthEvent {
-                        id: Uuid::new_v4(),
-                        user_id: Some(user.id),
-                        organization_id: Some(user.base.organization_id),
-                        timestamp: Utc::now(),
-                        operation: AuthOperation::LoginSuccess,
-                        ip_address: ip,
-                        user_agent,
-                        metadata: serde_json::json!({
-                            "method": "password",
-                        }),
-
+                    .publish(Event::new(
+                        AuthScope {
+                            user_id: Some(user.id),
+                            organization_id: Some(user.base.organization_id),
+                            ip_address: ip,
+                            user_agent,
+                        },
+                        AuthOperation::LoginSuccess {
+                            method: AuthMethod::Password,
+                            via_register_flow: false,
+                        },
                         authentication,
-                    })
+                    ))
                     .await?;
 
                 Ok(user)
@@ -433,20 +380,19 @@ impl AuthService {
                 // Failure - increment attempts
 
                 self.event_bus
-                    .publish_auth(AuthEvent {
-                        id: Uuid::new_v4(),
-                        user_id: None,
-                        organization_id: None,
-                        timestamp: Utc::now(),
-                        operation: AuthOperation::LoginFailed,
-                        ip_address: ip,
-                        user_agent,
-                        metadata: serde_json::json!({
-                            "method": "password",
-                            "email": request.email
-                        }),
-                        authentication: AuthenticatedEntity::Anonymous,
-                    })
+                    .publish(Event::new(
+                        AuthScope {
+                            user_id: None,
+                            organization_id: None,
+                            ip_address: ip,
+                            user_agent,
+                        },
+                        AuthOperation::LoginFailed {
+                            method: AuthMethod::Password,
+                            attempted_email: request.email.clone(),
+                        },
+                        AuthenticatedEntity::Anonymous,
+                    ))
                     .await?;
 
                 let mut attempts = self.login_attempts.write().await;
@@ -526,55 +472,33 @@ impl AuthService {
 
         user.set_password(hash_password(&new_password)?);
 
-        let email_addr = user.base.email.clone();
-
         self.event_bus
-            .publish_auth(AuthEvent {
-                id: Uuid::new_v4(),
-                user_id: Some(user.id),
-                organization_id: Some(user.base.organization_id),
-                timestamp: Utc::now(),
-                operation: AuthOperation::PasswordChanged,
-                ip_address: ip,
-                user_agent,
-                metadata: serde_json::json!({
-                    "action": if had_password { "changed" } else { "set" },
-                }),
-
-                authentication: authentication.clone(),
-            })
+            .publish(Event::new(
+                AuthScope {
+                    user_id: Some(user.id),
+                    organization_id: Some(user.base.organization_id),
+                    ip_address: ip,
+                    user_agent,
+                },
+                AuthOperation::PasswordChanged {
+                    email: user.base.email.clone(),
+                    had_password,
+                    timestamp: Utc::now(),
+                },
+                authentication.clone(),
+            ))
             .await?;
 
-        let result = self.user_service.update(&mut user, authentication).await?;
-
-        // Send notification email (non-blocking — don't fail the operation)
-        if let Some(email_service) = &self.email_service {
-            let timestamp = Utc::now().format("%Y-%m-%d %H:%M UTC").to_string();
-            if let Err(e) = email_service
-                .send_password_changed_email(email_addr, &timestamp)
-                .await
-            {
-                tracing::warn!(error = %e, "Failed to send password changed notification email");
-            }
-        }
-
-        Ok(result)
+        self.user_service.update(&mut user, authentication).await
     }
 
     /// Initiate password reset process - generates a token stored in database
     pub async fn initiate_password_reset(
         &self,
         email: &EmailAddress,
-        url: String,
         ip: IpAddr,
         user_agent: Option<String>,
     ) -> Result<()> {
-        let email_service = self
-            .email_service
-            .as_ref()
-            .ok_or_else(|| anyhow!("Email service not configured"))?
-            .clone();
-
         let mut user = match self
             .user_service
             .get_one(StorableFilter::<User>::new_from_email(email))
@@ -588,20 +512,6 @@ impl AuthService {
             }
         };
 
-        self.event_bus
-            .publish_auth(AuthEvent {
-                id: Uuid::new_v4(),
-                user_id: Some(user.id),
-                organization_id: Some(user.base.organization_id),
-                timestamp: Utc::now(),
-                operation: AuthOperation::PasswordResetRequested,
-                ip_address: ip,
-                user_agent,
-                metadata: serde_json::json!({}),
-                authentication: AuthenticatedEntity::Anonymous,
-            })
-            .await?;
-
         // Generate token and store in database
         let token = Self::generate_secure_token();
         let expires = Utc::now() + Duration::hours(Self::PASSWORD_RESET_TOKEN_EXPIRY_HOURS);
@@ -611,8 +521,22 @@ impl AuthService {
             .update(&mut user, AuthenticatedEntity::System)
             .await?;
 
-        email_service
-            .send_password_reset(user.base.email.clone(), url, token)
+        self.event_bus
+            .publish(Event::new(
+                AuthScope {
+                    user_id: Some(user.id),
+                    organization_id: Some(user.base.organization_id),
+                    ip_address: ip,
+                    user_agent,
+                },
+                AuthOperation::PasswordResetRequested {
+                    email_and_token: EmailAndToken {
+                        email: user.base.email,
+                        token,
+                    },
+                },
+                AuthenticatedEntity::Anonymous,
+            ))
             .await?;
 
         Ok(())
@@ -650,18 +574,16 @@ impl AuthService {
 
         let authentication: AuthenticatedEntity = user.clone().into();
         self.event_bus
-            .publish_auth(AuthEvent {
-                id: Uuid::new_v4(),
-                user_id: Some(user.id),
-                organization_id: Some(user.base.organization_id),
-                timestamp: Utc::now(),
-                operation: AuthOperation::PasswordResetCompleted,
-                ip_address: ip,
-                user_agent,
-                metadata: serde_json::json!({}),
-
+            .publish(Event::new(
+                AuthScope {
+                    user_id: Some(user.id),
+                    organization_id: Some(user.base.organization_id),
+                    ip_address: ip,
+                    user_agent,
+                },
+                AuthOperation::PasswordResetCompleted,
                 authentication,
-            })
+            ))
             .await?;
 
         // Update password and clear token
@@ -685,48 +607,39 @@ impl AuthService {
         if let Ok(Some(user)) = self.user_service.get_by_id(&user_id).await {
             let authentication: AuthenticatedEntity = user.into();
             self.event_bus
-                .publish_auth(AuthEvent {
-                    id: Uuid::new_v4(),
-                    user_id: authentication.user_id(),
-                    organization_id: authentication.organization_id(),
-                    timestamp: Utc::now(),
-                    operation: AuthOperation::LoggedOut,
-                    ip_address: ip,
-                    user_agent,
-                    metadata: serde_json::json!({}),
-
+                .publish(Event::new(
+                    AuthScope {
+                        user_id: authentication.user_id(),
+                        organization_id: authentication.organization_id(),
+                        ip_address: ip,
+                        user_agent,
+                    },
+                    AuthOperation::LoggedOut,
                     authentication,
-                })
+                ))
                 .await?;
         }
 
         Ok(())
     }
 
-    /// Internal helper to generate verification token and send email
-    async fn send_verification_email_internal(&self, user: &mut User) -> Result<()> {
-        let email_service = self
-            .email_service
-            .as_ref()
-            .ok_or_else(|| anyhow!("Email service not configured"))?;
-
+    /// Helper to generate verification token and set on user prior to emitting event that will send a verification email
+    async fn set_user_email_verification_params(&self, user: &mut User) -> Result<EmailAndToken> {
         // Generate token and expiry
         let token = Self::generate_secure_token();
-        let expires = Utc::now() + Duration::hours(Self::VERIFICATION_TOKEN_EXPIRY_HOURS);
+        let expiry = Utc::now() + Duration::hours(Self::VERIFICATION_TOKEN_EXPIRY_HOURS);
 
         // Store token in user record
         user.base.email_verification_token = Some(token.clone());
-        user.base.email_verification_expires = Some(expires);
+        user.base.email_verification_expires = Some(expiry);
         self.user_service
             .update(user, AuthenticatedEntity::System)
             .await?;
 
-        // Send verification email
-        email_service
-            .send_verification_email(user.base.email.clone(), self.public_url.clone(), token)
-            .await?;
-
-        Ok(())
+        Ok(EmailAndToken {
+            token,
+            email: user.base.email.clone(),
+        })
     }
 
     /// Request an email change — sends verification email to the new address
@@ -738,11 +651,6 @@ impl AuthService {
         ip: IpAddr,
         user_agent: Option<String>,
     ) -> Result<()> {
-        let email_service = self
-            .email_service
-            .as_ref()
-            .ok_or_else(|| anyhow!("Email service not configured"))?;
-
         let mut user = self
             .user_service
             .get_by_id(&user_id)
@@ -779,39 +687,29 @@ impl AuthService {
             return Err(anyhow!("This email address is already in use"));
         }
 
-        // Generate token + expiry (reuse verification token fields)
-        let token = Self::generate_secure_token();
-        let expires = Utc::now() + Duration::hours(Self::VERIFICATION_TOKEN_EXPIRY_HOURS);
-
         user.base.pending_email = Some(new_email.clone());
-        user.base.email_verification_token = Some(token.clone());
-        user.base.email_verification_expires = Some(expires);
 
-        self.user_service
-            .update(&mut user, AuthenticatedEntity::System)
-            .await?;
+        let params = self.set_user_email_verification_params(&mut user).await?;
 
-        // Publish audit event
+        // Publish event
         let authentication: AuthenticatedEntity = user.clone().into();
         self.event_bus
-            .publish_auth(AuthEvent {
-                id: Uuid::new_v4(),
-                user_id: Some(user.id),
-                organization_id: Some(user.base.organization_id),
-                timestamp: Utc::now(),
-                operation: AuthOperation::EmailChangeRequested,
-                ip_address: ip,
-                user_agent,
-                metadata: serde_json::json!({
-                    "new_email": new_email.to_string(),
-                }),
+            .publish(Event::new(
+                AuthScope {
+                    user_id: Some(user.id),
+                    organization_id: Some(user.base.organization_id),
+                    ip_address: ip,
+                    user_agent,
+                },
+                AuthOperation::EmailChangeRequested {
+                    // Send verification email to new address
+                    email_and_token: EmailAndToken {
+                        email: new_email,
+                        token: params.token,
+                    },
+                },
                 authentication,
-            })
-            .await?;
-
-        // Send verification email to the NEW address
-        email_service
-            .send_verification_email(new_email, self.public_url.clone(), token)
+            ))
             .await?;
 
         Ok(())
@@ -847,7 +745,6 @@ impl AuthService {
         // Check if this is an email change flow (pending_email is set)
         if let Some(pending_email) = user.base.pending_email.take() {
             let old_email = user.base.email.clone();
-            let old_email_str = old_email.to_string();
             user.base.email = pending_email;
             user.base.email_verified = true;
             user.base.email_verification_token = None;
@@ -857,33 +754,23 @@ impl AuthService {
                 .update(&mut user, AuthenticatedEntity::System)
                 .await?;
 
-            let new_email_str = user.base.email.to_string();
+            let new_email = user.base.email.clone();
 
             self.event_bus
-                .publish_auth(AuthEvent {
-                    id: Uuid::new_v4(),
-                    user_id: Some(user.id),
-                    organization_id: Some(user.base.organization_id),
-                    timestamp: Utc::now(),
-                    operation: AuthOperation::EmailChanged,
-                    ip_address: ip,
-                    user_agent,
-                    metadata: serde_json::json!({
-                        "old_email": old_email_str,
-                        "new_email": new_email_str,
-                    }),
-                    authentication: user.clone().into(),
-                })
+                .publish(Event::new(
+                    AuthScope {
+                        user_id: Some(user.id),
+                        organization_id: Some(user.base.organization_id),
+                        ip_address: ip,
+                        user_agent,
+                    },
+                    AuthOperation::EmailChanged {
+                        old_email,
+                        new_email,
+                    },
+                    user.clone().into(),
+                ))
                 .await?;
-
-            // Send notification to old email address
-            if let Some(email_service) = &self.email_service
-                && let Err(e) = email_service
-                    .send_email_changed_old_email(old_email, &new_email_str)
-                    .await
-            {
-                tracing::warn!(error = %e, "Failed to send email changed notification to old address");
-            }
         } else {
             // Standard initial verification flow
             user.base.email_verified = true;
@@ -895,17 +782,16 @@ impl AuthService {
                 .await?;
 
             self.event_bus
-                .publish_auth(AuthEvent {
-                    id: Uuid::new_v4(),
-                    user_id: Some(user.id),
-                    organization_id: Some(user.base.organization_id),
-                    timestamp: Utc::now(),
-                    operation: AuthOperation::EmailVerified,
-                    ip_address: ip,
-                    user_agent,
-                    metadata: serde_json::json!({}),
-                    authentication: user.clone().into(),
-                })
+                .publish(Event::new(
+                    AuthScope {
+                        user_id: Some(user.id),
+                        organization_id: Some(user.base.organization_id),
+                        ip_address: ip,
+                        user_agent,
+                    },
+                    AuthOperation::EmailVerified,
+                    user.clone().into(),
+                ))
                 .await?;
         }
 
@@ -913,7 +799,12 @@ impl AuthService {
     }
 
     /// Resend verification email with rate limiting
-    pub async fn resend_verification_email(&self, email: &EmailAddress) -> Result<()> {
+    pub async fn resend_verification_email(
+        &self,
+        email: &EmailAddress,
+        ip: IpAddr,
+        user_agent: Option<String>,
+    ) -> Result<()> {
         // Check rate limiting
         {
             let cooldowns = self.verification_resend_cooldown.read().await;
@@ -940,8 +831,21 @@ impl AuthService {
             return Err(anyhow!("Email is already verified"));
         }
 
-        // Send verification email
-        self.send_verification_email_internal(&mut user).await?;
+        let email_and_token = self.set_user_email_verification_params(&mut user).await?;
+        let authentication: AuthenticatedEntity = user.clone().into();
+
+        self.event_bus
+            .publish(Event::new(
+                AuthScope {
+                    user_id: Some(user.id),
+                    organization_id: Some(user.base.organization_id),
+                    ip_address: ip,
+                    user_agent,
+                },
+                AuthOperation::EmailVerificationRequested { email_and_token },
+                authentication,
+            ))
+            .await?;
 
         // Update cooldown
         self.verification_resend_cooldown

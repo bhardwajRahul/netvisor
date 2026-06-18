@@ -172,6 +172,25 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
+    // Snapshot retention sweep (daily). Deletes snapshots past the per-plan
+    // retention window; the FK cascade reaps closed entity rows + topology
+    // rows tied to each deleted snapshot.
+    let retention_state = state.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(Duration::from_secs(24 * 60 * 60));
+        loop {
+            interval.tick().await;
+            if let Err(e) = retention_state
+                .services
+                .snapshot_service
+                .run_retention(retention_state.config.snapshot_retention_days_override)
+                .await
+            {
+                tracing::error!(error = %e, "Snapshot retention sweep failed");
+            }
+        }
+    });
+
     // License key periodic re-validation (every 5 minutes)
     let license_revalidate = state.license_service.clone();
     tokio::spawn(async move {

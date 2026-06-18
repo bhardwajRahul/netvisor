@@ -189,7 +189,9 @@ pub fn daemon(network_id: &Uuid, host_id: &Uuid) -> Daemon {
 
 pub async fn test_services() -> (StorageFactory, ServiceFactory, ContainerAsync<GenericImage>) {
     let (storage, _container) = test_storage().await;
-    let services = ServiceFactory::new(&storage, None).await.unwrap();
+    let services = ServiceFactory::new(&storage, ServerConfig::default())
+        .await
+        .unwrap();
     (storage, services, _container)
 }
 pub async fn setup_test_app() -> Router<Arc<AppState>> {

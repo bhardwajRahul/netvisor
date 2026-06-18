@@ -76,13 +76,18 @@
 				grouped.get(interfaceId)!.ports.push(port);
 			}
 
-			return Array.from(grouped.values()).map(({ iface, ports }) => {
+			return Array.from(grouped.entries()).map(([interfaceId, { iface, ports }]) => {
 				const portList = ports.map((p) => formatPort(p)).join(', ');
 				const label = iface
 					? `${iface.name ? iface.name + ': ' : ''} ${iface.ip_address} (${portList})`
 					: `${common_unbound()} (${portList})`;
+				// Key on the binding's `ip_address_id` rather than the resolved
+				// interface — if the lookup fails (e.g. the ip_address was
+				// SCD2-closed and the live query no longer returns it), two
+				// distinct bindings would otherwise collapse to the same
+				// 'unbound' literal and trigger Svelte's each_key_duplicate.
 				return {
-					id: iface?.id ?? 'unbound',
+					id: interfaceId ?? 'unbound',
 					label,
 					color: entities.getColorHelper('Port').color
 				};

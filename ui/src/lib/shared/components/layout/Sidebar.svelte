@@ -10,6 +10,8 @@
 	import { entityUIConfig, TAB_LABELS } from '$lib/shared/entity-ui-config';
 	import type { EntityDiscriminants } from '$lib/api/entities';
 	import { triggerUpgrade } from '$lib/features/billing/trigger-upgrade';
+	import { useSetupPaymentMethodMutation } from '$lib/features/billing/queries';
+	import { startSetupPayment } from '$lib/shared/billing/setup-payment';
 	import type { IconComponent } from '$lib/shared/utils/types';
 	import {
 		Menu,
@@ -18,13 +20,20 @@
 		Settings,
 		LifeBuoy,
 		ArrowUpCircle,
+		Clock,
 		Home
 	} from 'lucide-svelte';
 	import { onMount } from 'svelte';
 	import type { Component } from 'svelte';
 	import type { UserOrgPermissions } from '$lib/features/users/types';
 	import type { SubTab } from '$lib/shared/components/layout/ContentSubTabs.svelte';
-	import { common_upgrade } from '$lib/paraglide/messages';
+	import {
+		common_upgrade,
+		billing_trialPill,
+		billing_trialPillOneDay,
+		billing_trialPillToday
+	} from '$lib/paraglide/messages';
+	import { getTrialDaysLeft, isTrialingWithoutPayment } from '$lib/shared/utils/trial';
 	import { daemonSetupState } from '$lib/features/daemons/stores/daemon-setup';
 	import { isAllComplete } from '$lib/shared/onboarding/checklist';
 	import SidebarChecklist from './SidebarChecklist.svelte';
@@ -48,7 +57,7 @@
 
 	import HomeTab from '$lib/features/home/components/HomeTab.svelte';
 
-	type OnboardingOperation = components['schemas']['OnboardingOperation'];
+	type OnboardingOperation = components['schemas']['OnboardingOperationDiscriminants'];
 
 	let {
 		activeTab = $bindable('topology'),
@@ -91,6 +100,7 @@
 
 	const organizationQuery = useOrganizationQuery();
 	let organization = $derived(organizationQuery.data);
+	const setupPaymentMutation = useSetupPaymentMethodMutation();
 
 	// Derived values from queries
 	let userPermissions = $derived(currentUser?.permissions);
@@ -98,7 +108,21 @@
 	let isDemoOrg = $derived(organization?.plan?.type === 'Demo');
 	let isFreePlan = $derived(organization?.plan?.type === 'Free');
 	let isOwner = $derived(userPermissions === 'Owner');
-	let showUpgradeButton = $derived(isFreePlan && isOwner && isBillingEnabled);
+	let trialDaysLeft = $derived(getTrialDaysLeft(organization));
+	let showTrialPill = $derived(
+		isOwner &&
+			isBillingEnabled &&
+			isTrialingWithoutPayment(organization) &&
+			trialDaysLeft !== null &&
+			trialDaysLeft <= 7
+	);
+	let showFreeUpgradeButton = $derived(isFreePlan && isOwner && isBillingEnabled);
+	let trialPillLabel = $derived.by(() => {
+		if (trialDaysLeft === null) return '';
+		if (trialDaysLeft <= 0) return billing_trialPillToday();
+		if (trialDaysLeft === 1) return billing_trialPillOneDay();
+		return billing_trialPill({ days: trialDaysLeft });
+	});
 	let isReadOnly = $derived(userPermissions === 'Viewer');
 
 	let showSupport = $state(false);
@@ -108,9 +132,10 @@
 	let showBillingNotification = $derived.by(() => {
 		if (!organization) return false;
 		const isPastDue = organization.plan_status === 'past_due';
+		const isPaused = organization.plan_status === 'paused';
 		const isTrialing = organization.plan_status === 'trialing';
 		const hasPayment = organization.has_payment_method ?? false;
-		return isPastDue || (isTrialing && !hasPayment);
+		return isPastDue || isPaused || (isTrialing && !hasPayment);
 	});
 
 	// Active discovery sessions — used for notification dot on sidebar and sub-tabs
@@ -745,19 +770,49 @@
 	<!-- Bottom Navigation -->
 	<div class="flex-shrink-0 border-t px-2 py-2" style="border-color: var(--color-border)">
 		<ul class="space-y-1">
-			{#if showUpgradeButton}
+			{#snippet sidebarAmberCta({
+				Icon,
+				label,
+				onclick
+			}: {
+				Icon: IconComponent;
+				label: string;
+				onclick: () => void;
+			})}
+				<button
+					class="{baseClasses} text-amber-400 hover:bg-amber-500/10"
+					style="height: 2rem; padding: 0.375rem 0.75rem;"
+					title={collapsed ? label : ''}
+					{onclick}
+				>
+					<Icon class="h-4 w-4 flex-shrink-0" />
+					{#if !collapsed}
+						<span class="ml-2.5 truncate">{label}</span>
+					{/if}
+				</button>
+			{/snippet}
+
+			{#if showTrialPill}
 				<li>
-					<button
-						class="{baseClasses} text-amber-400 hover:bg-amber-500/10"
-						style="height: 2rem; padding: 0.375rem 0.75rem;"
-						title={collapsed ? common_upgrade() : ''}
-						onclick={() => triggerUpgrade({ source: 'sidebar' })}
-					>
-						<ArrowUpCircle class="h-4 w-4 flex-shrink-0" />
-						{#if !collapsed}
-							<span class="ml-2.5 truncate">{common_upgrade()}</span>
-						{/if}
-					</button>
+					{@render sidebarAmberCta({
+						Icon: Clock,
+						label: trialPillLabel,
+						onclick: () =>
+							startSetupPayment({
+								mutation: setupPaymentMutation,
+								org: organization,
+								source: 'sidebar_trial_pill',
+								trialDaysLeft
+							})
+					})}
+				</li>
+			{:else if showFreeUpgradeButton}
+				<li>
+					{@render sidebarAmberCta({
+						Icon: ArrowUpCircle,
+						label: common_upgrade(),
+						onclick: () => triggerUpgrade({ source: 'sidebar', surface: 'sidebar' })
+					})}
 				</li>
 			{/if}
 			{#each bottomNavItems as item (item.id)}

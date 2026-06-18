@@ -3,16 +3,18 @@ use crate::daemon::discovery::types::base::DiscoveryPhase;
 use crate::daemon::runtime::service::LOG_TARGET;
 use crate::server::auth::middleware::auth::AuthenticatedEntity;
 use crate::server::credentials::service::CredentialService;
-use crate::server::daemons::r#impl::api::DiscoveryUpdatePayload;
+use crate::server::daemons::r#impl::api::{DaemonDiscoveryRequest, DiscoveryUpdatePayload};
 use crate::server::daemons::service::DaemonService;
-use crate::server::discovery::r#impl::base::Discovery;
+use crate::server::discovery::r#impl::base::{Discovery, DiscoveryBase};
 use crate::server::discovery::r#impl::types::{DiscoveryType, RunType};
 use crate::server::networks::service::NetworkService;
 use crate::server::organizations::service::OrganizationService;
 use crate::server::shared::entities::{ChangeTriggersTopologyStaleness, EntityDiscriminants};
 use crate::server::shared::events::bus::EventBus;
-use crate::server::shared::events::types::{EntityEvent, EntityOperation};
-use crate::server::shared::events::types::{OnboardingEvent, OnboardingOperation};
+use crate::server::shared::events::traits::{EntityEventFlags, EntityScope, Event, OrgScope};
+use crate::server::shared::events::types::{
+    EntityOperation, OnboardingOperation, OnboardingOperationDiscriminants,
+};
 use crate::server::shared::services::traits::{CrudService, EventBusService};
 use crate::server::shared::storage::filter::StorableFilter;
 use crate::server::shared::storage::generic::GenericPostgresStorage;
@@ -24,7 +26,7 @@ use anyhow::{Error, Result};
 use async_trait::async_trait;
 use chrono::Utc;
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::{Arc, Weak},
 };
 use tokio::sync::{RwLock, broadcast};
@@ -39,6 +41,12 @@ pub struct DiscoveryService {
     daemon_sessions: RwLock<HashMap<Uuid, Vec<Uuid>>>,       // daemon_id -> session_id mapping
     discovery_sessions: RwLock<HashMap<Uuid, Uuid>>, // discovery_id -> session_id mapping (enforces one active session per discovery)
     daemon_pull_cancellations: RwLock<HashMap<Uuid, (bool, Uuid)>>, // daemon_id -> (boolean, session_id) mapping for pull mode cancellations of current session on daemon
+    /// Network IDs with an in-flight network snapshot. While a network is in
+    /// this set, new sessions on it start in `AwaitingSnapshot` and are not
+    /// dispatched until `release_network_for_snapshot` clears the entry.
+    /// In-memory only — crash drops any in-flight manual-snapshot intent,
+    /// which is acceptable since callers retry.
+    running_snapshots: RwLock<HashSet<Uuid>>,
     session_last_updated: RwLock<HashMap<Uuid, chrono::DateTime<Utc>>>,
     update_tx: broadcast::Sender<DiscoveryUpdatePayload>,
     scheduler: Option<Arc<JobScheduler>>,
@@ -184,22 +192,24 @@ impl CrudService<Discovery> for DiscoveryService {
         let trigger_stale = updated.triggers_staleness(Some(current));
         let suppress_logs = self.suppress_logs(None, None);
 
-        self.event_bus()
-            .publish_entity(EntityEvent {
-                id: Uuid::new_v4(),
-                entity_id: updated.id(),
-                network_id: self.get_network_id(&updated),
-                organization_id: self.get_organization_id(&updated),
-                entity_type: updated.clone().into(),
-                operation: EntityOperation::Updated,
-                timestamp: Utc::now(),
-                metadata: serde_json::json!({
-                    "trigger_stale": trigger_stale,
-                    "suppress_logs": suppress_logs
-                }),
-                authentication,
-            })
-            .await?;
+        if let Some(scope) = EntityScope::from_ids(
+            updated.id(),
+            updated.clone().into(),
+            self.get_network_id(&updated),
+            self.get_organization_id(&updated),
+        ) {
+            self.event_bus()
+                .publish(
+                    Event::new(scope, EntityOperation::Updated, authentication).with_flags(
+                        EntityEventFlags {
+                            trigger_stale,
+                            suppress_logs,
+                            ..Default::default()
+                        },
+                    ),
+                )
+                .await?;
+        }
 
         Ok(updated)
     }
@@ -225,6 +235,7 @@ impl DiscoveryService {
             daemon_sessions: RwLock::new(HashMap::new()),
             discovery_sessions: RwLock::new(HashMap::new()),
             daemon_pull_cancellations: RwLock::new(HashMap::new()),
+            running_snapshots: RwLock::new(HashSet::new()),
             session_last_updated: RwLock::new(HashMap::new()),
             update_tx: tx,
             scheduler,
@@ -359,6 +370,133 @@ impl DiscoveryService {
         }
     }
 
+    /// Atomically reserve a network for snapshotting.
+    ///
+    /// Returns `true` iff the network has zero non-terminal sessions AND is
+    /// not already reserved. On success, the network is added to
+    /// `running_snapshots`; the caller MUST pair this with
+    /// `release_network_for_snapshot` (typically via the manual-snapshot
+    /// API handler's acquire → run → release sequence).
+    ///
+    /// Returns `false` if any non-terminal session exists on the network or
+    /// if another snapshot is already in progress for it.
+    pub async fn try_acquire_network_for_snapshot(&self, network_id: Uuid) -> bool {
+        // Lock order: running_snapshots → sessions. This matches start_session,
+        // which takes running_snapshots.read before sessions.write to decide
+        // AwaitingSnapshot vs Queued/Pending. With this consistent order, the
+        // "no non-terminal session" check and the insert into running_snapshots
+        // are atomic against any in-flight start_session for the same network:
+        // start_session is either fully visible (try_acquire returns false) or
+        // not started yet (start_session sees running_snapshots and goes
+        // AwaitingSnapshot).
+        let mut running = self.running_snapshots.write().await;
+        let sessions = self.sessions.read().await;
+
+        if running.contains(&network_id) {
+            return false;
+        }
+
+        let has_non_terminal_session = sessions
+            .values()
+            .any(|s| s.network_id == network_id && !s.phase.is_terminal());
+        if has_non_terminal_session {
+            return false;
+        }
+
+        running.insert(network_id);
+        true
+    }
+
+    /// Release a network from snapshotting and unblock any AwaitingSnapshot
+    /// sessions on it.
+    ///
+    /// For each session on this network whose phase is `AwaitingSnapshot`,
+    /// runs the same Queued/Pending decision that `start_session` uses: if
+    /// the daemon's queue would otherwise be empty after promotion, the
+    /// session is promoted to `Pending` and a discovery event published;
+    /// otherwise it stays `Queued`.
+    pub async fn release_network_for_snapshot(&self, network_id: Uuid) {
+        // Drop the running_snapshots entry up front so any subsequent
+        // start_session for this network goes through the normal path.
+        {
+            let mut running = self.running_snapshots.write().await;
+            running.remove(&network_id);
+        }
+
+        // Identify AwaitingSnapshot sessions on this network and decide
+        // their next phase. Walk daemons in turn so the Queued/Pending
+        // decision matches start_session's "promote only if daemon has no
+        // other dispatched sessions" rule.
+        let mut sessions = self.sessions.write().await;
+        let daemon_sessions = self.daemon_sessions.read().await;
+
+        let mut to_publish: Vec<DiscoveryUpdatePayload> = Vec::new();
+        let awaiting_session_ids: Vec<Uuid> = sessions
+            .values()
+            .filter(|s| s.network_id == network_id && s.phase == DiscoveryPhase::AwaitingSnapshot)
+            .map(|s| s.session_id)
+            .collect();
+
+        for session_id in awaiting_session_ids {
+            let daemon_id = match sessions.get(&session_id) {
+                Some(s) => s.daemon_id,
+                None => continue,
+            };
+
+            // Mirror start_session's check: is anything already at
+            // Pending/Started/Scanning on this daemon? Queued and
+            // AwaitingSnapshot don't count — they haven't been dispatched.
+            let daemon_has_active = if let Some(queue) = daemon_sessions.get(&daemon_id) {
+                queue.iter().any(|sid| {
+                    if *sid == session_id {
+                        return false;
+                    }
+                    sessions
+                        .get(sid)
+                        .map(|s| {
+                            !s.phase.is_terminal()
+                                && s.phase != DiscoveryPhase::Queued
+                                && s.phase != DiscoveryPhase::AwaitingSnapshot
+                        })
+                        .unwrap_or(false)
+                })
+            } else {
+                false
+            };
+
+            if let Some(session) = sessions.get_mut(&session_id) {
+                if daemon_has_active {
+                    session.phase = DiscoveryPhase::Queued;
+                } else {
+                    session.phase = DiscoveryPhase::Pending;
+                    self.session_last_updated
+                        .write()
+                        .await
+                        .insert(session_id, Utc::now());
+                    to_publish.push(session.clone());
+                }
+                let _ = self.update_tx.send(session.clone());
+            }
+        }
+
+        drop(daemon_sessions);
+        drop(sessions);
+
+        for payload in to_publish {
+            if let Err(e) = self
+                .event_bus()
+                .publish(payload.into_discovery_event())
+                .await
+            {
+                tracing::warn!(
+                    network_id = %network_id,
+                    error = %e,
+                    "Failed to publish discovery event after release_network_for_snapshot",
+                );
+            }
+        }
+    }
+
     pub async fn pull_cancellation_for_daemon(&self, daemon_id: &Uuid) -> (bool, Uuid) {
         let mut daemon_cancellation_ids = self.daemon_pull_cancellations.write().await;
         daemon_cancellation_ids
@@ -432,22 +570,23 @@ impl DiscoveryService {
 
         let trigger_stale = created_discovery.triggers_staleness(None);
 
-        self.event_bus()
-            .publish_entity(EntityEvent {
-                id: Uuid::new_v4(),
-                entity_id: created_discovery.id(),
-                network_id: self.get_network_id(&created_discovery),
-                organization_id: self.get_organization_id(&created_discovery),
-                entity_type: created_discovery.clone().into(),
-                operation: EntityOperation::Created,
-                timestamp: Utc::now(),
-                metadata: serde_json::json!({
-                    "trigger_stale": trigger_stale
-                }),
-
-                authentication,
-            })
-            .await?;
+        if let Some(scope) = EntityScope::from_ids(
+            created_discovery.id(),
+            created_discovery.clone().into(),
+            self.get_network_id(&created_discovery),
+            self.get_organization_id(&created_discovery),
+        ) {
+            self.event_bus()
+                .publish(
+                    Event::new(scope, EntityOperation::Created, authentication).with_flags(
+                        EntityEventFlags {
+                            trigger_stale,
+                            ..Default::default()
+                        },
+                    ),
+                )
+                .await?;
+        }
 
         Ok(created_discovery)
     }
@@ -480,22 +619,23 @@ impl DiscoveryService {
 
         let trigger_stale = discovery.triggers_staleness(None);
 
-        self.event_bus()
-            .publish_entity(EntityEvent {
-                id: Uuid::new_v4(),
-                entity_id: discovery.id(),
-                network_id: self.get_network_id(&discovery),
-                organization_id: self.get_organization_id(&discovery),
-                entity_type: discovery.into(),
-                operation: EntityOperation::Deleted,
-                timestamp: Utc::now(),
-                metadata: serde_json::json!({
-                    "trigger_stale": trigger_stale
-                }),
-
-                authentication,
-            })
-            .await?;
+        if let Some(scope) = EntityScope::from_ids(
+            discovery.id(),
+            discovery.clone().into(),
+            self.get_network_id(&discovery),
+            self.get_organization_id(&discovery),
+        ) {
+            self.event_bus()
+                .publish(
+                    Event::new(scope, EntityOperation::Deleted, authentication).with_flags(
+                        EntityEventFlags {
+                            trigger_stale,
+                            ..Default::default()
+                        },
+                    ),
+                )
+                .await?;
+        }
         Ok(())
     }
 
@@ -622,11 +762,15 @@ impl DiscoveryService {
                         .network_service
                         .get_by_id(&fresh.base.network_id)
                         .await
-                        && let Ok(Some(org)) = service
+                        && service
                             .organization_service
                             .get_by_id(&network.base.organization_id)
                             .await
-                        && org.base.plan.as_ref().is_some_and(|p| p.is_free())
+                            .ok()
+                            .flatten()
+                            .and_then(|o| o.base.plan)
+                            .map(|p| p.is_free())
+                            .unwrap_or(true)
                     {
                         tracing::debug!(
                             discovery_id = %discovery_id,
@@ -768,6 +912,26 @@ impl DiscoveryService {
             .map(|(did, _)| *did)
     }
 
+    /// Top-N historical Discovery row IDs for a network, ordered by
+    /// `updated_at DESC` (which equals the session's finished-at timestamp
+    /// for historical records). Used by the digest service to decide
+    /// whether a missing child is "possibly missing" (one of the recent N
+    /// discoveries still references it) or fully "removed."
+    pub async fn get_recent_historical_ids(
+        &self,
+        network_id: Uuid,
+        limit: usize,
+    ) -> Result<Vec<Uuid>, anyhow::Error> {
+        let filter = StorableFilter::<Discovery>::new_from_network_ids(&[network_id])
+            .historical_discovery()
+            .limit(limit as u32);
+        let discoveries = self
+            .discovery_storage
+            .get_all_ordered(filter, "updated_at DESC")
+            .await?;
+        Ok(discoveries.into_iter().map(|d| d.id).collect())
+    }
+
     /// Build a DaemonDiscoveryRequest with all credential mappings resolved.
     /// Called by both DaemonPoll and ServerPoll dispatch points.
     pub async fn build_daemon_request(
@@ -775,7 +939,7 @@ impl DiscoveryService {
         session: &DiscoveryUpdatePayload,
         network_id: Uuid,
         pending_credential_ids: &[Uuid],
-    ) -> Result<crate::server::daemons::r#impl::api::DaemonDiscoveryRequest, anyhow::Error> {
+    ) -> Result<DaemonDiscoveryRequest, anyhow::Error> {
         let credential_mappings = if matches!(session.discovery_type, DiscoveryType::Unified { .. })
         {
             self.credential_service
@@ -786,14 +950,12 @@ impl DiscoveryService {
             vec![]
         };
 
-        Ok(
-            crate::server::daemons::r#impl::api::DaemonDiscoveryRequest {
-                session_id: session.session_id,
-                discovery_id: session.discovery_id.unwrap_or_default(),
-                discovery_type: session.discovery_type.clone(),
-                credential_mappings,
-            },
-        )
+        Ok(DaemonDiscoveryRequest {
+            session_id: session.session_id,
+            discovery_id: session.discovery_id.unwrap_or_default(),
+            discovery_type: session.discovery_type.clone(),
+            credential_mappings,
+        })
     }
 
     /// Create a new discovery session
@@ -883,6 +1045,15 @@ impl DiscoveryService {
             .await
             .insert(discovery.id, session_id);
 
+        // Hold running_snapshots.read across the session insertion. This
+        // serializes against try_acquire_network_for_snapshot (which takes
+        // running_snapshots.write before reading sessions): the snapshot
+        // either sees this session and returns false, or this session sees
+        // the running_snapshots entry and starts in AwaitingSnapshot. Lock
+        // order: running_snapshots → sessions → daemon_sessions.
+        let snapshot_lock = self.running_snapshots.read().await;
+        let snapshot_blocked = snapshot_lock.contains(&discovery.base.network_id);
+
         // Check if daemon has any sessions running
         let daemon_is_running_discovery = if let Some(daemon_sessions) = self
             .daemon_sessions
@@ -895,8 +1066,15 @@ impl DiscoveryService {
             false
         };
 
-        // Promote Queued → Pending if daemon has no other sessions
-        if !daemon_is_running_discovery {
+        // Phase decision:
+        //   - snapshot in progress on this network → AwaitingSnapshot.
+        //     Daemon's queue is irrelevant; release_network_for_snapshot
+        //     will run the Queued/Pending decision when the snapshot finishes.
+        //   - daemon idle → Pending (front of queue, dispatch event published below).
+        //   - daemon busy → Queued (default; promoted later).
+        if snapshot_blocked {
+            session_payload.phase = DiscoveryPhase::AwaitingSnapshot;
+        } else if !daemon_is_running_discovery {
             session_payload.phase = DiscoveryPhase::Pending;
             self.session_last_updated
                 .write()
@@ -918,11 +1096,18 @@ impl DiscoveryService {
             .or_default()
             .push(session_id);
 
-        // Publish event if no other sessions are running for daemon
-        // DaemonService subscribes to this event and sends the request to the daemon.
-        if !daemon_is_running_discovery {
+        // Drop the running_snapshots guard before any awaits that may take
+        // running_snapshots.write (e.g. release_network_for_snapshot fired
+        // by another task observing our session via the published event).
+        drop(snapshot_lock);
+
+        // Publish event only if the session is dispatchable now: not blocked
+        // by a snapshot, and the daemon is otherwise idle. AwaitingSnapshot
+        // and Queued sessions are published later by release_network_for_snapshot
+        // or the existing terminal-completion promotion path.
+        if !snapshot_blocked && !daemon_is_running_discovery {
             self.event_bus()
-                .publish_discovery(session_payload.into_discovery_event_with_auth(authentication))
+                .publish(session_payload.into_discovery_event_with_auth(authentication))
                 .await
                 .map_err(|e| ApiError::internal_error(&e.to_string()))?;
         }
@@ -1017,19 +1202,18 @@ impl DiscoveryService {
                 .organization_service
                 .get_by_id(&network.base.organization_id)
                 .await
-            && org.not_onboarded(&OnboardingOperation::FirstDiscoveryCompleted)
+            && org.not_onboarded(&OnboardingOperationDiscriminants::FirstDiscoveryCompleted)
         {
             let _ = self
                 .event_bus
-                .publish_onboarding(OnboardingEvent::new(
-                    Uuid::new_v4(),
-                    org.id,
-                    OnboardingOperation::FirstDiscoveryCompleted,
-                    Utc::now(),
+                .publish(Event::new(
+                    OrgScope {
+                        organization_id: org.id,
+                    },
+                    OnboardingOperation::FirstDiscoveryCompleted {
+                        discovery_type: update.discovery_type.clone(),
+                    },
                     AuthenticatedEntity::System,
-                    serde_json::json!({
-                        "discovery_type": update.discovery_type.to_string(),
-                    }),
                 ))
                 .await;
         }
@@ -1040,7 +1224,7 @@ impl DiscoveryService {
 
         if session.phase.is_terminal() {
             self.event_bus()
-                .publish_discovery(session.into_discovery_event())
+                .publish(session.into_discovery_event())
                 .await?;
 
             // If user cancelled session, but it finished before we could send cancellation, remove key so it doesn't cancel upcoming sessions
@@ -1056,7 +1240,7 @@ impl DiscoveryService {
                 id: Uuid::new_v4(),
                 created_at: session.started_at.unwrap_or(Utc::now()),
                 updated_at: Utc::now(),
-                base: crate::server::discovery::r#impl::base::DiscoveryBase {
+                base: DiscoveryBase {
                     daemon_id: session.daemon_id,
                     network_id: session.network_id,
                     name: if matches!(session.discovery_type, DiscoveryType::Unified { .. }) {
@@ -1112,19 +1296,17 @@ impl DiscoveryService {
                     session.session_id,
                     e
                 );
-            } else {
+            } else if let Some(scope) = EntityScope::from_ids(
+                historical_discovery.id(),
+                historical_discovery.clone().into(),
+                self.get_network_id(&historical_discovery),
+                self.get_organization_id(&historical_discovery),
+            ) {
                 self.event_bus()
-                    .publish_entity(EntityEvent {
-                        id: Uuid::new_v4(),
-                        entity_id: historical_discovery.id(),
-                        network_id: self.get_network_id(&historical_discovery),
-                        organization_id: self.get_organization_id(&historical_discovery),
-                        entity_type: historical_discovery.into(),
-                        operation: EntityOperation::Created,
-                        timestamp: Utc::now(),
-                        metadata: serde_json::json!({}),
-                        authentication: AuthenticatedEntity::System,
-                    })
+                    .publish(
+                        Event::new(scope, EntityOperation::Created, AuthenticatedEntity::System)
+                            .with_flags(EntityEventFlags::default()),
+                    )
                     .await?;
             }
 
@@ -1179,7 +1361,7 @@ impl DiscoveryService {
                 started_payload.phase = DiscoveryPhase::Pending;
 
                 self.event_bus()
-                    .publish_discovery(started_payload.into_discovery_event())
+                    .publish(started_payload.into_discovery_event())
                     .await?;
             }
         }
@@ -1218,12 +1400,16 @@ impl DiscoveryService {
             hosts_discovered: None,
             estimated_remaining_secs: None,
             discovery_id,
+            scanned: None,
         };
 
         // Handle based on current phase
         match phase {
-            // Queued/Pending sessions: just remove from queue
-            DiscoveryPhase::Queued | DiscoveryPhase::Pending => {
+            // Queued/Pending/AwaitingSnapshot sessions: just remove from queue.
+            // AwaitingSnapshot is treated like Queued for cancellation — the
+            // session has not yet been dispatched to the daemon, so cleanup
+            // is just a queue removal.
+            DiscoveryPhase::Queued | DiscoveryPhase::Pending | DiscoveryPhase::AwaitingSnapshot => {
                 let mut sessions = self.sessions.write().await;
                 let mut daemon_sessions = self.daemon_sessions.write().await;
 
@@ -1276,9 +1462,7 @@ impl DiscoveryService {
             // 2. Set cancellation flag - DaemonPoll mode checks on next poll via request_work
             DiscoveryPhase::Started | DiscoveryPhase::Scanning => {
                 self.event_bus()
-                    .publish_discovery(
-                        cancelled_update.into_discovery_event_with_auth(authentication),
-                    )
+                    .publish(cancelled_update.into_discovery_event_with_auth(authentication))
                     .await?;
 
                 // Set cancellation flag for DaemonPoll mode (checked on next poll)
@@ -1414,11 +1598,12 @@ impl DiscoveryService {
                 hosts_discovered: None,
                 estimated_remaining_secs: None,
                 discovery_id,
+                scanned: None,
             };
 
             if let Err(e) = self
                 .event_bus()
-                .publish_discovery(cancelled_update.into_discovery_event())
+                .publish(cancelled_update.into_discovery_event())
                 .await
             {
                 tracing::warn!(
@@ -1530,7 +1715,7 @@ impl DiscoveryService {
                         id: Uuid::new_v4(),
                         created_at: session.started_at.unwrap_or(now),
                         updated_at: now,
-                        base: crate::server::discovery::r#impl::base::DiscoveryBase {
+                        base: DiscoveryBase {
                             daemon_id: session.daemon_id,
                             network_id: session.network_id,
                             tags: Vec::new(),

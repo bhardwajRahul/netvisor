@@ -488,6 +488,7 @@ mod tests {
                 tags,
                 ..Default::default()
             },
+            ..Default::default()
         }
     }
 
@@ -510,6 +511,7 @@ mod tests {
                 tags,
                 ..Default::default()
             },
+            ..Default::default()
         }
     }
 
@@ -525,6 +527,7 @@ mod tests {
                 organization_id: Uuid::new_v4(),
                 is_application: false,
             },
+            ..Default::default()
         }
     }
 

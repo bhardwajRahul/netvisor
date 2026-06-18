@@ -4,17 +4,11 @@
  * Replaces the writable store pattern with query-based data fetching.
  */
 
-import {
-	createQuery,
-	createMutation,
-	useQueryClient,
-	type QueryClient
-} from '@tanstack/svelte-query';
+import { createQuery, createMutation, useQueryClient } from '@tanstack/svelte-query';
 import { queryKeys } from '$lib/api/query-client';
 import { apiClient } from '$lib/api/client';
 import type { Tag } from './types/base';
 import type { components } from '$lib/api/schema';
-import type { Topology } from '$lib/features/topology/types/base';
 
 // Types for tag assignment operations
 export type EntityDiscriminants = components['schemas']['EntityDiscriminants'];
@@ -24,19 +18,22 @@ export type SetTagsRequest = components['schemas']['SetTagsRequest'];
 /**
  * Query hook for fetching all tags
  */
-export function useTagsQuery() {
-	return createQuery(() => ({
-		queryKey: queryKeys.tags.all,
-		queryFn: async () => {
-			const { data } = await apiClient.GET('/api/v1/tags', {
-				params: { query: { limit: 0 } }
-			});
-			if (!data?.success || !data.data) {
-				throw new Error(data?.error || 'Failed to fetch tags');
+export function useTagsQuery(atGetter?: () => string | undefined) {
+	return createQuery(() => {
+		const at = atGetter?.();
+		return {
+			queryKey: at ? [...queryKeys.tags.all, 'asOf', at] : queryKeys.tags.all,
+			queryFn: async () => {
+				const { data } = await apiClient.GET('/api/v1/tags', {
+					params: { query: { limit: 0, at } }
+				});
+				if (!data?.success || !data.data) {
+					throw new Error(data?.error || 'Failed to fetch tags');
+				}
+				return data.data;
 			}
-			return data.data;
-		}
-	}));
+		};
+	});
 }
 
 /**
@@ -136,56 +133,6 @@ export function useBulkDeleteTagsMutation() {
 }
 
 // ============================================================================
-// Optimistic Topology Cache Update
-// ============================================================================
-
-/**
- * Optimistically update the topology cache after tag mutations.
- * The backend topology is a stored snapshot that doesn't reflect tag changes,
- * so we update the frontend cache directly for instant UI feedback.
- * Entity events will later persist the change across refresh.
- */
-function updateTopologyEntityTags(
-	queryClient: QueryClient,
-	entityType: EntityDiscriminants,
-	entityIds: string[],
-	tagId: string,
-	action: 'add' | 'remove'
-) {
-	const fieldMap: Partial<Record<EntityDiscriminants, 'hosts' | 'services' | 'subnets'>> = {
-		Host: 'hosts',
-		Service: 'services',
-		Subnet: 'subnets'
-	};
-	const field = fieldMap[entityType];
-	if (!field) return;
-
-	queryClient.setQueryData<Topology[]>(queryKeys.topology.all, (old) => {
-		if (!old) return old;
-		return old.map((topo) => {
-			const entities = topo[field];
-			let changed = false;
-			const updatedEntities = entities.map((entity) => {
-				if (!entityIds.includes(entity.id)) return entity;
-				const tags = entity.tags;
-				if (action === 'add' && !tags.includes(tagId)) {
-					changed = true;
-					return { ...entity, tags: [...tags, tagId] };
-				} else if (action === 'remove' && tags.includes(tagId)) {
-					changed = true;
-					return { ...entity, tags: tags.filter((t) => t !== tagId) };
-				}
-				return entity;
-			});
-
-			if (!changed) return topo;
-
-			return { ...topo, [field]: updatedEntities };
-		});
-	});
-}
-
-// ============================================================================
 // Entity Tag Assignment Mutations
 // ============================================================================
 
@@ -218,6 +165,7 @@ const entityTypeToQueryKeyName: Record<EntityDiscriminants, keyof typeof queryKe
 	Interface: null,
 	Vlan: null,
 	Topology: null,
+	Snapshot: null,
 	Unknown: null
 };
 
@@ -265,8 +213,7 @@ export function useBulkAddTagMutation() {
 				entityIds: request.entity_ids
 			};
 		},
-		onSuccess: ({ entityType, tagId, entityIds }) => {
-			updateTopologyEntityTags(queryClient, entityType, entityIds, tagId, 'add');
+		onSuccess: ({ entityType }) => {
 			const queryKey = getQueryKeyForEntityType(entityType);
 			if (queryKey) {
 				queryClient.invalidateQueries({ queryKey });
@@ -294,8 +241,7 @@ export function useBulkRemoveTagMutation() {
 				entityIds: request.entity_ids
 			};
 		},
-		onSuccess: ({ entityType, tagId, entityIds }) => {
-			updateTopologyEntityTags(queryClient, entityType, entityIds, tagId, 'remove');
+		onSuccess: ({ entityType }) => {
 			const queryKey = getQueryKeyForEntityType(entityType);
 			if (queryKey) {
 				queryClient.invalidateQueries({ queryKey });

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Node } from '@xyflow/svelte';
-	import type { Topology } from '$lib/features/topology/types/base';
+	import type { EnrichedTopology } from '$lib/features/topology/types/base';
 	import { getContainerContents, resolveInlineServiceIds } from '$lib/features/topology/resolvers';
 	import { containerTypes } from '$lib/shared/stores/metadata';
 	import {
@@ -16,7 +16,7 @@
 		topology
 	}: {
 		node: Node;
-		topology: Topology;
+		topology: EnrichedTopology;
 	} = $props();
 
 	// Container-type-aware label: "Cross-Application Dependencies" / "Cross-Host Dependencies" / etc.

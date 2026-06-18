@@ -1,3 +1,4 @@
+use crate::server::shared::events::traits::{EntityEventFlags, EntityScope, Event};
 use crate::server::{
     auth::middleware::auth::AuthenticatedEntity,
     bindings::r#impl::base::{Binding, BindingType},
@@ -19,10 +20,7 @@ use crate::server::{
     },
     shared::{
         entities::{ChangeTriggersTopologyStaleness, EntityDiscriminants},
-        events::{
-            bus::EventBus,
-            types::{EntityEvent, EntityOperation},
-        },
+        events::{bus::EventBus, types::EntityOperation},
         position::resolve_and_validate_input_positions,
         services::traits::{ChildCrudService, CrudService, EventBusService},
         storage::{
@@ -36,12 +34,13 @@ use crate::server::{
         },
     },
     snmp::resolution::{lldp::LldpResolver, resolver::LldpResolverImpl},
-    subnets::service::SubnetService,
+    subnets::{r#impl::base::Subnet, service::SubnetService},
     tags::entity_tags::EntityTagService,
+    vlans::service::VlanService,
 };
 use anyhow::{Error, Result, anyhow};
 use async_trait::async_trait;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use mac_address::MacAddress;
 use std::{
     collections::{HashMap, HashSet},
@@ -56,6 +55,7 @@ pub struct HostLimitContext {
     pub limit: u64,
     pub org_id: Uuid,
     pub org_network_ids: Vec<Uuid>,
+    pub plan: crate::server::billing::types::base::BillingPlan,
 }
 
 pub struct HostService {
@@ -67,7 +67,7 @@ pub struct HostService {
     pub daemon_service: Arc<DaemonService>,
     credential_service: Arc<CredentialService>,
     subnet_service: Arc<SubnetService>,
-    vlan_service: Arc<crate::server::vlans::service::VlanService>,
+    vlan_service: Arc<VlanService>,
     host_locks: Arc<Mutex<HashMap<Uuid, Arc<Mutex<()>>>>>,
     event_bus: Arc<EventBus>,
     entity_tag_service: Arc<EntityTagService>,
@@ -118,7 +118,8 @@ impl CrudService<Host> for HostService {
 
         tracing::trace!("Creating host {:?}", host);
 
-        let filter = StorableFilter::<Host>::new_from_network_ids(&[host.base.network_id]);
+        // SCD2: only live hosts are eligible for the natural-key match.
+        let filter = StorableFilter::<Host>::new_from_network_ids(&[host.base.network_id]).live();
         let all_hosts = self.get_all(filter).await?;
 
         // Find existing host by ID (Host::eq only compares IDs)
@@ -168,25 +169,34 @@ impl CrudService<Host> for HostService {
                     )).into());
                 }
 
+                // SCD2 origin: this row is being inserted for the first
+                // time. Stamp created_at + valid_from to the entity's
+                // already-refreshed `last_seen_at` so all four temporal
+                // columns line up at one canonical scan_time. See
+                // `DiscoveryTracked::originate_scan_timestamps`.
+                use crate::server::shared::storage::snapshot::DiscoveryTracked;
+                let mut host = host;
+                host.originate_scan_timestamps(host.last_seen_at);
                 let created = self.storage().create(&host).await?;
                 let trigger_stale = created.triggers_staleness(None);
 
-                self.event_bus()
-                    .publish_entity(EntityEvent {
-                        id: Uuid::new_v4(),
-                        entity_id: created.id(),
-                        network_id: self.get_network_id(&created),
-                        organization_id: self.get_organization_id(&created),
-                        entity_type: created.into(),
-                        operation: EntityOperation::Created,
-                        timestamp: Utc::now(),
-                        metadata: serde_json::json!({
-                            "trigger_stale": trigger_stale
-                        }),
-
-                        authentication,
-                    })
-                    .await?;
+                if let Some(scope) = EntityScope::from_ids(
+                    created.id(),
+                    created.clone().into(),
+                    self.get_network_id(&created),
+                    self.get_organization_id(&created),
+                ) {
+                    self.event_bus()
+                        .publish(
+                            Event::new(scope, EntityOperation::Created, authentication).with_flags(
+                                EntityEventFlags {
+                                    trigger_stale,
+                                    ..Default::default()
+                                },
+                            ),
+                        )
+                        .await?;
+                }
 
                 host
             }
@@ -211,22 +221,23 @@ impl CrudService<Host> for HostService {
         let updated = self.storage().update(updates).await?;
         let trigger_stale = updated.triggers_staleness(Some(current_host));
 
-        self.event_bus()
-            .publish_entity(EntityEvent {
-                id: Uuid::new_v4(),
-                entity_id: updated.id(),
-                network_id: self.get_network_id(&updated),
-                organization_id: self.get_organization_id(&updated),
-                entity_type: updated.clone().into(),
-                operation: EntityOperation::Updated,
-                timestamp: Utc::now(),
-                metadata: serde_json::json!({
-                    "trigger_stale": trigger_stale
-                }),
-
-                authentication,
-            })
-            .await?;
+        if let Some(scope) = EntityScope::from_ids(
+            updated.id(),
+            updated.clone().into(),
+            self.get_network_id(&updated),
+            self.get_organization_id(&updated),
+        ) {
+            self.event_bus()
+                .publish(
+                    Event::new(scope, EntityOperation::Updated, authentication).with_flags(
+                        EntityEventFlags {
+                            trigger_stale,
+                            ..Default::default()
+                        },
+                    ),
+                )
+                .await?;
+        }
 
         Ok(updated)
     }
@@ -243,7 +254,7 @@ impl HostService {
         daemon_service: Arc<DaemonService>,
         credential_service: Arc<CredentialService>,
         subnet_service: Arc<SubnetService>,
-        vlan_service: Arc<crate::server::vlans::service::VlanService>,
+        vlan_service: Arc<VlanService>,
         event_bus: Arc<EventBus>,
         entity_tag_service: Arc<EntityTagService>,
     ) -> Self {
@@ -314,7 +325,7 @@ impl HostService {
 
         let host_ids: Vec<Uuid> = hosts.iter().map(|h| h.id).collect();
         let (ip_addresses_map, ports_map, services_map, interfaces_map) =
-            self.load_children_for_hosts(&host_ids).await?;
+            self.load_children_for_hosts(&host_ids, None).await?;
 
         // Hydrate tags from junction table
         let tags_map = self
@@ -352,6 +363,7 @@ impl HostService {
         &self,
         filter: StorableFilter<Host>,
         order_by: &str,
+        at: Option<DateTime<Utc>>,
     ) -> Result<PaginatedResult<HostResponse>> {
         let result = self.storage().get_paginated(filter, order_by).await?;
 
@@ -363,8 +375,10 @@ impl HostService {
         }
 
         let host_ids: Vec<Uuid> = result.items.iter().map(|h| h.id).collect();
+        // Hydrate children as-of the same instant as the host rows so a snapshot
+        // view shows a coherent point-in-time host + children bundle.
         let (ip_addresses_map, ports_map, services_map, interfaces_map) =
-            self.load_children_for_hosts(&host_ids).await?;
+            self.load_children_for_hosts(&host_ids, at).await?;
 
         // Hydrate tags from junction table
         let tags_map = self
@@ -407,10 +421,11 @@ impl HostService {
     ) -> Result<(Vec<IPAddress>, Vec<Port>, Vec<Service>, Vec<Interface>)> {
         let ip_addresses = self.ip_address_service.get_for_host(host_id).await?;
         let ports = self.port_service.get_for_host(host_id).await?;
+        // SCD2: live services only.
         let services = self
             .service_service
             .get_all_ordered(
-                StorableFilter::<Service>::new_from_host_ids(&[*host_id]),
+                StorableFilter::<Service>::new_from_host_ids(&[*host_id]).live(),
                 "position ASC",
             )
             .await?;
@@ -420,23 +435,25 @@ impl HostService {
     }
 
     /// Batch load all children for multiple hosts.
+    /// `at = None` loads live children; `Some(t)` loads SCD2 state as of `t`.
     async fn load_children_for_hosts(
         &self,
         host_ids: &[Uuid],
+        at: Option<DateTime<Utc>>,
     ) -> Result<(
         HashMap<Uuid, Vec<IPAddress>>,
         HashMap<Uuid, Vec<Port>>,
         HashMap<Uuid, Vec<Service>>,
         HashMap<Uuid, Vec<Interface>>,
     )> {
-        let ip_addresses_map = self.ip_address_service.get_for_hosts(host_ids).await?;
-        let ports_map = self.port_service.get_for_hosts(host_ids).await?;
+        let ip_addresses_map = self.ip_address_service.get_for_hosts(host_ids, at).await?;
+        let ports_map = self.port_service.get_for_hosts(host_ids, at).await?;
 
-        // Load services ordered by position and group by host_id
+        // Load services ordered by position and group by host_id.
         let services = self
             .service_service
             .get_all_ordered(
-                StorableFilter::<Service>::new_from_host_ids(host_ids),
+                StorableFilter::<Service>::new_from_host_ids(host_ids).live_or_as_of(at),
                 "position ASC",
             )
             .await?;
@@ -450,7 +467,7 @@ impl HostService {
         }
 
         // Load interfaces and group by host_id
-        let mut interfaces_map = self.interface_service.get_for_hosts(host_ids).await?;
+        let mut interfaces_map = self.interface_service.get_for_hosts(host_ids, at).await?;
         // Sort each host's entries by if_index
         for entries in interfaces_map.values_mut() {
             entries.sort_by_key(|e| e.base.if_index);
@@ -602,7 +619,7 @@ impl HostService {
         ports: Vec<Port>,
         services: Vec<Service>,
         interfaces: Vec<Interface>,
-        subnets: Vec<crate::server::subnets::r#impl::base::Subnet>,
+        subnets: Vec<Subnet>,
         conflict_behavior: ConflictBehavior,
         authentication: AuthenticatedEntity,
         limit_ctx: Option<&HostLimitContext>,
@@ -645,7 +662,9 @@ impl HostService {
 
         // Check host limit for new hosts (not upserts)
         if is_new_host && let Some(ctx) = limit_ctx {
-            let filter = StorableFilter::<Host>::new_from_network_ids(&ctx.org_network_ids);
+            // SCD2: limit applies to live hosts only; closed historical copies
+            // don't count toward plan limits.
+            let filter = StorableFilter::<Host>::new_from_network_ids(&ctx.org_network_ids).live();
             let current_hosts = self.get_all(filter).await?.len() as u64;
             if current_hosts >= ctx.limit {
                 return Err(anyhow!(
@@ -709,6 +728,13 @@ impl HostService {
                 }
             }
 
+            // SCD2 origin: dedup didn't match, so this row is being
+            // inserted. Stamp created_at + valid_from to the entity's
+            // already-refreshed `last_seen_at` so all four temporal
+            // columns line up at one canonical scan_time.
+            use crate::server::shared::storage::snapshot::DiscoveryTracked;
+            let mut port_with_host = port_with_host;
+            port_with_host.originate_scan_timestamps(port_with_host.last_seen_at);
             let created = self
                 .port_service
                 .create(port_with_host, authentication.clone())
@@ -723,13 +749,14 @@ impl HostService {
         // Solution: pre-compute service_id_remap by matching incoming services against
         // existing ones, then apply it to subnet virtualization before creation.
 
-        // Pre-fetch existing services for ID alignment and service_id pre-computation
+        // Pre-fetch existing services for ID alignment and service_id pre-computation.
+        // SCD2: only live services are candidates for natural-key match.
         let mut existing_services_for_match =
             if matches!(conflict_behavior, ConflictBehavior::Upsert) {
                 self.service_service
-                    .get_all(StorableFilter::<Service>::new_from_host_ids(&[
-                        created_host.id,
-                    ]))
+                    .get_all(
+                        StorableFilter::<Service>::new_from_host_ids(&[created_host.id]).live(),
+                    )
                     .await
                     .unwrap_or_default()
             } else {
@@ -808,10 +835,13 @@ impl HostService {
                     continue;
                 }
 
-                // Check by unique constraint (host_id, subnet_id, ip_address)
+                // Check by unique constraint (host_id, subnet_id, ip_address).
+                // SCD2: only live rows; the partial unique index is also
+                // `WHERE valid_to IS NULL`, so this matches index semantics.
                 let filter =
                     StorableFilter::<IPAddress>::new_from_host_ids(&[ip_address.base.host_id])
-                        .subnet_id(&ip_address.base.subnet_id);
+                        .subnet_id(&ip_address.base.subnet_id)
+                        .live();
                 let existing_by_key: Vec<IPAddress> =
                     self.ip_address_service.get_all(filter).await?;
                 if let Some(existing_iface) = existing_by_key
@@ -836,7 +866,8 @@ impl HostService {
                 {
                     let mac_filter =
                         StorableFilter::<IPAddress>::new_from_host_ids(&[ip_address.base.host_id])
-                            .mac_address(mac);
+                            .mac_address(mac)
+                            .live();
                     let existing_by_mac: Vec<IPAddress> =
                         self.ip_address_service.get_all(mac_filter).await?;
                     if existing_by_mac.len() == 1 {
@@ -854,6 +885,12 @@ impl HostService {
                 }
             }
 
+            // SCD2 origin: dedup didn't match, so this row is being
+            // inserted. Stamp created_at + valid_from to the entity's
+            // already-refreshed `last_seen_at`.
+            use crate::server::shared::storage::snapshot::DiscoveryTracked;
+            let mut ip_address = ip_address;
+            ip_address.originate_scan_timestamps(ip_address.last_seen_at);
             let created = self
                 .ip_address_service
                 .create(ip_address, authentication.clone())
@@ -1170,7 +1207,7 @@ impl HostService {
                 name: "Unclaimed Open Ports".to_string(),
                 bindings: orphaned_bindings,
                 virtualization: None,
-                source: EntitySource::Discovery { metadata: vec![] },
+                source: EntitySource::Discovery,
                 tags: Vec::new(),
                 position: 0,
             });
@@ -1428,6 +1465,12 @@ impl HostService {
             id,
             created_at: existing.created_at,
             updated_at: Utc::now(),
+            valid_from: existing.valid_from,
+            valid_to: existing.valid_to,
+            lineage_id: existing.lineage_id,
+            last_seen_at: existing.last_seen_at,
+            last_discovery_id: existing.last_discovery_id,
+            first_discovery_id: existing.first_discovery_id,
             base: HostBase {
                 name,
                 network_id,
@@ -1718,15 +1761,53 @@ impl HostService {
     #[allow(clippy::too_many_arguments)]
     pub async fn discover_host(
         &self,
-        host: Host,
-        ip_addresses: Vec<IPAddress>,
-        ports: Vec<Port>,
-        services: Vec<Service>,
-        interfaces: Vec<crate::server::interfaces::r#impl::base::Interface>,
-        subnets: Vec<crate::server::subnets::r#impl::base::Subnet>,
+        mut host: Host,
+        mut ip_addresses: Vec<IPAddress>,
+        mut ports: Vec<Port>,
+        mut services: Vec<Service>,
+        mut interfaces: Vec<crate::server::interfaces::r#impl::base::Interface>,
+        mut subnets: Vec<Subnet>,
+        scan_ctx: Option<&crate::server::shared::services::scan_context::ScanContext>,
         authentication: AuthenticatedEntity,
         limit_ctx: Option<&HostLimitContext>,
     ) -> Result<HostResponse> {
+        // SCD2 scan-time normalization: stamp every entity in this
+        // submission with the same `scan_time` so per-scan diff queries
+        // (Added/Removed/Modified/Refreshed-unchanged buckets keyed on
+        // session window) and freshness reads see one consistent timestamp.
+        // Without this, each entity's per-call `Utc::now()` drifts across
+        // the host+children tree by microseconds-to-milliseconds, blurring
+        // session boundaries.
+        //
+        // Only refresh-style fields (last_seen_at, updated_at) are stamped
+        // here — they advance on every observation regardless of new vs.
+        // upsert. Origin-style fields (created_at, valid_from) are stamped
+        // by the new-insert sites themselves (HostService::create,
+        // SubnetService::create, ServiceService::create, and the no-match
+        // branches in this function for Port / IPAddress / Interface) so
+        // they only fire when a row is actually being inserted for the
+        // first time. Each site reads scan_time off the entity's
+        // already-refreshed `last_seen_at`.
+        if let Some(ctx) = scan_ctx {
+            use crate::server::shared::storage::snapshot::DiscoveryTracked;
+            host.refresh_scan_timestamps(ctx.scan_time);
+            for ip in ip_addresses.iter_mut() {
+                ip.refresh_scan_timestamps(ctx.scan_time);
+            }
+            for p in ports.iter_mut() {
+                p.refresh_scan_timestamps(ctx.scan_time);
+            }
+            for s in services.iter_mut() {
+                s.refresh_scan_timestamps(ctx.scan_time);
+            }
+            for i in interfaces.iter_mut() {
+                i.refresh_scan_timestamps(ctx.scan_time);
+            }
+            for s in subnets.iter_mut() {
+                s.refresh_scan_timestamps(ctx.scan_time);
+            }
+        }
+
         // Capture the subnets the matched host touched before the upsert. If the
         // host migrates subnets (or an IP address stops reporting), we need to
         // revisit the old subnet during reconciliation so its stale VLAN links
@@ -1945,7 +2026,9 @@ impl HostService {
             return Ok(None);
         }
 
-        let filter = StorableFilter::<Host>::new_from_network_ids(&[*network_id]);
+        // SCD2: only match against live rows. Closed historical copies
+        // (set when a snapshot fires) must not influence reconciliation.
+        let filter = StorableFilter::<Host>::new_from_network_ids(&[*network_id]).live();
         let all_hosts = self.get_all(filter).await?;
 
         if all_hosts.is_empty() {
@@ -1953,7 +2036,10 @@ impl HostService {
         }
 
         let host_ids: Vec<Uuid> = all_hosts.iter().map(|h| h.id).collect();
-        let ip_addresses_by_host = self.ip_address_service.get_for_hosts(&host_ids).await?;
+        let ip_addresses_by_host = self
+            .ip_address_service
+            .get_for_hosts(&host_ids, None)
+            .await?;
 
         // Exclude loopback and virtual router (VRRP/HSRP) IP addresses from matching.
         // Loopbacks: every host has 127.0.0.1, so they would falsely match all hosts.
@@ -2035,6 +2121,15 @@ impl HostService {
         let host_before_updates = existing_host.clone();
         let mut has_updates = false;
 
+        // SCD2 semantics: every successful natural-key match advances
+        // last_seen_at to the scan time, regardless of whether other fields
+        // change. The incoming `new_host_data` was pre-stamped by
+        // `discover_host` (see `ScanContext`) so all entities from one
+        // submission share one timestamp; without ScanContext the value is
+        // whatever the caller put on the entity (likely a per-entity
+        // Utc::now()).
+        existing_host.last_seen_at = new_host_data.last_seen_at;
+
         tracing::trace!(
             "Upserting new host data {:?} to host {:?}",
             new_host_data,
@@ -2106,60 +2201,49 @@ impl HostService {
             existing_host.base.serial_number = new_host_data.base.serial_number;
         }
 
-        // Merge entity source metadata
+        // EntitySource merge: previously concatenated discovery metadata vecs
+        // here. With the metadata field removed, source is just the variant
+        // discriminant — propagate the new value if it's Discovery, else keep
+        // existing. Discovery context is now tracked via FK columns
+        // (last_discovery_id / first_discovery_id) populated post-terminal.
         existing_host.base.source = match (existing_host.base.source, new_host_data.base.source) {
-            (
-                EntitySource::Discovery {
-                    metadata: existing_metadata,
-                },
-                EntitySource::Discovery {
-                    metadata: new_metadata,
-                },
-            ) => {
+            (EntitySource::Discovery, EntitySource::Discovery) => EntitySource::Discovery,
+            (_, EntitySource::Discovery) => {
                 has_updates = true;
-                EntitySource::Discovery {
-                    metadata: [new_metadata, existing_metadata].concat(),
-                }
-                .cap_metadata()
-            }
-            (
-                _,
-                EntitySource::Discovery {
-                    metadata: new_metadata,
-                },
-            ) => {
-                has_updates = true;
-                EntitySource::Discovery {
-                    metadata: new_metadata,
-                }
+                EntitySource::Discovery
             }
             (existing_source, _) => existing_source,
         };
 
-        if has_updates {
-            self.storage().update(&mut existing_host).await?;
+        // Always write — even when no field changes, last_seen_at was
+        // advanced above and must persist. The Updated event is only
+        // published when there's a substantive field change, so consumers
+        // that listen for "real" updates aren't woken by every refresh.
+        self.storage().update(&mut existing_host).await?;
 
+        if has_updates {
             let trigger_stale = existing_host.triggers_staleness(Some(host_before_updates));
 
-            self.event_bus()
-                .publish_entity(EntityEvent {
-                    id: Uuid::new_v4(),
-                    entity_id: existing_host.id(),
-                    network_id: self.get_network_id(&existing_host),
-                    organization_id: self.get_organization_id(&existing_host),
-                    entity_type: existing_host.clone().into(),
-                    operation: EntityOperation::Updated,
-                    timestamp: Utc::now(),
-                    metadata: serde_json::json!({
-                        "trigger_stale": trigger_stale
-                    }),
-
-                    authentication,
-                })
-                .await?;
+            if let Some(scope) = EntityScope::from_ids(
+                existing_host.id(),
+                existing_host.clone().into(),
+                self.get_network_id(&existing_host),
+                self.get_organization_id(&existing_host),
+            ) {
+                self.event_bus()
+                    .publish(
+                        Event::new(scope, EntityOperation::Updated, authentication).with_flags(
+                            EntityEventFlags {
+                                trigger_stale,
+                                ..Default::default()
+                            },
+                        ),
+                    )
+                    .await?;
+            }
         } else {
             tracing::debug!(
-                "No new data to upsert from host {} to {}",
+                "No new data to upsert from host {} to {} (last_seen_at refresh only)",
                 new_host_data.base.name,
                 existing_host.base.name
             );
@@ -2325,19 +2409,15 @@ impl HostService {
             )
             .await?;
 
-        // Get services for both hosts
+        // Get services for both hosts. SCD2: live rows only.
         let destination_services = self
             .service_service
-            .get_all(StorableFilter::<Service>::new_from_host_ids(&[
-                destination_host.id,
-            ]))
+            .get_all(StorableFilter::<Service>::new_from_host_ids(&[destination_host.id]).live())
             .await?;
 
         let other_services = self
             .service_service
-            .get_all(StorableFilter::<Service>::new_from_host_ids(&[
-                other_host.id
-            ]))
+            .get_all(StorableFilter::<Service>::new_from_host_ids(&[other_host.id]).live())
             .await?;
 
         // Transfer services, updating binding IDs using the maps
@@ -2719,22 +2799,23 @@ impl HostService {
 
         let trigger_stale = host.triggers_staleness(None);
 
-        self.event_bus()
-            .publish_entity(EntityEvent {
-                id: Uuid::new_v4(),
-                entity_id: host.id(),
-                network_id: self.get_network_id(&host),
-                organization_id: self.get_organization_id(&host),
-                entity_type: host.into(),
-                operation: EntityOperation::Deleted,
-                timestamp: Utc::now(),
-                metadata: serde_json::json!({
-                    "trigger_stale": trigger_stale
-                }),
-
-                authentication,
-            })
-            .await?;
+        if let Some(scope) = EntityScope::from_ids(
+            host.id(),
+            host.clone().into(),
+            self.get_network_id(&host),
+            self.get_organization_id(&host),
+        ) {
+            self.event_bus()
+                .publish(
+                    Event::new(scope, EntityOperation::Deleted, authentication).with_flags(
+                        EntityEventFlags {
+                            trigger_stale,
+                            ..Default::default()
+                        },
+                    ),
+                )
+                .await?;
+        }
 
         Ok(())
     }

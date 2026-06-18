@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Node } from '@xyflow/svelte';
-	import type { Topology } from '$lib/features/topology/types/base';
+	import type { EnrichedTopology } from '$lib/features/topology/types/base';
 	import type { ElementRenderContext } from '$lib/features/topology/resolvers';
 	import EntityDisplayWrapper from '$lib/shared/components/forms/selection/display/EntityDisplayWrapper.svelte';
 	import { DependencyDisplay } from '$lib/shared/components/forms/selection/display/DependencyDisplay.svelte';
@@ -18,7 +18,7 @@
 		elementContext
 	}: {
 		node: Node;
-		topology: Topology;
+		topology: EnrichedTopology;
 		elementContext?: ElementRenderContext;
 	} = $props();
 	/* eslint-enable @typescript-eslint/no-unused-vars */

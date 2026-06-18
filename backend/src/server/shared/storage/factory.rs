@@ -6,6 +6,11 @@ use std::sync::Arc;
 use tower_sessions::{Expiry, SessionManagerLayer};
 use tower_sessions_sqlx_store::PostgresStore;
 
+use crate::server::dependencies::dependency_members::DependencyMemberStorage;
+use crate::server::tags::entity_tags::EntityTagStorage;
+use crate::server::user_api_keys::r#impl::network_access::UserApiKeyNetworkAccessStorage;
+use crate::server::users::UserNetworkAccessStorage;
+use crate::server::vlans::r#impl::subnet_vlans::SubnetVlanStorage;
 use crate::server::{
     bindings::r#impl::base::Binding, credentials::r#impl::base::Credential,
     daemon_api_keys::r#impl::base::DaemonApiKey, daemons::r#impl::base::Daemon,
@@ -14,9 +19,9 @@ use crate::server::{
     ip_addresses::r#impl::base::IPAddress, networks::r#impl::Network,
     organizations::r#impl::base::Organization, ports::r#impl::base::Port,
     services::r#impl::base::Service, shared::storage::generic::GenericPostgresStorage,
-    shares::r#impl::base::Share, subnets::r#impl::base::Subnet, tags::r#impl::base::Tag,
-    topology::types::base::Topology, user_api_keys::r#impl::base::UserApiKey,
-    users::r#impl::base::User, vlans::r#impl::base::Vlan,
+    shares::r#impl::base::Share, snapshots::types::base::Snapshot, subnets::r#impl::base::Subnet,
+    tags::r#impl::base::Tag, topology::types::base::Topology,
+    user_api_keys::r#impl::base::UserApiKey, users::r#impl::base::User, vlans::r#impl::base::Vlan,
 };
 
 pub struct StorageFactory {
@@ -37,12 +42,19 @@ pub struct StorageFactory {
     pub shares: Arc<GenericPostgresStorage<Share>>,
     pub discovery: Arc<GenericPostgresStorage<Discovery>>,
     pub topologies: Arc<GenericPostgresStorage<Topology>>,
+    pub snapshots: Arc<GenericPostgresStorage<Snapshot>>,
     pub tags: Arc<GenericPostgresStorage<Tag>>,
     pub ports: Arc<GenericPostgresStorage<Port>>,
     pub bindings: Arc<GenericPostgresStorage<Binding>>,
     pub credentials: Arc<GenericPostgresStorage<Credential>>,
     pub interfaces: Arc<GenericPostgresStorage<Interface>>,
     pub vlans: Arc<GenericPostgresStorage<Vlan>>,
+    // Junction tables
+    pub entity_tags: Arc<EntityTagStorage>,
+    pub user_api_key_network_access: Arc<UserApiKeyNetworkAccessStorage>,
+    pub user_network_access: Arc<UserNetworkAccessStorage>,
+    pub dependency_members: Arc<DependencyMemberStorage>,
+    pub subnet_vlan: Arc<SubnetVlanStorage>,
 }
 
 pub async fn create_session_store(
@@ -66,7 +78,11 @@ impl StorageFactory {
         let connect_options = PgConnectOptions::from_str(database_url)?.statement_cache_capacity(0);
         let pool = PgPoolOptions::new().connect_with(connect_options).await?;
 
-        sqlx::migrate!("./migrations").run(&pool).await?;
+        crate::server::shared::storage::migration_runner::apply_migrations(
+            &pool,
+            std::path::Path::new("./migrations"),
+        )
+        .await?;
 
         let sessions = create_session_store(pool.clone(), use_secure_session_cookies).await?;
 
@@ -88,12 +104,21 @@ impl StorageFactory {
             subnets: Arc::new(GenericPostgresStorage::new(pool.clone())),
             services: Arc::new(GenericPostgresStorage::new(pool.clone())),
             topologies: Arc::new(GenericPostgresStorage::new(pool.clone())),
+            snapshots: Arc::new(GenericPostgresStorage::new(pool.clone())),
             tags: Arc::new(GenericPostgresStorage::new(pool.clone())),
             ports: Arc::new(GenericPostgresStorage::new(pool.clone())),
             bindings: Arc::new(GenericPostgresStorage::new(pool.clone())),
             credentials: Arc::new(GenericPostgresStorage::new(pool.clone())),
             interfaces: Arc::new(GenericPostgresStorage::new(pool.clone())),
             vlans: Arc::new(GenericPostgresStorage::new(pool.clone())),
+            // Junction tables
+            entity_tags: Arc::new(EntityTagStorage::new(pool.clone())),
+            user_api_key_network_access: Arc::new(UserApiKeyNetworkAccessStorage::new(
+                pool.clone(),
+            )),
+            dependency_members: Arc::new(DependencyMemberStorage::new(pool.clone())),
+            subnet_vlan: Arc::new(SubnetVlanStorage::new(pool.clone())),
+            user_network_access: Arc::new(UserNetworkAccessStorage::new(pool.clone())),
         })
     }
 }

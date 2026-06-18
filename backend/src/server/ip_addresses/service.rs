@@ -53,17 +53,26 @@ impl IPAddressService {
 
     /// Get all IP addresses for a specific host, ordered by position
     pub async fn get_for_host(&self, host_id: &Uuid) -> Result<Vec<IPAddress>> {
-        let filter = StorableFilter::<IPAddress>::new_from_host_ids(&[*host_id]);
+        // SCD2: only live rows. Closed historical copies are out of scope
+        // for current-state reads.
+        let filter = StorableFilter::<IPAddress>::new_from_host_ids(&[*host_id]).live();
         self.storage.get_all_ordered(filter, "position ASC").await
     }
 
-    /// Get IP addresses for multiple hosts, ordered by position within each host
-    pub async fn get_for_hosts(&self, host_ids: &[Uuid]) -> Result<HashMap<Uuid, Vec<IPAddress>>> {
+    /// Get IP addresses for multiple hosts, ordered by position within each host.
+    /// `at = None` reads live rows; `Some(t)` reads SCD2 state as of `t`
+    /// (snapshot-view hydration). Reconciliation natural-key matching passes
+    /// `None` so historical copies never match.
+    pub async fn get_for_hosts(
+        &self,
+        host_ids: &[Uuid],
+        at: Option<chrono::DateTime<chrono::Utc>>,
+    ) -> Result<HashMap<Uuid, Vec<IPAddress>>> {
         if host_ids.is_empty() {
             return Ok(HashMap::new());
         }
 
-        let filter = StorableFilter::<IPAddress>::new_from_host_ids(host_ids);
+        let filter = StorableFilter::<IPAddress>::new_from_host_ids(host_ids).live_or_as_of(at);
         let ip_addresses = self.storage.get_all_ordered(filter, "position ASC").await?;
 
         let mut result: HashMap<Uuid, Vec<IPAddress>> = HashMap::new();
@@ -77,9 +86,12 @@ impl IPAddressService {
         Ok(result)
     }
 
-    /// Get all IP addresses for a specific subnet
+    /// Get all IP addresses for a specific subnet.
+    /// SCD2: live rows only. The sole caller is discovery subnet↔VLAN
+    /// reconciliation, which must not let closed historical copies (from prior
+    /// snapshots) resurrect stale native-VLAN links.
     pub async fn get_for_subnet(&self, subnet_id: &Uuid) -> Result<Vec<IPAddress>> {
-        let filter = StorableFilter::<IPAddress>::new_from_subnet_id(subnet_id);
+        let filter = StorableFilter::<IPAddress>::new_from_subnet_id(subnet_id).live();
         self.storage.get_all(filter).await
     }
 

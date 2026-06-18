@@ -1,4 +1,5 @@
-use crate::server::shared::events::types::{OnboardingEvent, OnboardingOperation};
+use crate::server::shared::events::traits::{Event, OrgScope};
+use crate::server::shared::events::types::{OnboardingOperation, OnboardingOperationDiscriminants};
 use crate::server::shared::extractors::Query;
 use crate::server::shared::storage::traits::Entity;
 use crate::server::{
@@ -30,7 +31,6 @@ use axum::{
 };
 use axum_client_ip::ClientIp;
 use axum_extra::{TypedHeader, headers::UserAgent};
-use chrono::Utc;
 use std::sync::Arc;
 use utoipa_axum::{router::OpenApiRouter, routes};
 use uuid::Uuid;
@@ -176,18 +176,15 @@ pub async fn create_user_api_key(
         .await?;
 
     if let Some(organization) = organization
-        && organization.not_onboarded(&OnboardingOperation::FirstUserApiKeyCreated)
+        && organization.not_onboarded(&OnboardingOperationDiscriminants::FirstUserApiKeyCreated)
     {
         service
             .event_bus()
-            .publish_onboarding(OnboardingEvent {
-                id: Uuid::new_v4(),
-                organization_id,
-                operation: OnboardingOperation::FirstUserApiKeyCreated,
-                timestamp: Utc::now(),
-                metadata: serde_json::json!({}),
-                authentication: entity,
-            })
+            .publish(Event::new(
+                OrgScope { organization_id },
+                OnboardingOperation::FirstUserApiKeyCreated,
+                entity,
+            ))
             .await?;
     }
 

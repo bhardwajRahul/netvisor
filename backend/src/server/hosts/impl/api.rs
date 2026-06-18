@@ -190,6 +190,12 @@ impl IPAddressInput {
             id: self.id,
             created_at: now,
             updated_at: now,
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             base: IPAddressBase {
                 network_id,
                 host_id,
@@ -238,6 +244,12 @@ impl PortInput {
             id: self.id,
             created_at: now,
             updated_at: now,
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             base: PortBase {
                 host_id,
                 network_id,
@@ -293,6 +305,12 @@ impl ServiceInput {
             .collect();
 
         Service {
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             id: self.id,
             created_at: now,
             updated_at: now,
@@ -378,10 +396,17 @@ impl BindingInput {
             ),
         };
 
+        let now = chrono::Utc::now();
         Binding {
             id,
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
+            created_at: now,
+            updated_at: now,
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             base: BindingBase::new(service_id, network_id, binding_type),
         }
     }
@@ -432,6 +457,12 @@ impl InterfaceInput {
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
+            valid_from: now,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: now,
+            last_discovery_id: None,
+            first_discovery_id: None,
             base: InterfaceBase {
                 host_id,
                 network_id,
@@ -646,10 +677,20 @@ impl HostResponse {
             interfaces: _,
         } = self;
 
+        // SCD2 fields aren't in HostResponse yet; defaults are filled in here.
+        // The to_host() method is only used in legacy compat paths; round-tripping
+        // a HostResponse → Host loses temporal info that can be reconstructed
+        // from the live row's values via from_row.
         Host {
             id: *id,
             created_at: *created_at,
             updated_at: *updated_at,
+            valid_from: *created_at,
+            valid_to: None,
+            lineage_id: None,
+            last_seen_at: *updated_at,
+            last_discovery_id: None,
+            first_discovery_id: None,
             base: HostBase {
                 name: name.clone(),
                 network_id: *network_id,
@@ -688,6 +729,15 @@ impl HostResponse {
             id,
             created_at,
             updated_at,
+            // SCD2/audit fields are intentionally dropped here — not part
+            // of the API response shape. Audit-trail UX worktree may surface
+            // them later via the historical Discovery row + lineage queries.
+            valid_from: _,
+            valid_to: _,
+            lineage_id: _,
+            last_seen_at: _,
+            last_discovery_id: _,
+            first_discovery_id: _,
             base,
         } = host;
 

@@ -7,9 +7,10 @@ use crate::server::{
     credentials::service::CredentialService,
     daemon_api_keys::service::DaemonApiKeyService,
     daemons::service::DaemonService,
-    dependencies::{dependency_members::DependencyMemberStorage, service::DependencyService},
+    dependencies::service::DependencyService,
+    digest::service::DiscoveryDigestService,
     discovery::service::DiscoveryService,
-    email::{brevo::BrevoEmailProvider, smtp::SmtpEmailProvider, traits::EmailService},
+    email::{brevo::BrevoEmailProvider, service::EmailService, smtp::SmtpEmailProvider},
     hosts::service::HostService,
     interfaces::service::InterfaceService,
     invites::service::InviteService,
@@ -21,19 +22,21 @@ use crate::server::{
     ports::service::PortService,
     posthog::PosthogService,
     services::service::ServiceService,
-    shared::{events::bus::EventBus, storage::factory::StorageFactory},
+    shared::{
+        events::{
+            bus::EventBus,
+            registry::{CollectedServices, ServiceCollector, register_all_subscribers},
+        },
+        storage::factory::StorageFactory,
+    },
     shares::service::ShareService,
+    snapshots::service::SnapshotService,
     subnets::service::SubnetService,
-    tags::{
-        entity_tags::{EntityTagService, EntityTagStorage},
-        service::TagService,
-    },
+    tags::{entity_tags::EntityTagService, service::TagService},
     topology::service::main::TopologyService,
-    user_api_keys::{
-        r#impl::network_access::UserApiKeyNetworkAccessStorage, service::UserApiKeyService,
-    },
-    users::{UserNetworkAccessStorage, service::UserService},
-    vlans::{r#impl::subnet_vlans::SubnetVlanStorage, service::VlanService},
+    user_api_keys::service::UserApiKeyService,
+    users::service::UserService,
+    vlans::service::VlanService,
 };
 use anyhow::Result;
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
@@ -52,6 +55,7 @@ pub struct ServiceFactory {
     pub subnet_service: Arc<SubnetService>,
     pub daemon_service: Arc<DaemonService>,
     pub topology_service: Arc<TopologyService>,
+    pub snapshot_service: Arc<SnapshotService>,
     pub service_service: Arc<ServiceService>,
     pub discovery_service: Arc<DiscoveryService>,
     pub daemon_api_key_service: Arc<DaemonApiKeyService>,
@@ -74,10 +78,11 @@ pub struct ServiceFactory {
     pub credential_service: Arc<CredentialService>,
     pub interface_service: Arc<InterfaceService>,
     pub vlan_service: Arc<VlanService>,
+    pub discovery_digest_service: Arc<DiscoveryDigestService>,
 }
 
 impl ServiceFactory {
-    pub async fn new(storage: &StorageFactory, config: Option<ServerConfig>) -> Result<Self> {
+    pub async fn new(storage: &StorageFactory, config: ServerConfig) -> Result<Self> {
         let event_bus = Arc::new(EventBus::new());
 
         let logging_service = Arc::new(LoggingService::new());
@@ -94,9 +99,8 @@ impl ServiceFactory {
         let metrics_service = Arc::new(MetricsService::new(prometheus_handle));
 
         let tag_service = Arc::new(TagService::new(storage.tags.clone(), event_bus.clone()));
-        let entity_tag_storage = Arc::new(EntityTagStorage::new(storage.pool.clone()));
         let entity_tag_service = Arc::new(EntityTagService::new(
-            entity_tag_storage,
+            storage.entity_tags.clone(),
             tag_service.clone(),
         ));
 
@@ -106,20 +110,16 @@ impl ServiceFactory {
             entity_tag_service.clone(),
         ));
 
-        let user_api_key_network_access_storage =
-            Arc::new(UserApiKeyNetworkAccessStorage::new(storage.pool.clone()));
         let user_api_key_service = Arc::new(UserApiKeyService::new(
             storage.user_api_keys.clone(),
-            user_api_key_network_access_storage,
+            storage.user_api_key_network_access.clone(),
             event_bus.clone(),
             entity_tag_service.clone(),
         ));
 
-        let dependency_member_storage =
-            Arc::new(DependencyMemberStorage::new(storage.pool.clone()));
         let dependency_service = Arc::new(DependencyService::new(
             storage.dependencies.clone(),
-            dependency_member_storage,
+            storage.dependency_members.clone(),
             event_bus.clone(),
             entity_tag_service.clone(),
         ));
@@ -152,11 +152,10 @@ impl ServiceFactory {
             entity_tag_service.clone(),
         ));
 
-        let subnet_vlan_storage = Arc::new(SubnetVlanStorage::new(storage.pool.clone()));
         let vlan_service = Arc::new(VlanService::new(
             storage.vlans.clone(),
             event_bus.clone(),
-            subnet_vlan_storage,
+            storage.subnet_vlan.clone(),
         ));
 
         let network_service = Arc::new(NetworkService::new(
@@ -166,11 +165,9 @@ impl ServiceFactory {
             entity_tag_service.clone(),
         ));
 
-        let user_network_access_storage =
-            Arc::new(UserNetworkAccessStorage::new(storage.pool.clone()));
         let user_service = Arc::new(UserService::new(
             storage.users.clone(),
-            user_network_access_storage,
+            storage.user_network_access.clone(),
             event_bus.clone(),
         ));
 
@@ -261,155 +258,136 @@ impl ServiceFactory {
             event_bus.clone(),
         ));
 
-        let email_service = config.clone().and_then(|c| {
-            let public_url = c.public_url.clone();
+        let snapshot_service = SnapshotService::new(
+            Arc::new(storage.pool.clone()),
+            storage.snapshots.clone(),
+            event_bus.clone(),
+            network_service.clone(),
+            organization_service.clone(),
+        );
 
-            // Prefer Brevo if API key is provided
-            if let Some(ref brevo_api_key) = c.brevo_api_key {
-                let provider = Box::new(BrevoEmailProvider::new(brevo_api_key.clone()));
-                return Some(Arc::new(EmailService::new(
-                    provider,
+        let discovery_digest_service = Arc::new(DiscoveryDigestService::new(
+            host_service.clone(),
+            service_service.clone(),
+            port_service.clone(),
+            ip_address_service.clone(),
+            interface_service.clone(),
+            binding_service.clone(),
+            subnet_service.clone(),
+            vlan_service.clone(),
+            user_service.clone(),
+            network_service.clone(),
+            discovery_service.clone(),
+            event_bus.clone(),
+        ));
+
+        let public_url = config.public_url.clone();
+
+        let email_service = if let Some(ref brevo_api_key) = config.brevo_api_key {
+            let brevo_provider = BrevoEmailProvider::new(brevo_api_key.clone());
+            Some(Arc::new(EmailService::new(
+                Box::new(brevo_provider),
+                user_service.clone(),
+                organization_service.clone(),
+                host_service.clone(),
+                network_service.clone(),
+                service_service.clone(),
+                daemon_service.clone(),
+                public_url,
+            )))
+        } else if let (
+            Some(smtp_username),
+            Some(smtp_password),
+            Some(smtp_email),
+            Some(smtp_relay),
+        ) = (
+            config.smtp_username,
+            config.smtp_password,
+            config.smtp_email,
+            config.smtp_relay,
+        ) {
+            if let Ok(smtp_provider) =
+                SmtpEmailProvider::new(smtp_username, smtp_password, smtp_email, smtp_relay)
+            {
+                Some(Arc::new(EmailService::new(
+                    Box::new(smtp_provider),
                     user_service.clone(),
                     organization_service.clone(),
                     host_service.clone(),
                     network_service.clone(),
                     service_service.clone(),
+                    daemon_service.clone(),
                     public_url,
-                )));
+                )))
+            } else {
+                None
             }
-
-            // Fall back to SMTP
-            if let (Some(smtp_username), Some(smtp_password), Some(smtp_email), Some(smtp_relay)) =
-                (c.smtp_username, c.smtp_password, c.smtp_email, c.smtp_relay)
-            {
-                let provider =
-                    SmtpEmailProvider::new(smtp_username, smtp_password, smtp_email, smtp_relay)
-                        .ok()?;
-                return Some(Arc::new(EmailService::new(
-                    Box::new(provider),
-                    user_service.clone(),
-                    organization_service.clone(),
-                    host_service.clone(),
-                    network_service.clone(),
-                    service_service.clone(),
-                    public_url,
-                )));
-            }
-
+        } else {
             None
-        });
+        };
 
-        let billing_service = config.clone().and_then(|c| {
-            if let Some(stripe_secret) = c.stripe_secret
-                && let Some(webhook_secret) = c.stripe_webhook_secret
-            {
-                return Some(Arc::new(BillingService::new(BillingServiceParams {
-                    stripe_secret,
-                    webhook_secret,
-                    organization_service: organization_service.clone(),
-                    invite_service: invite_service.clone(),
-                    user_service: user_service.clone(),
-                    network_service: network_service.clone(),
-                    host_service: host_service.clone(),
-                    daemon_service: daemon_service.clone(),
-                    discovery_service: discovery_service.clone(),
-                    share_service: share_service.clone(),
-                    email_service: email_service.clone(),
-                    event_bus: event_bus.clone(),
-                })));
-            }
+        let billing_service = if let Some(stripe_secret) = config.stripe_secret
+            && let Some(webhook_secret) = config.stripe_webhook_secret
+        {
+            Some(Arc::new(BillingService::new(BillingServiceParams {
+                stripe_secret,
+                webhook_secret,
+                organization_service: organization_service.clone(),
+                user_service: user_service.clone(),
+                network_service: network_service.clone(),
+                host_service: host_service.clone(),
+                event_bus: event_bus.clone(),
+            })))
+        } else {
             None
-        });
-
-        let public_url = config
-            .as_ref()
-            .map(|c| c.public_url.clone())
-            .unwrap_or_else(|| "http://localhost:3000".to_string());
+        };
 
         let auth_service = Arc::new(AuthService::new(
             user_service.clone(),
             organization_service.clone(),
-            email_service.clone(),
+            email_service.is_some(),
             event_bus.clone(),
-            public_url,
         ));
 
         // Create Brevo service if API key is configured (before config is consumed)
-        let brevo_service = config.as_ref().and_then(|c| {
-            c.brevo_api_key.as_ref().map(|api_key| {
-                Arc::new(BrevoService::new(
-                    api_key.clone(),
+        let brevo_service = config.brevo_api_key.map(|api_key| {
+            Arc::new(BrevoService::new(
+                api_key.clone(),
+                network_service.clone(),
+                host_service.clone(),
+                user_service.clone(),
+                organization_service.clone(),
+                daemon_service.clone(),
+                tag_service.clone(),
+                user_api_key_service.clone(),
+                credential_service.clone(),
+            ))
+        });
+
+        let posthog_service = if let Some(api_key) = config.posthog_key {
+            Some(Arc::new(
+                PosthogService::new(
+                    api_key,
+                    "https://ph.scanopy.net".to_string(),
                     network_service.clone(),
-                    host_service.clone(),
-                    user_service.clone(),
-                    organization_service.clone(),
-                    daemon_service.clone(),
-                    tag_service.clone(),
-                    user_api_key_service.clone(),
-                    credential_service.clone(),
-                ))
-            })
-        });
-
-        // Create PostHog service if API key is configured
-        let posthog_service =
-            if let Some(posthog_key) = config.as_ref().and_then(|c| c.posthog_key.clone()) {
-                Some(Arc::new(
-                    PosthogService::new(
-                        posthog_key,
-                        "https://ph.scanopy.net".to_string(),
-                        network_service.clone(),
-                    )
-                    .await,
-                ))
-            } else {
-                None
-            };
-
-        let oidc_service = config.and_then(|c| {
-            if let Some(oidc_providers) = c.oidc_providers {
-                return Some(Arc::new(OidcService::new(
-                    oidc_providers,
-                    &c.public_url,
-                    auth_service.clone(),
-                    user_service.clone(),
-                    event_bus.clone(),
-                )));
-            }
+                )
+                .await,
+            ))
+        } else {
             None
+        };
+
+        let oidc_service = config.oidc_providers.map(|oidc_providers| {
+            Arc::new(OidcService::new(
+                oidc_providers,
+                &config.public_url,
+                auth_service.clone(),
+                user_service.clone(),
+                event_bus.clone(),
+            ))
         });
 
-        // Register services that implement event bus subscriber
-        event_bus
-            .register_subscriber(topology_service.clone())
-            .await;
-
-        event_bus.register_subscriber(logging_service.clone()).await;
-        event_bus.register_subscriber(metrics_service.clone()).await;
-        event_bus
-            .register_subscriber(organization_service.clone())
-            .await;
-        event_bus.register_subscriber(host_service.clone()).await;
-
-        if let Some(billing_service) = billing_service.clone() {
-            event_bus.register_subscriber(billing_service).await;
-        }
-
-        if let Some(brevo_service) = brevo_service.clone() {
-            event_bus.register_subscriber(brevo_service).await;
-        }
-
-        if let Some(posthog_service) = posthog_service.clone() {
-            event_bus.register_subscriber(posthog_service).await;
-        }
-
-        if let Some(email_service) = email_service.clone() {
-            event_bus.register_subscriber(email_service).await;
-        }
-
-        event_bus.register_subscriber(daemon_service.clone()).await;
-
-        Ok(Self {
+        let factory = Self {
             user_service,
             auth_service,
             network_service,
@@ -419,6 +397,7 @@ impl ServiceFactory {
             subnet_service,
             daemon_service,
             topology_service,
+            snapshot_service,
             service_service,
             discovery_service,
             daemon_api_key_service,
@@ -441,6 +420,96 @@ impl ServiceFactory {
             credential_service,
             interface_service,
             vlan_service,
-        })
+            discovery_digest_service,
+        };
+
+        // Register every `Subscriber<Op>` impl in the codebase. Entries are
+        // collected via `inventory::submit!` next to each impl block — see
+        // `shared/events/registry.rs`.
+        register_all_subscribers(factory.all_services(), factory.event_bus.clone()).await?;
+
+        Ok(factory)
+    }
+
+    /// All services held by the factory, type-erased for subscriber-registry
+    /// dispatch.
+    ///
+    /// The exhaustive destructure (no `..`) forces this method to be updated
+    /// whenever a field is added to `ServiceFactory` — a missed field fails
+    /// to compile with "missing field `foo` in pattern". Each binding is then
+    /// consumed by the `.add(...)` chain; an unused binding (forgot to add
+    /// or intentionally skipping) trips `#[deny(unused_variables)]`.
+    #[deny(unused_variables)]
+    fn all_services(&self) -> CollectedServices {
+        let Self {
+            user_service,
+            auth_service,
+            network_service,
+            host_service,
+            ip_address_service,
+            dependency_service,
+            subnet_service,
+            daemon_service,
+            topology_service,
+            snapshot_service,
+            service_service,
+            discovery_service,
+            daemon_api_key_service,
+            user_api_key_service,
+            organization_service,
+            invite_service,
+            share_service,
+            oidc_service,
+            billing_service,
+            email_service,
+            brevo_service,
+            posthog_service,
+            event_bus: _, // not a service; not subscriber-dispatched
+            logging_service,
+            metrics_service,
+            tag_service,
+            entity_tag_service,
+            port_service,
+            binding_service,
+            credential_service,
+            interface_service,
+            vlan_service,
+            discovery_digest_service,
+        } = self;
+
+        ServiceCollector::new()
+            .with(user_service.clone())
+            .with(auth_service.clone())
+            .with(network_service.clone())
+            .with(host_service.clone())
+            .with(ip_address_service.clone())
+            .with(dependency_service.clone())
+            .with(subnet_service.clone())
+            .with(daemon_service.clone())
+            .with(topology_service.clone())
+            .with(snapshot_service.clone())
+            .with(service_service.clone())
+            .with(discovery_service.clone())
+            .with(daemon_api_key_service.clone())
+            .with(user_api_key_service.clone())
+            .with(organization_service.clone())
+            .with(invite_service.clone())
+            .with(share_service.clone())
+            .with(logging_service.clone())
+            .with(metrics_service.clone())
+            .with(tag_service.clone())
+            .with(entity_tag_service.clone())
+            .with(port_service.clone())
+            .with(binding_service.clone())
+            .with(credential_service.clone())
+            .with(interface_service.clone())
+            .with(vlan_service.clone())
+            .with(discovery_digest_service.clone())
+            .with_optional(oidc_service.clone())
+            .with_optional(billing_service.clone())
+            .with_optional(email_service.clone())
+            .with_optional(brevo_service.clone())
+            .with_optional(posthog_service.clone())
+            .build()
     }
 }

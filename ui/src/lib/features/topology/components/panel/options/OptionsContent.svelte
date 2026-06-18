@@ -6,8 +6,7 @@
 		topologyOptions,
 		updateTopologyOptions,
 		selectedTopologyId,
-		useTopologiesQuery,
-		autoRebuild
+		useTopologiesQuery
 	} from '../../../queries';
 	import { hoveredEdgeType } from '../../../interactions';
 	import { isDisabledEdge } from '../../../layout/edge-classification';
@@ -15,6 +14,9 @@
 	import { edgeTypes, views } from '$lib/shared/stores/metadata';
 	import { activeView } from '../../../queries';
 	import { type Color } from '$lib/shared/utils/styling';
+	import { useHostsQuery } from '$lib/features/hosts/queries';
+	import { useServicesCacheQuery } from '$lib/features/services/queries';
+	import { useSubnetsQuery } from '$lib/features/subnets/queries';
 	import viewsJson from '$lib/data/views.json';
 	import TagFilterGroup from './TagFilterGroup.svelte';
 	import OptionToggle from './OptionToggle.svelte';
@@ -45,32 +47,41 @@
 
 	let { activeTab }: { activeTab: 'filter' | 'group' | 'visual' } = $props();
 
-	// Get topology for entity_tags
+	// Get topology for layout/edit state
 	const topologiesQuery = useTopologiesQuery();
 	let topologiesData = $derived(topologiesQuery.data ?? []);
 	let topology = $derived(topologiesData.find((t) => t.id === $selectedTopologyId));
 
 	// Unified edit state for gating request-path options
-	let editState = $derived(getTopologyEditState(topology, $autoRebuild, false));
+	let editState = $derived(getTopologyEditState(topology, false, false));
+
+	// Live entity arrays drive tag-filter sections. Hosts query populates the
+	// services cache as a side-effect; subnets fetch directly.
+	const hostsQuery = useHostsQuery({ limit: 0 });
+	const servicesCacheQuery = useServicesCacheQuery();
+	const subnetsQuery = useSubnetsQuery();
+	let hostsData = $derived(hostsQuery.data?.items ?? []);
+	let servicesData = $derived(servicesCacheQuery.data ?? []);
+	let subnetsData = $derived(subnetsQuery.data ?? []);
 
 	// Tags query — always up-to-date, survives SSE topology overwrites
 	const tagsQuery = useTagsQuery();
 	let allTags = $derived(tagsQuery.data ?? []);
 
 	// Derive tags that are actually used per entity type
-	let hostTagIds = $derived(new Set(topology?.hosts.flatMap((h) => h.tags) ?? []));
-	let serviceTagIds = $derived(new Set(topology?.services.flatMap((s) => s.tags) ?? []));
-	let subnetTagIds = $derived(new Set(topology?.subnets.flatMap((s) => s.tags) ?? []));
+	let hostTagIds = $derived(new Set(hostsData.flatMap((h) => h.tags)));
+	let serviceTagIds = $derived(new Set(servicesData.flatMap((s) => s.tags)));
+	let subnetTagIds = $derived(new Set(subnetsData.flatMap((s) => s.tags)));
 
-	// Filter tags to only those used by each entity type (from tags query, not entity_tags)
+	// Filter tags to only those used by each entity type
 	let hostTags = $derived(allTags.filter((t) => hostTagIds.has(t.id)));
 	let serviceTags = $derived(allTags.filter((t) => serviceTagIds.has(t.id)));
 	let subnetTags = $derived(allTags.filter((t) => subnetTagIds.has(t.id)));
 
 	// Check if there are any untagged entities
-	let hasUntaggedHosts = $derived(topology?.hosts.some((h) => h.tags.length === 0) ?? false);
-	let hasUntaggedServices = $derived(topology?.services.some((s) => s.tags.length === 0) ?? false);
-	let hasUntaggedSubnets = $derived(topology?.subnets.some((s) => s.tags.length === 0) ?? false);
+	let hasUntaggedHosts = $derived(hostsData.some((h) => h.tags.length === 0));
+	let hasUntaggedServices = $derived(servicesData.some((s) => s.tags.length === 0));
+	let hasUntaggedSubnets = $derived(subnetsData.some((s) => s.tags.length === 0));
 
 	// Derive filter visibility from element_config
 	let viewMetaObj = $derived(
@@ -712,7 +723,7 @@
 						optionKey={def.key}
 						disabled={def.path === 'request' && !editState.isEditable}
 						disabledReason={def.path === 'request' && !editState.isEditable
-							? getOptionDisabledTooltip(editState.disabledReason)
+							? getOptionDisabledTooltip()
 							: ''}
 					/>
 				{:else if def.type === 'string'}
