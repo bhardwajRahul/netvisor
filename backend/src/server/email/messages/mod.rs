@@ -220,7 +220,8 @@ pub const EMAIL_FOOTER: &str = r#"                    <!-- Footer -->
                                 </tr>
                             </table>
 
-                            <p style="margin: 0; font-size: 12px; line-height: 18px; color: #9ca3af;">© {current_year} Scanopy. All rights reserved.</p>
+                            <p style="margin: 0; font-size: 12px; line-height: 18px; color: #9ca3af;">© {current_year} Scanopy LLC. All rights reserved.</p>
+                            <p style="margin: 8px 0 0 0; font-size: 12px; line-height: 18px; color: #9ca3af;">Scanopy LLC &middot; 418 Broadway Ste N, Albany, NY 12207</p>
                         </td>
                     </tr>
                 </table>
