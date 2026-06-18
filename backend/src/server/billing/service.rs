@@ -2837,7 +2837,7 @@ fn build_resume_from_pause_request(sub: &stripe_billing::Subscription) -> Resume
         .map(|d| i64::from(d) * 86_400)
         .unwrap_or(raw_elapsed);
     let actual_paused_secs = raw_elapsed.min(cap);
-    let new_anchor = current_period_end + actual_paused_secs;
+    let new_trial_end = current_period_end + actual_paused_secs;
 
     tracing::info!(
         subscription_id = %sub.id,
@@ -2845,30 +2845,42 @@ fn build_resume_from_pause_request(sub: &stripe_billing::Subscription) -> Resume
         now_ts,
         actual_paused_secs,
         original_period_end = current_period_end,
-        new_anchor,
-        "Resume: shifting billing_cycle_anchor forward by actual paused duration",
+        new_trial_end,
+        "Resume: shifting renewal forward by actual paused duration via trial_end",
     );
 
-    ResumeFromPause::with_shifted_anchor(sub.id.clone(), new_anchor)
+    ResumeFromPause::with_shifted_renewal(sub.id.clone(), new_trial_end)
 }
 
 /// Form body for the resume-from-pause Stripe REST request.
 ///
-/// Two pieces the SDK builder can't express directly:
+/// Two pieces the SDK builder can't express directly together:
 ///  - `pause_collection=` (empty value): Stripe's documented "clear this
 ///    field" convention. The SDK's typed `pause_collection` setter can't
 ///    produce that wire representation.
-///  - `billing_cycle_anchor=<unix_ts>`: a future timestamp to shift the
-///    next renewal forward by the actual paused days. The alpha.7 SDK's
-///    `UpdateSubscriptionBillingCycleAnchor` enum is `Now | Unchanged`
-///    only and doesn't accept an absolute timestamp.
+///  - `trial_end=<unix_ts>`: a future timestamp that delays the next
+///    invoice and (per the Stripe docs below) moves `billing_cycle_anchor`
+///    to that timestamp — shifting all subsequent renewals forward by
+///    the same offset.
+///
+/// Why `trial_end` and not `billing_cycle_anchor`: the Stripe Update
+/// Subscription endpoint only accepts `now` or `unchanged` for
+/// `billing_cycle_anchor` and rejects future timestamps with
+/// `"billing_cycle_anchor must be either unset, 'now', or 'unchanged'"`.
+/// `trial_end` is the documented path for "delay the next invoice on an
+/// active subscription" — the API doc states:
+/// "The `billing_cycle_anchor` will be updated to the `trial_end` value."
+/// See: https://docs.stripe.com/api/subscriptions/update
+///
+/// Side effect: Stripe flips `sub.status` to `trialing` between resume
+/// time and the new `trial_end`. Our app-facing `plan_status` is driven
+/// by the typed `BillingOperation::Resumed` event (sets `active`), not
+/// by Stripe's raw `sub.status`, so the user sees `active` throughout.
 #[derive(serde::Serialize)]
 struct ResumeFromPauseForm {
     pause_collection: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
-    billing_cycle_anchor: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    proration_behavior: Option<&'static str>,
+    trial_end: Option<i64>,
 }
 
 /// Custom Stripe request used by [`BillingService::resume_subscription`] and
@@ -2883,34 +2895,32 @@ struct ResumeFromPause {
 }
 
 impl ResumeFromPause {
-    /// Clear `pause_collection` without shifting the billing cycle. Used as
-    /// a fallback when we can't compute a renewal shift (e.g. metadata
-    /// missing, or the sub has no items to read `current_period_end` from).
+    /// Clear `pause_collection` without shifting the renewal. Used as a
+    /// fallback when we can't compute the shift (metadata missing, or the
+    /// sub has no items to read `current_period_end` from).
     fn clear_only(sub_id: stripe_billing::SubscriptionId) -> Self {
         Self {
             sub_id,
             body: ResumeFromPauseForm {
                 pause_collection: "",
-                billing_cycle_anchor: None,
-                proration_behavior: None,
+                trial_end: None,
             },
         }
     }
 
-    /// Clear `pause_collection` AND shift the next renewal forward by the
-    /// actual paused duration via `billing_cycle_anchor`. `proration_behavior`
-    /// is `none` so the shift doesn't charge or credit the customer at
-    /// resume time — Stripe just pushes the next invoice date forward.
-    fn with_shifted_anchor(
+    /// Clear `pause_collection` AND push the next invoice forward by the
+    /// actual paused duration via `trial_end`. Stripe moves
+    /// `billing_cycle_anchor` to the new `trial_end`, so all subsequent
+    /// renewals shift by the same offset.
+    fn with_shifted_renewal(
         sub_id: stripe_billing::SubscriptionId,
-        new_anchor_unix_ts: i64,
+        new_trial_end_unix_ts: i64,
     ) -> Self {
         Self {
             sub_id,
             body: ResumeFromPauseForm {
                 pause_collection: "",
-                billing_cycle_anchor: Some(new_anchor_unix_ts),
-                proration_behavior: Some("none"),
+                trial_end: Some(new_trial_end_unix_ts),
             },
         }
     }
