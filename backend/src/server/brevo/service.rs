@@ -126,8 +126,10 @@ impl BrevoService {
             | BillingOperation::PaymentSucceeded { .. }
             | BillingOperation::TrialExtended { .. }
             | BillingOperation::CancellationInitiated { .. }
+            | BillingOperation::CancellationFeedbackProvided { .. }
             | BillingOperation::PaymentMethodAdded
-            | BillingOperation::PaymentMethodRemoved => {}
+            | BillingOperation::PaymentMethodRemoved
+            | BillingOperation::StripeCustomerCreated { .. } => {}
         }
         Ok(())
     }
@@ -453,6 +455,7 @@ impl BrevoService {
             included_seats,
             mrr_amount_cents: _,
             is_trialing: _,
+            next_renewal_at: _,
         } = &event.operation
         else {
             return Ok(());

@@ -4,7 +4,7 @@
 	import { isBillingPlanActive } from '$lib/features/organizations/types';
 	import SettingsModal from '$lib/features/settings/SettingsModal.svelte';
 	import SupportModal from '$lib/features/support/SupportModal.svelte';
-	import { entities } from '$lib/shared/stores/metadata';
+	import { billingPlans, entities } from '$lib/shared/stores/metadata';
 	import { useActiveSessionsQuery } from '$lib/features/discovery/queries';
 	import { modalState } from '$lib/shared/stores/modal-registry';
 	import { entityUIConfig, TAB_LABELS } from '$lib/shared/entity-ui-config';
@@ -105,8 +105,9 @@
 	// Derived values from queries
 	let userPermissions = $derived(currentUser?.permissions);
 	let isBillingEnabled = $derived(organization ? isBillingPlanActive(organization) : false);
-	let isDemoOrg = $derived(organization?.plan?.type === 'Demo');
-	let isFreePlan = $derived(organization?.plan?.type === 'Free');
+	let planMeta = $derived(billingPlans.getMetadata(organization?.plan?.type ?? null));
+	let isDemoOrg = $derived(planMeta.is_demo === true);
+	let isFreePlan = $derived(planMeta.is_free === true);
 	let isOwner = $derived(userPermissions === 'Owner');
 	let trialDaysLeft = $derived(getTrialDaysLeft(organization));
 	let showTrialPill = $derived(
@@ -128,14 +129,15 @@
 	let showSupport = $state(false);
 
 	// Show notification on settings only when trialing without payment method
-	// Free plan users don't need a payment method, so no dot for them
+	// Free plan users don't need a payment method, so no dot for them.
+	// Paused is intentionally excluded — the hard-gate billing modal already
+	// blocks the entire app, so a sidebar dot would be noise.
 	let showBillingNotification = $derived.by(() => {
 		if (!organization) return false;
 		const isPastDue = organization.plan_status === 'past_due';
-		const isPaused = organization.plan_status === 'paused';
 		const isTrialing = organization.plan_status === 'trialing';
 		const hasPayment = organization.has_payment_method ?? false;
-		return isPastDue || isPaused || (isTrialing && !hasPayment);
+		return isPastDue || (isTrialing && !hasPayment);
 	});
 
 	// Active discovery sessions — used for notification dot on sidebar and sub-tabs
@@ -785,9 +787,11 @@
 					title={collapsed ? label : ''}
 					{onclick}
 				>
-					<Icon class="h-4 w-4 flex-shrink-0" />
+					<span class="relative">
+						<Icon class="h-5 w-5 flex-shrink-0" />
+					</span>
 					{#if !collapsed}
-						<span class="ml-2.5 truncate">{label}</span>
+						<span class="ml-3 truncate">{label}</span>
 					{/if}
 				</button>
 			{/snippet}

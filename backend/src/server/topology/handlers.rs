@@ -1,9 +1,16 @@
 use crate::server::shared::extractors::Query;
 use crate::server::shared::storage::traits::Entity;
 use crate::server::{
-    auth::middleware::permissions::{Authorized, IsUser, Member, Viewer},
+    auth::middleware::{
+        auth::AuthenticatedEntity,
+        permissions::{Authorized, IsUser, Member, Viewer},
+    },
     config::AppState,
     shared::{
+        events::{
+            traits::{Event as BusEvent, OrgScope},
+            types::{OnboardingOperation, OnboardingOperationDiscriminants},
+        },
         handlers::{
             query::{FilterQueryExtractor, NetworkFilterQuery},
             traits::{CrudHandlers, update_handler},
@@ -81,6 +88,12 @@ pub struct TopologyDataQuery {
     /// When omitted, returns live entities.
     #[serde(default)]
     pub snapshot_id: Option<Uuid>,
+    /// When `true`, records the `FirstTopologyRebuild` onboarding milestone (the user has
+    /// viewed their topology). Only the frontend's explicit on-tab view sets this — the
+    /// background topology-data query never does — so the milestone never fires from other
+    /// tabs. One-time per org (guarded below + subscriber dedup).
+    #[serde(default)]
+    pub mark_viewed: Option<bool>,
 }
 
 /// Unified entity-set endpoint for the topology view.
@@ -133,6 +146,40 @@ async fn get_topology_data(
         .get_topology_data(params.network_id, params.snapshot_id)
         .await
         .map_err(|e| ApiError::internal_error(&e.to_string()))?;
+
+    // Onboarding: mark the topology "viewed" only when the frontend explicitly requests it
+    // (`mark_viewed=true`), which it does solely while the topology tab is focused. The
+    // background topology-data query never sets the flag, so the milestone can't fire from
+    // other tabs. Still gated to a live view with hosts and a completed discovery, one-time
+    // per org (the not_onboarded guard here + the subscriber's dedup).
+    if params.mark_viewed.unwrap_or(false)
+        && params.snapshot_id.is_none()
+        && !data.hosts.is_empty()
+        && let Ok(Some(network)) = state
+            .services
+            .network_service
+            .get_by_id(&params.network_id)
+            .await
+        && let Ok(Some(org)) = state
+            .services
+            .organization_service
+            .get_by_id(&network.base.organization_id)
+            .await
+        && org.has_onboarded(&OnboardingOperationDiscriminants::FirstDiscoveryCompleted)
+        && org.not_onboarded(&OnboardingOperationDiscriminants::FirstTopologyRebuild)
+    {
+        let _ = state
+            .services
+            .event_bus
+            .publish(BusEvent::new(
+                OrgScope {
+                    organization_id: org.id,
+                },
+                OnboardingOperation::FirstTopologyRebuild,
+                AuthenticatedEntity::System,
+            ))
+            .await;
+    }
 
     Ok(Json(ApiResponse::success(data)))
 }

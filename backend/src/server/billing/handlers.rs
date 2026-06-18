@@ -1,7 +1,7 @@
 use crate::server::auth::middleware::permissions::{Authorized, Owner, RequireVerified, Viewer};
 use crate::server::billing::types::api::{
     CancelSubscriptionRequest, CancelSubscriptionResponse, ChangePlanPreview, ChangePlanRequest,
-    CreateCheckoutRequest, PauseSubscriptionRequest, SetupPaymentMethodRequest,
+    CreateCheckoutRequest, PauseSubscriptionRequest, SaveOfferCoupon, SetupPaymentMethodRequest,
 };
 use crate::server::billing::types::base::BillingPlan;
 use crate::server::config::AppState;
@@ -60,6 +60,7 @@ pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
         .routes(routes!(cancel_subscription))
         .routes(routes!(reactivate_subscription))
         .routes(routes!(apply_discount_save_offer))
+        .routes(routes!(get_save_offer_coupon))
 }
 
 /// Get available billing plans
@@ -686,6 +687,40 @@ async fn apply_discount_save_offer(
             .apply_discount_save_offer(organization_id, auth.into_entity())
             .await?;
         Ok(Json(ApiResponse::success(result)))
+    } else {
+        Err(ApiError::billing_setup_incomplete())
+    }
+}
+
+/// Read live terms for the configured save-offer coupon
+///
+/// Returns the coupon's `percent_off` and `duration_in_months` so the
+/// cancel modal's Discount panel can render the offer dynamically. The
+/// payload is `null` when `STRIPE_SAVE_OFFER_COUPON_ID` is unset — the
+/// modal hides the panel in that case.
+#[utoipa::path(
+    get,
+    path = "/save-offer-coupon",
+    tags = ["billing", "internal"],
+    responses(
+        (status = 200, description = "Save-offer coupon terms, or null when not configured", body = ApiResponse<Option<SaveOfferCoupon>>),
+        (status = 400, description = "Billing not enabled", body = ApiErrorResponse),
+    ),
+    security(("user_api_key" = []), ("session" = []))
+)]
+async fn get_save_offer_coupon(
+    State(state): State<Arc<AppState>>,
+    auth: Authorized<Owner>,
+) -> ApiResult<Json<ApiResponse<Option<SaveOfferCoupon>>>> {
+    let organization_id = auth
+        .organization_id()
+        .ok_or_else(ApiError::organization_required)?;
+
+    if let Some(billing_service) = state.services.billing_service.clone() {
+        let coupon = billing_service
+            .get_save_offer_coupon(organization_id)
+            .await?;
+        Ok(Json(ApiResponse::success(coupon)))
     } else {
         Err(ApiError::billing_setup_incomplete())
     }

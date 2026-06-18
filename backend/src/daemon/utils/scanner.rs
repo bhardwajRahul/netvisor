@@ -10,8 +10,7 @@ use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
 use hickory_resolver::Resolver;
 use hickory_resolver::config::{NameServerConfig, ResolverConfig};
-use hickory_resolver::name_server::TokioConnectionProvider;
-use hickory_resolver::proto::xfer::Protocol;
+use hickory_resolver::net::runtime::TokioRuntimeProvider;
 use rand::{Rng, SeedableRng};
 use rsntp::AsyncSntpClient;
 use snmp2::{AsyncSession, Oid};
@@ -722,12 +721,11 @@ pub async fn scan_endpoints(
 }
 
 pub async fn test_dns_service(ip: IpAddr) -> Result<Option<u16>, Error> {
-    let mut config = ResolverConfig::new();
-    let name_server = NameServerConfig::new(SocketAddr::new(ip, 53), Protocol::Udp);
-    config.add_name_server(name_server);
+    let mut config = ResolverConfig::default();
+    config.add_name_server(NameServerConfig::udp(ip));
 
     let resolver =
-        Resolver::builder_with_config(config, TokioConnectionProvider::default()).build();
+        Resolver::builder_with_config(config, TokioRuntimeProvider::default()).build()?;
 
     match timeout(
         Duration::from_millis(2000),

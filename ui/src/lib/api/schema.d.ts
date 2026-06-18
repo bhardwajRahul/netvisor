@@ -253,9 +253,10 @@ export interface paths {
         put?: never;
         /**
          * Cancel subscription
-         * @description In-app cancel modal endpoint. Sets Stripe `cancel_at_period_end`, stashes
-         *     the canonical Scanopy reason in subscription metadata, returns the period
-         *     end so the modal can render the retention disclosure.
+         * @description In-app cancel modal endpoint. Sets Stripe `cancel_at` to the current
+         *     period end (via Stripe's `MaxPeriodEnd` sentinel), stashes the canonical
+         *     Scanopy reason in subscription metadata, returns the period end so the
+         *     modal can render the retention disclosure.
          */
         post: operations["cancel_subscription"];
         delete?: never;
@@ -444,8 +445,8 @@ export interface paths {
         put?: never;
         /**
          * Reactivate a subscription pending cancellation
-         * @description Clears Stripe's `cancel_at_period_end`. Available while
-         *     `plan_status === 'pending_cancellation'`.
+         * @description Clears Stripe's scheduled-cancellation state (`cancel_at` → None).
+         *     Available while `plan_status === 'pending_cancellation'`.
          */
         post: operations["reactivate_subscription"];
         delete?: never;
@@ -469,6 +470,29 @@ export interface paths {
          *     `plan_status === 'paused'`.
          */
         post: operations["resume_subscription"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/billing/save-offer-coupon": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read live terms for the configured save-offer coupon
+         * @description Returns the coupon's `percent_off` and `duration_in_months` so the
+         *     cancel modal's Discount panel can render the offer dynamically. The
+         *     payload is `null` when `STRIPE_SAVE_OFFER_COUPON_ID` is unset — the
+         *     modal hides the panel in that case.
+         */
+        get: operations["get_save_offer_coupon"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1958,6 +1982,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/daemon-prompt-response": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record the user's response to the daemon-install prompt so it is not shown again.
+         *     Each CTA persists a distinct onboarding milestone (the org subscriber dedups); the
+         *     PostHog subscriber turns these into funnel events, so no client-side telemetry is needed.
+         */
+        post: operations["daemon_prompt_response"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/profile": {
         parameters: {
             query?: never;
@@ -3052,19 +3097,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-06-16T13:44:04.768141Z",
+             *       "created_at": "2026-06-18T18:11:52.635298Z",
              *       "first_discovery_id": null,
-             *       "id": "cc060e6b-35fd-41f2-af5b-2184adfdeed3",
+             *       "id": "3eb9c6f0-7e9d-4055-9bbe-842cce529a58",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-06-16T13:44:04.768141Z",
+             *       "last_seen_at": "2026-06-18T18:11:52.635298Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-06-16T13:44:04.768141Z",
-             *       "valid_from": "2026-06-16T13:44:04.768141Z",
+             *       "updated_at": "2026-06-18T18:11:52.635298Z",
+             *       "valid_from": "2026-06-18T18:11:52.635298Z",
              *       "valid_to": null
              *     }
              */
@@ -3401,19 +3446,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-06-16T13:44:04.756405Z",
+             *               "created_at": "2026-06-18T18:11:52.615910Z",
              *               "first_discovery_id": null,
-             *               "id": "1180f806-9cab-4ced-922f-14b88c273291",
+             *               "id": "6d410d81-27dc-4118-9f62-da9f589633af",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-06-16T13:44:04.756405Z",
+             *               "last_seen_at": "2026-06-18T18:11:52.615910Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-06-16T13:44:04.756405Z",
-             *               "valid_from": "2026-06-16T13:44:04.756405Z",
+             *               "updated_at": "2026-06-18T18:11:52.615910Z",
+             *               "valid_from": "2026-06-18T18:11:52.615910Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3427,7 +3472,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Telnet",
+             *           "service_definition": "Ollama",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3605,6 +3650,20 @@ export interface components {
             meta: components["schemas"]["ApiMeta"];
             success: boolean;
         };
+        ApiResponse_Option_SaveOfferCoupon: {
+            data?: null | {
+                billing_rate: components["schemas"]["BillingRate"];
+                /** Format: int64 */
+                duration_in_months: number;
+                /** Format: date-time */
+                next_renewal_at: string;
+                /** Format: int64 */
+                percent_off: number;
+            };
+            error?: string | null;
+            meta: components["schemas"]["ApiMeta"];
+            success: boolean;
+        };
         ApiResponse_Organization: {
             data?: components["schemas"]["OrganizationBase"] & {
                 /** Format: date-time */
@@ -3769,19 +3828,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-06-16T13:44:04.764011Z",
+             *           "created_at": "2026-06-18T18:11:52.629210Z",
              *           "first_discovery_id": null,
-             *           "id": "653da009-4fc8-49d2-90d1-eb5c85bc60ca",
+             *           "id": "08a50502-acf4-4aef-9e36-254a1c1b41c7",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-06-16T13:44:04.764011Z",
+             *           "last_seen_at": "2026-06-18T18:11:52.629210Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-06-16T13:44:04.764011Z",
-             *           "valid_from": "2026-06-16T13:44:04.764011Z",
+             *           "updated_at": "2026-06-18T18:11:52.629210Z",
+             *           "valid_from": "2026-06-18T18:11:52.629210Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -3795,7 +3854,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Telnet",
+             *       "service_definition": "Ollama",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4248,19 +4307,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-06-16T13:44:04.756663Z",
+         *       "created_at": "2026-06-18T18:11:52.616343Z",
          *       "first_discovery_id": null,
-         *       "id": "89b5561b-1b91-4309-a9ec-e2271a8dc362",
+         *       "id": "24ba28d3-332b-4613-9f7c-ed1adf314293",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-06-16T13:44:04.756663Z",
+         *       "last_seen_at": "2026-06-18T18:11:52.616343Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-06-16T13:44:04.756663Z",
-         *       "valid_from": "2026-06-16T13:44:04.756663Z",
+         *       "updated_at": "2026-06-18T18:11:52.616343Z",
+         *       "valid_from": "2026-06-18T18:11:52.616343Z",
          *       "valid_to": null
          *     }
          */
@@ -4475,7 +4534,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Telnet",
+         *           "service_definition": "Ollama",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -4707,6 +4766,15 @@ export interface components {
          * @enum {string}
          */
         DaemonOrderField: "created_at" | "name" | "last_seen" | "updated_at" | "network_id";
+        /**
+         * @description Which daemon-prompt CTA the user chose.
+         * @enum {string}
+         */
+        DaemonPromptAction: "dismissed" | "accepted";
+        /** @description Request recording the user's response to the "Start Discovering Your Network" prompt. */
+        DaemonPromptResponseRequest: {
+            action: components["schemas"]["DaemonPromptAction"];
+        };
         /** @description Daemon registration request from daemon to server */
         DaemonRegistrationRequest: {
             capabilities: components["schemas"]["DaemonCapabilities"];
@@ -5416,19 +5484,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-06-16T13:44:04.756134Z",
+         *               "created_at": "2026-06-18T18:11:52.615427Z",
          *               "first_discovery_id": null,
-         *               "id": "1a8439e5-bf43-463e-9ade-26bce6ecdb9e",
+         *               "id": "d7da403e-7bf1-4f7f-bbd1-b27f90255d96",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-06-16T13:44:04.756134Z",
+         *               "last_seen_at": "2026-06-18T18:11:52.615427Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-06-16T13:44:04.756134Z",
-         *               "valid_from": "2026-06-16T13:44:04.756134Z",
+         *               "updated_at": "2026-06-18T18:11:52.615427Z",
+         *               "valid_from": "2026-06-18T18:11:52.615427Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -5442,7 +5510,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Telnet",
+         *           "service_definition": "Ollama",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -6052,7 +6120,7 @@ export interface components {
             snmp_version?: string | null;
         };
         /** @enum {string} */
-        OnboardingOperationDiscriminants: "OrgCreated" | "OnboardingModalCompleted" | "PlanSelected" | "FirstDaemonRegistered" | "FirstTopologyRebuild" | "FirstDiscoveryCompleted" | "FirstHostDiscovered" | "SecondNetworkCreated" | "FirstTagCreated" | "FirstDependencyCreated" | "FirstUserApiKeyCreated" | "FirstSnmpCredentialCreated" | "FirstApplicationTagCreated" | "FirstCredentialCreated" | "FirstSnapshotCreated" | "InviteSent" | "InviteAccepted" | "ProfileCompleted" | "ReferralSourceCompleted";
+        OnboardingOperationDiscriminants: "OrgCreated" | "OnboardingModalCompleted" | "PlanSelected" | "DaemonPromptDismissed" | "DaemonPromptAccepted" | "FirstDaemonRegistered" | "FirstTopologyRebuild" | "FirstDiscoveryCompleted" | "FirstHostDiscovered" | "SecondNetworkCreated" | "FirstTagCreated" | "FirstDependencyCreated" | "FirstUserApiKeyCreated" | "FirstSnmpCredentialCreated" | "FirstApplicationTagCreated" | "FirstCredentialCreated" | "FirstSnapshotCreated" | "InviteSent" | "InviteAccepted" | "ProfileCompleted" | "ReferralSourceCompleted";
         /** @description Response from onboarding state endpoint */
         OnboardingStateResponse: {
             network?: null | components["schemas"]["OnboardingNetworkState"];
@@ -6094,7 +6162,7 @@ export interface components {
              */
             readonly discount_save_offer_active_until?: string | null;
             /**
-             * Format: int32
+             * Format: int64
              * @description Percent off the currently-active save-offer discount applies. Read
              *     live by the BillingTab chip so a future coupon swap renders the new
              *     value without a code change.
@@ -6122,6 +6190,17 @@ export interface components {
              */
             readonly last_paused_at?: string | null;
             name: string;
+            /**
+             * Format: date-time
+             * @description Stripe `subscription.items.data[0].current_period_end`, mirrored on
+             *     every billing event that re-anchors the period (checkout, trial start
+             *     / end, plan change, renewal, pause/resume, reactivate). Cleared by
+             *     SubscriptionCancelled. Powers the "Next renewal on …" line in
+             *     BillingPlanModal; the UI interprets the value based on plan_status
+             *     (hide for paused/cancelled/past_due where the stored value can be
+             *     stale or meaningless).
+             */
+            readonly next_renewal_at?: string | null;
             onboarding: components["schemas"]["OnboardingOperationDiscriminants"][];
             plan: null | components["schemas"]["BillingPlan"];
             plan_status: null | components["schemas"]["PlanStatus"];
@@ -6722,6 +6801,30 @@ export interface components {
          */
         SaveOffer: "pause" | "discount" | "downgrade";
         /**
+         * @description Live terms for the configured save-offer coupon, read directly from
+         *     Stripe. Used by the cancel modal's Discount panel to render the offer
+         *     dynamically instead of hard-coding the percent/duration.
+         *
+         *     Only returned when the coupon would actually catch the user's next
+         *     invoice — i.e. `next_renewal_at` falls within the coupon's `duration_in_months`
+         *     window. Yearly subscribers partway through a cycle whose next renewal
+         *     lands after the coupon's window get `None` from the endpoint and the
+         *     cancel modal's Discount panel doesn't render.
+         *
+         *     `billing_rate` lets the frontend pick monthly vs yearly copy: a monthly
+         *     subscriber thinks in terms of "N months of discount"; a yearly subscriber
+         *     thinks in terms of "my next renewal on {date}."
+         */
+        SaveOfferCoupon: {
+            billing_rate: components["schemas"]["BillingRate"];
+            /** Format: int64 */
+            duration_in_months: number;
+            /** Format: date-time */
+            next_renewal_at: string;
+            /** Format: int64 */
+            percent_off: number;
+        };
+        /**
          * @description Scan performance settings. Lives on the discovery entity.
          *     Numeric fields are `Option<T>` — `None` means "use daemon default".
          *     The daemon unwraps with defaults at point of use.
@@ -6822,19 +6925,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-06-16T13:44:04.756614Z",
+         *           "created_at": "2026-06-18T18:11:52.616257Z",
          *           "first_discovery_id": null,
-         *           "id": "623822b1-995d-45d9-98ff-2a51dae8f994",
+         *           "id": "60608f1c-bb21-4afc-b007-89df1b4437a9",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-06-16T13:44:04.756614Z",
+         *           "last_seen_at": "2026-06-18T18:11:52.616257Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-06-16T13:44:04.756614Z",
-         *           "valid_from": "2026-06-16T13:44:04.756614Z",
+         *           "updated_at": "2026-06-18T18:11:52.616257Z",
+         *           "valid_from": "2026-06-18T18:11:52.616257Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -6848,7 +6951,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Telnet",
+         *       "service_definition": "Ollama",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -8433,6 +8536,35 @@ export interface operations {
                 };
             };
             /** @description No paused subscription or billing not enabled */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    get_save_offer_coupon: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Save-offer coupon terms, or null when not configured */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_Option_SaveOfferCoupon"];
+                };
+            };
+            /** @description Billing not enabled */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -12073,6 +12205,30 @@ export interface operations {
             };
         };
     };
+    daemon_prompt_response: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DaemonPromptResponseRequest"];
+            };
+        };
+        responses: {
+            /** @description Response recorded */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse"];
+                };
+            };
+        };
+    };
     update_profile: {
         parameters: {
             query?: never;
@@ -13875,6 +14031,13 @@ export interface operations {
                  *     When omitted, returns live entities.
                  */
                 snapshot_id?: string | null;
+                /**
+                 * @description When `true`, records the `FirstTopologyRebuild` onboarding milestone (the user has
+                 *     viewed their topology). Only the frontend's explicit on-tab view sets this — the
+                 *     background topology-data query never does — so the milestone never fires from other
+                 *     tabs. One-time per org (guarded below + subscriber dedup).
+                 */
+                mark_viewed?: boolean | null;
             };
             header?: never;
             path?: never;

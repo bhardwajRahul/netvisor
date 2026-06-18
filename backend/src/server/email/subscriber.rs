@@ -48,6 +48,8 @@ impl Subscriber<BillingOperation> for EmailService {
             BillingOperationDiscriminants::CancellationInitiated,
             BillingOperationDiscriminants::CheckoutCompleted,
             BillingOperationDiscriminants::Reactivated,
+            BillingOperationDiscriminants::Paused,
+            BillingOperationDiscriminants::Resumed,
         ])
     }
 
@@ -80,7 +82,11 @@ impl Subscriber<BillingOperation> for EmailService {
                     )
                     .await?;
                 }
-                BillingOperation::TrialEnded { plan, converted } => {
+                BillingOperation::TrialEnded {
+                    plan,
+                    converted,
+                    next_renewal_at: _,
+                } => {
                     if converted {
                         self.send_trial_converted_email(
                             org_owner,
@@ -160,6 +166,27 @@ impl Subscriber<BillingOperation> for EmailService {
                 }
                 BillingOperation::Reactivated { .. } => {
                     self.send_subscription_reactivated_email(org_owner).await?;
+                }
+                BillingOperation::Paused {
+                    resumes_at,
+                    plan,
+                    duration_days,
+                } => {
+                    let resumes_at_str = resumes_at.format("%B %-d, %Y").to_string();
+                    let is_yearly = matches!(
+                        plan.config().rate,
+                        crate::server::billing::types::base::BillingRate::Year
+                    );
+                    self.send_subscription_paused_email(
+                        org_owner,
+                        &resumes_at_str,
+                        is_yearly,
+                        duration_days,
+                    )
+                    .await?;
+                }
+                BillingOperation::Resumed { .. } => {
+                    self.send_subscription_resumed_email(org_owner).await?;
                 }
                 _ => {}
             }

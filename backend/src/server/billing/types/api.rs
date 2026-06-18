@@ -69,3 +69,24 @@ pub struct ChangePlanPreview {
     pub excess_networks: u64,
     pub excess_seats: u64,
 }
+
+/// Live terms for the configured save-offer coupon, read directly from
+/// Stripe. Used by the cancel modal's Discount panel to render the offer
+/// dynamically instead of hard-coding the percent/duration.
+///
+/// Only returned when the coupon would actually catch the user's next
+/// invoice — i.e. `next_renewal_at` falls within the coupon's `duration_in_months`
+/// window. Yearly subscribers partway through a cycle whose next renewal
+/// lands after the coupon's window get `None` from the endpoint and the
+/// cancel modal's Discount panel doesn't render.
+///
+/// `billing_rate` lets the frontend pick monthly vs yearly copy: a monthly
+/// subscriber thinks in terms of "N months of discount"; a yearly subscriber
+/// thinks in terms of "my next renewal on {date}."
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct SaveOfferCoupon {
+    pub percent_off: i64,
+    pub duration_in_months: i64,
+    pub next_renewal_at: DateTime<Utc>,
+    pub billing_rate: BillingRate,
+}

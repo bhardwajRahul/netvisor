@@ -6391,6 +6391,37 @@
         ]
       }
     },
+    "/api/v1/organizations/daemon-prompt-response": {
+      "post": {
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "Record the user's response to the daemon-install prompt so it is not shown again.\nEach CTA persists a distinct onboarding milestone (the org subscriber dedups); the\nPostHog subscriber turns these into funnel events, so no client-side telemetry is needed.",
+        "operationId": "daemon_prompt_response",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DaemonPromptResponseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Response recorded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/organizations/profile": {
       "post": {
         "tags": [
@@ -10860,19 +10891,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-06-16T13:44:04.768141Z",
+              "created_at": "2026-06-18T18:11:52.635297Z",
               "first_discovery_id": null,
-              "id": "f86f5cd4-fd7c-4b07-8b52-f6a8e9106d8d",
+              "id": "d08e41c9-d7f3-45fc-b03d-9d6cbc6c92b1",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-16T13:44:04.768141Z",
+              "last_seen_at": "2026-06-18T18:11:52.635297Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-16T13:44:04.768141Z",
-              "valid_from": "2026-06-16T13:44:04.768141Z",
+              "updated_at": "2026-06-18T18:11:52.635297Z",
+              "valid_from": "2026-06-18T18:11:52.635297Z",
               "valid_to": null
             }
           },
@@ -11858,19 +11889,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-06-16T13:44:04.756406Z",
+                      "created_at": "2026-06-18T18:11:52.615925Z",
                       "first_discovery_id": null,
-                      "id": "ee29132e-c111-40e0-aa17-f3cb35ae2324",
+                      "id": "d3d531c8-2764-41ab-b681-b278f6bf00b5",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-06-16T13:44:04.756406Z",
+                      "last_seen_at": "2026-06-18T18:11:52.615925Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-06-16T13:44:04.756406Z",
-                      "valid_from": "2026-06-16T13:44:04.756406Z",
+                      "updated_at": "2026-06-18T18:11:52.615925Z",
+                      "valid_from": "2026-06-18T18:11:52.615925Z",
                       "valid_to": null
                     }
                   ],
@@ -11884,7 +11915,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Telnet",
+                  "service_definition": "Ollama",
                   "source": {
                     "type": "Manual"
                   },
@@ -12296,6 +12327,61 @@
                 ]
               }
             }
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ApiMeta"
+          },
+          "success": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ApiResponse_Option_SaveOfferCoupon": {
+        "type": "object",
+        "required": [
+          "success",
+          "meta"
+        ],
+        "properties": {
+          "data": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "description": "Live terms for the configured save-offer coupon, read directly from\nStripe. Used by the cancel modal's Discount panel to render the offer\ndynamically instead of hard-coding the percent/duration.\n\nOnly returned when the coupon would actually catch the user's next\ninvoice — i.e. `next_renewal_at` falls within the coupon's `duration_in_months`\nwindow. Yearly subscribers partway through a cycle whose next renewal\nlands after the coupon's window get `None` from the endpoint and the\ncancel modal's Discount panel doesn't render.\n\n`billing_rate` lets the frontend pick monthly vs yearly copy: a monthly\nsubscriber thinks in terms of \"N months of discount\"; a yearly subscriber\nthinks in terms of \"my next renewal on {date}.\"",
+                "required": [
+                  "percent_off",
+                  "duration_in_months",
+                  "next_renewal_at",
+                  "billing_rate"
+                ],
+                "properties": {
+                  "billing_rate": {
+                    "$ref": "#/components/schemas/BillingRate"
+                  },
+                  "duration_in_months": {
+                    "type": "integer",
+                    "format": "int64"
+                  },
+                  "next_renewal_at": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "percent_off": {
+                    "type": "integer",
+                    "format": "int64"
+                  }
+                }
+              }
+            ]
           },
           "error": {
             "type": [
@@ -12820,19 +12906,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-06-16T13:44:04.764063Z",
+                  "created_at": "2026-06-18T18:11:52.629182Z",
                   "first_discovery_id": null,
-                  "id": "826f495f-6c6b-4ac5-99ab-171da1aadc0a",
+                  "id": "1bafbdc0-fe74-4483-be6b-156c853e375b",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-16T13:44:04.764063Z",
+                  "last_seen_at": "2026-06-18T18:11:52.629182Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-16T13:44:04.764063Z",
-                  "valid_from": "2026-06-16T13:44:04.764063Z",
+                  "updated_at": "2026-06-18T18:11:52.629182Z",
+                  "valid_from": "2026-06-18T18:11:52.629182Z",
                   "valid_to": null
                 }
               ],
@@ -12846,7 +12932,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Telnet",
+              "service_definition": "Ollama",
               "source": {
                 "type": "Manual"
               },
@@ -14546,19 +14632,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-06-16T13:44:04.756659Z",
+          "created_at": "2026-06-18T18:11:52.616364Z",
           "first_discovery_id": null,
-          "id": "43489ca6-01d9-43cb-9503-686dc33b900a",
+          "id": "88af60bf-5f90-40af-a3d4-ea6d3bcbef3d",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-06-16T13:44:04.756659Z",
+          "last_seen_at": "2026-06-18T18:11:52.616364Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-06-16T13:44:04.756659Z",
-          "valid_from": "2026-06-16T13:44:04.756659Z",
+          "updated_at": "2026-06-18T18:11:52.616364Z",
+          "valid_from": "2026-06-18T18:11:52.616364Z",
           "valid_to": null
         }
       },
@@ -15148,7 +15234,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Telnet",
+              "service_definition": "Ollama",
               "tags": [],
               "virtualization": null
             }
@@ -15740,6 +15826,26 @@
           "updated_at",
           "network_id"
         ]
+      },
+      "DaemonPromptAction": {
+        "type": "string",
+        "description": "Which daemon-prompt CTA the user chose.",
+        "enum": [
+          "dismissed",
+          "accepted"
+        ]
+      },
+      "DaemonPromptResponseRequest": {
+        "type": "object",
+        "description": "Request recording the user's response to the \"Start Discovering Your Network\" prompt.",
+        "required": [
+          "action"
+        ],
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/DaemonPromptAction"
+          }
+        }
       },
       "DaemonRegistrationRequest": {
         "type": "object",
@@ -17766,19 +17872,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-06-16T13:44:04.756138Z",
+                  "created_at": "2026-06-18T18:11:52.615434Z",
                   "first_discovery_id": null,
-                  "id": "8ed08c19-db6e-41e5-b003-52a4d4d29751",
+                  "id": "2b90f9a3-eac6-4374-a265-22fc3e1b0ca0",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-16T13:44:04.756138Z",
+                  "last_seen_at": "2026-06-18T18:11:52.615434Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-16T13:44:04.756138Z",
-                  "valid_from": "2026-06-16T13:44:04.756138Z",
+                  "updated_at": "2026-06-18T18:11:52.615434Z",
+                  "valid_from": "2026-06-18T18:11:52.615434Z",
                   "valid_to": null
                 }
               ],
@@ -17792,7 +17898,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Telnet",
+              "service_definition": "Ollama",
               "source": {
                 "type": "Manual"
               },
@@ -19470,6 +19576,8 @@
           "OrgCreated",
           "OnboardingModalCompleted",
           "PlanSelected",
+          "DaemonPromptDismissed",
+          "DaemonPromptAccepted",
           "FirstDaemonRegistered",
           "FirstTopologyRebuild",
           "FirstDiscoveryCompleted",
@@ -19624,7 +19732,7 @@
               "integer",
               "null"
             ],
-            "format": "int32",
+            "format": "int64",
             "description": "Percent off the currently-active save-offer discount applies. Read\nlive by the BillingTab chip so a future coupon swap renders the new\nvalue without a code change.",
             "readOnly": true
           },
@@ -19672,6 +19780,15 @@
           },
           "name": {
             "type": "string"
+          },
+          "next_renewal_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Stripe `subscription.items.data[0].current_period_end`, mirrored on\nevery billing event that re-anchors the period (checkout, trial start\n/ end, plan change, renewal, pause/resume, reactivate). Cleared by\nSubscriptionCancelled. Powers the \"Next renewal on …\" line in\nBillingPlanModal; the UI interprets the value based on plan_status\n(hide for paused/cancelled/past_due where the stored value can be\nstale or meaningless).",
+            "readOnly": true
           },
           "onboarding": {
             "type": "array",
@@ -20212,19 +20329,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-06-16T13:44:04.750247Z",
+                        "created_at": "2026-06-18T18:11:52.603680Z",
                         "first_discovery_id": null,
-                        "id": "84236403-6a79-4e10-b005-a437b0619d75",
+                        "id": "9b6e1f41-65b4-4b1a-870c-aa0c97a4fbeb",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-06-16T13:44:04.750247Z",
+                        "last_seen_at": "2026-06-18T18:11:52.603680Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-06-16T13:44:04.750247Z",
-                        "valid_from": "2026-06-16T13:44:04.750247Z",
+                        "updated_at": "2026-06-18T18:11:52.603680Z",
+                        "valid_from": "2026-06-18T18:11:52.603680Z",
                         "valid_to": null
                       }
                     ],
@@ -20238,7 +20355,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Telnet",
+                    "service_definition": "Ollama",
                     "source": {
                       "type": "Manual"
                     },
@@ -20359,19 +20476,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-06-16T13:44:04.763315Z",
+                    "created_at": "2026-06-18T18:11:52.627991Z",
                     "first_discovery_id": null,
-                    "id": "1d267240-4332-406d-9619-e6233414feea",
+                    "id": "c6bab76a-bec4-425a-b516-fbddc8d01d7e",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-06-16T13:44:04.763315Z",
+                    "last_seen_at": "2026-06-18T18:11:52.627991Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-06-16T13:44:04.763315Z",
-                    "valid_from": "2026-06-16T13:44:04.763315Z",
+                    "updated_at": "2026-06-18T18:11:52.627991Z",
+                    "valid_from": "2026-06-18T18:11:52.627991Z",
                     "valid_to": null
                   }
                 ],
@@ -20385,7 +20502,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Telnet",
+                "service_definition": "Ollama",
                 "source": {
                   "type": "Manual"
                 },
@@ -21684,6 +21801,33 @@
           "downgrade"
         ]
       },
+      "SaveOfferCoupon": {
+        "type": "object",
+        "description": "Live terms for the configured save-offer coupon, read directly from\nStripe. Used by the cancel modal's Discount panel to render the offer\ndynamically instead of hard-coding the percent/duration.\n\nOnly returned when the coupon would actually catch the user's next\ninvoice — i.e. `next_renewal_at` falls within the coupon's `duration_in_months`\nwindow. Yearly subscribers partway through a cycle whose next renewal\nlands after the coupon's window get `None` from the endpoint and the\ncancel modal's Discount panel doesn't render.\n\n`billing_rate` lets the frontend pick monthly vs yearly copy: a monthly\nsubscriber thinks in terms of \"N months of discount\"; a yearly subscriber\nthinks in terms of \"my next renewal on {date}.\"",
+        "required": [
+          "percent_off",
+          "duration_in_months",
+          "next_renewal_at",
+          "billing_rate"
+        ],
+        "properties": {
+          "billing_rate": {
+            "$ref": "#/components/schemas/BillingRate"
+          },
+          "duration_in_months": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "next_renewal_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "percent_off": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "ScanSettings": {
         "type": "object",
         "description": "Scan performance settings. Lives on the discovery entity.\nNumeric fields are `Option<T>` — `None` means \"use daemon default\".\nThe daemon unwraps with defaults at point of use.",
@@ -21959,19 +22103,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-06-16T13:44:04.756611Z",
+              "created_at": "2026-06-18T18:11:52.616275Z",
               "first_discovery_id": null,
-              "id": "42882d0f-31cd-446f-81ec-c1e2d60540c7",
+              "id": "5654cfef-bdbd-4b60-a3ce-6de84d2a0dbc",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-16T13:44:04.756611Z",
+              "last_seen_at": "2026-06-18T18:11:52.616275Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-16T13:44:04.756611Z",
-              "valid_from": "2026-06-16T13:44:04.756611Z",
+              "updated_at": "2026-06-18T18:11:52.616275Z",
+              "valid_from": "2026-06-18T18:11:52.616275Z",
               "valid_to": null
             }
           ],
@@ -21985,7 +22129,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Telnet",
+          "service_definition": "Ollama",
           "source": {
             "type": "Manual"
           },

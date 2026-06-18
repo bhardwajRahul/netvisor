@@ -29,7 +29,9 @@ mod plan_changed;
 mod plan_limit_approaching;
 mod plan_limit_reached;
 mod subscription_cancelled;
+mod subscription_paused;
 mod subscription_reactivated;
+mod subscription_resumed;
 mod trial_converted;
 mod trial_ending;
 mod trial_expired;
@@ -60,7 +62,9 @@ pub use plan_changed::PlanChanged;
 pub use plan_limit_approaching::PlanLimitApproaching;
 pub use plan_limit_reached::PlanLimitReached;
 pub use subscription_cancelled::SubscriptionCancelled;
+pub use subscription_paused::SubscriptionPaused;
 pub use subscription_reactivated::SubscriptionReactivated;
+pub use subscription_resumed::SubscriptionResumed;
 pub use trial_converted::TrialConverted;
 pub use trial_ending::TrialEnding;
 pub use trial_expired::TrialExpired;
@@ -127,22 +131,43 @@ pub trait Email: Send + Sync {
     /// Classification tag for grouping and provider analytics.
     fn category(&self) -> EmailCategory;
 
-    /// The `utm_campaign` slug for this email's CTAs. `utm_source=email` and
-    /// `utm_medium=lifecycle` are appended automatically by the `{utm}` token,
-    /// so an email only declares this one value (or `""` if it has no UTM CTA).
+    /// The `utm_campaign` slug for this email's CTAs.
     fn campaign(&self) -> &'static str;
+
+    /// The `utm_medium` value for this email's CTAs. Defaults to the email's
+    /// category name (`auth`, `billing`, `onboarding`, `daemon`, `account`,
+    /// `digest`) so analytics gets a useful split out of the box. Override
+    /// only when a particular email warrants a different bucket.
+    fn utm_medium(&self) -> &'static str {
+        self.category().as_str()
+    }
+
+    /// Bare UTM query-string fragment — no leading `?` or `&`. Single
+    /// source of truth for the UTM format; consumed by [`with_utm`] for
+    /// dynamic URL construction and by the `{utm}` token substitution in
+    /// [`render_html`].
+    fn utm_qs(&self) -> String {
+        format!(
+            "utm_source=email&utm_campaign={}&utm_medium={}",
+            self.campaign(),
+            self.utm_medium(),
+        )
+    }
+
+    /// Append the standard UTM tracking query to a URL. Picks `?` vs `&`
+    /// based on whether the URL already has a query string.
+    fn with_utm(&self, url: &str) -> String {
+        let sep = if url.contains('?') { '&' } else { '?' };
+        format!("{url}{sep}{}", self.utm_qs())
+    }
 
     /// Wrap the body in the shared chrome and substitute the layout tokens.
     fn render_html(&self, base_url: &str) -> String {
         let year = chrono::Utc::now().format("%Y").to_string();
-        let utm = format!(
-            "utm_source=email&utm_campaign={}&utm_medium=lifecycle",
-            self.campaign()
-        );
         format!("{}{}{}", EMAIL_HEADER, self.body_html(), EMAIL_FOOTER)
             .replace("{current_year}", &year)
             .replace("{base_url}", base_url)
-            .replace("{utm}", &utm)
+            .replace("{utm}", &self.utm_qs())
     }
 
     /// Plaintext alternative, derived from the wrapped HTML.
@@ -195,7 +220,8 @@ pub const EMAIL_FOOTER: &str = r#"                    <!-- Footer -->
                                 </tr>
                             </table>
 
-                            <p style="margin: 0; font-size: 12px; line-height: 18px; color: #9ca3af;">© {current_year} Scanopy. All rights reserved.</p>
+                            <p style="margin: 0; font-size: 12px; line-height: 18px; color: #9ca3af;">© {current_year} Scanopy LLC. All rights reserved.</p>
+                            <p style="margin: 8px 0 0 0; font-size: 12px; line-height: 18px; color: #9ca3af;">Scanopy LLC &middot; 418 Broadway Ste N, Albany, NY 12207</p>
                         </td>
                     </tr>
                 </table>
@@ -347,6 +373,17 @@ mod tests {
             period_end: "January 1, 2026",
         });
         assert_fully_rendered(&SubscriptionReactivated);
+        assert_fully_rendered(&SubscriptionPaused {
+            resumes_at: "July 1, 2026",
+            is_yearly: false,
+            duration_days: 30,
+        });
+        assert_fully_rendered(&SubscriptionPaused {
+            resumes_at: "July 1, 2026",
+            is_yearly: true,
+            duration_days: 30,
+        });
+        assert_fully_rendered(&SubscriptionResumed);
         assert_fully_rendered(&CheckoutCompleted { plan_name: "Pro" });
         assert_fully_rendered(&UsageSummary {
             period: "Dec 1, 2025 – Jan 1, 2026",

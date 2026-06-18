@@ -16,6 +16,7 @@
 	import {
 		useTopologiesQuery,
 		useTopologyDataQuery,
+		markTopologyViewed,
 		selectedTopologyId,
 		selectedNetworkId,
 		selectedSnapshotId,
@@ -65,6 +66,7 @@
 	import { useUsersQuery } from '$lib/features/users/queries';
 	import { useCurrentUserQuery } from '$lib/features/auth/queries';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
+	import { waitForOrgUpdate } from '$lib/shared/billing/wait-for-org-update';
 	import type { components } from '$lib/api/schema';
 	import { billingPlans, entities, permissions, views } from '$lib/shared/stores/metadata';
 	import { getInspectorConfig } from './panel/inspectors/view-config';
@@ -276,6 +278,33 @@
 	let hasCompletedFirstDiscovery = $derived(
 		onboarding.length === 0 || onboarding.includes('FirstDiscoveryCompleted')
 	);
+
+	// Complete the "View your topology" onboarding step the first time the user is focused on
+	// the topology tab with hosts to look at (and discovery already done). markTopologyViewed
+	// is a one-shot GET carrying mark_viewed=true — only sent here, never by the background
+	// data query — so the milestone only fires from an actual on-tab view, never from other
+	// tabs. Then poll the org until the milestone lands so the checklist updates. The
+	// `tracked` flag only flips once we actually call, so if discovery completes later while
+	// the user is on the tab, the effect re-fires.
+	let firstTopologyMilestoneTracked = $state(false);
+	$effect(() => {
+		const hasHosts = (topologyDataQuery.data?.hosts.length ?? 0) > 0;
+		if (
+			isActive &&
+			$selectedNetworkId &&
+			hasHosts &&
+			onboarding.includes('FirstDiscoveryCompleted') &&
+			!firstTopologyMilestoneTracked &&
+			!onboarding.includes('FirstTopologyRebuild')
+		) {
+			firstTopologyMilestoneTracked = true;
+			const networkId = $selectedNetworkId;
+			void (async () => {
+				await markTopologyViewed(networkId);
+				void waitForOrgUpdate((o) => o.onboarding.includes('FirstTopologyRebuild'));
+			})();
+		}
+	});
 
 	// URL params: read once on init for topology/view deep-linking
 	const urlParams = getTopologyParamsFromUrl();

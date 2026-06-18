@@ -81,13 +81,13 @@ dns-lookup = "3.0.0"
 
 # === Network Protocol Support ===
 rsntp = "4.0.0"
-dhcproto = "0.13.0"
+dhcproto = "0.15.0"
 
 # === TLS and Security ===
 pem = "3"
 webpki-roots = "0.25"
 base64ct = "=1.6.0"
-jsonwebtoken = "10"
+jsonwebtoken = { version = "10", default-features = false, features = ["rust_crypto", "use_pem"] }
 
 # === Configuration and Logging ===
 config = "0.14"
@@ -177,6 +177,8 @@ urlencoding = "2.1.3"
 rlimit = "0.10.2"
 libc = "0.2.177"
 async-stripe = { version = "1.0.0-alpha.2", default-features = false, features = ["rustls-tls-webpki-roots"] }
+async-stripe-client-core = { version = "1.0.0-alpha.2", default-features = false }
+async-stripe-shared = { version = "1.0.0-alpha.2", default-features = false }
 async-stripe-core = { version = "1.0.0-alpha.2", default-features = false,features = ["customer"] }
 async-stripe-product = { version = "1.0.0-alpha.2", default-features = false,features = ["product", "price", "coupon"] }
 async-stripe-billing = { version = "1.0.0-alpha.2", default-features = false,features = ["plan", "subscription", "deserialize", "serialize", "billing_portal_session"] }
@@ -192,7 +194,7 @@ json_value_merge = "2.0.1"
 axum-client-ip = "1.1.3"
 governor = "0.10.2"
 mailchecker = "6.0.20"
-hickory-resolver = { version = "0.25.2" }
+hickory-resolver = { version = "0.26.1" }
 const_format = "0.2.35"
 posthog-rs = "0.4"
 

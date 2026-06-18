@@ -235,11 +235,13 @@ impl Subscriber<BillingOperation> for PosthogService {
             BillingOperationDiscriminants::TrialWillEnd,
             BillingOperationDiscriminants::SubscriptionCancelled,
             BillingOperationDiscriminants::CancellationInitiated,
+            BillingOperationDiscriminants::CancellationFeedbackProvided,
             BillingOperationDiscriminants::PlanChanged,
             BillingOperationDiscriminants::PaymentFailed,
             BillingOperationDiscriminants::PaymentActionRequired,
             BillingOperationDiscriminants::PaymentRecovered,
             BillingOperationDiscriminants::FeatureLimitHit,
+            BillingOperationDiscriminants::StripeCustomerCreated,
         ])
     }
 
@@ -315,6 +317,8 @@ impl Subscriber<OnboardingOperation> for PosthogService {
             OnboardingOperationDiscriminants::OrgCreated,
             OnboardingOperationDiscriminants::OnboardingModalCompleted,
             OnboardingOperationDiscriminants::PlanSelected,
+            OnboardingOperationDiscriminants::DaemonPromptDismissed,
+            OnboardingOperationDiscriminants::DaemonPromptAccepted,
             OnboardingOperationDiscriminants::FirstDaemonRegistered,
             OnboardingOperationDiscriminants::FirstTopologyRebuild,
             OnboardingOperationDiscriminants::FirstDiscoveryCompleted,

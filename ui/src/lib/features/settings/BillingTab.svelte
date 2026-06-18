@@ -14,6 +14,7 @@
 		useExtendTrialMutation
 	} from '$lib/features/billing/queries';
 	import CancelSubscriptionModal from '$lib/features/billing/CancelSubscriptionModal.svelte';
+	import { renewalLabel } from '$lib/features/billing/renewal';
 	import InfoCard from '$lib/shared/components/data/InfoCard.svelte';
 	import { useDashboardQuery } from '$lib/features/home/queries';
 	import {
@@ -29,11 +30,11 @@
 		settings_billing_contactUs,
 		settings_billing_currentPlan,
 		settings_billing_discount_active,
+		settings_billing_discount_active_yearly,
 		settings_billing_downgrade_pending,
 		settings_billing_manageSubscription,
 		settings_billing_needHelp,
 		settings_billing_pastDue,
-		settings_billing_paused_status,
 		settings_billing_cancelSubscription,
 		settings_billing_per,
 		settings_billing_trialActive,
@@ -130,7 +131,7 @@
 		}
 	}
 
-	let isFree = $derived(org?.plan?.type === 'Free');
+	let isFree = $derived(billingPlans.getMetadata(org?.plan?.type ?? null).is_free === true);
 
 	// Live Stripe subscription whose lifecycle these CTAs can act on. Non-Stripe
 	// plans (Free/Community/Demo/SelfHosted/Enterprise) have plan_status === null;
@@ -148,6 +149,11 @@
 
 	let hasPaymentMethod = $derived(org?.has_payment_method ?? false);
 	let trialEndDate = $derived(org?.trial_end_date ? new Date(org.trial_end_date) : null);
+
+	// Renewal / subscription-ends label for the current plan; null when not
+	// applicable (trialing has its own dedicated trial-ends-on line above;
+	// Free / paused / past_due / cancelled don't surface a date here).
+	let currentPlanRenewalLine = $derived(renewalLabel(org));
 	let trialDaysLeft = $derived.by(() => {
 		if (!trialEndDate) return null;
 		const now = new Date();
@@ -156,22 +162,33 @@
 	});
 
 	// Render the active save-offer discount chip only while the discount
-	// window is still in the future. After expiry the row stays in the DB
-	// but the chip naturally disappears — no cleanup job required.
+	// window is still in the future, and only on Stripe-managed plans —
+	// a coupon needs a Stripe sub to attach to. The discount columns can
+	// still be populated on a non-Stripe plan (e.g. an org that applied a
+	// discount on Pro and then downgraded to Free), so this gate is needed.
 	let activeDiscount = $derived.by(() => {
-		const until = org?.discount_save_offer_active_until;
-		const percent = org?.discount_save_offer_percent_off;
+		if (!org) return null;
+		if (billingPlans.getMetadata(org.plan?.type ?? null).is_stripe_managed !== true) return null;
+		const until = org.discount_save_offer_active_until;
+		const percent = org.discount_save_offer_percent_off;
 		if (!until || percent == null) return null;
 		const expiresAt = new Date(until);
 		if (expiresAt.getTime() <= Date.now()) return null;
 		return {
 			percentOff: percent,
+			rate: org.plan?.rate ?? 'Month',
 			expiresAt: expiresAt.toLocaleDateString(undefined, {
 				month: 'long',
 				day: 'numeric',
 				year: 'numeric'
 			})
 		};
+	});
+
+	let discountedPriceLabel = $derived.by(() => {
+		if (!org?.plan || !activeDiscount) return null;
+		const discounted = (org.plan.base_cents * (100 - activeDiscount.percentOff)) / 100 / 100;
+		return discounted.toFixed(2);
 	});
 
 	// Track billing tab view
@@ -384,22 +401,39 @@
 													})
 												})}
 											</p>
+										{:else if currentPlanRenewalLine}
+											<p class="text-secondary mt-1 text-xs">{currentPlanRenewalLine}</p>
 										{/if}
 										{#if activeDiscount}
 											<p
 												class="mt-1 inline-block rounded-md bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-300"
 											>
-												{settings_billing_discount_active({
-													percentOff: activeDiscount.percentOff,
-													expiresAt: activeDiscount.expiresAt
-												})}
+												{#if activeDiscount.rate === 'Year'}
+													{settings_billing_discount_active_yearly({
+														percentOff: activeDiscount.percentOff
+													})}
+												{:else}
+													{settings_billing_discount_active({
+														percentOff: activeDiscount.percentOff,
+														expiresAt: activeDiscount.expiresAt
+													})}
+												{/if}
 											</p>
 										{/if}
 									</div>
 									<div class="text-right">
-										<p class="text-primary text-2xl font-bold">
-											${org.plan.base_cents / 100}
-										</p>
+										{#if activeDiscount && discountedPriceLabel}
+											<p class="text-tertiary text-sm line-through">
+												${org.plan.base_cents / 100}
+											</p>
+											<p class="text-primary text-2xl font-bold">
+												${discountedPriceLabel}
+											</p>
+										{:else}
+											<p class="text-primary text-2xl font-bold">
+												${org.plan.base_cents / 100}
+											</p>
+										{/if}
 										<p class="text-secondary text-xs">
 											{settings_billing_per({ rate: org.plan.rate })}
 										</p>
@@ -515,13 +549,11 @@
 								<InlineWarning title={settings_billing_canceled()} />
 							{:else if org.plan_status === 'pending_cancellation'}
 								<InlineWarning title={settings_billing_downgrade_pending()} />
-							{:else if org.plan_status === 'paused'}
-								<InlineDanger title={settings_billing_paused_status()} />
 							{/if}
 
-							<!-- While downgrading (pending_cancellation), push users to Reactivate
-							     instead of re-picking a plan — so the plan-change button is hidden. -->
-							{#if org.plan_status !== 'pending_cancellation'}
+							<!-- pending_cancellation pushes users to Reactivate; paused pushes
+							     them to Resume — so the plan-change button is hidden in both. -->
+							{#if org.plan_status !== 'pending_cancellation' && org.plan_status !== 'paused'}
 								<button
 									onclick={() =>
 										triggerUpgrade({
@@ -562,17 +594,25 @@
 										>
 											{settings_billing_reactivateSubscription()}
 										</button>
-										<button onclick={handleManageSubscription} class="btn-secondary w-full">
+										<button
+											type="button"
+											onclick={handleManageSubscription}
+											class="text-link self-center text-sm hover:underline"
+										>
 											{settings_billing_manageSubscription()}
 										</button>
 									</div>
 								{:else if org.plan_status === 'active' || org.plan_status === 'trialing'}
 									<div class="flex flex-col gap-2">
-										<button onclick={handleManageSubscription} class="btn-secondary w-full">
-											{settings_billing_manageSubscription()}
-										</button>
 										<button onclick={openCancelModal} class="btn-secondary w-full">
 											{settings_billing_cancelSubscription()}
+										</button>
+										<button
+											type="button"
+											onclick={handleManageSubscription}
+											class="text-link self-center text-sm hover:underline"
+										>
+											{settings_billing_manageSubscription()}
 										</button>
 									</div>
 								{/if}
@@ -616,5 +656,6 @@
 	lastPausedAt={org?.last_paused_at ?? null}
 	lastDiscountAt={org?.last_discount_at ?? null}
 	planStatus={org?.plan_status ?? null}
+	planType={org?.plan?.type ?? null}
 	onSubscriptionChanged={() => organizationQuery.refetch()}
 />

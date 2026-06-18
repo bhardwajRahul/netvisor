@@ -465,6 +465,37 @@ impl BillingPlan {
         )
     }
 
+    /// Plans whose lifecycle is driven by a Stripe subscription. Drives the
+    /// frontend hard-gate (no Stripe = no required modal), the post-Stripe
+    /// poll predicate, the "needs a card" banner, and retention-offer
+    /// surfaces (Discount panel, Discount chip).
+    ///
+    /// Free is intentionally NOT Stripe-managed: `activate_free_plan` bypasses
+    /// Stripe entirely (no customer, no subscription created). Older Free orgs
+    /// may carry a leftover Stripe customer + cancelled subscription from a
+    /// previous model, but those subs are not active and don't drive plan
+    /// state — `is_free()` is the right check for "this plan doesn't pay."
+    ///
+    /// Exhaustive on purpose — adding a new variant must classify it
+    /// explicitly.
+    pub fn is_stripe_managed(&self) -> bool {
+        match self {
+            BillingPlan::Starter(_)
+            | BillingPlan::Pro(_)
+            | BillingPlan::Team(_)
+            | BillingPlan::Business(_)
+            | BillingPlan::Enterprise(_) => true,
+            BillingPlan::Free(_)
+            | BillingPlan::Community(_)
+            | BillingPlan::Demo(_)
+            | BillingPlan::CommercialSelfHosted(_) => false,
+        }
+    }
+
+    pub fn is_enterprise(&self) -> bool {
+        matches!(self, BillingPlan::Enterprise(_))
+    }
+
     pub fn host_limit(&self) -> Option<u64> {
         self.config().included_hosts
     }
@@ -1064,7 +1095,7 @@ impl EntityMetadataProvider for BillingPlan {
 impl TypeMetadataProvider for BillingPlan {
     fn name(&self) -> &'static str {
         match self {
-            BillingPlan::Community { .. } => "Community",
+            BillingPlan::Community { .. } => "Community Edition",
             BillingPlan::Free { .. } => "Free",
             BillingPlan::Starter { .. } => "Starter",
             BillingPlan::Pro { .. } => "Pro",
@@ -1072,14 +1103,14 @@ impl TypeMetadataProvider for BillingPlan {
             BillingPlan::Business { .. } => "Business",
             BillingPlan::Enterprise { .. } => "Enterprise",
             BillingPlan::Demo { .. } => "Demo",
-            BillingPlan::CommercialSelfHosted { .. } => "On-Premise",
+            BillingPlan::CommercialSelfHosted { .. } => "Commercial Edition",
         }
     }
 
     fn description(&self) -> &'static str {
         match self {
             BillingPlan::Community { .. } => {
-                "Community plan for individuals self-hosting Scanopy - full control over configuration and integrations"
+                "Community edition for self-hosting and open-source enthusiasts"
             }
             BillingPlan::Free { .. } => "For hobbyists exploring a small network",
             BillingPlan::Starter { .. } => "For homelabbers automating documentation",
@@ -1091,7 +1122,7 @@ impl TypeMetadataProvider for BillingPlan {
             BillingPlan::Enterprise { .. } => "For organizations needing custom deployment",
             BillingPlan::Demo { .. } => "Demo mode",
             BillingPlan::CommercialSelfHosted { .. } => {
-                "Commercial license for self-managed deployments — full control over configuration and integrations"
+                "Commercial edition for businesses with on-premise deployments"
             }
         }
     }
@@ -1117,6 +1148,10 @@ impl TypeMetadataProvider for BillingPlan {
             // Feature flags and metadata
             "features": self.features(),
             "is_commercial": self.is_commercial(),
+            "is_stripe_managed": self.is_stripe_managed(),
+            "is_free": self.is_free(),
+            "is_demo": self.is_demo(),
+            "is_enterprise": self.is_enterprise(),
             "hosting": self.hosting(),
             "custom_price": self.custom_price(),
             // Tier relationship

@@ -3,13 +3,16 @@
 	import GenericModal from '$lib/shared/components/layout/GenericModal.svelte';
 	import SelectInput from '$lib/shared/components/forms/input/SelectInput.svelte';
 	import TextArea from '$lib/shared/components/forms/input/TextArea.svelte';
+	import InlineWarning from '$lib/shared/components/feedback/InlineWarning.svelte';
 	import {
 		usePauseSubscriptionMutation,
 		useApplyDiscountSaveOfferMutation,
-		useCancelSubscriptionMutation
+		useCancelSubscriptionMutation,
+		useSaveOfferCouponQuery
 	} from '$lib/features/billing/queries';
 	import cancelReasons from '$lib/data/cancel-reasons.json';
 	import saveOffers from '$lib/data/save-offers.json';
+	import { billingPlans } from '$lib/shared/stores/metadata';
 	import { pushSuccess, pushWarning } from '$lib/shared/stores/feedback';
 	import { useConfigQuery } from '$lib/shared/stores/config-query';
 	import { waitForOrgUpdate } from '$lib/shared/billing/wait-for-org-update';
@@ -37,7 +40,8 @@
 		settings_billing_saveOffer_pauseCta,
 		settings_billing_saveOffer_pauseCooldown,
 		settings_billing_saveOffer_discountTitle,
-		settings_billing_saveOffer_discountSubtitle,
+		settings_billing_saveOffer_discountSubtitleMonthly,
+		settings_billing_saveOffer_discountSubtitleYearly,
 		settings_billing_saveOffer_discountCta
 	} from '$lib/paraglide/messages';
 
@@ -50,6 +54,7 @@
 		lastPausedAt = null,
 		lastDiscountAt = null,
 		planStatus = null,
+		planType = null,
 		onSubscriptionChanged
 	}: {
 		isOpen?: boolean;
@@ -60,6 +65,8 @@
 		lastDiscountAt?: string | null;
 		/** Org's `plan_status` — pause/discount save offers are suppressed while trialing. */
 		planStatus?: string | null;
+		/** Org's `plan.type` — save offers only apply to Stripe-managed plans. */
+		planType?: string | null;
 		/** Called after pause/discount/cancel succeed so the caller can refresh the org payload. */
 		onSubscriptionChanged?: () => void;
 	} = $props();
@@ -68,6 +75,13 @@
 	// charging yet, so suppress save offers and let the cancellation go straight
 	// to confirm (cancel-at-period-end ends the trial without converting).
 	let isTrialing = $derived(planStatus === 'trialing');
+
+	// Save offers (pause + discount) only apply to Stripe-managed plans —
+	// pausing or discounting a non-Stripe sub is nonsensical and the backend
+	// would 4xx anyway. This just hides the dead-end UI.
+	let canReceiveSaveOffer = $derived(
+		billingPlans.getMetadata(planType ?? null).is_stripe_managed === true
+	);
 
 	// Two internal steps. Step 1 picks the reason; step 2 shows any save offers
 	// AND hosts the Confirm Cancellation action in the footer. No stepper UI:
@@ -88,6 +102,11 @@
 	const discountMutation = useApplyDiscountSaveOfferMutation();
 	const configQuery = useConfigQuery();
 	const discountAvailable = $derived(configQuery.data?.discount_save_offer_available ?? false);
+	// Fetch live coupon terms only while the modal is open and the deployment
+	// has a coupon configured — otherwise the GET would return null anyway and
+	// the panel won't render.
+	const saveOfferCouponQuery = useSaveOfferCouponQuery(() => isOpen && discountAvailable);
+	const saveOfferCoupon = $derived(saveOfferCouponQuery.data ?? null);
 
 	const form = createForm(() => ({
 		defaultValues: {
@@ -121,13 +140,18 @@
 	]);
 
 	const offersForReason = $derived.by<string[]>(() => {
-		if (isTrialing || !selectedReason) return [];
+		if (isTrialing || !canReceiveSaveOffer || !selectedReason) return [];
 		const reason = cancelReasons.find((r) => r.id === selectedReason);
 		const offers = (reason?.metadata as { save_offers?: string[] } | null | undefined)?.save_offers;
-		// Hide the discount panel when the deployment hasn't configured a
-		// Stripe coupon — the backend would reject the apply call anyway, but
-		// showing an option we can't fulfil is worse UX than not offering it.
-		return (offers ?? []).filter((o) => o !== 'discount' || (discountAvailable && !lastDiscountAt));
+		// Hide the discount panel until the backend confirms the coupon is
+		// applicable to this org's next renewal. saveOfferCoupon === null can
+		// mean (a) the env var isn't configured, (b) the next renewal falls
+		// outside the coupon's duration window, or (c) the query is still
+		// loading. In any of those cases the panel would have nothing useful
+		// to show — better to not render it than to flash a generic fallback.
+		return (offers ?? []).filter(
+			(o) => o !== 'discount' || (!lastDiscountAt && saveOfferCoupon != null)
+		);
 	});
 
 	const offerMeta = (offerId: string) => saveOffers.find((o) => o.id === offerId);
@@ -305,12 +329,13 @@
 									{settings_billing_saveOffer_pauseSubtitle()}
 								</p>
 							</div>
-							{#if pauseCooldownEnd}
-								<p class="text-sm text-warning">
-									{settings_billing_saveOffer_pauseCooldown({
+							{#if pauseCooldownEnd && lastPausedAt}
+								<InlineWarning
+									title={settings_billing_saveOffer_pauseCooldown({
+										lastPausedDate: fmtDate(new Date(lastPausedAt)),
 										nextEligibleDate: fmtDate(pauseCooldownEnd)
 									})}
-								</p>
+								/>
 							{:else}
 								<div class="grid grid-cols-3 gap-2">
 									{#each pauseDurationOptions as d (d.value)}
@@ -348,7 +373,17 @@
 									{offerMeta('discount')?.name ?? settings_billing_saveOffer_discountTitle()}
 								</h4>
 								<p class="text-secondary mt-1 text-sm">
-									{settings_billing_saveOffer_discountSubtitle()}
+									{#if saveOfferCoupon?.billing_rate === 'Year'}
+										{settings_billing_saveOffer_discountSubtitleYearly({
+											percentOff: saveOfferCoupon.percent_off,
+											nextRenewalDate: fmtDate(new Date(saveOfferCoupon.next_renewal_at))
+										})}
+									{:else if saveOfferCoupon}
+										{settings_billing_saveOffer_discountSubtitleMonthly({
+											percentOff: saveOfferCoupon.percent_off,
+											durationInMonths: saveOfferCoupon.duration_in_months
+										})}
+									{/if}
 								</p>
 							</div>
 							<button

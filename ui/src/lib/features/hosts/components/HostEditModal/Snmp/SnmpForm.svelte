@@ -12,7 +12,7 @@
 	import ConfigHeader from '$lib/shared/components/forms/config/ConfigHeader.svelte';
 	import EntityTag from '$lib/shared/components/data/EntityTag.svelte';
 	import { entityRef } from '$lib/shared/components/data/types';
-	import { entities } from '$lib/shared/stores/metadata';
+	import { billingPlans, entities } from '$lib/shared/stores/metadata';
 	import { CredentialDisplay } from '$lib/shared/components/forms/selection/display/CredentialDisplay.svelte';
 	import {
 		IPAddressDisplay,
@@ -47,7 +47,9 @@
 	let currentUser = $derived(currentUserQuery.data);
 
 	// Demo mode check: only Owner can modify credential settings in demo orgs
-	let isDemoOrg = $derived(organization?.plan?.type === 'Demo');
+	let isDemoOrg = $derived(
+		billingPlans.getMetadata(organization?.plan?.type ?? null).is_demo === true
+	);
 	let isNonOwnerInDemo = $derived(isDemoOrg && currentUser?.permissions !== 'Owner');
 
 	// TanStack Query for credentials and subnets

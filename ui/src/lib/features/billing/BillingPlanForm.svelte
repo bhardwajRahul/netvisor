@@ -100,15 +100,15 @@
 		let result = plans;
 		result = result.filter((plan) => {
 			// Free plan is always monthly (no yearly variant)
-			if (plan.type === 'Free') return true;
+			if (billingPlanHelpers.getMetadata(plan.type)?.is_free) return true;
 			if (billingPeriod === 'monthly') return plan.rate === 'Month';
 			if (billingPeriod === 'yearly') return plan.rate === 'Year';
 			return true;
 		});
 		// Sort Free plan first
 		result = [...result].sort((a, b) => {
-			if (a.type === 'Free') return -1;
-			if (b.type === 'Free') return 1;
+			if (billingPlanHelpers.getMetadata(a.type)?.is_free) return -1;
+			if (billingPlanHelpers.getMetadata(b.type)?.is_free) return 1;
 			return 0;
 		});
 		return result;
@@ -318,7 +318,7 @@
 	}
 
 	function isEnterprise(plan: BillingPlan): boolean {
-		return plan.type === 'Enterprise';
+		return billingPlanHelpers.getMetadata(plan.type)?.is_enterprise === true;
 	}
 
 	async function handlePlanSelect(plan: BillingPlan) {

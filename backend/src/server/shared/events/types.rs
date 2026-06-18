@@ -132,6 +132,9 @@ pub enum BillingOperation {
         included_seats: Option<u64>,
         mrr_amount_cents: i64,
         is_trialing: bool,
+        /// Stripe `sub.items.data[0].current_period_end` at checkout — None
+        /// for Free direct-activation (no Stripe sub).
+        next_renewal_at: Option<DateTime<Utc>>,
     },
     TrialStarted {
         plan: BillingPlan,
@@ -145,11 +148,16 @@ pub enum BillingOperation {
     TrialEnded {
         plan: BillingPlan,
         converted: bool,
+        /// New `sub.items.data[0].current_period_end` after the trial→paid
+        /// snap. None when `converted: false` (sub is gone).
+        next_renewal_at: Option<DateTime<Utc>>,
     },
     PlanChanged {
         from: BillingPlan,
         to: BillingPlan,
         is_downgrade: bool,
+        /// `sub.items.data[0].current_period_end` after the change.
+        next_renewal_at: Option<DateTime<Utc>>,
     },
     SubscriptionCancelled {
         plan: BillingPlan,
@@ -185,6 +193,8 @@ pub enum BillingOperation {
         amount_cents: i64,
         plan: BillingPlan,
         attempt_count: u32,
+        /// `sub.items.data[0].current_period_end` after the recovery.
+        next_renewal_at: Option<DateTime<Utc>>,
     },
     FeatureLimitHit {
         limit_type: LimitType,
@@ -214,6 +224,16 @@ pub enum BillingOperation {
         save_offer_redeemed: Option<SaveOffer>,
         planned_period_end: DateTime<Utc>,
     },
+    /// User-provided cancellation reason/comment, captured on a follow-up
+    /// Stripe webhook (Portal-with-reason flow) ~hundreds of ms after the
+    /// initial `CancellationInitiated`. Separate event because Stripe persists
+    /// the two pieces of state at different times and either may fire alone
+    /// — no-reason Portal cancels never produce this event.
+    CancellationFeedbackProvided {
+        stripe_feedback: Option<CancellationDetailsFeedback>,
+        stripe_reason: Option<CancellationDetailsReason>,
+        comment: Option<String>,
+    },
     /// User cleared a pending cancellation (via in-app reactivate). Stripe's
     /// `cancel_at` flips from `Some(period_end)` back to `None`; we emit this
     /// so the org subscriber's `implied_status` mirror restores `plan_status`
@@ -222,6 +242,8 @@ pub enum BillingOperation {
     /// returns to `trialing` rather than being mislabelled `active`.
     Reactivated {
         trialing: bool,
+        /// `sub.items.data[0].current_period_end` after the cancel was cleared.
+        next_renewal_at: Option<DateTime<Utc>>,
     },
     /// Save-offer discount applied — the org subscriber persists the
     /// percent + expiry so the eligibility gate (once per org) can read
@@ -233,6 +255,13 @@ pub enum BillingOperation {
     },
     PaymentMethodAdded,
     PaymentMethodRemoved,
+    /// Stripe customer was created for this org; the subscriber records the
+    /// customer id so downstream operations can address it. Fires from
+    /// `get_or_create_customer` the first time we mint a customer for the
+    /// org. Telemetry-only with respect to plan_status.
+    StripeCustomerCreated {
+        customer_id: String,
+    },
 }
 
 impl BillingOperation {
@@ -266,7 +295,7 @@ impl BillingOperation {
             Self::CheckoutCompleted { .. }
             | Self::PaymentRecovered { .. }
             | Self::Resumed { .. }
-            | Self::Reactivated { trialing: false }
+            | Self::Reactivated { trialing: false, .. }
             // A full cancellation / unconverted trial downgrades the org to the
             // Free plan, which is an *active* plan. The plan rewrite to Free
             // lives in the org subscriber's matching arm (status alone can't
@@ -274,7 +303,7 @@ impl BillingOperation {
             | Self::SubscriptionCancelled { .. }
             | Self::TrialEnded { converted: false, .. } => Some(PlanStatus::Active),
 
-            Self::Reactivated { trialing: true }
+            Self::Reactivated { trialing: true, .. }
             | Self::TrialStarted { .. }
             | Self::TrialExtended { .. } => Some(PlanStatus::Trialing),
             Self::TrialEnded {
@@ -318,6 +347,8 @@ impl BillingOperation {
             | Self::FeatureLimitHit { .. }
             | Self::PaymentSucceeded { .. }
             | Self::DiscountApplied { .. }
+            | Self::CancellationFeedbackProvided { .. }
+            | Self::StripeCustomerCreated { .. }
             | Self::PaymentMethodAdded
             | Self::PaymentMethodRemoved => None,
         }
@@ -356,10 +387,16 @@ pub enum OnboardingOperation {
     PlanSelected {
         plan: BillingPlan,
     },
+    DaemonPromptDismissed,
+    DaemonPromptAccepted,
     FirstDaemonRegistered {
         daemon_name: String,
         network_name: String,
     },
+    /// Emitted when a user views their live topology after discovery has produced
+    /// at least one host. (Originally tied to the topology-rebuild lifecycle, which
+    /// was removed in Phase 2 snapshots; the variant name is retained to keep legacy
+    /// persisted values valid, but it now means "first topology viewed".)
     FirstTopologyRebuild,
     FirstDiscoveryCompleted {
         discovery_type: DiscoveryType,
@@ -453,6 +490,7 @@ mod tests {
             included_seats: Some(5),
             mrr_amount_cents: 4900,
             is_trialing: false,
+            next_renewal_at: DateTime::<Utc>::from_timestamp(1_800_000_000, 0),
         });
     }
 
@@ -464,6 +502,7 @@ mod tests {
             included_seats: Some(5),
             mrr_amount_cents: 4900,
             is_trialing: true,
+            next_renewal_at: DateTime::<Utc>::from_timestamp(1_800_000_000, 0),
         });
     }
 
@@ -494,6 +533,15 @@ mod tests {
     }
 
     #[test]
+    fn cancellation_feedback_provided_round_trip() {
+        round_trip(BillingOperation::CancellationFeedbackProvided {
+            stripe_feedback: Some(CancellationDetailsFeedback::TooExpensive),
+            stripe_reason: Some(CancellationDetailsReason::CancellationRequested),
+            comment: Some("test 6/18".to_string()),
+        });
+    }
+
+    #[test]
     fn payment_failed_round_trip() {
         round_trip(BillingOperation::PaymentFailed {
             invoice_id: "in_123".to_string(),
@@ -510,6 +558,41 @@ mod tests {
             amount_cents: 9900,
             plan: get_free_plan(),
             attempt_count: 2,
+            next_renewal_at: DateTime::<Utc>::from_timestamp(1_800_000_000, 0),
+        });
+    }
+
+    #[test]
+    fn stripe_customer_created_round_trip() {
+        round_trip(BillingOperation::StripeCustomerCreated {
+            customer_id: "cus_abc123".to_string(),
+        });
+    }
+
+    #[test]
+    fn reactivated_round_trip() {
+        round_trip(BillingOperation::Reactivated {
+            trialing: false,
+            next_renewal_at: DateTime::<Utc>::from_timestamp(1_800_000_000, 0),
+        });
+    }
+
+    #[test]
+    fn plan_changed_round_trip() {
+        round_trip(BillingOperation::PlanChanged {
+            from: get_free_plan(),
+            to: get_free_plan(),
+            is_downgrade: false,
+            next_renewal_at: DateTime::<Utc>::from_timestamp(1_800_000_000, 0),
+        });
+    }
+
+    #[test]
+    fn trial_ended_round_trip() {
+        round_trip(BillingOperation::TrialEnded {
+            plan: get_free_plan(),
+            converted: true,
+            next_renewal_at: DateTime::<Utc>::from_timestamp(1_800_000_000, 0),
         });
     }
 }
