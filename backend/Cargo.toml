@@ -87,7 +87,7 @@ dhcproto = "0.15.0"
 pem = "3"
 webpki-roots = "0.25"
 base64ct = "=1.6.0"
-jsonwebtoken = "9"
+jsonwebtoken = "10"
 
 # === Configuration and Logging ===
 config = "0.14"
