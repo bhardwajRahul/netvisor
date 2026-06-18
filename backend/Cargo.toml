@@ -87,7 +87,7 @@ dhcproto = "0.15.0"
 pem = "3"
 webpki-roots = "0.25"
 base64ct = "=1.6.0"
-jsonwebtoken = "10"
+jsonwebtoken = { version = "10", default-features = false, features = ["rust_crypto", "use_pem"] }
 
 # === Configuration and Logging ===
 config = "0.14"
