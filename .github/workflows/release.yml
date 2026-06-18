@@ -681,3 +681,72 @@ jobs:
               echo "No baseline changes (no DB-backed enum variants added/removed in this release)."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # ============================================
+  # NDAA Section 889 supply-chain check
+  # ============================================
+  # Scans the released source tree and every published image for components
+  # originating with 889 covered entities. Fails the release on a hit; uploads
+  # the SBOMs as release assets on success. See scripts/889-check.md.
+  supply-chain-889:
+    name: NDAA Section 889 check
+    runs-on: ubuntu-latest
+    needs: [create-manifests]
+    permissions:
+      contents: write
+      packages: read
+    env:
+      SYFT_VERSION: v1.45.1
+      TAG: ${{ github.event.release.tag_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Install syft
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh \
+            | sh -s -- -b /usr/local/bin "${SYFT_VERSION}"
+          syft version
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate SBOMs (source + all released images)
+        run: |
+          repo="ghcr.io/${{ github.repository }}"
+          syft scan dir:. -o cyclonedx-json | jq . > "sbom-source-${TAG}.cdx.json"
+          syft scan "registry:${repo}/server:${TAG}" -o cyclonedx-json | jq . > "sbom-server-${TAG}.cdx.json"
+          syft scan "registry:${repo}/server-commercial:${TAG}" -o cyclonedx-json | jq . > "sbom-server-commercial-${TAG}.cdx.json"
+          syft scan "registry:${repo}/daemon:${TAG}" -o cyclonedx-json | jq . > "sbom-daemon-${TAG}.cdx.json"
+
+      - name: Run 889 check
+        run: ./scripts/check-889.sh sbom-source-"${TAG}".cdx.json sbom-server-"${TAG}".cdx.json sbom-server-commercial-"${TAG}".cdx.json sbom-daemon-"${TAG}".cdx.json
+
+      - name: Upload SBOMs to the release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            sbom-source-${{ env.TAG }}.cdx.json
+            sbom-server-${{ env.TAG }}.cdx.json
+            sbom-server-commercial-${{ env.TAG }}.cdx.json
+            sbom-daemon-${{ env.TAG }}.cdx.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## NDAA Section 889 supply-chain check"
+            echo ""
+            echo "Scanned the released source tree and the \`server\`, \`server-commercial\`,"
+            echo "and \`daemon\` images at \`${TAG}\`."
+            echo ""
+            echo "On success the four CycloneDX SBOMs are attached to this release as assets."
+          } >> "$GITHUB_STEP_SUMMARY"
+

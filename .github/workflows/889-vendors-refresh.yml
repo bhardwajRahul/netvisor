@@ -1,0 +1,68 @@
+# Quarterly reminder to review the NDAA Section 889 prohibited-vendor list.
+# Opens (or refreshes) a tracking issue prompting a maintainer to re-pull SAM.gov
+# (FAR 52.204-25) and review ASPI, then update scripts/889-vendors.txt. The
+# matcher stays offline; this job never edits the list itself. See
+# scripts/889-check.md for why automated fetch-and-PR was deferred.
+name: 889 Vendor List Refresh
+
+on:
+  schedule:
+    # 09:00 UTC on the 1st of Jan, Apr, Jul, Oct (quarterly)
+    - cron: '0 9 1 1,4,7,10 *'
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Open or update the quarterly review issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = 'Quarterly review: NDAA Section 889 vendor list';
+            const body = [
+              'Time for the quarterly review of `scripts/889-vendors.txt`.',
+              '',
+              '- [ ] Re-pull the SAM.gov Exclusions extract filtered to FAR 52.204-25',
+              '      (https://sam.gov/data-services/Exclusions/Public) and add any new',
+              '      covered parties as patterns.',
+              '- [ ] Review ASPI "Mapping China\'s Tech Giants"',
+              '      (https://chinatechmap.aspi.org.au/) for new affiliates.',
+              '- [ ] Confirm the five named entities and known subsidiaries are still current.',
+              '- [ ] Update the `date` stamp on any reviewed/added rows.',
+              '- [ ] Re-check `scripts/889-allow.txt` exceptions still apply.',
+              '',
+              'Methodology and rationale: `scripts/889-check.md`.',
+            ].join('\n');
+
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: '889-vendor-review',
+              state: 'open',
+              per_page: 100,
+            });
+
+            if (existing.data.length > 0) {
+              const n = existing.data[0].number;
+              console.log(`Open review issue already exists: #${n} — adding a nudge comment.`);
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: n,
+                body: 'Quarterly reminder: this 889 vendor-list review is still open.',
+              });
+              return;
+            }
+
+            const created = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              body,
+              labels: ['889-vendor-review'],
+            });
+            console.log(`Opened review issue #${created.data.number}`);
