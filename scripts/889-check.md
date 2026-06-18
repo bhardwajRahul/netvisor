@@ -10,6 +10,7 @@ The output is supporting evidence for a Section 889 compliance attestation.
 | File | Role |
 |------|------|
 | `scripts/check-889.sh` | Matcher. POSIX shell + `jq`, no network. Scans CycloneDX SBOM(s), fails on a hit. |
+| `scripts/attest-889.sh` | On-demand attestation bundler. Generates SBOMs + runs the matcher + emits a hash-anchored evidence bundle for a customer. |
 | `scripts/889-vendors.txt` | Maintained prohibited-vendor pattern list (single source of truth). |
 | `scripts/889-allow.txt` | Reviewed false-positive exceptions (only subtracts, never broadens). |
 | `.github/workflows/889-check.yml` | PR gate — analyze-only source SBOM, blocks merge on a hit. |
@@ -33,6 +34,48 @@ syft scan registry:ghcr.io/scanopy/scanopy/server:latest -o cyclonedx-json | jq 
 `file:line` in hit output points at the offending component. The matcher falls
 back to line 1 on minified input. `./scripts/check-889.sh --help` documents all
 options. Exit codes: `0` clean, `1` hit found, `2` usage/dependency error.
+
+## Attestation artifact (a stable link for a signed letter)
+
+A signed Section 889 attestation letter should cite a **stable URL** to the
+current machine-checked attestation, not static files. The
+`.github/workflows/889-attest.yml` workflow maintains exactly that: it runs the
+bundler in CI and clobbers the assets on one fixed-tag **prerelease**, so a
+single permalink always serves the latest attestation.
+
+```
+Page (human):  https://github.com/<owner>/<repo>/releases/tag/attestation-889
+JSON:          https://github.com/<owner>/<repo>/releases/download/attestation-889/attestation.json
+```
+
+The release page renders `ATTESTATION.md` (result, assessed commit, components
+count, tool + vendor-list versions/digests, per-image assessed status); the
+assets are the full evidence (SBOMs, policy files, `SHA256SUMS`). It is a
+**prerelease on purpose** — `install.sh` resolves the daemon binary via
+`/releases/latest/`, which excludes prereleases, so the attestation never
+hijacks the binary download.
+
+**Refresh it** (before a deal, or on the monthly schedule): Actions tab →
+"889 Attestation (rolling)" → Run workflow. Running in CI includes the private
+`server-commercial` image (pulled with `GITHUB_TOKEN`).
+
+### Generating a bundle locally
+
+`scripts/attest-889.sh` produces the same bundle on demand (the workflow just
+runs it and publishes the result):
+
+```sh
+./scripts/attest-889.sh                      # source + the three :latest images
+./scripts/attest-889.sh --tag v1.4.2         # a specific released tag
+./scripts/attest-889.sh --no-images          # source tree only
+```
+
+It writes `889-attestation-<date>/` (gitignored): `ATTESTATION.md`,
+`attestation.json`, `sbom-*.cdx.json`, `889-vendors.txt`, `889-allow.txt`,
+`summary.txt`, `hits.jsonl`, `SHA256SUMS`. It **exits non-zero on a hit**, so a
+PASS bundle can never be produced for a tree that contains a covered-entity
+component. A private image is recorded as `not-assessed` unless syft can pull it
+(`docker login ghcr.io` first, or run in CI).
 
 ## Vendor list — seed methodology
 

@@ -26,6 +26,11 @@ oidc.toml
 # Private keys
 *private*.pem
 
+# 889 attestation bundles (generated evidence, not source — same rationale as
+# not committing SBOMs; hand these to customers / archive them out of band)
+/889-attestation-*/
+/889-attestation-*.tar.gz
+
 # Manual testing
 TEST_PLAN.json
 TEST_RESULTS.json
