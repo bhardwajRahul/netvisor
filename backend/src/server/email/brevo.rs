@@ -23,7 +23,13 @@ impl BrevoEmailProvider {
 
 #[async_trait]
 impl EmailTransport for BrevoEmailProvider {
-    async fn send(&self, to: EmailAddress, email: &dyn Email, base_url: &str) -> Result<(), Error> {
+    async fn send(
+        &self,
+        to: EmailAddress,
+        email: &dyn Email,
+        base_url: &str,
+        self_hosted: bool,
+    ) -> Result<(), Error> {
         let url = "https://api.brevo.com/v3/smtp/email";
         let payload = json!({
             "sender": {
@@ -32,7 +38,7 @@ impl EmailTransport for BrevoEmailProvider {
             },
             "to": [{ "email": to.to_string() }],
             "subject": email.subject(),
-            "htmlContent": email.render_html(base_url),
+            "htmlContent": email.render_html(base_url, self_hosted),
             "tags": [email.category().as_str()],
         });
 

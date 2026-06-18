@@ -1,4 +1,4 @@
-use super::{Email, EmailCategory};
+use super::{Body, Content, Email, EmailCategory, EmailPreference};
 
 /// Sent when a checkout completes: welcomes the user to their newly active paid
 /// plan.
@@ -15,28 +15,26 @@ impl Email for CheckoutCompleted<'_> {
         EmailCategory::Billing
     }
 
+    fn preference(&self) -> EmailPreference {
+        EmailPreference::Required
+    }
+
     fn campaign(&self) -> &'static str {
         "checkout_completed"
     }
 
     fn body_html(&self) -> String {
-        BODY.replace("{plan_name}", self.plan_name)
+        Body::new()
+            .content(
+                Content::new()
+                    .heading(&format!("You're On Scanopy {}", self.plan_name))
+                    .paragraph("Hi there,")
+                    .paragraph(&format!(
+                        "Your subscription to <strong>{}</strong> is active. Thanks for picking Scanopy — we're glad to have you.",
+                        self.plan_name
+                    )),
+            )
+            .cta("{base_url}/?{utm}", "Open Scanopy")
+            .render()
     }
 }
-
-const BODY: &str = r#"                    <!-- Main Content -->
-                    <tr>
-                        <td style="padding: 0 40px 20px 40px;">
-                            <h1 style="margin: 0 0 20px 0; font-size: 24px; font-weight: 600; color: #1a1a1a; text-align: center;">You're On Scanopy {plan_name}</h1>
-                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 24px; color: #4a4a4a;">Hi there,</p>
-                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 24px; color: #4a4a4a;">Your subscription to <strong>{plan_name}</strong> is active. Thanks for picking Scanopy — we're glad to have you.</p>
-                        </td>
-                    </tr>
-
-                    <!-- CTA Button -->
-                    <tr>
-                        <td align="center" style="padding: 0 40px 30px 40px;">
-                            <a href="{base_url}/?{utm}" style="display: inline-block; padding: 14px 40px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 500;">Open Scanopy</a>
-                        </td>
-                    </tr>
-"#;

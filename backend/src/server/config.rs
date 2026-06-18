@@ -159,12 +159,21 @@ pub struct ServerConfig {
     pub snapshot_retention_days_override: Option<u32>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, PartialEq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, ToSchema, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum DeploymentType {
     Cloud,
     Commercial,
     Community,
+}
+
+impl DeploymentType {
+    /// True for deployments the customer hosts themselves (Commercial /
+    /// Community). Cloud is the only Scanopy-LLC-operated deployment, so this
+    /// is the "is Scanopy LLC the sender" signal the email footer gates on.
+    pub fn is_self_hosted(&self) -> bool {
+        !matches!(self, DeploymentType::Cloud)
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
@@ -387,8 +396,8 @@ impl AppState {
     }
 }
 
-pub fn get_deployment_type(state: Arc<AppState>) -> DeploymentType {
-    if state.config.stripe_secret.is_some() {
+pub fn get_deployment_type(config: &ServerConfig) -> DeploymentType {
+    if config.stripe_secret.is_some() {
         DeploymentType::Cloud
     } else {
         #[cfg(feature = "commercial")]
@@ -421,7 +430,7 @@ pub async fn get_public_config(State(state): State<Arc<AppState>>) -> impl IntoR
         .map(|o| o.as_ref().list_providers())
         .unwrap_or_default();
 
-    let deployment_type = get_deployment_type(state.clone());
+    let deployment_type = get_deployment_type(&state.config);
     let current_license = state.license_service.current_status().await;
     let license_status = current_license.as_api_string().map(String::from);
     let license_expiry = current_license.expiry_date();

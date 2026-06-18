@@ -12,6 +12,14 @@ use super::messages::Email;
 /// so a new email never requires a transport change.
 #[async_trait]
 pub trait EmailTransport: Send + Sync {
-    /// Render `email` against `base_url` and deliver it to `to`.
-    async fn send(&self, to: EmailAddress, email: &dyn Email, base_url: &str) -> Result<(), Error>;
+    /// Render `email` against `base_url` and deliver it to `to`. `self_hosted`
+    /// gates the footer's sender-identification block (see
+    /// [`Email::render_html`](super::messages::Email::render_html)).
+    async fn send(
+        &self,
+        to: EmailAddress,
+        email: &dyn Email,
+        base_url: &str,
+        self_hosted: bool,
+    ) -> Result<(), Error>;
 }

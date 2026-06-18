@@ -44,7 +44,13 @@ impl SmtpEmailProvider {
 
 #[async_trait]
 impl EmailTransport for SmtpEmailProvider {
-    async fn send(&self, to: EmailAddress, email: &dyn Email, base_url: &str) -> Result<(), Error> {
+    async fn send(
+        &self,
+        to: EmailAddress,
+        email: &dyn Email,
+        base_url: &str,
+        self_hosted: bool,
+    ) -> Result<(), Error> {
         let to_mbox = Mailbox::new(
             None,
             to.email()
@@ -52,8 +58,8 @@ impl EmailTransport for SmtpEmailProvider {
                 .map_err(|e| anyhow!("Invalid recipient email address: {}", e))?,
         );
 
-        let html = email.render_html(base_url);
-        let text = email.render_text(base_url);
+        let html = email.render_html(base_url, self_hosted);
+        let text = email.render_text(base_url, self_hosted);
 
         let message = lettre::Message::builder()
             .from(self.from.clone())

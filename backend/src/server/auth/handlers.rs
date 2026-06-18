@@ -181,7 +181,7 @@ async fn register(
     }
 
     // Honeypot: hidden field filled = likely bot (cloud only)
-    if get_deployment_type(state.clone()) == DeploymentType::Cloud
+    if get_deployment_type(&state.config) == DeploymentType::Cloud
         && request.website.as_ref().is_some_and(|w| !w.is_empty())
     {
         tracing::warn!(
@@ -212,7 +212,7 @@ async fn register(
     }
 
     if !mailchecker::is_valid(request.email.as_str())
-        && get_deployment_type(state.clone()) == DeploymentType::Cloud
+        && get_deployment_type(&state.config) == DeploymentType::Cloud
     {
         return Err(ApiError::conflict(
             "Email address uses a disposable domain. Please register with a non-disposable email address.",
@@ -1466,7 +1466,7 @@ async fn handle_register_flow(
                 billing_enabled,
                 provider_slug: slug,
                 code,
-                deployment_type: get_deployment_type(state.clone()),
+                deployment_type: get_deployment_type(&state.config),
                 marketing_opt_in,
             },
         )

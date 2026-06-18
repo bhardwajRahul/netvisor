@@ -93,7 +93,7 @@ async fn main() -> anyhow::Result<()> {
 
     let discovery_service = state.services.discovery_service.clone();
     let billing_service = state.services.billing_service.clone();
-    let deployment_type = get_deployment_type(state.clone());
+    let deployment_type = get_deployment_type(&state.config);
 
     // Create discovery cleanup task
     let discovery_cleanup_state = state.clone();
