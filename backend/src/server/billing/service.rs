@@ -26,7 +26,7 @@ use crate::server::shared::types::metadata::TypeMetadataProvider;
 use crate::server::users::service::UserService;
 use anyhow::Error;
 use anyhow::anyhow;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use std::sync::Arc;
 use std::sync::OnceLock;
 use stripe::Client;
@@ -2462,10 +2462,43 @@ impl BillingService {
     /// the Discount panel body dynamically from Stripe. Returns `Ok(None)`
     /// when the env var is unset — the cancel modal hides the panel in
     /// that case.
-    pub async fn get_save_offer_coupon(&self) -> Result<Option<SaveOfferCoupon>, Error> {
+    pub async fn get_save_offer_coupon(
+        &self,
+        organization_id: Uuid,
+    ) -> Result<Option<SaveOfferCoupon>, Error> {
         let Ok(coupon_id) = std::env::var("STRIPE_SAVE_OFFER_COUPON_ID") else {
             return Ok(None);
         };
+
+        let organization = self.get_organization(organization_id).await?;
+        let Some(plan) = organization.base.plan else {
+            // No plan selected yet — nothing to discount.
+            return Ok(None);
+        };
+        if !plan.is_stripe_managed() {
+            // No Stripe sub to attach a coupon to (Free / Community / Demo /
+            // CommercialSelfHosted).
+            return Ok(None);
+        }
+        let billing_rate = plan.config().rate;
+        let sub = self.find_current_subscription(&organization).await?;
+
+        // Stripe moved `current_period_end` from the top-level Subscription
+        // to per-item in newer API versions. Our subs are single-item
+        // (one base plan), so the first item carries the canonical
+        // next-invoice timestamp.
+        let Some(next_renewal_ts) = sub.items.data.first().map(|i| i.current_period_end) else {
+            tracing::warn!(
+                organization_id = %organization_id,
+                subscription_id = %sub.id,
+                "Subscription has no items; cannot compute renewal date",
+            );
+            return Ok(None);
+        };
+        let Some(next_renewal_at) = DateTime::<Utc>::from_timestamp(next_renewal_ts, 0) else {
+            return Ok(None);
+        };
+
         let coupon = RetrieveCoupon::new(coupon_id.clone())
             .send(&self.stripe)
             .await
@@ -2479,9 +2512,27 @@ impl BillingService {
             })?;
         let percent_off = coupon.percent_off.unwrap_or(0.0).round() as i64;
         let duration_in_months = coupon.duration_in_months.unwrap_or(12);
+
+        // The coupon is "active" for `duration_in_months` from now; if the
+        // next renewal lands after that window, no invoice falls inside the
+        // discount window so the offer is functionally a no-op. Hide it.
+        let coupon_window_end =
+            Utc::now() + chrono::Months::new(u32::try_from(duration_in_months).unwrap_or(12));
+        if next_renewal_at > coupon_window_end {
+            tracing::debug!(
+                organization_id = %organization_id,
+                next_renewal_at = %next_renewal_at,
+                coupon_window_end = %coupon_window_end,
+                "Save-offer coupon would not catch next renewal; hiding panel",
+            );
+            return Ok(None);
+        }
+
         Ok(Some(SaveOfferCoupon {
             percent_off,
             duration_in_months,
+            next_renewal_at,
+            billing_rate,
         }))
     }
 

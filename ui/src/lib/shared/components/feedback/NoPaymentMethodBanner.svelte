@@ -18,19 +18,16 @@
 	let org = $derived(organizationQuery.data);
 	let trialDaysLeft = $derived(getTrialDaysLeft(org));
 
-	// Show only for plans that actually require a card: a Stripe-managed plan
-	// (excludes Demo/Community/CommercialSelfHosted) that isn't Free (Free is
-	// Stripe-managed but $0). plan_status alone isn't enough — a Free org can
-	// still carry plan_status='active'. Both flags are checked for an explicit
-	// value (=== true / === false, not !==) so missing or stale plan metadata
-	// fails safe: an unknown plan hides this billing nag rather than showing it.
-	// The final clause defers to TrialEndingBanner in its window (trialing + no
-	// card + <= 3 days) so the two never render together.
+	// Show only for plans that actually require a card: Stripe-managed plans
+	// (Starter / Pro / Team / Business / Enterprise — Free is non-Stripe-managed
+	// at the backend now). The explicit `=== true` check fails safe: missing or
+	// stale plan metadata hides this billing nag rather than showing it. The
+	// final clause defers to TrialEndingBanner in its window (trialing + no card
+	// + <= 3 days) so the two never render together.
 	let planMeta = $derived(billingPlans.getMetadata(org?.plan?.type ?? null));
 	let shouldShow = $derived(
 		org != null &&
 			planMeta.is_stripe_managed === true &&
-			planMeta.is_free === false &&
 			(org.plan_status === 'trialing' ||
 				org.plan_status === 'active' ||
 				org.plan_status === 'past_due') &&

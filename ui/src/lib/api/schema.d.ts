@@ -3097,19 +3097,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-06-17T19:08:33.192718Z",
+             *       "created_at": "2026-06-18T14:21:58.855744Z",
              *       "first_discovery_id": null,
-             *       "id": "4e44e86b-810e-446a-bb7c-05a3cdbf31df",
+             *       "id": "f518232d-838b-4ded-8d7d-752daaef0c38",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-06-17T19:08:33.192718Z",
+             *       "last_seen_at": "2026-06-18T14:21:58.855744Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-06-17T19:08:33.192718Z",
-             *       "valid_from": "2026-06-17T19:08:33.192718Z",
+             *       "updated_at": "2026-06-18T14:21:58.855744Z",
+             *       "valid_from": "2026-06-18T14:21:58.855744Z",
              *       "valid_to": null
              *     }
              */
@@ -3446,19 +3446,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-06-17T19:08:33.173078Z",
+             *               "created_at": "2026-06-18T14:21:58.834373Z",
              *               "first_discovery_id": null,
-             *               "id": "5f8a1dd0-2266-46c9-bbf2-a0e7b6dd920b",
+             *               "id": "951e7fe0-b044-46ac-bd13-b8d4e72f2def",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-06-17T19:08:33.173078Z",
+             *               "last_seen_at": "2026-06-18T14:21:58.834373Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-06-17T19:08:33.173078Z",
-             *               "valid_from": "2026-06-17T19:08:33.173078Z",
+             *               "updated_at": "2026-06-18T14:21:58.834373Z",
+             *               "valid_from": "2026-06-18T14:21:58.834373Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3472,7 +3472,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Forgejo",
+             *           "service_definition": "Frigate",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3652,8 +3652,11 @@ export interface components {
         };
         ApiResponse_Option_SaveOfferCoupon: {
             data?: null | {
+                billing_rate: components["schemas"]["BillingRate"];
                 /** Format: int64 */
                 duration_in_months: number;
+                /** Format: date-time */
+                next_renewal_at: string;
                 /** Format: int64 */
                 percent_off: number;
             };
@@ -3825,19 +3828,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-06-17T19:08:33.186341Z",
+             *           "created_at": "2026-06-18T14:21:58.848617Z",
              *           "first_discovery_id": null,
-             *           "id": "af077baf-d5e9-43db-b8e4-598d4c8a23fb",
+             *           "id": "6d5652c6-26cb-49fc-b51f-776252c255f5",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-06-17T19:08:33.186341Z",
+             *           "last_seen_at": "2026-06-18T14:21:58.848617Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-06-17T19:08:33.186341Z",
-             *           "valid_from": "2026-06-17T19:08:33.186341Z",
+             *           "updated_at": "2026-06-18T14:21:58.848617Z",
+             *           "valid_from": "2026-06-18T14:21:58.848617Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -3851,7 +3854,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Forgejo",
+             *       "service_definition": "Frigate",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4304,19 +4307,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-06-17T19:08:33.173518Z",
+         *       "created_at": "2026-06-18T14:21:58.834795Z",
          *       "first_discovery_id": null,
-         *       "id": "55075e4a-48be-451c-a0af-c5e07ef49bd7",
+         *       "id": "a2834703-32fa-43ae-a487-937f8a9bcf4e",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-06-17T19:08:33.173518Z",
+         *       "last_seen_at": "2026-06-18T14:21:58.834795Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-06-17T19:08:33.173518Z",
-         *       "valid_from": "2026-06-17T19:08:33.173518Z",
+         *       "updated_at": "2026-06-18T14:21:58.834795Z",
+         *       "valid_from": "2026-06-18T14:21:58.834795Z",
          *       "valid_to": null
          *     }
          */
@@ -4531,7 +4534,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Forgejo",
+         *           "service_definition": "Frigate",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -5481,19 +5484,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-06-17T19:08:33.172574Z",
+         *               "created_at": "2026-06-18T14:21:58.833856Z",
          *               "first_discovery_id": null,
-         *               "id": "8b6209fa-9848-4ff6-b48e-f8c483b640ae",
+         *               "id": "3a929cf1-6f78-407b-8676-03bbb218f4b5",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-06-17T19:08:33.172574Z",
+         *               "last_seen_at": "2026-06-18T14:21:58.833856Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-06-17T19:08:33.172574Z",
-         *               "valid_from": "2026-06-17T19:08:33.172574Z",
+         *               "updated_at": "2026-06-18T14:21:58.833856Z",
+         *               "valid_from": "2026-06-18T14:21:58.833856Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -5507,7 +5510,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Forgejo",
+         *           "service_definition": "Frigate",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -6790,10 +6793,23 @@ export interface components {
          * @description Live terms for the configured save-offer coupon, read directly from
          *     Stripe. Used by the cancel modal's Discount panel to render the offer
          *     dynamically instead of hard-coding the percent/duration.
+         *
+         *     Only returned when the coupon would actually catch the user's next
+         *     invoice — i.e. `next_renewal_at` falls within the coupon's `duration_in_months`
+         *     window. Yearly subscribers partway through a cycle whose next renewal
+         *     lands after the coupon's window get `None` from the endpoint and the
+         *     cancel modal's Discount panel doesn't render.
+         *
+         *     `billing_rate` lets the frontend pick monthly vs yearly copy: a monthly
+         *     subscriber thinks in terms of "N months of discount"; a yearly subscriber
+         *     thinks in terms of "my next renewal on {date}."
          */
         SaveOfferCoupon: {
+            billing_rate: components["schemas"]["BillingRate"];
             /** Format: int64 */
             duration_in_months: number;
+            /** Format: date-time */
+            next_renewal_at: string;
             /** Format: int64 */
             percent_off: number;
         };
@@ -6898,19 +6914,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-06-17T19:08:33.173428Z",
+         *           "created_at": "2026-06-18T14:21:58.834706Z",
          *           "first_discovery_id": null,
-         *           "id": "71d2446c-fd30-45b4-99e4-3fa308aa5f84",
+         *           "id": "7eda050b-0234-4083-9701-28eda27a3f83",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-06-17T19:08:33.173428Z",
+         *           "last_seen_at": "2026-06-18T14:21:58.834706Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-06-17T19:08:33.173428Z",
-         *           "valid_from": "2026-06-17T19:08:33.173428Z",
+         *           "updated_at": "2026-06-18T14:21:58.834706Z",
+         *           "valid_from": "2026-06-18T14:21:58.834706Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -6924,7 +6940,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Forgejo",
+         *       "service_definition": "Frigate",
          *       "source": {
          *         "type": "Manual"
          *       },

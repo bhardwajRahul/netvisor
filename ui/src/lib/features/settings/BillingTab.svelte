@@ -155,10 +155,13 @@
 	});
 
 	// Render the active save-offer discount chip only while the discount
-	// window is still in the future, and only on Stripe-managed plans.
+	// window is still in the future, and only on Stripe-managed plans —
+	// a coupon needs a Stripe sub to attach to. The discount columns can
+	// still be populated on a non-Stripe plan (e.g. an org that applied a
+	// discount on Pro and then downgraded to Free), so this gate is needed.
 	let activeDiscount = $derived.by(() => {
-		if (!org || billingPlans.getMetadata(org.plan?.type ?? null).is_stripe_managed !== true)
-			return null;
+		if (!org) return null;
+		if (billingPlans.getMetadata(org.plan?.type ?? null).is_stripe_managed !== true) return null;
 		const until = org.discount_save_offer_active_until;
 		const percent = org.discount_save_offer_percent_off;
 		if (!until || percent == null) return null;

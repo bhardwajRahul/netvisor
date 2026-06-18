@@ -10891,19 +10891,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-06-17T19:08:33.192715Z",
+              "created_at": "2026-06-18T14:21:58.855742Z",
               "first_discovery_id": null,
-              "id": "fb85fe6c-3e86-40d6-b2dc-da0f79f9793b",
+              "id": "6925797d-7d4b-4a94-b48e-5af8b02c7f02",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-17T19:08:33.192715Z",
+              "last_seen_at": "2026-06-18T14:21:58.855742Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-17T19:08:33.192715Z",
-              "valid_from": "2026-06-17T19:08:33.192715Z",
+              "updated_at": "2026-06-18T14:21:58.855742Z",
+              "valid_from": "2026-06-18T14:21:58.855742Z",
               "valid_to": null
             }
           },
@@ -11889,19 +11889,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-06-17T19:08:33.173068Z",
+                      "created_at": "2026-06-18T14:21:58.834375Z",
                       "first_discovery_id": null,
-                      "id": "ada52e16-320a-4433-91ca-73782e3b7b83",
+                      "id": "1961b43e-d245-4352-8bc6-b87562338d43",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-06-17T19:08:33.173068Z",
+                      "last_seen_at": "2026-06-18T14:21:58.834375Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-06-17T19:08:33.173068Z",
-                      "valid_from": "2026-06-17T19:08:33.173068Z",
+                      "updated_at": "2026-06-18T14:21:58.834375Z",
+                      "valid_from": "2026-06-18T14:21:58.834375Z",
                       "valid_to": null
                     }
                   ],
@@ -11915,7 +11915,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Forgejo",
+                  "service_definition": "Frigate",
                   "source": {
                     "type": "Manual"
                   },
@@ -12356,15 +12356,24 @@
               },
               {
                 "type": "object",
-                "description": "Live terms for the configured save-offer coupon, read directly from\nStripe. Used by the cancel modal's Discount panel to render the offer\ndynamically instead of hard-coding the percent/duration.",
+                "description": "Live terms for the configured save-offer coupon, read directly from\nStripe. Used by the cancel modal's Discount panel to render the offer\ndynamically instead of hard-coding the percent/duration.\n\nOnly returned when the coupon would actually catch the user's next\ninvoice — i.e. `next_renewal_at` falls within the coupon's `duration_in_months`\nwindow. Yearly subscribers partway through a cycle whose next renewal\nlands after the coupon's window get `None` from the endpoint and the\ncancel modal's Discount panel doesn't render.\n\n`billing_rate` lets the frontend pick monthly vs yearly copy: a monthly\nsubscriber thinks in terms of \"N months of discount\"; a yearly subscriber\nthinks in terms of \"my next renewal on {date}.\"",
                 "required": [
                   "percent_off",
-                  "duration_in_months"
+                  "duration_in_months",
+                  "next_renewal_at",
+                  "billing_rate"
                 ],
                 "properties": {
+                  "billing_rate": {
+                    "$ref": "#/components/schemas/BillingRate"
+                  },
                   "duration_in_months": {
                     "type": "integer",
                     "format": "int64"
+                  },
+                  "next_renewal_at": {
+                    "type": "string",
+                    "format": "date-time"
                   },
                   "percent_off": {
                     "type": "integer",
@@ -12897,19 +12906,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-06-17T19:08:33.186340Z",
+                  "created_at": "2026-06-18T14:21:58.848576Z",
                   "first_discovery_id": null,
-                  "id": "b8d92c2e-69ca-427f-9a0d-31cf4fb1e591",
+                  "id": "1a99f1ba-5b39-4da5-b486-a62e8ff4c2e9",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-17T19:08:33.186340Z",
+                  "last_seen_at": "2026-06-18T14:21:58.848576Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-17T19:08:33.186340Z",
-                  "valid_from": "2026-06-17T19:08:33.186340Z",
+                  "updated_at": "2026-06-18T14:21:58.848576Z",
+                  "valid_from": "2026-06-18T14:21:58.848576Z",
                   "valid_to": null
                 }
               ],
@@ -12923,7 +12932,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Forgejo",
+              "service_definition": "Frigate",
               "source": {
                 "type": "Manual"
               },
@@ -14623,19 +14632,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-06-17T19:08:33.173506Z",
+          "created_at": "2026-06-18T14:21:58.834809Z",
           "first_discovery_id": null,
-          "id": "c8c51eb2-c45e-49be-9c27-46ec85bdf56e",
+          "id": "eb5b2641-f41d-4e51-aea0-7f51b4f2a97b",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-06-17T19:08:33.173506Z",
+          "last_seen_at": "2026-06-18T14:21:58.834809Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-06-17T19:08:33.173506Z",
-          "valid_from": "2026-06-17T19:08:33.173506Z",
+          "updated_at": "2026-06-18T14:21:58.834809Z",
+          "valid_from": "2026-06-18T14:21:58.834809Z",
           "valid_to": null
         }
       },
@@ -15225,7 +15234,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Forgejo",
+              "service_definition": "Frigate",
               "tags": [],
               "virtualization": null
             }
@@ -17863,19 +17872,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-06-17T19:08:33.172579Z",
+                  "created_at": "2026-06-18T14:21:58.833863Z",
                   "first_discovery_id": null,
-                  "id": "0baecb38-a90b-4e9e-9140-7b1e94be1867",
+                  "id": "8ce7b347-9ff8-4cd6-8a2a-557ccc1e6a0b",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-17T19:08:33.172579Z",
+                  "last_seen_at": "2026-06-18T14:21:58.833863Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-17T19:08:33.172579Z",
-                  "valid_from": "2026-06-17T19:08:33.172579Z",
+                  "updated_at": "2026-06-18T14:21:58.833863Z",
+                  "valid_from": "2026-06-18T14:21:58.833863Z",
                   "valid_to": null
                 }
               ],
@@ -17889,7 +17898,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Forgejo",
+              "service_definition": "Frigate",
               "source": {
                 "type": "Manual"
               },
@@ -20311,19 +20320,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-06-17T19:08:33.160294Z",
+                        "created_at": "2026-06-18T14:21:58.823016Z",
                         "first_discovery_id": null,
-                        "id": "2c195701-a6b0-458f-b5fe-0f91ccaa8f57",
+                        "id": "916ed259-652a-411a-8ada-277a9ef6c3f3",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-06-17T19:08:33.160294Z",
+                        "last_seen_at": "2026-06-18T14:21:58.823016Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-06-17T19:08:33.160294Z",
-                        "valid_from": "2026-06-17T19:08:33.160294Z",
+                        "updated_at": "2026-06-18T14:21:58.823016Z",
+                        "valid_from": "2026-06-18T14:21:58.823016Z",
                         "valid_to": null
                       }
                     ],
@@ -20337,7 +20346,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Forgejo",
+                    "service_definition": "Frigate",
                     "source": {
                       "type": "Manual"
                     },
@@ -20458,19 +20467,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-06-17T19:08:33.185075Z",
+                    "created_at": "2026-06-18T14:21:58.847310Z",
                     "first_discovery_id": null,
-                    "id": "8bdc55cd-a4bb-4a07-ba59-03ffd85d0e72",
+                    "id": "ba10cdaf-1075-4e76-ba34-69bde2ec1049",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-06-17T19:08:33.185075Z",
+                    "last_seen_at": "2026-06-18T14:21:58.847310Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-06-17T19:08:33.185075Z",
-                    "valid_from": "2026-06-17T19:08:33.185075Z",
+                    "updated_at": "2026-06-18T14:21:58.847310Z",
+                    "valid_from": "2026-06-18T14:21:58.847310Z",
                     "valid_to": null
                   }
                 ],
@@ -20484,7 +20493,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Forgejo",
+                "service_definition": "Frigate",
                 "source": {
                   "type": "Manual"
                 },
@@ -21785,15 +21794,24 @@
       },
       "SaveOfferCoupon": {
         "type": "object",
-        "description": "Live terms for the configured save-offer coupon, read directly from\nStripe. Used by the cancel modal's Discount panel to render the offer\ndynamically instead of hard-coding the percent/duration.",
+        "description": "Live terms for the configured save-offer coupon, read directly from\nStripe. Used by the cancel modal's Discount panel to render the offer\ndynamically instead of hard-coding the percent/duration.\n\nOnly returned when the coupon would actually catch the user's next\ninvoice — i.e. `next_renewal_at` falls within the coupon's `duration_in_months`\nwindow. Yearly subscribers partway through a cycle whose next renewal\nlands after the coupon's window get `None` from the endpoint and the\ncancel modal's Discount panel doesn't render.\n\n`billing_rate` lets the frontend pick monthly vs yearly copy: a monthly\nsubscriber thinks in terms of \"N months of discount\"; a yearly subscriber\nthinks in terms of \"my next renewal on {date}.\"",
         "required": [
           "percent_off",
-          "duration_in_months"
+          "duration_in_months",
+          "next_renewal_at",
+          "billing_rate"
         ],
         "properties": {
+          "billing_rate": {
+            "$ref": "#/components/schemas/BillingRate"
+          },
           "duration_in_months": {
             "type": "integer",
             "format": "int64"
+          },
+          "next_renewal_at": {
+            "type": "string",
+            "format": "date-time"
           },
           "percent_off": {
             "type": "integer",
@@ -22076,19 +22094,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-06-17T19:08:33.173417Z",
+              "created_at": "2026-06-18T14:21:58.834717Z",
               "first_discovery_id": null,
-              "id": "df9a5128-9e7b-4c93-8e46-ba2d3d29e032",
+              "id": "dd3eeed1-6f33-4320-ba8d-7fabd53d2d23",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-17T19:08:33.173417Z",
+              "last_seen_at": "2026-06-18T14:21:58.834717Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-17T19:08:33.173417Z",
-              "valid_from": "2026-06-17T19:08:33.173417Z",
+              "updated_at": "2026-06-18T14:21:58.834717Z",
+              "valid_from": "2026-06-18T14:21:58.834717Z",
               "valid_to": null
             }
           ],
@@ -22102,7 +22120,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Forgejo",
+          "service_definition": "Frigate",
           "source": {
             "type": "Manual"
           },

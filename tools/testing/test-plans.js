@@ -169,100 +169,12 @@ var TEST_PLANS = [
 ,
 {
   "branch": "fix/stripe-webhook-org-deleted",
-  "tests": [
-    {
-      "id": "trial-will-end-webhook-after-org-deleted",
-      "category": "Webhook safety net",
-      "description": "After an org is deleted, a Stripe customer.subscription.trial_will_end webhook fired for the (now-orphaned) customer returns 200 instead of 500.",
-      "setup": "Reuse the deleted org from test 1, OR if running standalone: create org, upgrade to paid trial, downgrade to Free, delete org. You need the stripe_customer_id and the subscription id of a (canceled) subscription that previously belonged to that customer. From the Stripe dashboard 'Events' or 'Webhooks' tab, identify a past `customer.subscription.trial_will_end` event for that subscription, OR use the Stripe CLI `stripe events resend <event_id>` to re-deliver one. If no real event exists, use Stripe CLI `stripe trigger customer.subscription.trial_will_end` against a fixture and manually edit the metadata.organization_id to match the deleted org (advanced — easier path is to simply replay an old event).",
-      "steps": [
-        "Tail the backend logs (`docker logs -f backend` or equivalent).",
-        "Trigger / replay the `customer.subscription.trial_will_end` event from the Stripe dashboard or CLI so it hits the local webhook endpoint.",
-        "Confirm the webhook response is HTTP 200 (visible in Stripe dashboard 'Events' tab and/or backend access logs).",
-        "Confirm backend logs show a WARN with `organization_id=<id>` and `event=\"trial_will_end\"` and the message `Stripe webhook for deleted organization — skipping`.",
-        "Confirm Stripe does NOT mark the event for retry (no '500' status, no exponential-backoff retry attempts in the dashboard)."
-      ],
-      "expected": "Webhook returns 200, single WARN log line, no retries, no error logs.",
-      "flow": "setup",
-      "sequence": 2,
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "subscription-deleted-webhook-after-org-deleted",
-      "category": "Webhook safety net",
-      "description": "After an org is deleted, a Stripe customer.subscription.deleted webhook returns 200 and does NOT spawn the async side-effect task (which would try to look up the deleted org).",
-      "setup": "Same as test 2 but with a `customer.subscription.deleted` event instead. Note: the customer-delete in test 1 will itself trigger a real `subscription.deleted` event for any active subs at the time — that event arrives *after* the org row has been deleted, which is exactly the scenario this guards against. So this test naturally falls out of test 1: just watch the logs after running test 1.",
-      "steps": [
-        "After completing test 1, check the Stripe dashboard 'Events' tab for the `customer.subscription.deleted` event(s) generated when DeleteCustomer auto-canceled the subscription.",
-        "Confirm each such event was delivered with HTTP 200.",
-        "In backend logs, confirm a WARN line with `organization_id=<id>`, `subscription_id=<sub_id>`, and `event=\"subscription_deleted\"`.",
-        "Confirm there are NO 'Failed to process subscription deletion side effects' ERROR logs — the early-return prevents the spawned side-effect task from running."
-      ],
-      "expected": "Webhook returns 200; WARN log emitted; no async side-effect ERROR logs; no spawned tokio task ran.",
-      "flow": "setup",
-      "sequence": 3,
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "checkout-session-completed-webhook-after-org-deleted",
-      "category": "Webhook safety net",
-      "description": "After an org is deleted, a Stripe checkout.session.completed webhook returns 200 instead of 500.",
-      "setup": "Reuse a deleted org with stripe_customer_id, OR replay an old `checkout.session.completed` event from the Stripe dashboard for that customer's prior checkout session.",
-      "steps": [
-        "From the Stripe dashboard, find a past `checkout.session.completed` event tied to the deleted org's customer (the original signup checkout).",
-        "Use 'Resend webhook' on that event so it hits the local endpoint.",
-        "Confirm HTTP 200 response.",
-        "Confirm backend logs show a WARN with `organization_id=<id>` and `event=\"checkout_session_completed\"`."
-      ],
-      "expected": "Webhook returns 200; WARN log emitted; no error logs.",
-      "flow": "setup",
-      "sequence": 4,
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "org-delete-survives-stripe-failure",
-      "category": "Stripe teardown",
-      "description": "If the Stripe API call fails during org deletion (network error, invalid customer, etc.), the org is still deleted and the failure is logged.",
-      "setup": "Create an org, upgrade to a paid trial, downgrade to Free. Then directly edit the org's stripe_customer_id in the DB to a syntactically valid but non-existent customer ID (e.g., `cus_NEVER_EXISTED_12345`). This forces Stripe to return an error on DeleteCustomer.",
-      "steps": [
-        "Sign in as the owner.",
-        "Tail backend logs.",
-        "Delete the organization via the UI.",
-        "Confirm the deletion succeeds (you are signed out, the org is gone from the DB).",
-        "Confirm backend logs contain an ERROR line: `Failed to delete Stripe customer during org deletion — proceeding` with the bogus customer_id and the Stripe error string."
-      ],
-      "expected": "Org deletion completes (200); ERROR log captured with the failure detail; no 500 returned to the user.",
-      "status": null,
-      "feedback": null
-    }
-  ]
+  "tests": []
 }
 ,
 {
   "branch": "feat/phase2-session-digest",
-  "tests": [
-    {
-      "id": "digest-utm-and-glyphs",
-      "category": "Discovery digest — glyphs + tracking + settings link",
-      "description": "Host cards use the same glyphs as tag chips (+, ?, −) instead of textual badges; every clickable link in the digest carries UTM tracking; and the 'Manage email preferences' footer link opens the in-app Settings modal on the Email tab.",
-      "setup": "Run two Unified discoveries on a multi-subnet network. The first scan covers all subnets (seed). The second scan is restricted to one subnet so other subnets' hosts go missing — producing a digest with hosts_added, hosts_vanished, and tag deltas to inspect.",
-      "steps": [
-        "Open the second digest email in the Owner's inbox.",
-        "In the 'New hosts discovered' section, confirm each card's badge is a small green pill containing only the '+' glyph (hover shows 'New').",
-        "In the 'Missing hosts' section, confirm each card's badge is the '?' or '−' glyph (italic amber or strikethrough red), not the words 'Possibly missing' / 'Missing'.",
-        "Hover (or long-press) any host card title link, any tag chip, and the 'Manage email preferences' link in the footer.",
-        "For each, verify the URL contains 'utm_source=email', 'utm_campaign=discovery_digest', and 'utm_medium=digest'.",
-        "Click the 'Manage email preferences' link in the footer.",
-        "Verify the app opens with the Settings modal on the Email tab (URL is /?modal=settings&tab=email, not /settings)."
-      ],
-      "expected": "Host badges are glyph-only with hover titles; every link in the digest carries the three UTM params; the settings link opens the in-app modal on the Email tab.",
-      "status": null,
-      "feedback": null
-    }
-  ]
+  "tests": []
 }
 ,
 {
@@ -298,38 +210,6 @@ var TEST_PLANS = [
   "branch": "fix/onboarding-and-ux-polish",
   "tests": [
     {
-      "id": "no-payment-banner-no-reload",
-      "category": "Billing / Banners",
-      "description": "The 'no payment method on file' banner appears immediately after selecting a paid/trial plan, without a page reload.",
-      "steps": [
-        "Sign up as a brand-new user (fresh org) so the plan-selection modal appears.",
-        "Select a paid plan that includes a free trial (so it activates in-app rather than redirecting to Stripe).",
-        "Without reloading the page, watch the top of the app after the modal closes."
-      ],
-      "setup": "Use a cloud-mode environment with billing enabled. Register a fresh account with no payment method on file so the plan-selection modal is shown on first login. If needed, ensure the selected plan has trial_days > 0 and base_cents > 0.",
-      "expected": "Within a few seconds (no manual reload) the persistent warning banner 'Your subscription has no payment method on file. Add one to avoid losing access.' appears.",
-      "flow": "setup",
-      "sequence": 1,
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "daemon-prompt-skip-first-click",
-      "category": "Onboarding / Daemon prompt",
-      "description": "'Skip for now' on the 'Start Discovering Your Network' modal closes it on the first click and it does not return after reload.",
-      "steps": [
-        "Continuing as the new org with no daemons installed, wait for the 'Start Discovering Your Network' modal to appear (it auto-opens, including right after the plan modal closes).",
-        "Click 'Skip for now' exactly once and observe whether the modal closes.",
-        "Reload the page and confirm the modal does not reappear."
-      ],
-      "setup": "Member+ user in a fresh org that has completed OrgCreated, has no daemons, and has not yet responded to the daemon prompt. The plan-selection step (test 1) is one reliable way to reach this state, since the prompt opens when the billing modal closes.",
-      "expected": "The modal closes on the FIRST click of 'Skip for now' (no second click needed). After reloading, the modal stays gone.",
-      "flow": "setup",
-      "sequence": 2,
-      "status": null,
-      "feedback": null
-    },
-    {
       "id": "daemon-prompt-get-started-persists",
       "category": "Onboarding / Daemon prompt",
       "description": "Choosing 'Get Started' and then backing out of the daemon-create modal does not re-show the prompt (now or after reload).",
@@ -357,32 +237,33 @@ var TEST_PLANS = [
       "feedback": null
     },
     {
-      "id": "topology-checklist-step-completes",
+      "id": "topology-checklist-step-focused-tab-only",
       "category": "Onboarding / Getting Started checklist",
-      "description": "The 'View your topology' Getting Started step completes after the user opens the topology tab with at least one host, and stays complete after reload.",
+      "description": "The 'View your topology' step completes ONLY when the user is focused on the Topology tab — not from background activity on other tabs — and persists after reload.",
       "steps": [
-        "As an org that has completed discovery and has at least one host, open the Getting Started checklist and note the 'View your topology' step is incomplete.",
-        "Navigate to the Topology tab and let it load.",
-        "Return to the checklist (home or sidebar) and observe the step.",
-        "Reload the page and confirm the step is still complete."
+        "As an org with discovery completed and at least one host, log in and stay on a NON-topology tab (e.g. Home). Open the Getting Started checklist and confirm 'View your topology' is still incomplete after a minute. (Optionally watch the network tab: no request to /api/v1/topology/data with mark_viewed=true should be sent while off the topology tab.)",
+        "Now click into the Topology tab and let it load.",
+        "Return to the checklist and confirm the 'View your topology' step is now complete.",
+        "Reload the page and confirm it stays complete.",
+        "Open the Topology tab again and confirm no duplicate mark-viewed request is sent (milestone already set)."
       ],
-      "setup": "Seed an org that has FirstDaemonRegistered + FirstDiscoveryCompleted in onboarding and at least one host on its default network, but does NOT yet have FirstTopologyRebuild. The simplest path: run a real discovery that finds a host; alternatively create a host via the API on a network whose org already has FirstDiscoveryCompleted.",
-      "expected": "After opening the Topology tab, the 'View your topology' checklist step transitions to completed within a few seconds, and remains completed after reload.",
+      "setup": "Seed an org that has FirstDaemonRegistered + FirstDiscoveryCompleted in onboarding and at least one host on its default network, but NOT FirstTopologyRebuild. Simplest: run a real discovery that finds a host, or create a host via the API on a network whose org already has FirstDiscoveryCompleted.",
+      "expected": "While off the topology tab the step stays incomplete (no milestone fires). After focusing the Topology tab the step completes within a few seconds and remains complete after reload. No repeat trigger on subsequent visits.",
       "status": null,
       "feedback": null
     },
     {
-      "id": "email-prefs-autosave",
+      "id": "email-prefs-autosave-with-toast",
       "category": "Settings / Email",
-      "description": "Email preferences auto-save on toggle with no Save button.",
+      "description": "Email preferences auto-save on toggle (no Save button) and show a success toast confirming the save.",
       "steps": [
-        "Open Settings → Email.",
-        "Confirm there is NO Save button next to the preference.",
-        "Toggle the 'discovery digest' checkbox off, then reload the page and confirm it is still off.",
-        "Toggle it back on, reload, and confirm it persisted."
+        "Open Settings → Email and confirm there is NO Save button.",
+        "Toggle the 'discovery digest' checkbox off and wait ~1s.",
+        "Confirm a success toast ('Email preferences updated') appears.",
+        "Reload the page and confirm the value persisted; toggle back on and confirm the toast + persistence again."
       ],
       "setup": "Any logged-in user. No special setup.",
-      "expected": "Each toggle persists immediately (after a brief debounce) without a Save button; the value survives reload.",
+      "expected": "Each toggle persists immediately (after a brief debounce) without a Save button, a success toast confirms the save, and the value survives reload.",
       "status": null,
       "feedback": null
     },
@@ -399,19 +280,6 @@ var TEST_PLANS = [
       "expected": "The checkbox snaps back to its previous state and an error toast ('Failed to update email preferences') appears — the UI never shows a state the server rejected.",
       "status": null,
       "feedback": null
-    },
-    {
-      "id": "sidebar-upgrade-cta-alignment",
-      "category": "Layout / Sidebar",
-      "description": "The sidebar 'Upgrade' CTA and trial-ending badge align with Settings and Support.",
-      "steps": [
-        "With the sidebar expanded, view the bottom navigation where 'Upgrade' (or a trial-ending pill) sits above Settings and Support.",
-        "Compare the icon column and the text column across the Upgrade/trial row and the Settings/Support rows."
-      ],
-      "setup": "Log in as an org on a Free plan (shows the 'Upgrade' CTA) or a trialing org (shows the trial-ending pill) so the amber CTA row renders in the sidebar.",
-      "expected": "The amber CTA's icon and text line up with the Settings/Support rows (same icon size and same text start position) — no slight left/up shift.",
-      "status": null,
-      "feedback": null
     }
   ]
 }
@@ -424,22 +292,6 @@ var TEST_PLANS = [
 {
   "branch": "feat/phase5-subscription-mechanics",
   "tests": [
-    {
-      "id": "cancel-modal-pause-redeem-flips-status",
-      "category": "Cancel modal / Pause",
-      "description": "Redeeming the pause save-offer pauses the subscription and surfaces the Resume button",
-      "setup": "Pick an org with an active paid subscription (last_paused_at null so no cooldown applies). Confirm the subscription is in Active state on Stripe (not trialing, not past_due).",
-      "steps": [
-        "Open Settings → Billing → click 'Cancel Subscription'",
-        "Pick 'Too expensive' → click 'Continue cancelling' to reach the save-offer screen",
-        "Click '60 days' in the Pause panel and verify the 'Pause until {date}' preview updates",
-        "Click 'Pause subscription'",
-        "Watch for either the success toast OR the 'may take a moment' warning toast, then look at the Billing tab status pill and the action button"
-      ],
-      "expected": "Within ~2-4 seconds the success toast fires: 'Subscription paused until {date}' AFTER the org payload has flipped to paused (not just on the API 200). Status pill shows 'Paused' (orange). The hard-gate Settings modal auto-opens to Billing tab. The Billing tab shows ONLY a 'Resume now' button — no 'Change Your Plan' / 'View Plans' button alongside it, and no BillingPlanModal opens on top of the hard gate. The owner inbox receives an email with subject 'Your Scanopy Subscription is Paused'. If the auto-poll reaches its 20s window without seeing the flip, the toast is a warning instead: 'Pause request accepted. It may take a moment to reflect across your account.' Server logs (INFO) show 'Stripe accepted pause_collection' with pause_collection_set=true.",
-      "status": null,
-      "feedback": null
-    },
     {
       "id": "pause-rejected-when-not-active",
       "category": "Cancel modal / Pause eligibility",
@@ -455,21 +307,6 @@ var TEST_PLANS = [
       "feedback": null
     },
     {
-      "id": "resume-restores-active",
-      "category": "Pause/resume",
-      "description": "Clicking Resume now flips the subscription back to active",
-      "steps": [
-        "From the previous test (org now paused), click 'Resume now'",
-        "Confirm the browser confirm() prompt",
-        "Wait for the toast"
-      ],
-      "expected": "Success toast 'Subscription resumed.' fires AFTER the org actually flips to active (auto-poll up to 20s). On timeout, warning toast: 'Resume request accepted. It may take a moment to reflect across your account.' Status pill flips back to 'Active' (green) without a manual page reload. Hard-gate Settings modal becomes dismissible again; 'Resume now' is replaced by Manage Subscription + Cancel Subscription. The owner inbox receives an email with subject 'Your Scanopy Subscription is Active Again'. Server logs do NOT show the prior 'You can only resume a subscription if it is paused' Stripe error — the resume path now sends `pause_collection=` via a custom StripeRequest impl rather than the SDK's ResumeSubscription endpoint.",
-      "flow": "cancel-too-expensive",
-      "sequence": 2,
-      "status": null,
-      "feedback": null
-    },
-    {
       "id": "pause-cooldown-message",
       "category": "Pause cooldown",
       "description": "Pause panel renders cooldown message instead of duration buttons when org paused within last 6 months",
@@ -478,93 +315,24 @@ var TEST_PLANS = [
         "Open Settings → Billing → click 'Cancel Subscription'",
         "Pick 'Too expensive' → continue to step 2"
       ],
-      "expected": "The Pause panel renders 'You last paused on {last-paused-date}. You can pause again on {next-eligible-date}' (~5 months from now) instead of the 30/60/90 buttons. The last-paused date matches the org's `last_paused_at` you set in setup. The Discount panel renders normally. Footer still has Back / Confirm Cancellation.",
+      "expected": "The Pause panel renders the cooldown copy inside a yellow InlineWarning banner — AlertTriangle icon on the left, yellow border, yellow background, with text 'You last paused on {last-paused-date}. You can pause again on {next-eligible-date}' (~5 months from now). NOT plain `text-warning` paragraph text. The last-paused date matches the org's `last_paused_at` you set in setup. The Discount panel renders normally below it. Footer still has Back / Confirm Cancellation.",
       "status": null,
       "feedback": null
     },
     {
       "id": "discount-panel-visible-when-coupon-set",
       "category": "Discount save offer",
-      "description": "Cancel modal renders the Discount panel when STRIPE_SAVE_OFFER_COUPON_ID is configured, applying it shows a chip on BillingTab and hides the panel on subsequent visits",
-      "setup": "Set STRIPE_SAVE_OFFER_COUPON_ID to a coupon ID that exists IN THE SAME STRIPE MODE as the secret key — a test-mode key requires a test-mode coupon, a live-mode key requires a live-mode coupon. Mismatch produces a 400 from Stripe ('No such coupon … exists in <other> mode'). Restart the server after setting the env var. Pick an org with an active paid subscription and `last_discount_at IS NULL` (one-time-use is fresh).",
+      "description": "Cancel modal renders the Discount panel only on Stripe-managed plans when STRIPE_SAVE_OFFER_COUPON_ID is configured; applying it shows a chip on BillingTab and hides the panel on subsequent visits",
+      "setup": "Set STRIPE_SAVE_OFFER_COUPON_ID to a coupon ID that exists IN THE SAME STRIPE MODE as the secret key — a test-mode key requires a test-mode coupon, a live-mode key requires a live-mode coupon. Mismatch produces a 400 from Stripe ('No such coupon … exists in <other> mode'). Restart the server after setting the env var. Pick an org with an active paid Stripe-managed subscription (Pro/Business) and `last_discount_at IS NULL`.",
       "steps": [
         "Open Settings → Billing → click 'Cancel Subscription'",
         "Pick 'Too expensive' → click 'Continue cancelling'",
         "On the save-offer screen, click 'Apply discount'",
         "Watch for the success / warning toast and the BillingTab plan card",
-        "Re-open Cancel Subscription and pick 'Too expensive' again to confirm the discount panel is gone"
+        "Re-open Cancel Subscription and pick 'Too expensive' again to confirm the discount panel is gone",
+        "Switch to a non-Stripe-managed plan org (Free / Community / Demo / CommercialSelfHosted) and repeat opening the cancel modal"
       ],
-      "expected": "Initial visit: Step 2 renders both Pause and Discount panels. The Discount panel body reads 'Stay subscribed at {percent_off}% off for {duration_in_months} months.' — both numbers pulled live from the configured Stripe coupon. After 'Apply discount', within ~2-4 seconds the success toast fires: 'Discount applied to your subscription.' (or the 'may take a moment' warning on timeout). BillingTab plan card shows the base price crossed out (e.g. ~~$49.99~~) with the post-discount price as the primary number, plus the green chip '{percent_off}% off your subscription until {date}' below the plan name. The strikethrough + chip render ONLY for Stripe-managed plans — on a Demo / Community / CommercialSelfHosted plan, even if the discount columns are populated, neither shows. On a subsequent Cancel Subscription visit, picking 'Too expensive' shows ONLY the Pause panel (Discount panel hidden because `last_discount_at` is now non-null).",
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "discount-second-attempt-rejected-server-side",
-      "category": "Discount save offer / abuse prevention",
-      "description": "Backend refuses a second discount apply even if the frontend gate is bypassed",
-      "setup": "Pick an org with `organizations.last_discount_at IS NOT NULL` (any past timestamp). STRIPE_SAVE_OFFER_COUPON_ID configured.",
-      "steps": [
-        "POST /api/billing/cancel/apply-discount directly (e.g., from devtools console with the session cookie) — bypassing the modal-side filter"
-      ],
-      "expected": "Server returns 400 with body containing 'You've already used your one-time discount.' Stripe subscription is unchanged (no second discount applied).",
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "stripe-metadata-stash",
-      "category": "Cancel — Stripe-side verification",
-      "description": "Confirmed cancellations write the canonical Scanopy reason to Stripe Subscription metadata",
-      "setup": "Run the confirm-cancel flow once: pick an org with active paid subscription, open Cancel Subscription, pick 'Other', Continue, Confirm cancellation. Then look up the subscription in the Stripe dashboard.",
-      "steps": [
-        "Open Stripe Dashboard → Customers → {test customer}",
-        "Click the subscription",
-        "Scroll to Metadata"
-      ],
-      "expected": "Subscription metadata contains 'scanopy_cancel_reason: other' (or whatever reason was picked). Cancellation Details shows the comment if one was entered.",
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "reactivate-clears-pending-cancellation-and-emails",
-      "category": "Reactivate flow",
-      "description": "Clicking Reactivate Subscription clears the pending cancellation on Stripe, the BillingTab returns to its active state without a manual reload, and the owner receives an email",
-      "setup": "Pick an org with an active paid subscription. Open Cancel Subscription, pick 'Other', click Continue cancelling, then Confirm cancellation. Wait for status to read 'Downgrading'.",
-      "steps": [
-        "Click 'Reactivate Subscription'",
-        "Watch for the success / warning toast",
-        "Watch the BillingTab — do NOT manually reload the page",
-        "Check the org owner's inbox after ~1 minute"
-      ],
-      "expected": "Success toast 'Subscription reactivated.' fires AFTER the org payload actually flips to active (auto-poll up to 20s). On timeout, warning toast: 'Reactivate request accepted. It may take a moment to reflect across your account.' Status pill flips from 'Downgrading' back to 'Active' (green) on its own. The Reactivate Subscription button disappears, replaced by Manage Subscription + Cancel Subscription. The 'plan will switch to Free' inline warning is gone. Stripe dashboard shows `cancel_at_period_end: false`. Owner's inbox contains an email subject 'Your Scanopy subscription is active again'.",
-      "flow": "reactivate-flow",
-      "sequence": 1,
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "pause-status-triggers-billing-modal-gate",
-      "category": "Pause UI gate (past_due parity)",
-      "description": "Paused subscriptions trigger the same UI hard-gate as past_due: Settings modal auto-opens to Billing and is non-dismissible",
-      "setup": "Pick an org currently in 'paused' state (run cancel-modal-pause-redeem-flips-status first, or set organizations.plan_status = 'paused' directly).",
-      "steps": [
-        "Reload the app / log in fresh",
-        "Try to close the auto-opened Settings modal: click the X, click outside, press Escape",
-        "Click Resume now"
-      ],
-      "expected": "On load, the Settings modal opens automatically on the Billing tab. None of X, click-outside, or Escape close it. After clicking Resume now and the status flips to Active, the modal becomes dismissible again and the user can navigate freely.",
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "paused-state-has-no-sidebar-dot-or-inline-alert",
-      "category": "Pause UI gate (past_due parity)",
-      "description": "Paused state does NOT add a sidebar notification dot or an inline alert — the hard gate is the only attention surface",
-      "setup": "Same setup as pause-status-triggers-billing-modal-gate — org in 'paused' state.",
-      "steps": [
-        "Look at the sidebar gear / settings icon (note: the hard gate covers most of the app; the sidebar should still be visible behind it)",
-        "Once the gate is dismissible again (after Resume), or by temporarily setting plan_status='active' for inspection, look at the BillingTab content above the action button"
-      ],
-      "expected": "No red dot on the sidebar gear icon while paused (past_due still shows one; paused does not). The BillingTab has no inline alert above the action button while paused — the hard gate carries the message. The status pill in the BillingTab still reads 'Paused' (orange) so the state is visible once the gate is opened.",
+      "expected": "On a Stripe-managed plan: step 2 renders both Pause and Discount panels. Discount panel body reads 'Stay subscribed at {percent_off}% off for {duration_in_months} months.' — both numbers pulled live from the configured Stripe coupon. After 'Apply discount', within ~2-4 seconds the success toast fires: 'Discount applied to your subscription.' (or 'may take a moment' on timeout). BillingTab plan card shows the base price crossed out (e.g. ~~$49.99~~) with the post-discount price as the primary number, plus the green chip '{percent_off}% off your subscription until {date}' below the plan name. On a subsequent visit, picking 'Too expensive' shows ONLY the Pause panel (Discount panel hidden because `last_discount_at` is now non-null). On a non-Stripe-managed plan (Free / Community / Demo / CommercialSelfHosted): opening the cancel modal and picking any reason shows NO save-offer panels — neither Pause nor Discount — even with the coupon configured. The user goes straight from reason → confirm-cancellation footer. The strikethrough + chip on BillingTab are also hidden on these plans.",
       "status": null,
       "feedback": null
     }
