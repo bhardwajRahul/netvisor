@@ -40,7 +40,6 @@
 		settings_billing_saveOffer_pauseCta,
 		settings_billing_saveOffer_pauseCooldown,
 		settings_billing_saveOffer_discountTitle,
-		settings_billing_saveOffer_discountSubtitle,
 		settings_billing_saveOffer_discountSubtitleMonthly,
 		settings_billing_saveOffer_discountSubtitleYearly,
 		settings_billing_saveOffer_discountCta
@@ -144,10 +143,15 @@
 		if (isTrialing || !canReceiveSaveOffer || !selectedReason) return [];
 		const reason = cancelReasons.find((r) => r.id === selectedReason);
 		const offers = (reason?.metadata as { save_offers?: string[] } | null | undefined)?.save_offers;
-		// Hide the discount panel when the deployment hasn't configured a
-		// Stripe coupon — the backend would reject the apply call anyway, but
-		// showing an option we can't fulfil is worse UX than not offering it.
-		return (offers ?? []).filter((o) => o !== 'discount' || (discountAvailable && !lastDiscountAt));
+		// Hide the discount panel until the backend confirms the coupon is
+		// applicable to this org's next renewal. saveOfferCoupon === null can
+		// mean (a) the env var isn't configured, (b) the next renewal falls
+		// outside the coupon's duration window, or (c) the query is still
+		// loading. In any of those cases the panel would have nothing useful
+		// to show — better to not render it than to flash a generic fallback.
+		return (offers ?? []).filter(
+			(o) => o !== 'discount' || (!lastDiscountAt && saveOfferCoupon != null)
+		);
 	});
 
 	const offerMeta = (offerId: string) => saveOffers.find((o) => o.id === offerId);
@@ -369,7 +373,7 @@
 									{offerMeta('discount')?.name ?? settings_billing_saveOffer_discountTitle()}
 								</h4>
 								<p class="text-secondary mt-1 text-sm">
-									{#if saveOfferCoupon && saveOfferCoupon.billing_rate === 'Year'}
+									{#if saveOfferCoupon?.billing_rate === 'Year'}
 										{settings_billing_saveOffer_discountSubtitleYearly({
 											percentOff: saveOfferCoupon.percent_off,
 											nextRenewalDate: fmtDate(new Date(saveOfferCoupon.next_renewal_at))
@@ -379,8 +383,6 @@
 											percentOff: saveOfferCoupon.percent_off,
 											durationInMonths: saveOfferCoupon.duration_in_months
 										})}
-									{:else}
-										{settings_billing_saveOffer_discountSubtitle()}
 									{/if}
 								</p>
 							</div>

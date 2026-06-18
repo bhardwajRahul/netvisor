@@ -21,6 +21,7 @@ use crate::server::billing::types::base::{BillingPlan, CancelReason, SaveOffer};
 const KEY_ORGANIZATION_ID: &str = "organization_id";
 const KEY_PLAN: &str = "plan";
 const KEY_PAUSE_DURATION_DAYS: &str = "scanopy_pause_duration_days";
+const KEY_PAUSED_AT: &str = "scanopy_paused_at";
 const KEY_TRIAL_EXTENDED_DAYS: &str = "scanopy_trial_extended_days";
 const KEY_CANCEL_REASON: &str = "scanopy_cancel_reason";
 const KEY_CANCEL_SAVE_OFFER_SHOWN: &str = "scanopy_cancel_save_offer_shown";
@@ -33,6 +34,11 @@ pub struct StripeSubscriptionMetadata {
     pub organization_id: Option<Uuid>,
     pub plan: Option<BillingPlan>,
     pub scanopy_pause_duration_days: Option<u32>,
+    /// UTC unix timestamp (seconds) of when the pause was initiated. Used by
+    /// the resume path to compute the actual elapsed paused days so the next
+    /// renewal can be shifted forward by exactly that amount (early resume
+    /// shouldn't push the renewal by the full requested duration).
+    pub scanopy_paused_at: Option<i64>,
     pub scanopy_trial_extended_days: Option<u32>,
     pub scanopy_cancel_reason: Option<CancelReason>,
     pub scanopy_cancel_save_offer_shown: Option<Vec<SaveOffer>>,
@@ -56,6 +62,9 @@ impl StripeSubscriptionMetadata {
         }
         if let Some(days) = self.scanopy_pause_duration_days {
             out.insert(KEY_PAUSE_DURATION_DAYS.into(), days.to_string());
+        }
+        if let Some(ts) = self.scanopy_paused_at {
+            out.insert(KEY_PAUSED_AT.into(), ts.to_string());
         }
         if let Some(days) = self.scanopy_trial_extended_days {
             out.insert(KEY_TRIAL_EXTENDED_DAYS.into(), days.to_string());
@@ -87,6 +96,7 @@ impl StripeSubscriptionMetadata {
             scanopy_pause_duration_days: m
                 .get(KEY_PAUSE_DURATION_DAYS)
                 .and_then(|s| s.parse().ok()),
+            scanopy_paused_at: m.get(KEY_PAUSED_AT).and_then(|s| s.parse().ok()),
             scanopy_trial_extended_days: m
                 .get(KEY_TRIAL_EXTENDED_DAYS)
                 .and_then(|s| s.parse().ok()),
@@ -105,6 +115,7 @@ impl StripeSubscriptionMetadata {
     /// instance.
     pub fn contains_scanopy_keys(&self) -> bool {
         self.scanopy_pause_duration_days.is_some()
+            || self.scanopy_paused_at.is_some()
             || self.scanopy_trial_extended_days.is_some()
             || self.scanopy_cancel_reason.is_some()
             || self.scanopy_cancel_save_offer_shown.is_some()
@@ -131,6 +142,7 @@ mod tests {
             organization_id: Some(Uuid::new_v4()),
             plan: Some(get_free_plan()),
             scanopy_pause_duration_days: Some(60),
+            scanopy_paused_at: Some(1_700_000_000),
             scanopy_trial_extended_days: Some(7),
             scanopy_cancel_reason: Some(CancelReason::TooExpensive),
             scanopy_cancel_save_offer_shown: Some(vec![SaveOffer::Pause, SaveOffer::Discount]),
