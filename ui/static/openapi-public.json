@@ -10891,19 +10891,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-06-17T14:59:21.638564Z",
+              "created_at": "2026-06-18T14:02:00.153159Z",
               "first_discovery_id": null,
-              "id": "092dc8cc-f070-4412-bd3b-0179c453ebb5",
+              "id": "a3df886c-3676-4e8f-914a-890caf6af13a",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-17T14:59:21.638564Z",
+              "last_seen_at": "2026-06-18T14:02:00.153159Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-17T14:59:21.638564Z",
-              "valid_from": "2026-06-17T14:59:21.638564Z",
+              "updated_at": "2026-06-18T14:02:00.153159Z",
+              "valid_from": "2026-06-18T14:02:00.153159Z",
               "valid_to": null
             }
           },
@@ -11889,19 +11889,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-06-17T14:59:21.619096Z",
+                      "created_at": "2026-06-18T14:02:00.133621Z",
                       "first_discovery_id": null,
-                      "id": "2978da9e-a9fb-4486-94d1-f7c25352a3ad",
+                      "id": "0b8da205-9fa4-41df-9018-0ede0e895fec",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-06-17T14:59:21.619096Z",
+                      "last_seen_at": "2026-06-18T14:02:00.133621Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-06-17T14:59:21.619096Z",
-                      "valid_from": "2026-06-17T14:59:21.619096Z",
+                      "updated_at": "2026-06-18T14:02:00.133621Z",
+                      "valid_from": "2026-06-18T14:02:00.133621Z",
                       "valid_to": null
                     }
                   ],
@@ -11915,7 +11915,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Confluence",
+                  "service_definition": "Homepage",
                   "source": {
                     "type": "Manual"
                   },
@@ -12356,15 +12356,24 @@
               },
               {
                 "type": "object",
-                "description": "Live terms for the configured save-offer coupon, read directly from\nStripe. Used by the cancel modal's Discount panel to render the offer\ndynamically instead of hard-coding the percent/duration.",
+                "description": "Live terms for the configured save-offer coupon, read directly from\nStripe. Used by the cancel modal's Discount panel to render the offer\ndynamically instead of hard-coding the percent/duration.\n\nOnly returned when the coupon would actually catch the user's next\ninvoice — i.e. `next_renewal_at` falls within the coupon's `duration_in_months`\nwindow. Yearly subscribers partway through a cycle whose next renewal\nlands after the coupon's window get `None` from the endpoint and the\ncancel modal's Discount panel doesn't render.\n\n`billing_rate` lets the frontend pick monthly vs yearly copy: a monthly\nsubscriber thinks in terms of \"N months of discount\"; a yearly subscriber\nthinks in terms of \"my next renewal on {date}.\"",
                 "required": [
                   "percent_off",
-                  "duration_in_months"
+                  "duration_in_months",
+                  "next_renewal_at",
+                  "billing_rate"
                 ],
                 "properties": {
+                  "billing_rate": {
+                    "$ref": "#/components/schemas/BillingRate"
+                  },
                   "duration_in_months": {
                     "type": "integer",
                     "format": "int64"
+                  },
+                  "next_renewal_at": {
+                    "type": "string",
+                    "format": "date-time"
                   },
                   "percent_off": {
                     "type": "integer",
@@ -12897,19 +12906,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-06-17T14:59:21.632158Z",
+                  "created_at": "2026-06-18T14:02:00.146822Z",
                   "first_discovery_id": null,
-                  "id": "4c5066fa-f846-411b-ba2a-fca4ca781825",
+                  "id": "4c7d5655-495c-466a-94bd-60b5d77f1554",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-17T14:59:21.632158Z",
+                  "last_seen_at": "2026-06-18T14:02:00.146822Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-17T14:59:21.632158Z",
-                  "valid_from": "2026-06-17T14:59:21.632158Z",
+                  "updated_at": "2026-06-18T14:02:00.146822Z",
+                  "valid_from": "2026-06-18T14:02:00.146822Z",
                   "valid_to": null
                 }
               ],
@@ -12923,7 +12932,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Confluence",
+              "service_definition": "Homepage",
               "source": {
                 "type": "Manual"
               },
@@ -14623,19 +14632,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-06-17T14:59:21.619530Z",
+          "created_at": "2026-06-18T14:02:00.134066Z",
           "first_discovery_id": null,
-          "id": "d48f4d70-7cc6-4713-9172-48a35f823a5d",
+          "id": "67e23386-cf75-4b8e-b518-297e6ae3351f",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-06-17T14:59:21.619530Z",
+          "last_seen_at": "2026-06-18T14:02:00.134066Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-06-17T14:59:21.619530Z",
-          "valid_from": "2026-06-17T14:59:21.619530Z",
+          "updated_at": "2026-06-18T14:02:00.134066Z",
+          "valid_from": "2026-06-18T14:02:00.134066Z",
           "valid_to": null
         }
       },
@@ -15225,7 +15234,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Confluence",
+              "service_definition": "Homepage",
               "tags": [],
               "virtualization": null
             }
@@ -17863,19 +17872,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-06-17T14:59:21.618591Z",
+                  "created_at": "2026-06-18T14:02:00.133133Z",
                   "first_discovery_id": null,
-                  "id": "6a1d0df7-59d0-48c9-b0a7-bd8e2b2ecf0a",
+                  "id": "37cddad6-47cb-49cc-ba90-6c6b1d4bcb7a",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-17T14:59:21.618591Z",
+                  "last_seen_at": "2026-06-18T14:02:00.133133Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-17T14:59:21.618591Z",
-                  "valid_from": "2026-06-17T14:59:21.618591Z",
+                  "updated_at": "2026-06-18T14:02:00.133133Z",
+                  "valid_from": "2026-06-18T14:02:00.133133Z",
                   "valid_to": null
                 }
               ],
@@ -17889,7 +17898,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Confluence",
+              "service_definition": "Homepage",
               "source": {
                 "type": "Manual"
               },
@@ -20311,19 +20320,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-06-17T14:59:21.607226Z",
+                        "created_at": "2026-06-18T14:02:00.121361Z",
                         "first_discovery_id": null,
-                        "id": "7fcd21a5-7cc6-433d-92f2-edb21cf9d496",
+                        "id": "111479f2-22e9-4215-88d3-7b4cf5f4791b",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-06-17T14:59:21.607226Z",
+                        "last_seen_at": "2026-06-18T14:02:00.121361Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-06-17T14:59:21.607226Z",
-                        "valid_from": "2026-06-17T14:59:21.607226Z",
+                        "updated_at": "2026-06-18T14:02:00.121361Z",
+                        "valid_from": "2026-06-18T14:02:00.121361Z",
                         "valid_to": null
                       }
                     ],
@@ -20337,7 +20346,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Confluence",
+                    "service_definition": "Homepage",
                     "source": {
                       "type": "Manual"
                     },
@@ -20458,19 +20467,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-06-17T14:59:21.630975Z",
+                    "created_at": "2026-06-18T14:02:00.145523Z",
                     "first_discovery_id": null,
-                    "id": "ef7dc611-aabd-438b-b05b-9da661fb55ef",
+                    "id": "d6a9ebb8-04f5-4143-b3a4-dd0873d1310b",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-06-17T14:59:21.630975Z",
+                    "last_seen_at": "2026-06-18T14:02:00.145523Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-06-17T14:59:21.630975Z",
-                    "valid_from": "2026-06-17T14:59:21.630975Z",
+                    "updated_at": "2026-06-18T14:02:00.145523Z",
+                    "valid_from": "2026-06-18T14:02:00.145523Z",
                     "valid_to": null
                   }
                 ],
@@ -20484,7 +20493,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Confluence",
+                "service_definition": "Homepage",
                 "source": {
                   "type": "Manual"
                 },
@@ -21785,15 +21794,24 @@
       },
       "SaveOfferCoupon": {
         "type": "object",
-        "description": "Live terms for the configured save-offer coupon, read directly from\nStripe. Used by the cancel modal's Discount panel to render the offer\ndynamically instead of hard-coding the percent/duration.",
+        "description": "Live terms for the configured save-offer coupon, read directly from\nStripe. Used by the cancel modal's Discount panel to render the offer\ndynamically instead of hard-coding the percent/duration.\n\nOnly returned when the coupon would actually catch the user's next\ninvoice — i.e. `next_renewal_at` falls within the coupon's `duration_in_months`\nwindow. Yearly subscribers partway through a cycle whose next renewal\nlands after the coupon's window get `None` from the endpoint and the\ncancel modal's Discount panel doesn't render.\n\n`billing_rate` lets the frontend pick monthly vs yearly copy: a monthly\nsubscriber thinks in terms of \"N months of discount\"; a yearly subscriber\nthinks in terms of \"my next renewal on {date}.\"",
         "required": [
           "percent_off",
-          "duration_in_months"
+          "duration_in_months",
+          "next_renewal_at",
+          "billing_rate"
         ],
         "properties": {
+          "billing_rate": {
+            "$ref": "#/components/schemas/BillingRate"
+          },
           "duration_in_months": {
             "type": "integer",
             "format": "int64"
+          },
+          "next_renewal_at": {
+            "type": "string",
+            "format": "date-time"
           },
           "percent_off": {
             "type": "integer",
@@ -22076,19 +22094,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-06-17T14:59:21.619440Z",
+              "created_at": "2026-06-18T14:02:00.133976Z",
               "first_discovery_id": null,
-              "id": "c61d27ed-43ba-4911-b132-5ac796e8169a",
+              "id": "20eac645-6297-494e-ac84-2ad48eab0547",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-17T14:59:21.619440Z",
+              "last_seen_at": "2026-06-18T14:02:00.133976Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-17T14:59:21.619440Z",
-              "valid_from": "2026-06-17T14:59:21.619440Z",
+              "updated_at": "2026-06-18T14:02:00.133976Z",
+              "valid_from": "2026-06-18T14:02:00.133976Z",
               "valid_to": null
             }
           ],
@@ -22102,7 +22120,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Confluence",
+          "service_definition": "Homepage",
           "source": {
             "type": "Manual"
           },

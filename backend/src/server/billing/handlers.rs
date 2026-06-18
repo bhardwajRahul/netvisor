@@ -710,10 +710,16 @@ async fn apply_discount_save_offer(
 )]
 async fn get_save_offer_coupon(
     State(state): State<Arc<AppState>>,
-    _auth: Authorized<Owner>,
+    auth: Authorized<Owner>,
 ) -> ApiResult<Json<ApiResponse<Option<SaveOfferCoupon>>>> {
+    let organization_id = auth
+        .organization_id()
+        .ok_or_else(ApiError::organization_required)?;
+
     if let Some(billing_service) = state.services.billing_service.clone() {
-        let coupon = billing_service.get_save_offer_coupon().await?;
+        let coupon = billing_service
+            .get_save_offer_coupon(organization_id)
+            .await?;
         Ok(Json(ApiResponse::success(coupon)))
     } else {
         Err(ApiError::billing_setup_incomplete())

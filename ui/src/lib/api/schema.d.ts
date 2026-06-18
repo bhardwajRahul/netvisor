@@ -3097,19 +3097,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-06-17T14:59:21.638569Z",
+             *       "created_at": "2026-06-18T14:02:00.153156Z",
              *       "first_discovery_id": null,
-             *       "id": "78fbeb41-8bc4-4e17-8bea-367ec2b1fa91",
+             *       "id": "6640370a-76fd-404a-b81a-24a21d497091",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-06-17T14:59:21.638569Z",
+             *       "last_seen_at": "2026-06-18T14:02:00.153156Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-06-17T14:59:21.638569Z",
-             *       "valid_from": "2026-06-17T14:59:21.638569Z",
+             *       "updated_at": "2026-06-18T14:02:00.153156Z",
+             *       "valid_from": "2026-06-18T14:02:00.153156Z",
              *       "valid_to": null
              *     }
              */
@@ -3446,19 +3446,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-06-17T14:59:21.619097Z",
+             *               "created_at": "2026-06-18T14:02:00.133611Z",
              *               "first_discovery_id": null,
-             *               "id": "40cdaa2a-20d0-4517-aa00-fb8011e8fbab",
+             *               "id": "0bc000a8-678b-4f63-bc6a-c63afe4d7268",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-06-17T14:59:21.619097Z",
+             *               "last_seen_at": "2026-06-18T14:02:00.133611Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-06-17T14:59:21.619097Z",
-             *               "valid_from": "2026-06-17T14:59:21.619097Z",
+             *               "updated_at": "2026-06-18T14:02:00.133611Z",
+             *               "valid_from": "2026-06-18T14:02:00.133611Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3472,7 +3472,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Confluence",
+             *           "service_definition": "Homepage",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3652,8 +3652,11 @@ export interface components {
         };
         ApiResponse_Option_SaveOfferCoupon: {
             data?: null | {
+                billing_rate: components["schemas"]["BillingRate"];
                 /** Format: int64 */
                 duration_in_months: number;
+                /** Format: date-time */
+                next_renewal_at: string;
                 /** Format: int64 */
                 percent_off: number;
             };
@@ -3825,19 +3828,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-06-17T14:59:21.632151Z",
+             *           "created_at": "2026-06-18T14:02:00.146806Z",
              *           "first_discovery_id": null,
-             *           "id": "af42b3dc-8a68-4976-a31b-41e14c8fb179",
+             *           "id": "23142cf1-ceb8-4ad0-bdba-d4e2e8bda024",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-06-17T14:59:21.632151Z",
+             *           "last_seen_at": "2026-06-18T14:02:00.146806Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-06-17T14:59:21.632151Z",
-             *           "valid_from": "2026-06-17T14:59:21.632151Z",
+             *           "updated_at": "2026-06-18T14:02:00.146806Z",
+             *           "valid_from": "2026-06-18T14:02:00.146806Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -3851,7 +3854,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Confluence",
+             *       "service_definition": "Homepage",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4304,19 +4307,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-06-17T14:59:21.619522Z",
+         *       "created_at": "2026-06-18T14:02:00.134050Z",
          *       "first_discovery_id": null,
-         *       "id": "7574a6a5-2e59-47b5-ab6d-c1959e872204",
+         *       "id": "c55931c0-df52-4d98-bbdd-cb573fa4843a",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-06-17T14:59:21.619522Z",
+         *       "last_seen_at": "2026-06-18T14:02:00.134050Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-06-17T14:59:21.619522Z",
-         *       "valid_from": "2026-06-17T14:59:21.619522Z",
+         *       "updated_at": "2026-06-18T14:02:00.134050Z",
+         *       "valid_from": "2026-06-18T14:02:00.134050Z",
          *       "valid_to": null
          *     }
          */
@@ -4531,7 +4534,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Confluence",
+         *           "service_definition": "Homepage",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -5481,19 +5484,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-06-17T14:59:21.618596Z",
+         *               "created_at": "2026-06-18T14:02:00.133128Z",
          *               "first_discovery_id": null,
-         *               "id": "e90874b3-4fd8-4c70-9e34-bce9e419ea76",
+         *               "id": "0f0a3194-aaa4-43a5-aff0-5e87e4ac4ac9",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-06-17T14:59:21.618596Z",
+         *               "last_seen_at": "2026-06-18T14:02:00.133128Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-06-17T14:59:21.618596Z",
-         *               "valid_from": "2026-06-17T14:59:21.618596Z",
+         *               "updated_at": "2026-06-18T14:02:00.133128Z",
+         *               "valid_from": "2026-06-18T14:02:00.133128Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -5507,7 +5510,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Confluence",
+         *           "service_definition": "Homepage",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -6790,10 +6793,23 @@ export interface components {
          * @description Live terms for the configured save-offer coupon, read directly from
          *     Stripe. Used by the cancel modal's Discount panel to render the offer
          *     dynamically instead of hard-coding the percent/duration.
+         *
+         *     Only returned when the coupon would actually catch the user's next
+         *     invoice — i.e. `next_renewal_at` falls within the coupon's `duration_in_months`
+         *     window. Yearly subscribers partway through a cycle whose next renewal
+         *     lands after the coupon's window get `None` from the endpoint and the
+         *     cancel modal's Discount panel doesn't render.
+         *
+         *     `billing_rate` lets the frontend pick monthly vs yearly copy: a monthly
+         *     subscriber thinks in terms of "N months of discount"; a yearly subscriber
+         *     thinks in terms of "my next renewal on {date}."
          */
         SaveOfferCoupon: {
+            billing_rate: components["schemas"]["BillingRate"];
             /** Format: int64 */
             duration_in_months: number;
+            /** Format: date-time */
+            next_renewal_at: string;
             /** Format: int64 */
             percent_off: number;
         };
@@ -6898,19 +6914,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-06-17T14:59:21.619434Z",
+         *           "created_at": "2026-06-18T14:02:00.133962Z",
          *           "first_discovery_id": null,
-         *           "id": "dc0106eb-dafc-4a83-835a-c952aa6308fa",
+         *           "id": "5d1040c8-979e-4cdb-879b-9bed85dec6f6",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-06-17T14:59:21.619434Z",
+         *           "last_seen_at": "2026-06-18T14:02:00.133962Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-06-17T14:59:21.619434Z",
-         *           "valid_from": "2026-06-17T14:59:21.619434Z",
+         *           "updated_at": "2026-06-18T14:02:00.133962Z",
+         *           "valid_from": "2026-06-18T14:02:00.133962Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -6924,7 +6940,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Confluence",
+         *       "service_definition": "Homepage",
          *       "source": {
          *         "type": "Manual"
          *       },

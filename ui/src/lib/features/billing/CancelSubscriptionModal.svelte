@@ -41,7 +41,8 @@
 		settings_billing_saveOffer_pauseCooldown,
 		settings_billing_saveOffer_discountTitle,
 		settings_billing_saveOffer_discountSubtitle,
-		settings_billing_saveOffer_discountSubtitleDynamic,
+		settings_billing_saveOffer_discountSubtitleMonthly,
+		settings_billing_saveOffer_discountSubtitleYearly,
 		settings_billing_saveOffer_discountCta
 	} from '$lib/paraglide/messages';
 
@@ -77,10 +78,9 @@
 	let isTrialing = $derived(planStatus === 'trialing');
 
 	// Save offers (pause + discount) only apply to Stripe-managed plans —
-	// pausing a Community/Demo/CommercialSelfHosted "subscription" or applying
-	// a Stripe coupon to a non-Stripe sub is nonsensical and the backend would
-	// 4xx anyway.
-	let isStripeManaged = $derived(
+	// pausing or discounting a non-Stripe sub is nonsensical and the backend
+	// would 4xx anyway. This just hides the dead-end UI.
+	let canReceiveSaveOffer = $derived(
 		billingPlans.getMetadata(planType ?? null).is_stripe_managed === true
 	);
 
@@ -141,7 +141,7 @@
 	]);
 
 	const offersForReason = $derived.by<string[]>(() => {
-		if (isTrialing || !isStripeManaged || !selectedReason) return [];
+		if (isTrialing || !canReceiveSaveOffer || !selectedReason) return [];
 		const reason = cancelReasons.find((r) => r.id === selectedReason);
 		const offers = (reason?.metadata as { save_offers?: string[] } | null | undefined)?.save_offers;
 		// Hide the discount panel when the deployment hasn't configured a
@@ -369,8 +369,13 @@
 									{offerMeta('discount')?.name ?? settings_billing_saveOffer_discountTitle()}
 								</h4>
 								<p class="text-secondary mt-1 text-sm">
-									{#if saveOfferCoupon}
-										{settings_billing_saveOffer_discountSubtitleDynamic({
+									{#if saveOfferCoupon && saveOfferCoupon.billing_rate === 'Year'}
+										{settings_billing_saveOffer_discountSubtitleYearly({
+											percentOff: saveOfferCoupon.percent_off,
+											nextRenewalDate: fmtDate(new Date(saveOfferCoupon.next_renewal_at))
+										})}
+									{:else if saveOfferCoupon}
+										{settings_billing_saveOffer_discountSubtitleMonthly({
 											percentOff: saveOfferCoupon.percent_off,
 											durationInMonths: saveOfferCoupon.duration_in_months
 										})}

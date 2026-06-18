@@ -466,18 +466,27 @@ impl BillingPlan {
     }
 
     /// Plans whose lifecycle is driven by a Stripe subscription. Drives the
-    /// frontend hard-gate (no Stripe = no required modal) and the post-Stripe
-    /// poll predicate. Exhaustive on purpose — adding a new variant must
-    /// classify it explicitly.
+    /// frontend hard-gate (no Stripe = no required modal), the post-Stripe
+    /// poll predicate, the "needs a card" banner, and retention-offer
+    /// surfaces (Discount panel, Discount chip).
+    ///
+    /// Free is intentionally NOT Stripe-managed: `activate_free_plan` bypasses
+    /// Stripe entirely (no customer, no subscription created). Older Free orgs
+    /// may carry a leftover Stripe customer + cancelled subscription from a
+    /// previous model, but those subs are not active and don't drive plan
+    /// state — `is_free()` is the right check for "this plan doesn't pay."
+    ///
+    /// Exhaustive on purpose — adding a new variant must classify it
+    /// explicitly.
     pub fn is_stripe_managed(&self) -> bool {
         match self {
-            BillingPlan::Free(_)
-            | BillingPlan::Starter(_)
+            BillingPlan::Starter(_)
             | BillingPlan::Pro(_)
             | BillingPlan::Team(_)
             | BillingPlan::Business(_)
             | BillingPlan::Enterprise(_) => true,
-            BillingPlan::Community(_)
+            BillingPlan::Free(_)
+            | BillingPlan::Community(_)
             | BillingPlan::Demo(_)
             | BillingPlan::CommercialSelfHosted(_) => false,
         }
