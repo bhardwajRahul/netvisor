@@ -1035,7 +1035,7 @@ async fn test_reachability(
 
     // SSRF protection: reject private IPs in cloud mode only.
     // Self-hosted deployments (Commercial/Community) need to reach LAN daemons.
-    let deployment_type = crate::server::config::get_deployment_type(state.clone());
+    let deployment_type = crate::server::config::get_deployment_type(&state.config);
     let is_cloud = deployment_type == crate::server::config::DeploymentType::Cloud;
 
     if is_cloud {

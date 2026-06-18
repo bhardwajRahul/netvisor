@@ -6,17 +6,18 @@ use uuid::Uuid;
 
 use super::messages::{
     CancellationInitiated, CheckoutCompleted, DaemonStandby, DaemonUnreachable, DiscoveryDigest,
-    DiscoveryGuide, Email, EmailChangedOld, InstallCommand, Invite, OidcLinked, OidcUnlinked,
-    OrganizationDeleted, PasswordChanged, PasswordReset, PaymentActionRequired, PaymentFailed,
-    PaymentMethodAdded, PaymentMethodRemoved, PaymentRecovered, PlanChanged, PlanLimitApproaching,
-    PlanLimitReached, SubscriptionCancelled, SubscriptionPaused, SubscriptionReactivated,
-    SubscriptionResumed, TrialConverted, TrialEnding, TrialExpired, TrialStarted, UsageSummary,
-    Verification,
+    DiscoveryGuide, Email, EmailChangedOld, EmailPreference, InstallCommand, Invite, OidcLinked,
+    OidcUnlinked, OrganizationDeleted, PasswordChanged, PasswordReset, PaymentActionRequired,
+    PaymentFailed, PaymentMethodAdded, PaymentMethodRemoved, PaymentRecovered, PlanChanged,
+    PlanLimitApproaching, PlanLimitReached, SubscriptionCancelled, SubscriptionPaused,
+    SubscriptionReactivated, SubscriptionResumed, TrialConverted, TrialEnding, TrialExpired,
+    TrialStarted, UsageSummary, Verification,
 };
 use super::transport::EmailTransport;
 use crate::server::{
     auth::middleware::auth::AuthenticatedEntity,
     billing::types::base::{BillingInvoice, BillingPlan, BillingRate},
+    config::DeploymentType,
     daemons::{r#impl::base::Daemon, service::DaemonService},
     digest::payload::DiscoveryDigestPayload,
     hosts::{r#impl::base::Host, service::HostService},
@@ -59,6 +60,9 @@ pub struct EmailService {
     pub service_service: Arc<ServiceService>,
     pub daemon_service: Arc<DaemonService>,
     pub public_url: String,
+    /// Deployment type of this instance — gates the footer's sender-identity
+    /// block (cloud discloses Scanopy LLC; self-hosted does not).
+    pub deployment_type: DeploymentType,
 }
 
 impl EmailService {
@@ -72,6 +76,7 @@ impl EmailService {
         service_service: Arc<ServiceService>,
         daemon_service: Arc<DaemonService>,
         public_url: String,
+        deployment_type: DeploymentType,
     ) -> Self {
         Self {
             transport,
@@ -82,12 +87,31 @@ impl EmailService {
             service_service,
             daemon_service,
             public_url,
+            deployment_type,
         }
     }
 
     /// Render `email` against the installed `public_url` and send it to `to`.
+    ///
+    /// Pausable emails are gated on the recipient's preferences: if the user
+    /// has the matching category switched off, the send is silently skipped.
+    /// Required emails always send, and a recipient with no account yet
+    /// (pre-signup) defaults to sending.
     async fn dispatch(&self, to: EmailAddress, email: &dyn Email) -> Result<()> {
-        self.transport.send(to, email, &self.public_url).await
+        if matches!(email.preference(), EmailPreference::Pausable(_))
+            && let Some(user) = self.user_service.get_by_email(&to).await?
+            && !user.base.email_settings.allows(email.preference())
+        {
+            return Ok(());
+        }
+        self.transport
+            .send(
+                to,
+                email,
+                &self.public_url,
+                self.deployment_type.is_self_hosted(),
+            )
+            .await
     }
 
     // ========================================================================

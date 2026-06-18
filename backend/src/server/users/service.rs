@@ -19,6 +19,7 @@ use crate::server::{
 use anyhow::Error;
 use anyhow::Result;
 use async_trait::async_trait;
+use email_address::EmailAddress;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -119,6 +120,14 @@ impl UserService {
     pub async fn get_user_by_oidc(&self, oidc_subject: &str) -> Result<Option<User>> {
         let oidc_filter = StorableFilter::<User>::new_from_oidc_subject(oidc_subject.to_string());
         self.user_storage.get_one(oidc_filter).await
+    }
+
+    /// Look up a user by their email address. Used by the email send pipeline
+    /// to resolve the recipient's pause preferences.
+    pub async fn get_by_email(&self, email: &EmailAddress) -> Result<Option<User>> {
+        self.user_storage
+            .get_one(StorableFilter::<User>::new_from_email(email))
+            .await
     }
 
     pub async fn get_organization_owners(&self, organization_id: &Uuid) -> Result<Vec<User>> {

@@ -10891,19 +10891,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-06-18T18:11:52.635297Z",
+              "created_at": "2026-06-18T22:49:03.204033Z",
               "first_discovery_id": null,
-              "id": "d08e41c9-d7f3-45fc-b03d-9d6cbc6c92b1",
+              "id": "21facb8b-d915-4351-a53a-e0d001375235",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-18T18:11:52.635297Z",
+              "last_seen_at": "2026-06-18T22:49:03.204033Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-18T18:11:52.635297Z",
-              "valid_from": "2026-06-18T18:11:52.635297Z",
+              "updated_at": "2026-06-18T22:49:03.204033Z",
+              "valid_from": "2026-06-18T22:49:03.204033Z",
               "valid_to": null
             }
           },
@@ -11889,19 +11889,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-06-18T18:11:52.615925Z",
+                      "created_at": "2026-06-18T22:49:03.187851Z",
                       "first_discovery_id": null,
-                      "id": "d3d531c8-2764-41ab-b681-b278f6bf00b5",
+                      "id": "8f98f68a-fff9-40b2-b4b6-0c71039723cb",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-06-18T18:11:52.615925Z",
+                      "last_seen_at": "2026-06-18T22:49:03.187851Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-06-18T18:11:52.615925Z",
-                      "valid_from": "2026-06-18T18:11:52.615925Z",
+                      "updated_at": "2026-06-18T22:49:03.187851Z",
+                      "valid_from": "2026-06-18T22:49:03.187851Z",
                       "valid_to": null
                     }
                   ],
@@ -11915,7 +11915,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Ollama",
+                  "service_definition": "Lubelogger",
                   "source": {
                     "type": "Manual"
                   },
@@ -12906,19 +12906,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-06-18T18:11:52.629182Z",
+                  "created_at": "2026-06-18T22:49:03.197441Z",
                   "first_discovery_id": null,
-                  "id": "1bafbdc0-fe74-4483-be6b-156c853e375b",
+                  "id": "730289e1-f85f-4b7b-9709-0b2d3b8fb75b",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-18T18:11:52.629182Z",
+                  "last_seen_at": "2026-06-18T22:49:03.197441Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-18T18:11:52.629182Z",
-                  "valid_from": "2026-06-18T18:11:52.629182Z",
+                  "updated_at": "2026-06-18T22:49:03.197441Z",
+                  "valid_from": "2026-06-18T22:49:03.197441Z",
                   "valid_to": null
                 }
               ],
@@ -12932,7 +12932,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Ollama",
+              "service_definition": "Lubelogger",
               "source": {
                 "type": "Manual"
               },
@@ -14632,19 +14632,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-06-18T18:11:52.616364Z",
+          "created_at": "2026-06-18T22:49:03.188083Z",
           "first_discovery_id": null,
-          "id": "88af60bf-5f90-40af-a3d4-ea6d3bcbef3d",
+          "id": "a5922169-5eaa-439e-a402-89203dc53b3f",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-06-18T18:11:52.616364Z",
+          "last_seen_at": "2026-06-18T22:49:03.188083Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-06-18T18:11:52.616364Z",
-          "valid_from": "2026-06-18T18:11:52.616364Z",
+          "updated_at": "2026-06-18T22:49:03.188083Z",
+          "valid_from": "2026-06-18T22:49:03.188083Z",
           "valid_to": null
         }
       },
@@ -15234,7 +15234,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Ollama",
+              "service_definition": "Lubelogger",
               "tags": [],
               "virtualization": null
             }
@@ -17159,11 +17159,21 @@
       },
       "EmailSettings": {
         "type": "object",
+        "description": "Per-user toggles for the user-pausable email categories. Each field maps\n1:1 to a [`PausableCategory`]; required emails are never gated here.\n\nStored as a JSONB blob, so new categories are added as new fields rather\nthan via migration. New fields carry `#[serde(default = \"default_true\")]`\nso rows written before the field existed deserialize cleanly (opted in by\ndefault) without clobbering the categories they did persist.",
         "required": [
           "discovery_digest"
         ],
         "properties": {
+          "daemon_alerts": {
+            "type": "boolean"
+          },
           "discovery_digest": {
+            "type": "boolean"
+          },
+          "product_onboarding": {
+            "type": "boolean"
+          },
+          "trial_and_usage": {
             "type": "boolean"
           }
         }
@@ -17872,19 +17882,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-06-18T18:11:52.615434Z",
+                  "created_at": "2026-06-18T22:49:03.187587Z",
                   "first_discovery_id": null,
-                  "id": "2b90f9a3-eac6-4374-a265-22fc3e1b0ca0",
+                  "id": "fe6ae73c-090c-46ab-993a-6a8707c8f98d",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-18T18:11:52.615434Z",
+                  "last_seen_at": "2026-06-18T22:49:03.187587Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-18T18:11:52.615434Z",
-                  "valid_from": "2026-06-18T18:11:52.615434Z",
+                  "updated_at": "2026-06-18T22:49:03.187587Z",
+                  "valid_from": "2026-06-18T22:49:03.187587Z",
                   "valid_to": null
                 }
               ],
@@ -17898,7 +17908,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Ollama",
+              "service_definition": "Lubelogger",
               "source": {
                 "type": "Manual"
               },
@@ -20329,19 +20339,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-06-18T18:11:52.603680Z",
+                        "created_at": "2026-06-18T22:49:03.182176Z",
                         "first_discovery_id": null,
-                        "id": "9b6e1f41-65b4-4b1a-870c-aa0c97a4fbeb",
+                        "id": "2e9fe327-3486-48ec-bcee-51e7bb5f5a79",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-06-18T18:11:52.603680Z",
+                        "last_seen_at": "2026-06-18T22:49:03.182176Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-06-18T18:11:52.603680Z",
-                        "valid_from": "2026-06-18T18:11:52.603680Z",
+                        "updated_at": "2026-06-18T22:49:03.182176Z",
+                        "valid_from": "2026-06-18T22:49:03.182176Z",
                         "valid_to": null
                       }
                     ],
@@ -20355,7 +20365,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Ollama",
+                    "service_definition": "Lubelogger",
                     "source": {
                       "type": "Manual"
                     },
@@ -20476,19 +20486,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-06-18T18:11:52.627991Z",
+                    "created_at": "2026-06-18T22:49:03.196219Z",
                     "first_discovery_id": null,
-                    "id": "c6bab76a-bec4-425a-b516-fbddc8d01d7e",
+                    "id": "2f2c6cf1-9656-42cf-98be-6aa2312085ad",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-06-18T18:11:52.627991Z",
+                    "last_seen_at": "2026-06-18T22:49:03.196219Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-06-18T18:11:52.627991Z",
-                    "valid_from": "2026-06-18T18:11:52.627991Z",
+                    "updated_at": "2026-06-18T22:49:03.196219Z",
+                    "valid_from": "2026-06-18T22:49:03.196219Z",
                     "valid_to": null
                   }
                 ],
@@ -20502,7 +20512,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Ollama",
+                "service_definition": "Lubelogger",
                 "source": {
                   "type": "Manual"
                 },
@@ -22103,19 +22113,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-06-18T18:11:52.616275Z",
+              "created_at": "2026-06-18T22:49:03.188034Z",
               "first_discovery_id": null,
-              "id": "5654cfef-bdbd-4b60-a3ce-6de84d2a0dbc",
+              "id": "c294858f-7e65-40e2-8c8e-453a8c2d43d4",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-18T18:11:52.616275Z",
+              "last_seen_at": "2026-06-18T22:49:03.188034Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-18T18:11:52.616275Z",
-              "valid_from": "2026-06-18T18:11:52.616275Z",
+              "updated_at": "2026-06-18T22:49:03.188034Z",
+              "valid_from": "2026-06-18T22:49:03.188034Z",
               "valid_to": null
             }
           ],
@@ -22129,7 +22139,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Ollama",
+          "service_definition": "Lubelogger",
           "source": {
             "type": "Manual"
           },

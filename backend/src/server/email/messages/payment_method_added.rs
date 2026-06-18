@@ -1,4 +1,4 @@
-use super::{Email, EmailCategory};
+use super::{Body, Content, Email, EmailCategory, EmailPreference};
 
 /// Confirms to the user that a payment method was added to their account.
 pub struct PaymentMethodAdded;
@@ -12,21 +12,22 @@ impl Email for PaymentMethodAdded {
         EmailCategory::Billing
     }
 
+    fn preference(&self) -> EmailPreference {
+        EmailPreference::Required
+    }
+
     fn campaign(&self) -> &'static str {
-        ""
+        "payment_method_added"
     }
 
     fn body_html(&self) -> String {
-        PAYMENT_METHOD_ADDED_BODY.to_string()
+        Body::new()
+            .content(
+                Content::new()
+                    .heading("Payment Method Added")
+                    .paragraph("Hi there,")
+                    .paragraph("A payment method has been added to your Scanopy account."),
+            )
+            .render()
     }
 }
-
-const PAYMENT_METHOD_ADDED_BODY: &str = r#"                    <!-- Main Content -->
-                    <tr>
-                        <td style="padding: 0 40px 20px 40px;">
-                            <h1 style="margin: 0 0 20px 0; font-size: 24px; font-weight: 600; color: #1a1a1a; text-align: center;">Payment Method Added</h1>
-                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 24px; color: #4a4a4a;">Hi there,</p>
-                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 24px; color: #4a4a4a;">A payment method has been added to your Scanopy account.</p>
-                        </td>
-                    </tr>
-"#;

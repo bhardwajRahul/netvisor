@@ -282,6 +282,7 @@ impl ServiceFactory {
         ));
 
         let public_url = config.public_url.clone();
+        let deployment_type = crate::server::config::get_deployment_type(&config);
 
         let email_service = if let Some(ref brevo_api_key) = config.brevo_api_key {
             let brevo_provider = BrevoEmailProvider::new(brevo_api_key.clone());
@@ -294,6 +295,7 @@ impl ServiceFactory {
                 service_service.clone(),
                 daemon_service.clone(),
                 public_url,
+                deployment_type,
             )))
         } else if let (
             Some(smtp_username),
@@ -318,6 +320,7 @@ impl ServiceFactory {
                     service_service.clone(),
                     daemon_service.clone(),
                     public_url,
+                    deployment_type,
                 )))
             } else {
                 None
