@@ -1,8 +1,7 @@
 use crate::server::auth::middleware::permissions::{Authorized, Owner, RequireVerified, Viewer};
 use crate::server::billing::types::api::{
     CancelSubscriptionRequest, CancelSubscriptionResponse, ChangePlanPreview, ChangePlanRequest,
-    CreateCheckoutRequest, PauseSubscriptionRequest, ResumeSubscriptionResponse, SaveOfferCoupon,
-    SetupPaymentMethodRequest,
+    CreateCheckoutRequest, PauseSubscriptionRequest, SaveOfferCoupon, SetupPaymentMethodRequest,
 };
 use crate::server::billing::types::base::BillingPlan;
 use crate::server::config::AppState;
@@ -535,15 +534,15 @@ async fn pause_subscription(
 /// Resume a paused subscription
 ///
 /// Clears Stripe pause collection and re-activates billing. Available while
-/// `plan_status === 'paused'`. Response includes the credit applied to the
-/// customer's Stripe balance for the paused days, so the UI can format the
-/// confirmation toast.
+/// `plan_status === 'paused'`. The prorated pause credit is posted to the
+/// customer's Stripe balance asynchronously by the webhook arm that fires
+/// for the `pause_collection` clear — the endpoint just returns success.
 #[utoipa::path(
     post,
     path = "/resume",
     tags = ["billing", "internal"],
     responses(
-        (status = 200, description = "Subscription resumed", body = ApiResponse<ResumeSubscriptionResponse>),
+        (status = 200, description = "Subscription resumed", body = ApiResponse<String>),
         (status = 400, description = "No paused subscription or billing not enabled", body = ApiErrorResponse),
     ),
     security(("user_api_key" = []), ("session" = []))
@@ -551,7 +550,7 @@ async fn pause_subscription(
 async fn resume_subscription(
     State(state): State<Arc<AppState>>,
     auth: Authorized<Owner>,
-) -> ApiResult<Json<ApiResponse<ResumeSubscriptionResponse>>> {
+) -> ApiResult<Json<ApiResponse<String>>> {
     let organization_id = auth
         .organization_id()
         .ok_or_else(ApiError::organization_required)?;
