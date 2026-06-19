@@ -94,7 +94,7 @@
 	function scheduleSave() {
 		if (suppressSave || !hydrated) return;
 		clearTimeout(saveTimer);
-		saveTimer = setTimeout(() => void form.handleSubmit(), 400);
+		saveTimer = setTimeout(() => void form.handleSubmit(), 1000);
 	}
 </script>
 

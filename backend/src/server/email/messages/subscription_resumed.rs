@@ -27,8 +27,7 @@ impl Email for SubscriptionResumed {
                 Content::new()
                     .heading("Welcome back")
                     .paragraph("Hi there,")
-                    .paragraph("Your Scanopy subscription is no longer paused. Billing has resumed on your normal cycle and the app is unlocked.")
-                    .paragraph("Glad to have you back."),
+                    .paragraph("Your Scanopy subscription is active again and the app is unlocked. A credit for the days you paused has been applied to your next invoice."),
             )
             .render()
     }

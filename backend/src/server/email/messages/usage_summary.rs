@@ -41,7 +41,6 @@ impl Email for UsageSummary<'_> {
                                     <td style="padding: 12px 0 0 0; font-size: 16px; font-weight: 600; color: #1a1a1a; text-align: right;">{total}</td>
                                 </tr>
                             </table>
-                            <p style="margin: 0; font-size: 14px; line-height: 20px; color: #6b7280;">Questions? Please reach out to <a href="mailto:billing@scanopy.net" style="color: #2563eb; text-decoration: none;">billing@scanopy.net</a></p>
 "#,
             invoice_date = self.invoice_date,
             line_items_html = self.line_items_html,
@@ -56,7 +55,12 @@ impl Email for UsageSummary<'_> {
                         "Here's a summary of your Scanopy billing for {}.",
                         self.period
                     ))
-                    .raw(&invoice_table),
+                    .raw(&invoice_table)
+                    .fine_print("*Price excludes applicable taxes.")
+                    .raw(
+r#"                            <p style="margin: 0; font-size: 14px; line-height: 20px; color: #6b7280;">Questions? Please reach out to <a href="mailto:billing@scanopy.net" style="color: #2563eb; text-decoration: none;">billing@scanopy.net</a></p>
+"#,
+                    ),
             )
             .cta(
                 "{base_url}/?modal=settings&tab=billing&{utm}",
