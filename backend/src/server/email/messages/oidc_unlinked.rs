@@ -1,4 +1,4 @@
-use super::{Email, EmailCategory};
+use super::{Body, Content, Email, EmailCategory, EmailPreference};
 
 /// Sent as a security notice when an OIDC login provider is unlinked from a
 /// user's account.
@@ -15,22 +15,26 @@ impl Email for OidcUnlinked<'_> {
         EmailCategory::Auth
     }
 
+    fn preference(&self) -> EmailPreference {
+        EmailPreference::Required
+    }
+
     fn campaign(&self) -> &'static str {
-        ""
+        "oidc_unlinked"
     }
 
     fn body_html(&self) -> String {
-        BODY.replace("{provider_name}", self.provider_name)
+        Body::new()
+            .content(
+                Content::new()
+                    .heading("Login Method Disconnected")
+                    .paragraph("Hi there,")
+                    .paragraph(&format!(
+                        "Your {0} account has been unlinked from your Scanopy account. You can no longer sign in using {0}.",
+                        self.provider_name
+                    ))
+                    .paragraph("If you didn't make this change, please sign in to your account and review your security settings."),
+            )
+            .render()
     }
 }
-
-const BODY: &str = r#"                    <!-- Main Content -->
-                    <tr>
-                        <td style="padding: 0 40px 20px 40px;">
-                            <h1 style="margin: 0 0 20px 0; font-size: 24px; font-weight: 600; color: #1a1a1a; text-align: center;">Login Method Disconnected</h1>
-                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 24px; color: #4a4a4a;">Hi there,</p>
-                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 24px; color: #4a4a4a;">Your {provider_name} account has been unlinked from your Scanopy account. You can no longer sign in using {provider_name}.</p>
-                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 24px; color: #4a4a4a;">If you didn't make this change, please sign in to your account and review your security settings.</p>
-                        </td>
-                    </tr>
-"#;

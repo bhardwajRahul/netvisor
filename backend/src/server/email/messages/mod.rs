@@ -8,6 +8,7 @@
 
 mod cancellation_initiated;
 mod checkout_completed;
+mod compose;
 mod daemon_standby;
 mod daemon_unreachable;
 mod discovery_digest;
@@ -41,6 +42,7 @@ mod verification;
 
 pub use cancellation_initiated::CancellationInitiated;
 pub use checkout_completed::CheckoutCompleted;
+pub use compose::{Body, Content};
 pub use daemon_standby::DaemonStandby;
 pub use daemon_unreachable::DaemonUnreachable;
 pub use discovery_digest::DiscoveryDigest;
@@ -105,6 +107,38 @@ impl EmailCategory {
     }
 }
 
+/// Whether the recipient can suppress an email, and if so which preference
+/// toggle governs it.
+///
+/// Distinct from [`EmailCategory`] (the provider analytics tag): pausability
+/// cuts *across* categories — Billing, for example, splits into required
+/// receipts and pausable nudges — so it cannot be derived from the category.
+/// Every email declares its own [`EmailPreference`] via [`Email::preference`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EmailPreference {
+    /// Always sent — security, billing receipts, and account-lifecycle
+    /// messages with legal or security weight. Ignores user preferences;
+    /// surfaced in Settings as a single disabled "Required emails" row.
+    Required,
+    /// Suppressible by the recipient; gated at send time by the matching
+    /// [`PausableCategory`] flag in their preferences.
+    Pausable(PausableCategory),
+}
+
+/// The user-pausable email groups. Each maps 1:1 to a boolean flag on
+/// `EmailSettings`, and each is one toggle in Settings → Email.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PausableCategory {
+    /// Per-discovery-session digests.
+    DiscoveryDigest,
+    /// Product onboarding / first-run walkthrough nudges.
+    ProductOnboarding,
+    /// Daemon connectivity notices (standby, unreachable).
+    DaemonAlerts,
+    /// Trial reminders and plan-limit nudges.
+    TrialAndUsage,
+}
+
 /// A single transactional email.
 ///
 /// Implementors are plain data structs carrying the template variables for one
@@ -130,6 +164,12 @@ pub trait Email: Send + Sync {
 
     /// Classification tag for grouping and provider analytics.
     fn category(&self) -> EmailCategory;
+
+    /// Whether the recipient can suppress this email, and which preference
+    /// governs it. Required of every email so the pausable/required split is
+    /// exhaustive and compiler-enforced — a new message cannot be added
+    /// without classifying it.
+    fn preference(&self) -> EmailPreference;
 
     /// The `utm_campaign` slug for this email's CTAs.
     fn campaign(&self) -> &'static str;
@@ -162,17 +202,28 @@ pub trait Email: Send + Sync {
     }
 
     /// Wrap the body in the shared chrome and substitute the layout tokens.
-    fn render_html(&self, base_url: &str) -> String {
+    ///
+    /// `self_hosted` gates the footer's sender-identification block: cloud
+    /// sends originate from Scanopy LLC and disclose the LLC + postal address,
+    /// while self-hosted sends are relayed by the operator's own mail server,
+    /// so that disclosure is replaced by a plain copyright line.
+    fn render_html(&self, base_url: &str, self_hosted: bool) -> String {
         let year = chrono::Utc::now().format("%Y").to_string();
+        let footer_legal = if self_hosted {
+            FOOTER_LEGAL_SELF_HOSTED
+        } else {
+            FOOTER_LEGAL_CLOUD
+        };
         format!("{}{}{}", EMAIL_HEADER, self.body_html(), EMAIL_FOOTER)
+            .replace("{footer_legal}", footer_legal)
             .replace("{current_year}", &year)
             .replace("{base_url}", base_url)
             .replace("{utm}", &self.utm_qs())
     }
 
     /// Plaintext alternative, derived from the wrapped HTML.
-    fn render_text(&self, base_url: &str) -> String {
-        strip_html_tags(self.render_html(base_url))
+    fn render_text(&self, base_url: &str, self_hosted: bool) -> String {
+        strip_html_tags(self.render_html(base_url, self_hosted))
     }
 }
 
@@ -220,8 +271,8 @@ pub const EMAIL_FOOTER: &str = r#"                    <!-- Footer -->
                                 </tr>
                             </table>
 
-                            <p style="margin: 0; font-size: 12px; line-height: 18px; color: #9ca3af;">© {current_year} Scanopy LLC. All rights reserved.</p>
-                            <p style="margin: 8px 0 0 0; font-size: 12px; line-height: 18px; color: #9ca3af;">Scanopy LLC &middot; 418 Broadway Ste N, Albany, NY 12207</p>
+                            <p style="margin: 0 0 12px 0; font-size: 12px; line-height: 18px; color: #9ca3af;"><a href="{base_url}/?modal=settings&tab=email&{utm}" style="color: #6b7280; text-decoration: underline;">Manage email preferences</a></p>
+{footer_legal}
                         </td>
                     </tr>
                 </table>
@@ -231,6 +282,17 @@ pub const EMAIL_FOOTER: &str = r#"                    <!-- Footer -->
 </body>
 </html>
 "#;
+
+/// Footer sender-identification block for cloud sends: Scanopy LLC is the
+/// commercial sender, so it discloses the entity and its postal address
+/// (standard commercial-email sender identification).
+pub const FOOTER_LEGAL_CLOUD: &str = r#"                            <p style="margin: 0; font-size: 12px; line-height: 18px; color: #9ca3af;">© {current_year} Scanopy LLC. All rights reserved.</p>
+                            <p style="margin: 8px 0 0 0; font-size: 12px; line-height: 18px; color: #9ca3af;">Scanopy LLC &middot; 418 Broadway Ste N, Albany, NY 12207</p>"#;
+
+/// Footer block for self-hosted sends: the operator's own mail server relays
+/// these and there is no commercial relationship with Scanopy LLC to disclose,
+/// so the LLC + address line is dropped for a plain branding line.
+pub const FOOTER_LEGAL_SELF_HOSTED: &str = r#"                            <p style="margin: 0; font-size: 12px; line-height: 18px; color: #9ca3af;">© {current_year} Scanopy</p>"#;
 
 #[cfg(test)]
 mod tests {
@@ -263,18 +325,20 @@ mod tests {
     /// non-empty subject + HTML with no leftover `{token}` placeholders. This
     /// is real coverage against forgetting a `.replace(...)`, not a stub impl.
     fn assert_fully_rendered(email: &dyn Email) {
-        let html = email.render_html("https://app.example.test");
         let subject = email.subject();
         assert!(!subject.is_empty(), "empty subject");
-        assert!(!html.is_empty(), "empty html");
         assert!(
             !has_placeholder(&subject),
             "leftover placeholder in subject: {subject}"
         );
-        assert!(
-            !has_placeholder(&html),
-            "leftover placeholder in html for subject: {subject}"
-        );
+        for self_hosted in [false, true] {
+            let html = email.render_html("https://app.example.test", self_hosted);
+            assert!(!html.is_empty(), "empty html");
+            assert!(
+                !has_placeholder(&html),
+                "leftover placeholder in html for subject: {subject} (self_hosted={self_hosted})"
+            );
+        }
     }
 
     #[test]
@@ -429,5 +493,311 @@ mod tests {
             payload: &payload,
             base_url: "https://app.example.test",
         });
+    }
+
+    /// Visit every email (every distinct variant) once, paired with a stable
+    /// snapshot name. Single source of truth for the render/snapshot tests.
+    fn for_each_email(mut f: impl FnMut(&str, &dyn Email)) {
+        f(
+            "password_reset",
+            &PasswordReset {
+                url: "https://app.example.test",
+                token: "reset-token",
+            },
+        );
+        f(
+            "verification",
+            &Verification {
+                url: "https://app.example.test",
+                token: "verify-token",
+            },
+        );
+        f(
+            "password_changed",
+            &PasswordChanged {
+                timestamp: "2026-01-01 00:00 UTC",
+            },
+        );
+        f(
+            "oidc_linked",
+            &OidcLinked {
+                provider_name: "Google",
+            },
+        );
+        f(
+            "oidc_unlinked",
+            &OidcUnlinked {
+                provider_name: "Google",
+            },
+        );
+        f(
+            "email_changed_old",
+            &EmailChangedOld {
+                new_email: "new@example.test",
+            },
+        );
+        f(
+            "invite",
+            &Invite {
+                url: "https://app.example.test/invite/abc",
+                inviter: "owner@example.test",
+            },
+        );
+        f(
+            "discovery_guide",
+            &DiscoveryGuide {
+                daemon_name: "daemon-1",
+                network_name: "Home",
+            },
+        );
+        f(
+            "install_command",
+            &InstallCommand {
+                install_command: "curl … | sh",
+                os: "linux",
+            },
+        );
+        f(
+            "daemon_standby",
+            &DaemonStandby {
+                daemon_name: "daemon-1",
+                network_name: "Home",
+            },
+        );
+        f(
+            "daemon_unreachable",
+            &DaemonUnreachable {
+                daemon_name: "daemon-1",
+                network_name: "Home",
+            },
+        );
+        f("organization_deleted", &OrganizationDeleted);
+        f(
+            "trial_started",
+            &TrialStarted {
+                plan_name: "Pro",
+                trial_days: 14,
+                billing_period: "Monthly",
+                base_price: "$14.99/mo",
+            },
+        );
+        f(
+            "trial_ending_has_payment",
+            &TrialEnding {
+                has_payment: true,
+                plan_name: "Pro",
+                billing_period: "Monthly",
+                base_price: "$14.99/mo",
+                hosts_count: 12,
+                networks_count: 3,
+                daemons_count: 2,
+                services_count: 20,
+                days_into_trial: 11,
+            },
+        );
+        f(
+            "trial_ending_no_payment",
+            &TrialEnding {
+                has_payment: false,
+                plan_name: "Pro",
+                billing_period: "Monthly",
+                base_price: "$14.99/mo",
+                hosts_count: 12,
+                networks_count: 3,
+                daemons_count: 2,
+                services_count: 20,
+                days_into_trial: 11,
+            },
+        );
+        f(
+            "trial_expired",
+            &TrialExpired {
+                plan_name: "Pro",
+                billing_period: "Monthly",
+            },
+        );
+        f(
+            "trial_converted",
+            &TrialConverted {
+                plan_name: "Pro",
+                billing_period: "Monthly",
+                base_price: "$14.99/mo",
+            },
+        );
+        f("plan_changed", &PlanChanged { plan_name: "Pro" });
+        f(
+            "subscription_cancelled",
+            &SubscriptionCancelled {
+                period_end_date: "January 1, 2026",
+            },
+        );
+        f("payment_method_added", &PaymentMethodAdded);
+        f("payment_method_removed", &PaymentMethodRemoved);
+        f("payment_recovered", &PaymentRecovered { amount: "$14.99" });
+        f("payment_failed", &PaymentFailed);
+        f(
+            "payment_action_required",
+            &PaymentActionRequired {
+                cta_href: "https://billing.example.test/invoice/abc",
+            },
+        );
+        f(
+            "cancellation_initiated",
+            &CancellationInitiated {
+                period_end: "January 1, 2026",
+            },
+        );
+        f("subscription_reactivated", &SubscriptionReactivated);
+        f(
+            "subscription_paused_monthly",
+            &SubscriptionPaused {
+                resumes_at: "July 1, 2026",
+                is_yearly: false,
+                duration_days: 30,
+            },
+        );
+        f(
+            "subscription_paused_yearly",
+            &SubscriptionPaused {
+                resumes_at: "July 1, 2026",
+                is_yearly: true,
+                duration_days: 30,
+            },
+        );
+        f("subscription_resumed", &SubscriptionResumed);
+        f(
+            "checkout_completed",
+            &CheckoutCompleted { plan_name: "Pro" },
+        );
+        f(
+            "usage_summary",
+            &UsageSummary {
+                period: "Dec 1, 2025 – Jan 1, 2026",
+                invoice_date: "January 1, 2026",
+                line_items_html: "<tr><td>Subscription</td><td>$14.99</td></tr>",
+                total: "$14.99",
+            },
+        );
+        f(
+            "plan_limit_approaching_overage",
+            &PlanLimitApproaching {
+                first_name: None,
+                limit_type: "hosts",
+                current_count: 8,
+                limit: 10,
+                plan_name: "Pro",
+                has_overage: true,
+            },
+        );
+        f(
+            "plan_limit_approaching_no_overage",
+            &PlanLimitApproaching {
+                first_name: None,
+                limit_type: "hosts",
+                current_count: 8,
+                limit: 10,
+                plan_name: "Pro",
+                has_overage: false,
+            },
+        );
+        f(
+            "plan_limit_reached_overage",
+            &PlanLimitReached {
+                first_name: Some("Ada"),
+                limit_type: "hosts",
+                current_count: 10,
+                limit: 10,
+                plan_name: "Pro",
+                has_overage: true,
+            },
+        );
+        f(
+            "plan_limit_reached_no_overage",
+            &PlanLimitReached {
+                first_name: Some("Ada"),
+                limit_type: "hosts",
+                current_count: 10,
+                limit: 10,
+                plan_name: "Pro",
+                has_overage: false,
+            },
+        );
+
+        let payload = DiscoveryDigestPayload {
+            session_id: Uuid::nil(),
+            network_id: Uuid::nil(),
+            network_name: "Home".to_string(),
+            started_at: chrono::Utc::now(),
+            finished_at: chrono::Utc::now(),
+            subnets_scanned: vec![],
+            hosts_added: vec![],
+            hosts_vanished: vec![],
+            hosts_changed: vec![],
+            vlans_added: vec![],
+            vlans_removed: vec![],
+            recipients: vec![],
+        };
+        f(
+            "discovery_digest",
+            &DiscoveryDigest {
+                payload: &payload,
+                base_url: "https://app.example.test",
+            },
+        );
+    }
+
+    /// Byte-for-byte fidelity net for the chrome-helper refactor: every email's
+    /// `body_html()` must match its committed golden. `discovery_digest` carries
+    /// `started_at`/`finished_at` timestamps, so its body is non-deterministic —
+    /// snapshot only the deterministic emails. Regenerate with
+    /// `UPDATE_EMAIL_SNAPSHOTS=1 cargo test --lib email_body_snapshots`.
+    #[test]
+    fn email_body_snapshots() {
+        let dir = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/src/server/email/messages/snapshots"
+        );
+        let update = std::env::var("UPDATE_EMAIL_SNAPSHOTS").is_ok();
+        if update {
+            std::fs::create_dir_all(dir).unwrap();
+        }
+        for_each_email(|name, email| {
+            if name == "discovery_digest" {
+                return;
+            }
+            let path = format!("{dir}/{name}.html");
+            let actual = email.body_html();
+            if update {
+                std::fs::write(&path, &actual).unwrap();
+            } else {
+                let expected = std::fs::read_to_string(&path).unwrap_or_else(|_| {
+                    panic!("missing snapshot {path}; run with UPDATE_EMAIL_SNAPSHOTS=1")
+                });
+                assert_eq!(actual, expected, "body_html drift for {name}");
+            }
+        });
+    }
+
+    /// The footer's sender-identification block is gated on deployment type,
+    /// and every email carries the Manage Preferences deep link.
+    #[test]
+    fn footer_gates_on_deployment() {
+        let cloud = PaymentFailed.render_html("https://app.example.test", false);
+        let self_hosted = PaymentFailed.render_html("https://app.example.test", true);
+
+        // Cloud: Scanopy LLC is the sender, so disclose the LLC + postal address.
+        assert!(cloud.contains("Scanopy LLC. All rights reserved."));
+        assert!(cloud.contains("418 Broadway Ste N, Albany, NY 12207"));
+
+        // Self-hosted: operator is the sender — no LLC/address disclosure.
+        assert!(!self_hosted.contains("Scanopy LLC"));
+        assert!(!self_hosted.contains("418 Broadway"));
+        assert!(self_hosted.contains("Scanopy</p>"));
+
+        // Both: Manage Preferences deep link to Settings → Email.
+        for html in [&cloud, &self_hosted] {
+            assert!(html.contains("Manage email preferences"));
+            assert!(html.contains("/?modal=settings&tab=email&utm_source=email"));
+        }
     }
 }

@@ -1,4 +1,4 @@
-use super::{Email, EmailCategory};
+use super::{Body, Content, Email, EmailCategory, EmailPreference};
 
 /// Tells the user a previously failed payment has gone through and their
 /// subscription is active again.
@@ -15,22 +15,26 @@ impl Email for PaymentRecovered<'_> {
         EmailCategory::Billing
     }
 
+    fn preference(&self) -> EmailPreference {
+        EmailPreference::Required
+    }
+
     fn campaign(&self) -> &'static str {
-        ""
+        "payment_recovered"
     }
 
     fn body_html(&self) -> String {
-        PAYMENT_RECOVERED_BODY.replace("{amount}", self.amount)
+        Body::new()
+            .content(
+                Content::new()
+                    .heading("Payment Recovered")
+                    .paragraph("Hi there,")
+                    .paragraph(&format!(
+                        "Your previously failed payment of {} has gone through. Your subscription is active again — no action needed on your end.",
+                        self.amount
+                    ))
+                    .paragraph("Thanks for being a Scanopy customer."),
+            )
+            .render()
     }
 }
-
-const PAYMENT_RECOVERED_BODY: &str = r#"                    <!-- Main Content -->
-                    <tr>
-                        <td style="padding: 0 40px 20px 40px;">
-                            <h1 style="margin: 0 0 20px 0; font-size: 24px; font-weight: 600; color: #1a1a1a; text-align: center;">Payment Recovered</h1>
-                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 24px; color: #4a4a4a;">Hi there,</p>
-                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 24px; color: #4a4a4a;">Your previously failed payment of {amount} has gone through. Your subscription is active again — no action needed on your end.</p>
-                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 24px; color: #4a4a4a;">Thanks for being a Scanopy customer.</p>
-                        </td>
-                    </tr>
-"#;

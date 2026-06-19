@@ -1,4 +1,4 @@
-use super::{Email, EmailCategory};
+use super::{Body, Content, Email, EmailCategory, EmailPreference};
 
 /// Confirms to the user that their paused subscription has resumed. Fired by
 /// the email subscriber on `BillingOperation::Resumed`.
@@ -13,22 +13,23 @@ impl Email for SubscriptionResumed {
         EmailCategory::Billing
     }
 
+    fn preference(&self) -> EmailPreference {
+        EmailPreference::Required
+    }
+
     fn campaign(&self) -> &'static str {
-        ""
+        "subscription_resumed"
     }
 
     fn body_html(&self) -> String {
-        SUBSCRIPTION_RESUMED_BODY.to_string()
+        Body::new()
+            .content(
+                Content::new()
+                    .heading("Welcome back")
+                    .paragraph("Hi there,")
+                    .paragraph("Your Scanopy subscription is no longer paused. Billing has resumed on your normal cycle and the app is unlocked.")
+                    .paragraph("Glad to have you back."),
+            )
+            .render()
     }
 }
-
-const SUBSCRIPTION_RESUMED_BODY: &str = r#"                    <!-- Main Content -->
-                    <tr>
-                        <td style="padding: 0 40px 20px 40px;">
-                            <h1 style="margin: 0 0 20px 0; font-size: 24px; font-weight: 600; color: #1a1a1a; text-align: center;">Welcome back</h1>
-                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 24px; color: #4a4a4a;">Hi there,</p>
-                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 24px; color: #4a4a4a;">Your Scanopy subscription is no longer paused. Billing has resumed on your normal cycle and the app is unlocked.</p>
-                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 24px; color: #4a4a4a;">Glad to have you back.</p>
-                        </td>
-                    </tr>
-"#;

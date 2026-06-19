@@ -1,4 +1,4 @@
-use super::{Email, EmailCategory};
+use super::{Body, Content, Email, EmailCategory, EmailPreference, PausableCategory};
 
 /// Sent when an organization crosses 80% of a plan limit (hosts/networks/seats).
 pub struct PlanLimitApproaching<'a> {
@@ -17,6 +17,10 @@ impl Email for PlanLimitApproaching<'_> {
 
     fn category(&self) -> EmailCategory {
         EmailCategory::Billing
+    }
+
+    fn preference(&self) -> EmailPreference {
+        EmailPreference::Pausable(PausableCategory::TrialAndUsage)
     }
 
     fn campaign(&self) -> &'static str {
@@ -40,31 +44,18 @@ impl Email for PlanLimitApproaching<'_> {
                 "Upgrade Plan",
             )
         };
-        BODY.replace("{first_name}", self.first_name.unwrap_or("there"))
-            .replace("{limit_type}", self.limit_type)
-            .replace("{current_count}", &self.current_count.to_string())
-            .replace("{limit}", &self.limit.to_string())
-            .replace("{plan_name}", self.plan_name)
-            .replace("{limit_message}", &limit_message)
-            .replace("{cta_modal}", cta_modal)
-            .replace("{cta_label}", cta_label)
+        Body::new()
+            .content(
+                Content::new()
+                    .heading("Approaching Plan Limit")
+                    .paragraph(&format!("Hi {},", self.first_name.unwrap_or("there")))
+                    .paragraph(&format!(
+                        "You're using <strong>{}</strong> of your <strong>{}</strong> included {} on the {} plan.",
+                        self.current_count, self.limit, self.limit_type, self.plan_name
+                    ))
+                    .paragraph(&limit_message),
+            )
+            .cta(&format!("{{base_url}}/?modal={cta_modal}&{{utm}}"), cta_label)
+            .render()
     }
 }
-
-const BODY: &str = r#"                    <!-- Main Content -->
-                    <tr>
-                        <td style="padding: 0 40px 20px 40px;">
-                            <h1 style="margin: 0 0 20px 0; font-size: 24px; font-weight: 600; color: #1a1a1a; text-align: center;">Approaching Plan Limit</h1>
-                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 24px; color: #4a4a4a;">Hi {first_name},</p>
-                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 24px; color: #4a4a4a;">You're using <strong>{current_count}</strong> of your <strong>{limit}</strong> included {limit_type} on the {plan_name} plan.</p>
-                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 24px; color: #4a4a4a;">{limit_message}</p>
-                        </td>
-                    </tr>
-
-                    <!-- CTA Button -->
-                    <tr>
-                        <td align="center" style="padding: 0 40px 30px 40px;">
-                            <a href="{base_url}/?modal={cta_modal}&{utm}" style="display: inline-block; padding: 14px 40px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 500;">{cta_label}</a>
-                        </td>
-                    </tr>
-"#;

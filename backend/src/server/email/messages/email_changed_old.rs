@@ -1,4 +1,4 @@
-use super::{Email, EmailCategory};
+use super::{Body, Content, Email, EmailCategory, EmailPreference};
 
 /// Sent to a user's previous email address as a security notice when the
 /// account email is changed.
@@ -15,22 +15,26 @@ impl Email for EmailChangedOld<'_> {
         EmailCategory::Auth
     }
 
+    fn preference(&self) -> EmailPreference {
+        EmailPreference::Required
+    }
+
     fn campaign(&self) -> &'static str {
-        ""
+        "email_changed_old"
     }
 
     fn body_html(&self) -> String {
-        BODY.replace("{new_email}", self.new_email)
+        Body::new()
+            .content(
+                Content::new()
+                    .heading("Email Address Changed")
+                    .paragraph("Hi there,")
+                    .paragraph(&format!(
+                        "The email address on your Scanopy account was changed to <strong>{}</strong>.",
+                        self.new_email
+                    ))
+                    .paragraph("If you made this change, no action is needed. If you didn't request this change, please contact support immediately."),
+            )
+            .render()
     }
 }
-
-const BODY: &str = r#"                    <!-- Main Content -->
-                    <tr>
-                        <td style="padding: 0 40px 20px 40px;">
-                            <h1 style="margin: 0 0 20px 0; font-size: 24px; font-weight: 600; color: #1a1a1a; text-align: center;">Email Address Changed</h1>
-                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 24px; color: #4a4a4a;">Hi there,</p>
-                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 24px; color: #4a4a4a;">The email address on your Scanopy account was changed to <strong>{new_email}</strong>.</p>
-                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 24px; color: #4a4a4a;">If you made this change, no action is needed. If you didn't request this change, please contact support immediately.</p>
-                        </td>
-                    </tr>
-"#;
