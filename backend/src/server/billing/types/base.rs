@@ -1184,6 +1184,7 @@ impl TypeMetadataProvider for BillingPlan {
     Display,
     strum::EnumString,
     EnumIter,
+    IntoStaticStr,
     ToSchema,
 )]
 #[serde(rename_all = "snake_case")]
@@ -1203,6 +1204,53 @@ pub enum PlanStatus {
     #[serde(alias = "canceled")]
     #[strum(serialize = "cancelled", serialize = "canceled")]
     Cancelled,
+}
+
+impl HasId for PlanStatus {
+    fn id(&self) -> &'static str {
+        self.into()
+    }
+}
+
+impl EntityMetadataProvider for PlanStatus {
+    fn color(&self) -> Color {
+        // Mirrors the former `getPlanStatusColor` mapping in BillingTab.svelte
+        // so the badge text colour is unchanged by the move to metadata.
+        match self {
+            Self::Active => Color::Green,
+            Self::Trialing => Color::Blue,
+            Self::PastDue => Color::Red,
+            Self::PendingCancellation => Color::Amber,
+            Self::Paused => Color::Orange,
+            Self::Cancelled => Color::Yellow,
+        }
+    }
+
+    fn icon(&self) -> Icon {
+        match self {
+            Self::Active => Icon::CircleCheck,
+            Self::Trialing => Icon::Clock,
+            Self::PastDue => Icon::CircleAlert,
+            Self::Paused => Icon::Pause,
+            Self::PendingCancellation => Icon::TriangleAlert,
+            Self::Cancelled => Icon::CircleX,
+        }
+    }
+}
+
+impl TypeMetadataProvider for PlanStatus {
+    fn name(&self) -> &'static str {
+        // `PendingCancellation` reads as "Downgrading" to match the prior
+        // `formatPlanStatus` label the badge rendered.
+        match self {
+            Self::Active => "Active",
+            Self::Trialing => "Trialing",
+            Self::PastDue => "Past due",
+            Self::Paused => "Paused",
+            Self::PendingCancellation => "Downgrading",
+            Self::Cancelled => "Cancelled",
+        }
+    }
 }
 
 // ===========================================================================

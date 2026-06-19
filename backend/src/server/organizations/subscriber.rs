@@ -206,7 +206,13 @@ impl Subscriber<BillingOperation> for OrganizationService {
                     if organization.base.plan.as_ref() != Some(&free_plan) {
                         organization.base.plan = Some(free_plan);
                     }
-                    organization.base.has_payment_method = false;
+                    // NOTE: do NOT touch `has_payment_method` here. Cancelling a
+                    // subscription does not detach the customer's saved cards;
+                    // the flag's sole authoritative writers are
+                    // `PaymentMethodAdded` / `PaymentMethodRemoved` (driven by
+                    // the Stripe `payment_method.attached`/`detached` webhooks).
+                    // Resetting it on cancel/downgrade left it stale-false after
+                    // downgrade-to-Free or resubscribe-without-trial.
                     // Subscription is gone; clear the renewal mirror.
                     if organization.base.next_renewal_at.is_some() {
                         organization.base.next_renewal_at = None;

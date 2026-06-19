@@ -80,9 +80,10 @@
 		onSubscriptionChanged?: () => void;
 	} = $props();
 
-	// Pause/discount are retention tools for billing subscribers. A trial isn't
-	// charging yet, so suppress save offers and let the cancellation go straight
-	// to confirm (cancel-at-period-end ends the trial without converting).
+	// A trial isn't charging yet, so pause (which freezes an active billing
+	// cycle) is meaningless and is suppressed below. The discount, however,
+	// applies to the first invoice at trial-end, so it survives the trial — a
+	// trialing user picking "Too expensive" should still see the offer.
 	let isTrialing = $derived(planStatus === 'trialing');
 
 	// Save offers (pause + discount) only apply to Stripe-managed plans —
@@ -149,18 +150,23 @@
 	]);
 
 	const offersForReason = $derived.by<string[]>(() => {
-		if (isTrialing || !canReceiveSaveOffer || !selectedReason) return [];
+		if (!canReceiveSaveOffer || !selectedReason) return [];
 		const reason = cancelReasons.find((r) => r.id === selectedReason);
 		const offers = (reason?.metadata as { save_offers?: string[] } | null | undefined)?.save_offers;
-		// Hide the discount panel until the backend confirms the coupon is
-		// applicable to this org's next renewal. saveOfferCoupon === null can
-		// mean (a) the env var isn't configured, (b) the next renewal falls
-		// outside the coupon's duration window, or (c) the query is still
-		// loading. In any of those cases the panel would have nothing useful
-		// to show — better to not render it than to flash a generic fallback.
-		return (offers ?? []).filter(
-			(o) => o !== 'discount' || (!lastDiscountAt && saveOfferCoupon != null)
-		);
+		return (offers ?? []).filter((o) => {
+			if (o === 'discount') {
+				// Hide the discount panel until the backend confirms the coupon
+				// is applicable to this org's next renewal. saveOfferCoupon ===
+				// null can mean (a) the env var isn't configured, (b) the next
+				// renewal falls outside the coupon's duration window, or (c) the
+				// query is still loading. In any of those cases the panel would
+				// have nothing useful to show — better to not render it.
+				return !lastDiscountAt && saveOfferCoupon != null;
+			}
+			// Non-discount offers (pause) freeze an active billing cycle; a
+			// trial isn't charging yet, so suppress them while trialing.
+			return !isTrialing;
+		});
 	});
 
 	const offerMeta = (offerId: string) => saveOffers.find((o) => o.id === offerId);

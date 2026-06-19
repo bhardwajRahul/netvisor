@@ -60,10 +60,14 @@
 
 	let {
 		subView = $bindable<'main' | 'credentials' | 'email-change' | 'cookies'>('main'),
-		onClose
+		onClose,
+		dismissible = true
 	}: {
 		subView?: 'main' | 'credentials' | 'email-change' | 'cookies';
 		onClose: () => void;
+		/** When false (hard-gated modal), the main-view Close button is hidden so
+		 * the gate can't be escaped from this tab. Sub-view Back/Save stay. */
+		dismissible?: boolean;
 	} = $props();
 
 	// TanStack Query for current user and organization
@@ -481,18 +485,22 @@
 		{/if}
 	</div>
 
-	<!-- Footer -->
-	<div class="modal-footer">
-		<div class="flex items-center justify-end gap-3">
-			<button type="button" onclick={handleCancel} class="btn-secondary">
-				{cancelLabel}
-			</button>
-			{#if showSave}
-				{@const isSaving = subView === 'email-change' ? emailChangeLoading : savingCredentials}
-				<button type="submit" disabled={isSaving} class="btn-primary">
-					{isSaving ? common_saving() : common_saveChanges()}
+	<!-- Footer — hidden on the main view when the modal is hard-gated
+	     (dismissible=false), since the only button there is Close, which would
+	     let the user escape the gate. Sub-views keep their Back/Save footer. -->
+	{#if dismissible || subView !== 'main'}
+		<div class="modal-footer">
+			<div class="flex items-center justify-end gap-3">
+				<button type="button" onclick={handleCancel} class="btn-secondary">
+					{cancelLabel}
 				</button>
-			{/if}
+				{#if showSave}
+					{@const isSaving = subView === 'email-change' ? emailChangeLoading : savingCredentials}
+					<button type="submit" disabled={isSaving} class="btn-primary">
+						{isSaving ? common_saving() : common_saveChanges()}
+					</button>
+				{/if}
+			</div>
 		</div>
-	</div>
+	{/if}
 </form>

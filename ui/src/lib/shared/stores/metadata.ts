@@ -9,6 +9,7 @@ import portsJson from '$lib/data/ports.json';
 import discoveryTypesJson from '$lib/data/discovery-types.json';
 import discoveryPhasesJson from '$lib/data/discovery-phases.json';
 import billingPlansJson from '$lib/data/billing-plans-all.json';
+import planStatusesJson from '$lib/data/plan-statuses.json';
 import featuresJson from '$lib/data/features.json';
 import permissionsJson from '$lib/data/permissions.json';
 import credentialTypesJson from '$lib/data/credential-types.json';
@@ -79,6 +80,7 @@ export interface MetadataRegistry {
 	discovery_types: TypeMetadata[];
 	discovery_phases: TypeMetadata[];
 	billing_plans: TypeMetadata[];
+	plan_statuses: TypeMetadata[];
 	features: TypeMetadata[];
 	permissions: TypeMetadata[];
 	concepts: EntityMetadata[];
@@ -224,6 +226,7 @@ export const metadata = writable<MetadataRegistry>({
 	discovery_types: discoveryTypesJson,
 	discovery_phases: discoveryPhasesJson,
 	billing_plans: billingPlansJson,
+	plan_statuses: planStatusesJson,
 	features: featuresJson,
 	permissions: permissionsJson,
 	concepts: conceptsJson,
@@ -416,6 +419,7 @@ export const discoveryPhases = createTypeMetadataHelpers<
 export const billingPlans = createTypeMetadataHelpers<'billing_plans', BillingPlanMetadata>(
 	'billing_plans'
 );
+export const planStatuses = createTypeMetadataHelpers<'plan_statuses', object>('plan_statuses');
 export const features = createTypeMetadataHelpers<'features', FeatureMetadata>('features');
 export const permissions = createTypeMetadataHelpers<'permissions', PermissionsMetadata>(
 	'permissions'
