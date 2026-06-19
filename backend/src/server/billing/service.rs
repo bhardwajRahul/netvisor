@@ -2357,7 +2357,11 @@ impl BillingService {
         sub: &Subscription,
         organization: &Organization,
     ) -> Result<Option<i64>, Error> {
-        let Some(credit_cents) = compute_pause_credit_cents(sub, organization) else {
+        let Some(PauseCredit {
+            credit_cents,
+            actual_paused_secs,
+        }) = compute_pause_credit(sub, organization)
+        else {
             return Ok(None);
         };
 
@@ -2369,11 +2373,11 @@ impl BillingService {
             return Ok(None);
         };
 
-        let meta = StripeSubscriptionMetadata::from_stripe(&sub.metadata);
-        let days_label = meta
-            .scanopy_paused_at
-            .map(|paused_at| (Utc::now().timestamp() - paused_at).max(0) / 86_400)
-            .unwrap_or(0);
+        // Use the same clamped duration the credit math used so the
+        // description and the amount reconcile (e.g. a 35-day elapsed
+        // clamped to a 30-day requested duration labels the credit "30
+        // days" — matching the dollars).
+        let days_label = actual_paused_secs / 86_400;
 
         CreateCustomerCustomerBalanceTransaction::new(
             stripe_shared::CustomerId::from(customer_id),
@@ -2894,9 +2898,19 @@ fn map_cancel_reason_to_stripe(
     })
 }
 
+/// Computed pause credit + the clamped paused duration that produced it.
+/// The caller wants both so the Stripe balance-transaction description
+/// can show the same day count the credit math used (otherwise a 35-day
+/// elapsed clamped to a 30-day requested duration would label the credit
+/// "35 days" while the amount reflects 30 — a confusing reconcile mismatch
+/// for anyone reading the customer's balance history).
+struct PauseCredit {
+    credit_cents: i64,
+    actual_paused_secs: i64,
+}
+
 /// Pure read-only calculation of the prorated pause credit. Called from
-/// both `resume_subscription` (to populate the UI toast amount) and the
-/// webhook Resumed arm (which actually posts the balance transaction).
+/// the webhook Resumed arm (which actually posts the balance transaction).
 /// Returns `None` when there's nothing to credit (metadata missing, no
 /// items on the sub, non-positive period, or zero/negative computed
 /// credit).
@@ -2906,7 +2920,7 @@ fn map_cancel_reason_to_stripe(
 /// - `effective_per_period = base × (1 − active_discount_pct)` (use the
 ///   post-discount rate so we don't over-credit by the coupon amount)
 /// - `credit_cents = effective_per_period × actual_paused_secs / period_secs`
-fn compute_pause_credit_cents(sub: &Subscription, organization: &Organization) -> Option<i64> {
+fn compute_pause_credit(sub: &Subscription, organization: &Organization) -> Option<PauseCredit> {
     let meta = StripeSubscriptionMetadata::from_stripe(&sub.metadata);
     let paused_at_ts = meta.scanopy_paused_at?;
     let item = sub.items.data.first()?;
@@ -2941,7 +2955,10 @@ fn compute_pause_credit_cents(sub: &Subscription, organization: &Organization) -
     .unwrap_or(0);
 
     if credit_cents > 0 {
-        Some(credit_cents)
+        Some(PauseCredit {
+            credit_cents,
+            actual_paused_secs,
+        })
     } else {
         None
     }
