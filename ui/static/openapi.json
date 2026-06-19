@@ -1172,7 +1172,7 @@
           "internal"
         ],
         "summary": "Resume a paused subscription",
-        "description": "Clears Stripe pause collection and re-activates billing. Available while\n`plan_status === 'paused'`. Response includes the credit applied to the\ncustomer's Stripe balance for the paused days, so the UI can format the\nconfirmation toast.",
+        "description": "Clears Stripe pause collection and re-activates billing. Available while\n`plan_status === 'paused'`. The prorated pause credit is posted to the\ncustomer's Stripe balance asynchronously by the webhook arm that fires\nfor the `pause_collection` clear — the endpoint just returns success.",
         "operationId": "resume_subscription",
         "responses": {
           "200": {
@@ -1180,7 +1180,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_ResumeSubscriptionResponse"
+                  "$ref": "#/components/schemas/ApiResponse_String"
                 }
               }
             }
@@ -13707,19 +13707,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-06-19T01:03:56.160777Z",
+              "created_at": "2026-06-19T01:30:30.425386Z",
               "first_discovery_id": null,
-              "id": "1094f1b2-4666-47ba-8d8f-2aac90623e8e",
+              "id": "beec4571-b558-442a-8ddf-5f7f6ed03736",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-19T01:03:56.160777Z",
+              "last_seen_at": "2026-06-19T01:30:30.425386Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-19T01:03:56.160777Z",
-              "valid_from": "2026-06-19T01:03:56.160777Z",
+              "updated_at": "2026-06-19T01:30:30.425386Z",
+              "valid_from": "2026-06-19T01:30:30.425386Z",
               "valid_to": null
             }
           },
@@ -14705,19 +14705,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-06-19T01:03:56.144854Z",
+                      "created_at": "2026-06-19T01:30:30.410334Z",
                       "first_discovery_id": null,
-                      "id": "cf4a0c6f-48c5-42d6-8f2e-cf44516188f9",
+                      "id": "f8e0d596-f3c3-4519-9a94-ebc36c3dcdb3",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-06-19T01:03:56.144854Z",
+                      "last_seen_at": "2026-06-19T01:30:30.410334Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-06-19T01:03:56.144854Z",
-                      "valid_from": "2026-06-19T01:03:56.144854Z",
+                      "updated_at": "2026-06-19T01:30:30.410334Z",
+                      "valid_from": "2026-06-19T01:30:30.410334Z",
                       "valid_to": null
                     }
                   ],
@@ -14731,7 +14731,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "RabbitMQ",
+                  "service_definition": "Prometheus",
                   "source": {
                     "type": "Manual"
                   },
@@ -15593,46 +15593,6 @@
           }
         }
       },
-      "ApiResponse_ResumeSubscriptionResponse": {
-        "type": "object",
-        "required": [
-          "success",
-          "meta"
-        ],
-        "properties": {
-          "data": {
-            "type": "object",
-            "description": "Response from `POST /api/billing/resume`. Carries the credit amount\n(in cents) we applied to the customer's Stripe balance so the frontend\ntoast can surface it (\"$X.XX credit applied to your next invoice\").\n\n`credit_applied_cents` is `None` when no credit was applied — e.g. the\nresume path's metadata-marker idempotency check skipped the apply\nbecause the webhook already handled it, or `scanopy_paused_at`\nmetadata was missing.",
-            "required": [
-              "message"
-            ],
-            "properties": {
-              "credit_applied_cents": {
-                "type": [
-                  "integer",
-                  "null"
-                ],
-                "format": "int64"
-              },
-              "message": {
-                "type": "string"
-              }
-            }
-          },
-          "error": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "meta": {
-            "$ref": "#/components/schemas/ApiMeta"
-          },
-          "success": {
-            "type": "boolean"
-          }
-        }
-      },
       "ApiResponse_ServerCapabilities": {
         "type": "object",
         "required": [
@@ -15762,19 +15722,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-06-19T01:03:56.154700Z",
+                  "created_at": "2026-06-19T01:30:30.420682Z",
                   "first_discovery_id": null,
-                  "id": "e8d2e400-8299-400d-a08f-66ee3319bc0b",
+                  "id": "62e5f913-522f-4bef-8bf0-711300ff6fc4",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-19T01:03:56.154700Z",
+                  "last_seen_at": "2026-06-19T01:30:30.420682Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-19T01:03:56.154700Z",
-                  "valid_from": "2026-06-19T01:03:56.154700Z",
+                  "updated_at": "2026-06-19T01:30:30.420682Z",
+                  "valid_from": "2026-06-19T01:30:30.420682Z",
                   "valid_to": null
                 }
               ],
@@ -15788,7 +15748,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "RabbitMQ",
+              "service_definition": "Prometheus",
               "source": {
                 "type": "Manual"
               },
@@ -17488,19 +17448,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-06-19T01:03:56.145306Z",
+          "created_at": "2026-06-19T01:30:30.410591Z",
           "first_discovery_id": null,
-          "id": "f6e65708-2777-4fb0-86c6-84e1e984dd8f",
+          "id": "d6c8c687-f553-49a4-b9dc-476c7f1ed18c",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-06-19T01:03:56.145306Z",
+          "last_seen_at": "2026-06-19T01:30:30.410591Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-06-19T01:03:56.145306Z",
-          "valid_from": "2026-06-19T01:03:56.145306Z",
+          "updated_at": "2026-06-19T01:30:30.410591Z",
+          "valid_from": "2026-06-19T01:30:30.410591Z",
           "valid_to": null
         }
       },
@@ -18090,7 +18050,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "RabbitMQ",
+              "service_definition": "Prometheus",
               "tags": [],
               "virtualization": null
             }
@@ -20738,19 +20698,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-06-19T01:03:56.144332Z",
+                  "created_at": "2026-06-19T01:30:30.410001Z",
                   "first_discovery_id": null,
-                  "id": "cc7a3281-2a1b-40f9-9f22-5d45f5f798e2",
+                  "id": "d1489f84-d854-4a63-a4df-1ae64114464b",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-19T01:03:56.144332Z",
+                  "last_seen_at": "2026-06-19T01:30:30.410001Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-19T01:03:56.144332Z",
-                  "valid_from": "2026-06-19T01:03:56.144332Z",
+                  "updated_at": "2026-06-19T01:30:30.410001Z",
+                  "valid_from": "2026-06-19T01:30:30.410001Z",
                   "valid_to": null
                 }
               ],
@@ -20764,7 +20724,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "RabbitMQ",
+              "service_definition": "Prometheus",
               "source": {
                 "type": "Manual"
               },
@@ -23195,19 +23155,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-06-19T01:03:56.132984Z",
+                        "created_at": "2026-06-19T01:30:30.403554Z",
                         "first_discovery_id": null,
-                        "id": "2975ccf2-9590-4552-b079-12d5f5a47819",
+                        "id": "0f2fdab7-b0d2-40f3-ba82-792965437b82",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-06-19T01:03:56.132984Z",
+                        "last_seen_at": "2026-06-19T01:30:30.403554Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-06-19T01:03:56.132984Z",
-                        "valid_from": "2026-06-19T01:03:56.132984Z",
+                        "updated_at": "2026-06-19T01:30:30.403554Z",
+                        "valid_from": "2026-06-19T01:30:30.403554Z",
                         "valid_to": null
                       }
                     ],
@@ -23221,7 +23181,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "RabbitMQ",
+                    "service_definition": "Prometheus",
                     "source": {
                       "type": "Manual"
                     },
@@ -23342,19 +23302,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-06-19T01:03:56.153842Z",
+                    "created_at": "2026-06-19T01:30:30.419548Z",
                     "first_discovery_id": null,
-                    "id": "909dd65b-0d03-403d-964f-51e51cbf4247",
+                    "id": "4f32baf2-deaf-4d69-8f1d-cb0a9ac640c9",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-06-19T01:03:56.153842Z",
+                    "last_seen_at": "2026-06-19T01:30:30.419548Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-06-19T01:03:56.153842Z",
-                    "valid_from": "2026-06-19T01:03:56.153842Z",
+                    "updated_at": "2026-06-19T01:30:30.419548Z",
+                    "valid_from": "2026-06-19T01:30:30.419548Z",
                     "valid_to": null
                   }
                 ],
@@ -23368,7 +23328,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "RabbitMQ",
+                "service_definition": "Prometheus",
                 "source": {
                   "type": "Manual"
                 },
@@ -24573,25 +24533,6 @@
           }
         }
       },
-      "ResumeSubscriptionResponse": {
-        "type": "object",
-        "description": "Response from `POST /api/billing/resume`. Carries the credit amount\n(in cents) we applied to the customer's Stripe balance so the frontend\ntoast can surface it (\"$X.XX credit applied to your next invoice\").\n\n`credit_applied_cents` is `None` when no credit was applied — e.g. the\nresume path's metadata-marker idempotency check skipped the apply\nbecause the webhook already handled it, or `scanopy_paused_at`\nmetadata was missing.",
-        "required": [
-          "message"
-        ],
-        "properties": {
-          "credit_applied_cents": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64"
-          },
-          "message": {
-            "type": "string"
-          }
-        }
-      },
       "RunType": {
         "oneOf": [
           {
@@ -24988,19 +24929,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-06-19T01:03:56.145210Z",
+              "created_at": "2026-06-19T01:30:30.410540Z",
               "first_discovery_id": null,
-              "id": "e2eb4e71-52e7-48ec-80c5-baadd7fedf33",
+              "id": "84b87929-8caa-419d-b7fa-218a5810aeea",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-19T01:03:56.145210Z",
+              "last_seen_at": "2026-06-19T01:30:30.410540Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-19T01:03:56.145210Z",
-              "valid_from": "2026-06-19T01:03:56.145210Z",
+              "updated_at": "2026-06-19T01:30:30.410540Z",
+              "valid_from": "2026-06-19T01:30:30.410540Z",
               "valid_to": null
             }
           ],
@@ -25014,7 +24955,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "RabbitMQ",
+          "service_definition": "Prometheus",
           "source": {
             "type": "Manual"
           },
