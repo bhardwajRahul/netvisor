@@ -1,7 +1,6 @@
 # NDAA Section 889 Supply-Chain Review - Evidence
 
-> Supporting evidence for a Section 889 compliance attestation (the
-> attestation itself is a signed letter to the customer). This records that
+> Supporting evidence for a Section 889 compliance attestation. This records that
 > an automated covered-entity review was performed over the SBOMs below.
 
 **Result: PASS**
