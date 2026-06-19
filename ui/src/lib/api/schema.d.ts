@@ -467,7 +467,9 @@ export interface paths {
         /**
          * Resume a paused subscription
          * @description Clears Stripe pause collection and re-activates billing. Available while
-         *     `plan_status === 'paused'`.
+         *     `plan_status === 'paused'`. Response includes the credit applied to the
+         *     customer's Stripe balance for the paused days, so the UI can format the
+         *     confirmation toast.
          */
         post: operations["resume_subscription"];
         delete?: never;
@@ -3097,19 +3099,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-06-18T22:49:03.204022Z",
+             *       "created_at": "2026-06-19T01:03:56.160777Z",
              *       "first_discovery_id": null,
-             *       "id": "344eb8ce-f8a6-4044-af11-699b7932a85a",
+             *       "id": "1094f1b2-4666-47ba-8d8f-2aac90623e8e",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-06-18T22:49:03.204022Z",
+             *       "last_seen_at": "2026-06-19T01:03:56.160777Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-06-18T22:49:03.204022Z",
-             *       "valid_from": "2026-06-18T22:49:03.204022Z",
+             *       "updated_at": "2026-06-19T01:03:56.160777Z",
+             *       "valid_from": "2026-06-19T01:03:56.160777Z",
              *       "valid_to": null
              *     }
              */
@@ -3446,19 +3448,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-06-18T22:49:03.187854Z",
+             *               "created_at": "2026-06-19T01:03:56.144854Z",
              *               "first_discovery_id": null,
-             *               "id": "2e1acc9a-de16-4ebd-aa15-dab88016419d",
+             *               "id": "cf4a0c6f-48c5-42d6-8f2e-cf44516188f9",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-06-18T22:49:03.187854Z",
+             *               "last_seen_at": "2026-06-19T01:03:56.144854Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-06-18T22:49:03.187854Z",
-             *               "valid_from": "2026-06-18T22:49:03.187854Z",
+             *               "updated_at": "2026-06-19T01:03:56.144854Z",
+             *               "valid_from": "2026-06-19T01:03:56.144854Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3472,7 +3474,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Lubelogger",
+             *           "service_definition": "RabbitMQ",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3809,6 +3811,26 @@ export interface components {
             meta: components["schemas"]["ApiMeta"];
             success: boolean;
         };
+        ApiResponse_ResumeSubscriptionResponse: {
+            /**
+             * @description Response from `POST /api/billing/resume`. Carries the credit amount
+             *     (in cents) we applied to the customer's Stripe balance so the frontend
+             *     toast can surface it ("$X.XX credit applied to your next invoice").
+             *
+             *     `credit_applied_cents` is `None` when no credit was applied — e.g. the
+             *     resume path's metadata-marker idempotency check skipped the apply
+             *     because the webhook already handled it, or `scanopy_paused_at`
+             *     metadata was missing.
+             */
+            data?: {
+                /** Format: int64 */
+                credit_applied_cents?: number | null;
+                message: string;
+            };
+            error?: string | null;
+            meta: components["schemas"]["ApiMeta"];
+            success: boolean;
+        };
         ApiResponse_ServerCapabilities: {
             /** @description Server capabilities returned on startup/registration */
             data?: {
@@ -3828,19 +3850,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-06-18T22:49:03.197486Z",
+             *           "created_at": "2026-06-19T01:03:56.154700Z",
              *           "first_discovery_id": null,
-             *           "id": "114af5ff-e8fd-40f1-87dc-60c5775c679b",
+             *           "id": "e8d2e400-8299-400d-a08f-66ee3319bc0b",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-06-18T22:49:03.197486Z",
+             *           "last_seen_at": "2026-06-19T01:03:56.154700Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-06-18T22:49:03.197486Z",
-             *           "valid_from": "2026-06-18T22:49:03.197486Z",
+             *           "updated_at": "2026-06-19T01:03:56.154700Z",
+             *           "valid_from": "2026-06-19T01:03:56.154700Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -3854,7 +3876,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Lubelogger",
+             *       "service_definition": "RabbitMQ",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4307,19 +4329,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-06-18T22:49:03.188087Z",
+         *       "created_at": "2026-06-19T01:03:56.145306Z",
          *       "first_discovery_id": null,
-         *       "id": "094d5188-8674-46b1-8daf-751dd58b545a",
+         *       "id": "f6e65708-2777-4fb0-86c6-84e1e984dd8f",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-06-18T22:49:03.188087Z",
+         *       "last_seen_at": "2026-06-19T01:03:56.145306Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-06-18T22:49:03.188087Z",
-         *       "valid_from": "2026-06-18T22:49:03.188087Z",
+         *       "updated_at": "2026-06-19T01:03:56.145306Z",
+         *       "valid_from": "2026-06-19T01:03:56.145306Z",
          *       "valid_to": null
          *     }
          */
@@ -4534,7 +4556,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Lubelogger",
+         *           "service_definition": "RabbitMQ",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -5226,8 +5248,8 @@ export interface components {
          *
          *     Stored as a JSONB blob, so new categories are added as new fields rather
          *     than via migration. New fields carry `#[serde(default = "default_true")]`
-         *     so rows written before the field existed deserialize cleanly (opted in by
-         *     default) without clobbering the categories they did persist.
+         *     so a category is opted in by default if its key is absent from the stored
+         *     JSON.
          */
         EmailSettings: {
             daemon_alerts?: boolean;
@@ -5496,19 +5518,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-06-18T22:49:03.187589Z",
+         *               "created_at": "2026-06-19T01:03:56.144332Z",
          *               "first_discovery_id": null,
-         *               "id": "1f2c5267-ea3e-4319-ab4f-db39f7e53124",
+         *               "id": "cc7a3281-2a1b-40f9-9f22-5d45f5f798e2",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-06-18T22:49:03.187589Z",
+         *               "last_seen_at": "2026-06-19T01:03:56.144332Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-06-18T22:49:03.187589Z",
-         *               "valid_from": "2026-06-18T22:49:03.187589Z",
+         *               "updated_at": "2026-06-19T01:03:56.144332Z",
+         *               "valid_from": "2026-06-19T01:03:56.144332Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -5522,7 +5544,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Lubelogger",
+         *           "service_definition": "RabbitMQ",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -6788,6 +6810,21 @@ export interface components {
             password: string;
             token: string;
         };
+        /**
+         * @description Response from `POST /api/billing/resume`. Carries the credit amount
+         *     (in cents) we applied to the customer's Stripe balance so the frontend
+         *     toast can surface it ("$X.XX credit applied to your next invoice").
+         *
+         *     `credit_applied_cents` is `None` when no credit was applied — e.g. the
+         *     resume path's metadata-marker idempotency check skipped the apply
+         *     because the webhook already handled it, or `scanopy_paused_at`
+         *     metadata was missing.
+         */
+        ResumeSubscriptionResponse: {
+            /** Format: int64 */
+            credit_applied_cents?: number | null;
+            message: string;
+        };
         RunType: {
             cron_schedule: string;
             enabled: boolean;
@@ -6937,19 +6974,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-06-18T22:49:03.188039Z",
+         *           "created_at": "2026-06-19T01:03:56.145210Z",
          *           "first_discovery_id": null,
-         *           "id": "e67c9b4e-2b56-48d6-b535-9a220c687faa",
+         *           "id": "e2eb4e71-52e7-48ec-80c5-baadd7fedf33",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-06-18T22:49:03.188039Z",
+         *           "last_seen_at": "2026-06-19T01:03:56.145210Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-06-18T22:49:03.188039Z",
-         *           "valid_from": "2026-06-18T22:49:03.188039Z",
+         *           "updated_at": "2026-06-19T01:03:56.145210Z",
+         *           "valid_from": "2026-06-19T01:03:56.145210Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -6963,7 +7000,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Lubelogger",
+         *       "service_definition": "RabbitMQ",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -8544,7 +8581,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ApiResponse_String"];
+                    "application/json": components["schemas"]["ApiResponse_ResumeSubscriptionResponse"];
                 };
             };
             /** @description No paused subscription or billing not enabled */

@@ -90,3 +90,17 @@ pub struct SaveOfferCoupon {
     pub next_renewal_at: DateTime<Utc>,
     pub billing_rate: BillingRate,
 }
+
+/// Response from `POST /api/billing/resume`. Carries the credit amount
+/// (in cents) we applied to the customer's Stripe balance so the frontend
+/// toast can surface it ("$X.XX credit applied to your next invoice").
+///
+/// `credit_applied_cents` is `None` when no credit was applied — e.g. the
+/// resume path's metadata-marker idempotency check skipped the apply
+/// because the webhook already handled it, or `scanopy_paused_at`
+/// metadata was missing.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ResumeSubscriptionResponse {
+    pub message: String,
+    pub credit_applied_cents: Option<i64>,
+}

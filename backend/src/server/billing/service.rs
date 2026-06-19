@@ -4,7 +4,7 @@ use crate::server::billing::plans::get_enterprise_plan;
 use crate::server::billing::plans::get_free_plan;
 use crate::server::billing::types::api::{
     CancelSubscriptionRequest, CancelSubscriptionResponse, ChangePlanPreview, PauseDuration,
-    SaveOfferCoupon,
+    ResumeSubscriptionResponse, SaveOfferCoupon,
 };
 use crate::server::billing::types::base::{BillingInvoice, BillingPlan, CancelReason, PlanStatus};
 use crate::server::billing::types::features::Feature;
@@ -68,6 +68,7 @@ use stripe_core::customer::DeleteCustomer;
 use stripe_core::customer::ListPaymentMethodsCustomer;
 use stripe_core::customer::UpdateCustomer;
 use stripe_core::customer::UpdateCustomerInvoiceSettings;
+use stripe_core::customer_balance_transaction::CreateCustomerCustomerBalanceTransaction;
 use stripe_core::{CustomerId, EventType};
 use stripe_product::Price;
 use stripe_product::coupon::RetrieveCoupon;
@@ -1267,12 +1268,25 @@ impl BillingService {
         //
         // The Stripe sub's `current_period_end` is unchanged by the
         // pause→resume cycle (pause_collection doesn't move the cycle).
-        // The "credit the customer for paused days" mechanic lives in a
-        // separate follow-up (Option 2: balance proration on resume).
+        // For auto-resume (Stripe clearing pause_collection at resumes_at
+        // without the manual resume_subscription endpoint running), we
+        // apply the same prorated balance credit here. The credit call
+        // uses a sub-id-and-paused-at idempotency key so when the manual
+        // path's API call ALSO triggers this webhook arm, we don't
+        // double-credit.
         if prior_status == Some(PlanStatus::Paused)
             && sub.pause_collection.is_none()
             && let Some(owner) = owners.first()
         {
+            if let Err(e) = self.apply_pause_credit_if_due(&sub, &organization).await {
+                tracing::error!(
+                    organization_id = %org_id,
+                    subscription_id = %sub.id,
+                    error = %e,
+                    "Webhook resume: pause-credit apply failed",
+                );
+            }
+
             self.event_bus
                 .publish(Event::new(
                     OrgScope {
@@ -2235,6 +2249,13 @@ impl BillingService {
         let now = Utc::now();
         let resumes_at = now + chrono::Duration::days(duration.days() as i64);
 
+        // No yearly span-renewal guard. If the pause spans the renewal,
+        // Stripe generates the next yearly draft mid-pause and finalizes
+        // it when pause_collection clears at resume — partially offset by
+        // the pause credit on balance, with the remainder charged to the
+        // card. The UI shows an InlineInfo at pause time explaining the
+        // net charge so the customer isn't surprised.
+
         let meta = StripeSubscriptionMetadata {
             scanopy_pause_duration_days: Some(duration.days()),
             scanopy_paused_at: Some(now.timestamp()),
@@ -2303,7 +2324,7 @@ impl BillingService {
         &self,
         organization_id: Uuid,
         _authentication: AuthenticatedEntity,
-    ) -> Result<String, Error> {
+    ) -> Result<ResumeSubscriptionResponse, Error> {
         let organization = self.get_organization(organization_id).await?;
         let sub = self.find_current_subscription(&organization).await?;
 
@@ -2326,7 +2347,151 @@ impl BillingService {
                 anyhow!("Stripe rejected the resume request: {e}")
             })?;
 
-        Ok("Subscription resumed.".to_string())
+        // Apply the prorated pause credit. Uses an idempotency key tied to
+        // sub.id + scanopy_paused_at so the parallel webhook-driven apply
+        // (auto-resume case) deduplicates against this same call instead of
+        // double-crediting. Returns None when metadata is missing or credit
+        // computes to 0 — both safe to skip.
+        let credit_applied_cents = self
+            .apply_pause_credit_if_due(&sub, &organization)
+            .await
+            .unwrap_or_else(|e| {
+                // Credit is best-effort; the resume succeeded. Log and
+                // surface a `null` credit in the response so the toast
+                // falls back to the generic message.
+                tracing::error!(
+                    organization_id = %organization_id,
+                    subscription_id = %sub.id,
+                    error = %e,
+                    "Resume succeeded but pause-credit apply failed; customer may need a manual adjustment",
+                );
+                None
+            });
+
+        Ok(ResumeSubscriptionResponse {
+            message: "Subscription resumed.".to_string(),
+            credit_applied_cents,
+        })
+    }
+
+    /// Compute and apply the prorated pause credit. Idempotent: a second
+    /// call for the same (sub, scanopy_paused_at) gets deduplicated by
+    /// Stripe via the idempotency key. Returns `Ok(Some(cents))` on apply,
+    /// `Ok(None)` when there's nothing to credit.
+    async fn apply_pause_credit_if_due(
+        &self,
+        sub: &Subscription,
+        organization: &Organization,
+    ) -> Result<Option<i64>, Error> {
+        let meta = StripeSubscriptionMetadata::from_stripe(&sub.metadata);
+        let Some(paused_at_ts) = meta.scanopy_paused_at else {
+            tracing::debug!(
+                subscription_id = %sub.id,
+                "No scanopy_paused_at metadata; skipping pause-credit apply"
+            );
+            return Ok(None);
+        };
+
+        let Some(item) = sub.items.data.first() else {
+            tracing::warn!(
+                subscription_id = %sub.id,
+                "Subscription has no items; can't compute pause credit"
+            );
+            return Ok(None);
+        };
+
+        let now_ts = Utc::now().timestamp();
+        let raw_elapsed = (now_ts - paused_at_ts).max(0);
+        let cap_secs = meta
+            .scanopy_pause_duration_days
+            .map(|d| i64::from(d) * 86_400)
+            .unwrap_or(raw_elapsed);
+        let actual_paused_secs = raw_elapsed.min(cap_secs);
+
+        let period_secs = item.current_period_end - item.current_period_start;
+        if period_secs <= 0 {
+            tracing::warn!(
+                subscription_id = %sub.id,
+                period_start = item.current_period_start,
+                period_end = item.current_period_end,
+                "Subscription item has non-positive period_secs; skipping credit",
+            );
+            return Ok(None);
+        }
+
+        // Use the effective per-period amount (post-discount if a save-offer
+        // coupon is currently active on the org). This avoids over-crediting
+        // by the coupon amount — the customer's per-day cost during the
+        // paused period was the discounted rate, so that's what they get
+        // credited for.
+        let gross_per_period = item.price.unit_amount.unwrap_or(0);
+        let effective_per_period = match (
+            organization.base.discount_save_offer_percent_off,
+            organization.base.discount_save_offer_active_until,
+        ) {
+            (Some(percent_off), Some(active_until)) if active_until > Utc::now() => {
+                // percent_off is stored as e.g. 10 for 10%.
+                (gross_per_period as f64 * (1.0 - percent_off as f64 / 100.0)).round() as i64
+            }
+            _ => gross_per_period,
+        };
+
+        let credit_cents = i64::try_from(
+            i128::from(effective_per_period) * i128::from(actual_paused_secs)
+                / i128::from(period_secs),
+        )
+        .unwrap_or(0);
+
+        if credit_cents <= 0 {
+            tracing::debug!(
+                subscription_id = %sub.id,
+                actual_paused_secs,
+                credit_cents,
+                "Computed pause credit is non-positive; skipping apply"
+            );
+            return Ok(None);
+        }
+
+        let Some(customer_id) = organization.base.stripe_customer_id.clone() else {
+            tracing::warn!(
+                subscription_id = %sub.id,
+                "Organization has no stripe_customer_id; can't apply pause credit"
+            );
+            return Ok(None);
+        };
+
+        // Idempotency: tied to (sub_id, paused_at). Two callers (manual
+        // resume + auto-resume webhook) computing this for the same pause
+        // event get deduplicated by Stripe.
+        let idempotency_key_str = format!("pause-credit-{}-{}", sub.id, paused_at_ts);
+        let idempotency_key = stripe_client_core::IdempotencyKey::new(&idempotency_key_str)
+            .map_err(|e| anyhow!("Invalid idempotency key: {e}"))?;
+
+        CreateCustomerCustomerBalanceTransaction::new(
+            stripe_shared::CustomerId::from(customer_id),
+            -credit_cents,
+            stripe_types::Currency::USD,
+        )
+        .description(format!(
+            "Pause credit ({} days)",
+            actual_paused_secs / 86_400
+        ))
+        .customize()
+        .request_strategy(stripe_client_core::RequestStrategy::Idempotent(
+            idempotency_key,
+        ))
+        .send(&self.stripe)
+        .await
+        .map_err(|e| anyhow!("Stripe rejected pause-credit balance transaction: {e}"))?;
+
+        tracing::info!(
+            subscription_id = %sub.id,
+            credit_cents,
+            actual_paused_secs,
+            "Applied pause credit to customer balance"
+        );
+
+        Ok(Some(credit_cents))
     }
 
     /// Self-serve trial extend (+7 days, once per org lifetime).
