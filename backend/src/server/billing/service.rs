@@ -2147,30 +2147,24 @@ impl BillingService {
             }
         }
 
-        let sub = self.find_current_subscription(&organization).await?;
-
-        // Eligibility: pause_collection is sensible on subs that are
-        // actively billing or about to bill (Active / Trialing). Stripe
-        // refuses it on past_due / canceled / incomplete / etc. — catch
-        // those pre-flight with a clear message instead of letting the
-        // SDK call fail with a raw Stripe error.
-        //
-        // Trialing is allowed because (a) Stripe accepts pause_collection
-        // on trialing subs, and (b) a resume that shifted the renewal via
-        // `trial_end` leaves the Stripe sub in `trialing` status even
-        // while our typed `plan_status` mirror says `active`. The cancel
-        // modal already hides save offers when `plan_status === trialing`,
-        // so the user only reaches this code path when our model
-        // considers the org active.
-        if !matches!(
-            sub.status,
-            SubscriptionStatus::Active | SubscriptionStatus::Trialing
-        ) {
+        // Eligibility gates on our typed `plan_status` (the domain truth),
+        // not Stripe's raw `sub.status`. The cancel modal hides save
+        // offers when `plan_status === 'trialing'` so the UI flow never
+        // brings a genuinely trialing user here; this server-side gate
+        // enforces the same rule for direct API hits. Paused / past_due /
+        // pending_cancellation / cancelled also get rejected.
+        if organization.base.plan_status != Some(PlanStatus::Active) {
             return Err(anyhow!(
                 "Subscription must be active to pause; current status: {}",
-                sub.status
+                organization
+                    .base
+                    .plan_status
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| "(none)".to_string())
             ));
         }
+
+        let sub = self.find_current_subscription(&organization).await?;
 
         let now = Utc::now();
         let resumes_at = now + chrono::Duration::days(duration.days() as i64);
@@ -2621,23 +2615,22 @@ impl BillingService {
             return Err(anyhow!("You've already used your one-time discount."));
         }
 
-        let sub = self.find_current_subscription(&organization).await?;
-
-        // Same Active/Trialing allowlist as pause: Stripe accepts coupons
-        // on either; only block states where Stripe would reject anyway
-        // (past_due / canceled / incomplete). Trialing is included so
-        // that resumed-after-pause subs (whose Stripe status stays
-        // `trialing` due to the trial_end-based renewal shift) can still
-        // redeem the discount when our model considers them active.
-        if !matches!(
-            sub.status,
-            SubscriptionStatus::Active | SubscriptionStatus::Trialing
-        ) {
+        // Same domain-truth gate as pause: only allow when our model
+        // considers the org active. The cancel modal hides save offers
+        // for trialing / paused / past_due users; this server-side gate
+        // enforces the same rule for direct API hits.
+        if organization.base.plan_status != Some(PlanStatus::Active) {
             return Err(anyhow!(
                 "Subscription must be active to apply the discount; current status: {}",
-                sub.status
+                organization
+                    .base
+                    .plan_status
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| "(none)".to_string())
             ));
         }
+
+        let sub = self.find_current_subscription(&organization).await?;
 
         let updated = UpdateSubscription::new(&sub.id)
             .discounts(vec![DiscountsDataParam {
