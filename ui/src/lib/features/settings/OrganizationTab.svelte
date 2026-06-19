@@ -63,10 +63,15 @@
 
 	let {
 		subView = $bindable<'main' | 'edit'>('main'),
-		onClose
+		onClose,
+		dismissible = true
 	}: {
 		subView?: 'main' | 'edit';
 		onClose: () => void;
+		/** When false (hard-gated modal), the main-view Close button is hidden so
+		 * the gate can't be escaped from this tab. The edit sub-view keeps its
+		 * Back/Save footer. */
+		dismissible?: boolean;
 	} = $props();
 
 	// TanStack Query for current user
@@ -309,24 +314,28 @@
 		</div>
 	{/if}
 
-	<!-- Footer -->
-	<div class="modal-footer">
-		<div class="flex items-center justify-end gap-3">
-			<button type="button" onclick={handleCancel} class="btn-secondary">
-				{cancelLabel}
-			</button>
-			{#if showSave}
-				<button
-					type="button"
-					onclick={() => form.handleSubmit()}
-					disabled={saving}
-					class="btn-primary"
-				>
-					{saving ? common_saving() : common_saveChanges()}
+	<!-- Footer — hidden on the main view when the modal is hard-gated
+	     (dismissible=false), since the only button there is Close, which would
+	     let the user escape the gate. The edit sub-view keeps its Back/Save. -->
+	{#if dismissible || subView !== 'main'}
+		<div class="modal-footer">
+			<div class="flex items-center justify-end gap-3">
+				<button type="button" onclick={handleCancel} class="btn-secondary">
+					{cancelLabel}
 				</button>
-			{/if}
+				{#if showSave}
+					<button
+						type="button"
+						onclick={() => form.handleSubmit()}
+						disabled={saving}
+						class="btn-primary"
+					>
+						{saving ? common_saving() : common_saveChanges()}
+					</button>
+				{/if}
+			</div>
 		</div>
-	</div>
+	{/if}
 </div>
 
 {#if org}

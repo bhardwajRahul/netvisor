@@ -122,11 +122,11 @@
 
 	<div class="flex h-[calc(100vh-16rem)] flex-col">
 		{#if activeTab === 'account'}
-			<AccountTab bind:subView={accountSubView} onClose={handleClose} />
+			<AccountTab bind:subView={accountSubView} onClose={handleClose} {dismissible} />
 		{:else if activeTab === 'email'}
 			<EmailTab />
 		{:else if activeTab === 'organization'}
-			<OrganizationTab bind:subView={orgSubView} onClose={handleClose} />
+			<OrganizationTab bind:subView={orgSubView} onClose={handleClose} {dismissible} />
 		{:else if activeTab === 'billing'}
 			<BillingTab {isOpen} onClose={handleClose} {dismissible} />
 		{:else if activeTab === 'system'}

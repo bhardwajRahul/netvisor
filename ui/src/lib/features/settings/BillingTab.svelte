@@ -1,10 +1,10 @@
 <script lang="ts">
-	import { CheckCircle, AlertCircle, CreditCard, AlertTriangle } from 'lucide-svelte';
+	import { CreditCard, AlertTriangle } from 'lucide-svelte';
 	import ProgressTrack from '$lib/shared/components/data/ProgressTrack.svelte';
 	import { triggerUpgrade } from '$lib/features/billing/trigger-upgrade';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
-	import { isBillingPlanActive } from '$lib/features/organizations/types';
-	import { billingPlans } from '$lib/shared/stores/metadata';
+	import { billingPlans, planStatuses } from '$lib/shared/stores/metadata';
+	import { isMissingPaymentMethod } from '$lib/shared/utils/trial';
 	import { trackEvent, trackOncePerSession } from '$lib/shared/utils/analytics';
 	import {
 		useCustomerPortalMutation,
@@ -49,7 +49,8 @@
 		settings_billing_addPaymentMethodSubtitle,
 		settings_billing_trialCountdown,
 		settings_billing_trialEndsOn,
-		billing_addPaymentMethod
+		billing_addPaymentMethod,
+		billing_noPaymentMethodBannerBody
 	} from '$lib/paraglide/messages';
 	import InlineWarning from '$lib/shared/components/feedback/InlineWarning.svelte';
 	import InlineInfo from '$lib/shared/components/feedback/InlineInfo.svelte';
@@ -104,32 +105,12 @@
 	let extraSeatsCents = $derived(extraSeats * (org?.plan?.seat_cents || 0));
 	let extraNetworksCents = $derived(extraNetworks * (org?.plan?.network_cents || 0));
 
-	let planActive = $derived(org ? isBillingPlanActive(org) : false);
-
-	function formatPlanStatus(status: string): string {
-		if (status === 'pending_cancellation') return 'Downgrading';
-		return status.charAt(0).toUpperCase() + status.slice(1);
-	}
-
-	function getPlanStatusColor(status: string): string {
-		switch (status.toLowerCase()) {
-			case 'active':
-				return 'text-green-600 dark:text-green-400';
-			case 'trialing':
-				return 'text-blue-600 dark:text-blue-400';
-			case 'past_due':
-			case 'unpaid':
-				return 'text-red-600 dark:text-red-400';
-			case 'pending_cancellation':
-				return 'text-amber-600 dark:text-amber-400';
-			case 'paused':
-				return 'text-orange-600 dark:text-orange-400';
-			case 'cancelled':
-				return 'text-yellow-600 dark:text-yellow-400';
-			default:
-				return 'text-gray-600 dark:text-gray-400';
-		}
-	}
+	// Status badge color + icon now come from PlanStatus metadata (backend
+	// EntityMetadataProvider), replacing the former inline getPlanStatusColor /
+	// hardcoded CheckCircle. `StatusIcon` is capitalized so it renders as a
+	// component in the markup.
+	let StatusIcon = $derived(planStatuses.getIconComponent(org?.plan_status ?? null));
+	let planStatusColor = $derived(planStatuses.getColorHelper(org?.plan_status ?? null).text);
 
 	let isFree = $derived(billingPlans.getMetadata(org?.plan?.type ?? null).is_free === true);
 
@@ -366,6 +347,26 @@
 							</div>
 						{/if}
 					</InfoCard>
+				{:else if isMissingPaymentMethod(org) && org.plan_status !== 'trialing'}
+					<!-- Active / past_due on a Stripe-managed plan with no card on file:
+					     mirror the NoPaymentMethodBanner so the modal matches it. -->
+					<InfoCard>
+						<div class="flex items-center justify-between">
+							<div class="flex items-center gap-3">
+								<AlertTriangle class="h-5 w-5 text-amber-500" />
+								<p class="text-primary text-sm font-medium">
+									{billing_noPaymentMethodBannerBody()}
+								</p>
+							</div>
+							<button
+								onclick={handleSetupPayment}
+								class="btn-primary flex items-center gap-1.5 text-sm"
+							>
+								<CreditCard size={14} />
+								{billing_addPaymentMethod()}
+							</button>
+						</div>
+					</InfoCard>
 				{/if}
 
 				<!-- Current Plan -->
@@ -374,13 +375,9 @@
 						<div class="mb-3 flex items-center justify-between">
 							<h3 class="text-primary text-sm font-semibold">{settings_billing_currentPlan()}</h3>
 							<div class="flex items-center gap-2">
-								{#if planActive}
-									<CheckCircle class="h-4 w-4 text-green-600 dark:text-green-400" />
-								{:else}
-									<AlertCircle class="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
-								{/if}
-								<span class={`text-sm font-medium ${getPlanStatusColor(org.plan_status || '')}`}>
-									{formatPlanStatus(org.plan_status || '')}
+								<StatusIcon class={`h-4 w-4 ${planStatusColor}`} />
+								<span class={`text-sm font-medium ${planStatusColor}`}>
+									{planStatuses.getName(org.plan_status ?? null)}
 								</span>
 							</div>
 						</div>
@@ -553,41 +550,46 @@
 								<InlineWarning title={settings_billing_downgrade_pending()} />
 							{/if}
 
-							<!-- pending_cancellation pushes users to Reactivate; paused pushes
-							     them to Resume — so the plan-change button is hidden in both. -->
-							{#if org.plan_status !== 'pending_cancellation' && org.plan_status !== 'paused'}
-								<button
-									onclick={() =>
-										triggerUpgrade({
-											source: 'settings_billing',
-											surface: 'billing_tab',
-											reopenSettings: true,
-											beforeModal: () => onClose()
-										})}
-									class="btn-primary w-full"
-								>
-									{hasManageableSubscription
-										? settings_billing_changePlan()
-										: settings_billing_upgradePlan()}
-								</button>
-							{/if}
-
-							{#if hasManageableSubscription}
-								{#if org.plan_status === 'paused'}
+							<!-- All CTAs share one flex container so the gap between adjacent
+							     buttons is uniform regardless of which combination renders,
+							     and the gap from the card content to the first CTA is the
+							     same whether it's primary, secondary, or a text link.
+							     pending_cancellation pushes users to Reactivate; paused
+							     pushes them to Resume — so the plan-change button is hidden
+							     in both. -->
+							<div class="flex flex-col gap-2">
+								{#if org.plan_status !== 'pending_cancellation' && org.plan_status !== 'paused'}
 									<button
-										type="button"
-										onclick={handleResume}
+										onclick={() =>
+											triggerUpgrade({
+												source: 'settings_billing',
+												surface: 'billing_tab',
+												reopenSettings: true,
+												beforeModal: () => onClose()
+											})}
 										class="btn-primary w-full"
-										disabled={resumeMutation.isPending}
 									>
-										{settings_billing_resume_button()}
+										{hasManageableSubscription
+											? settings_billing_changePlan()
+											: settings_billing_upgradePlan()}
 									</button>
-								{:else if org.plan_status === 'past_due'}
-									<button onclick={handleManageSubscription} class="btn-primary w-full">
-										{settings_billing_manageSubscription()}
-									</button>
-								{:else if org.plan_status === 'pending_cancellation'}
-									<div class="flex flex-col gap-2">
+								{/if}
+
+								{#if hasManageableSubscription}
+									{#if org.plan_status === 'paused'}
+										<button
+											type="button"
+											onclick={handleResume}
+											class="btn-primary w-full"
+											disabled={resumeMutation.isPending}
+										>
+											{settings_billing_resume_button()}
+										</button>
+									{:else if org.plan_status === 'past_due'}
+										<button onclick={handleManageSubscription} class="btn-primary w-full">
+											{settings_billing_manageSubscription()}
+										</button>
+									{:else if org.plan_status === 'pending_cancellation'}
 										<button
 											type="button"
 											onclick={handleReactivate}
@@ -603,9 +605,7 @@
 										>
 											{settings_billing_manageSubscription()}
 										</button>
-									</div>
-								{:else if org.plan_status === 'active' || org.plan_status === 'trialing'}
-									<div class="flex flex-col gap-2">
+									{:else if org.plan_status === 'active' || org.plan_status === 'trialing'}
 										<button onclick={openCancelModal} class="btn-secondary w-full">
 											{settings_billing_cancelSubscription()}
 										</button>
@@ -616,9 +616,9 @@
 										>
 											{settings_billing_manageSubscription()}
 										</button>
-									</div>
+									{/if}
 								{/if}
-							{/if}
+							</div>
 						</div>
 					</svelte:fragment>
 				</InfoCard>

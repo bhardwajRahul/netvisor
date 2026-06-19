@@ -4,8 +4,11 @@
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
 	import { useSetupPaymentMethodMutation } from '$lib/features/billing/queries';
 	import { startSetupPayment } from '$lib/shared/billing/setup-payment';
-	import { billingPlans } from '$lib/shared/stores/metadata';
-	import { getTrialDaysLeft, isTrialingWithoutPayment } from '$lib/shared/utils/trial';
+	import {
+		getTrialDaysLeft,
+		isTrialingWithoutPayment,
+		isMissingPaymentMethod
+	} from '$lib/shared/utils/trial';
 	import { trackOncePerSession } from '$lib/shared/utils/analytics';
 	import {
 		billing_addPaymentMethod,
@@ -18,20 +21,12 @@
 	let org = $derived(organizationQuery.data);
 	let trialDaysLeft = $derived(getTrialDaysLeft(org));
 
-	// Show only for plans that actually require a card: Stripe-managed plans
-	// (Starter / Pro / Team / Business / Enterprise — Free is non-Stripe-managed
-	// at the backend now). The explicit `=== true` check fails safe: missing or
-	// stale plan metadata hides this billing nag rather than showing it. The
-	// final clause defers to TrialEndingBanner in its window (trialing + no card
-	// + <= 3 days) so the two never render together.
-	let planMeta = $derived(billingPlans.getMetadata(org?.plan?.type ?? null));
+	// `isMissingPaymentMethod` is the shared predicate (Stripe-managed plan that
+	// requires a card but has none) used by every payment-method nag so they
+	// stay in sync. The final clause defers to TrialEndingBanner in its window
+	// (trialing + no card + <= 3 days) so the two never render together.
 	let shouldShow = $derived(
-		org != null &&
-			planMeta.is_stripe_managed === true &&
-			(org.plan_status === 'trialing' ||
-				org.plan_status === 'active' ||
-				org.plan_status === 'past_due') &&
-			!(org.has_payment_method ?? false) &&
+		isMissingPaymentMethod(org) &&
 			!(isTrialingWithoutPayment(org) && trialDaysLeft !== null && trialDaysLeft <= 3)
 	);
 
