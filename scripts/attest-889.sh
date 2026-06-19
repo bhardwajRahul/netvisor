@@ -142,6 +142,9 @@ N_COMPONENTS=$(awk '/scanned/ {for (i=1;i<=NF;i++) if ($i=="scanned") {print $(i
 [ -n "$N_COMPONENTS" ] || N_COMPONENTS=0
 N_EXCEPTIONS=$(awk '/exception\(s\) suppressed/ {print $2+0; f=1} END {if (!f) print 0}' "$OUT/summary.txt")
 N_HITS=$(awk 'END {print NR+0}' "$OUT/hits.jsonl")
+# On a PASS hits.jsonl is empty; drop it so the bundle (and SHA256SUMS) only
+# contains real files. GitHub's asset upload API also rejects zero-byte files.
+[ -s "$OUT/hits.jsonl" ] || rm -f "$OUT/hits.jsonl"
 
 # Per-SBOM digests + component counts (JSON array).
 SBOM_JSON=$(
@@ -256,7 +259,7 @@ jq -n \
     echo
     echo "- \`attestation.json\` - machine-readable attestation"
     echo "- \`summary.txt\` - matcher human summary (counts + exceptions)"
-    echo "- \`hits.jsonl\` - machine-readable hits (empty on PASS)"
+    [ -f "$OUT/hits.jsonl" ] && echo "- \`hits.jsonl\` - machine-readable hits (present only when a hit is found)"
     echo "- \`sbom-*.cdx.json\` - the CycloneDX SBOMs assessed"
     echo "- \`889-vendors.txt\`, \`889-allow.txt\` - the exact policy used"
     echo "- \`SHA256SUMS\` - digests of every file above"
