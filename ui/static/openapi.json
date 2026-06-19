@@ -1172,7 +1172,7 @@
           "internal"
         ],
         "summary": "Resume a paused subscription",
-        "description": "Clears Stripe pause collection and re-activates billing. Available while\n`plan_status === 'paused'`.",
+        "description": "Clears Stripe pause collection and re-activates billing. Available while\n`plan_status === 'paused'`. The prorated pause credit is posted to the\ncustomer's Stripe balance asynchronously by the webhook arm that fires\nfor the `pause_collection` clear — the endpoint just returns success.",
         "operationId": "resume_subscription",
         "responses": {
           "200": {
@@ -13707,19 +13707,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-06-18T22:49:03.204022Z",
+              "created_at": "2026-06-19T01:30:30.425386Z",
               "first_discovery_id": null,
-              "id": "344eb8ce-f8a6-4044-af11-699b7932a85a",
+              "id": "beec4571-b558-442a-8ddf-5f7f6ed03736",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-18T22:49:03.204022Z",
+              "last_seen_at": "2026-06-19T01:30:30.425386Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-18T22:49:03.204022Z",
-              "valid_from": "2026-06-18T22:49:03.204022Z",
+              "updated_at": "2026-06-19T01:30:30.425386Z",
+              "valid_from": "2026-06-19T01:30:30.425386Z",
               "valid_to": null
             }
           },
@@ -14705,19 +14705,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-06-18T22:49:03.187854Z",
+                      "created_at": "2026-06-19T01:30:30.410334Z",
                       "first_discovery_id": null,
-                      "id": "2e1acc9a-de16-4ebd-aa15-dab88016419d",
+                      "id": "f8e0d596-f3c3-4519-9a94-ebc36c3dcdb3",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-06-18T22:49:03.187854Z",
+                      "last_seen_at": "2026-06-19T01:30:30.410334Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-06-18T22:49:03.187854Z",
-                      "valid_from": "2026-06-18T22:49:03.187854Z",
+                      "updated_at": "2026-06-19T01:30:30.410334Z",
+                      "valid_from": "2026-06-19T01:30:30.410334Z",
                       "valid_to": null
                     }
                   ],
@@ -14731,7 +14731,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Lubelogger",
+                  "service_definition": "Prometheus",
                   "source": {
                     "type": "Manual"
                   },
@@ -15722,19 +15722,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-06-18T22:49:03.197486Z",
+                  "created_at": "2026-06-19T01:30:30.420682Z",
                   "first_discovery_id": null,
-                  "id": "114af5ff-e8fd-40f1-87dc-60c5775c679b",
+                  "id": "62e5f913-522f-4bef-8bf0-711300ff6fc4",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-18T22:49:03.197486Z",
+                  "last_seen_at": "2026-06-19T01:30:30.420682Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-18T22:49:03.197486Z",
-                  "valid_from": "2026-06-18T22:49:03.197486Z",
+                  "updated_at": "2026-06-19T01:30:30.420682Z",
+                  "valid_from": "2026-06-19T01:30:30.420682Z",
                   "valid_to": null
                 }
               ],
@@ -15748,7 +15748,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Lubelogger",
+              "service_definition": "Prometheus",
               "source": {
                 "type": "Manual"
               },
@@ -17448,19 +17448,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-06-18T22:49:03.188087Z",
+          "created_at": "2026-06-19T01:30:30.410591Z",
           "first_discovery_id": null,
-          "id": "094d5188-8674-46b1-8daf-751dd58b545a",
+          "id": "d6c8c687-f553-49a4-b9dc-476c7f1ed18c",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-06-18T22:49:03.188087Z",
+          "last_seen_at": "2026-06-19T01:30:30.410591Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-06-18T22:49:03.188087Z",
-          "valid_from": "2026-06-18T22:49:03.188087Z",
+          "updated_at": "2026-06-19T01:30:30.410591Z",
+          "valid_from": "2026-06-19T01:30:30.410591Z",
           "valid_to": null
         }
       },
@@ -18050,7 +18050,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Lubelogger",
+              "service_definition": "Prometheus",
               "tags": [],
               "virtualization": null
             }
@@ -19975,7 +19975,7 @@
       },
       "EmailSettings": {
         "type": "object",
-        "description": "Per-user toggles for the user-pausable email categories. Each field maps\n1:1 to a [`PausableCategory`]; required emails are never gated here.\n\nStored as a JSONB blob, so new categories are added as new fields rather\nthan via migration. New fields carry `#[serde(default = \"default_true\")]`\nso rows written before the field existed deserialize cleanly (opted in by\ndefault) without clobbering the categories they did persist.",
+        "description": "Per-user toggles for the user-pausable email categories. Each field maps\n1:1 to a [`PausableCategory`]; required emails are never gated here.\n\nStored as a JSONB blob, so new categories are added as new fields rather\nthan via migration. New fields carry `#[serde(default = \"default_true\")]`\nso a category is opted in by default if its key is absent from the stored\nJSON.",
         "required": [
           "discovery_digest"
         ],
@@ -20698,19 +20698,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-06-18T22:49:03.187589Z",
+                  "created_at": "2026-06-19T01:30:30.410001Z",
                   "first_discovery_id": null,
-                  "id": "1f2c5267-ea3e-4319-ab4f-db39f7e53124",
+                  "id": "d1489f84-d854-4a63-a4df-1ae64114464b",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-18T22:49:03.187589Z",
+                  "last_seen_at": "2026-06-19T01:30:30.410001Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-18T22:49:03.187589Z",
-                  "valid_from": "2026-06-18T22:49:03.187589Z",
+                  "updated_at": "2026-06-19T01:30:30.410001Z",
+                  "valid_from": "2026-06-19T01:30:30.410001Z",
                   "valid_to": null
                 }
               ],
@@ -20724,7 +20724,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Lubelogger",
+              "service_definition": "Prometheus",
               "source": {
                 "type": "Manual"
               },
@@ -23155,19 +23155,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-06-18T22:49:03.182175Z",
+                        "created_at": "2026-06-19T01:30:30.403554Z",
                         "first_discovery_id": null,
-                        "id": "fe7d58ba-6427-4e07-860c-bf265fde420b",
+                        "id": "0f2fdab7-b0d2-40f3-ba82-792965437b82",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-06-18T22:49:03.182175Z",
+                        "last_seen_at": "2026-06-19T01:30:30.403554Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-06-18T22:49:03.182175Z",
-                        "valid_from": "2026-06-18T22:49:03.182175Z",
+                        "updated_at": "2026-06-19T01:30:30.403554Z",
+                        "valid_from": "2026-06-19T01:30:30.403554Z",
                         "valid_to": null
                       }
                     ],
@@ -23181,7 +23181,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Lubelogger",
+                    "service_definition": "Prometheus",
                     "source": {
                       "type": "Manual"
                     },
@@ -23302,19 +23302,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-06-18T22:49:03.196239Z",
+                    "created_at": "2026-06-19T01:30:30.419548Z",
                     "first_discovery_id": null,
-                    "id": "213ceaeb-bd3c-45b1-9f3e-50943c303286",
+                    "id": "4f32baf2-deaf-4d69-8f1d-cb0a9ac640c9",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-06-18T22:49:03.196239Z",
+                    "last_seen_at": "2026-06-19T01:30:30.419548Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-06-18T22:49:03.196239Z",
-                    "valid_from": "2026-06-18T22:49:03.196239Z",
+                    "updated_at": "2026-06-19T01:30:30.419548Z",
+                    "valid_from": "2026-06-19T01:30:30.419548Z",
                     "valid_to": null
                   }
                 ],
@@ -23328,7 +23328,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Lubelogger",
+                "service_definition": "Prometheus",
                 "source": {
                   "type": "Manual"
                 },
@@ -24929,19 +24929,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-06-18T22:49:03.188039Z",
+              "created_at": "2026-06-19T01:30:30.410540Z",
               "first_discovery_id": null,
-              "id": "e67c9b4e-2b56-48d6-b535-9a220c687faa",
+              "id": "84b87929-8caa-419d-b7fa-218a5810aeea",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-18T22:49:03.188039Z",
+              "last_seen_at": "2026-06-19T01:30:30.410540Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-18T22:49:03.188039Z",
-              "valid_from": "2026-06-18T22:49:03.188039Z",
+              "updated_at": "2026-06-19T01:30:30.410540Z",
+              "valid_from": "2026-06-19T01:30:30.410540Z",
               "valid_to": null
             }
           ],
@@ -24955,7 +24955,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Lubelogger",
+          "service_definition": "Prometheus",
           "source": {
             "type": "Manual"
           },

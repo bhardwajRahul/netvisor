@@ -467,7 +467,9 @@ export interface paths {
         /**
          * Resume a paused subscription
          * @description Clears Stripe pause collection and re-activates billing. Available while
-         *     `plan_status === 'paused'`.
+         *     `plan_status === 'paused'`. The prorated pause credit is posted to the
+         *     customer's Stripe balance asynchronously by the webhook arm that fires
+         *     for the `pause_collection` clear — the endpoint just returns success.
          */
         post: operations["resume_subscription"];
         delete?: never;
@@ -3097,19 +3099,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-06-18T22:49:03.204022Z",
+             *       "created_at": "2026-06-19T01:30:30.425386Z",
              *       "first_discovery_id": null,
-             *       "id": "344eb8ce-f8a6-4044-af11-699b7932a85a",
+             *       "id": "beec4571-b558-442a-8ddf-5f7f6ed03736",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-06-18T22:49:03.204022Z",
+             *       "last_seen_at": "2026-06-19T01:30:30.425386Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-06-18T22:49:03.204022Z",
-             *       "valid_from": "2026-06-18T22:49:03.204022Z",
+             *       "updated_at": "2026-06-19T01:30:30.425386Z",
+             *       "valid_from": "2026-06-19T01:30:30.425386Z",
              *       "valid_to": null
              *     }
              */
@@ -3446,19 +3448,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-06-18T22:49:03.187854Z",
+             *               "created_at": "2026-06-19T01:30:30.410334Z",
              *               "first_discovery_id": null,
-             *               "id": "2e1acc9a-de16-4ebd-aa15-dab88016419d",
+             *               "id": "f8e0d596-f3c3-4519-9a94-ebc36c3dcdb3",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-06-18T22:49:03.187854Z",
+             *               "last_seen_at": "2026-06-19T01:30:30.410334Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-06-18T22:49:03.187854Z",
-             *               "valid_from": "2026-06-18T22:49:03.187854Z",
+             *               "updated_at": "2026-06-19T01:30:30.410334Z",
+             *               "valid_from": "2026-06-19T01:30:30.410334Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3472,7 +3474,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Lubelogger",
+             *           "service_definition": "Prometheus",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3828,19 +3830,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-06-18T22:49:03.197486Z",
+             *           "created_at": "2026-06-19T01:30:30.420682Z",
              *           "first_discovery_id": null,
-             *           "id": "114af5ff-e8fd-40f1-87dc-60c5775c679b",
+             *           "id": "62e5f913-522f-4bef-8bf0-711300ff6fc4",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-06-18T22:49:03.197486Z",
+             *           "last_seen_at": "2026-06-19T01:30:30.420682Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-06-18T22:49:03.197486Z",
-             *           "valid_from": "2026-06-18T22:49:03.197486Z",
+             *           "updated_at": "2026-06-19T01:30:30.420682Z",
+             *           "valid_from": "2026-06-19T01:30:30.420682Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -3854,7 +3856,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Lubelogger",
+             *       "service_definition": "Prometheus",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4307,19 +4309,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-06-18T22:49:03.188087Z",
+         *       "created_at": "2026-06-19T01:30:30.410591Z",
          *       "first_discovery_id": null,
-         *       "id": "094d5188-8674-46b1-8daf-751dd58b545a",
+         *       "id": "d6c8c687-f553-49a4-b9dc-476c7f1ed18c",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-06-18T22:49:03.188087Z",
+         *       "last_seen_at": "2026-06-19T01:30:30.410591Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-06-18T22:49:03.188087Z",
-         *       "valid_from": "2026-06-18T22:49:03.188087Z",
+         *       "updated_at": "2026-06-19T01:30:30.410591Z",
+         *       "valid_from": "2026-06-19T01:30:30.410591Z",
          *       "valid_to": null
          *     }
          */
@@ -4534,7 +4536,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Lubelogger",
+         *           "service_definition": "Prometheus",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -5226,8 +5228,8 @@ export interface components {
          *
          *     Stored as a JSONB blob, so new categories are added as new fields rather
          *     than via migration. New fields carry `#[serde(default = "default_true")]`
-         *     so rows written before the field existed deserialize cleanly (opted in by
-         *     default) without clobbering the categories they did persist.
+         *     so a category is opted in by default if its key is absent from the stored
+         *     JSON.
          */
         EmailSettings: {
             daemon_alerts?: boolean;
@@ -5496,19 +5498,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-06-18T22:49:03.187589Z",
+         *               "created_at": "2026-06-19T01:30:30.410001Z",
          *               "first_discovery_id": null,
-         *               "id": "1f2c5267-ea3e-4319-ab4f-db39f7e53124",
+         *               "id": "d1489f84-d854-4a63-a4df-1ae64114464b",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-06-18T22:49:03.187589Z",
+         *               "last_seen_at": "2026-06-19T01:30:30.410001Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-06-18T22:49:03.187589Z",
-         *               "valid_from": "2026-06-18T22:49:03.187589Z",
+         *               "updated_at": "2026-06-19T01:30:30.410001Z",
+         *               "valid_from": "2026-06-19T01:30:30.410001Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -5522,7 +5524,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Lubelogger",
+         *           "service_definition": "Prometheus",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -6937,19 +6939,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-06-18T22:49:03.188039Z",
+         *           "created_at": "2026-06-19T01:30:30.410540Z",
          *           "first_discovery_id": null,
-         *           "id": "e67c9b4e-2b56-48d6-b535-9a220c687faa",
+         *           "id": "84b87929-8caa-419d-b7fa-218a5810aeea",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-06-18T22:49:03.188039Z",
+         *           "last_seen_at": "2026-06-19T01:30:30.410540Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-06-18T22:49:03.188039Z",
-         *           "valid_from": "2026-06-18T22:49:03.188039Z",
+         *           "updated_at": "2026-06-19T01:30:30.410540Z",
+         *           "valid_from": "2026-06-19T01:30:30.410540Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -6963,7 +6965,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Lubelogger",
+         *       "service_definition": "Prometheus",
          *       "source": {
          *         "type": "Manual"
          *       },

@@ -534,7 +534,9 @@ async fn pause_subscription(
 /// Resume a paused subscription
 ///
 /// Clears Stripe pause collection and re-activates billing. Available while
-/// `plan_status === 'paused'`.
+/// `plan_status === 'paused'`. The prorated pause credit is posted to the
+/// customer's Stripe balance asynchronously by the webhook arm that fires
+/// for the `pause_collection` clear — the endpoint just returns success.
 #[utoipa::path(
     post,
     path = "/resume",

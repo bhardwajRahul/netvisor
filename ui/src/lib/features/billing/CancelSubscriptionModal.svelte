@@ -4,6 +4,7 @@
 	import SelectInput from '$lib/shared/components/forms/input/SelectInput.svelte';
 	import TextArea from '$lib/shared/components/forms/input/TextArea.svelte';
 	import InlineWarning from '$lib/shared/components/feedback/InlineWarning.svelte';
+	import InlineInfo from '$lib/shared/components/feedback/InlineInfo.svelte';
 	import {
 		usePauseSubscriptionMutation,
 		useApplyDiscountSaveOfferMutation,
@@ -39,6 +40,8 @@
 		settings_billing_saveOffer_pausePreview,
 		settings_billing_saveOffer_pauseCta,
 		settings_billing_saveOffer_pauseCooldown,
+		settings_billing_saveOffer_pauseSpansRenewal_title,
+		settings_billing_saveOffer_pauseSpansRenewal_body,
 		settings_billing_saveOffer_discountTitle,
 		settings_billing_saveOffer_discountSubtitleMonthly,
 		settings_billing_saveOffer_discountSubtitleYearly,
@@ -55,6 +58,8 @@
 		lastDiscountAt = null,
 		planStatus = null,
 		planType = null,
+		planRate = null,
+		nextRenewalAt = null,
 		onSubscriptionChanged
 	}: {
 		isOpen?: boolean;
@@ -67,6 +72,10 @@
 		planStatus?: string | null;
 		/** Org's `plan.type` — save offers only apply to Stripe-managed plans. */
 		planType?: string | null;
+		/** Org's `plan.rate` — Month or Year. Used for yearly span-renewal info copy. */
+		planRate?: 'Month' | 'Year' | null;
+		/** Org's `next_renewal_at` — yearly span-renewal info copy uses this. */
+		nextRenewalAt?: string | null;
 		/** Called after pause/discount/cancel succeed so the caller can refresh the org payload. */
 		onSubscriptionChanged?: () => void;
 	} = $props();
@@ -179,17 +188,36 @@
 	const pauseDurationOptions = $derived([
 		{
 			value: 'days30' as PauseDuration,
-			label: settings_billing_saveOffer_pauseDuration30()
+			label: settings_billing_saveOffer_pauseDuration30(),
+			days: 30
 		},
 		{
 			value: 'days60' as PauseDuration,
-			label: settings_billing_saveOffer_pauseDuration60()
+			label: settings_billing_saveOffer_pauseDuration60(),
+			days: 60
 		},
 		{
 			value: 'days90' as PauseDuration,
-			label: settings_billing_saveOffer_pauseDuration90()
+			label: settings_billing_saveOffer_pauseDuration90(),
+			days: 90
 		}
 	]);
+
+	// When a yearly pause extends past the renewal date, Stripe generates the
+	// next year's invoice as a draft mid-pause and finalizes it at resume.
+	// The pause credit partially offsets it, but the customer still gets a
+	// net charge for "next year minus pause credit." Surface this in an
+	// InlineInfo so they aren't surprised. Monthly subs never hit this —
+	// their drafts and credits are in the same denomination (full periods).
+	const renewalSpanWarning = $derived.by(() => {
+		if (planRate !== 'Year' || !nextRenewalAt) return null;
+		const renewal = new Date(nextRenewalAt);
+		const pauseDays = pauseDurationOptions.find((o) => o.value === selectedPauseDuration)?.days;
+		if (!pauseDays) return null;
+		const resumeAt = new Date(Date.now() + pauseDays * 24 * 60 * 60 * 1000);
+		if (resumeAt.getTime() <= renewal.getTime()) return null;
+		return { renewalDate: renewal };
+	});
 
 	function fmtDate(d: Date | string): string {
 		const dt = typeof d === 'string' ? new Date(d) : d;
@@ -356,6 +384,14 @@
 										resumesAt: fmtDate(pauseResumesAt)
 									})}
 								</p>
+								{#if renewalSpanWarning}
+									<InlineInfo
+										title={settings_billing_saveOffer_pauseSpansRenewal_title({
+											renewalDate: fmtDate(renewalSpanWarning.renewalDate)
+										})}
+										body={settings_billing_saveOffer_pauseSpansRenewal_body()}
+									/>
+								{/if}
 								<button
 									type="button"
 									class="btn-primary w-full"

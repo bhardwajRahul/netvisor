@@ -10,13 +10,14 @@ The output is supporting evidence for a Section 889 compliance attestation.
 | File | Role |
 |------|------|
 | `scripts/check-889.sh` | Matcher. POSIX shell + `jq`, no network. Scans CycloneDX SBOM(s), fails on a hit. |
-| `scripts/attest-889.sh` | On-demand attestation bundler. Generates SBOMs + runs the matcher + emits a hash-anchored evidence bundle for a customer. |
+| `scripts/889-evidence.sh` | On-demand evidence bundler. Generates SBOMs + runs the matcher + emits a hash-anchored evidence bundle. |
 | `scripts/889-vendors.txt` | Maintained prohibited-vendor pattern list (single source of truth). |
 | `scripts/889-allow.txt` | Reviewed false-positive exceptions (only subtracts, never broadens). |
 | `.github/workflows/889-check.yml` | PR gate — analyze-only source SBOM, blocks merge on a hit. |
 | `.github/workflows/889-check-test.yml` | `workflow_dispatch` end-to-end exercise (source + image). |
+| `.github/workflows/889-evidence.yml` | Refreshes `compliance/ndaa-889/` (the published evidence) and commits it to `main`. |
 | `.github/workflows/889-vendors-refresh.yml` | Quarterly cron — opens a vendor-list review issue. |
-| `.github/workflows/release.yml` (`supply-chain-889` job) | Release gate — scans source + all images, uploads SBOMs as release assets. |
+| `.github/workflows/release.yml` (`supply-chain-889` job) | Release gate — scans source + all images, fails the release on a hit. |
 
 ## Running locally
 
@@ -35,45 +36,46 @@ syft scan registry:ghcr.io/scanopy/scanopy/server:latest -o cyclonedx-json | jq 
 back to line 1 on minified input. `./scripts/check-889.sh --help` documents all
 options. Exit codes: `0` clean, `1` hit found, `2` usage/dependency error.
 
-## Attestation artifact (a stable link for a signed letter)
+## Review evidence (the single link a signed letter cites)
 
-A signed Section 889 attestation letter should cite a **stable URL** to the
-current machine-checked attestation, not static files. The
-`.github/workflows/889-attest.yml` workflow maintains exactly that: it runs the
-bundler in CI and clobbers the assets on one fixed-tag **prerelease**, so a
-single permalink always serves the latest attestation.
+The Section 889 **attestation** is the signed letter to the customer. This repo
+produces the **supporting evidence** that letter points to — proof an automated
+covered-entity review was performed. It lives at one stable, version-controlled
+location on `main`:
 
 ```
-Page (human):  https://github.com/<owner>/<repo>/releases/tag/attestation-889
-JSON:          https://github.com/<owner>/<repo>/releases/download/attestation-889/attestation.json
+Evidence (human):  https://github.com/scanopy/scanopy/blob/main/compliance/ndaa-889/EVIDENCE.md
+JSON:              https://github.com/scanopy/scanopy/raw/main/compliance/ndaa-889/evidence.json
+SBOMs:             https://github.com/scanopy/scanopy/raw/main/compliance/ndaa-889/sbom-*.cdx.json
 ```
 
-The release page renders `ATTESTATION.md` (result, assessed commit, components
-count, tool + vendor-list versions/digests, per-image assessed status); the
-assets are the full evidence (SBOMs, policy files, `SHA256SUMS`). It is a
-**prerelease on purpose** — `install.sh` resolves the daemon binary via
-`/releases/latest/`, which excludes prereleases, so the attestation never
-hijacks the binary download.
+`compliance/ndaa-889/` holds the current bundle only: `EVIDENCE.md` (result,
+assessed commit, component count, tool + vendor-list versions/digests, per-image
+status), `evidence.json`, the CycloneDX SBOMs, the exact policy files, and
+`SHA256SUMS`. It is **overwritten each refresh** — latest only, no per-version
+history (older states are reconstructable from the pinned commit + tool version).
+Not a GitHub Release: Releases are for images/binaries.
 
 **Refresh it** (before a deal, or on the monthly schedule): Actions tab →
-"889 Attestation (rolling)" → Run workflow. Running in CI includes the private
-`server-commercial` image (pulled with `GITHUB_TOKEN`).
+"889 Evidence" → Run workflow. It runs `scripts/889-evidence.sh` in CI — which
+includes the private `server-commercial` image (pulled with `GITHUB_TOKEN`) —
+and commits the refreshed bundle to `compliance/ndaa-889/` on `main`. It also
+auto-runs after "Promote Release to Latest" so the evidence tracks production.
 
 ### Generating a bundle locally
 
-`scripts/attest-889.sh` produces the same bundle on demand (the workflow just
-runs it and publishes the result):
+`scripts/889-evidence.sh` produces the same bundle on demand:
 
 ```sh
-./scripts/attest-889.sh                      # source + the three :latest images
-./scripts/attest-889.sh --tag v1.4.2         # a specific released tag
-./scripts/attest-889.sh --no-images          # source tree only
+./scripts/889-evidence.sh                      # source + the three :latest images
+./scripts/889-evidence.sh --tag v1.4.2         # a specific released tag
+./scripts/889-evidence.sh --no-images          # source tree only
 ```
 
-It writes `889-attestation-<date>/` (gitignored): `ATTESTATION.md`,
-`attestation.json`, `sbom-*.cdx.json`, `889-vendors.txt`, `889-allow.txt`,
-`summary.txt`, `hits.jsonl`, `SHA256SUMS`. It **exits non-zero on a hit**, so a
-PASS bundle can never be produced for a tree that contains a covered-entity
+It writes `889-evidence-<date>/` (gitignored): `EVIDENCE.md`, `evidence.json`,
+`sbom-*.cdx.json`, `889-vendors.txt`, `889-allow.txt`, `summary.txt`,
+`hits.jsonl` (only on a hit), `SHA256SUMS`. It **exits non-zero on a hit**, so a
+clean bundle can never be produced for a tree that contains a covered-entity
 component. A private image is recorded as `not-assessed` unless syft can pull it
 (`docker login ghcr.io` first, or run in CI).
 
@@ -137,28 +139,32 @@ separate future task if the manual cadence proves too slow.
 
 ## SBOM storage decision
 
-**Released SBOMs are uploaded as GitHub Release assets, not committed to git.**
+**One home: `compliance/ndaa-889/` on `main`, latest only. The release job is a
+gate, not a store.**
 
-TASK.md assumed committing the SBOM to the public repo is fine because it only
-contains public OSS dependency metadata. That privacy assessment holds — a
-CycloneDX SBOM from our source + images contains package names, versions, purls,
-and licenses for public OSS crates / npm packages / Debian base packages, plus
-our own workspace crate names (already public in this repo) and syft-derived
-file paths. Nothing secret: no credentials, no private registry tokens, no
-customer data.
+The 889 outputs split cleanly into two roles:
 
-Privacy is therefore *not* the deciding factor. The decision is driven by:
+- **Gate** — the PR check (`889-check.yml`) and the release `supply-chain-889`
+  job run the matcher and *fail* on a hit. They block bad code/releases; they do
+  not store anything.
+- **Evidence** — the published bundle a signed attestation letter links to. It
+  lives in one place, `compliance/ndaa-889/`, refreshed by `889-evidence.yml`.
 
-- **History churn** — SBOMs regenerate every release; committing ~1k-component
-  JSON blobs each tag bloats git history for no diff value.
-- **Existing mechanism** — the release workflow already attaches assets via the
-  `upload-assets` job (`softprops/action-gh-release@v1`). SBOMs ride that path.
-- **Discoverability** — assets are downloadable from the Releases tab, the
-  natural place an auditor looks for per-release compliance evidence.
+Keeping a single home was the deciding requirement: the customer cites **one**
+link, not "the rolling one here and the per-release SBOMs there." So the release
+job no longer attaches SBOMs to Releases (Releases are for images/binaries), and
+the evidence is not pinned to a fake release tag.
 
-If a future requirement needs versioned-in-history SBOMs (e.g. an internal audit
-trail diffable in git), revisit by committing to a separate private compliance
-repo rather than the public source repo.
+We keep **only the latest** bundle (overwritten each refresh) rather than a
+per-version history: old states are reconstructable from the pinned commit +
+image digests + tool version recorded in `evidence.json`, and auditors want the
+current state. This bounds git growth while still committing the actual SBOMs so
+they are downloadable from the one link.
+
+A CycloneDX SBOM here is non-sensitive: public OSS package names/versions/purls/
+licenses, our already-public crate names, and syft-derived file paths — no
+credentials, tokens, or customer data — so committing it to the public repo is
+fine.
 
 ## Images scanned at release
 
@@ -176,11 +182,14 @@ when those images are scanned.
 
 **Known tradeoff:** buildx pushes each image during its build job, so a scan
 that runs after `create-manifests` cannot un-push a bad image. On a hit it fails
-the release status and skips the SBOM upload, and gates the separate, manual
-`promote_to_latest` workflow — an effective gate even though the per-arch tags
-are already in GHCR. Moving the scan strictly before push would require scanning
-each per-arch image inside its matrix build job before `push: true`; deferred as
-a refinement (see Follow-ups).
+the release status and gates the separate, manual `promote_to_latest` workflow —
+an effective gate even though the per-arch tags are already in GHCR. Moving the
+scan strictly before push would require scanning each per-arch image inside its
+matrix build job before `push: true`; deferred as a refinement (see Follow-ups).
+
+The same three images are what `889-evidence.sh` assesses at `:latest` for the
+published evidence — so the gate (per-release) and the evidence (current
+production) cover the identical image set.
 
 ## Follow-ups (separate tasks)
 

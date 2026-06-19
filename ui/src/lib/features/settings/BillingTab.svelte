@@ -259,7 +259,9 @@
 			await resumeMutation.mutateAsync();
 			const flipped = await waitForOrgUpdate((o) => o.plan_status === 'active');
 			if (flipped) {
-				pushSuccess('Subscription resumed.');
+				pushSuccess(
+					'Subscription resumed. A credit for the days you paused will be applied to your next invoice.'
+				);
 			} else {
 				pushWarning(
 					'Resume request accepted. It may take a moment to reflect across your account.'
@@ -657,5 +659,7 @@
 	lastDiscountAt={org?.last_discount_at ?? null}
 	planStatus={org?.plan_status ?? null}
 	planType={org?.plan?.type ?? null}
+	planRate={org?.plan?.rate ?? null}
+	nextRenewalAt={org?.next_renewal_at ?? null}
 	onSubscriptionChanged={() => organizationQuery.refetch()}
 />

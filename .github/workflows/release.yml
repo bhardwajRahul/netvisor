@@ -693,7 +693,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [create-manifests]
     permissions:
-      contents: write
+      contents: read
       packages: read
     env:
       SYFT_VERSION: v1.45.1
@@ -727,26 +727,16 @@ jobs:
       - name: Run 889 check
         run: ./scripts/check-889.sh sbom-source-"${TAG}".cdx.json sbom-server-"${TAG}".cdx.json sbom-server-commercial-"${TAG}".cdx.json sbom-daemon-"${TAG}".cdx.json
 
-      - name: Upload SBOMs to the release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: |
-            sbom-source-${{ env.TAG }}.cdx.json
-            sbom-server-${{ env.TAG }}.cdx.json
-            sbom-server-commercial-${{ env.TAG }}.cdx.json
-            sbom-daemon-${{ env.TAG }}.cdx.json
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Summary
         if: always()
         run: |
           {
-            echo "## NDAA Section 889 supply-chain check"
+            echo "## NDAA Section 889 supply-chain check (gate)"
             echo ""
             echo "Scanned the released source tree and the \`server\`, \`server-commercial\`,"
-            echo "and \`daemon\` images at \`${TAG}\`."
+            echo "and \`daemon\` images at \`${TAG}\`. A hit fails the release."
             echo ""
-            echo "On success the four CycloneDX SBOMs are attached to this release as assets."
+            echo "Published review evidence lives at \`compliance/ndaa-889/\` and is refreshed"
+            echo "by the **889 Evidence** workflow (which tracks the promoted \`:latest\` images)."
           } >> "$GITHUB_STEP_SUMMARY"
 
