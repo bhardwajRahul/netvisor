@@ -71,9 +71,15 @@ jobs:
             gh release create "$ATTEST_TAG" \
               --target "$GITHUB_SHA" --prerelease --title "$TITLE" --notes-file ATTESTATION.md
           fi
-          gh release upload "$ATTEST_TAG" --clobber \
-            attestation.json ATTESTATION.md summary.txt hits.jsonl SHA256SUMS \
-            889-vendors.txt 889-allow.txt sbom-*.cdx.json
+          # Upload only files that exist and are non-empty. hits.jsonl is absent
+          # on a PASS, and GitHub's upload API rejects zero-byte assets.
+          FILES=""
+          for f in attestation.json ATTESTATION.md summary.txt hits.jsonl SHA256SUMS \
+                   889-vendors.txt 889-allow.txt sbom-*.cdx.json; do
+            [ -s "$f" ] && FILES="$FILES $f"
+          done
+          # shellcheck disable=SC2086
+          gh release upload "$ATTEST_TAG" --clobber $FILES
 
       - name: Summary
         run: |
