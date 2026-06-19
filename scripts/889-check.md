@@ -41,13 +41,21 @@ options. Exit codes: `0` clean, `1` hit found, `2` usage/dependency error.
 The Section 889 **attestation** is the signed letter to the customer. This repo
 produces the **supporting evidence** that letter points to — proof an automated
 covered-entity review was performed. It lives at one stable, version-controlled
-location on `main`:
+location in `compliance/ndaa-889/`:
 
 ```
-Evidence (human):  https://github.com/scanopy/scanopy/blob/main/compliance/ndaa-889/EVIDENCE.md
-JSON:              https://github.com/scanopy/scanopy/raw/main/compliance/ndaa-889/evidence.json
-SBOMs:             https://github.com/scanopy/scanopy/raw/main/compliance/ndaa-889/sbom-*.cdx.json
+Evidence (human):  https://github.com/scanopy/scanopy/blob/dev/compliance/ndaa-889/EVIDENCE.md
+JSON:              https://github.com/scanopy/scanopy/raw/dev/compliance/ndaa-889/evidence.json
+SBOMs:             https://github.com/scanopy/scanopy/raw/dev/compliance/ndaa-889/sbom-*.cdx.json
 ```
+
+**Why `dev`, not `main`:** a repo ruleset ("PR to main only from dev") locks
+`main` to PRs from `dev` via the `pr_dev_only` check, so no automation can push
+there — `regenerate-db-enum-baseline` follows the same constraint. `dev` has no
+such rule, so the workflow commits there directly; the evidence reaches `main`
+automatically at the next `dev`→`main` release merge. `dev` is the always-current
+copy (refreshes on demand); `main` reflects the last release. Cite whichever
+suits the letter — `dev` for "current", `main` for "as-released".
 
 `compliance/ndaa-889/` holds the current bundle only: `EVIDENCE.md` (result,
 assessed commit, component count, tool + vendor-list versions/digests, per-image
@@ -59,7 +67,7 @@ Not a GitHub Release: Releases are for images/binaries.
 **Refresh it** (before a deal, or on the monthly schedule): Actions tab →
 "889 Evidence" → Run workflow. It runs `scripts/889-evidence.sh` in CI — which
 includes the private `server-commercial` image (pulled with `GITHUB_TOKEN`) —
-and commits the refreshed bundle to `compliance/ndaa-889/` on `main`. It also
+and commits the refreshed bundle to `compliance/ndaa-889/` on `dev`. It also
 auto-runs after "Promote Release to Latest" so the evidence tracks production.
 
 ### Generating a bundle locally
