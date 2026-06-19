@@ -1,11 +1,16 @@
 name: 889 Evidence
 
 # Refreshes the NDAA Section 889 review evidence and commits it to
-# compliance/ndaa-889/ on the default branch, so a signed attestation letter has
-# one stable link to cite:
+# compliance/ndaa-889/ on `dev`, so a signed attestation letter has one stable
+# link to cite:
 #
-#   Human:  https://github.com/<owner>/<repo>/blob/main/compliance/ndaa-889/EVIDENCE.md
-#   JSON:   https://github.com/<owner>/<repo>/raw/main/compliance/ndaa-889/evidence.json
+#   Human:  https://github.com/<owner>/<repo>/blob/dev/compliance/ndaa-889/EVIDENCE.md
+#   JSON:   https://github.com/<owner>/<repo>/raw/dev/compliance/ndaa-889/evidence.json
+#
+# It commits to `dev`, not `main`: a repo ruleset locks `main` to PRs from `dev`
+# (the `pr_dev_only` check), so no automation can push there. `dev` has no such
+# rule, and the evidence reaches `main` automatically at the next dev->main
+# release merge. `dev` is the always-current copy; `main` reflects last release.
 #
 # Runs scripts/889-evidence.sh in CI (so the private server-commercial image is
 # included via GITHUB_TOKEN), then overwrites compliance/ndaa-889/ with the
@@ -41,7 +46,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: dev
 
       - name: Install syft
         run: |
@@ -72,15 +77,17 @@ jobs:
             exit 0
           fi
           git commit -m "chore: refresh NDAA 889 review evidence [skip ci]"
-          git push origin HEAD:main
+          # dev is push-able by automation; main is ruleset-locked to PRs from dev.
+          git push origin HEAD:dev
 
       - name: Summary
         run: |
           {
             echo "## NDAA Section 889 evidence refreshed"
             echo ""
-            echo "Stable links for the attestation letter:"
+            echo "Stable links for the attestation letter (always-current copy on dev;"
+            echo "also reaches main at the next release):"
             echo ""
-            echo "- Evidence: https://github.com/${{ github.repository }}/blob/main/compliance/ndaa-889/EVIDENCE.md"
-            echo "- JSON: https://github.com/${{ github.repository }}/raw/main/compliance/ndaa-889/evidence.json"
+            echo "- Evidence: https://github.com/${{ github.repository }}/blob/dev/compliance/ndaa-889/EVIDENCE.md"
+            echo "- JSON: https://github.com/${{ github.repository }}/raw/dev/compliance/ndaa-889/evidence.json"
           } >> "$GITHUB_STEP_SUMMARY"
