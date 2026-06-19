@@ -439,13 +439,6 @@ mod tests {
         assert_fully_rendered(&SubscriptionReactivated);
         assert_fully_rendered(&SubscriptionPaused {
             resumes_at: "July 1, 2026",
-            is_yearly: false,
-            duration_days: 30,
-        });
-        assert_fully_rendered(&SubscriptionPaused {
-            resumes_at: "July 1, 2026",
-            is_yearly: true,
-            duration_days: 30,
         });
         assert_fully_rendered(&SubscriptionResumed);
         assert_fully_rendered(&CheckoutCompleted { plan_name: "Pro" });
@@ -649,19 +642,9 @@ mod tests {
         );
         f("subscription_reactivated", &SubscriptionReactivated);
         f(
-            "subscription_paused_monthly",
+            "subscription_paused",
             &SubscriptionPaused {
                 resumes_at: "July 1, 2026",
-                is_yearly: false,
-                duration_days: 30,
-            },
-        );
-        f(
-            "subscription_paused_yearly",
-            &SubscriptionPaused {
-                resumes_at: "July 1, 2026",
-                is_yearly: true,
-                duration_days: 30,
             },
         );
         f("subscription_resumed", &SubscriptionResumed);
