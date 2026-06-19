@@ -60,7 +60,6 @@ use stripe_checkout::checkout_session::{
 };
 use stripe_checkout::{
     CheckoutSession, CheckoutSessionBillingAddressCollection, CheckoutSessionMode,
-    CheckoutSessionPaymentMethodCollection,
 };
 use stripe_client_core::{RequestBuilder, StripeMethod, StripeRequest};
 use stripe_core::customer::CreateCustomer;
@@ -865,11 +864,12 @@ impl BillingService {
                     self.handle_subscription_deleted(sub).await?;
                 }
             }
-            EventType::CheckoutSessionCompleted => {
-                if let EventObject::CheckoutSessionCompleted(session) = event.data.object {
-                    self.handle_checkout_completed(session).await?;
-                }
-            }
+            // CheckoutSessionCompleted intentionally unhandled. Stripe fires it
+            // alongside payment_method.attached for every Checkout-collected
+            // card; both used to flow through here and resulted in two
+            // PaymentMethodAdded events (and two "Payment method added" emails)
+            // per single user action. payment_method.attached is the canonical
+            // signal and is handled below.
             EventType::PaymentMethodAttached => {
                 if let EventObject::PaymentMethodAttached(pm) = event.data.object
                     && let Some(customer) = pm.customer.as_ref()
@@ -1410,80 +1410,6 @@ impl BillingService {
                 ))
                 .await?;
         }
-
-        Ok(())
-    }
-
-    /// Handle checkout.session.completed — mark payment method as collected.
-    ///
-    /// Only sets has_payment_method when payment was actually collected (setup mode,
-    /// or subscription mode with payment_method_collection = Always). Trial checkouts
-    /// use IfRequired and don't collect payment upfront.
-    async fn handle_checkout_completed(
-        &self,
-        session: stripe_checkout::CheckoutSession,
-    ) -> Result<(), Error> {
-        // Only handle setup and subscription modes (not one-time payments)
-        if session.mode != CheckoutSessionMode::Setup
-            && session.mode != CheckoutSessionMode::Subscription
-        {
-            return Ok(());
-        }
-
-        // Trial checkouts use IfRequired — no payment method is collected
-        let collected_payment = session.payment_method_collection
-            != Some(CheckoutSessionPaymentMethodCollection::IfRequired);
-
-        if !collected_payment {
-            tracing::debug!(
-                mode = ?session.mode,
-                "Checkout completed without payment collection (trial) — skipping has_payment_method"
-            );
-            return Ok(());
-        }
-
-        let metadata = session
-            .metadata
-            .as_ref()
-            .ok_or_else(|| anyhow!("No metadata in checkout session"))?;
-        let org_id = metadata
-            .get("organization_id")
-            .ok_or_else(|| anyhow!("No organization_id in checkout session metadata"))?;
-        let org_id = Uuid::parse_str(org_id)?;
-
-        // Verify the org exists (Stripe webhook can race a deleted org).
-        if self
-            .organization_service
-            .get_by_id(&org_id)
-            .await?
-            .is_none()
-        {
-            tracing::warn!(
-                organization_id = %org_id,
-                event = "checkout_session_completed",
-                "Stripe webhook for deleted organization — skipping"
-            );
-            return Ok(());
-        }
-
-        // Card was added via Stripe Checkout; semantically equivalent to
-        // payment_method.attached. Emit the same event and let the org
-        // subscriber mirror has_payment_method = true.
-        self.event_bus
-            .publish(Event::new(
-                OrgScope {
-                    organization_id: org_id,
-                },
-                BillingOperation::PaymentMethodAdded,
-                AuthenticatedEntity::System,
-            ))
-            .await?;
-
-        tracing::info!(
-            organization_id = %org_id,
-            mode = ?session.mode,
-            "Payment method confirmed via checkout"
-        );
 
         Ok(())
     }
