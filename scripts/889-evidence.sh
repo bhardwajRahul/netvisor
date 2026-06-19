@@ -1,38 +1,38 @@
 #!/bin/sh
 # ==============================================================================
-# attest-889.sh - produce a point-in-time NDAA Section 889 attestation bundle
+# 889-evidence.sh - generate NDAA Section 889 review-evidence bundle
 # ==============================================================================
 #
 # Generates CycloneDX SBOMs (source tree + published container images) with syft,
 # assesses them with check-889.sh against the committed vendor list, and writes a
-# self-contained, hash-anchored attestation bundle suitable for handing to a
-# customer as evidence that the SBOM has been assessed against the Section 889
-# covered-entity list.
+# self-contained, hash-anchored EVIDENCE bundle: the supporting data showing that
+# an automated covered-entity review was performed.
 #
-# Unlike the release-gated job, this runs on demand against whatever is currently
-# published - use it to provide attestation evidence between releases.
+# NOTE: the *attestation* is the signed letter sent to the customer. This bundle
+# is the supporting evidence that letter points to - not the attestation itself.
 #
 # The bundle records: result, what was assessed (commit + image digests), the
 # tool versions, the exact vendor list / allowlist used (with digests), the full
 # SBOMs, and a SHA256SUMS manifest. It EXITS NON-ZERO if the check fails, so it
-# can never emit a "pass" attestation for a tree that actually contains a hit.
+# can never emit a clean evidence bundle for a tree that contains a hit.
 #
 # Dependencies: syft, jq, git, sha256sum (or shasum), POSIX shell.
 #
 # USAGE
-#   scripts/attest-889.sh [--out DIR] [--tag TAG] [--no-images] [--image REF]...
+#   scripts/889-evidence.sh [--out DIR] [--tag TAG] [--no-images] [--image REF]...
 #
-#   --out DIR     Output directory (default: 889-attestation-<UTC-date>).
+#   --out DIR     Output directory (default: 889-evidence-<UTC-date>).
 #   --tag TAG     Image tag to assess (default: latest). Used to build the
 #                 default server / server-commercial / daemon image refs.
 #   --image REF   Scan this exact image ref instead of the defaults. Repeatable.
+#   --repo SLUG   owner/repo for the ghcr image namespace (default: from remote).
 #   --no-images   Source tree only (e.g. offline, or images not published yet).
 #   -h, --help    Show this help.
 #
 # EXAMPLES
-#   scripts/attest-889.sh                       # source + the three :latest images
-#   scripts/attest-889.sh --tag v1.4.2          # assess a specific released tag
-#   scripts/attest-889.sh --no-images           # source tree only
+#   scripts/889-evidence.sh                       # source + the three :latest images
+#   scripts/889-evidence.sh --tag v1.4.2          # assess a specific released tag
+#   scripts/889-evidence.sh --no-images           # source tree only
 # ==============================================================================
 
 set -eu
@@ -59,12 +59,12 @@ while [ $# -gt 0 ]; do
         --repo) REPO_SLUG="$2"; shift 2 ;;
         --no-images) WANT_IMAGES=0; shift ;;
         -h|--help) usage; exit 0 ;;
-        *) echo "attest-889.sh: unknown option: $1" >&2; exit 2 ;;
+        *) echo "889-evidence.sh: unknown option: $1" >&2; exit 2 ;;
     esac
 done
 
 for tool in syft jq git; do
-    command -v "$tool" >/dev/null 2>&1 || { echo "attest-889.sh: $tool is required" >&2; exit 2; }
+    command -v "$tool" >/dev/null 2>&1 || { echo "889-evidence.sh: $tool is required" >&2; exit 2; }
 done
 
 # Portable sha256 over a file -> bare hex digest.
@@ -77,7 +77,7 @@ cd "$REPO_ROOT"
 
 NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 DATE=$(date -u +%Y-%m-%d)
-[ -n "$OUT" ] || OUT="$REPO_ROOT/889-attestation-$DATE"
+[ -n "$OUT" ] || OUT="$REPO_ROOT/889-evidence-$DATE"
 mkdir -p "$OUT"
 
 GIT_COMMIT=$(git rev-parse HEAD)
@@ -97,7 +97,7 @@ ALLOW_SHA=$(sha256 "$ALLOW")
 cp "$VENDORS" "$OUT/889-vendors.txt"
 cp "$ALLOW" "$OUT/889-allow.txt"
 
-echo "attest-889: generating source SBOM..." >&2
+echo "889-evidence: generating source SBOM..." >&2
 syft scan dir:. -o cyclonedx-json | jq . > "$OUT/sbom-source.cdx.json"
 
 # Build the list of (label, target, file) SBOMs assessed.
@@ -106,13 +106,13 @@ SBOM_FILES="$OUT/sbom-source.cdx.json"
 scan_image() {
     ref="$1"; label="$2"
     out="$OUT/sbom-$label.cdx.json"
-    echo "attest-889: scanning image $ref..." >&2
+    echo "889-evidence: scanning image $ref..." >&2
     if syft scan "registry:$ref" -o cyclonedx-json 2>/dev/null | jq . > "$out" 2>/dev/null && [ -s "$out" ]; then
         SBOM_FILES="$SBOM_FILES $out"
         printf '%s\t%s\t%s\n' "$label" "$ref" "$out" >> "$OUT/.images"
     else
         rm -f "$out"
-        echo "attest-889: WARNING could not scan $ref - recording as not-assessed" >&2
+        echo "889-evidence: WARNING could not scan $ref - recording as not-assessed" >&2
         printf '%s\t%s\t%s\n' "$label" "$ref" "UNAVAILABLE" >> "$OUT/.images"
     fi
 }
@@ -130,7 +130,7 @@ if [ "$WANT_IMAGES" -eq 1 ]; then
 fi
 
 # Assess. Capture machine hits and the human summary (includes exceptions).
-echo "attest-889: running check-889.sh..." >&2
+echo "889-evidence: running check-889.sh..." >&2
 set +e
 # shellcheck disable=SC2086
 "$CHECK" --json $SBOM_FILES > "$OUT/hits.jsonl" 2> "$OUT/summary.txt"
@@ -168,8 +168,9 @@ IMAGES_JSON=$(
 )
 rm -f "$OUT/.images"
 
-# Machine-readable attestation.
+# Machine-readable evidence record.
 jq -n \
+  --arg document "supporting evidence (the attestation is a separate signed letter)" \
   --arg standard "NDAA FY2019 Section 889" \
   --arg generated_at "$NOW" \
   --arg repo "$REPO_SLUG" \
@@ -188,6 +189,7 @@ jq -n \
   --argjson sboms "$SBOM_JSON" \
   --argjson images "$IMAGES_JSON" \
   '{
+     document_type: $document,
      standard: $standard,
      result: $result,
      generated_at: $generated_at,
@@ -202,11 +204,15 @@ jq -n \
      policy: { vendor_list_commit: $vendors_commit, vendor_list_sha256: $vendors_sha256, allowlist_sha256: $allow_sha256 },
      images: $images,
      sboms: $sboms
-   }' > "$OUT/attestation.json"
+   }' > "$OUT/evidence.json"
 
-# Human-readable attestation.
+# Human-readable evidence record.
 {
-    echo "# NDAA Section 889 Supply-Chain Attestation"
+    echo "# NDAA Section 889 Supply-Chain Review - Evidence"
+    echo
+    echo "> Supporting evidence for a Section 889 compliance attestation (the"
+    echo "> attestation itself is a signed letter to the customer). This records that"
+    echo "> an automated covered-entity review was performed over the SBOMs below."
     echo
     echo "**Result: $RESULT**"
     echo
@@ -226,7 +232,6 @@ jq -n \
     echo "## Scope assessed"
     echo
     echo "- Source tree at commit \`$GIT_COMMIT\`"
-    if [ -s "$OUT/summary.txt" ]; then :; fi
     if [ "$WANT_IMAGES" -eq 1 ]; then
         for f in $SBOM_FILES; do
             case "$(basename "$f")" in
@@ -248,25 +253,28 @@ jq -n \
         if [ "$N_EXCEPTIONS" -gt 0 ]; then
             echo
             echo "$N_EXCEPTIONS reviewed exception(s) were suppressed as documented"
-            echo "false positives (see \`889-allow.txt\` and \`summary.txt\`)."
+            echo "false positives (see [889-allow.txt](889-allow.txt) and [summary.txt](summary.txt))."
         fi
     else
-        echo "**One or more prohibited-entity components were found.** See \`hits.jsonl\`."
-        echo "This bundle is NOT a clean attestation."
+        echo "**One or more prohibited-entity components were found.** See"
+        echo "[hits.jsonl](hits.jsonl). This evidence bundle is NOT clean."
     fi
     echo
     echo "## Files in this bundle"
     echo
-    echo "- \`attestation.json\` - machine-readable attestation"
-    echo "- \`summary.txt\` - matcher human summary (counts + exceptions)"
-    [ -f "$OUT/hits.jsonl" ] && echo "- \`hits.jsonl\` - machine-readable hits (present only when a hit is found)"
-    echo "- \`sbom-*.cdx.json\` - the CycloneDX SBOMs assessed"
-    echo "- \`889-vendors.txt\`, \`889-allow.txt\` - the exact policy used"
-    echo "- \`SHA256SUMS\` - digests of every file above"
-} > "$OUT/ATTESTATION.md"
+    echo "- [evidence.json](evidence.json) - machine-readable evidence record"
+    echo "- [summary.txt](summary.txt) - matcher human summary (counts + exceptions)"
+    [ -f "$OUT/hits.jsonl" ] && echo "- [hits.jsonl](hits.jsonl) - machine-readable hits (present only when a hit is found)"
+    for f in $SBOM_FILES; do
+        base=$(basename "$f")
+        echo "- [$base]($base) - CycloneDX SBOM"
+    done
+    echo "- [889-vendors.txt](889-vendors.txt), [889-allow.txt](889-allow.txt) - the exact policy used"
+    echo "- [SHA256SUMS](SHA256SUMS) - digests of every file above"
+} > "$OUT/EVIDENCE.md"
 
 # Digest manifest over everything in the bundle.
 ( cd "$OUT" && for f in *; do [ "$f" = "SHA256SUMS" ] || sha256 "$f" | sed "s|\$| $f|"; done > SHA256SUMS )
 
-echo "attest-889: $RESULT - bundle written to $OUT" >&2
+echo "889-evidence: $RESULT - bundle written to $OUT" >&2
 exit "$RESULT_RC"
