@@ -1,0 +1,56 @@
+{
+  "document_type": "supporting evidence (the attestation is a separate signed letter)",
+  "standard": "NDAA FY2019 Section 889",
+  "result": "PASS",
+  "generated_at": "2026-06-19T02:17:29Z",
+  "repository": "scanopy/scanopy",
+  "assessed_commit": "5d9acd804e323f15cdcd6e9f92d00f6d21838205",
+  "assessed_describe": "5d9acd8",
+  "image_tag": "latest",
+  "components_assessed": 8032,
+  "allowed_exceptions": 2,
+  "prohibited_hits": 0,
+  "tooling": {
+    "sbom_generator": "syft 1.45.1",
+    "matcher_commit": "5d9acd8"
+  },
+  "policy": {
+    "vendor_list_commit": "5d9acd8",
+    "vendor_list_sha256": "90100a2e31daea18d39e689d7edae1ae68b812f5ca9fcecfd746a70d1eb1deab",
+    "allowlist_sha256": "672002d05725bcd6e87afd809685f79208702c4ecbd0a2be1493c6468ad2c571"
+  },
+  "images": [
+    {
+      "label": "server",
+      "ref": "ghcr.io/scanopy/scanopy/server:latest",
+      "status": "assessed"
+    },
+    {
+      "label": "server-commercial",
+      "ref": "ghcr.io/scanopy/scanopy/server-commercial:latest",
+      "status": "not-assessed"
+    },
+    {
+      "label": "daemon",
+      "ref": "ghcr.io/scanopy/scanopy/daemon:latest",
+      "status": "assessed"
+    }
+  ],
+  "sboms": [
+    {
+      "file": "sbom-source.cdx.json",
+      "sha256": "4c460d63f0bd389c04a46409828cdea686f365f9f56d6976707ecd9779fa0d27",
+      "components": 1104
+    },
+    {
+      "file": "sbom-server.cdx.json",
+      "sha256": "d4498c983270ead1dd11ff216b8fa9b4ed1b8f790d77919bb1b4f0367ed12f21",
+      "components": 3340
+    },
+    {
+      "file": "sbom-daemon.cdx.json",
+      "sha256": "3983b1a1c72379feb62d54377a5e69c4e00ba61777651cea518d3c5f57e00583",
+      "components": 3588
+    }
+  ]
+}
