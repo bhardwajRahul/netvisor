@@ -10891,19 +10891,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-06-18T22:49:03.204033Z",
+              "created_at": "2026-06-19T01:03:56.160215Z",
               "first_discovery_id": null,
-              "id": "21facb8b-d915-4351-a53a-e0d001375235",
+              "id": "3365b7a4-fdec-4bd4-858e-ad0983b704a3",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-18T22:49:03.204033Z",
+              "last_seen_at": "2026-06-19T01:03:56.160215Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-18T22:49:03.204033Z",
-              "valid_from": "2026-06-18T22:49:03.204033Z",
+              "updated_at": "2026-06-19T01:03:56.160215Z",
+              "valid_from": "2026-06-19T01:03:56.160215Z",
               "valid_to": null
             }
           },
@@ -11889,19 +11889,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-06-18T22:49:03.187851Z",
+                      "created_at": "2026-06-19T01:03:56.144830Z",
                       "first_discovery_id": null,
-                      "id": "8f98f68a-fff9-40b2-b4b6-0c71039723cb",
+                      "id": "9b045884-a9fa-465e-8f74-f57af7e3412a",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-06-18T22:49:03.187851Z",
+                      "last_seen_at": "2026-06-19T01:03:56.144830Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-06-18T22:49:03.187851Z",
-                      "valid_from": "2026-06-18T22:49:03.187851Z",
+                      "updated_at": "2026-06-19T01:03:56.144830Z",
+                      "valid_from": "2026-06-19T01:03:56.144830Z",
                       "valid_to": null
                     }
                   ],
@@ -11915,7 +11915,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Lubelogger",
+                  "service_definition": "RabbitMQ",
                   "source": {
                     "type": "Manual"
                   },
@@ -12777,6 +12777,46 @@
           }
         }
       },
+      "ApiResponse_ResumeSubscriptionResponse": {
+        "type": "object",
+        "required": [
+          "success",
+          "meta"
+        ],
+        "properties": {
+          "data": {
+            "type": "object",
+            "description": "Response from `POST /api/billing/resume`. Carries the credit amount\n(in cents) we applied to the customer's Stripe balance so the frontend\ntoast can surface it (\"$X.XX credit applied to your next invoice\").\n\n`credit_applied_cents` is `None` when no credit was applied — e.g. the\nresume path's metadata-marker idempotency check skipped the apply\nbecause the webhook already handled it, or `scanopy_paused_at`\nmetadata was missing.",
+            "required": [
+              "message"
+            ],
+            "properties": {
+              "credit_applied_cents": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int64"
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ApiMeta"
+          },
+          "success": {
+            "type": "boolean"
+          }
+        }
+      },
       "ApiResponse_ServerCapabilities": {
         "type": "object",
         "required": [
@@ -12906,19 +12946,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-06-18T22:49:03.197441Z",
+                  "created_at": "2026-06-19T01:03:56.155145Z",
                   "first_discovery_id": null,
-                  "id": "730289e1-f85f-4b7b-9709-0b2d3b8fb75b",
+                  "id": "e65fb17b-5eaf-4875-8124-285cc2b4c495",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-18T22:49:03.197441Z",
+                  "last_seen_at": "2026-06-19T01:03:56.155145Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-18T22:49:03.197441Z",
-                  "valid_from": "2026-06-18T22:49:03.197441Z",
+                  "updated_at": "2026-06-19T01:03:56.155145Z",
+                  "valid_from": "2026-06-19T01:03:56.155145Z",
                   "valid_to": null
                 }
               ],
@@ -12932,7 +12972,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Lubelogger",
+              "service_definition": "RabbitMQ",
               "source": {
                 "type": "Manual"
               },
@@ -14632,19 +14672,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-06-18T22:49:03.188083Z",
+          "created_at": "2026-06-19T01:03:56.145306Z",
           "first_discovery_id": null,
-          "id": "a5922169-5eaa-439e-a402-89203dc53b3f",
+          "id": "7a372e7c-af8d-4b41-bc98-00e79999b587",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-06-18T22:49:03.188083Z",
+          "last_seen_at": "2026-06-19T01:03:56.145306Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-06-18T22:49:03.188083Z",
-          "valid_from": "2026-06-18T22:49:03.188083Z",
+          "updated_at": "2026-06-19T01:03:56.145306Z",
+          "valid_from": "2026-06-19T01:03:56.145306Z",
           "valid_to": null
         }
       },
@@ -15234,7 +15274,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Lubelogger",
+              "service_definition": "RabbitMQ",
               "tags": [],
               "virtualization": null
             }
@@ -17159,7 +17199,7 @@
       },
       "EmailSettings": {
         "type": "object",
-        "description": "Per-user toggles for the user-pausable email categories. Each field maps\n1:1 to a [`PausableCategory`]; required emails are never gated here.\n\nStored as a JSONB blob, so new categories are added as new fields rather\nthan via migration. New fields carry `#[serde(default = \"default_true\")]`\nso rows written before the field existed deserialize cleanly (opted in by\ndefault) without clobbering the categories they did persist.",
+        "description": "Per-user toggles for the user-pausable email categories. Each field maps\n1:1 to a [`PausableCategory`]; required emails are never gated here.\n\nStored as a JSONB blob, so new categories are added as new fields rather\nthan via migration. New fields carry `#[serde(default = \"default_true\")]`\nso a category is opted in by default if its key is absent from the stored\nJSON.",
         "required": [
           "discovery_digest"
         ],
@@ -17882,19 +17922,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-06-18T22:49:03.187587Z",
+                  "created_at": "2026-06-19T01:03:56.144321Z",
                   "first_discovery_id": null,
-                  "id": "fe6ae73c-090c-46ab-993a-6a8707c8f98d",
+                  "id": "e2c291fa-02a2-4a05-b3e6-afe4f6e119af",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-18T22:49:03.187587Z",
+                  "last_seen_at": "2026-06-19T01:03:56.144321Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-18T22:49:03.187587Z",
-                  "valid_from": "2026-06-18T22:49:03.187587Z",
+                  "updated_at": "2026-06-19T01:03:56.144321Z",
+                  "valid_from": "2026-06-19T01:03:56.144321Z",
                   "valid_to": null
                 }
               ],
@@ -17908,7 +17948,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Lubelogger",
+              "service_definition": "RabbitMQ",
               "source": {
                 "type": "Manual"
               },
@@ -20339,19 +20379,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-06-18T22:49:03.182176Z",
+                        "created_at": "2026-06-19T01:03:56.132970Z",
                         "first_discovery_id": null,
-                        "id": "2e9fe327-3486-48ec-bcee-51e7bb5f5a79",
+                        "id": "36affaad-f738-488b-84d3-095b6d942272",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-06-18T22:49:03.182176Z",
+                        "last_seen_at": "2026-06-19T01:03:56.132970Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-06-18T22:49:03.182176Z",
-                        "valid_from": "2026-06-18T22:49:03.182176Z",
+                        "updated_at": "2026-06-19T01:03:56.132970Z",
+                        "valid_from": "2026-06-19T01:03:56.132970Z",
                         "valid_to": null
                       }
                     ],
@@ -20365,7 +20405,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Lubelogger",
+                    "service_definition": "RabbitMQ",
                     "source": {
                       "type": "Manual"
                     },
@@ -20486,19 +20526,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-06-18T22:49:03.196219Z",
+                    "created_at": "2026-06-19T01:03:56.154123Z",
                     "first_discovery_id": null,
-                    "id": "2f2c6cf1-9656-42cf-98be-6aa2312085ad",
+                    "id": "1f2479e9-47c0-449a-b381-d8b8e22a6d26",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-06-18T22:49:03.196219Z",
+                    "last_seen_at": "2026-06-19T01:03:56.154123Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-06-18T22:49:03.196219Z",
-                    "valid_from": "2026-06-18T22:49:03.196219Z",
+                    "updated_at": "2026-06-19T01:03:56.154123Z",
+                    "valid_from": "2026-06-19T01:03:56.154123Z",
                     "valid_to": null
                   }
                 ],
@@ -20512,7 +20552,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Lubelogger",
+                "service_definition": "RabbitMQ",
                 "source": {
                   "type": "Manual"
                 },
@@ -21717,6 +21757,25 @@
           }
         }
       },
+      "ResumeSubscriptionResponse": {
+        "type": "object",
+        "description": "Response from `POST /api/billing/resume`. Carries the credit amount\n(in cents) we applied to the customer's Stripe balance so the frontend\ntoast can surface it (\"$X.XX credit applied to your next invoice\").\n\n`credit_applied_cents` is `None` when no credit was applied — e.g. the\nresume path's metadata-marker idempotency check skipped the apply\nbecause the webhook already handled it, or `scanopy_paused_at`\nmetadata was missing.",
+        "required": [
+          "message"
+        ],
+        "properties": {
+          "credit_applied_cents": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
       "RunType": {
         "oneOf": [
           {
@@ -22113,19 +22172,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-06-18T22:49:03.188034Z",
+              "created_at": "2026-06-19T01:03:56.145206Z",
               "first_discovery_id": null,
-              "id": "c294858f-7e65-40e2-8c8e-453a8c2d43d4",
+              "id": "d0967b61-918c-4682-8a0d-eff5ddb5518d",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-18T22:49:03.188034Z",
+              "last_seen_at": "2026-06-19T01:03:56.145206Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-18T22:49:03.188034Z",
-              "valid_from": "2026-06-18T22:49:03.188034Z",
+              "updated_at": "2026-06-19T01:03:56.145206Z",
+              "valid_from": "2026-06-19T01:03:56.145206Z",
               "valid_to": null
             }
           ],
@@ -22139,7 +22198,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Lubelogger",
+          "service_definition": "RabbitMQ",
           "source": {
             "type": "Manual"
           },

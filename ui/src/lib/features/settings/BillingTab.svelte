@@ -256,10 +256,15 @@
 	async function handleResume() {
 		if (!confirm(settings_billing_resume_confirmBody())) return;
 		try {
-			await resumeMutation.mutateAsync();
+			const result = await resumeMutation.mutateAsync();
 			const flipped = await waitForOrgUpdate((o) => o.plan_status === 'active');
 			if (flipped) {
-				pushSuccess('Subscription resumed.');
+				if (result?.credit_applied_cents && result.credit_applied_cents > 0) {
+					const dollars = (result.credit_applied_cents / 100).toFixed(2);
+					pushSuccess(`Subscription resumed. $${dollars} credit applied to your next invoice.`);
+				} else {
+					pushSuccess('Subscription resumed.');
+				}
 			} else {
 				pushWarning(
 					'Resume request accepted. It may take a moment to reflect across your account.'
@@ -657,5 +662,7 @@
 	lastDiscountAt={org?.last_discount_at ?? null}
 	planStatus={org?.plan_status ?? null}
 	planType={org?.plan?.type ?? null}
+	planRate={org?.plan?.rate ?? null}
+	nextRenewalAt={org?.next_renewal_at ?? null}
 	onSubscriptionChanged={() => organizationQuery.refetch()}
 />
