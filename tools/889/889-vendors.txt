@@ -2,7 +2,7 @@
 # 889-vendors.txt — NDAA Section 889 prohibited-vendor pattern list
 # ==============================================================================
 #
-# Single source of truth read by scripts/check-889.sh. Each component in an
+# Single source of truth read by tools/889/check-889.sh. Each component in an
 # SBOM is matched (case-insensitively) against the patterns below.
 #
 # FORMAT (one entry per line, no spaces around the ';' delimiters):
@@ -17,7 +17,7 @@
 #
 # Lines starting with '#' and blank lines are ignored.
 #
-# Seed methodology, source URLs, and the refresh process: see scripts/889-check.md
+# Seed methodology, source URLs, and the refresh process: see tools/889/889-check.md
 # ==============================================================================
 
 # --- Root covered entities (NDAA Sec. 889(f)(3)) ------------------------------
@@ -39,7 +39,7 @@ hangzhou hikvision;internal review;2026-06-18;Hangzhou Hikvision Digital Technol
 
 # --- SAM.gov FAR 52.204-25 excluded parties (seed) ----------------------------
 # Pulled from the SAM.gov Exclusions extract filtered to FAR 52.204-25 causes.
-# Dataset URL documented in scripts/889-check.md. Re-pull each refresh cycle.
+# Dataset URL documented in tools/889/889-check.md. Re-pull each refresh cycle.
 huawei technologies;SAM.gov;2026-06-18;FAR 52.204-25 excluded party
 zte corporation;SAM.gov;2026-06-18;FAR 52.204-25 excluded party
 hytera communications;SAM.gov;2026-06-18;FAR 52.204-25 excluded party

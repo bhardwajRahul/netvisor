@@ -1,7 +1,7 @@
 name: 889 Check
 
 # Pull-request gate for the NDAA Section 889 supply-chain check. Generates an
-# analyze-only source SBOM with syft and runs scripts/check-889.sh against it.
+# analyze-only source SBOM with syft and runs tools/889/check-889.sh against it.
 # Blocks merge on a hit. Source tree only — images are not built on PRs. No SBOM
 # is committed or uploaded. Runs fully offline (no secrets), so it works on
 # pull requests from forks.
@@ -33,4 +33,4 @@ jobs:
         run: syft scan dir:. -o cyclonedx-json | jq . > sbom-source.cdx.json
 
       - name: Run 889 check
-        run: ./scripts/check-889.sh sbom-source.cdx.json
+        run: ./tools/889/check-889.sh sbom-source.cdx.json

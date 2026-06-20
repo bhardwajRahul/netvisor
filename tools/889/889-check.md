@@ -9,10 +9,10 @@ The output is supporting evidence for a Section 889 compliance attestation.
 
 | File | Role |
 |------|------|
-| `scripts/check-889.sh` | Matcher. POSIX shell + `jq`, no network. Scans CycloneDX SBOM(s), fails on a hit. |
-| `scripts/889-evidence.sh` | On-demand evidence bundler. Generates SBOMs + runs the matcher + emits a hash-anchored evidence bundle. |
-| `scripts/889-vendors.txt` | Maintained prohibited-vendor pattern list (single source of truth). |
-| `scripts/889-allow.txt` | Reviewed false-positive exceptions (only subtracts, never broadens). |
+| `tools/889/check-889.sh` | Matcher. POSIX shell + `jq`, no network. Scans CycloneDX SBOM(s), fails on a hit. |
+| `tools/889/889-evidence.sh` | On-demand evidence bundler. Generates SBOMs + runs the matcher + emits a hash-anchored evidence bundle. |
+| `tools/889/889-vendors.txt` | Maintained prohibited-vendor pattern list (single source of truth). |
+| `tools/889/889-allow.txt` | Reviewed false-positive exceptions (only subtracts, never broadens). |
 | `.github/workflows/889-check.yml` | PR gate — analyze-only source SBOM, blocks merge on a hit. |
 | `.github/workflows/889-check-test.yml` | `workflow_dispatch` end-to-end exercise (source + image). |
 | `.github/workflows/889-evidence.yml` | Refreshes `compliance/ndaa-889/` (the published evidence) and commits it to `main`. |
@@ -24,16 +24,16 @@ The output is supporting evidence for a Section 889 compliance attestation.
 ```sh
 # Source tree. Pretty-print so the matcher reports meaningful file:line.
 syft scan dir:. -o cyclonedx-json | jq . > sbom-source.cdx.json
-./scripts/check-889.sh sbom-source.cdx.json
+./tools/889/check-889.sh sbom-source.cdx.json
 
 # A built image (syft pulls from the registry directly, no docker daemon needed).
 syft scan registry:ghcr.io/scanopy/scanopy/server:latest -o cyclonedx-json | jq . > server.cdx.json
-./scripts/check-889.sh --json server.cdx.json
+./tools/889/check-889.sh --json server.cdx.json
 ```
 
 `syft` emits minified single-line CycloneDX by default; pipe through `jq .` so
 `file:line` in hit output points at the offending component. The matcher falls
-back to line 1 on minified input. `./scripts/check-889.sh --help` documents all
+back to line 1 on minified input. `./tools/889/check-889.sh --help` documents all
 options. Exit codes: `0` clean, `1` hit found, `2` usage/dependency error.
 
 ## Review evidence (the single link a signed letter cites)
@@ -65,19 +65,19 @@ history (older states are reconstructable from the pinned commit + tool version)
 Not a GitHub Release: Releases are for images/binaries.
 
 **Refresh it** (before a deal, or on the monthly schedule): Actions tab →
-"889 Evidence" → Run workflow. It runs `scripts/889-evidence.sh` in CI — which
+"889 Evidence" → Run workflow. It runs `tools/889/889-evidence.sh` in CI — which
 includes the private `server-commercial` image (pulled with `GITHUB_TOKEN`) —
 and commits the refreshed bundle to `compliance/ndaa-889/` on `dev`. It also
 auto-runs after "Promote Release to Latest" so the evidence tracks production.
 
 ### Generating a bundle locally
 
-`scripts/889-evidence.sh` produces the same bundle on demand:
+`tools/889/889-evidence.sh` produces the same bundle on demand:
 
 ```sh
-./scripts/889-evidence.sh                      # source + the three :latest images
-./scripts/889-evidence.sh --tag v1.4.2         # a specific released tag
-./scripts/889-evidence.sh --no-images          # source tree only
+./tools/889/889-evidence.sh                      # source + the three :latest images
+./tools/889/889-evidence.sh --tag v1.4.2         # a specific released tag
+./tools/889/889-evidence.sh --no-images          # source tree only
 ```
 
 It writes `889-evidence-<date>/` (gitignored): `EVIDENCE.md`, `evidence.json`,

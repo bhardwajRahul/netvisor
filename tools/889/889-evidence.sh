@@ -19,7 +19,7 @@
 # Dependencies: syft, jq, git, sha256sum (or shasum), POSIX shell.
 #
 # USAGE
-#   scripts/889-evidence.sh [--out DIR] [--tag TAG] [--no-images] [--image REF]...
+#   tools/889/889-evidence.sh [--out DIR] [--tag TAG] [--no-images] [--image REF]...
 #
 #   --out DIR     Output directory (default: 889-evidence-<UTC-date>).
 #   --tag TAG     Image tag to assess (default: latest). Used to build the
@@ -30,9 +30,9 @@
 #   -h, --help    Show this help.
 #
 # EXAMPLES
-#   scripts/889-evidence.sh                       # source + the three :latest images
-#   scripts/889-evidence.sh --tag v1.4.2          # assess a specific released tag
-#   scripts/889-evidence.sh --no-images           # source tree only
+#   tools/889/889-evidence.sh                       # source + the three :latest images
+#   tools/889/889-evidence.sh --tag v1.4.2          # assess a specific released tag
+#   tools/889/889-evidence.sh --no-images           # source tree only
 # ==============================================================================
 
 set -eu
@@ -225,8 +225,8 @@ jq -n \
     echo "| Prohibited-entity hits | $N_HITS |"
     echo "| Reviewed exceptions | $N_EXCEPTIONS |"
     echo "| SBOM generator | syft $SYFT_VER |"
-    echo "| Matcher | \`scripts/check-889.sh\` @ $CHECK_COMMIT |"
-    echo "| Vendor list | \`scripts/889-vendors.txt\` @ $VENDORS_COMMIT (sha256 \`$VENDORS_SHA\`) |"
+    echo "| Matcher | \`tools/889/check-889.sh\` @ $CHECK_COMMIT |"
+    echo "| Vendor list | \`tools/889/889-vendors.txt\` @ $VENDORS_COMMIT (sha256 \`$VENDORS_SHA\`) |"
     echo
     echo "## Scope assessed"
     echo
@@ -246,7 +246,7 @@ jq -n \
     echo
     if [ "$RESULT" = "PASS" ]; then
         echo "The CycloneDX SBOM(s) listed below were generated with syft and assessed"
-        echo "with \`scripts/check-889.sh\` against the committed Section 889 covered-entity"
+        echo "with \`tools/889/check-889.sh\` against the committed Section 889 covered-entity"
         echo "vendor list. **No component originating with a covered entity (Huawei, ZTE,"
         echo "Hytera, Hikvision, Dahua) or a known subsidiary/affiliate was found.**"
         if [ "$N_EXCEPTIONS" -gt 0 ]; then

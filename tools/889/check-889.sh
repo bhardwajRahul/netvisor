@@ -42,15 +42,15 @@
 # EXAMPLES
 #   # Generate an SBOM with syft and check it:
 #   syft scan dir:. -o cyclonedx-json=sbom.cdx.json
-#   ./scripts/check-889.sh sbom.cdx.json
+#   ./tools/889/check-889.sh sbom.cdx.json
 #
 #   # Check a built container image's SBOM, machine-readable output:
 #   syft scan registry:ghcr.io/scanopy/scanopy/server:latest \
 #     -o cyclonedx-json=server.cdx.json
-#   ./scripts/check-889.sh --json server.cdx.json | tee hits.jsonl
+#   ./tools/889/check-889.sh --json server.cdx.json | tee hits.jsonl
 #
 #   # Check several SBOMs at once with a custom vendor list:
-#   ./scripts/check-889.sh --vendors my-vendors.txt a.cdx.json b.cdx.json
+#   ./tools/889/check-889.sh --vendors my-vendors.txt a.cdx.json b.cdx.json
 # ==============================================================================
 
 set -eu
