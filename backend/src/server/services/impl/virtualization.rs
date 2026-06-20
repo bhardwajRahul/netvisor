@@ -26,6 +26,7 @@ use crate::server::shared::{
     VariantNames,
     ToSchema,
 )]
+#[strum_discriminants(derive(IntoStaticStr))]
 #[schema(title = "ServiceVirtualization")]
 #[serde(tag = "type", content = "details")]
 pub enum ServiceVirtualization {

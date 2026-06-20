@@ -36,7 +36,7 @@ impl WorkloadsBuilder {
     fn build_virtualizer_titles(ctx: &TopologyContext) -> HashMap<Uuid, String> {
         ctx.services
             .iter()
-            .filter(|s| s.base.service_definition.manages_virtualization().is_some())
+            .filter(|s| s.base.service_definition.virtualization_role().is_some())
             .map(|s| (s.id, s.base.service_definition.name().to_string()))
             .collect()
     }
@@ -77,7 +77,7 @@ impl ViewBuilder for WorkloadsBuilder {
         let virtualizer_service_ids: HashSet<Uuid> = ctx
             .services
             .iter()
-            .filter(|s| s.base.service_definition.manages_virtualization().is_some())
+            .filter(|s| s.base.service_definition.virtualization_role().is_some())
             .map(|s| s.id)
             .collect();
 

@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::hash::Hash;
-use strum_macros::{EnumIter, IntoStaticStr, VariantNames};
+use strum_macros::{EnumDiscriminants, EnumIter, IntoStaticStr, VariantNames};
 use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::Validate;
@@ -19,8 +19,19 @@ use crate::server::{
 };
 
 #[derive(
-    Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, IntoStaticStr, VariantNames, ToSchema,
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Hash,
+    Serialize,
+    Deserialize,
+    IntoStaticStr,
+    EnumDiscriminants,
+    VariantNames,
+    ToSchema,
 )]
+#[strum_discriminants(derive(IntoStaticStr))]
 #[schema(title = "HostVirtualization")]
 #[serde(tag = "type", content = "details")]
 pub enum HostVirtualization {
@@ -203,5 +214,23 @@ mod tests {
             let reserialized = serde_json::to_value(&v).unwrap();
             assert_eq!(reserialized["type"], tag);
         }
+    }
+
+    #[test]
+    fn host_virtualization_discriminant_static_str_matches_serde_tag() {
+        // The discriminant's IntoStaticStr is what VirtualizationRole::variant_tag
+        // derives from; it must equal the serde "type" tag above.
+        assert_eq!(
+            <&'static str>::from(HostVirtualizationDiscriminants::Proxmox),
+            "Proxmox"
+        );
+        assert_eq!(
+            <&'static str>::from(HostVirtualizationDiscriminants::VCenter),
+            "VCenter"
+        );
+        assert_eq!(
+            <&'static str>::from(HostVirtualizationDiscriminants::ESXi),
+            "ESXi"
+        );
     }
 }
