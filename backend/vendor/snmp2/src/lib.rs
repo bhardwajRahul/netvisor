@@ -1,5 +1,9 @@
 #![ doc = include_str!( concat!( env!( "CARGO_MANIFEST_DIR" ), "/", "README.md" ) ) ]
-#![allow(unknown_lints, clippy::doc_markdown)]
+// SCANOPY LOCAL PATCH: silence upstream's generic-array 0.x deprecation warnings
+// (cipher::generic_array::GenericArray::from_mut_slice in v3.rs). Path deps aren't
+// lint-capped by cargo, so these would otherwise surface in our build output.
+// Drop with the rest of the vendored copy once upstream is on generic-array 1.x.
+#![allow(unknown_lints, clippy::doc_markdown, deprecated)]
 
 #[cfg(all(
     feature = "v3",

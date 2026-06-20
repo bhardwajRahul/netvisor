@@ -1,4 +1,4 @@
-.PHONY: help build test test-unit clean format lint lint-migrations generate-schema generate-messages generate-fixtures update-oui seed-dev set-plan-community set-plan-starter set-plan-pro set-plan-team set-plan-business set-plan-enterprise test-plan test-merge test-results install-dev-mac install-dev-linux install-dev-windows snmp-up snmp-down snmp-status docker-proxy-up docker-proxy-up-tls docker-proxy-down docker-proxy-status issue-license
+.PHONY: help build test test-unit clean format lint lint-migrations generate-schema generate-messages generate-fixtures update-oui seed-dev set-plan-community set-plan-starter set-plan-pro set-plan-team set-plan-business set-plan-enterprise test-plan test-merge test-results install-dev-mac install-dev-linux install-dev-windows snmp-verify snmp-status docker-proxy-up docker-proxy-up-tls docker-proxy-down docker-proxy-status issue-license
 
 DAYS ?= 365
 
@@ -44,9 +44,8 @@ help:
 	@echo "  make set-plan-enterprise  - Set to Enterprise"
 	@echo ""
 	@echo "Test Environments:"
-	@echo "  make snmp-up         - Start SNMP test environment (6 snmpd containers)"
-	@echo "  make snmp-down       - Stop SNMP test environment"
-	@echo "  make snmp-status     - Show SNMP test environment status"
+	@echo "  make snmp-verify     - Query the SNMP test hosts and check sysName (see tools/snmp/SNMP-TEST-ENV.md)"
+	@echo "  make snmp-status     - Ping the SNMP test hosts to check reachability"
 	@echo "  make docker-proxy-up - Start Docker proxy test environment (HTTP)"
 	@echo "  make docker-proxy-up-tls - Start Docker proxy with TLS"
 	@echo "  make docker-proxy-down   - Stop Docker proxy test environment"
