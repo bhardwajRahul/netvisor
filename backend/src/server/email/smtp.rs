@@ -23,13 +23,22 @@ impl SmtpEmailProvider {
         smtp_password: String,
         smtp_email: String,
         smtp_relay: String,
+        smtp_port: Option<u16>,
     ) -> Result<Self, Error> {
         let creds = Credentials::new(smtp_username, smtp_password);
 
-        let mailer = AsyncSmtpTransport::<Tokio1Executor>::relay(&smtp_relay)
-            .map_err(|e| anyhow!("Failed to create SMTP transport: {}", e))?
-            .credentials(creds)
-            .build();
+        // Port 465 (or unset) uses implicit TLS (SMTPS) via `relay`, preserving
+        // the historical default. Any other port uses STARTTLS, which is what
+        // submission ports like 587 and 25 expect.
+        let builder = match smtp_port {
+            None | Some(465) => AsyncSmtpTransport::<Tokio1Executor>::relay(&smtp_relay)
+                .map_err(|e| anyhow!("Failed to create SMTP transport: {}", e))?,
+            Some(port) => AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&smtp_relay)
+                .map_err(|e| anyhow!("Failed to create SMTP transport: {}", e))?
+                .port(port),
+        };
+
+        let mailer = builder.credentials(creds).build();
 
         let from = Mailbox::new(
             Some("Scanopy".to_string()),

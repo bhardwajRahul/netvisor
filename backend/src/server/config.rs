@@ -81,7 +81,7 @@ pub struct ServerCli {
     smtp_relay: Option<String>,
 
     #[arg(long)]
-    smtp_port: Option<String>,
+    smtp_port: Option<u16>,
 
     /// Server URL used in features like password reset and invite links
     #[arg(long)]
@@ -122,6 +122,9 @@ pub struct ServerConfig {
     pub smtp_password: Option<String>,
     pub smtp_relay: Option<String>,
     pub smtp_email: Option<String>,
+    /// SMTP port. Defaults to 465 (implicit TLS) when unset. Ports other than
+    /// 465 use STARTTLS (e.g. 587, 25).
+    pub smtp_port: Option<u16>,
     #[serde(default)]
     pub oidc_providers: Option<Vec<OidcProviderConfig>>,
 
@@ -232,6 +235,7 @@ impl Default for ServerConfig {
             smtp_password: None,
             smtp_email: None,
             smtp_relay: None,
+            smtp_port: None,
             client_ip_source: None,
             oidc_providers: None,
             posthog_key: None,
@@ -288,6 +292,9 @@ impl ServerConfig {
         }
         if let Some(smtp_email) = cli_args.smtp_email {
             figment = figment.merge(("smtp_email", smtp_email));
+        }
+        if let Some(smtp_port) = cli_args.smtp_port {
+            figment = figment.merge(("smtp_port", smtp_port));
         }
         if let Some(public_url) = cli_args.public_url {
             figment = figment.merge(("public_url", public_url));
