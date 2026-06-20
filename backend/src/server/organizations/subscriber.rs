@@ -217,6 +217,15 @@ impl Subscriber<BillingOperation> for OrganizationService {
                     if organization.base.next_renewal_at.is_some() {
                         organization.base.next_renewal_at = None;
                     }
+                    // Drop any active save-offer discount — the subscription it
+                    // applied to is gone, so leaving these set would show a stale
+                    // "discount active" chip and could re-apply on resubscribe.
+                    // `last_discount_at` is deliberately preserved so the
+                    // once-per-org eligibility gate still blocks a second
+                    // discount. The Stripe-side discount is removed in
+                    // `BillingService::handle_subscription_deleted`.
+                    organization.base.discount_save_offer_active_until = None;
+                    organization.base.discount_save_offer_percent_off = None;
                     changed = true;
                 }
                 BillingOperation::DiscountApplied {

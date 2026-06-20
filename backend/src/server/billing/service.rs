@@ -64,6 +64,7 @@ use stripe_checkout::{
 use stripe_client_core::{RequestBuilder, StripeMethod, StripeRequest};
 use stripe_core::customer::CreateCustomer;
 use stripe_core::customer::DeleteCustomer;
+use stripe_core::customer::DeleteDiscountCustomer;
 use stripe_core::customer::ListPaymentMethodsCustomer;
 use stripe_core::customer::UpdateCustomer;
 use stripe_core::customer::UpdateCustomerInvoiceSettings;
@@ -1552,6 +1553,10 @@ impl BillingService {
             .unwrap_or_else(crate::server::billing::plans::get_free_plan);
         let was_trialing = organization.base.plan_status == Some(PlanStatus::Trialing);
         let customer_id = organization.base.stripe_customer_id.clone();
+        // Whether a save-offer discount is currently applied — drives the
+        // customer-discount removal below so the downgrade doesn't leave a
+        // coupon that re-applies to a future subscription.
+        let had_active_discount = organization.base.discount_save_offer_active_until.is_some();
         let (stripe_feedback, cancel_comment, stripe_reason) =
             extract_cancellation_details(sub.cancellation_details.as_ref());
         let internal_reason = sub.metadata.get("cancel_reason").cloned();
@@ -1579,6 +1584,7 @@ impl BillingService {
                 sub_id,
                 customer_id,
                 was_trialing,
+                had_active_discount,
                 free_plan,
                 Some(cancelled_plan),
                 stripe_feedback,
@@ -1618,6 +1624,7 @@ impl BillingService {
         sub_id: String,
         customer_id: Option<String>,
         was_trialing: bool,
+        had_active_discount: bool,
         free_plan: BillingPlan,
         cancelled_plan: Option<BillingPlan>,
         stripe_feedback: Option<CancellationDetailsFeedback>,
@@ -1656,6 +1663,27 @@ impl BillingService {
                 );
                 return Ok(());
             }
+        }
+
+        // The downgrade to Free is now committed (Guard 2 passed). If a
+        // save-offer discount was applied, remove it from the Stripe customer
+        // so it can't carry over to a future subscription. The org's discount
+        // mirror fields are cleared by the `SubscriptionCancelled` subscriber
+        // arm; `last_discount_at` is preserved there so the user stays
+        // ineligible for a second discount. Best-effort: a missing discount is
+        // not worth failing the webhook over.
+        if had_active_discount
+            && let Some(customer_id) = &customer_id
+            && let Err(e) = DeleteDiscountCustomer::new(CustomerId::from(customer_id.clone()))
+                .send(&stripe)
+                .await
+        {
+            tracing::warn!(
+                organization_id = %org_id,
+                customer_id = %customer_id,
+                error = ?e,
+                "Failed to remove customer discount on downgrade (may already be absent)"
+            );
         }
 
         // Publish events and send emails. Invites get revoked downstream
