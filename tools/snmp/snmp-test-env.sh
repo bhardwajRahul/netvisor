@@ -1,16 +1,22 @@
 #!/bin/bash
 set -euo pipefail
 
-# SNMP Test Environment — manages 6 snmpd instances on a Proxmox LXC
-# Subnet: 192.168.4.0/22 (hosts at 192.168.7.230–235)
+# SNMP Test Environment — manages 8 snmpd instances on a Proxmox LXC
+# Subnet: 192.168.4.0/22 (hosts at 192.168.7.230–237)
 # Usage: tools/snmp/snmp-test-env.sh verify|status|ssh-setup
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SNMPGET="${SNMPGET:-/opt/homebrew/opt/net-snmp/bin/snmpget}"
 
-HOSTS=(192.168.7.230 192.168.7.231 192.168.7.232 192.168.7.233 192.168.7.234 192.168.7.235)
-COMMUNITIES=(netdefault netdefault secret42 secret42 public netdefault)
-SYSNAMES=("switch-core-01" "switch-access-01" "router-gw-01" "firewall-01" "printer-lobby" "ap-wireless-01")
+HOSTS=(192.168.7.230 192.168.7.231 192.168.7.232 192.168.7.233 192.168.7.234 192.168.7.235 192.168.7.236 192.168.7.237)
+VERSIONS=(v2c v2c v2c v2c v2c v2c v1 v3)
+COMMUNITIES=(netdefault netdefault secret42 secret42 public netdefault legacyv1 -)
+SYSNAMES=("switch-core-01" "switch-access-01" "router-gw-01" "firewall-01" "printer-lobby" "ap-wireless-01" "legacy-switch-01" "secure-switch-01")
+
+# SNMPv3 USM credentials for secure-switch-01 (must match lxc/setup.sh).
+V3_USER="${V3_USER:-scanopyv3}"
+V3_AUTH_PASS="${V3_AUTH_PASS:-authpass12345}"
+V3_PRIV_PASS="${V3_PRIV_PASS:-privpass12345}"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -23,13 +29,28 @@ cmd_verify() {
     local all_ok=true
     for i in "${!HOSTS[@]}"; do
         local host="${HOSTS[$i]}"
+        local version="${VERSIONS[$i]}"
         local community="${COMMUNITIES[$i]}"
         local expected="${SYSNAMES[$i]}"
 
-        local result
-        result=$("$SNMPGET" -v2c -c "$community" -t 2 -r 1 "$host" sysName.0 2>/dev/null | sed 's/.*= STRING: //' || echo "FAILED")
+        local result detail
+        case "$version" in
+            v1)
+                result=$("$SNMPGET" -v1 -c "$community" -t 2 -r 1 "$host" sysName.0 2>/dev/null | sed 's/.*= STRING: //' || echo "FAILED")
+                detail="v1 community=$community"
+                ;;
+            v3)
+                result=$("$SNMPGET" -v3 -l authPriv -u "$V3_USER" -a SHA-256 -A "$V3_AUTH_PASS" -x AES -X "$V3_PRIV_PASS" -t 2 -r 1 "$host" sysName.0 2>/dev/null | sed 's/.*= STRING: //' || echo "FAILED")
+                detail="v3 user=$V3_USER"
+                ;;
+            *)
+                result=$("$SNMPGET" -v2c -c "$community" -t 2 -r 1 "$host" sysName.0 2>/dev/null | sed 's/.*= STRING: //' || echo "FAILED")
+                detail="v2c community=$community"
+                ;;
+        esac
+
         if echo "$result" | grep -q "$expected"; then
-            printf "  ${GREEN}✓${NC} %-18s  %-20s  community=%-12s\n" "$host" "$expected" "$community"
+            printf "  ${GREEN}✓${NC} %-18s  %-20s  %s\n" "$host" "$expected" "$detail"
         else
             printf "  ${RED}✗${NC} %-18s  expected=%-20s  got=%s\n" "$host" "$expected" "$result"
             all_ok=false
@@ -38,15 +59,17 @@ cmd_verify() {
 
     echo ""
     if $all_ok; then
-        printf "${GREEN}All 6 SNMP test hosts are reachable.${NC}\n"
+        printf "${GREEN}All %d SNMP test hosts are reachable.${NC}\n" "${#HOSTS[@]}"
         echo ""
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo "  LXC hosts on 192.168.4.0/22"
         echo ""
-        printf "  %-18s %-22s %s\n" "IP" "Host" "Community"
-        printf "  %-18s %-22s %s\n" "────────────────" "────────────────────" "────────────"
+        printf "  %-18s %-22s %-6s %s\n" "IP" "Host" "Ver" "Credential"
+        printf "  %-18s %-22s %-6s %s\n" "────────────────" "────────────────────" "─────" "────────────"
         for i in "${!HOSTS[@]}"; do
-            printf "  %-18s %-22s %s\n" "${HOSTS[$i]}" "${SYSNAMES[$i]}" "${COMMUNITIES[$i]}"
+            local cred="${COMMUNITIES[$i]}"
+            [ "${VERSIONS[$i]}" = "v3" ] && cred="user=$V3_USER"
+            printf "  %-18s %-22s %-6s %s\n" "${HOSTS[$i]}" "${SYSNAMES[$i]}" "${VERSIONS[$i]}" "$cred"
         done
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     else

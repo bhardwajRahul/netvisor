@@ -105,6 +105,7 @@ mod tests {
             community: ResolvableSecret::Value {
                 value: community.to_string(),
             },
+            v3: None,
         })
     }
 

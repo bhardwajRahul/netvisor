@@ -19,8 +19,10 @@ pub struct FieldDefinition {
     pub optional: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub help_text: Option<&'static str>,
+    /// Options for `Select` fields. Each option carries a wire `value` (the
+    /// serialized enum variant) and a human-facing `label`.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub options: Option<&'static [&'static str]>,
+    pub options: Option<&'static [SelectOption]>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default_value: Option<&'static str>,
     /// For SecretPathOrInline fields: what format the inline value should be
@@ -29,6 +31,14 @@ pub struct FieldDefinition {
     /// Optional group name for visually grouping fields in the UI
     #[serde(skip_serializing_if = "Option::is_none")]
     pub group: Option<&'static str>,
+}
+
+/// A single choice for a `Select` field. `value` is the wire value (serialized
+/// enum variant, e.g. "Sha256"); `label` is the human-facing display text.
+#[derive(Debug, Clone, Copy, Serialize, ToSchema)]
+pub struct SelectOption {
+    pub value: &'static str,
+    pub label: &'static str,
 }
 
 /// Format hint for inline values in PathOrInline and SecretPathOrInline fields.
@@ -140,21 +150,112 @@ impl CredentialType {
     /// adding a field to the enum variant without updating this method causes a compile error.
     pub fn field_definitions(&self) -> Vec<FieldDefinition> {
         match self {
-            Self::SnmpV2c { community: _ } => vec![FieldDefinition {
-                id: "community",
-                label: "Community String",
-                field_type: FieldType::SecretPathOrInline,
-                placeholder: Some("custom-community-string"),
-                secret: true,
-                optional: false,
-                help_text: Some(
-                    "Custom SNMP community string. The default 'public' community is always tried automatically during scans.",
-                ),
-                options: None,
-                default_value: None,
-                inline_format: Some(InlineFormat::Plain),
-                group: None,
-            }],
+            Self::SnmpV1 { community: _ } | Self::SnmpV2c { community: _ } => {
+                vec![FieldDefinition {
+                    id: "community",
+                    label: "Community String",
+                    field_type: FieldType::SecretPathOrInline,
+                    placeholder: Some("custom-community-string"),
+                    secret: true,
+                    optional: false,
+                    help_text: Some(
+                        "Custom SNMP community string. The default 'public' community is always tried automatically during scans.",
+                    ),
+                    options: None,
+                    default_value: None,
+                    inline_format: Some(InlineFormat::Plain),
+                    group: None,
+                }]
+            }
+            Self::SnmpV3 {
+                security_name: _,
+                auth_protocol: _,
+                auth_password: _,
+                priv_protocol: _,
+                priv_password: _,
+                context_name: _,
+            } => vec![
+                FieldDefinition {
+                    id: "security_name",
+                    label: "Security Name",
+                    field_type: FieldType::String,
+                    placeholder: Some("snmp-user"),
+                    secret: false,
+                    optional: false,
+                    help_text: Some("SNMPv3 USM user name (security name)."),
+                    options: None,
+                    default_value: None,
+                    inline_format: None,
+                    group: Some("Authentication"),
+                },
+                FieldDefinition {
+                    id: "auth_protocol",
+                    label: "Auth Protocol",
+                    field_type: FieldType::Select,
+                    placeholder: None,
+                    secret: false,
+                    optional: false,
+                    help_text: Some("Authentication hash algorithm."),
+                    options: Some(super::snmp::SnmpV3AuthProtocol::OPTIONS),
+                    default_value: Some("Sha256"),
+                    inline_format: None,
+                    group: Some("Authentication"),
+                },
+                FieldDefinition {
+                    id: "auth_password",
+                    label: "Auth Password",
+                    field_type: FieldType::SecretPathOrInline,
+                    placeholder: None,
+                    secret: true,
+                    optional: false,
+                    help_text: Some("Authentication password (minimum 8 characters)."),
+                    options: None,
+                    default_value: None,
+                    inline_format: Some(InlineFormat::Plain),
+                    group: Some("Authentication"),
+                },
+                FieldDefinition {
+                    id: "priv_protocol",
+                    label: "Privacy Protocol",
+                    field_type: FieldType::Select,
+                    placeholder: None,
+                    secret: false,
+                    optional: false,
+                    help_text: Some("Privacy (encryption) algorithm."),
+                    options: Some(super::snmp::SnmpV3PrivProtocol::OPTIONS),
+                    default_value: Some("Aes128"),
+                    inline_format: None,
+                    group: Some("Privacy"),
+                },
+                FieldDefinition {
+                    id: "priv_password",
+                    label: "Privacy Password",
+                    field_type: FieldType::SecretPathOrInline,
+                    placeholder: None,
+                    secret: true,
+                    optional: false,
+                    help_text: Some("Privacy (encryption) password (minimum 8 characters)."),
+                    options: None,
+                    default_value: None,
+                    inline_format: Some(InlineFormat::Plain),
+                    group: Some("Privacy"),
+                },
+                FieldDefinition {
+                    id: "context_name",
+                    label: "Context Name",
+                    field_type: FieldType::String,
+                    placeholder: Some("(default)"),
+                    secret: false,
+                    optional: true,
+                    help_text: Some(
+                        "Optional SNMPv3 context name. Leave blank for the default context (used by interface and LLDP data).",
+                    ),
+                    options: None,
+                    default_value: None,
+                    inline_format: None,
+                    group: None,
+                },
+            ],
             Self::DockerProxy {
                 port: _,
                 path: _,
