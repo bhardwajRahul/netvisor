@@ -1,4 +1,6 @@
-use super::{Body, Content, Email, EmailCategory, EmailPreference, PausableCategory};
+use super::{
+    BILLING_DETAILS_TAGLINE, Body, Content, Email, EmailCategory, EmailPreference, PausableCategory,
+};
 
 /// Sent when a trial begins: welcomes the user and points them at adding a
 /// payment method before the trial ends.
@@ -6,7 +8,6 @@ pub struct TrialStarted<'a> {
     pub plan_name: &'a str,
     pub trial_days: u32,
     pub billing_period: &'a str,
-    pub base_price: &'a str,
 }
 
 impl Email for TrialStarted<'_> {
@@ -39,11 +40,10 @@ impl Email for TrialStarted<'_> {
                         "Your trial of the {} {} plan has started. You have full access to all features for the next {} days.",
                         self.plan_name, self.billing_period, self.trial_days
                     ))
-                    .paragraph(&format!(
-                        "After your trial, you'll be billed {}*. No credit card is required during the trial — add a payment method anytime from your Settings page to continue after the trial ends.",
-                        self.base_price
-                    ))
-                    .fine_print("*Price excludes applicable taxes. Additional usage beyond included seats, networks, or hosts is billed separately."),
+                    .paragraph(
+                        "No credit card is required during the trial. To keep your features and data after it ends, add a payment method anytime from your Settings page.",
+                    )
+                    .paragraph(BILLING_DETAILS_TAGLINE),
             )
             .cta("{base_url}/?modal=settings&tab=billing&{utm}", "Add Payment Method")
             .render()

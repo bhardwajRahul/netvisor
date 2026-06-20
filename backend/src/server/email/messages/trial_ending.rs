@@ -1,4 +1,6 @@
-use super::{Body, Content, Email, EmailCategory, EmailPreference, PausableCategory};
+use super::{
+    BILLING_DETAILS_TAGLINE, Body, Content, Email, EmailCategory, EmailPreference, PausableCategory,
+};
 
 /// Sent 3 days before a trial ends: recaps trial value and prompts the user to
 /// add a payment method (or confirms upcoming billing if one is on file).
@@ -6,7 +8,6 @@ pub struct TrialEnding<'a> {
     pub has_payment: bool,
     pub plan_name: &'a str,
     pub billing_period: &'a str,
-    pub base_price: &'a str,
     pub hosts_count: u64,
     pub networks_count: u64,
     pub daemons_count: u64,
@@ -41,20 +42,20 @@ impl Email for TrialEnding<'_> {
                 .heading("Your Trial Ends Soon")
                 .paragraph("Hi there,")
                 .paragraph(&format!(
-                    "Your {0} {1} trial ends in 3 days. You'll be billed {2}* for your {0} {1} plan at the end of the trial period.",
-                    self.plan_name, self.billing_period, self.base_price
+                    "Your {0} {1} trial ends in 3 days. At the end of the trial period, your {0} {1} subscription begins automatically.",
+                    self.plan_name, self.billing_period
                 ))
-                .fine_print("*Price excludes applicable taxes. Additional usage beyond included seats, networks, or hosts is billed separately.")
+                .paragraph(BILLING_DETAILS_TAGLINE)
         } else {
             Content::new()
                 .heading("Your Trial Ends Soon")
                 .paragraph("Hi there,")
                 .paragraph(&format!(
-                    "Your {} {} trial ends in 3 days. To keep all your features and data, add a payment method ({}*) before the trial expires.",
-                    self.plan_name, self.billing_period, self.base_price
+                    "Your {} {} trial ends in 3 days. To keep all your features and data, add a payment method before the trial expires.",
+                    self.plan_name, self.billing_period
                 ))
                 .paragraph("If no payment method is added, your account will be downgraded to the Free plan, which includes up to 25 hosts with manual discovery only.")
-                .fine_print("*Price excludes applicable taxes. Additional usage beyond included seats, networks, or hosts is billed separately.")
+                .paragraph(BILLING_DETAILS_TAGLINE)
         };
 
         let recap_table = format!(
