@@ -5,6 +5,7 @@
 	import { useCurrentUserQuery } from '$lib/features/auth/queries';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
 	import { useConfigQuery } from '$lib/shared/stores/config-query';
+	import { isMissingPaymentMethod } from '$lib/shared/utils/trial';
 	import type { ModalTab } from '$lib/shared/components/layout/GenericModal.svelte';
 	import AccountTab from './AccountTab.svelte';
 	import OrganizationTab from './OrganizationTab.svelte';
@@ -44,12 +45,16 @@
 	const configQuery = useConfigQuery();
 	let isOwner = $derived(currentUser?.permissions === 'Owner');
 	let isBillingEnabled = $derived(configQuery.data?.billing_enabled ?? false);
+	// Payment-prompt cases use the shared isMissingPaymentMethod predicate so
+	// this tab dot stays in sync with the sidebar billing dot (and the banner /
+	// BillingTab card). The other clauses are broader billing-attention states
+	// (no plan yet, paused, cancelled) that are specific to this tab.
 	let billingNeedsAttention = $derived(
 		!org?.plan ||
 			org?.plan_status === 'past_due' ||
 			org?.plan_status === 'paused' ||
 			org?.plan_status === 'cancelled' ||
-			(org?.plan_status === 'trialing' && !org?.has_payment_method)
+			isMissingPaymentMethod(org)
 	);
 
 	// Tab and sub-view state
