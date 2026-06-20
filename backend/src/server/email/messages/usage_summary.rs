@@ -50,7 +50,6 @@ impl Email for UsageSummary<'_> {
                 self.total, self.invoice_date, self.period
             ))
             .paragraph(invoice_pointer)
-            .fine_print("*Amount reflects any active discounts and account credits. Excludes applicable taxes.")
             .raw(
 r#"                            <p style="margin: 0; font-size: 14px; line-height: 20px; color: #6b7280;">Questions? Please reach out to <a href="mailto:billing@scanopy.net" style="color: #2563eb; text-decoration: none;">billing@scanopy.net</a></p>
 "#,
