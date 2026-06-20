@@ -35,7 +35,28 @@ pub struct Topology {
 }
 
 impl Topology {
-    pub fn set_graph(&mut self, nodes: Vec<Node>, edges: Vec<Edge>) {
+    /// Nodes for a single view, or an empty slice if that view hasn't been
+    /// built yet. The row stores one node/edge set per view (`nodes`/`edges`
+    /// are keyed by `TopologyView`) so switching the active view is a pure
+    /// slice selection — no rebuild, no fetch.
+    pub fn nodes_for(&self, view: TopologyView) -> &[Node] {
+        self.base.nodes.get(&view).map(Vec::as_slice).unwrap_or(&[])
+    }
+
+    pub fn edges_for(&self, view: TopologyView) -> &[Edge] {
+        self.base.edges.get(&view).map(Vec::as_slice).unwrap_or(&[])
+    }
+
+    pub fn set_graph(&mut self, view: TopologyView, nodes: Vec<Node>, edges: Vec<Edge>) {
+        self.base.nodes.insert(view, nodes);
+        self.base.edges.insert(view, edges);
+    }
+
+    pub fn set_all_graphs(
+        &mut self,
+        nodes: HashMap<TopologyView, Vec<Node>>,
+        edges: HashMap<TopologyView, Vec<Edge>>,
+    ) {
         self.base.nodes = nodes;
         self.base.edges = edges;
     }
@@ -74,9 +95,13 @@ pub struct TopologyBase {
     pub network_id: Uuid,
     pub options: TopologyOptions,
 
-    // Graph layout (kept across snapshots so user-customized positions are preserved).
-    pub nodes: Vec<Node>,
-    pub edges: Vec<Edge>,
+    // Graph layout, one node/edge set per view (kept across snapshots so
+    // user-customized positions are preserved). Keyed by view so switching the
+    // active perspective is a client-side slice selection rather than a rebuild.
+    #[serde(default)]
+    pub nodes: HashMap<TopologyView, Vec<Node>>,
+    #[serde(default)]
+    pub edges: HashMap<TopologyView, Vec<Edge>>,
 
     /// FK to `snapshots.id`. NULL = live view; Some = snapshot row.
     #[serde(default)]
@@ -88,8 +113,8 @@ impl TopologyBase {
         Self {
             network_id,
             options: TopologyOptions::default(),
-            nodes: vec![],
-            edges: vec![],
+            nodes: HashMap::new(),
+            edges: HashMap::new(),
             snapshot_id: None,
         }
     }
@@ -98,7 +123,14 @@ impl TopologyBase {
 impl ChangeTriggersTopologyStaleness<Topology> for Topology {
     fn triggers_staleness(&self, other: Option<Topology>) -> bool {
         if let Some(other_topology) = other {
-            self.base.options.request != other_topology.base.options.request
+            // Compare request options ignoring the `view` scalar: switching the
+            // active view is a client-side slice selection (all views are
+            // pre-built on the row), not an options change that warrants a
+            // rebuild. Grouping/hide-rule edits still trip this.
+            let a = &self.base.options.request;
+            let mut b = other_topology.base.options.request.clone();
+            b.view = a.view;
+            *a != b
         } else {
             false
         }
@@ -272,6 +304,8 @@ impl Default for TopologyRequestOptions {
 pub struct TopologyNodePositionUpdate {
     /// Network ID for authorization
     pub network_id: Uuid,
+    /// View whose node/edge slice this update targets
+    pub view: TopologyView,
     /// ID of the node to update
     pub node_id: Uuid,
     /// New position for the node
@@ -287,6 +321,8 @@ pub struct TopologyNodePositionUpdate {
 pub struct TopologyEdgeHandleUpdate {
     /// Network ID for authorization
     pub network_id: Uuid,
+    /// View whose node/edge slice this update targets
+    pub view: TopologyView,
     /// ID of the edge to update
     pub edge_id: Uuid,
     /// New source handle position
@@ -304,6 +340,8 @@ pub struct TopologyEdgeHandleUpdate {
 pub struct TopologyNodeResizeUpdate {
     /// Network ID for authorization
     pub network_id: Uuid,
+    /// View whose node/edge slice this update targets
+    pub view: TopologyView,
     /// ID of the node to update
     pub node_id: Uuid,
     /// New size for the node

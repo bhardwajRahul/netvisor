@@ -1,13 +1,14 @@
 <script lang="ts">
 	import { type Node, type Edge, type Connection } from '@xyflow/svelte';
 	import {
+		activeView,
 		selectedEdge,
 		selectedNode,
 		selectedNodes,
 		useUpdateNodePositionMutation,
 		useUpdateEdgeHandlesMutation
 	} from '../../queries';
-	import { type EdgeHandle, type TopologyEdge, type EnrichedTopology } from '../../types/base';
+	import { type EdgeHandle, type TopologyEdge, type RenderableTopology } from '../../types/base';
 	import { searchOpen } from '../../interactions';
 	import { editModeEnabled } from '../../state';
 	import { createTopologyKeydownHandler } from '../../keyboard';
@@ -23,7 +24,7 @@
 		onRebuild,
 		isActive = false
 	}: {
-		topology: EnrichedTopology | null | undefined;
+		topology: RenderableTopology | null | undefined;
 		onToggleLock?: () => void;
 		onRebuild?: () => void;
 		isActive?: boolean;
@@ -93,6 +94,7 @@
 			await updateNodePositionMutation.mutateAsync({
 				topologyId: topology.id,
 				networkId: topology.network_id,
+				view: $activeView,
 				nodeId: movedNode.id,
 				position: { x, y }
 			});
@@ -119,6 +121,7 @@
 				await updateEdgeHandlesMutation.mutateAsync({
 					topologyId: topology.id,
 					networkId: topology.network_id,
+					view: $activeView,
 					edgeId: topologyEdge.id,
 					sourceHandle: newConnection.sourceHandle as 'Top' | 'Bottom' | 'Left' | 'Right',
 					targetHandle: newConnection.targetHandle as 'Top' | 'Bottom' | 'Left' | 'Right'

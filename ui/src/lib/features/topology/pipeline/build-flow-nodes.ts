@@ -1,13 +1,13 @@
 import type { Node } from '@xyflow/svelte';
 import type { LayoutGraph } from '../layout/layout-graph';
-import type { EnrichedTopology, TopologyNode } from '../types/base';
+import type { RenderableTopology, TopologyNode } from '../types/base';
 import { resolveElementNode } from '../resolvers';
 
 export interface BuildFlowNodesParams {
 	visibleNodes: TopologyNode[];
 	collapsed: Set<string>;
 	layoutGraph: LayoutGraph | null;
-	topology: EnrichedTopology;
+	topology: RenderableTopology;
 	isNewStructure: boolean;
 	useGraph: boolean;
 	liveNodes: Node[];

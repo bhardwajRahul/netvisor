@@ -24,11 +24,11 @@
 import { getContext } from 'svelte';
 import type { Writable } from 'svelte/store';
 import { useTopologiesQuery } from './queries';
-import type { EnrichedTopology } from './types/base';
+import type { RenderableTopology } from './types/base';
 
 interface TopologyFromContext {
 	fromContext: true;
-	store: Writable<EnrichedTopology | null>;
+	store: Writable<RenderableTopology | null>;
 	query: undefined;
 	isReadonly: boolean;
 }
@@ -57,7 +57,7 @@ export type TopologyHandle = TopologyFromContext | TopologyFromQuery;
  * ```
  */
 export function useTopology(): TopologyHandle {
-	const ctx = getContext<Writable<EnrichedTopology | null> | undefined>('topology');
+	const ctx = getContext<Writable<RenderableTopology | null> | undefined>('topology');
 
 	if (ctx) {
 		// `isReadonly` is exposed as a hint for the app vs share contexts:

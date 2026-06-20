@@ -71,10 +71,12 @@ export async function downloadCsv(
  */
 export async function downloadTopologyExport(
 	topologyId: string,
-	format: 'mermaid' | 'confluence'
+	format: 'mermaid' | 'confluence',
+	view?: string
 ): Promise<void> {
 	const baseUrl = getServerUrl();
 	const url = new URL(`/api/v1/topology/${topologyId}/export/${format}`, baseUrl);
+	if (view) url.searchParams.set('view', view);
 
 	const response = await fetch(url.toString(), {
 		method: 'GET',

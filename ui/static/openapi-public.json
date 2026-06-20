@@ -10891,19 +10891,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-06-20T20:54:37.132264Z",
+              "created_at": "2026-06-20T22:49:58.415802Z",
               "first_discovery_id": null,
-              "id": "8a611e68-abff-4b8b-b61f-201fb66b7ce8",
+              "id": "b1eca978-6daa-4dea-8351-135b62ac220a",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-20T20:54:37.132264Z",
+              "last_seen_at": "2026-06-20T22:49:58.415802Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-20T20:54:37.132264Z",
-              "valid_from": "2026-06-20T20:54:37.132264Z",
+              "updated_at": "2026-06-20T22:49:58.415802Z",
+              "valid_from": "2026-06-20T22:49:58.415802Z",
               "valid_to": null
             }
           },
@@ -11889,19 +11889,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-06-20T20:54:37.112930Z",
+                      "created_at": "2026-06-20T22:49:58.385790Z",
                       "first_discovery_id": null,
-                      "id": "83d6373d-636b-40de-81c6-e0a776e6acc2",
+                      "id": "d9d0ff08-ada3-447c-96be-873b95014b25",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-06-20T20:54:37.112930Z",
+                      "last_seen_at": "2026-06-20T22:49:58.385790Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-06-20T20:54:37.112930Z",
-                      "valid_from": "2026-06-20T20:54:37.112930Z",
+                      "updated_at": "2026-06-20T22:49:58.385790Z",
+                      "valid_from": "2026-06-20T22:49:58.385790Z",
                       "valid_to": null
                     }
                   ],
@@ -11915,7 +11915,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Print Server",
+                  "service_definition": "WireGuard",
                   "source": {
                     "type": "Manual"
                   },
@@ -12906,19 +12906,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-06-20T20:54:37.125979Z",
+                  "created_at": "2026-06-20T22:49:58.407453Z",
                   "first_discovery_id": null,
-                  "id": "6123c7e8-9316-4a73-a378-8fcc387a2efd",
+                  "id": "040575b0-a821-47d0-9061-60ee36039cbf",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-20T20:54:37.125979Z",
+                  "last_seen_at": "2026-06-20T22:49:58.407453Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-20T20:54:37.125979Z",
-                  "valid_from": "2026-06-20T20:54:37.125979Z",
+                  "updated_at": "2026-06-20T22:49:58.407453Z",
+                  "valid_from": "2026-06-20T22:49:58.407453Z",
                   "valid_to": null
                 }
               ],
@@ -12932,7 +12932,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Print Server",
+              "service_definition": "WireGuard",
               "source": {
                 "type": "Manual"
               },
@@ -14632,19 +14632,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-06-20T20:54:37.113452Z",
+          "created_at": "2026-06-20T22:49:58.386334Z",
           "first_discovery_id": null,
-          "id": "821c8475-0bc8-4d65-8a62-aa2c716f1676",
+          "id": "a3e06b72-bdc0-4e1a-bd49-5d32294f3c1d",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-06-20T20:54:37.113452Z",
+          "last_seen_at": "2026-06-20T22:49:58.386334Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-06-20T20:54:37.113452Z",
-          "valid_from": "2026-06-20T20:54:37.113452Z",
+          "updated_at": "2026-06-20T22:49:58.386334Z",
+          "valid_from": "2026-06-20T22:49:58.386334Z",
           "valid_to": null
         }
       },
@@ -15234,7 +15234,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Print Server",
+              "service_definition": "WireGuard",
               "tags": [],
               "virtualization": null
             }
@@ -15456,6 +15456,25 @@
         "oneOf": [
           {
             "type": "object",
+            "description": "SNMPv1 community string — for legacy devices that only speak v1.",
+            "required": [
+              "community",
+              "type"
+            ],
+            "properties": {
+              "community": {
+                "$ref": "#/components/schemas/SecretValue"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "SnmpV1"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
             "description": "SNMPv2c community string for querying network devices",
             "required": [
               "community",
@@ -15469,6 +15488,48 @@
                 "type": "string",
                 "enum": [
                   "SnmpV2c"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "SNMPv3 USM AuthPriv — security name + auth/priv protocols and passwords.",
+            "required": [
+              "security_name",
+              "auth_protocol",
+              "auth_password",
+              "priv_protocol",
+              "priv_password",
+              "type"
+            ],
+            "properties": {
+              "auth_password": {
+                "$ref": "#/components/schemas/SecretValue"
+              },
+              "auth_protocol": {
+                "$ref": "#/components/schemas/SnmpV3AuthProtocol"
+              },
+              "context_name": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Optional context name (default/empty context used if unset)."
+              },
+              "priv_password": {
+                "$ref": "#/components/schemas/SecretValue"
+              },
+              "priv_protocol": {
+                "$ref": "#/components/schemas/SnmpV3PrivProtocol"
+              },
+              "security_name": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "SnmpV3"
                 ]
               }
             }
@@ -17906,19 +17967,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-06-20T20:54:37.112408Z",
+                  "created_at": "2026-06-20T22:49:58.384816Z",
                   "first_discovery_id": null,
-                  "id": "84016d5d-da99-47f7-b89d-29e9a34eac03",
+                  "id": "edd8d96d-29ad-4eac-aadf-1fac9c277439",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-20T20:54:37.112408Z",
+                  "last_seen_at": "2026-06-20T22:49:58.384816Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-20T20:54:37.112408Z",
-                  "valid_from": "2026-06-20T20:54:37.112408Z",
+                  "updated_at": "2026-06-20T22:49:58.384816Z",
+                  "valid_from": "2026-06-20T22:49:58.384816Z",
                   "valid_to": null
                 }
               ],
@@ -17932,7 +17993,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Print Server",
+              "service_definition": "WireGuard",
               "source": {
                 "type": "Manual"
               },
@@ -20401,19 +20462,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-06-20T20:54:37.100874Z",
+                        "created_at": "2026-06-20T22:49:58.369890Z",
                         "first_discovery_id": null,
-                        "id": "28bc2537-3853-4bdf-86b9-6e7b03a323e9",
+                        "id": "661de8c4-fc7c-4851-a39a-951bd413a96d",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-06-20T20:54:37.100874Z",
+                        "last_seen_at": "2026-06-20T22:49:58.369890Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-06-20T20:54:37.100874Z",
-                        "valid_from": "2026-06-20T20:54:37.100874Z",
+                        "updated_at": "2026-06-20T22:49:58.369890Z",
+                        "valid_from": "2026-06-20T22:49:58.369890Z",
                         "valid_to": null
                       }
                     ],
@@ -20427,7 +20488,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Print Server",
+                    "service_definition": "WireGuard",
                     "source": {
                       "type": "Manual"
                     },
@@ -20548,19 +20609,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-06-20T20:54:37.124806Z",
+                    "created_at": "2026-06-20T22:49:58.404616Z",
                     "first_discovery_id": null,
-                    "id": "cd4ac11a-697e-42e9-a2ed-99531c0df552",
+                    "id": "0640d07b-a82b-458b-b894-7c2a77760581",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-06-20T20:54:37.124806Z",
+                    "last_seen_at": "2026-06-20T22:49:58.404616Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-06-20T20:54:37.124806Z",
-                    "valid_from": "2026-06-20T20:54:37.124806Z",
+                    "updated_at": "2026-06-20T22:49:58.404616Z",
+                    "valid_from": "2026-06-20T22:49:58.404616Z",
                     "valid_to": null
                   }
                 ],
@@ -20574,7 +20635,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Print Server",
+                "service_definition": "WireGuard",
                 "source": {
                   "type": "Manual"
                 },
@@ -22205,19 +22266,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-06-20T20:54:37.113340Z",
+              "created_at": "2026-06-20T22:49:58.386232Z",
               "first_discovery_id": null,
-              "id": "1b53d81b-2be8-4ab5-9c7d-0634d6dbe74b",
+              "id": "7b07d24a-4b23-44d7-b7ae-9b9eb1675625",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-20T20:54:37.113340Z",
+              "last_seen_at": "2026-06-20T22:49:58.386232Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-20T20:54:37.113340Z",
-              "valid_from": "2026-06-20T20:54:37.113340Z",
+              "updated_at": "2026-06-20T22:49:58.386232Z",
+              "valid_from": "2026-06-20T22:49:58.386232Z",
               "valid_to": null
             }
           ],
@@ -22231,7 +22292,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Print Server",
+          "service_definition": "WireGuard",
           "source": {
             "type": "Manual"
           },
@@ -22725,6 +22786,22 @@
           }
         }
       },
+      "SnmpV3AuthProtocol": {
+        "type": "string",
+        "description": "SNMPv3 USM authentication protocol. Variants are limited to the modern,\nsecure set Scanopy supports; MD5 / SHA-2 variants beyond these are\nintentionally excluded. Serialized form (e.g. \"Sha256\") is the wire value\nstored in the credential and used as the frontend select option value.",
+        "enum": [
+          "Sha1",
+          "Sha256"
+        ]
+      },
+      "SnmpV3PrivProtocol": {
+        "type": "string",
+        "description": "SNMPv3 USM privacy (encryption) protocol.",
+        "enum": [
+          "Aes128",
+          "Aes256"
+        ]
+      },
       "Subnet": {
         "allOf": [
           {
@@ -23121,15 +23198,26 @@
         "type": "object",
         "required": [
           "network_id",
-          "options",
-          "nodes",
-          "edges"
+          "options"
         ],
         "properties": {
           "edges": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Edge"
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/Edge"
+              }
+            },
+            "propertyNames": {
+              "type": "string",
+              "description": "Which topology view is being rendered",
+              "enum": [
+                "L2Physical",
+                "L3Logical",
+                "Workloads",
+                "Application"
+              ]
             }
           },
           "network_id": {
@@ -23137,9 +23225,22 @@
             "format": "uuid"
           },
           "nodes": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Node"
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/Node"
+              }
+            },
+            "propertyNames": {
+              "type": "string",
+              "description": "Which topology view is being rendered",
+              "enum": [
+                "L2Physical",
+                "L3Logical",
+                "Workloads",
+                "Application"
+              ]
             }
           },
           "options": {
@@ -23238,6 +23339,7 @@
         "description": "Lightweight request type for updating an edge's handles.\n\nUsed for edge reconnect operations - instead of sending the entire topology,\nonly sends the edge ID and new handle positions.\nFixes HTTP 413 errors on edge reconnect operations.",
         "required": [
           "network_id",
+          "view",
           "edge_id",
           "source_handle",
           "target_handle"
@@ -23260,6 +23362,10 @@
           "target_handle": {
             "$ref": "#/components/schemas/EdgeHandle",
             "description": "New target handle position"
+          },
+          "view": {
+            "$ref": "#/components/schemas/TopologyView",
+            "description": "View whose node/edge slice this update targets"
           }
         }
       },
@@ -23295,6 +23401,7 @@
         "description": "Lightweight request type for updating a single node's position.\n\nUsed for drag operations - instead of sending the entire topology (which can be\nseveral megabytes for large networks), only sends the node ID and new position.\nFixes HTTP 413 errors on drag operations.",
         "required": [
           "network_id",
+          "view",
           "node_id",
           "position"
         ],
@@ -23312,6 +23419,10 @@
           "position": {
             "$ref": "#/components/schemas/Ixy",
             "description": "New position for the node"
+          },
+          "view": {
+            "$ref": "#/components/schemas/TopologyView",
+            "description": "View whose node/edge slice this update targets"
           }
         }
       },
@@ -23320,6 +23431,7 @@
         "description": "Lightweight request type for updating a node's size and position.\n\nUsed for subnet resize operations - instead of sending the entire topology,\nonly sends the node ID, new size, and new position.\nFixes HTTP 413 errors on resize operations.",
         "required": [
           "network_id",
+          "view",
           "node_id",
           "size",
           "position"
@@ -23342,6 +23454,10 @@
           "size": {
             "$ref": "#/components/schemas/Uxy",
             "description": "New size for the node"
+          },
+          "view": {
+            "$ref": "#/components/schemas/TopologyView",
+            "description": "View whose node/edge slice this update targets"
           }
         }
       },

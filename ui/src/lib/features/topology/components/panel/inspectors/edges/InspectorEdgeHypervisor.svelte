@@ -5,7 +5,7 @@
 	import { HostDisplay } from '$lib/shared/components/forms/selection/display/HostDisplay.svelte';
 	import { useTopology, selectedTopologyId } from '$lib/features/topology/context';
 	import { getTopologyEditState } from '$lib/features/topology/state';
-	import type { EnrichedTopology } from '$lib/features/topology/types/base';
+	import type { RenderableTopology } from '$lib/features/topology/types/base';
 	import {
 		hosts_virtualization_hypervisorService,
 		hosts_virtualization_virtualMachines,
@@ -21,7 +21,7 @@
 		topoStore
 			? $topoStore
 			: (topo.query?.data?.find((t) => t.id === $selectedTopologyId) as
-					| EnrichedTopology
+					| RenderableTopology
 					| undefined)
 	);
 

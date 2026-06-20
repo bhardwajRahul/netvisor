@@ -14,7 +14,8 @@
  * (matches the snapshot when nothing has changed since).
  */
 
-import type { EnrichedTopology, Topology, Binding, Vlan } from './types/base';
+import type { RenderableTopology, Topology, Binding, Vlan } from './types/base';
+import type { TopologyView } from './queries';
 import type { Host, IPAddress, Interface, Port } from '$lib/features/hosts/types/base';
 import type { Service } from '$lib/features/services/types/base';
 import type { Subnet } from '$lib/features/subnets/types/base';
@@ -56,13 +57,20 @@ export const EMPTY_ENTITY_BUNDLE: EntityBundle = {
  *
  * Filters entity arrays to the topology's network so a multi-network
  * cache doesn't leak into the inspector.
+ *
+ * `view` selects which per-view node/edge slice to flatten onto the result.
+ * The row stores all views; switching `view` is a pure slice selection (no
+ * fetch, no rebuild).
  */
-export function enrichTopology(
+export function toRenderableTopology(
 	topology: Topology,
 	bundle: EntityBundle,
-	name: string
-): EnrichedTopology {
+	name: string,
+	view: TopologyView
+): RenderableTopology {
 	const networkId = topology.network_id;
+	const nodes = topology.nodes?.[view] ?? [];
+	const edges = topology.edges?.[view] ?? [];
 	const hosts = bundle.hosts.filter((h) => h.network_id === networkId);
 	const subnets = bundle.subnets.filter((s) => s.network_id === networkId);
 	const dependencies = bundle.dependencies.filter((d) => d.network_id === networkId);
@@ -82,6 +90,8 @@ export function enrichTopology(
 
 	return {
 		...topology,
+		nodes,
+		edges,
 		hosts,
 		services,
 		subnets,

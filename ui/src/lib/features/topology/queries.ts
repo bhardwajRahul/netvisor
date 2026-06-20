@@ -8,7 +8,7 @@
 import { createQuery, createMutation } from '@tanstack/svelte-query';
 import { queryClient, queryKeys } from '$lib/api/query-client';
 import { apiClient } from '$lib/api/client';
-import type { Topology, TopologyEdge, TopologyOptions } from './types/base';
+import type { Topology, TopologyEdge, TopologyOptions, RenderableTopology } from './types/base';
 import type { ContainerGraphRule, ElementGraphRule, ElementRule } from './types/grouping';
 import { makeGraphRule } from './types/grouping';
 import type { ContainerRule } from './types/grouping';
@@ -284,6 +284,7 @@ export function useUpdateNodePositionMutation() {
 		mutationFn: async (params: {
 			topologyId: string;
 			networkId: string;
+			view: TopologyView;
 			nodeId: string;
 			position: { x: number; y: number };
 		}) => {
@@ -291,6 +292,7 @@ export function useUpdateNodePositionMutation() {
 				params: { path: { id: params.topologyId } },
 				body: {
 					network_id: params.networkId,
+					view: params.view,
 					node_id: params.nodeId,
 					position: params.position
 				}
@@ -312,6 +314,7 @@ export function useUpdateNodeResizeMutation() {
 		mutationFn: async (params: {
 			topologyId: string;
 			networkId: string;
+			view: TopologyView;
 			nodeId: string;
 			size: { x: number; y: number };
 			position: { x: number; y: number };
@@ -320,6 +323,7 @@ export function useUpdateNodeResizeMutation() {
 				params: { path: { id: params.topologyId } },
 				body: {
 					network_id: params.networkId,
+					view: params.view,
 					node_id: params.nodeId,
 					size: params.size,
 					position: params.position
@@ -342,6 +346,7 @@ export function useUpdateEdgeHandlesMutation() {
 		mutationFn: async (params: {
 			topologyId: string;
 			networkId: string;
+			view: TopologyView;
 			edgeId: string;
 			sourceHandle: 'Top' | 'Bottom' | 'Left' | 'Right';
 			targetHandle: 'Top' | 'Bottom' | 'Left' | 'Right';
@@ -350,6 +355,7 @@ export function useUpdateEdgeHandlesMutation() {
 				params: { path: { id: params.topologyId } },
 				body: {
 					network_id: params.networkId,
+					view: params.view,
 					edge_id: params.edgeId,
 					source_handle: params.sourceHandle,
 					target_handle: params.targetHandle
@@ -533,7 +539,7 @@ let hydrating = false;
  *   stored preferences and the creator's local options shouldn't leak through.
  */
 export function hydrateStoresFromTopology(
-	topology: Topology,
+	topology: Topology | RenderableTopology,
 	isInitial = true,
 	useDefaultLocal = false
 ): void {
@@ -717,10 +723,17 @@ function saveOptionsForCurrentTopology(): void {
 		const topologies = queryClient.getQueryData<Topology[]>(queryKeys.topology.all);
 		const topology = topologies?.find((t) => t.id === topologyId);
 		if (!topology) return;
-		apiClient.PUT('/api/v1/topology/{id}', {
-			params: { path: { id: topologyId } },
-			body: { ...topology, options: buildOptionsForApi() }
-		});
+		void apiClient
+			.PUT('/api/v1/topology/{id}', {
+				params: { path: { id: topologyId } },
+				body: { ...topology, options: buildOptionsForApi() }
+			})
+			.then(() => {
+				// Grouping/hide-rule edits trigger a server-side rebuild of every
+				// view's node/edge slice. Invalidate the topology list so the
+				// rebuilt row flows back and the active slice re-renders.
+				void queryClient.invalidateQueries({ queryKey: queryKeys.topology.all });
+			});
 	}, 500);
 }
 
@@ -755,11 +768,10 @@ if (browser) {
 	const persistedNetwork = loadSelectedNetworkFromStorage();
 	if (persistedNetwork) selectedNetworkId.set(persistedNetwork);
 
-	activeView.subscribe(() => {
-		if (!hydrating) {
-			saveOptionsForCurrentTopology();
-		}
-	});
+	// NOTE: switching the active view does NOT persist options or hit the
+	// network — every view's node/edge slice is pre-built on the row, so a
+	// view switch is a pure client-side slice selection (see toRenderableTopology).
+	// View deep-linking is handled via URL params below.
 
 	// Sync stores → URL (replaceState, no history entry)
 	// User-initiated changes use pushTopologyParams from TopologyTab instead.

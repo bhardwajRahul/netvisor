@@ -2,7 +2,7 @@
 	import type { Node } from '@xyflow/svelte';
 	import EntityDisplayWrapper from '$lib/shared/components/forms/selection/display/EntityDisplayWrapper.svelte';
 	import { HostDisplay } from '$lib/shared/components/forms/selection/display/HostDisplay.svelte';
-	import type { EnrichedTopology } from '$lib/features/topology/types/base';
+	import type { RenderableTopology } from '$lib/features/topology/types/base';
 	import type { TopologyEditState } from '$lib/features/topology/state';
 	import type { ElementRenderContext } from '$lib/features/topology/resolvers';
 	import { useUpdateHostDescriptionMutation } from '$lib/features/hosts/queries';
@@ -16,7 +16,7 @@
 		elementContext
 	}: {
 		node: Node;
-		topology: EnrichedTopology;
+		topology: RenderableTopology;
 		editState: TopologyEditState;
 		elementContext?: ElementRenderContext;
 	} = $props();

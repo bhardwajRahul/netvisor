@@ -24,7 +24,8 @@
 		showSearch = false,
 		displayComponent,
 		getOptionContext = () => new Object() as OC,
-		minWidth = null
+		minWidth = null,
+		fitToContent = false
 	}: {
 		label?: string;
 		selectedValue?: string | null;
@@ -45,6 +46,11 @@
 		 *  contexts (ConfigPanels, ListManagers) should leave this null so the
 		 *  trigger keeps filling its container. */
 		minWidth?: string | null;
+		/** Size the trigger (and therefore the dropdown) to the widest option it
+		 *  contains, rather than a fixed `minWidth` or the selected item's width.
+		 *  Uses a hidden CSS-grid sizer so the trigger never collapses below — or
+		 *  grows beyond — what the longest label needs. */
+		fitToContent?: boolean;
 	} = $props();
 
 	let isOpen = $state(false);
@@ -252,7 +258,7 @@
 <!-- Only handle outside clicks -->
 <svelte:window onclick={handleClickOutside} />
 
-<div class="relative">
+<div class="relative {fitToContent ? 'inline-grid' : ''}">
 	<!-- Label -->
 	{#if label}
 		<div class="text-secondary mb-2 block text-sm font-medium">
@@ -263,12 +269,32 @@
 		</div>
 	{/if}
 
+	<!-- Hidden sizer: stacks every option in the same grid cell as the trigger so
+	     the cell — and thus the trigger — sizes to the widest label. -->
+	{#if fitToContent}
+		<div class="invisible col-start-1 row-start-1 h-0 overflow-hidden" aria-hidden="true">
+			{#each options as option, i (displayComponent.getId(option))}
+				{@const sizerContext = getOptionContext(option, i)}
+				<div class="flex items-center gap-3 px-3">
+					<ListSelectItem
+						context={sizerContext}
+						item={option}
+						{displayComponent}
+						staticTags={true}
+					/>
+					<span class="h-4 w-4 flex-shrink-0"></span>
+				</div>
+			{/each}
+		</div>
+	{/if}
+
 	<!-- Dropdown Trigger -->
 	<button
 		bind:this={triggerElement}
 		type="button"
 		onclick={handleToggle}
 		class="select-trigger text-primary flex w-full items-center justify-between rounded-md px-3 py-2
+           {fitToContent ? 'col-start-1 row-start-1' : ''}
            {error ? 'border-red-500' : ''}
            {disabled || options.length == 0 ? 'cursor-not-allowed opacity-50' : ''}"
 		style={minWidth ? `min-width: ${minWidth}` : undefined}

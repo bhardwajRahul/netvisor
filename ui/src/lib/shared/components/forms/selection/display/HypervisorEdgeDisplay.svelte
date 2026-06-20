@@ -1,6 +1,6 @@
 <script lang="ts" module>
 	import { edgeTypes, serviceDefinitions } from '$lib/shared/stores/metadata';
-	import type { EnrichedTopology, TopologyEdge } from '$lib/features/topology/types/base';
+	import type { RenderableTopology, TopologyEdge } from '$lib/features/topology/types/base';
 
 	export const HypervisorEdgeDisplay: EntityDisplayComponent<TopologyEdge, EdgeDisplayContext> = {
 		getId: (edge) => edge.id,
@@ -38,7 +38,7 @@
 	};
 
 	export interface EdgeDisplayContext {
-		topology?: EnrichedTopology;
+		topology?: RenderableTopology;
 	}
 </script>
 

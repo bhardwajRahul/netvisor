@@ -7,7 +7,7 @@
 	import { ServiceDisplay } from '$lib/shared/components/forms/selection/display/ServiceDisplay.svelte';
 	import { InterfaceDisplay } from '$lib/shared/components/forms/selection/display/InterfaceDisplay.svelte';
 	import { HostDisplay } from '$lib/shared/components/forms/selection/display/HostDisplay.svelte';
-	import type { EnrichedTopology, TopologyNode } from '$lib/features/topology/types/base';
+	import type { RenderableTopology, TopologyNode } from '$lib/features/topology/types/base';
 	import type { TopologyEditState } from '$lib/features/topology/state';
 	import type {
 		ElementRenderContext,
@@ -25,7 +25,7 @@
 		containerContext
 	}: {
 		node: Node;
-		topology: EnrichedTopology;
+		topology: RenderableTopology;
 		editState: TopologyEditState;
 		elementContext?: ElementRenderContext;
 		containerContext?: ContainerRenderContext;

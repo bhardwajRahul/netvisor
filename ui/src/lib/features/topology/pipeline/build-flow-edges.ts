@@ -1,6 +1,6 @@
 import { get } from 'svelte/store';
 import type { Edge, EdgeMarkerType } from '@xyflow/svelte';
-import type { TopologyEdge, EnrichedTopology } from '../types/base';
+import type { TopologyEdge, RenderableTopology } from '../types/base';
 import type { EdgeHandles } from '../layout/elk-layout';
 import { computeOptimalHandles } from '../layout/elk-layout';
 import type { SelectionStores } from '../selection';
@@ -86,7 +86,7 @@ export interface BuildFlowEdgesParams {
 	aggregatedEdges: AggregatedEdge[];
 	hiddenEdgeTypes: string[];
 	layoutNodes: import('../types/base').TopologyNode[];
-	topology: EnrichedTopology;
+	topology: RenderableTopology;
 	layoutGraph: LayoutGraph | null;
 	bundleEnabled: boolean;
 	currentExpandedBundles: Set<string>;
@@ -295,7 +295,7 @@ function computeHandlesFromLayout(
 	elevatedEdges: TopologyEdge[],
 	aggregatedEdges: AggregatedEdge[],
 	layoutGraph: LayoutGraph | null,
-	topology: EnrichedTopology
+	topology: RenderableTopology
 ): Map<string, EdgeHandles> {
 	const out = new Map<string, EdgeHandles>();
 	if (!layoutGraph) return out;

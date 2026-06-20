@@ -110,7 +110,7 @@ BEGIN
                 created_at, updated_at
             ) VALUES (
                 gen_random_uuid(), network_row.network_id, '', NULL,
-                '[]'::jsonb, '[]'::jsonb, '{}'::jsonb,
+                '{}'::jsonb, '{}'::jsonb, '{}'::jsonb,
                 '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb,
                 '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb,
                 FALSE, NOW(), FALSE,

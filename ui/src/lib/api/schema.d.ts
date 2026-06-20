@@ -3099,19 +3099,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-06-20T20:54:37.132268Z",
+             *       "created_at": "2026-06-20T22:49:58.414450Z",
              *       "first_discovery_id": null,
-             *       "id": "e77cc3de-8c88-426c-9caf-e7cf889ed942",
+             *       "id": "bef7b783-3171-4cf5-b30d-2d0b96b440a8",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-06-20T20:54:37.132268Z",
+             *       "last_seen_at": "2026-06-20T22:49:58.414450Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-06-20T20:54:37.132268Z",
-             *       "valid_from": "2026-06-20T20:54:37.132268Z",
+             *       "updated_at": "2026-06-20T22:49:58.414450Z",
+             *       "valid_from": "2026-06-20T22:49:58.414450Z",
              *       "valid_to": null
              *     }
              */
@@ -3448,19 +3448,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-06-20T20:54:37.112907Z",
+             *               "created_at": "2026-06-20T22:49:58.385425Z",
              *               "first_discovery_id": null,
-             *               "id": "e8d714dc-ee91-4a5d-8dcb-b944dbd361ca",
+             *               "id": "3235efde-a161-4d20-923e-9a83deb3d722",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-06-20T20:54:37.112907Z",
+             *               "last_seen_at": "2026-06-20T22:49:58.385425Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-06-20T20:54:37.112907Z",
-             *               "valid_from": "2026-06-20T20:54:37.112907Z",
+             *               "updated_at": "2026-06-20T22:49:58.385425Z",
+             *               "valid_from": "2026-06-20T22:49:58.385425Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3474,7 +3474,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Print Server",
+             *           "service_definition": "WireGuard",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3830,19 +3830,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-06-20T20:54:37.126004Z",
+             *           "created_at": "2026-06-20T22:49:58.404972Z",
              *           "first_discovery_id": null,
-             *           "id": "1b8e42f1-fe13-486c-bb2e-1fcaa510985a",
+             *           "id": "bc1e9a4a-46b4-44eb-a067-42bff9c5201b",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-06-20T20:54:37.126004Z",
+             *           "last_seen_at": "2026-06-20T22:49:58.404972Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-06-20T20:54:37.126004Z",
-             *           "valid_from": "2026-06-20T20:54:37.126004Z",
+             *           "updated_at": "2026-06-20T22:49:58.404972Z",
+             *           "valid_from": "2026-06-20T22:49:58.404972Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -3856,7 +3856,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Print Server",
+             *       "service_definition": "WireGuard",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4309,19 +4309,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-06-20T20:54:37.113344Z",
+         *       "created_at": "2026-06-20T22:49:58.386043Z",
          *       "first_discovery_id": null,
-         *       "id": "ebbf5ea4-17b2-411b-bc03-fb350adef0dd",
+         *       "id": "06479a00-3f28-4fa1-b1bb-47435ad2caf2",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-06-20T20:54:37.113344Z",
+         *       "last_seen_at": "2026-06-20T22:49:58.386043Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-06-20T20:54:37.113344Z",
-         *       "valid_from": "2026-06-20T20:54:37.113344Z",
+         *       "updated_at": "2026-06-20T22:49:58.386043Z",
+         *       "valid_from": "2026-06-20T22:49:58.386043Z",
          *       "valid_to": null
          *     }
          */
@@ -4536,7 +4536,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Print Server",
+         *           "service_definition": "WireGuard",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -4640,7 +4640,21 @@ export interface components {
         CredentialType: {
             community: components["schemas"]["SecretValue"];
             /** @enum {string} */
+            type: "SnmpV1";
+        } | {
+            community: components["schemas"]["SecretValue"];
+            /** @enum {string} */
             type: "SnmpV2c";
+        } | {
+            auth_password: components["schemas"]["SecretValue"];
+            auth_protocol: components["schemas"]["SnmpV3AuthProtocol"];
+            /** @description Optional context name (default/empty context used if unset). */
+            context_name?: string | null;
+            priv_password: components["schemas"]["SecretValue"];
+            priv_protocol: components["schemas"]["SnmpV3PrivProtocol"];
+            security_name: string;
+            /** @enum {string} */
+            type: "SnmpV3";
         } | {
             /** @description Optional URL path prefix (e.g. "/v1.43") */
             path?: string | null;
@@ -5504,19 +5518,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-06-20T20:54:37.112399Z",
+         *               "created_at": "2026-06-20T22:49:58.384818Z",
          *               "first_discovery_id": null,
-         *               "id": "c9e7e3ea-89cd-47f7-ad5f-c0ab61d754a0",
+         *               "id": "6fb496e8-f42a-487e-9848-65e515dd6059",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-06-20T20:54:37.112399Z",
+         *               "last_seen_at": "2026-06-20T22:49:58.384818Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-06-20T20:54:37.112399Z",
-         *               "valid_from": "2026-06-20T20:54:37.112399Z",
+         *               "updated_at": "2026-06-20T22:49:58.384818Z",
+         *               "valid_from": "2026-06-20T22:49:58.384818Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -5530,7 +5544,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Print Server",
+         *           "service_definition": "WireGuard",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -6960,19 +6974,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-06-20T20:54:37.113250Z",
+         *           "created_at": "2026-06-20T22:49:58.385920Z",
          *           "first_discovery_id": null,
-         *           "id": "1ea501d0-1fa5-420e-bde7-2ec0038e1367",
+         *           "id": "226ace53-1762-4ab2-8898-d1ae51f284ec",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-06-20T20:54:37.113250Z",
+         *           "last_seen_at": "2026-06-20T22:49:58.385920Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-06-20T20:54:37.113250Z",
-         *           "valid_from": "2026-06-20T20:54:37.113250Z",
+         *           "updated_at": "2026-06-20T22:49:58.385920Z",
+         *           "valid_from": "2026-06-20T22:49:58.385920Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -6986,7 +7000,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Print Server",
+         *       "service_definition": "WireGuard",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -7176,6 +7190,19 @@ export interface components {
             taken_at: string;
         };
         /**
+         * @description SNMPv3 USM authentication protocol. Variants are limited to the modern,
+         *     secure set Scanopy supports; MD5 / SHA-2 variants beyond these are
+         *     intentionally excluded. Serialized form (e.g. "Sha256") is the wire value
+         *     stored in the credential and used as the frontend select option value.
+         * @enum {string}
+         */
+        SnmpV3AuthProtocol: "Sha1" | "Sha256";
+        /**
+         * @description SNMPv3 USM privacy (encryption) protocol.
+         * @enum {string}
+         */
+        SnmpV3PrivProtocol: "Aes128" | "Aes256";
+        /**
          * @example {
          *       "cidr": "192.168.1.0/24",
          *       "created_at": "2026-01-15T10:30:00Z",
@@ -7312,10 +7339,14 @@ export interface components {
             readonly updated_at: string;
         };
         TopologyBase: {
-            edges: components["schemas"]["Edge"][];
+            edges?: {
+                [key: string]: components["schemas"]["Edge"][];
+            };
             /** Format: uuid */
             network_id: string;
-            nodes: components["schemas"]["Node"][];
+            nodes?: {
+                [key: string]: components["schemas"]["Node"][];
+            };
             options: components["schemas"]["TopologyOptions"];
             /**
              * Format: uuid
@@ -7365,6 +7396,8 @@ export interface components {
             source_handle: components["schemas"]["EdgeHandle"];
             /** @description New target handle position */
             target_handle: components["schemas"]["EdgeHandle"];
+            /** @description View whose node/edge slice this update targets */
+            view: components["schemas"]["TopologyView"];
         };
         TopologyLocalOptions: {
             bundle_edges?: boolean;
@@ -7393,6 +7426,8 @@ export interface components {
             node_id: string;
             /** @description New position for the node */
             position: components["schemas"]["Ixy"];
+            /** @description View whose node/edge slice this update targets */
+            view: components["schemas"]["TopologyView"];
         };
         /**
          * @description Lightweight request type for updating a node's size and position.
@@ -7416,6 +7451,8 @@ export interface components {
             position: components["schemas"]["Ixy"];
             /** @description New size for the node */
             size: components["schemas"]["Uxy"];
+            /** @description View whose node/edge slice this update targets */
+            view: components["schemas"]["TopologyView"];
         };
         TopologyOptions: {
             local: components["schemas"]["TopologyLocalOptions"];
@@ -14263,7 +14300,10 @@ export interface operations {
     };
     export_confluence: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description View to export. Defaults to the default view when omitted. */
+                view?: components["schemas"]["TopologyView"];
+            };
             header?: never;
             path: {
                 /** @description Topology ID */
@@ -14304,7 +14344,10 @@ export interface operations {
     };
     export_mermaid: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description View to export. Defaults to the default view when omitted. */
+                view?: components["schemas"]["TopologyView"];
+            };
             header?: never;
             path: {
                 /** @description Topology ID */
