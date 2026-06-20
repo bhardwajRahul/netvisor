@@ -555,10 +555,11 @@
 							     and the gap from the card content to the first CTA is the
 							     same whether it's primary, secondary, or a text link.
 							     pending_cancellation pushes users to Reactivate; paused
-							     pushes them to Resume — so the plan-change button is hidden
-							     in both. -->
+							     pushes them to Resume; past_due needs the payment fixed
+							     first (Manage Subscription) — so the plan-change button is
+							     hidden in all three, leaving one focused CTA. -->
 							<div class="flex flex-col gap-2">
-								{#if org.plan_status !== 'pending_cancellation' && org.plan_status !== 'paused'}
+								{#if org.plan_status !== 'pending_cancellation' && org.plan_status !== 'paused' && org.plan_status !== 'past_due'}
 									<button
 										onclick={() =>
 											triggerUpgrade({
