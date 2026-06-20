@@ -1,6 +1,5 @@
 use crate::server::{
     billing::types::features::Feature,
-    email::service::format_cents,
     shared::types::{
         Color, Icon,
         metadata::{EntityMetadataProvider, HasId, TypeMetadataProvider},
@@ -311,16 +310,6 @@ impl BillingPlan {
 
     pub fn billing_period(&self) -> &str {
         self.config().rate.billing_period()
-    }
-
-    /// Format a plan's base price for display in emails (e.g. "$14.99/mo")
-    pub fn base_price_formatted(&self) -> String {
-        let config = self.config();
-        let amount = format_cents(config.base_cents, "usd");
-        match config.rate {
-            BillingRate::Month => format!("{}/mo", amount),
-            BillingRate::Year => format!("{}/yr", amount),
-        }
     }
 }
 
