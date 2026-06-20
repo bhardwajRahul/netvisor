@@ -20,6 +20,66 @@ use crate::server::shared::storage::{
 use crate::server::snapshots::types::base::Snapshot;
 use crate::server::tags::entity_tags::EntityTagService;
 
+use crate::server::hosts::r#impl::base::Host;
+use crate::server::services::r#impl::base::Service;
+use crate::server::subnets::r#impl::base::Subnet;
+
+/// Entities whose `virtualization` carries a `service_id` pointing at another
+/// tracked `Service`: `Host` → hypervisor service, `Service` → container-runtime
+/// service, `Subnet` → the docker daemon that owns the bridge.
+///
+/// These references can't be remapped in the per-row `remap_fks_for_clone` pass:
+/// subnets and hosts clone before services, and services self-reference, so
+/// `FkMaps::services` isn't populated yet. They're patched in a dedicated
+/// post-clone pass once the full service map exists (see
+/// `remap_virtualization_service_ids`).
+trait VirtualizationServiceRef {
+    fn virtualization_service_id(&self) -> Option<Uuid>;
+    fn set_virtualization_service_id(&mut self, id: Uuid);
+}
+
+impl VirtualizationServiceRef for Host {
+    fn virtualization_service_id(&self) -> Option<Uuid> {
+        self.base
+            .virtualization
+            .as_ref()
+            .and_then(|v| v.service_id())
+    }
+    fn set_virtualization_service_id(&mut self, id: Uuid) {
+        if let Some(v) = self.base.virtualization.as_mut() {
+            v.set_service_id(id);
+        }
+    }
+}
+
+impl VirtualizationServiceRef for Service {
+    fn virtualization_service_id(&self) -> Option<Uuid> {
+        self.base
+            .virtualization
+            .as_ref()
+            .and_then(|v| v.service_id())
+    }
+    fn set_virtualization_service_id(&mut self, id: Uuid) {
+        if let Some(v) = self.base.virtualization.as_mut() {
+            v.set_service_id(id);
+        }
+    }
+}
+
+impl VirtualizationServiceRef for Subnet {
+    fn virtualization_service_id(&self) -> Option<Uuid> {
+        self.base
+            .virtualization
+            .as_ref()
+            .and_then(|v| v.service_id())
+    }
+    fn set_virtualization_service_id(&mut self, id: Uuid) {
+        if let Some(v) = self.base.virtualization.as_mut() {
+            v.set_service_id(id);
+        }
+    }
+}
+
 /// Network snapshots: close-and-clone the live row set for a network at a
 /// single timestamp inside one transaction. Also acts as the `CrudService`
 /// for the `Snapshot` entity so the standard handlers can read/list/delete
@@ -96,12 +156,9 @@ impl SnapshotService {
         use crate::server::bindings::r#impl::base::Binding;
         use crate::server::dependencies::dependency_members::DependencyMemberRecord;
         use crate::server::dependencies::r#impl::base::Dependency;
-        use crate::server::hosts::r#impl::base::Host;
         use crate::server::interfaces::r#impl::base::Interface;
         use crate::server::ip_addresses::r#impl::base::IPAddress;
         use crate::server::ports::r#impl::base::Port;
-        use crate::server::services::r#impl::base::Service;
-        use crate::server::subnets::r#impl::base::Subnet;
         use crate::server::tags::entity_tags::EntityTag;
         use crate::server::vlans::r#impl::base::Vlan;
         use crate::server::vlans::r#impl::subnet_vlans::SubnetVlanRecord;
@@ -173,6 +230,16 @@ impl SnapshotService {
         )
         .await?;
         maps.services = service_map;
+
+        // Remap the `virtualization.service_id` references that point at other
+        // services (Host→hypervisor, Service→container-runtime,
+        // Subnet→docker-bridge owner). These couldn't be remapped in the
+        // per-row clone pass because the full service map only exists now.
+        // Without this, hypervisor / container-runtime groupings and
+        // docker-bridge subnet↔host connections are absent from snapshots.
+        remap_virtualization_service_ids::<Host>(&mut tx, snapshot_id, &maps.services).await?;
+        remap_virtualization_service_ids::<Service>(&mut tx, snapshot_id, &maps.services).await?;
+        remap_virtualization_service_ids::<Subnet>(&mut tx, snapshot_id, &maps.services).await?;
 
         // Interfaces filter through host_id (Interface has no network_id).
         let interface_map = close_and_clone_for::<Interface>(
@@ -268,7 +335,7 @@ impl SnapshotService {
     pub async fn run_retention(&self, env_override: Option<u32>) -> Result<()> {
         let orgs = self
             .organization_service
-            .get_all(StorableFilter::new_unfiltered())
+            .get_all(StorableFilter::new_for_retention_sweep())
             .await?;
 
         for org in orgs {
@@ -329,6 +396,59 @@ fn network_filter<T: Storable>(network_id: Uuid) -> StorableFilter<T> {
 /// Generic close-and-clone for one Snapshotable entity type within a shared
 /// transaction. Returns the per-type live-id → closed-id map for downstream
 /// children to consult via `FkMaps`.
+/// Post-clone fixup: rewrite `virtualization.service_id` on this snapshot's
+/// just-cloned closed rows of type `T` to point at closed-copy services.
+///
+/// Runs after the full `FkMaps::services` exists. Re-reads the closed rows by
+/// `snapshot_id` (the same filter the read path uses), remaps any reference
+/// present in `services`, and writes back only the changed rows. The
+/// raw-stamped `snapshot_id` column isn't part of `to_params`, so
+/// `update_many_in_tx` leaves it (and the SCD2 columns) intact.
+async fn remap_virtualization_service_ids<T>(
+    tx: &mut sqlx::Transaction<'_, Postgres>,
+    snapshot_id: Uuid,
+    services: &HashMap<Uuid, Uuid>,
+) -> Result<()>
+where
+    T: Snapshotable + VirtualizationServiceRef + std::fmt::Display,
+{
+    let rows = GenericPostgresStorage::<T>::get_all_in_tx(
+        StorableFilter::<T>::new_from_snapshot_id(&snapshot_id),
+        tx,
+    )
+    .await?;
+
+    let mut changed: Vec<T> = Vec::new();
+    for mut row in rows {
+        if remap_virtualization_service_id(&mut row, services) {
+            changed.push(row);
+        }
+    }
+
+    if !changed.is_empty() {
+        GenericPostgresStorage::<T>::update_many_in_tx(&changed, tx).await?;
+    }
+
+    Ok(())
+}
+
+/// Rewrite a single row's `virtualization.service_id` from its live id to the
+/// closed-copy id via `services` (live → closed). Returns whether the row
+/// changed: `false` when it has no virtualization ref, or the ref isn't a
+/// tracked/cloned service (left as-is). Pure so it's unit-testable without a DB.
+fn remap_virtualization_service_id<T: VirtualizationServiceRef>(
+    row: &mut T,
+    services: &HashMap<Uuid, Uuid>,
+) -> bool {
+    if let Some(live_service_id) = row.virtualization_service_id()
+        && let Some(closed_service_id) = services.get(&live_service_id)
+    {
+        row.set_virtualization_service_id(*closed_service_id);
+        return true;
+    }
+    false
+}
+
 async fn close_and_clone_for<T>(
     tx: &mut sqlx::Transaction<'_, Postgres>,
     filter: StorableFilter<T>,
@@ -385,4 +505,94 @@ where
     GenericPostgresStorage::<T>::update_many_in_tx(&advanced_live, tx).await?;
 
     Ok(mapping)
+}
+
+#[cfg(test)]
+mod virtualization_remap_tests {
+    use super::*;
+    use crate::server::hosts::r#impl::base::HostBase;
+    use crate::server::hosts::r#impl::virtualization::{HostVirtualization, ProxmoxVirtualization};
+    use crate::server::services::r#impl::base::ServiceBase;
+    use crate::server::services::r#impl::virtualization::{
+        DockerVirtualization, ServiceVirtualization,
+    };
+    use crate::server::subnets::r#impl::base::SubnetBase;
+    use crate::server::subnets::r#impl::virtualization::{
+        DockerSubnetVirtualization, SubnetVirtualization,
+    };
+
+    fn host_with(service_id: Option<Uuid>) -> Host {
+        Host::new(HostBase {
+            virtualization: service_id.map(|id| {
+                HostVirtualization::Proxmox(ProxmoxVirtualization {
+                    vm_name: None,
+                    vm_id: None,
+                    service_id: id,
+                })
+            }),
+            ..Default::default()
+        })
+    }
+
+    fn service_with(service_id: Option<Uuid>) -> Service {
+        <Service as Storable>::new(ServiceBase {
+            virtualization: service_id.map(|id| {
+                ServiceVirtualization::Docker(DockerVirtualization {
+                    container_name: None,
+                    container_id: None,
+                    service_id: id,
+                    compose_project: None,
+                })
+            }),
+            ..Default::default()
+        })
+    }
+
+    fn subnet_with(service_id: Option<Uuid>) -> Subnet {
+        <Subnet as Storable>::new(SubnetBase {
+            virtualization: service_id.map(|id| {
+                SubnetVirtualization::Docker(DockerSubnetVirtualization { service_id: id })
+            }),
+            ..Default::default()
+        })
+    }
+
+    #[test]
+    fn remaps_live_service_ref_to_closed_for_all_three_entities() {
+        let live = Uuid::new_v4();
+        let closed = Uuid::new_v4();
+        let services = HashMap::from([(live, closed)]);
+
+        let mut host = host_with(Some(live));
+        assert!(remap_virtualization_service_id(&mut host, &services));
+        assert_eq!(host.virtualization_service_id(), Some(closed));
+
+        let mut service = service_with(Some(live));
+        assert!(remap_virtualization_service_id(&mut service, &services));
+        assert_eq!(service.virtualization_service_id(), Some(closed));
+
+        let mut subnet = subnet_with(Some(live));
+        assert!(remap_virtualization_service_id(&mut subnet, &services));
+        assert_eq!(subnet.virtualization_service_id(), Some(closed));
+    }
+
+    #[test]
+    fn leaves_untracked_ref_unchanged() {
+        // Service ref not present in the map (e.g. not cloned) is left as-is.
+        let services: HashMap<Uuid, Uuid> = HashMap::new();
+        let untracked = Uuid::new_v4();
+
+        let mut host = host_with(Some(untracked));
+        assert!(!remap_virtualization_service_id(&mut host, &services));
+        assert_eq!(host.virtualization_service_id(), Some(untracked));
+    }
+
+    #[test]
+    fn leaves_entity_without_virtualization_unchanged() {
+        let services = HashMap::from([(Uuid::new_v4(), Uuid::new_v4())]);
+
+        let mut host = host_with(None);
+        assert!(!remap_virtualization_service_id(&mut host, &services));
+        assert_eq!(host.virtualization_service_id(), None);
+    }
 }
