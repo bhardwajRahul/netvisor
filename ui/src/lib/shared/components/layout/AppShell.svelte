@@ -16,7 +16,7 @@
 	import { resetTopologyOptions } from '$lib/features/topology/queries';
 	import { pushError, pushSuccess } from '$lib/shared/stores/feedback';
 	import { useConfigQuery } from '$lib/shared/stores/config-query';
-	import { isBillingPlanActive } from '$lib/features/organizations/types';
+	import { isBillingPlanActive, isPaidSubscriptionActive } from '$lib/features/organizations/types';
 	import { getRoute } from '$lib/shared/utils/navigation';
 	import type { PostHog } from 'posthog-js';
 	import { browser } from '$app/environment';
@@ -121,7 +121,12 @@
 				plan_status: orgData?.plan_status
 			});
 			markPlanActivated();
-			pushSuccess(billing_subscriptionActivated());
+			// Only claim "activated" for a genuine paid subscription — not for
+			// downgrade-to-Free, pause, past_due, etc. (isBillingPlanActive, the
+			// poll target, is true for all of those).
+			if (orgData && isPaidSubscriptionActive(orgData)) {
+				pushSuccess(billing_subscriptionActivated());
+			}
 			return true;
 		}
 
@@ -205,7 +210,12 @@
 					plan_status: organization.plan_status
 				});
 				markPlanActivated();
-				pushSuccess(billing_subscriptionActivated());
+				// Only claim "activated" for a genuine paid subscription — a
+				// checkout return that lands on Free/paused/past_due shouldn't
+				// say "Subscription activated successfully!".
+				if (isPaidSubscriptionActive(organization)) {
+					pushSuccess(billing_subscriptionActivated());
+				}
 			} else {
 				// Webhook hasn't processed yet — poll until activation
 				handlingStripeReturn = true;
