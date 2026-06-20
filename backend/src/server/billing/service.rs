@@ -2147,12 +2147,12 @@ impl BillingService {
             }
         }
 
-        // Eligibility gates on our typed `plan_status` (the domain truth),
-        // not Stripe's raw `sub.status`. The cancel modal hides save
-        // offers when `plan_status === 'trialing'` so the UI flow never
-        // brings a genuinely trialing user here; this server-side gate
-        // enforces the same rule for direct API hits. Paused / past_due /
-        // pending_cancellation / cancelled also get rejected.
+        // Eligibility gates on our typed `plan_status` (the DB source of truth,
+        // updated from Stripe webhooks) rather than the live Stripe
+        // `sub.status`. The cancel modal hides pause while `plan_status ===
+        // 'trialing'`, so the UI never brings a trialing user here; this
+        // server-side gate enforces the same for direct API hits. Paused /
+        // past_due / pending_cancellation / cancelled are also rejected.
         if organization.base.plan_status != Some(PlanStatus::Active) {
             return Err(anyhow!(
                 "Subscription must be active to pause; current status: {}",
@@ -2615,11 +2615,16 @@ impl BillingService {
             return Err(anyhow!("You've already used your one-time discount."));
         }
 
-        // Same domain-truth gate as pause: only allow when our model
-        // considers the org active. The cancel modal hides save offers
-        // for trialing / paused / past_due users; this server-side gate
-        // enforces the same rule for direct API hits.
-        if organization.base.plan_status != Some(PlanStatus::Active) {
+        // Eligibility gates on our typed `plan_status` (the DB source of truth,
+        // updated from Stripe webhooks) rather than the live Stripe
+        // `sub.status`. Active and Trialing are both allowed: a trialing user
+        // can lock in the discount for their first invoice at trial-end (the
+        // cancel modal suppresses pause — but not discount — while trialing).
+        // Paused / past_due / pending_cancellation / cancelled are rejected.
+        if !matches!(
+            organization.base.plan_status,
+            Some(PlanStatus::Active) | Some(PlanStatus::Trialing)
+        ) {
             return Err(anyhow!(
                 "Subscription must be active to apply the discount; current status: {}",
                 organization
