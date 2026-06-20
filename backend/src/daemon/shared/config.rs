@@ -309,10 +309,25 @@ impl AppConfig {
             figment = figment.merge(("interfaces", interfaces));
         }
 
-        // Add environment variables (interfaces handled above to support comma-separated values)
+        // Handle SCANOPY_CREDENTIAL_IDS specially - Figment doesn't auto-split comma-separated
+        // values, so without this it tries to deserialize the raw string into a Vec<Uuid> and
+        // fails with "expected a sequence". Mirrors the SCANOPY_INTERFACES handling above.
+        if let Ok(credential_ids_str) = std::env::var("SCANOPY_CREDENTIAL_IDS") {
+            let credential_ids: Vec<Uuid> = credential_ids_str
+                .split(',')
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+                .map(Uuid::parse_str)
+                .collect::<std::result::Result<_, _>>()
+                .context("Invalid UUID in SCANOPY_CREDENTIAL_IDS")?;
+            figment = figment.merge(("credential_ids", credential_ids));
+        }
+
+        // Add environment variables (interfaces and credential_ids handled above to support
+        // comma-separated values)
         figment = figment
-            .merge(Env::prefixed("NETVISOR_").ignore(&["INTERFACES"]))
-            .merge(Env::prefixed("SCANOPY_").ignore(&["INTERFACES"]));
+            .merge(Env::prefixed("NETVISOR_").ignore(&["INTERFACES", "CREDENTIAL_IDS"]))
+            .merge(Env::prefixed("SCANOPY_").ignore(&["INTERFACES", "CREDENTIAL_IDS"]));
 
         for (key, _) in std::env::vars() {
             if key.starts_with("NETVISOR_") {
@@ -732,6 +747,7 @@ mod tests {
     use crate::{daemon::shared::config::AppConfig, tests::DAEMON_CONFIG_FIXTURE};
     use clap::{CommandFactory, Parser};
     use std::collections::HashMap;
+    use uuid::Uuid;
 
     #[test]
     #[serial]
@@ -930,6 +946,41 @@ mod tests {
             config.interfaces,
             vec!["eth0", "enp6s18"],
             "SCANOPY_INTERFACES env var should populate interfaces field"
+        );
+    }
+
+    /// Verifies that SCANOPY_CREDENTIAL_IDS accepts a comma-separated string and populates the
+    /// credential_ids field. Figment does not auto-split comma-separated env values, so without
+    /// special handling it fails with "expected a sequence" (regression test for #612).
+    #[test]
+    #[serial]
+    fn test_scanopy_credential_ids_env_var() {
+        let id1 = Uuid::parse_str("d0f384e1-3ac0-47ab-b9b9-3fc806353b76").unwrap();
+        let id2 = Uuid::parse_str("36045aa7-c38c-45f6-928d-eccfbfabdede").unwrap();
+
+        // Save and clear any existing value
+        let original = std::env::var("SCANOPY_CREDENTIAL_IDS").ok();
+        // SAFETY: This test runs serially and restores the original value after
+        unsafe { std::env::set_var("SCANOPY_CREDENTIAL_IDS", format!("{id1},{id2}")) };
+
+        // Load config with empty CLI args (env var should take effect)
+        let cli = DaemonCli::parse_from::<[&str; 0], &str>([]);
+        let config = AppConfig::load(cli).expect("Failed to load config");
+
+        // Restore original value
+        // SAFETY: This test runs serially
+        unsafe {
+            if let Some(val) = original {
+                std::env::set_var("SCANOPY_CREDENTIAL_IDS", val);
+            } else {
+                std::env::remove_var("SCANOPY_CREDENTIAL_IDS");
+            }
+        }
+
+        assert_eq!(
+            config.credential_ids,
+            vec![id1, id2],
+            "SCANOPY_CREDENTIAL_IDS env var should populate credential_ids field"
         );
     }
 }
