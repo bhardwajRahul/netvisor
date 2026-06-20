@@ -1,5 +1,11 @@
 # Transition-Moment Audit
 
+> **Status as of 2026-06.** This is the pre-remediation diagnostic baseline (as of v0.16.2). ~70% of its HIGH/MED findings shipped via `feat/phase5-subscription-mechanics`, `feat/phase5-trial-ui`, `audit/banner-conditions-and-payment-prompt`, and `fix/billing-tab-ux-polish`. The as-built record is `docs/phase5-spec.md`; the telemetry findings are tracked in `docs/telemetry-gap-backlog.md`. Full audit in `DOCS_AUDIT_2026-06.md`.
+>
+> **RESOLVED examples:** in-app trial urgency ramp; wired `PAYMENT_METHOD_ADDED` email; post-Stripe confirmation banner; Stripe `cancellation_details` capture (`billing/service.rs:2785`, `74ac498cd`); enriched cancel events; in-app cancel flow with reason capture; `payment_recovered` email; stored `next_renewal_at` column.
+>
+> **STILL OPEN (no successor spec):** (a) DaemonPoll plan-gating — `daemon.base.standby` is set only by the 30-day inactivity sweep (`daemons/service.rs:2001`), not a plan gate; the `DaemonStandby` error copy (`error_codes.rs:300-301`) is still misleading; (b) `PLAN_CHANGED_BODY` feature-delta enumeration + in-product "what changed" surface; (c) `downgraded_at`/`cancelled_at` columns (only `next_renewal_at` was added).
+
 Diagnostic of three billing transitions: (a) trial → paid (add-a-card), (b) cancel, (c) downgrade-to-free. Scanopy has low trial→paid conversion and 80%+ paid churn; this audit reports what happens today, what's silent, and what the current telemetry can/can't answer. No fixes proposed — that's a downstream pass.
 
 All findings cite file:line. Audited against `dev` branch.
@@ -18,10 +24,10 @@ All findings cite file:line. Audited against `dev` branch.
 - `TRIAL_ENDING_BODY_HAS_PAYMENT` at T-3d, payment-on-file (`templates.rs:166–182`) — reassurance: "You'll be billed {base_price}* for your {plan_name}…"
 - `TRIAL_EXPIRED_BODY` at T+0 lapse (`templates.rs:186–202`)
 - `TRIAL_CONVERTED_BODY` at T+0 success (`templates.rs:277–293`)
-- `PAYMENT_METHOD_ADDED_BODY` (`templates.rs:265–273`) — template defined; **send function never called** (grep for `send_payment_method_added_email` returns 0 hits). User who adds a card mid-trial gets no acknowledgement.
+- `PAYMENT_METHOD_ADDED_BODY` (`templates.rs:265–273`) — template defined; **send function never called** (grep for `send_payment_method_added_email` returns 0 hits). User who adds a card mid-trial gets no acknowledgement. **[RESOLVED 2026-06]** — email is now wired.
 
 **In-app trial surfaces:**
-- `BillingTab.svelte:171–197` — single amber `InfoCard` shown when `plan_status === 'trialing' && !hasPaymentMethod`. Copy: "Trial ends in X days ({date})" + "Add Payment Method" button. Always-on while trialing-without-card; not time-gated to ramp urgency.
+- `BillingTab.svelte:171–197` — single amber `InfoCard` shown when `plan_status === 'trialing' && !hasPaymentMethod`. Copy: "Trial ends in X days ({date})" + "Add Payment Method" button. Always-on while trialing-without-card; not time-gated to ramp urgency. **[RESOLVED 2026-06]** — in-app urgency ramp shipped.
 - `Sidebar.svelte:748–762` — persistent amber "Upgrade" item at sidebar bottom when `isFreePlan && isOwner && isBillingEnabled`. (Free only, not shown during trial.)
 - `BillingTab.svelte:345–353` — `InlineInfo` with `settings_billing_trialActive`: "Your trial is active. You won't be charged until your trial ends." (settings-only)
 
@@ -62,14 +68,14 @@ All findings cite file:line. Audited against `dev` branch.
 
 ### Severity
 
-- **HIGH** — No in-app urgency ramp between T-14d and T+0 (static InfoCard + email only).
-- **HIGH** — First-invoice amount not shown before Stripe redirect; no Scanopy-confirmed pre-checkout total.
+- **HIGH** — No in-app urgency ramp between T-14d and T+0 (static InfoCard + email only). **[RESOLVED 2026-06]**
+- **HIGH** — First-invoice amount not shown before Stripe redirect; no Scanopy-confirmed pre-checkout total. (Still open — only a client-side estimate shipped; see absorbed open items below.)
 - **HIGH** — No pause / extend / soft-downgrade option.
-- **MED** — `PAYMENT_METHOD_ADDED_BODY` is orphaned.
+- **MED** — `PAYMENT_METHOD_ADDED_BODY` is orphaned. **[RESOLVED 2026-06]**
 - **MED** — `checkout_completed` event lacks the actual charge amount.
 - **MED** — No conversion-source attribution from email clicks.
-- **MED** — No value recap surface.
-- **MED** — No post-Stripe confirmation moment in product.
+- **MED** — No value recap surface. (Built then reverted, `76c748e8a`; see absorbed open items below.)
+- **MED** — No post-Stripe confirmation moment in product. **[RESOLVED 2026-06]**
 - **LOW** — `BillingTab` InfoCard is silent in analytics.
 
 ---
@@ -89,7 +95,7 @@ All findings cite file:line. Audited against `dev` branch.
 
 **`trial_ended` fires with `converted: false`** (`service.rs:1186`) when a trial lapses without payment, allowing trial-lapse to be distinguished from paid-cancel **by event-stream join** (matching `trial_ended converted=false` near a `subscription_cancelled` for the same `org_id`).
 
-**Webhook handler.** `handle_subscription_deleted` (`service.rs:1425`) receives Stripe's `customer.subscription.deleted`. Stripe populates `subscription.cancellation_details.{reason, feedback, comment}` when a user selects reasons in the Portal. **Our handler does not deserialize this field.** The only metadata read is `cancel_reason == "upgrade"` (L1435) to skip auto-Free for plan changes.
+**Webhook handler.** `handle_subscription_deleted` (`service.rs:1425`) receives Stripe's `customer.subscription.deleted`. Stripe populates `subscription.cancellation_details.{reason, feedback, comment}` when a user selects reasons in the Portal. **Our handler does not deserialize this field.** The only metadata read is `cancel_reason == "upgrade"` (L1435) to skip auto-Free for plan changes. **[RESOLVED 2026-06]** — `cancellation_details` now captured (`billing/service.rs:2785`, `74ac498cd`).
 
 **Org schema** (`migrations/20251110181948_orgs-billing.sql`): `plan`, `plan_status`, `stripe_customer_id`, `trial_end_date`, `has_payment_method`, `created_at`. No `cancelled_at`, `period_end`, `cancel_reason`, `cancellation_feedback`. No dedicated cancellations table.
 
@@ -100,7 +106,7 @@ All findings cite file:line. Audited against `dev` branch.
 - `PAYMENT_ACTION_REQUIRED_BODY` (`templates.rs:471–486`) fires from `handle_invoice_payment_action_required` (`service.rs:1996–2048`) — 3DS/SCA
 - `payment_failed` and `payment_action_required` PostHog events fire (only `org_id` payload — no plan, no invoice metadata)
 - `payment_recovered` PostHog event fires (`service.rs:2089`) with only `org_id`
-- **No recovery email** — the `PaymentRecovered` event has no template; user whose card recovers gets silence.
+- **No recovery email** — the `PaymentRecovered` event has no template; user whose card recovers gets silence. **[RESOLVED 2026-06]** — `payment_recovered` email shipped.
 
 **In-app post-cancel signal.** `InlineWarning` in `BillingTab.svelte:351` when `plan_status === 'pending_cancellation'`, copy `settings_billing_downgrade_pending`: "Your plan will change to Free at the end of your current billing cycle. To cancel this change, upgrade to a paid plan or manage your subscription in the billing portal." Settings-only.
 
@@ -115,7 +121,7 @@ All findings cite file:line. Audited against `dev` branch.
 
 ### Silent-fail surfaces
 
-- **Stripe `cancellation_details.feedback` is silently discarded on ingest.** When a user selects a reason in the Portal, Stripe stores it; our handler does not deserialize it. The data never enters our system. No warning, no error log — just lost.
+- **Stripe `cancellation_details.feedback` is silently discarded on ingest.** When a user selects a reason in the Portal, Stripe stores it; our handler does not deserialize it. The data never enters our system. No warning, no error log — just lost. **[RESOLVED 2026-06]** — now captured.
 - Voluntary cancel, dunning failure, trial lapse, and admin cancel all funnel through `customer.subscription.deleted` → same `subscription_cancelled` event. They are distinguishable in principle (trial-lapse via the separate `trial_ended converted=false` event firing close in time), but there's no `cancel_type` field on `subscription_cancelled` itself — joining events is required.
 - `payment_recovered` event fires but neither customer nor internal-ops gets a recovery notification.
 
@@ -131,11 +137,11 @@ All findings cite file:line. Audited against `dev` branch.
 
 ### Severity
 
-- **HIGH** — Stripe `cancellation_details` silently discarded on webhook ingest.
-- **HIGH** — `subscription_cancelled` event lacks reason / tenure / `period_end` / `was_trialing` — primary slicing blocker for the 80% number.
-- **HIGH** — No `cancelled_at` / `period_end` columns — most cohort analyses require event-stream joins instead of simple SQL.
-- **HIGH** — Cancel flow 100% off-platform; no Scanopy-controlled reason capture or save surface.
-- **MED** — `payment_recovered` has no customer email and no internal alert.
+- **HIGH** — Stripe `cancellation_details` silently discarded on webhook ingest. **[RESOLVED 2026-06]**
+- **HIGH** — `subscription_cancelled` event lacks reason / tenure / `period_end` / `was_trialing` — primary slicing blocker for the 80% number. **[RESOLVED 2026-06]** — cancel events enriched.
+- **HIGH** — No `cancelled_at` / `period_end` columns — most cohort analyses require event-stream joins instead of simple SQL. (Partial — only `next_renewal_at` was added; `cancelled_at` still open.)
+- **HIGH** — Cancel flow 100% off-platform; no Scanopy-controlled reason capture or save surface. **[RESOLVED 2026-06]** — in-app cancel flow with reason capture shipped.
+- **MED** — `payment_recovered` has no customer email and no internal alert. **[RESOLVED 2026-06]** — `payment_recovered` email shipped.
 - **MED** — Voluntary vs involuntary cancels not directly discriminable on `subscription_cancelled`.
 - **MED** — Post-cancel email omits `period_end`, retention policy, re-activation data preservation.
 - **LOW** — `pending_cancellation` banner scoped to Settings only.
@@ -260,9 +266,18 @@ Triggered on entity-create events; **not** on the downgrade transition itself. I
 - **MED** — Existing share-render does not check `share_views` — possibly intentional, but undeclared.
 - **MED** — Network / seat / API key creation has no proactive UI affordance — user discovers the limit via 402 toast.
 - **MED** — No "user clicked a paywalled UI element" event distinct from the post-click `upgrade_button_clicked` — can't measure passive-bounce on gates.
-- **MED** — `PaymentRecovered` event has no customer email.
+- **MED** — `PaymentRecovered` event has no customer email. **[RESOLVED 2026-06]**
 - **MED** — All upgrade CTAs route to the same generic `BillingPlanModal` — no per-gate plan recommendation.
 - **LOW** — `payment_failed` / `payment_recovered` events carry only `org_id`.
+
+---
+
+## Open items (absorbed from conversion-side-remediation-brief, 2026-06)
+
+These residual gaps were carried over from the now-deleted `conversion-side-remediation-brief.md` and remain unaddressed:
+
+- **Free-LANDED downgrade banner + contextual recovery affordances.** The existing no-payment banner targets the pre-downgrade card-missing window, NOT an org that has already landed on Free. There is no "restore access by adding a card" copy on the surfaces that just stopped working (the gated controls themselves), only the generic upgrade CTAs.
+- **Authoritative Stripe upcoming-invoice preview before the redirect.** Only a client-side estimate shipped (`BillingPlanForm.svelte`); the backend still does not return a Stripe-confirmed upcoming-invoice total before the Checkout redirect. The trial value recap was built then reverted (`76c748e8a`) and remains unshipped.
 
 ---
 

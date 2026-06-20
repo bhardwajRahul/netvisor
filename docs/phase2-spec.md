@@ -1,8 +1,33 @@
 # Phase 2 spec — change-detection digest + audit-trail facet
 
+> **Status as of 2026-06.** This spec is part shipped, part never-built. Read this header before trusting any section below.
+>
+> **Shipped and load-bearing:** the SCD2 substrate (`valid_from` / `valid_to` / `last_seen_at` time-tracked entity rows), first-class snapshots, plan-gated retention, the unified topology read path (current-state and as-of filters), and the per-discovery-session digest email. References: `backend/src/server/shared/storage/snapshot.rs`, `backend/src/server/snapshots/`, `backend/src/server/digest/`, migration `20260502000000_scd2_add_columns.sql`, commits `1b6745eec` / `c3fdae9b4` / `d78428a7f` / `3a71e944f`.
+>
+> **Kept as accurate reference:** the **Data model**, **Schema additions**, **Daemon-server protocol**, and daemon/server reconciliation sections (plus the **Investigation** appendix) describe what shipped and remain trustworthy.
+>
+> **Never built (no planned-work successor):**
+> - Scheduled snapshots (cron-cadence snapshot firing).
+> - Snapshot pinning, naming, and the `kind` (manual/scheduled) distinction.
+> - Per-org digest cadence configuration.
+> - `digest_send_empty` / the "nothing changed" digest email.
+> - Paid-gating of digest opt-out.
+> - Discovery-failure digest variant.
+> - "Presumed vanished" coverage-gap surface (the stale-`last_seen_at` read query / nudge UI).
+> - In-app changelog: the Activity page and the topology-anchored timeline pane.
+> - PDF / HTML diff export.
+>
+> **Two factual divergences from this spec as written:**
+> - The digest is **per-discovery-session and per-user**, not weekly and per-org.
+> - Snapshot reads are discrete `snapshot_id`-stamped copies, not as-of-arbitrary-`T` temporal queries.
+>
+> **Provenance:** this spec's architecture choice (Option C / SCD2) originated in the now-deleted `change-digest-design-brief.md`; that brief's options analysis is superseded by what shipped. Full audit in `DOCS_AUDIT_2026-06.md`.
+
+---
+
 Output of the founder + Claude Code interactive design pass. This is the spec workers should build against. The pre-pass investigation that fed the design pass is folded in as the **Investigation** appendix below — every claim about current code carries `file:line` citations.
 
-The brief (`/Users/maya/dev/scanopy/docs/change-digest-design-brief.md`) framed the architectural choice as option C (per-entity SCD Type 2 temporal tables); the design pass confirmed it and refined it to a **snapshot-driven** SCD2 — continuous scans only update live rows in place; `valid_from` / `valid_to` are touched only when a snapshot fires. The model below is the spec.
+The originating brief (since deleted; see provenance note above) framed the architectural choice as option C (per-entity SCD Type 2 temporal tables); the design pass confirmed it and refined it to a **snapshot-driven** SCD2 — continuous scans only update live rows in place; `valid_from` / `valid_to` are touched only when a snapshot fires. The model below is the spec.
 
 This spec settles direction. Implementation specifics that the founder did not weigh in on (migration backfill mechanics, snapshot close-and-clone timing, exact index columns, plan-tier-specific defaults beyond directional examples) are flagged as **Open for implementer** within each section. The implementer surfaces those for review before building.
 
@@ -15,13 +40,7 @@ This spec settles direction. Implementation specifics that the founder did not w
 3. **Vanish: implicit.** A row whose `last_seen_at` is stale stays live (`valid_to IS NULL`). It is surfaced as "presumed vanished" via a read query (`last_seen_at < NOW() - threshold AND valid_to IS NULL`) which drives the coverage-gap nudge surface. There is no row-close sweep — `valid_to` is only set by snapshot creation.
 4. **Retention:** snapshot-window-based, paid-tier lever. Daily background job deletes snapshots past the org's window and the closed entity rows they anchor. Pinned snapshots exempt. Founder's directional example: free 1 week, pro 1 month; higher tiers longer.
 5. **Diff fidelity:** the audit trail is the closed-row sets across snapshots — natural-key changes manifest as vanish+appear pairs across consecutive snapshots; descriptor changes (hostname, oper_status, vendor refinement) update in place and are not in the audit trail by design. Per-org configurability deferred.
-6. **UX:**
-   - Digest cadence: weekly default; configurable per-org via the new **Email** tab in the org settings modal. Opt-out for paid orgs.
-   - In-app changelog: timeline anchored to topology view + separate Activity page (same data).
-   - Snapshot pinning: Member can create / rename / delete.
-   - Diff export: PDF + HTML for v1.
-   - **Free vs paid snapshot semantics:** free orgs get manual snapshot creation, in-app browse, in-app diff view. Paid orgs additionally get scheduled snapshots, named pinning, PDF/HTML export, the digest email, and longer retention windows.
-   - Empty-digest behavior: per-org configurable via the **Email** tab; default = send empty digests.
+6. **UX:** > NOT BUILT as of 2026-06 — see status header. (Scheduled snapshots, per-org digest cadence, pinning/naming, changelog/Activity page, PDF/HTML export, and empty-digest behavior were never built. The shipped digest is per-discovery-session and per-user.)
 7. **Branching:** no `branch_id` column on the v1 schema. Existing `topologies.parent_id`-anchored locks migrate into the snapshot mechanism (manual + pinned). The planning-edit feature, when it lands, adds `branch_id` via expand-and-contract.
 8. **S4 — branching/editable-topology for planning edits:** out of scope for Phase 2 per TASK.md.
 
@@ -77,13 +96,7 @@ Descriptor changes (in-place UPDATEs) leave no trace in the audit trail — only
 
 ### Stale-entity surface
 
-A live row whose `last_seen_at` is stale is "presumed vanished" — the daemon hasn't re-confirmed it for a while. This is a pure read query:
-
-```
-WHERE last_seen_at < NOW() - <threshold> AND valid_to IS NULL
-```
-
-The query drives the coverage-gap nudge UI ("these hosts haven't been seen in 5 days — really gone?"). It does not write anything. The row stays live until the next snapshot closes it (at which point it's frozen as a closed record at the snapshot's timestamp, capturing the "this was last seen at X" state).
+> NOT BUILT as of 2026-06 — see status header.
 
 ### Topology read path
 
@@ -145,23 +158,21 @@ Manual snapshots are available on free and paid tiers. They are the free-tier me
 
 ### Scheduled snapshots — paid only
 
-Paid orgs can configure a recurring snapshot cadence in the **Email** tab (per the UX section). At each cadence boundary, the system fires a snapshot for each network in the org. Scheduled snapshots can be unnamed (the timestamp is enough) or auto-named by the implementer's convention.
-
-Scheduled snapshots are what the digest pipeline reads from. **Open for implementer:** the precise coupling between snapshot cadence and digest cadence — both can be the same setting, or the digest can fire on a multiple of the snapshot cadence. The spec doesn't pin this down.
+> NOT BUILT as of 2026-06 — see status header.
 
 ### Pinning — paid only
 
-A snapshot can be pinned (named or renamed; deletable per the permissions section). Pinned snapshots are exempt from retention.
+> NOT BUILT as of 2026-06 — see status header.
 
 ### Stale-entity surface
 
-A pure read query as described in **Data model**: `last_seen_at < NOW() - threshold AND valid_to IS NULL`. Drives the coverage-gap nudge. No writes. The threshold is configurable per-org. **Open for implementer:** the specific default threshold and its plan-tier interaction.
+> NOT BUILT as of 2026-06 — see status header.
 
 ---
 
 ## Retention
 
-**Direction:** daily background job deletes snapshots older than the org's retention window and the closed entity rows they anchor. Pinned snapshots are exempt. Per-org single-window (no per-network or per-entity-type knobs in v1).
+**Direction:** daily background job deletes snapshots older than the org's retention window and the closed entity rows they anchor. Per-org single-window (no per-network or per-entity-type knobs in v1). (Plan-gated retention shipped; pin-exemption did not — pinning was never built, see status header.)
 
 **Per-tier window is the paid lever** — founder's directional example: free 1 week, pro 1 month. Higher tiers get longer windows.
 
@@ -194,57 +205,13 @@ Per-org configurability of the digest filter is deferred. v1 is a fixed default.
 
 ### Audit-trail readability
 
-Diff exports (PDF / HTML) need to render the audit trail in concrete network terms, not low-level state codes. **Open for implementer:** the rendering layer's vocabulary — e.g., "interface eth0 changed name to eth1" not "if_name: 'eth0' → 'eth1'".
+> NOT BUILT as of 2026-06 — see status header. (PDF / HTML diff export was never built.)
 
 ---
 
 ## UX
 
-### Digest cadence
-
-Weekly default. Per-org configurable in `{daily, weekly, monthly}` via the **Email** tab. No real-time tier in v1. The cadence drives the scheduled-snapshot cadence (or is coupled to it per the implementer's call in the **Snapshots** section).
-
-### Opt-in vs opt-out
-
-Opt-out for paid orgs (default = subscribed). Free orgs default opted-out (the digest is paid-gated). Opt-out toggle lives in the **Email** tab.
-
-### In-app changelog placement
-
-Both:
-
-- **Timeline pane anchored to the topology view** — for the IT Ops "what changed since I last looked" pull motion.
-- **Separate "Activity" page reachable from main nav** — for the compliance "show me what happened in March" navigation.
-
-Same data; different consumption shape.
-
-### Snapshot pinning permissions
-
-Member can create, rename, and delete pins. Owner can also; Viewer cannot. Naming is freeform with a length cap; treated as user-supplied content and rendered with the existing XSS-safe path used for host names. No naming-convention enforcement.
-
-### Diff export format
-
-PDF + HTML for v1. PDF is non-negotiable for the compliance use case. HTML covers in-team sharing. Share-link, markdown, Confluence/Hudu defer to v2 / integrations roadmap.
-
-### Free-tier behavior
-
-- **Manual snapshot creation: free.** Free orgs get a "Take snapshot" button.
-- **In-app audit-trail browse and diff view: free.** Free orgs see their own snapshot history sparsely (whatever they've manually captured).
-- **Scheduled snapshots: paid.** Driven by the Email tab cadence settings.
-- **Named pinning: paid.**
-- **PDF / HTML diff export: paid.**
-- **Digest email: paid.** Free orgs see the Email tab toggle disabled with an upgrade hook.
-- **Retention window: paid lever.** Free orgs get a short window; paid tiers get longer.
-
-### Empty-digest behavior
-
-Per-org configurable in the **Email** tab. Setting: `digest_send_empty`, default `TRUE`.
-
-- **`TRUE`:** if a digest period's snapshot diff is empty, send a "nothing changed this week" digest with embedded coverage-gap nudges if any are pending.
-- **`FALSE`:** if a digest period's snapshot diff is empty, don't send.
-
-### Discovery-failure variant
-
-Independent of `digest_send_empty`: if a digest period had a discovery-pipeline failure (daemon offline, scheduled scan timed out, no successful scan landed), the digest surfaces that explicitly rather than going silent. This is a separate code path from "no material changes" and ignores the empty-digest preference.
+> NOT BUILT as of 2026-06 — see status header. The entire UX surface described here (per-org/weekly digest cadence, paid-gated opt-out, in-app changelog / Activity page / topology timeline pane, snapshot pinning permissions, PDF/HTML diff export, `digest_send_empty` / empty-digest behavior, discovery-failure digest variant) was never built. What shipped: manual snapshot creation, in-app snapshot browse/diff, plan-gated retention, and a per-discovery-session **per-user** digest email (not the per-org weekly model described above).
 
 ---
 

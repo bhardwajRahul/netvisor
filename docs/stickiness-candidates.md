@@ -1,5 +1,13 @@
 # Stickiness Mechanism Candidates
 
+> **Status as of 2026-06.** This remains a live ideation backlog — most candidates are unbuilt and still worth pursuing — but candidate #1's headline shipped, so parts of the framing below are now stale. Specifics:
+> - **Candidate #1 (change-detection digest + audit trail): LARGELY SHIPPED via Phase 2.** The digest email landed (`backend/src/server/digest/`, commit `3a71e944f`) and the audit trail landed as an SCD2 snapshot history (`backend/src/server/snapshots/`, commits `c3fdae9b4` / `d78428a7f`). The storage-architecture question this doc treats as open is **RESOLVED**: it shipped as **SCD2 (close-and-clone per entity)** — a third option not enumerated below, **not** a delta-table scheme and **not** a `topologies.parent_id` scheme.
+> - **Candidate #1's in-app changelog TIMELINE did NOT ship.** The digest is email + snapshot-browse only.
+> - **Candidate #2's measurement PREREQUISITE shipped:** `TopologyShareViewed` / `TopologyEmbedViewed` events now fire (`backend/src/server/shared/events/types.rs:438-439`). The notification feature itself (view counts, owner notification) is still **unbuilt**.
+> - **Candidate #3 (coverage-completeness nudges): NOT built as described.** `GettingStartedChecklist` / `FeatureNudges` are onboarding-gated, not fleet-state-gated.
+> - **Defer list items remain live ideation;** none are in `planned-work/`.
+> - Full audit in `DOCS_AUDIT_2026-06.md`.
+
 **Date:** 2026-04-28
 **Purpose:** Scoping shortlist of mechanisms that pull paid users back week-over-week. Ranked by hypothesized churn-cause × feasibility. Not designs — this tees up one or two for detailed design.
 
@@ -9,7 +17,7 @@
 - Avenue 2a follow-up memo: cancels are 37 voluntary paid + 12 mid-trial. Most are short-tenure (0–30 days). 51% of orgs that completed checkout ran zero discoveries. Reweighted hypotheses: dormancy/value-perception explains larger volume; pricing-intent (Bob-type deliberate cancel) gained slightly but is a smaller cohort.
 - Avenue 3 transition-moment audit: trial-side mechanisms (value recap, pause/extend, in-app cancel with reason capture) are conversion-side, not stickiness — moved to Defer.
 - Avenue 2b telemetry-gap backlog: `topology_viewed` / `share_link_viewed` (P2-1, P2-2) and email send/open ingestion (P1-9) are needed to measure most candidates here. New stickiness-specific events flagged below feed back into 2b.
-- Existing primitives: `topologies` table already has `parent_id UUID` (branching scaffolded but not load-bearing) — usable substrate for snapshot history without a new versioning schema. Scheduled discovery works today (paid-gated). **No digest email infrastructure** — building it is part of any digest feature's cost.
+- Existing primitives: Scheduled discovery works today (paid-gated). _(Original note here speculated about reusing `topologies.parent_id` for snapshot history and the absence of digest-email infrastructure — both superseded; see status header. The snapshot history shipped as SCD2 and the digest pipeline now exists.)_
 
 ---
 
@@ -20,11 +28,9 @@
 Diff each scheduled scan against the prior. When something material changes (new host, vanished host, new service, interface flap, new edge), surface it via (a) a digest email, (b) an in-app changelog timeline, and (c) a retrievable "what did the network look like on date X" surface — the audit-trail facet originally split out as #2 is folded in here as a design facet, not a separate candidate. The compliance use case (PCI-DSS Req 1.1.3, ISO 27001 A.8.20 want diagram currentness as of a date) is satisfied by the same underlying data the digest is computed from.
 
 - **Hypothesis:** Primarily value-perception / dormancy. The dominant cohort in the corrected data (51% of paid orgs ran zero discoveries; short-tenure cancels) likely paid, set up scheduled discovery, then never had a reason to come back because the topology never visibly changed between visits. A push that says "3 hosts appeared, 1 service vanished" creates the missing return trigger. Compliance/audit retrieval addresses Bob-type product-quality concerns and the S&C persona simultaneously.
-- **Feasibility — needs a design pass before any code:**
-  - **Snapshot/diff storage architecture is the key open question** (founder, 2026-04-28). The Avenue 4 sketch suggested repurposing `topologies.parent_id` by inserting a new row per scheduled scan, but a topology row is a multi-MB JSONB blob — daily scans on per-network basis would explode the table. Alternatives the design pass must evaluate: (i) a dedicated `topology_diffs` table that stores only deltas (added/removed hosts, services, edges, interface flaps), with full snapshots only at user-pinned points; (ii) snapshot retention policy (keep last N + user-pinned); (iii) hybrid — diffs forward, full snapshots at pin or at policy-driven anchors. The right answer depends on diff-replay needs (can we reconstruct intermediate state from deltas, or do we need a full snapshot for any audit query) and storage budget.
-  - **Digest email infra:** transactional only today; building a queued digest/cron pipeline is the bulk of the implementation cost regardless of storage choice.
-  - **In-app surface:** changelog timeline anchored to the topology view; audit-trail browse view for "what did the network look like on date X."
-- **Effort:** **M** (1–3 weeks) — but bracketed by the storage architecture decision. Bias toward delta-only storage with policy-driven full snapshots; revisit estimate after design pass.
+- **Feasibility:**
+  > RESOLVED 2026-06 (SCD2) — see status header. The storage-architecture and digest-infra deliberation that stood here is obsolete: snapshot history shipped as SCD2 (close-and-clone per entity), and the digest/cron email pipeline now exists. The in-app changelog timeline facet did **not** ship (snapshot-browse only).
+- **Effort:** Shipped (Phase 2).
 - **Measurability:** Send-side: `change_digest_sent`, `change_digest_opened`, `change_digest_clicked`. Audit-trail side: `snapshot_pinned`, `snapshot_diff_viewed`, `snapshot_diff_exported`. All new, feed back to Avenue 2b. Return-side leverages `topology_viewed` (already emitted per founder review). Email open/click attribution depends on P1-9 Brevo ingestion landing.
 - **P18 gate fit:** Ship before P18 memo converges. Highest-leverage citable remediation. Bob/Folkert sessions are likely to refine the diff-fidelity decisions ("what counts as material") more than to overturn the build decision.
 
@@ -33,7 +39,7 @@ Diff each scheduled scan against the prior. When something material changes (new
 When a public share link or embed is viewed externally, notify the share owner — in-app and via email digest. Owner pull-back when their stakeholders rely on the artifact. Avenue 1 implicitly via the share-views observation in `POSTHOG_STRATEGY.md` Dashboard 5.4 ("orgs with embed views are extremely unlikely to churn").
 
 - **Hypothesis:** Value-perception. Closes the loop on the sharing feature, which today emits the artifact and goes silent. The "social proof" feedback (your share is being used) reinforces the share owner's reason to keep the underlying topology current → keeps them paying.
-- **Feasibility:** (a) No snapshot history. (b) Needs lightweight notification email and/or weekly digest of view counts — much smaller than #1's full digest infra. (c) In-app notification surface or a counter on the share itself. **Critical prerequisite: `share_link_viewed` and `share_embed_viewed` events do not yet fire** (Avenue 2b P2-2). They're already prioritized but unimplemented.
+- **Feasibility:** (a) No snapshot history. (b) Needs lightweight notification email and/or weekly digest of view counts — much smaller than #1's full digest infra. (c) In-app notification surface or a counter on the share itself. **Prerequisite MET 2026-06:** the share/embed view events now fire (`TopologyShareViewed` / `TopologyEmbedViewed`, `backend/src/server/shared/events/types.rs:438-439`). The notification feature itself remains unbuilt.
 - **Effort:** **S** (~1 week) once the share-view events exist; otherwise tack on the few-hour P2-2 instrumentation first. Effectively gated on P2-2.
 - **Measurability:** `share_view_notified`, `share_view_notification_clicked` — **new**. Plus the prerequisite `share_link_viewed` / `share_embed_viewed`. Retention impact: owners of shares with ≥1 external view per week vs owners whose shares are never viewed (the latter cohort is, per `POSTHOG_STRATEGY.md`, the high-churn one).
 - **P18 gate fit:** **Ship before** if P2-2 telemetry is treated as in-scope. Otherwise it slides to "after" because the measurement story collapses without view tracking. Recommend bundling P2-2 instrumentation with this candidate's first slice.

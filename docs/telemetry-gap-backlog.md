@@ -1,5 +1,7 @@
 # Telemetry Gap Backlog
 
+> **Status as of 2026-06.** See `DOCS_AUDIT_2026-06.md` for the full audit. Roughly 40% of this backlog has been closed via `feat/billing-telemetry-enrichments` and `feat/phase5-subscription-mechanics`; the remaining ~60% is still open. Each item below is annotated inline with its current status — `**[DONE 2026-06]**`, `**[PARTIAL 2026-06]**`, or left as-is when genuinely open. Telemetry flows event-bus → PostHog subscriber + Brevo subscriber (no direct PostHog calls from billing code); "emitted" means published to the bus, "consumed" means a subscriber's `filter()` admits it.
+
 Consolidated from `POSTHOG_STRATEGY.md` (Priority 1/2), `avenue-2a-data-memo.md` Q1–Q7 gap registry, `avenue-2a-followup-memo.md` Q-A/Q-B/Q-C, and `docs/transition-moment-audit.md` (3a/3b/3c). Sorted by priority; within priority, by effort ascending.
 
 Effort: **S** <1d · **M** 1–3d · **L** >3d or schema change.
@@ -8,28 +10,30 @@ Effort: **S** <1d · **M** 1–3d · **L** >3d or schema change.
 
 ## P0 — Unblocks load-bearing questions
 
-### P0-1 · Capture Stripe `cancellation_details` on webhook
-- **Change:** Deserialize `subscription.cancellation_details.{reason, feedback, comment}` in `handle_subscription_deleted` and forward to event payload (and to P0-3 table if adopted).
-- **Emission:** `backend/src/server/billing/service.rs:1425` (deserialize) → `:1590` (attach to `subscription_cancelled` payload as `cancel_reason_code`, `cancel_feedback`, `cancel_comment`).
-- **Unblocks:** Avenue 3 3b HIGH ("Stripe `cancellation_details` silently discarded"); top cancel reasons by plan/tenure; Q3b plan-at-cancel.
+### P0-1 · Capture Stripe `cancellation_details` on webhook — **[DONE 2026-06]**
+- Shipped: `extract_cancellation_details(sub.cancellation_details.as_ref())` (`backend/src/server/billing/service.rs:2785`, also called at `:1010` and `:1561`) pulls `{reason, feedback, comment}` off the Stripe subscription. Commit `74ac498cd`.
+- **Original change:** Deserialize `subscription.cancellation_details.{reason, feedback, comment}` and forward to the cancel event payload.
+- **Unblocked:** Avenue 3 3b HIGH ("Stripe `cancellation_details` silently discarded"); top cancel reasons by plan/tenure; Q3b plan-at-cancel.
 - **Effort:** S
 
-### P0-2 · Enrich `subscription_cancelled` payload
-- **Change:** Add `was_trialing` (already computed at `service.rs:1464`), `cancel_type` (`voluntary_paid` | `mid_trial` | `trial_lapse` | `dunning` | `admin` | `upgrade`), `plan_name` (deterministic, not from Stripe metadata), `mrr_amount_cents`, `tenure_days`, `period_end`.
-- **Emission:** `backend/src/server/billing/service.rs:1590` (extend the `json!` payload in `process_subscription_deleted_side_effects`).
-- **Unblocks:** Avenue 2a Q3 (verify 80%+ gross MRR churn from event data), Q3b plan tier, Q5 trial-lapse vs cancel split; Avenue 3 3b primary slicing blocker; eliminates need for `trial_ended converted=false` joins.
+### P0-2 · Enrich `subscription_cancelled` payload — **[DONE 2026-06, with one deviation]**
+- Shipped: the `SubscriptionCancelled` operation now carries `was_trialing`, `period_end`, `mrr_amount_cents`, and `tenure_days`. Computed at `backend/src/server/billing/service.rs:1554` (`was_trialing`), `:1563` (`mrr_amount_cents` via `mrr_from_subscription`), `:1564` (`tenure_days`), and attached to the published `BillingOperation::SubscriptionCancelled { period_end, was_trialing, mrr_amount_cents, tenure_days, .. }` at `:1704`.
+- **Deviation — `cancel_type` was NOT built.** The proposed `cancel_type` taxonomy (`voluntary_paid`/`mid_trial`/`trial_lapse`/`dunning`/`admin`/`upgrade`) does not exist as a payload field. Instead, the cancel *reason* rides on a separate `BillingOperation::CancellationInitiated` operation (the cancel-scheduled signal, emitted at `service.rs:1025` with `reason_code`), distinct from the terminal `SubscriptionCancelled`. Analysis that assumed a single `cancel_type` enum on the cancel event must join `CancellationInitiated.reason_code` instead. `plan_name` is resolved deterministically (not from Stripe metadata) — see P0-3 / cross-cutting decision 2.
+- **Unblocked:** Avenue 2a Q3, Q3b plan tier, Q5 trial-lapse vs cancel split (modulo the `cancel_type` deviation above).
 - **Effort:** S
 
-### P0-3 · `mrr_amount_cents` on `checkout_completed`
-- **Change:** Compute confirmed total (base + seats + networks) at checkout completion and emit on event; also emit `plan_name` deterministically (do not rely on Stripe `metadata.plan_name` — follow-up Q-A flagged it unreliable).
-- **Emission:** `backend/src/server/billing/service.rs:535` and `:1024` (existing `checkout_completed` emit sites).
-- **Unblocks:** Avenue 3 3a HIGH "first-invoice amount hidden" + "checkout_completed lacks charge amount"; plan-tier conversion breakdowns without `postgres.organizations` join; restores trust in `metadata.plan_name`.
+### P0-3 · `mrr_amount_cents` on `checkout_completed` — **[DONE 2026-06]**
+- Shipped: `BillingOperation::CheckoutCompleted` carries `mrr_amount_cents` and a deterministically-resolved plan. Emit sites at `backend/src/server/billing/service.rs:512` and `:1122`.
+- **Original change:** Compute confirmed total (base + seats + networks) at checkout completion; emit `plan_name` deterministically (not from Stripe `metadata.plan_name`, flagged unreliable in Q-A).
+- **Unblocked:** Avenue 3 3a HIGH "first-invoice amount hidden" + "checkout_completed lacks charge amount"; plan-tier conversion breakdowns without `postgres.organizations` join.
 - **Effort:** S
 
-### P0-4 · `payment_method_added` event (the missing paid-conversion signal)
-- **Change:** New `BillingOperation::PaymentMethodAdded` variant. Emit when Stripe `customer.subscription.updated` first sets `default_payment_method` on a trialing subscription, OR on `setup_intent.succeeded` for the customer. Properties: `org_id`, `plan_name`, `trial_days_remaining`, `mrr_amount_cents`, `is_during_trial: bool`. Also wire `send_payment_method_added_email` (orphaned template `PAYMENT_METHOD_ADDED_BODY` at `templates.rs:265`).
-- **Emission:** New webhook branch in `service.rs:handle_*` switch (~`:869` neighborhood); add variant in `shared/events/types.rs:448`; subscriber filter at `posthog/subscriber.rs:115`.
-- **Unblocks:** Every trial→paid metric (Avenue 2a Q1/Q2/Q7, follow-up Q-C). Currently `checkout_completed` fires on free selection — no reliable paid-conversion signal exists. Also fixes Avenue 3 3a MED (orphaned email).
+### P0-4 · `payment_method_added` event — **[PARTIAL 2026-06]**
+- **Done:** the `BillingOperation::PaymentMethodAdded` variant exists (`backend/src/server/shared/events/types.rs:256`) and is emitted from the webhook path when the default invoice payment method is attached (`service.rs:1451`). The email side is wired — `send_payment_method_added_email` dispatches the `PaymentMethodAdded` template (`email/service.rs:308`, message at `email/messages/payment_method_added.rs`), consumed by the email subscriber at `email/subscriber.rs:142`. So the orphaned-email gap (Avenue 3 3a MED) is closed.
+- **Still missing — no analytics value yet, for two reasons:**
+  1. **It's a property-less unit struct.** `PaymentMethodAdded` carries no fields (no `org_id`/`plan_name`/`trial_days_remaining`/`mrr_amount_cents`/`is_during_trial`). Even if consumed, it would be an undifferentiated count.
+  2. **No analytics subscriber consumes it.** It is NOT in the PostHog subscriber `filter()` (`posthog/subscriber.rs:230–245` lists CheckoutCompleted, SubscriptionCancelled, CancellationInitiated, PaymentFailed, PaymentRecovered, etc. — not PaymentMethodAdded), and the Brevo subscriber explicitly no-ops it (`brevo/service.rs:130`).
+- **Remaining work:** add properties to the variant AND add a consumer (PostHog filter entry + handler) before any trial→paid metric (Avenue 2a Q1/Q2/Q7, follow-up Q-C) can use it.
 - **Effort:** M
 
 ### P0-5 · `first_invoice_paid` event (defensive complement to P0-4)
@@ -42,34 +46,31 @@ Effort: **S** <1d · **M** 1–3d · **L** >3d or schema change.
 
 ## P1 — Unblocks secondary questions
 
-### P1-1 · `paywall_gate_hit` (passive-bounce signal)
-- **Change:** Frontend event on disabled paywalled control click, distinct from `upgrade_button_clicked` (which fires only after intent). Properties: `feature`, `surface` (export_modal/discovery_form/share_panel/sidebar/billing_tab), `gate_type` (`limit_hit` | `plan_required`).
-- **Emission:** `ui/src/lib/shared/utils/trigger-upgrade.ts` (wrap before modal open) + `ExportModal.svelte:172`, `DiscoveryDetailsForm.svelte:71`, `ShareConfigPanel.svelte:81`.
-- **Unblocks:** Avenue 3 3c MED "can't measure passive-bounce on gates"; identifies which gates users hit but don't act on.
+### P1-1 · `paywall_gate_hit` (passive-bounce signal) — **[PARTIAL 2026-06]**
+- **Done:** a `paywall_gate_hit` event exists and fires from `triggerUpgrade()` (`ui/src/lib/features/billing/trigger-upgrade.ts:50`) with `feature`, `surface`, and `gate_type`.
+- **Still missing the stated purpose.** `paywall_gate_hit` is emitted in the same `triggerUpgrade()` call, immediately before `upgrade_button_clicked` (`trigger-upgrade.ts:56`) — i.e. in lockstep with the upgrade *click/intent*. It therefore does NOT measure passive bounce (users who *see* a disabled gate but never act). The two events are effectively redundant. **Remaining ask:** a disabled-vs-enabled distinguisher — fire a gate-impression/exposure event when a locked control is *rendered* or hovered, separate from the click path, so passive-bounce is actually observable.
+- **Unblocks (only once the above lands):** Avenue 3 3c MED "can't measure passive-bounce on gates".
 - **Effort:** S
 
-### P1-2 · Enrich `payment_failed` / `payment_recovered` payloads
-- **Change:** Add `plan_name`, `invoice_id`, `amount_cents`, `attempt_count`. Currently single-field (`org_id`).
-- **Emission:** `backend/src/server/billing/service.rs:1941` (failed) and `:2089` (recovered).
-- **Unblocks:** Avenue 3 3b/3c LOW; sized dunning funnel by plan/amount; Avenue 2a payment recovery target tracking.
+### P1-2 · Enrich `payment_failed` / `payment_recovered` payloads — **[DONE 2026-06]**
+- Shipped: both variants now carry `invoice_id`, `amount_cents`, `plan`, and `attempt_count` (`backend/src/server/shared/events/types.rs:177` PaymentFailed, `:191` PaymentRecovered). Both are consumed by the PostHog subscriber (`posthog/subscriber.rs:240,242`).
+- **Unblocked:** Avenue 3 3b/3c LOW; sized dunning funnel by plan/amount; Avenue 2a payment recovery target tracking.
 - **Effort:** S
 
-### P1-3 · `BillingTab` trial InfoCard instrumentation
-- **Change:** Emit `trial_card_impression`, `trial_card_dismissed`, `trial_card_cta_clicked` (one-per-session impression dedup). Properties: `trial_days_left`, `has_payment_method`.
-- **Emission:** `ui/src/lib/features/settings/BillingTab.svelte:171` (the amber InfoCard mount + click handler).
-- **Unblocks:** Avenue 3 3a LOW "single most prominent in-app trial surface is blind in analytics"; quantifies in-app trial signal effectiveness.
+### P1-3 · `BillingTab` trial InfoCard instrumentation — **[PARTIAL 2026-06]**
+- **Done:** `trial_card_impression` fires (one-per-session via `trackOncePerSession`) at `ui/src/lib/features/settings/BillingTab.svelte:188`.
+- **Still missing:** there is no `trial_card_dismissed` event because the trial InfoCard is not dismissible (the generic `InfoCard` supports `dismissible`, but the trial card isn't rendered dismissible). **Remaining work:** if dwell/dismiss signal is wanted, make the card dismissible and emit `trial_card_dismissed`; the CTA-click case is already covered by `paywall_gate_hit`/`upgrade_button_clicked` from the card's button.
 - **Effort:** S
 
-### P1-4 · UTM params on email CTAs
-- **Change:** Append `?utm_source=email&utm_campaign=<template_id>&utm_medium=lifecycle` to every CTA in `templates.rs` (especially the two T-3d trial templates and `SUBSCRIPTION_CANCELLED_BODY`). Capture into `upgrade_button_clicked.source` on landing.
-- **Emission:** `backend/src/server/email/templates.rs` link constructions.
-- **Unblocks:** Avenue 3 3a MED "no conversion-source attribution from email clicks"; T-3d email contribution to conversion.
+### P1-4 · UTM params on email CTAs — **[DONE 2026-06]**
+- Shipped: every email CTA gets `utm_source=email&utm_campaign=<campaign>&utm_medium=<medium>` via the `Email` trait's `utm_qs()` / `with_utm()` helpers (`backend/src/server/email/messages/mod.rs:198–211`); `campaign()`/`utm_medium()` are per-message. (The old `templates.rs` was reorganized into `email/messages/`.)
+- **Unblocked:** Avenue 3 3a MED "no conversion-source attribution from email clicks"; T-3d email contribution to conversion.
 - **Effort:** S
 
-### P1-5 · `downgraded_at` + `cancelled_at` + `period_end` columns on `organizations`
-- **Change:** Migration adds three nullable timestamptz columns; populate from `handle_subscription_deleted` and `schedule_downgrade`. Backfill from PostHog `subscription_cancelled` / `plan_changed` events where possible.
-- **Emission:** `backend/migrations/<new>` + writes at `service.rs:1472` (downgrade) and `:1751` (schedule_downgrade).
-- **Unblocks:** Avenue 3 3b/3c HIGH "no `cancelled_at` / `period_end` columns" + "no `downgraded_at` column"; dwell-time / reactivation cohorts via SQL instead of PostHog event joins; Avenue 2a Q5 re-upgrade analysis; allows post-cancel email to name `period_end`.
+### P1-5 · timestamp columns on `organizations` — **[PARTIAL 2026-06]**
+- **Done (but different columns than named):** migration `20260501000000_add_organization_billing_flags.sql` added `last_downgrade_at` (`:14`) and `next_renewal_at` (`:33`), populated by the organizations subscriber (`organizations/subscriber.rs:160` for `last_downgrade_at`; `next_renewal_at` written across the trial/renewal arms). So the downgrade-timestamp and renewal/period-tracking needs are covered.
+- **Still missing the explicitly-named `cancelled_at` and `period_end` columns.** There is no `cancelled_at` column and no dedicated `period_end` column on `organizations` (`next_renewal_at` is the closest, but is renewal-oriented, not cancel-scheduled period end). **Remaining work:** add `cancelled_at` (and decide whether `next_renewal_at` doubles as period-end or a distinct `period_end` column is needed) if SQL-side cancel cohorts / a `pending_cancellation` banner naming the period end are required.
+- **Unblocks (partially):** Avenue 3 3b/3c HIGH dwell-time/reactivation cohorts; Avenue 2a Q5 re-upgrade analysis.
 - **Effort:** M
 
 ### P1-6 · Typed `cancellations` table — **DEFERRED unless a product driver emerges**
@@ -86,15 +87,15 @@ Effort: **S** <1d · **M** 1–3d · **L** >3d or schema change.
 - **Unblocks:** The `org_created` volume drop investigation (148→38 in matched 7-day windows around the late-April policy change). Without UTM capture, can't compare pre- and post-policy signups by source to disambiguate policy friction from organic variation. Also unblocks campaign-attribution analysis generally.
 - **Effort:** S–M (depends on framework's middleware story; capturing is small, persisting through onboarding state is the bulk).
 
-### P1-7 · `referral_source` as durable org-group property
-- **Change:** Capture `referral_source` at `ReferralSourceCompleted` and persist to `postgres.organizations` (new column) AND PostHog group property; auto-attach to all subsequent events via `inject_org_group`.
-- **Emission:** `posthog/subscriber.rs:329` (group_identify on OrgCreated) — extend to also fire on `ReferralSourceCompleted`; new column write in onboarding service.
-- **Unblocks:** Avenue 2a Q4 ("fully unanswerable today"); D30/D90 retention by source; cohort comparison for Q-D org_created volume drop diagnosis.
+### P1-7 · `referral_source` as durable org-group property — **[PARTIAL 2026-06]**
+- **Done:** `referral_source` is captured and set as a Brevo *company* attribute (`scanopy_referral_source` — `brevo/types.rs:16,47`, written from the `ReferralSourceCompleted` handler at `brevo/service.rs:168`). `ReferralSourceCompleted` is also in the PostHog onboarding `filter()` (`posthog/subscriber.rs:337`), so it fires as an event.
+- **Still missing:** no *durable PostHog group property* for referral source (the `group_identify` calls at `posthog/subscriber.rs:292,388` don't set it), so it doesn't auto-attach to subsequent events; and there is NO `referral_source` column on `organizations` (no migration adds it). **Remaining work:** add the PostHog group property and the postgres column if SQL-side / cohort-attribution access is needed.
+- **Unblocks (only partially today):** Avenue 2a Q4; D30/D90 retention by source; cohort comparison for Q-D org_created volume-drop diagnosis.
 - **Effort:** M
 
 ### P1-8 · Structured `discovery_failed` error codes
 - **Change:** Replace free-text `error_reason` with typed enum: `connection_timeout`, `firewall_blocked`, `auth_failed`, `daemon_offline`, `subnet_unreachable`, `dns_failed`, `unknown`. Add `error_subnet`, `hosts_attempted`, `hosts_succeeded`. Backfill mapping from current `error_reason` strings.
-- **Emission:** `daemon/discovery/service/` failure paths; `posthog/subscriber.rs:401`.
+- **Emission:** discovery failure paths; the free-text `error_reason` is forwarded as-is at `backend/src/server/posthog/subscriber.rs:513–514` (and lives on `shared/events/traits.rs:192`).
 - **Unblocks:** Avenue 2a Q-D and "44%/34% never completed daemon setup" engineering tickets; sliceable Dashboard 7 error breakdown; `daemon_install_failed` distinction.
 - **Effort:** M
 
@@ -108,8 +109,8 @@ Effort: **S** <1d · **M** 1–3d · **L** >3d or schema change.
 
 ## P2 — Nice-to-have
 
-### P2-1, P2-2, P2-3 — **VERIFY-AND-CLOSE** (founder note, 2026-04-28)
-Founder confirms `topology_viewed`, `share_link_viewed`, `share_embed_viewed`, nudge events, and `checklist_dismissed` are emitted today. `POSTHOG_STRATEGY.md` is out of date and lists them as gaps. **Action:** instead of reshipping, verify each event fires with expected properties, then update `POSTHOG_STRATEGY.md` to reflect emission status. Close these backlog items once verified.
+### P2-1, P2-2, P2-3 — **[DONE 2026-06] (verified emitted)**
+Confirmed emitted in current code: `topology_viewed` (`ui/src/lib/features/topology/components/TopologyTab.svelte:384`, once-per-topology), `checklist_dismissed` (`ui/src/lib/features/home/components/GettingStartedChecklist.svelte:179`), and the nudge events. (Founder note, 2026-04-28: `POSTHOG_STRATEGY.md` was out of date listing these as gaps.) `POSTHOG_STRATEGY.md` should be updated to reflect emission status; no reship needed.
 
 ### P2-4 · `host_inspected`, `topology_customized`, `api_request_made`
 - Already on `POSTHOG_STRATEGY.md` Priority 2. Engagement-depth signals.
@@ -119,16 +120,16 @@ Founder confirms `topology_viewed`, `share_link_viewed`, `share_embed_viewed`, n
 - Already on `POSTHOG_STRATEGY.md` Priority 3. Keep at P2.
 - **Effort:** S
 
-### P2-6 · `402_gate_returned` middleware event
-- **Change:** Emit from `billing.rs:120–131` 402 middleware with `gate_kind` (`subscription_required` / `host_limit` / `feature_unavailable`). Distinct from `feature_limit_hit` (which is per-handler).
-- **Emission:** `backend/src/server/billing/billing.rs:120`.
+### P2-6 · `402_gate_returned` middleware event — **OPEN**
+- **Change:** Emit from the 402 billing middleware with `gate_kind` (`subscription_required` / `host_limit` / `feature_unavailable`). Distinct from `feature_limit_hit` (which is per-handler).
+- **Emission:** `backend/src/server/auth/middleware/billing.rs:126` (the `StatusCode::PAYMENT_REQUIRED` response site; middleware relocated here from the former `billing/billing.rs`). No telemetry event is emitted here today.
 - **Unblocks:** Avenue 3 3a LOW "402 middleware returns one generic message; analytics can't slice failure reasons."
 - **Effort:** S
 
-### P2-7 · `login` coverage audit for API/CLI sessions
-- **Change:** Confirm `AuthOperation::Login` fires for API-key auth and daemon sessions, not just web. If not, add or document the gap.
-- **Emission:** Audit `auth/middleware/auth.rs`.
-- **Unblocks:** Avenue 2a Q6 caveat (login events may be incomplete for backend-only sessions); accuracy of WAO North Star.
+### P2-7 · `login` coverage audit for API/CLI sessions — **OPEN (gap confirmed)**
+- **Audit finding (2026-06):** `AuthOperation::LoginSuccess` is emitted only on web/interactive login paths — password login (`backend/src/server/auth/service.rs:370`) and OIDC (`auth/oidc.rs:152,285`). API-key-authenticated requests and daemon sessions emit NO login event. So the gap the item anticipated is real: WAO/login counts are web-only.
+- **Change:** Decide whether to emit a session/auth event for API-key and daemon auth, or formally document the exclusion. (Note: API-key/daemon traffic is high-volume; per telemetry guidance, weigh signal value before emitting per-request.)
+- **Unblocks:** Avenue 2a Q6 caveat; accuracy of WAO North Star.
 - **Effort:** S
 
 ---
