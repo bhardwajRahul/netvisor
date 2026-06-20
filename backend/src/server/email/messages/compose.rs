@@ -22,6 +22,11 @@
 //!     .render()
 //! ```
 
+/// Shared closing line for the forward-looking billing emails. They no longer
+/// quote a dollar figure (a fixture list price ignores active discounts), so
+/// each one ends with this single consistent pointer to the Billing page.
+pub const BILLING_DETAILS_TAGLINE: &str = "Visit your Billing page for full details.";
+
 /// 20-space indent for section-level tags (`<tr>`, `<!-- … -->`).
 const SECTION: &str = "                    ";
 /// 28-space indent for inline children inside a content `<td>`.

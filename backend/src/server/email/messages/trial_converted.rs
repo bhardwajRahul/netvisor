@@ -1,11 +1,9 @@
-use super::{Body, Content, Email, EmailCategory, EmailPreference};
+use super::{BILLING_DETAILS_TAGLINE, Body, Content, Email, EmailCategory, EmailPreference};
 
-/// Sent when a trial converts to a paid subscription: confirms the active plan
-/// and the going-forward billing amount.
+/// Sent when a trial converts to a paid subscription: confirms the active plan.
 pub struct TrialConverted<'a> {
     pub plan_name: &'a str,
     pub billing_period: &'a str,
-    pub base_price: &'a str,
 }
 
 impl Email for TrialConverted<'_> {
@@ -32,12 +30,15 @@ impl Email for TrialConverted<'_> {
                     .heading("Your Subscription is Active!")
                     .paragraph("Hi there,")
                     .paragraph(&format!(
-                        "Your {} {} trial has ended and your subscription is now active. You'll be billed {}* going forward.",
-                        self.plan_name, self.billing_period, self.base_price
+                        "Your {} {} trial has ended and your subscription is now active.",
+                        self.plan_name, self.billing_period
                     ))
-                    .fine_print("*Price excludes applicable taxes. Additional usage beyond included seats, networks, or hosts is billed separately."),
+                    .paragraph(BILLING_DETAILS_TAGLINE),
             )
-            .cta("{base_url}/?{utm}", "Open Scanopy")
+            .cta(
+                "{base_url}/?modal=settings&tab=billing&{utm}",
+                "View Billing",
+            )
             .render()
     }
 }

@@ -1295,6 +1295,12 @@ pub struct BillingInvoice {
     pub period_end: DateTime<Utc>,
     pub billing_reason: BillingReason,
     pub line_items: Vec<BillingInvoiceLineItem>,
+    /// Public link to Stripe's rendered PDF for this invoice. Stripe generates
+    /// it lazily, so it can be `None` immediately after payment.
+    pub invoice_pdf: Option<String>,
+    /// Public link to Stripe's hosted invoice page — the fallback when the PDF
+    /// isn't ready in time to attach.
+    pub hosted_invoice_url: Option<String>,
 }
 
 // Stripe ships unix-epoch i64 timestamps; fall back to `Utc::now()` on a
@@ -1319,6 +1325,8 @@ impl From<&stripe_billing::Invoice> for BillingInvoice {
                 .iter()
                 .map(BillingInvoiceLineItem::from)
                 .collect(),
+            invoice_pdf: inv.invoice_pdf.clone(),
+            hosted_invoice_url: inv.hosted_invoice_url.clone(),
         }
     }
 }

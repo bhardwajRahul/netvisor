@@ -78,7 +78,6 @@ impl Subscriber<BillingOperation> for EmailService {
                         plan.name(),
                         trial_days,
                         plan.billing_period(),
-                        &plan.base_price_formatted(),
                     )
                     .await?;
                 }
@@ -92,7 +91,6 @@ impl Subscriber<BillingOperation> for EmailService {
                             org_owner,
                             plan.name(),
                             plan.billing_period(),
-                            &plan.base_price_formatted(),
                         )
                         .await?;
                     } else {
@@ -117,7 +115,6 @@ impl Subscriber<BillingOperation> for EmailService {
                         plan.name(),
                         has_payment_method,
                         plan.billing_period(),
-                        &plan.base_price_formatted(),
                     )
                     .await?;
                 }
