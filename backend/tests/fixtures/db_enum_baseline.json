@@ -40,7 +40,9 @@
   "CredentialType": [
     "SnmpV2c",
     "DockerProxy",
-    "DockerSocket"
+    "DockerSocket",
+    "SnmpV1",
+    "SnmpV3"
   ],
   "DaemonMode": [
     "ServerPoll",

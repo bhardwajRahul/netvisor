@@ -632,7 +632,7 @@
 				</div>
 			{/if}
 
-			{#if selectedTypeId === 'SnmpV2c'}
+			{#if selectedTypeId === 'SnmpV1' || selectedTypeId === 'SnmpV2c' || selectedTypeId === 'SnmpV3'}
 				<DocsHint
 					text={credentials_docsSnmp()}
 					href="https://scanopy.net/docs/guides/snmp-credentials/"
@@ -692,8 +692,8 @@
 						class="select-trigger text-primary w-full rounded-md px-3 py-2 text-sm"
 						class:input-field-error={formField.state.meta.errors?.length > 0}
 					>
-						{#each field.options ?? [] as option (option)}
-							<option value={option}>{option}</option>
+						{#each field.options ?? [] as option (option.value)}
+							<option value={option.value}>{option.label}</option>
 						{/each}
 					</select>
 				{/snippet}

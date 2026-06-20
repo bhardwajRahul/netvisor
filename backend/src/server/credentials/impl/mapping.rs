@@ -22,7 +22,8 @@ pub use super::types::docker_proxy::DockerProxyQueryCredential;
 pub struct DockerSocketQueryCredential {}
 pub use super::types::snmp::{
     SnmpCredentialMapping, SnmpCredentialMappingExposed, SnmpIpOverrideExposed,
-    SnmpQueryCredential, SnmpQueryCredentialExposed, SnmpVersion,
+    SnmpQueryCredential, SnmpQueryCredentialExposed, SnmpV3AuthProtocol, SnmpV3Params,
+    SnmpV3PrivProtocol, SnmpVersion,
 };
 
 // ============================================================================
@@ -151,10 +152,31 @@ impl CredentialQueryPayload {
 
         let label = self.discovery_label();
         match self {
-            Self::Snmp(snmp) => Ok(Self::Snmp(SnmpQueryCredential {
-                version: snmp.version,
-                community: snmp.community.resolve_to_value("community", label)?,
-            })),
+            Self::Snmp(snmp) => {
+                let v3 = snmp
+                    .v3
+                    .as_ref()
+                    .map(|v3| -> Result<_, anyhow::Error> {
+                        Ok(super::types::snmp::SnmpV3Params {
+                            security_name: v3.security_name.clone(),
+                            auth_protocol: v3.auth_protocol,
+                            auth_password: v3
+                                .auth_password
+                                .resolve_to_value("auth_password", label)?,
+                            priv_protocol: v3.priv_protocol,
+                            priv_password: v3
+                                .priv_password
+                                .resolve_to_value("priv_password", label)?,
+                            context_name: v3.context_name.clone(),
+                        })
+                    })
+                    .transpose()?;
+                Ok(Self::Snmp(SnmpQueryCredential {
+                    version: snmp.version,
+                    community: snmp.community.resolve_to_value("community", label)?,
+                    v3,
+                }))
+            }
             Self::DockerProxy(d) => {
                 let ssl_cert = d
                     .ssl_cert
@@ -495,6 +517,7 @@ mod tests {
             community: ResolvableSecret::Value {
                 value: community.to_string(),
             },
+            v3: None,
         }
     }
 

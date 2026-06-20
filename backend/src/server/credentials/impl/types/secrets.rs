@@ -30,6 +30,21 @@ pub enum SecretValue {
     },
 }
 
+/// Compares inline secrets by their exposed value; file paths by path.
+/// `SecretString` intentionally omits `PartialEq`, so this is implemented
+/// explicitly rather than derived.
+impl PartialEq for SecretValue {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (SecretValue::Inline { value: a }, SecretValue::Inline { value: b }) => {
+                a.expose_secret() == b.expose_secret()
+            }
+            (SecretValue::FilePath { path: a }, SecretValue::FilePath { path: b }) => a == b,
+            _ => false,
+        }
+    }
+}
+
 impl SecretValue {
     /// Returns true if this secret value contains the redacted sentinel.
     pub fn is_redacted_sentinel(&self) -> bool {
@@ -106,10 +121,34 @@ pub struct StorageCredentialType<'a>(pub &'a CredentialType);
 impl Serialize for StorageCredentialType<'_> {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         match self.0 {
+            CredentialType::SnmpV1 { community } => {
+                let mut map = serializer.serialize_map(Some(2))?;
+                map.serialize_entry("type", "SnmpV1")?;
+                map.serialize_entry("community", &StorageSecretValue(community))?;
+                map.end()
+            }
             CredentialType::SnmpV2c { community } => {
                 let mut map = serializer.serialize_map(Some(2))?;
                 map.serialize_entry("type", "SnmpV2c")?;
                 map.serialize_entry("community", &StorageSecretValue(community))?;
+                map.end()
+            }
+            CredentialType::SnmpV3 {
+                security_name,
+                auth_protocol,
+                auth_password,
+                priv_protocol,
+                priv_password,
+                context_name,
+            } => {
+                let mut map = serializer.serialize_map(Some(7))?;
+                map.serialize_entry("type", "SnmpV3")?;
+                map.serialize_entry("security_name", security_name)?;
+                map.serialize_entry("auth_protocol", auth_protocol)?;
+                map.serialize_entry("auth_password", &StorageSecretValue(auth_password))?;
+                map.serialize_entry("priv_protocol", priv_protocol)?;
+                map.serialize_entry("priv_password", &StorageSecretValue(priv_password))?;
+                map.serialize_entry("context_name", context_name)?;
                 map.end()
             }
             CredentialType::DockerProxy {

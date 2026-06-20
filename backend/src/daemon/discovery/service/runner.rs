@@ -79,13 +79,7 @@ impl DiscoveryRunner {
         // Injected as a broadcast default — user-configured credentials (IP overrides) take priority.
         self.credential_mappings.push(CredentialMapping {
             default_credential: Some(CredentialQueryPayload::Snmp(
-                crate::server::credentials::r#impl::mapping::SnmpQueryCredential {
-                    version: crate::server::credentials::r#impl::mapping::SnmpVersion::V2c,
-                    community:
-                        crate::server::credentials::r#impl::mapping::ResolvableSecret::Value {
-                            value: "public".to_string(),
-                        },
-                },
+                crate::server::credentials::r#impl::mapping::SnmpQueryCredential::public_default(),
             )),
             ip_overrides: vec![],
         });
