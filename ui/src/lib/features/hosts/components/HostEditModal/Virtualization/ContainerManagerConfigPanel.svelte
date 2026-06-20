@@ -1,6 +1,5 @@
 <script lang="ts">
 	import type { Service, ServiceVirtualization } from '$lib/features/services/types/base';
-	import { useServicesCacheQuery } from '$lib/features/services/queries';
 	import { ServiceDisplay } from '$lib/shared/components/forms/selection/display/ServiceDisplay.svelte';
 	import ListManager from '$lib/shared/components/forms/selection/ListManager.svelte';
 	import { serviceDefinitions } from '$lib/shared/stores/metadata';
@@ -13,43 +12,34 @@
 
 	interface Props {
 		service: Service;
+		/** Effective service list (saved + staged edits) from VirtualizationForm. */
+		services: Service[];
 		onChange: (updatedService: Service) => void;
 	}
 
-	let { service, onChange }: Props = $props();
-
-	// TanStack Query hooks
-	const servicesQuery = useServicesCacheQuery();
-	let servicesData = $derived(servicesQuery.data ?? []);
+	let { service, services, onChange }: Props = $props();
 
 	let serviceMetadata = $derived(serviceDefinitions.getItem(service.service_definition));
 
-	// Use local state for managed containers to support immediate UI updates
-	let managedContainers = $state<Service[]>([]);
-	let initialized = $state(false);
-
-	// Initialize managedContainers when servicesData is available (only once at mount)
-	$effect(() => {
-		if (servicesData.length > 0 && !initialized) {
-			initialized = true;
-			managedContainers = servicesData.filter(
-				(s) => s.virtualization && s.virtualization.details.service_id == service.id
-			);
-		}
-	});
+	// Derived from the effective service list keyed on this manager — updates as
+	// containers are added/removed and resets when a different manager is selected.
+	let managedContainers = $derived(
+		services.filter((s) => s.virtualization && s.virtualization.details.service_id === service.id)
+	);
 
 	let containerIds = $derived(managedContainers.map((s) => s.id));
 
 	// Filter out services on other hosts and already managed containers
 	let selectableContainers = $derived(
-		servicesData.filter(
+		services.filter(
 			(s) => s.host_id === service.host_id && s.id !== service.id && !containerIds.includes(s.id)
 		)
 	);
 
 	function handleAddContainer(serviceId: string) {
-		const servicesForHost = servicesData.filter((s) => s.host_id === service.host_id);
-		const containerizedService = servicesForHost.find((s) => s.id == serviceId);
+		const containerizedService = services.find(
+			(s) => s.host_id === service.host_id && s.id == serviceId
+		);
 
 		const variant = serviceMetadata?.metadata.virtualization_variant;
 		if (containerizedService && variant) {
@@ -65,7 +55,7 @@
 				} as ServiceVirtualization
 			};
 
-			managedContainers = [...managedContainers, updatedService];
+			// Stage the change; managedContainers re-derives from the effective list.
 			onChange(updatedService);
 		}
 	}
@@ -79,7 +69,6 @@
 				virtualization: null
 			};
 
-			managedContainers = managedContainers.filter((s) => s.id !== removedContainer.id);
 			onChange(updatedService);
 		}
 	}

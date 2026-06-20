@@ -1,11 +1,9 @@
 <script lang="ts">
 	import type { Service } from '$lib/features/services/types/base';
-	import { useHostsQuery } from '$lib/features/hosts/queries';
 	import { HostDisplay } from '$lib/shared/components/forms/selection/display/HostDisplay.svelte';
 	import ListManager from '$lib/shared/components/forms/selection/ListManager.svelte';
 	import { serviceDefinitions } from '$lib/shared/stores/metadata';
 	import type { Host, HostVirtualization } from '$lib/features/hosts/types/base';
-	import { useServicesCacheQuery } from '$lib/features/services/queries';
 	import {
 		hosts_virtualization_addVmHost,
 		hosts_virtualization_noVmsYet,
@@ -15,44 +13,33 @@
 
 	interface Props {
 		service: Service;
+		/** Effective host list (saved + staged edits) from VirtualizationForm. */
+		hosts: Host[];
+		/** Effective service list (saved + staged edits), for host service context. */
+		services: Service[];
 		onChange: (updatedHost: Host) => void;
 	}
 
-	let { service, onChange }: Props = $props();
-
-	// TanStack Query hook
-	// Use limit: 0 to get all hosts for VM manager panel
-	const hostsQuery = useHostsQuery({ limit: 0 });
-	const servicesQuery = useServicesCacheQuery();
-	let hostsData = $derived(hostsQuery.data?.items ?? []);
-	let servicesData = $derived(servicesQuery.data ?? []);
+	let { service, hosts, services, onChange }: Props = $props();
 
 	let serviceMetadata = $derived(serviceDefinitions.getItem(service.service_definition));
 
-	// Initialize managedVms from current hosts data
-	let managedVms = $state<Host[]>([]);
-	let initialized = $state(false);
-
-	// Initialize managedVms when hostsData is available (only once at mount)
-	$effect(() => {
-		if (hostsData.length > 0 && !initialized) {
-			initialized = true;
-			managedVms = hostsData.filter(
-				(h) => h.virtualization && h.virtualization.details.service_id == service.id
-			);
-		}
-	});
+	// Derived from the effective host list keyed on this manager — so it updates as
+	// VMs are added/removed and resets when a different manager is selected.
+	let managedVms = $derived(
+		hosts.filter((h) => h.virtualization && h.virtualization.details.service_id === service.id)
+	);
 
 	let vmIds = $derived(managedVms.map((h) => h.id));
 	// Filter out the parent host and already managed VMs
 	let selectableVms = $derived(
-		hostsData
+		hosts
 			.filter((host) => service.host_id !== host.id && !vmIds.includes(host.id))
 			.filter((h) => h.network_id == service.network_id)
 	);
 
 	function handleAddVm(vmId: string) {
-		const host = hostsData.find((h) => h.id === vmId);
+		const host = hosts.find((h) => h.id === vmId);
 		const variant = serviceMetadata?.metadata.virtualization_variant;
 		if (host && variant) {
 			const updatedHost: Host = {
@@ -67,13 +54,13 @@
 				} as HostVirtualization
 			};
 
-			managedVms = [...managedVms, updatedHost];
+			// Stage the change; managedVms re-derives from the effective host list.
 			onChange(updatedHost);
 		}
 	}
 
 	function handleRemoveVm(index: number) {
-		let removedVm = managedVms.at(index);
+		const removedVm = managedVms.at(index);
 
 		if (removedVm) {
 			const updatedHost = {
@@ -81,13 +68,12 @@
 				virtualization: null
 			};
 
-			managedVms = managedVms.filter((h) => h.id !== removedVm.id);
 			onChange(updatedHost);
 		}
 	}
 
 	function getHostServices(host: Host): Service[] {
-		return servicesData.filter((s) => s.host_id == host.id);
+		return services.filter((s) => s.host_id == host.id);
 	}
 </script>
 
