@@ -3099,19 +3099,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-06-20T20:54:37.132268Z",
+             *       "created_at": "2026-06-20T22:33:07.988584Z",
              *       "first_discovery_id": null,
-             *       "id": "e77cc3de-8c88-426c-9caf-e7cf889ed942",
+             *       "id": "ed711395-97d2-4077-8b8c-4a22b69128a4",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-06-20T20:54:37.132268Z",
+             *       "last_seen_at": "2026-06-20T22:33:07.988584Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-06-20T20:54:37.132268Z",
-             *       "valid_from": "2026-06-20T20:54:37.132268Z",
+             *       "updated_at": "2026-06-20T22:33:07.988584Z",
+             *       "valid_from": "2026-06-20T22:33:07.988584Z",
              *       "valid_to": null
              *     }
              */
@@ -3448,19 +3448,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-06-20T20:54:37.112907Z",
+             *               "created_at": "2026-06-20T22:33:07.971424Z",
              *               "first_discovery_id": null,
-             *               "id": "e8d714dc-ee91-4a5d-8dcb-b944dbd361ca",
+             *               "id": "66bddfcb-2815-4986-ab6b-c75a9da93ff1",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-06-20T20:54:37.112907Z",
+             *               "last_seen_at": "2026-06-20T22:33:07.971424Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-06-20T20:54:37.112907Z",
-             *               "valid_from": "2026-06-20T20:54:37.112907Z",
+             *               "updated_at": "2026-06-20T22:33:07.971424Z",
+             *               "valid_from": "2026-06-20T22:33:07.971424Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3474,7 +3474,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Print Server",
+             *           "service_definition": "Eero Repeater",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3830,19 +3830,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-06-20T20:54:37.126004Z",
+             *           "created_at": "2026-06-20T22:33:07.982923Z",
              *           "first_discovery_id": null,
-             *           "id": "1b8e42f1-fe13-486c-bb2e-1fcaa510985a",
+             *           "id": "f64209db-1df1-4080-b6d7-67fb310b8264",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-06-20T20:54:37.126004Z",
+             *           "last_seen_at": "2026-06-20T22:33:07.982923Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-06-20T20:54:37.126004Z",
-             *           "valid_from": "2026-06-20T20:54:37.126004Z",
+             *           "updated_at": "2026-06-20T22:33:07.982923Z",
+             *           "valid_from": "2026-06-20T22:33:07.982923Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -3856,7 +3856,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Print Server",
+             *       "service_definition": "Eero Repeater",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4309,19 +4309,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-06-20T20:54:37.113344Z",
+         *       "created_at": "2026-06-20T22:33:07.971831Z",
          *       "first_discovery_id": null,
-         *       "id": "ebbf5ea4-17b2-411b-bc03-fb350adef0dd",
+         *       "id": "5be88680-5f29-4a81-b2bf-0b1d0e42214b",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-06-20T20:54:37.113344Z",
+         *       "last_seen_at": "2026-06-20T22:33:07.971831Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-06-20T20:54:37.113344Z",
-         *       "valid_from": "2026-06-20T20:54:37.113344Z",
+         *       "updated_at": "2026-06-20T22:33:07.971831Z",
+         *       "valid_from": "2026-06-20T22:33:07.971831Z",
          *       "valid_to": null
          *     }
          */
@@ -4536,7 +4536,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Print Server",
+         *           "service_definition": "Eero Repeater",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -5504,19 +5504,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-06-20T20:54:37.112399Z",
+         *               "created_at": "2026-06-20T22:33:07.970970Z",
          *               "first_discovery_id": null,
-         *               "id": "c9e7e3ea-89cd-47f7-ad5f-c0ab61d754a0",
+         *               "id": "bd478871-cc7f-4c8a-b66f-d7e12a651db3",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-06-20T20:54:37.112399Z",
+         *               "last_seen_at": "2026-06-20T22:33:07.970970Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-06-20T20:54:37.112399Z",
-         *               "valid_from": "2026-06-20T20:54:37.112399Z",
+         *               "updated_at": "2026-06-20T22:33:07.970970Z",
+         *               "valid_from": "2026-06-20T22:33:07.970970Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -5530,7 +5530,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Print Server",
+         *           "service_definition": "Eero Repeater",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -6960,19 +6960,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-06-20T20:54:37.113250Z",
+         *           "created_at": "2026-06-20T22:33:07.971744Z",
          *           "first_discovery_id": null,
-         *           "id": "1ea501d0-1fa5-420e-bde7-2ec0038e1367",
+         *           "id": "a68e9c67-95e7-4ef4-8b2f-88f814a0643c",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-06-20T20:54:37.113250Z",
+         *           "last_seen_at": "2026-06-20T22:33:07.971744Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-06-20T20:54:37.113250Z",
-         *           "valid_from": "2026-06-20T20:54:37.113250Z",
+         *           "updated_at": "2026-06-20T22:33:07.971744Z",
+         *           "valid_from": "2026-06-20T22:33:07.971744Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -6986,7 +6986,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Print Server",
+         *       "service_definition": "Eero Repeater",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -7036,7 +7036,7 @@ export interface components {
             virtualization?: null | components["schemas"]["ServiceVirtualization"];
         };
         /** @enum {string} */
-        ServiceCategory: "NetworkCore" | "NetworkAccess" | "NetworkAppliance" | "RemoteAccess" | "Storage" | "Backup" | "Media" | "HomeAutomation" | "Hypervisor" | "ContainerRuntime" | "Container" | "Orchestrator" | "DNS" | "VPN" | "Monitoring" | "AdBlock" | "ReverseProxy" | "Workstation" | "Mobile" | "IoT" | "Printer" | "Database" | "Development" | "Dashboard" | "MessageQueue" | "IdentityAndAccess" | "Office" | "ProjectManagement" | "Messaging" | "Conferencing" | "Telephony" | "Email" | "Publishing" | "Unknown" | "Custom" | "Scanopy" | "OpenPorts";
+        ServiceCategory: "NetworkCore" | "NetworkAccess" | "NetworkAppliance" | "RemoteAccess" | "Storage" | "Backup" | "Media" | "HomeAutomation" | "Hypervisor" | "ContainerRuntime" | "Container" | "Orchestrator" | "DNS" | "VPN" | "Monitoring" | "AdBlock" | "ReverseProxy" | "Workstation" | "Mobile" | "IoT" | "Printer" | "Database" | "Development" | "Dashboard" | "MessageQueue" | "IdentityAndAccess" | "Integration" | "Office" | "ProjectManagement" | "Messaging" | "Conferencing" | "Telephony" | "Email" | "Publishing" | "Unknown" | "Custom" | "Scanopy" | "OpenPorts";
         /**
          * @description Input for creating or updating a service.
          *     Used in both CreateHostRequest and UpdateHostRequest.

@@ -31,11 +31,21 @@
 
 	interface Props {
 		virtualizationManagerServices: Service[];
+		/** Staged (unsaved) VM-host reassignments, keyed by host id. */
+		managedHostUpdates: Map<string, Host>;
+		/** The host being edited's current (staged) services. */
+		editedServices: Service[];
 		onServiceChange: (service: Service) => void;
 		onVirtualizedHostChange: (host: Host) => void;
 	}
 
-	let { virtualizationManagerServices, onServiceChange, onVirtualizedHostChange }: Props = $props();
+	let {
+		virtualizationManagerServices,
+		managedHostUpdates,
+		editedServices,
+		onServiceChange,
+		onVirtualizedHostChange
+	}: Props = $props();
 
 	// TanStack Query hooks for context data
 	// Use limit: 0 to get all hosts for virtualization form
@@ -44,10 +54,19 @@
 	let hostsData = $derived(hostsQuery.data?.items ?? []);
 	let servicesData = $derived(servicesQuery.data ?? []);
 
-	// Context for VirtualizationManagerServiceDisplay
+	// "Effective" lists = saved server state overlaid with the staged (unsaved)
+	// edits, so assignment counts and panel lists reflect in-progress changes.
+	let effectiveHosts = $derived(hostsData.map((h) => managedHostUpdates.get(h.id) ?? h));
+	// Overlay staged service edits over the cached list (edited entries win).
+	let effectiveServices = $derived([
+		...servicesData.filter((s) => !editedServices.some((e) => e.id === s.id)),
+		...editedServices
+	]);
+
+	// Context for VirtualizationManagerServiceDisplay (drives the per-manager count)
 	let displayContext: VirtualizationManagerContext = $derived({
-		hosts: hostsData,
-		services: servicesData
+		hosts: effectiveHosts,
+		services: effectiveServices
 	});
 </script>
 
@@ -86,11 +105,14 @@
 					{#if virtualizationType === 'vms'}
 						<VmManagerConfigPanel
 							service={selectedItem}
+							hosts={effectiveHosts}
+							services={effectiveServices}
 							onChange={(updatedHost) => onVirtualizedHostChange(updatedHost)}
 						/>
 					{:else if virtualizationType === 'containers'}
 						<ContainerManagerConfigPanel
 							service={selectedItem}
+							services={effectiveServices}
 							onChange={(updatedService) => onServiceChange(updatedService)}
 						/>
 					{:else}

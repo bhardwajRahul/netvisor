@@ -10891,19 +10891,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-06-20T20:54:37.132264Z",
+              "created_at": "2026-06-20T22:33:07.988590Z",
               "first_discovery_id": null,
-              "id": "8a611e68-abff-4b8b-b61f-201fb66b7ce8",
+              "id": "83a18324-3fdd-4aa5-bbc1-9872a588b6cc",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-20T20:54:37.132264Z",
+              "last_seen_at": "2026-06-20T22:33:07.988590Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-20T20:54:37.132264Z",
-              "valid_from": "2026-06-20T20:54:37.132264Z",
+              "updated_at": "2026-06-20T22:33:07.988590Z",
+              "valid_from": "2026-06-20T22:33:07.988590Z",
               "valid_to": null
             }
           },
@@ -11889,19 +11889,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-06-20T20:54:37.112930Z",
+                      "created_at": "2026-06-20T22:33:07.971432Z",
                       "first_discovery_id": null,
-                      "id": "83d6373d-636b-40de-81c6-e0a776e6acc2",
+                      "id": "10b8160c-9f22-4e6d-8bf0-ca7a00383c83",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-06-20T20:54:37.112930Z",
+                      "last_seen_at": "2026-06-20T22:33:07.971432Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-06-20T20:54:37.112930Z",
-                      "valid_from": "2026-06-20T20:54:37.112930Z",
+                      "updated_at": "2026-06-20T22:33:07.971432Z",
+                      "valid_from": "2026-06-20T22:33:07.971432Z",
                       "valid_to": null
                     }
                   ],
@@ -11915,7 +11915,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Print Server",
+                  "service_definition": "Eero Repeater",
                   "source": {
                     "type": "Manual"
                   },
@@ -12906,19 +12906,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-06-20T20:54:37.125979Z",
+                  "created_at": "2026-06-20T22:33:07.982927Z",
                   "first_discovery_id": null,
-                  "id": "6123c7e8-9316-4a73-a378-8fcc387a2efd",
+                  "id": "99bdc519-003e-4757-aa3d-fa0fb5ad952f",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-20T20:54:37.125979Z",
+                  "last_seen_at": "2026-06-20T22:33:07.982927Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-20T20:54:37.125979Z",
-                  "valid_from": "2026-06-20T20:54:37.125979Z",
+                  "updated_at": "2026-06-20T22:33:07.982927Z",
+                  "valid_from": "2026-06-20T22:33:07.982927Z",
                   "valid_to": null
                 }
               ],
@@ -12932,7 +12932,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Print Server",
+              "service_definition": "Eero Repeater",
               "source": {
                 "type": "Manual"
               },
@@ -14632,19 +14632,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-06-20T20:54:37.113452Z",
+          "created_at": "2026-06-20T22:33:07.971841Z",
           "first_discovery_id": null,
-          "id": "821c8475-0bc8-4d65-8a62-aa2c716f1676",
+          "id": "db5a01bd-6ac1-4701-82d9-fe50d759f5a2",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-06-20T20:54:37.113452Z",
+          "last_seen_at": "2026-06-20T22:33:07.971841Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-06-20T20:54:37.113452Z",
-          "valid_from": "2026-06-20T20:54:37.113452Z",
+          "updated_at": "2026-06-20T22:33:07.971841Z",
+          "valid_from": "2026-06-20T22:33:07.971841Z",
           "valid_to": null
         }
       },
@@ -15234,7 +15234,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Print Server",
+              "service_definition": "Eero Repeater",
               "tags": [],
               "virtualization": null
             }
@@ -17906,19 +17906,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-06-20T20:54:37.112408Z",
+                  "created_at": "2026-06-20T22:33:07.970978Z",
                   "first_discovery_id": null,
-                  "id": "84016d5d-da99-47f7-b89d-29e9a34eac03",
+                  "id": "d0855deb-e38b-4cfe-9fc7-34e45ffe228b",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-20T20:54:37.112408Z",
+                  "last_seen_at": "2026-06-20T22:33:07.970978Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-20T20:54:37.112408Z",
-                  "valid_from": "2026-06-20T20:54:37.112408Z",
+                  "updated_at": "2026-06-20T22:33:07.970978Z",
+                  "valid_from": "2026-06-20T22:33:07.970978Z",
                   "valid_to": null
                 }
               ],
@@ -17932,7 +17932,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Print Server",
+              "service_definition": "Eero Repeater",
               "source": {
                 "type": "Manual"
               },
@@ -20401,19 +20401,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-06-20T20:54:37.100874Z",
+                        "created_at": "2026-06-20T22:33:07.960767Z",
                         "first_discovery_id": null,
-                        "id": "28bc2537-3853-4bdf-86b9-6e7b03a323e9",
+                        "id": "1f663aa9-f7b5-4d99-9374-9b7d0de999f2",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-06-20T20:54:37.100874Z",
+                        "last_seen_at": "2026-06-20T22:33:07.960767Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-06-20T20:54:37.100874Z",
-                        "valid_from": "2026-06-20T20:54:37.100874Z",
+                        "updated_at": "2026-06-20T22:33:07.960767Z",
+                        "valid_from": "2026-06-20T22:33:07.960767Z",
                         "valid_to": null
                       }
                     ],
@@ -20427,7 +20427,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Print Server",
+                    "service_definition": "Eero Repeater",
                     "source": {
                       "type": "Manual"
                     },
@@ -20548,19 +20548,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-06-20T20:54:37.124806Z",
+                    "created_at": "2026-06-20T22:33:07.981795Z",
                     "first_discovery_id": null,
-                    "id": "cd4ac11a-697e-42e9-a2ed-99531c0df552",
+                    "id": "d1e361df-18b5-4de7-84d5-a230472ce75d",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-06-20T20:54:37.124806Z",
+                    "last_seen_at": "2026-06-20T22:33:07.981795Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-06-20T20:54:37.124806Z",
-                    "valid_from": "2026-06-20T20:54:37.124806Z",
+                    "updated_at": "2026-06-20T22:33:07.981795Z",
+                    "valid_from": "2026-06-20T22:33:07.981795Z",
                     "valid_to": null
                   }
                 ],
@@ -20574,7 +20574,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Print Server",
+                "service_definition": "Eero Repeater",
                 "source": {
                   "type": "Manual"
                 },
@@ -22205,19 +22205,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-06-20T20:54:37.113340Z",
+              "created_at": "2026-06-20T22:33:07.971754Z",
               "first_discovery_id": null,
-              "id": "1b53d81b-2be8-4ab5-9c7d-0634d6dbe74b",
+              "id": "a85357fd-ad35-4078-ae92-e11252b6541a",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-20T20:54:37.113340Z",
+              "last_seen_at": "2026-06-20T22:33:07.971754Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-20T20:54:37.113340Z",
-              "valid_from": "2026-06-20T20:54:37.113340Z",
+              "updated_at": "2026-06-20T22:33:07.971754Z",
+              "valid_from": "2026-06-20T22:33:07.971754Z",
               "valid_to": null
             }
           ],
@@ -22231,7 +22231,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Print Server",
+          "service_definition": "Eero Repeater",
           "source": {
             "type": "Manual"
           },
@@ -22332,6 +22332,7 @@
           "Dashboard",
           "MessageQueue",
           "IdentityAndAccess",
+          "Integration",
           "Office",
           "ProjectManagement",
           "Messaging",

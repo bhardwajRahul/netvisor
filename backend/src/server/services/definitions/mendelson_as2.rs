@@ -15,7 +15,7 @@ impl ServiceDefinition for MendelsonAs2 {
         "Open-source AS2 server for B2B/EDI file exchange"
     }
     fn category(&self) -> ServiceCategory {
-        ServiceCategory::Unknown
+        ServiceCategory::Integration
     }
 
     fn discovery_pattern(&self) -> Pattern<'_> {
