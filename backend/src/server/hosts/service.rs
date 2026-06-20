@@ -2994,4 +2994,80 @@ mod tests {
             "Shared MAC in batch (VLANs) must not match"
         );
     }
+
+    // --- #600 characterization: multi-IP host on a single MAC ---
+    //
+    // These document the *actual* dedup decision for a host that responds on multiple
+    // IP addresses behind one MAC (multi-homed server, IP aliases). They are evidence,
+    // not a fix: they pin down what the current heuristic does so we can tell whether
+    // the reported "tied to lowest IP" behavior is a real defect or expected dedup.
+
+    /// Mirror how `find_matching_host_by_ip_addresses` builds `incoming_mac_counts`:
+    /// the count is computed from the IP addresses of a *single incoming payload*.
+    fn mac_counts_for_payload(payload: &[IPAddress]) -> HashMap<MacAddress, usize> {
+        payload
+            .iter()
+            .filter_map(|i| i.base.mac_address)
+            .fold(HashMap::new(), |mut acc, mac| {
+                *acc.entry(mac).or_insert(0) += 1;
+                acc
+            })
+    }
+
+    #[test]
+    fn mac_match_same_subnet_when_unique_in_batch() {
+        // Multi-homed / IP-alias case: two IPs on the SAME subnet sharing one MAC.
+        // Primary (ip+subnet) branch fails (different IP); MAC branch (count==1) must
+        // carry the match so both IPs collapse onto one host.
+        let subnet = Uuid::new_v4();
+        let mac = MacAddress::new([0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x01]);
+        let a = make_interface("192.168.1.10".parse().unwrap(), subnet, Some(mac));
+        let b = make_interface("192.168.1.11".parse().unwrap(), subnet, Some(mac));
+        let counts = HashMap::from([(mac, 1)]);
+        assert!(
+            ip_addresses_match(&a, &b, &counts),
+            "Same MAC + same subnet, unique in batch, should match (IP-alias multi-homing)"
+        );
+    }
+
+    #[test]
+    fn multi_homed_host_separate_payloads_merge() {
+        // The real discovery flow: each scanned IP arrives as its own single-IP payload,
+        // so `incoming_mac_counts` for that payload is always {MAC: 1}. Therefore the
+        // VLAN guard never trips across payloads, and the second IP merges into the host
+        // created by the first — one Host, multiple IPAddress children. This is the
+        // model-(a) outcome, contradicting "a separate host per IP".
+        let mac = MacAddress::new([0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x02]);
+
+        // Payload 1: first IP (different subnet to exercise the MAC branch, not ip+subnet)
+        let first = make_interface("192.168.1.50".parse().unwrap(), Uuid::new_v4(), Some(mac));
+        // Payload 2: second IP, scanned independently
+        let second = make_interface("10.0.0.50".parse().unwrap(), Uuid::new_v4(), Some(mac));
+
+        // Counts are per-payload; each single-IP payload yields {mac: 1}.
+        let counts_for_second = mac_counts_for_payload(std::slice::from_ref(&second));
+        assert_eq!(counts_for_second.get(&mac), Some(&1));
+
+        assert!(
+            ip_addresses_match(&second, &first, &counts_for_second),
+            "Independently scanned same-MAC IPs must merge into one host (model a)"
+        );
+    }
+
+    #[test]
+    fn multi_ip_single_payload_does_not_mac_merge() {
+        // Contrast: when one payload carries BOTH same-MAC IPs (count==2), the MAC branch
+        // is intentionally disabled (treated as VLAN/bridge sub-interfaces). They are not
+        // merged *via MAC*; they remain distinct IPAddress rows under whatever host owns
+        // them. Guards the existing behavior so a future fix can't regress it silently.
+        let mac = MacAddress::new([0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x03]);
+        let a = make_interface("172.16.0.1".parse().unwrap(), Uuid::new_v4(), Some(mac));
+        let b = make_interface("172.16.5.1".parse().unwrap(), Uuid::new_v4(), Some(mac));
+        let counts = mac_counts_for_payload(&[a.clone(), b.clone()]);
+        assert_eq!(counts.get(&mac), Some(&2));
+        assert!(
+            !ip_addresses_match(&a, &b, &counts),
+            "Two same-MAC IPs in one payload must not MAC-merge (VLAN sub-interface guard)"
+        );
+    }
 }
