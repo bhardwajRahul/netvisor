@@ -67,6 +67,8 @@ After either option, flush the scanning host's ARP cache (`sudo arp -a -d` on ma
 
 ## Verify
 
+**Verify from an external host (e.g. your Mac), not the VM itself.** The agents bind to macvlan interfaces, and the Linux kernel won't let the VM reach its own macvlan child interfaces — so `snmpget` from the VM to `192.168.7.x` always fails even when everything is healthy. `setup.sh` therefore only checks systemd service health locally and prints a reminder to verify externally.
+
 From your Mac:
 
 ```bash

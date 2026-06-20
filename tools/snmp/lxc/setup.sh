@@ -16,9 +16,9 @@ CIDR="22"
 IFACE="eth0"
 
 # Per-host SNMP version. The first six are v2c (community string); the last two
-# exercise the v1-only and v3-only code paths added for #557.
+# exercise the v1-only and v3-only code paths added for #557. Per-host
+# communities are written directly into each snmpd config below.
 VERSIONS=(v2c v2c v2c v2c v2c v2c v1 v3)
-COMMUNITIES=(netdefault netdefault secret42 secret42 public netdefault legacyv1 -)
 SYSNAMES=(switch-core-01 switch-access-01 router-gw-01 firewall-01 printer-lobby ap-wireless-01 legacy-switch-01 secure-switch-01)
 
 # SNMPv3 USM credentials for secure-switch-01 (192.168.7.237).
@@ -699,42 +699,37 @@ for name in "${SYSNAMES[@]}"; do
 done
 
 # ── 9. Verify ─────────────────────────────────────────────────────────
+#
+# NOTE: we check systemd service health here, NOT snmpget. The agents bind to
+# macvlan interfaces, and the Linux kernel does not let a host reach its own
+# macvlan child interfaces — so an snmpget from THIS VM to 192.168.7.x always
+# fails even when the agents are perfectly healthy. Query them from an external
+# host instead (see the end of this output).
 echo ""
-echo "Verifying..."
+echo "Verifying service health..."
 sleep 1
 all_ok=true
 for i in "${!HOSTS[@]}"; do
+    name="${SYSNAMES[$i]}"
     ip="${HOSTS[$i]}"
     version="${VERSIONS[$i]}"
-    community="${COMMUNITIES[$i]}"
-    expected="${SYSNAMES[$i]}"
-
-    case "$version" in
-        v1)
-            result=$(snmpget -v1 -c "$community" -t 2 -r 1 "$ip" sysName.0 2>/dev/null | sed 's/.*= STRING: //' || echo "FAILED")
-            detail="v1 community=$community"
-            ;;
-        v3)
-            result=$(snmpget -v3 -l authPriv -u "$V3_USER" -a SHA-256 -A "$V3_AUTH_PASS" -x AES -X "$V3_PRIV_PASS" -t 2 -r 1 "$ip" sysName.0 2>/dev/null | sed 's/.*= STRING: //' || echo "FAILED")
-            detail="v3 user=$V3_USER"
-            ;;
-        *)
-            result=$(snmpget -v2c -c "$community" -t 2 -r 1 "$ip" sysName.0 2>/dev/null | sed 's/.*= STRING: //' || echo "FAILED")
-            detail="v2c community=$community"
-            ;;
-    esac
-
-    if echo "$result" | grep -q "$expected"; then
-        printf "  \033[0;32m✓\033[0m %-18s %-20s %s\n" "$ip" "$expected" "$detail"
+    if systemctl is-active --quiet "snmpd-${name}"; then
+        printf "  \033[0;32m✓\033[0m %-18s %-20s %s (active)\n" "$ip" "$name" "$version"
     else
-        printf "  \033[0;31m✗\033[0m %-18s expected=%-20s got=%s\n" "$ip" "$expected" "$result"
+        printf "  \033[0;31m✗\033[0m %-18s %-20s %s (not active — journalctl -u snmpd-%s)\n" "$ip" "$name" "$version" "$name"
         all_ok=false
     fi
 done
 
 echo ""
 if $all_ok; then
-    printf "\033[0;32mAll %d SNMP test hosts are running.\033[0m\n" "${#HOSTS[@]}"
+    printf "\033[0;32mAll %d SNMP agents are active.\033[0m\n" "${#HOSTS[@]}"
+    echo ""
+    echo "macvlan blocks queries from this VM. Verify reachability from an"
+    echo "external host (e.g. your Mac) with: make snmp-verify"
+    echo "Or manually, e.g.:"
+    echo "  snmpget -v1  -c legacyv1 192.168.7.236 sysName.0"
+    echo "  snmpget -v3 -l authPriv -u ${V3_USER} -a SHA-256 -A ${V3_AUTH_PASS} -x AES -X ${V3_PRIV_PASS} 192.168.7.237 sysName.0"
 else
-    echo "Some hosts failed. Check: journalctl -u snmpd-<name>"
+    echo "Some agents are not active. Check: journalctl -u snmpd-<name>"
 fi
