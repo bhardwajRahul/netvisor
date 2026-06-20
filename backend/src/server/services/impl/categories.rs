@@ -76,6 +76,7 @@ pub enum ServiceCategory {
     Dashboard,
     MessageQueue,
     IdentityAndAccess,
+    Integration, // AS2/EDI, ESB, iPaaS middleware
 
     // Office & Productivity
     Office,            // Document editing, notes, file management
@@ -141,6 +142,7 @@ impl EntityMetadataProvider for ServiceCategory {
             ServiceCategory::MessageQueue => Icon::MessageSquareCode,
             ServiceCategory::Dashboard => Icon::LayoutDashboard,
             ServiceCategory::IdentityAndAccess => Icon::KeyRound,
+            ServiceCategory::Integration => Icon::Workflow,
 
             // Office & Productivity
             ServiceCategory::Office => Icon::FileText,
@@ -200,6 +202,7 @@ impl EntityMetadataProvider for ServiceCategory {
             ServiceCategory::Dashboard => Color::Purple,
             ServiceCategory::MessageQueue => Color::Green,
             ServiceCategory::IdentityAndAccess => Color::Yellow,
+            ServiceCategory::Integration => Color::Cyan,
 
             // Office & Productivity
             ServiceCategory::Office => Color::Blue,
@@ -253,6 +256,7 @@ impl TypeMetadataProvider for ServiceCategory {
             Dashboard => "Dashboard",
             MessageQueue => "Message Queue",
             IdentityAndAccess => "Identity & Access",
+            Integration => "Integration",
             Office => "Office",
             ProjectManagement => "Project Management",
             Messaging => "Messaging",
@@ -296,6 +300,7 @@ impl TypeMetadataProvider for ServiceCategory {
             Dashboard => "Dashboard and homepage applications",
             MessageQueue => "Message brokers and streaming platforms like Kafka and RabbitMQ",
             IdentityAndAccess => "Identity providers, SSO, and secret management",
+            Integration => "B2B/EDI and application integration servers (AS2, ESB, iPaaS)",
             Office => "Document editing, notes, and file management",
             ProjectManagement => "Task tracking, wikis, and project boards",
             Messaging => "Team chat and messaging platforms",
