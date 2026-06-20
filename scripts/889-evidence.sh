@@ -210,8 +210,7 @@ jq -n \
 {
     echo "# NDAA Section 889 Supply-Chain Review - Evidence"
     echo
-    echo "> Supporting evidence for a Section 889 compliance attestation (the"
-    echo "> attestation itself is a signed letter to the customer). This records that"
+    echo "> Supporting evidence for a Section 889 compliance attestation. This records that"
     echo "> an automated covered-entity review was performed over the SBOMs below."
     echo
     echo "**Result: $RESULT**"
