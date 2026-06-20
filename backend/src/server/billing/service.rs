@@ -2204,6 +2204,18 @@ impl BillingService {
         // card. The UI shows an InlineInfo at pause time explaining the
         // net charge so the customer isn't surprised.
 
+        // Dev / test-clock gotcha: `resumes_at` is wall-clock time, but Stripe
+        // evaluates pause_collection against the subscription's *test clock*
+        // when one is attached. If the clock has been advanced past
+        // `resumes_at` (e.g., a clock advanced to 2027 while wall-clock is
+        // 2026), Stripe silently accepts the request, lands the metadata, but
+        // never sets pause_collection — the request behaves as if the pause
+        // had already auto-resumed. Symptoms: `pause_collection_set=false`
+        // on the SDK response and the follow-up webhook, the Paused arm
+        // doesn't fire, `plan_status` stays `active`. To unstick, rewind /
+        // reset the test clock so its current time is before `resumes_at`,
+        // or shorten `duration` to land beyond the clock.
+
         let meta = StripeSubscriptionMetadata {
             scanopy_pause_duration_days: Some(duration.days()),
             scanopy_paused_at: Some(now.timestamp()),
