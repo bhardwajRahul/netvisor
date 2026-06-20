@@ -146,8 +146,27 @@ impl LldpResolver for LldpResolverImpl {
         }
         // Try if_name (short name: "Gi1/0/1")
         let filter = StorableFilter::<Interface>::new_from_host_ids(&[host_id]).if_name(name);
-        let entry = self.interface_service.get_one(filter).await.ok()??;
-        Some(entry.id)
+        if let Ok(Some(entry)) = self.interface_service.get_one(filter).await {
+            return Some(entry.id);
+        }
+        // Vendor quirk (MikroTik RouterOS): bridged ports advertise the port-ID as
+        // "<bridge>/<port>" (e.g. "bridge-LAN/ether4-Center"), which never matches the
+        // stored if_name/if_descr ("ether4-Center"). Retry with the segment after the
+        // last '/' so port-level resolution still succeeds.
+        if let Some((_, suffix)) = name.rsplit_once('/')
+            && !suffix.is_empty()
+        {
+            let filter =
+                StorableFilter::<Interface>::new_from_host_ids(&[host_id]).if_descr(suffix);
+            if let Ok(Some(entry)) = self.interface_service.get_one(filter).await {
+                return Some(entry.id);
+            }
+            let filter = StorableFilter::<Interface>::new_from_host_ids(&[host_id]).if_name(suffix);
+            if let Ok(Some(entry)) = self.interface_service.get_one(filter).await {
+                return Some(entry.id);
+            }
+        }
+        None
     }
 
     async fn find_if_entry_by_ip(&self, ip: &IpAddr, host_id: Uuid) -> Option<Uuid> {
