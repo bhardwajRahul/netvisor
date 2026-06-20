@@ -57,12 +57,14 @@ pub mod dhcp_server;
 pub mod gateway;
 pub mod ntp;
 pub mod rdp;
+pub mod rustdesk;
 pub mod saltmaster;
 pub mod saltproxy;
 pub mod snmp;
 pub mod ssh;
 pub mod switch;
 pub mod telnet;
+pub mod termix;
 
 // NetworkAccess
 pub mod access_point;
@@ -97,12 +99,14 @@ pub mod unbound;
 // VPN
 pub mod cloudflared;
 pub mod openvpn;
+pub mod strongswan;
 pub mod wg_dashboard;
 pub mod wireguard;
 
 // ReverseProxy
 pub mod caddy;
 pub mod haproxy;
+pub mod iis;
 pub mod kong;
 pub mod nginx_proxy_manager;
 pub mod traefik;
@@ -135,6 +139,7 @@ pub mod bacula;
 pub mod duplicati;
 pub mod proxmox_backup_server;
 pub mod restic;
+pub mod unimus;
 pub mod veeam;
 
 // Media
@@ -150,6 +155,7 @@ pub mod komga;
 pub mod overseerr;
 pub mod plex;
 pub mod sabnzbd;
+pub mod serviio;
 pub mod slskd;
 pub mod tautulli;
 
@@ -167,12 +173,15 @@ pub mod docker_container;
 pub mod docker_daemon;
 pub mod docker_swarm;
 pub mod dockge;
+pub mod esxi;
 pub mod kubernetes;
 pub mod nomad;
 pub mod openshift;
+pub mod podman;
 pub mod portainer;
 pub mod proxmox;
 pub mod rancher;
+pub mod vcenter;
 
 // ============= APPLICATION SERVICES =============
 
@@ -181,6 +190,7 @@ pub mod cassandra;
 pub mod couchdb;
 pub mod denodo;
 pub mod elasticsearch;
+pub mod hyperfile;
 pub mod influxdb;
 pub mod mariadb;
 pub mod mongodb;
@@ -228,6 +238,7 @@ pub mod teamcity;
 
 // Web
 pub mod ghost;
+pub mod mendelson_as2;
 pub mod tomcat;
 pub mod web_service;
 pub mod wordpress;

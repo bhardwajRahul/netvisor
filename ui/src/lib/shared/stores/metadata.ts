@@ -152,6 +152,15 @@ export interface BillingPlanMetadata {
 export interface ServicedDefinitionMetadata {
 	can_be_added: boolean;
 	manages_virtualization: 'vms' | 'containers';
+	/**
+	 * Serde discriminant the manual-assignment UI must use when associating
+	 * VMs/containers with this manager (e.g. 'Proxmox', 'VCenter', 'Podman').
+	 * null for services that don't manage virtualization.
+	 */
+	virtualization_variant:
+		| components['schemas']['HostVirtualization']['type']
+		| components['schemas']['ServiceVirtualization']['type']
+		| null;
 	has_logo: boolean;
 	logo_ext: string;
 	logo_needs_white_background: boolean;

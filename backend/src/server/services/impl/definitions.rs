@@ -1,6 +1,9 @@
 use crate::server::services::definitions::ServiceDefinitionRegistry;
 use crate::server::services::definitions::docker_daemon::Docker;
+use crate::server::services::definitions::esxi::Esxi;
+use crate::server::services::definitions::podman::Podman;
 use crate::server::services::definitions::proxmox::Proxmox;
+use crate::server::services::definitions::vcenter::VCenter;
 use crate::server::services::r#impl::categories::ServiceCategory;
 use crate::server::services::r#impl::patterns::Pattern;
 use crate::server::shared::types::metadata::TypeMetadataProvider;
@@ -94,6 +97,7 @@ impl ServiceDefinition for Box<dyn ServiceDefinition> {
 pub trait ServiceDefinitionExt {
     fn can_be_manually_added(&self) -> bool;
     fn manages_virtualization(&self) -> Option<&'static str>;
+    fn virtualization_variant(&self) -> Option<&'static str>;
     fn is_scanopy(&self) -> bool;
     fn is_generic(&self) -> bool;
     fn is_gateway(&self) -> bool;
@@ -141,7 +145,26 @@ impl ServiceDefinitionExt for Box<dyn ServiceDefinition> {
         let id = self.id();
         match id {
             _ if id == Proxmox.id() => Some("vms"),
+            _ if id == VCenter.id() => Some("vms"),
+            _ if id == Esxi.id() => Some("vms"),
             _ if id == Docker.id() => Some("containers"),
+            _ if id == Podman.id() => Some("containers"),
+            _ => None,
+        }
+    }
+
+    /// The `HostVirtualization` / `ServiceVirtualization` serde discriminant
+    /// ("type" tag) the manual-assignment UI must use when associating VMs /
+    /// containers with this manager. Surfaced in metadata so the frontend reads
+    /// it rather than hardcoding provider names.
+    fn virtualization_variant(&self) -> Option<&'static str> {
+        let id = self.id();
+        match id {
+            _ if id == Proxmox.id() => Some("Proxmox"),
+            _ if id == VCenter.id() => Some("VCenter"),
+            _ if id == Esxi.id() => Some("ESXi"),
+            _ if id == Docker.id() => Some("Docker"),
+            _ if id == Podman.id() => Some("Podman"),
             _ => None,
         }
     }
@@ -181,6 +204,7 @@ impl TypeMetadataProvider for Box<dyn ServiceDefinition> {
         serde_json::json!({
             "can_be_added": self.can_be_manually_added(),
             "manages_virtualization": self.manages_virtualization(),
+            "virtualization_variant": self.virtualization_variant(),
             "is_gateway": self.is_gateway(),
             "is_generic": ServiceDefinition::is_generic(&**self),
             "has_logo": self.has_logo(),
@@ -283,5 +307,35 @@ impl ServiceDefinition for DefaultServiceDefinition {
     }
     fn discovery_pattern(&self) -> Pattern<'_> {
         Pattern::None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn virtualization_managers_declare_role_and_variant() {
+        // (service id, manages_virtualization, virtualization_variant serde tag)
+        let cases = [
+            ("Proxmox VE", "vms", "Proxmox"),
+            ("vCenter", "vms", "VCenter"),
+            ("ESXi", "vms", "ESXi"),
+            ("Docker", "containers", "Docker"),
+            ("Podman", "containers", "Podman"),
+        ];
+        for (id, kind, variant) in cases {
+            let def = ServiceDefinitionRegistry::find_by_id(id)
+                .unwrap_or_else(|| panic!("{id} not registered"));
+            assert_eq!(def.manages_virtualization(), Some(kind), "{id} role");
+            assert_eq!(def.virtualization_variant(), Some(variant), "{id} variant");
+        }
+    }
+
+    #[test]
+    fn non_virtualizer_services_have_no_role() {
+        let def = ServiceDefinitionRegistry::find_by_id("Termix").expect("Termix registered");
+        assert_eq!(def.manages_virtualization(), None);
+        assert_eq!(def.virtualization_variant(), None);
     }
 }

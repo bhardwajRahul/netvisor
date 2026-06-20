@@ -193,9 +193,11 @@ impl ViewBuilder for ApplicationBuilder {
                 let categories = HashSet::from([service.base.service_definition.category()]);
                 let tag_ids =
                     resolve_element_tag_ids(EntityDiscriminants::Service, service.id, &tag_lookups);
-                let compose_project = service.base.virtualization.as_ref().and_then(|v| match v {
-                    ServiceVirtualization::Docker(dv) => dv.compose_project.clone(),
-                });
+                let compose_project = service
+                    .base
+                    .virtualization
+                    .as_ref()
+                    .and_then(|v| v.compose_project().map(str::to_string));
                 Some(ElementMatchData {
                     categories,
                     tag_ids,

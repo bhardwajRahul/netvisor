@@ -3099,19 +3099,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-06-19T01:30:30.425386Z",
+             *       "created_at": "2026-06-20T20:54:37.132268Z",
              *       "first_discovery_id": null,
-             *       "id": "beec4571-b558-442a-8ddf-5f7f6ed03736",
+             *       "id": "e77cc3de-8c88-426c-9caf-e7cf889ed942",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-06-19T01:30:30.425386Z",
+             *       "last_seen_at": "2026-06-20T20:54:37.132268Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-06-19T01:30:30.425386Z",
-             *       "valid_from": "2026-06-19T01:30:30.425386Z",
+             *       "updated_at": "2026-06-20T20:54:37.132268Z",
+             *       "valid_from": "2026-06-20T20:54:37.132268Z",
              *       "valid_to": null
              *     }
              */
@@ -3448,19 +3448,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-06-19T01:30:30.410334Z",
+             *               "created_at": "2026-06-20T20:54:37.112907Z",
              *               "first_discovery_id": null,
-             *               "id": "f8e0d596-f3c3-4519-9a94-ebc36c3dcdb3",
+             *               "id": "e8d714dc-ee91-4a5d-8dcb-b944dbd361ca",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-06-19T01:30:30.410334Z",
+             *               "last_seen_at": "2026-06-20T20:54:37.112907Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-06-19T01:30:30.410334Z",
-             *               "valid_from": "2026-06-19T01:30:30.410334Z",
+             *               "updated_at": "2026-06-20T20:54:37.112907Z",
+             *               "valid_from": "2026-06-20T20:54:37.112907Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3474,7 +3474,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Prometheus",
+             *           "service_definition": "Print Server",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3830,19 +3830,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-06-19T01:30:30.420682Z",
+             *           "created_at": "2026-06-20T20:54:37.126004Z",
              *           "first_discovery_id": null,
-             *           "id": "62e5f913-522f-4bef-8bf0-711300ff6fc4",
+             *           "id": "1b8e42f1-fe13-486c-bb2e-1fcaa510985a",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-06-19T01:30:30.420682Z",
+             *           "last_seen_at": "2026-06-20T20:54:37.126004Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-06-19T01:30:30.420682Z",
-             *           "valid_from": "2026-06-19T01:30:30.420682Z",
+             *           "updated_at": "2026-06-20T20:54:37.126004Z",
+             *           "valid_from": "2026-06-20T20:54:37.126004Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -3856,7 +3856,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Prometheus",
+             *       "service_definition": "Print Server",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4309,19 +4309,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-06-19T01:30:30.410591Z",
+         *       "created_at": "2026-06-20T20:54:37.113344Z",
          *       "first_discovery_id": null,
-         *       "id": "d6c8c687-f553-49a4-b9dc-476c7f1ed18c",
+         *       "id": "ebbf5ea4-17b2-411b-bc03-fb350adef0dd",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-06-19T01:30:30.410591Z",
+         *       "last_seen_at": "2026-06-20T20:54:37.113344Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-06-19T01:30:30.410591Z",
-         *       "valid_from": "2026-06-19T01:30:30.410591Z",
+         *       "updated_at": "2026-06-20T20:54:37.113344Z",
+         *       "valid_from": "2026-06-20T20:54:37.113344Z",
          *       "valid_to": null
          *     }
          */
@@ -4536,7 +4536,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Prometheus",
+         *           "service_definition": "Print Server",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -5278,6 +5278,12 @@ export interface components {
             /** @enum {string} */
             type: "Unknown";
         };
+        EsxiVirtualization: {
+            /** Format: uuid */
+            service_id: string;
+            vm_id?: string | null;
+            vm_name?: string | null;
+        };
         /** @description Non-secret value that can be inline content or a file path on daemon host. */
         FileOrInline: {
             /** @enum {string} */
@@ -5498,19 +5504,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-06-19T01:30:30.410001Z",
+         *               "created_at": "2026-06-20T20:54:37.112399Z",
          *               "first_discovery_id": null,
-         *               "id": "d1489f84-d854-4a63-a4df-1ae64114464b",
+         *               "id": "c9e7e3ea-89cd-47f7-ad5f-c0ab61d754a0",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-06-19T01:30:30.410001Z",
+         *               "last_seen_at": "2026-06-20T20:54:37.112399Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-06-19T01:30:30.410001Z",
-         *               "valid_from": "2026-06-19T01:30:30.410001Z",
+         *               "updated_at": "2026-06-20T20:54:37.112399Z",
+         *               "valid_from": "2026-06-20T20:54:37.112399Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -5524,7 +5530,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Prometheus",
+         *           "service_definition": "Print Server",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -5577,6 +5583,14 @@ export interface components {
             details: components["schemas"]["ProxmoxVirtualization"];
             /** @enum {string} */
             type: "Proxmox";
+        } | {
+            details: components["schemas"]["VCenterVirtualization"];
+            /** @enum {string} */
+            type: "VCenter";
+        } | {
+            details: components["schemas"]["EsxiVirtualization"];
+            /** @enum {string} */
+            type: "ESXi";
         };
         /**
          * @example {
@@ -6585,6 +6599,13 @@ export interface components {
             /** Format: int64 */
             seat_limit?: number | null;
         };
+        PodmanVirtualization: {
+            compose_project?: string | null;
+            container_id?: string | null;
+            container_name?: string | null;
+            /** Format: uuid */
+            service_id: string;
+        };
         /**
          * @description Port entity with custom serialization that flattens PortType fields.
          * @example {
@@ -6939,19 +6960,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-06-19T01:30:30.410540Z",
+         *           "created_at": "2026-06-20T20:54:37.113250Z",
          *           "first_discovery_id": null,
-         *           "id": "84b87929-8caa-419d-b7fa-218a5810aeea",
+         *           "id": "1ea501d0-1fa5-420e-bde7-2ec0038e1367",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-06-19T01:30:30.410540Z",
+         *           "last_seen_at": "2026-06-20T20:54:37.113250Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-06-19T01:30:30.410540Z",
-         *           "valid_from": "2026-06-19T01:30:30.410540Z",
+         *           "updated_at": "2026-06-20T20:54:37.113250Z",
+         *           "valid_from": "2026-06-20T20:54:37.113250Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -6965,7 +6986,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Prometheus",
+         *       "service_definition": "Print Server",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -7055,6 +7076,10 @@ export interface components {
             details: components["schemas"]["DockerVirtualization"];
             /** @enum {string} */
             type: "Docker";
+        } | {
+            details: components["schemas"]["PodmanVirtualization"];
+            /** @enum {string} */
+            type: "Podman";
         };
         /** @description Request body for setting all tags on an entity */
         SetTagsRequest: {
@@ -7566,6 +7591,12 @@ export interface components {
         Uxy: {
             x: number;
             y: number;
+        };
+        VCenterVirtualization: {
+            /** Format: uuid */
+            service_id: string;
+            vm_id?: string | null;
+            vm_name?: string | null;
         };
         /** @description Request to verify email using token */
         VerifyEmailRequest: {

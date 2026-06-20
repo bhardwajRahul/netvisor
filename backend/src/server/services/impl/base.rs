@@ -180,16 +180,9 @@ impl PartialEq for Service {
         // === GENERIC SERVICE EQUALITY ===
         // All possible permutations of generic services on the same host:
 
-        // Extract virtualization info
-        let self_docker = self.base.virtualization.as_ref().map(|v| {
-            let ServiceVirtualization::Docker(dv) = v;
-            dv
-        });
-
-        let other_docker = other.base.virtualization.as_ref().map(|v| {
-            let ServiceVirtualization::Docker(dv) = v;
-            dv
-        });
+        // Extract virtualization info (any container runtime: Docker, Podman, …)
+        let self_docker = self.base.virtualization.as_ref();
+        let other_docker = other.base.virtualization.as_ref();
 
         // Extract port IDs from bindings
         let self_port_ids: std::collections::HashSet<_> = self
@@ -219,7 +212,7 @@ impl PartialEq for Service {
                 // Match Method: Container ID equality
                 // Example: PostgreSQL container discovered via docker scan vs network scan
                 if let (Some(self_cid), Some(other_cid)) =
-                    (&self_dv.container_id, &other_dv.container_id)
+                    (self_dv.container_id(), other_dv.container_id())
                 {
                     return self_cid == other_cid;
                 }
@@ -227,7 +220,7 @@ impl PartialEq for Service {
                 // CASE 1B: Only one has container ID
                 // Match Method: Different services
                 // Example: Shouldn't happen in practice, but treat as different
-                if self_dv.container_id.is_some() || other_dv.container_id.is_some() {
+                if self_dv.container_id().is_some() || other_dv.container_id().is_some() {
                     return false;
                 }
 
@@ -235,7 +228,7 @@ impl PartialEq for Service {
                 // Match Method: Container name equality
                 // Example: Edge case where container_id wasn't captured
                 if let (Some(self_cname), Some(other_cname)) =
-                    (&self_dv.container_name, &other_dv.container_name)
+                    (self_dv.container_name(), other_dv.container_name())
                 {
                     return self_cname == other_cname;
                 }

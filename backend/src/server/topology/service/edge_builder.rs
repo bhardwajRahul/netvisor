@@ -6,9 +6,7 @@ use uuid::Uuid;
 
 use crate::server::{
     dependencies::r#impl::{base::Dependency, types::DependencyType},
-    hosts::r#impl::virtualization::HostVirtualization,
     interfaces::r#impl::base::Neighbor,
-    services::r#impl::virtualization::ServiceVirtualization,
     subnets::r#impl::types::{SubnetType, SubnetTypeDiscriminants},
     topology::{
         service::context::TopologyContext,
@@ -67,11 +65,13 @@ impl EdgeBuilder {
             HashMap::new();
 
         ctx.services.iter().for_each(|s| {
-            if let Some(ServiceVirtualization::Docker(docker_virtualization)) =
-                &s.base.virtualization
+            // Any container-runtime manager (Docker, Podman, …), keyed off the
+            // generic service_id() accessor rather than a specific variant.
+            if let Some(runtime_service_id) =
+                s.base.virtualization.as_ref().and_then(|v| v.service_id())
             {
                 let entry = docker_service_to_containerized_service_ids
-                    .entry(docker_virtualization.service_id)
+                    .entry(runtime_service_id)
                     .or_default();
                 if !entry.contains(&s.id) {
                     entry.push(s.id);
@@ -166,13 +166,13 @@ impl EdgeBuilder {
         let mut vm_host_id_to_proxmox_service: HashMap<Uuid, Uuid> = HashMap::new();
 
         ctx.hosts.iter().for_each(|h| {
-            if let Some(HostVirtualization::Proxmox(proxmox_virtualization)) =
-                &h.base.virtualization
+            // Any host-level virtualization manager (Proxmox, vCenter, ESXi, …).
+            // Keyed off the generic service_id() accessor, not a specific variant.
+            if let Some(vm_manager_service_id) =
+                h.base.virtualization.as_ref().and_then(|v| v.service_id())
             {
-                // Create mapping between subnet and proxmox interface(s) on that subnet
-                if let Some(promxox_service) =
-                    ctx.get_service_by_id(proxmox_virtualization.service_id)
-                {
+                // Create mapping between subnet and hypervisor interface(s) on that subnet
+                if let Some(promxox_service) = ctx.get_service_by_id(vm_manager_service_id) {
                     promxox_service
                         .base
                         .bindings
@@ -190,7 +190,7 @@ impl EdgeBuilder {
                         });
                 }
 
-                vm_host_id_to_proxmox_service.insert(h.id, proxmox_virtualization.service_id);
+                vm_host_id_to_proxmox_service.insert(h.id, vm_manager_service_id);
             }
         });
 
@@ -240,24 +240,25 @@ impl EdgeBuilder {
         ctx.hosts
             .iter()
             .filter_map(|h| {
-                if let Some(HostVirtualization::Proxmox(pv)) = &h.base.virtualization {
-                    let proxmox_service = ctx.get_service_by_id(pv.service_id)?;
-                    Some(Edge {
-                        id: Uuid::new_v4(),
-                        source: proxmox_service.base.host_id,
-                        target: h.id,
-                        edge_type: EdgeType::Hypervisor {
-                            hypervisor_service_id: pv.service_id,
-                        },
-                        label: None,
-                        source_handle: EdgeHandle::Bottom,
-                        target_handle: EdgeHandle::Top,
-                        is_multi_hop: false,
-                        view_config: EdgeViewConfig::default(),
-                    })
-                } else {
-                    None
-                }
+                let vm_manager_service_id = h
+                    .base
+                    .virtualization
+                    .as_ref()
+                    .and_then(|v| v.service_id())?;
+                let proxmox_service = ctx.get_service_by_id(vm_manager_service_id)?;
+                Some(Edge {
+                    id: Uuid::new_v4(),
+                    source: proxmox_service.base.host_id,
+                    target: h.id,
+                    edge_type: EdgeType::Hypervisor {
+                        hypervisor_service_id: vm_manager_service_id,
+                    },
+                    label: None,
+                    source_handle: EdgeHandle::Bottom,
+                    target_handle: EdgeHandle::Top,
+                    is_multi_hop: false,
+                    view_config: EdgeViewConfig::default(),
+                })
             })
             .collect()
     }

@@ -4,7 +4,7 @@
 	import { HostDisplay } from '$lib/shared/components/forms/selection/display/HostDisplay.svelte';
 	import ListManager from '$lib/shared/components/forms/selection/ListManager.svelte';
 	import { serviceDefinitions } from '$lib/shared/stores/metadata';
-	import type { Host } from '$lib/features/hosts/types/base';
+	import type { Host, HostVirtualization } from '$lib/features/hosts/types/base';
 	import { useServicesCacheQuery } from '$lib/features/services/queries';
 	import {
 		hosts_virtualization_addVmHost,
@@ -38,10 +38,7 @@
 		if (hostsData.length > 0 && !initialized) {
 			initialized = true;
 			managedVms = hostsData.filter(
-				(h) =>
-					h.virtualization &&
-					h.virtualization?.type == 'Proxmox' &&
-					h.virtualization.details.service_id == service.id
+				(h) => h.virtualization && h.virtualization.details.service_id == service.id
 			);
 		}
 	});
@@ -56,17 +53,18 @@
 
 	function handleAddVm(vmId: string) {
 		const host = hostsData.find((h) => h.id === vmId);
-		if (host) {
-			const updatedHost = {
+		const variant = serviceMetadata?.metadata.virtualization_variant;
+		if (host && variant) {
+			const updatedHost: Host = {
 				...host,
 				virtualization: {
-					type: 'Proxmox' as const,
+					type: variant,
 					details: {
 						vm_id: null,
 						vm_name: null,
 						service_id: service.id
 					}
-				}
+				} as HostVirtualization
 			};
 
 			managedVms = [...managedVms, updatedHost];

@@ -31,6 +31,8 @@ use crate::server::shared::{
 pub enum ServiceVirtualization {
     #[schema(title = "Docker")]
     Docker(DockerVirtualization),
+    #[schema(title = "Podman")]
+    Podman(PodmanVirtualization),
 }
 
 #[derive(Debug, Clone, Serialize, Validate, Deserialize, PartialEq, Eq, Hash, ToSchema)]
@@ -42,16 +44,51 @@ pub struct DockerVirtualization {
     pub compose_project: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Validate, Deserialize, PartialEq, Eq, Hash, ToSchema)]
+pub struct PodmanVirtualization {
+    pub container_name: Option<String>,
+    pub container_id: Option<String>,
+    pub service_id: Uuid,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compose_project: Option<String>,
+}
+
 impl ServiceVirtualization {
     pub fn service_id(&self) -> Option<Uuid> {
         match self {
             Self::Docker(d) => Some(d.service_id),
+            Self::Podman(p) => Some(p.service_id),
         }
     }
 
     pub fn set_service_id(&mut self, id: Uuid) {
         match self {
             Self::Docker(d) => d.service_id = id,
+            Self::Podman(p) => p.service_id = id,
+        }
+    }
+
+    /// Container id for any container-runtime variant (Docker, Podman, …).
+    pub fn container_id(&self) -> Option<&str> {
+        match self {
+            Self::Docker(d) => d.container_id.as_deref(),
+            Self::Podman(p) => p.container_id.as_deref(),
+        }
+    }
+
+    /// Container name for any container-runtime variant (Docker, Podman, …).
+    pub fn container_name(&self) -> Option<&str> {
+        match self {
+            Self::Docker(d) => d.container_name.as_deref(),
+            Self::Podman(p) => p.container_name.as_deref(),
+        }
+    }
+
+    /// Compose/pod project for any container-runtime variant (Docker, Podman, …).
+    pub fn compose_project(&self) -> Option<&str> {
+        match self {
+            Self::Docker(d) => d.compose_project.as_deref(),
+            Self::Podman(p) => p.compose_project.as_deref(),
         }
     }
 }
@@ -73,11 +110,17 @@ impl EntityMetadataProvider for ServiceVirtualization {
 
 impl TypeMetadataProvider for ServiceVirtualization {
     fn name(&self) -> &'static str {
-        "Docker"
+        match self {
+            Self::Docker(_) => "Docker",
+            Self::Podman(_) => "Podman",
+        }
     }
 
     fn description(&self) -> &'static str {
-        "A service running in a docker container"
+        match self {
+            Self::Docker(_) => "A service running in a docker container",
+            Self::Podman(_) => "A service running in a podman container",
+        }
     }
 }
 
@@ -141,6 +184,7 @@ mod tests {
                 assert_eq!(d.container_name, Some("redis".to_string()));
                 assert_eq!(d.compose_project, None);
             }
+            other => panic!("expected Docker variant, got {other:?}"),
         }
     }
 }

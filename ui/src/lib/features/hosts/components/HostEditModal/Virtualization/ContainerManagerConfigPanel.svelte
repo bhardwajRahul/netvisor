@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { Service } from '$lib/features/services/types/base';
+	import type { Service, ServiceVirtualization } from '$lib/features/services/types/base';
 	import { useServicesCacheQuery } from '$lib/features/services/queries';
 	import { ServiceDisplay } from '$lib/shared/components/forms/selection/display/ServiceDisplay.svelte';
 	import ListManager from '$lib/shared/components/forms/selection/ListManager.svelte';
@@ -33,10 +33,7 @@
 		if (servicesData.length > 0 && !initialized) {
 			initialized = true;
 			managedContainers = servicesData.filter(
-				(s) =>
-					s.virtualization &&
-					s.virtualization?.type == 'Docker' &&
-					s.virtualization.details.service_id == service.id
+				(s) => s.virtualization && s.virtualization.details.service_id == service.id
 			);
 		}
 	});
@@ -54,17 +51,18 @@
 		const servicesForHost = servicesData.filter((s) => s.host_id === service.host_id);
 		const containerizedService = servicesForHost.find((s) => s.id == serviceId);
 
-		if (containerizedService) {
-			const updatedService = {
+		const variant = serviceMetadata?.metadata.virtualization_variant;
+		if (containerizedService && variant) {
+			const updatedService: Service = {
 				...containerizedService,
 				virtualization: {
-					type: 'Docker' as const,
+					type: variant,
 					details: {
 						container_id: null,
 						container_name: null,
 						service_id: service.id
 					}
-				}
+				} as ServiceVirtualization
 			};
 
 			managedContainers = [...managedContainers, updatedService];
