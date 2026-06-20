@@ -5,7 +5,7 @@
 	import { IPAddressDisplay } from '$lib/shared/components/forms/selection/display/IPAddressDisplay.svelte';
 	import { useTopology, selectedTopologyId } from '$lib/features/topology/context';
 	import { getTopologyEditState } from '$lib/features/topology/state';
-	import type { EnrichedTopology } from '$lib/features/topology/types/base';
+	import type { RenderableTopology } from '$lib/features/topology/types/base';
 
 	import type { components } from '$lib/api/schema';
 	type TopologyView = components['schemas']['TopologyView'];
@@ -29,7 +29,7 @@
 		topoStore
 			? $topoStore
 			: (topo.query?.data?.find((t) => t.id === $selectedTopologyId) as
-					| EnrichedTopology
+					| RenderableTopology
 					| undefined)
 	);
 

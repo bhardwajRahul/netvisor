@@ -2,7 +2,7 @@
 	import type { Node } from '@xyflow/svelte';
 	import TagPickerInline from '$lib/features/tags/components/TagPickerInline.svelte';
 	import Tag from '$lib/shared/components/data/Tag.svelte';
-	import type { EnrichedTopology } from '$lib/features/topology/types/base';
+	import type { RenderableTopology } from '$lib/features/topology/types/base';
 	import type { TopologyEditState } from '$lib/features/topology/state';
 	import type { ElementRenderContext } from '$lib/features/topology/resolvers';
 	import { useTagsQuery, type EntityDiscriminants } from '$lib/features/tags/queries';
@@ -24,7 +24,7 @@
 		elementContext
 	}: {
 		node: Node;
-		topology: EnrichedTopology;
+		topology: RenderableTopology;
 		editState: TopologyEditState;
 		elementContext?: ElementRenderContext;
 	} = $props();

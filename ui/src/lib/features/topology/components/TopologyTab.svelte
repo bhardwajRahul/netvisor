@@ -55,8 +55,8 @@
 	import { trackEvent } from '$lib/shared/utils/analytics';
 	import { useTagsQuery } from '$lib/features/tags/queries';
 	import { useActiveSessionsQuery } from '$lib/features/discovery/queries';
-	import { enrichTopology } from '$lib/features/topology/enriched';
-	import type { EnrichedTopology } from '$lib/features/topology/types/base';
+	import { toRenderableTopology } from '$lib/features/topology/enriched';
+	import type { RenderableTopology } from '$lib/features/topology/types/base';
 	import { formatTimestamp } from '$lib/shared/utils/formatting';
 	import ApplicationSetupWizard from './application-wizard/ApplicationSetupWizard.svelte';
 	import L2EmptyStateOverlay from './L2EmptyStateOverlay.svelte';
@@ -202,7 +202,7 @@
 		if (!currentTopologyRow) return null;
 		const bundle = topologyDataQuery.data;
 		if (!bundle) return null;
-		return enrichTopology(
+		return toRenderableTopology(
 			currentTopologyRow,
 			{
 				hosts: bundle.hosts,
@@ -216,14 +216,15 @@
 				vlans: bundle.vlans,
 				entity_tags: bundle.tags
 			},
-			currentTopologyName
+			currentTopologyName,
+			$activeView
 		);
 	});
 
 	// Expose the enriched topology to descendant inspectors via context. They
 	// resolve it through `useTopology()` and read entity arrays off it.
 	// svelte-ignore state_referenced_locally
-	const topologyContext = writable<EnrichedTopology | null>(currentTopology);
+	const topologyContext = writable<RenderableTopology | null>(currentTopology);
 	setContext('topology', topologyContext);
 	$effect(() => {
 		topologyContext.set(currentTopology);
@@ -610,7 +611,7 @@
 						displayComponent={snapshotDisplayWithLive}
 						onSelect={handleSnapshotChange}
 						options={snapshotOptions}
-						minWidth="22rem"
+						fitToContent
 					/>
 
 					{#if !isReadOnly && $selectedSnapshotId == null}

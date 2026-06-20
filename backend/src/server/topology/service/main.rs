@@ -3,9 +3,11 @@ use std::{collections::HashMap, sync::Arc};
 use anyhow::Error;
 use async_trait::async_trait;
 use petgraph::{Graph, graph::NodeIndex, visit::EdgeRef};
+use strum::IntoEnumIterator;
 use tokio::sync::broadcast;
 use uuid::Uuid;
 
+use crate::server::shared::entities::ChangeTriggersTopologyStaleness;
 use crate::server::shared::events::traits::{EntityEventFlags, EntityScope, Event};
 use crate::server::{
     auth::middleware::auth::AuthenticatedEntity,
@@ -117,23 +119,8 @@ impl CrudService<Topology> for TopologyService {
             let data = self
                 .get_topology_data(topology.base.network_id, None)
                 .await?;
-            let (nodes, edges) = self.build_graph(BuildGraphParams {
-                hosts: &data.hosts,
-                ip_addresses: &data.ip_addresses,
-                services: &data.services,
-                subnets: &data.subnets,
-                dependencies: &data.dependencies,
-                ports: &data.ports,
-                bindings: &data.bindings,
-                interfaces: &data.interfaces,
-                entity_tags: &data.tags,
-                vlans: &data.vlans,
-                old_edges: &[],
-                old_nodes: &[],
-                options: &topology.base.options,
-                old_view: None,
-            });
-            topology.set_graph(nodes, edges);
+            let (nodes, edges) = self.build_all_view_graphs(&data, &topology.base.options, None);
+            topology.set_all_graphs(nodes, edges);
         }
 
         let created = self.storage().create(&topology).await?;
@@ -153,6 +140,59 @@ impl CrudService<Topology> for TopologyService {
         }
 
         Ok(created)
+    }
+
+    /// Persist a topology update, rebuilding every view's graph when the
+    /// request options changed.
+    ///
+    /// View switching is a client-side slice selection and does NOT reach here
+    /// (it changes only the `view` scalar, which `triggers_staleness` ignores).
+    /// Grouping/hide-rule edits DO change `options.request`, so we reload the
+    /// row's entity set (live or snapshot closed-copy) and rebuild all view
+    /// slices, overwriting the stale graphs the client echoed back. Pure
+    /// layout PUTs (no options change) keep the client-sent graphs.
+    async fn update(
+        &self,
+        entity: &mut Topology,
+        authentication: AuthenticatedEntity,
+    ) -> Result<Topology, Error> {
+        let current = self
+            .get_by_id(&entity.id())
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("Could not find topology {}", entity.id()))?;
+
+        let trigger_stale = entity.triggers_staleness(Some(current.clone()));
+
+        if trigger_stale {
+            let data = self
+                .get_topology_data(current.base.network_id, current.base.snapshot_id)
+                .await?;
+            let (nodes, edges) =
+                self.build_all_view_graphs(&data, &entity.base.options, Some(&current));
+            entity.set_all_graphs(nodes, edges);
+        }
+
+        let updated = self.storage().update(entity).await?;
+
+        if let Some(scope) = EntityScope::from_ids(
+            updated.id(),
+            updated.clone().into(),
+            self.get_network_id(&updated),
+            self.get_organization_id(&updated),
+        ) {
+            self.event_bus()
+                .publish(
+                    Event::new(scope, EntityOperation::Updated, authentication).with_flags(
+                        EntityEventFlags {
+                            trigger_stale,
+                            ..Default::default()
+                        },
+                    ),
+                )
+                .await?;
+        }
+
+        Ok(updated)
     }
 }
 
@@ -379,6 +419,53 @@ impl TopologyService {
             l2_physical,
             application,
         })
+    }
+
+    /// Build a node/edge set for every view from a single entity snapshot.
+    ///
+    /// Each view's previously-stored slice (when `old` is given) is fed to
+    /// `build_graph` as `old_*` with `old_view = Some(view)`, so per-view
+    /// handle/position preservation fires (nodes don't jump on rebuild). The
+    /// returned maps are stored directly on the row via `set_all_graphs`, so
+    /// the client can switch views by slice selection without a rebuild.
+    pub fn build_all_view_graphs(
+        &self,
+        data: &TopologyData,
+        options: &TopologyOptions,
+        old: Option<&Topology>,
+    ) -> (
+        HashMap<TopologyView, Vec<Node>>,
+        HashMap<TopologyView, Vec<Edge>>,
+    ) {
+        let mut nodes_by_view = HashMap::new();
+        let mut edges_by_view = HashMap::new();
+
+        for view in TopologyView::iter() {
+            let mut view_options = options.clone();
+            view_options.request.view = view;
+
+            let (nodes, edges) = self.build_graph(BuildGraphParams {
+                hosts: &data.hosts,
+                ip_addresses: &data.ip_addresses,
+                services: &data.services,
+                subnets: &data.subnets,
+                dependencies: &data.dependencies,
+                ports: &data.ports,
+                bindings: &data.bindings,
+                interfaces: &data.interfaces,
+                entity_tags: &data.tags,
+                vlans: &data.vlans,
+                old_nodes: old.map(|t| t.nodes_for(view)).unwrap_or(&[]),
+                old_edges: old.map(|t| t.edges_for(view)).unwrap_or(&[]),
+                options: &view_options,
+                old_view: Some(view),
+            });
+
+            nodes_by_view.insert(view, nodes);
+            edges_by_view.insert(view, edges);
+        }
+
+        (nodes_by_view, edges_by_view)
     }
 
     pub fn build_graph(&self, params: BuildGraphParams) -> (Vec<Node>, Vec<Edge>) {

@@ -28,6 +28,7 @@ use crate::server::{
             Topology, TopologyEdgeHandleUpdate, TopologyNodePositionUpdate,
             TopologyNodeResizeUpdate,
         },
+        views::TopologyView,
     },
 };
 use axum::{
@@ -94,6 +95,13 @@ pub struct TopologyDataQuery {
     /// tabs. One-time per org (guarded below + subscriber dedup).
     #[serde(default)]
     pub mark_viewed: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, IntoParams, ToSchema)]
+pub struct TopologyExportQuery {
+    /// View to export. Defaults to the default view when omitted.
+    #[serde(default)]
+    pub view: TopologyView,
 }
 
 /// Unified entity-set endpoint for the topology view.
@@ -293,10 +301,13 @@ async fn update_node_position(
     let node = topology
         .base
         .nodes
-        .iter_mut()
-        .find(|n| n.id == request.node_id)
+        .get_mut(&request.view)
+        .and_then(|nodes| nodes.iter_mut().find(|n| n.id == request.node_id))
         .ok_or_else(|| {
-            ApiError::not_found(format!("Node {} not found in topology", request.node_id))
+            ApiError::not_found(format!(
+                "Node {} not found in {:?} view",
+                request.node_id, request.view
+            ))
         })?;
 
     node.position = request.position;
@@ -344,10 +355,13 @@ async fn update_edge_handles(
     let edge = topology
         .base
         .edges
-        .iter_mut()
-        .find(|e| e.id == request.edge_id)
+        .get_mut(&request.view)
+        .and_then(|edges| edges.iter_mut().find(|e| e.id == request.edge_id))
         .ok_or_else(|| {
-            ApiError::not_found(format!("Edge {} not found in topology", request.edge_id))
+            ApiError::not_found(format!(
+                "Edge {} not found in {:?} view",
+                request.edge_id, request.view
+            ))
         })?;
 
     edge.source_handle = request.source_handle;
@@ -396,10 +410,13 @@ async fn update_node_resize(
     let node = topology
         .base
         .nodes
-        .iter_mut()
-        .find(|n| n.id == request.node_id)
+        .get_mut(&request.view)
+        .and_then(|nodes| nodes.iter_mut().find(|n| n.id == request.node_id))
         .ok_or_else(|| {
-            ApiError::not_found(format!("Node {} not found in topology", request.node_id))
+            ApiError::not_found(format!(
+                "Node {} not found in {:?} view",
+                request.node_id, request.view
+            ))
         })?;
 
     node.size = request.size;
@@ -415,7 +432,7 @@ async fn update_node_resize(
     get,
     path = "/{id}/export/mermaid",
     tags = [Topology::ENTITY_NAME_PLURAL, "internal"],
-    params(("id" = Uuid, Path, description = "Topology ID")),
+    params(("id" = Uuid, Path, description = "Topology ID"), TopologyExportQuery),
     responses(
         (status = 200, description = "Mermaid flowchart export", content_type = "text/plain"),
         (status = 403, description = "Access denied", body = ApiErrorResponse),
@@ -427,6 +444,7 @@ async fn export_mermaid(
     State(state): State<Arc<AppState>>,
     auth: Authorized<Viewer>,
     Path(id): Path<Uuid>,
+    query: Query<TopologyExportQuery>,
 ) -> ApiResult<impl IntoResponse> {
     let network_ids = auth.network_ids();
 
@@ -448,7 +466,8 @@ async fn export_mermaid(
         .await
         .map_err(|e| ApiError::internal_error(&e.to_string()))?;
 
-    let content = crate::server::topology::types::export::topology_to_mermaid(&topology, &data);
+    let content =
+        crate::server::topology::types::export::topology_to_mermaid(&topology, &data, query.view);
 
     let mut headers = HeaderMap::new();
     headers.insert(
@@ -468,7 +487,7 @@ async fn export_mermaid(
     get,
     path = "/{id}/export/confluence",
     tags = [Topology::ENTITY_NAME_PLURAL, "internal"],
-    params(("id" = Uuid, Path, description = "Topology ID")),
+    params(("id" = Uuid, Path, description = "Topology ID"), TopologyExportQuery),
     responses(
         (status = 200, description = "Confluence wiki markup export", content_type = "text/plain"),
         (status = 403, description = "Access denied", body = ApiErrorResponse),
@@ -480,6 +499,7 @@ async fn export_confluence(
     State(state): State<Arc<AppState>>,
     auth: Authorized<Viewer>,
     Path(id): Path<Uuid>,
+    query: Query<TopologyExportQuery>,
 ) -> ApiResult<impl IntoResponse> {
     let network_ids = auth.network_ids();
 
@@ -501,7 +521,9 @@ async fn export_confluence(
         .await
         .map_err(|e| ApiError::internal_error(&e.to_string()))?;
 
-    let content = crate::server::topology::types::export::topology_to_confluence(&topology, &data);
+    let content = crate::server::topology::types::export::topology_to_confluence(
+        &topology, &data, query.view,
+    );
 
     let mut headers = HeaderMap::new();
     headers.insert(

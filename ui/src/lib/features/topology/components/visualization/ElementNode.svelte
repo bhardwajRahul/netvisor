@@ -10,7 +10,7 @@
 		activeView
 	} from '../../queries';
 	import { useTopology, selectedTopologyId } from '../../context';
-	import type { TopologyNode, ElementRenderData, EnrichedTopology } from '../../types/base';
+	import type { TopologyNode, ElementRenderData, RenderableTopology } from '../../types/base';
 	import { resolveElementNode } from '../../resolvers';
 	import { type Writable, get } from 'svelte/store';
 	import { formatPort } from '$lib/shared/utils/formatting';
@@ -91,7 +91,7 @@
 		topoStore
 			? $topoStore
 			: (topo.query?.data?.find((t) => t.id === $selectedTopologyId) as
-					| EnrichedTopology
+					| RenderableTopology
 					| undefined)
 	);
 

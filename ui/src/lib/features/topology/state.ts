@@ -1,5 +1,5 @@
 import { writable } from 'svelte/store';
-import type { Topology } from './types/base';
+import type { Topology, RenderableTopology } from './types/base';
 import { topology_optionDisabledRebuildRequired } from '$lib/paraglide/messages';
 
 /** Whether edit mode is active (nodes draggable, containers resizable). */
@@ -18,7 +18,7 @@ export interface TopologyEditState {
  * for call-site compatibility with the previous lock/staleness signature.
  */
 export function getTopologyEditState(
-	topology: Topology | null | undefined,
+	topology: Topology | RenderableTopology | null | undefined,
 	_autoRebuild: boolean,
 	isReadonly: boolean
 ): TopologyEditState {

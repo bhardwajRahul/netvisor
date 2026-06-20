@@ -2,6 +2,7 @@ use super::api::TopologyData;
 use super::base::Topology;
 use super::edges::EdgeType;
 use super::nodes::{ElementEntityType, NodeType};
+use super::views::TopologyView;
 use std::collections::HashMap;
 use std::fmt::Write;
 use uuid::Uuid;
@@ -29,7 +30,7 @@ fn edge_type_name(edge_type: &EdgeType) -> &'static str {
     }
 }
 
-pub fn topology_to_mermaid(topology: &Topology, data: &TopologyData) -> String {
+pub fn topology_to_mermaid(topology: &Topology, data: &TopologyData, view: TopologyView) -> String {
     let mut output = String::new();
     writeln!(output, "flowchart TD").unwrap();
 
@@ -40,7 +41,7 @@ pub fn topology_to_mermaid(topology: &Topology, data: &TopologyData) -> String {
 
     // Group Element nodes by subnet_id (only Interface elements have subnet_id)
     let mut nodes_by_subnet: HashMap<Uuid, Vec<_>> = HashMap::new();
-    for node in &topology.base.nodes {
+    for node in topology.nodes_for(view) {
         if let NodeType::Element {
             element: ElementEntityType::IPAddress { subnet_id, .. },
             ..
@@ -99,15 +100,14 @@ pub fn topology_to_mermaid(topology: &Topology, data: &TopologyData) -> String {
 
     // Build set of Container IDs (their node ID == subnet ID, rendered as subgraphs)
     let subnet_node_ids: std::collections::HashSet<Uuid> = topology
-        .base
-        .nodes
+        .nodes_for(view)
         .iter()
         .filter(|n| matches!(n.node_type, NodeType::Container { .. }))
         .map(|n| n.id)
         .collect();
 
     // Generate edges — use sub_ prefix for subgraph nodes, n_ for interface nodes
-    for edge in &topology.base.edges {
+    for edge in topology.edges_for(view) {
         let arrow = match &edge.edge_type {
             EdgeType::RequestPath { .. } | EdgeType::HubAndSpoke { .. } => "-->",
             EdgeType::SameHost { .. } | EdgeType::PhysicalLink { .. } => "---",
@@ -147,7 +147,11 @@ pub fn topology_to_mermaid(topology: &Topology, data: &TopologyData) -> String {
     output
 }
 
-pub fn topology_to_confluence(topology: &Topology, data: &TopologyData) -> String {
+pub fn topology_to_confluence(
+    topology: &Topology,
+    data: &TopologyData,
+    view: TopologyView,
+) -> String {
     let mut output = String::new();
 
     // Header
@@ -220,9 +224,9 @@ pub fn topology_to_confluence(topology: &Topology, data: &TopologyData) -> Strin
         .iter()
         .map(|h| (h.id, h.base.name.as_str()))
         .collect();
-    let nodes_map: HashMap<Uuid, _> = topology.base.nodes.iter().map(|n| (n.id, n)).collect();
+    let nodes_map: HashMap<Uuid, _> = topology.nodes_for(view).iter().map(|n| (n.id, n)).collect();
 
-    for edge in &topology.base.edges {
+    for edge in topology.edges_for(view) {
         let source_host = nodes_map
             .get(&edge.source)
             .and_then(|n| match &n.node_type {
@@ -265,7 +269,7 @@ mod tests {
         };
         let data = TopologyData::default();
 
-        let result = topology_to_mermaid(&topology, &data);
+        let result = topology_to_mermaid(&topology, &data, TopologyView::default());
         assert!(result.contains("flowchart TD"));
     }
 
@@ -277,7 +281,7 @@ mod tests {
         };
         let data = TopologyData::default();
 
-        let result = topology_to_confluence(&topology, &data);
+        let result = topology_to_confluence(&topology, &data, TopologyView::default());
         assert!(result.contains("h1. Network Topology"));
         assert!(result.contains("|| Name || CIDR || Type || Description ||"));
         assert!(result.contains("|| Name || Hostname || IP Addresses || Services ||"));

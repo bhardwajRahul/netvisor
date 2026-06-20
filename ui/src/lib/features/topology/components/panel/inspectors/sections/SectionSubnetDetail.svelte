@@ -4,7 +4,7 @@
 	import { Crosshair } from 'lucide-svelte';
 	import EntityDisplayWrapper from '$lib/shared/components/forms/selection/display/EntityDisplayWrapper.svelte';
 	import { SubnetDisplay } from '$lib/shared/components/forms/selection/display/SubnetDisplay.svelte';
-	import type { EnrichedTopology } from '$lib/features/topology/types/base';
+	import type { RenderableTopology } from '$lib/features/topology/types/base';
 	import type { TopologyEditState } from '$lib/features/topology/state';
 	import { useUpdateSubnetMutation } from '$lib/features/subnets/queries';
 	import { inspector_thisSubnet, topology_focusNode } from '$lib/paraglide/messages';
@@ -15,7 +15,7 @@
 		editState
 	}: {
 		node: Node;
-		topology: EnrichedTopology;
+		topology: RenderableTopology;
 		editState: TopologyEditState;
 	} = $props();
 

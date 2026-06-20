@@ -32,8 +32,15 @@ export type Vlan = components['schemas']['Vlan'];
  *
  * `name` is a UI-side display string (network name for live, formatted
  * `taken_at` for snapshots, share name for shared topologies).
+ *
+ * The backend `Topology` row stores `nodes`/`edges` keyed per view
+ * (`Record<TopologyView, …[]>`). `toRenderableTopology` selects the active view's
+ * slice, so `RenderableTopology` flattens those back to plain arrays — the shape
+ * every pipeline/layout/renderer consumer already expects.
  */
-export interface EnrichedTopology extends Topology {
+export interface RenderableTopology extends Omit<Topology, 'nodes' | 'edges'> {
+	nodes: TopologyNode[];
+	edges: TopologyEdge[];
 	hosts: Host[];
 	services: Service[];
 	subnets: Subnet[];

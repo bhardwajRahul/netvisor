@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { Node } from '@xyflow/svelte';
 	import type { components } from '$lib/api/schema';
-	import type { EnrichedTopology } from '$lib/features/topology/types/base';
+	import type { RenderableTopology } from '$lib/features/topology/types/base';
 	import { activeView } from '$lib/features/topology/queries';
 	import { views, entities } from '$lib/shared/stores/metadata';
 	import { tallyContainerElements } from '$lib/features/topology/labels';
@@ -15,7 +15,7 @@
 		topology
 	}: {
 		node: Node;
-		topology: EnrichedTopology;
+		topology: RenderableTopology;
 	} = $props();
 
 	let elementConfig = $derived(

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Node } from '@xyflow/svelte';
-	import type { EnrichedTopology } from '$lib/features/topology/types/base';
+	import type { RenderableTopology } from '$lib/features/topology/types/base';
 	import type { ElementRenderContext } from '$lib/features/topology/resolvers';
 	import { common_portBindings } from '$lib/paraglide/messages';
 
@@ -11,7 +11,7 @@
 		elementContext
 	}: {
 		node: Node;
-		topology: EnrichedTopology;
+		topology: RenderableTopology;
 		elementContext?: ElementRenderContext;
 	} = $props();
 	/* eslint-enable @typescript-eslint/no-unused-vars */

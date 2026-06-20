@@ -9,7 +9,7 @@ import {
 	serviceDefinitions,
 	subnetTypes
 } from '$lib/shared/stores/metadata';
-import type { TopologyEdge, TopologyNode, EnrichedTopology } from './types/base';
+import type { TopologyEdge, TopologyNode, RenderableTopology } from './types/base';
 import {
 	isDisabledEdge,
 	getHighlightBehavior,
@@ -205,7 +205,7 @@ export const FILTER_VALUE_EXTRACTORS: Record<string, Record<string, FilterValueE
 
 /** Collections on Topology indexed by the entity-type key used in filters. */
 function collectionFor(
-	topo: EnrichedTopology,
+	topo: RenderableTopology,
 	entityType: string
 ): Array<{ id: string }> | undefined {
 	switch (entityType) {
@@ -224,7 +224,7 @@ function collectionFor(
 }
 
 export function updateTagFilter(
-	topology: EnrichedTopology | undefined,
+	topology: RenderableTopology | undefined,
 	tagFilter: TagFilter | undefined,
 	view?: string,
 	/** hide_metadata_values[activeView] — a nested map keyed by entity type, then filter type, to hidden value ids. */
@@ -440,7 +440,7 @@ function relatesToEntity(node: TopologyNode, entityType: string, entityId: strin
 function getVirtualizedContainerNodes(
 	dockerHostInterfaceId: string,
 	queryClient: QueryClient,
-	topology?: EnrichedTopology
+	topology?: RenderableTopology
 ): Set<string> {
 	const connected = new Set<string>();
 
@@ -507,7 +507,7 @@ function getVirtualizedContainerNodes(
 function addContainerHighlights(
 	connected: Set<string>,
 	allNodes: Node[],
-	topology?: EnrichedTopology
+	topology?: RenderableTopology
 ) {
 	const topoNodes = topology?.nodes ?? allNodes.map((n) => n.data as TopologyNode);
 
@@ -543,7 +543,7 @@ export function updateConnectedNodes(
 	allEdges: Edge[],
 	allNodes: Node[],
 	queryClient: QueryClient,
-	topology?: EnrichedTopology,
+	topology?: RenderableTopology,
 	multiSelectedNodes?: Node[],
 	hiddenEdgeTypes?: string[]
 ) {
@@ -903,7 +903,7 @@ function resolveEntityToNodes(
 	entityId: string,
 	config: ViewElementConfig,
 	index: EntityNodeIndex,
-	topology: EnrichedTopology
+	topology: RenderableTopology
 ): EntityResolution {
 	const elementNodeIds: string[] = [];
 	const containerNodeIds: string[] = [];
@@ -966,7 +966,7 @@ function resolveEntityToNodes(
  * subnets (name/cidr), and tags (name matched to entities).
  */
 export function updateSearchFilter(
-	topology: EnrichedTopology | undefined,
+	topology: RenderableTopology | undefined,
 	query: string,
 	view?: string
 ) {

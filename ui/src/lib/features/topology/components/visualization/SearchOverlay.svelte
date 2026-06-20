@@ -13,7 +13,7 @@
 	} from '../../interactions';
 	import { collapsedContainers } from '../../collapse';
 	import { useTopology, selectedTopologyId } from '../../context';
-	import type { EnrichedTopology } from '../../types/base';
+	import type { RenderableTopology } from '../../types/base';
 	import { activeView } from '../../queries';
 	import {
 		topology_searchPlaceholder,
@@ -29,7 +29,7 @@
 		topoStore
 			? $topoStore
 			: (topo.query?.data?.find((t) => t.id === $selectedTopologyId) as
-					| EnrichedTopology
+					| RenderableTopology
 					| undefined)
 	);
 

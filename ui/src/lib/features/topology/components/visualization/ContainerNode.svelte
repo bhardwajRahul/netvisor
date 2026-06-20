@@ -21,7 +21,7 @@
 		selectedEdge as globalSelectedEdge
 	} from '../../queries';
 	import { useTopology, selectedTopologyId } from '../../context';
-	import type { EnrichedTopology, TopologyNode } from '../../types/base';
+	import type { RenderableTopology, TopologyNode } from '../../types/base';
 	import { resolveContainerNode } from '../../resolvers';
 	import { type Writable, get } from 'svelte/store';
 	import { getContext } from 'svelte';
@@ -84,7 +84,7 @@
 		topoStore
 			? $topoStore
 			: (topo.query?.data?.find((t) => t.id === $selectedTopologyId) as
-					| EnrichedTopology
+					| RenderableTopology
 					| undefined)
 	);
 	const updateNodeResizeMutation = useUpdateNodeResizeMutation();
@@ -344,6 +344,7 @@
 			await updateNodeResizeMutation.mutateAsync({
 				topologyId: topology.id,
 				networkId: topology.network_id,
+				view: $activeView,
 				nodeId: node.id,
 				size: { x: roundedWidth, y: roundedHeight },
 				position: { x: roundedX, y: roundedY }

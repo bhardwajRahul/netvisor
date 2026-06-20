@@ -1,5 +1,5 @@
 import { get } from 'svelte/store';
-import type { EnrichedTopology, TopologyNode, TopologyEdge } from '../types/base';
+import type { RenderableTopology, TopologyNode, TopologyEdge } from '../types/base';
 import type { LayoutState, PrepareResult, XY } from './types';
 import { LayoutGraph } from '../layout/layout-graph';
 import { ElkLayoutEngine } from '../layout/engine';
@@ -18,7 +18,7 @@ const layoutEngine = new ElkLayoutEngine();
  * @returns Updated visible nodes, or null if stale.
  */
 export async function executeLayout(
-	topology: EnrichedTopology,
+	topology: RenderableTopology,
 	state: LayoutState,
 	prep: PrepareResult,
 	elementNodeSizes: Map<string, XY>,
@@ -248,7 +248,7 @@ function executeForceLayout(
 }
 
 function applyAutoCollapse(
-	topology: EnrichedTopology,
+	topology: RenderableTopology,
 	state: LayoutState,
 	collapsed: Set<string>,
 	getInfrastructureRuleId: () => string | null

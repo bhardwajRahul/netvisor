@@ -461,32 +461,11 @@ async fn get_share_topology(
         .await
         .map_err(|e| ApiError::internal_error(&e.to_string()))?;
 
-    // If requested view differs from stored view, rebuild graph ephemerally.
-    let stored_view = topology.base.options.request.view;
-    if stored_view != body.view {
-        let mut options = topology.base.options.clone();
-        options.request.view = body.view;
-
-        let (nodes, edges) =
-            service.build_graph(crate::server::topology::service::main::BuildGraphParams {
-                options: &options,
-                hosts: &data.hosts,
-                ip_addresses: &data.ip_addresses,
-                subnets: &data.subnets,
-                services: &data.services,
-                dependencies: &data.dependencies,
-                ports: &data.ports,
-                bindings: &data.bindings,
-                interfaces: &data.interfaces,
-                entity_tags: &data.tags,
-                vlans: &data.vlans,
-                old_nodes: &[],
-                old_edges: &[],
-                old_view: Some(stored_view),
-            });
-
-        topology.set_graph(nodes, edges);
-        topology.base.options = options;
+    // The row carries a pre-built node/edge slice for every view, so there's no
+    // ephemeral rebuild: just point the stored view scalar at the requested
+    // view so the share renders it by default (the viewer selects that slice).
+    if topology.base.options.request.view != body.view {
+        topology.base.options.request.view = body.view;
     }
 
     let export_features = ExportFeatures {
@@ -505,6 +484,19 @@ async fn get_share_topology(
     let mut topology_value =
         serde_json::to_value(&topology).map_err(|e| ApiError::internal_error(&e.to_string()))?;
     if let Some(obj) = topology_value.as_object_mut() {
+        // The row stores nodes/edges per view; a share renders one requested
+        // view, so flatten that view's slice to plain arrays — the shape the
+        // read-only viewer's EnrichedTopology expects.
+        obj.insert(
+            "nodes".to_string(),
+            serde_json::to_value(topology.nodes_for(body.view))
+                .map_err(|e| ApiError::internal_error(&e.to_string()))?,
+        );
+        obj.insert(
+            "edges".to_string(),
+            serde_json::to_value(topology.edges_for(body.view))
+                .map_err(|e| ApiError::internal_error(&e.to_string()))?,
+        );
         obj.insert(
             "hosts".to_string(),
             serde_json::to_value(&data.hosts)

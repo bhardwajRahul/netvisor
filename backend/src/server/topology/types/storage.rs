@@ -8,12 +8,14 @@ use crate::server::{
         base::{Topology, TopologyBase, TopologyOptions},
         edges::Edge,
         nodes::Node,
+        views::TopologyView,
     },
 };
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use sqlx::Row;
 use sqlx::postgres::PgRow;
+use std::collections::HashMap;
 use uuid::Uuid;
 
 /// CSV row representation for Topology export (slimmed: nodes/edges/options live in JSONB,
@@ -89,10 +91,12 @@ impl Storable for Topology {
     }
 
     fn from_row(row: &PgRow) -> Result<Self, anyhow::Error> {
-        let nodes: Vec<Node> = serde_json::from_value(row.get::<serde_json::Value, _>("nodes"))
-            .map_err(|e| anyhow::anyhow!("Failed to deserialize nodes: {}", e))?;
-        let edges: Vec<Edge> = serde_json::from_value(row.get::<serde_json::Value, _>("edges"))
-            .map_err(|e| anyhow::anyhow!("Failed to deserialize edges: {}", e))?;
+        let nodes: HashMap<TopologyView, Vec<Node>> =
+            serde_json::from_value(row.get::<serde_json::Value, _>("nodes"))
+                .map_err(|e| anyhow::anyhow!("Failed to deserialize nodes: {}", e))?;
+        let edges: HashMap<TopologyView, Vec<Edge>> =
+            serde_json::from_value(row.get::<serde_json::Value, _>("edges"))
+                .map_err(|e| anyhow::anyhow!("Failed to deserialize edges: {}", e))?;
         let options: TopologyOptions =
             serde_json::from_value(row.get::<serde_json::Value, _>("options"))
                 .map_err(|e| anyhow::anyhow!("Failed to deserialize options: {}", e))?;

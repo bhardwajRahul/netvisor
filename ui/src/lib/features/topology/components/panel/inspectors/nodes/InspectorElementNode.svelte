@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { Node } from '@xyflow/svelte';
 	import { activeView } from '$lib/features/topology/queries';
-	import type { TopologyNode, EnrichedTopology } from '$lib/features/topology/types/base';
+	import type { TopologyNode, RenderableTopology } from '$lib/features/topology/types/base';
 	import { resolveElementNode } from '$lib/features/topology/resolvers';
 	import { useTopology, selectedTopologyId } from '$lib/features/topology/context';
 	import { getTopologyEditState } from '$lib/features/topology/state';
@@ -16,7 +16,7 @@
 		topoStore
 			? $topoStore
 			: (topo.query?.data?.find((t) => t.id === $selectedTopologyId) as
-					| EnrichedTopology
+					| RenderableTopology
 					| undefined)
 	);
 
