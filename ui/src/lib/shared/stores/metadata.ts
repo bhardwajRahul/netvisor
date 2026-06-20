@@ -49,7 +49,8 @@ export interface FieldDefinition {
 	secret: boolean;
 	optional: boolean;
 	help_text?: string;
-	options?: string[];
+	/** Choices for `select` fields: wire `value` + human-facing `label`. */
+	options?: { value: string; label: string }[];
 	default_value?: string;
 	inline_format?: 'plain' | 'pemprivatekey' | 'pemcertificate';
 	group?: string;

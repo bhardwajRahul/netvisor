@@ -13707,19 +13707,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-06-19T01:30:30.425386Z",
+              "created_at": "2026-06-20T21:14:17.290355Z",
               "first_discovery_id": null,
-              "id": "beec4571-b558-442a-8ddf-5f7f6ed03736",
+              "id": "0f8dce82-637d-48ee-ab2a-247009961a9a",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-19T01:30:30.425386Z",
+              "last_seen_at": "2026-06-20T21:14:17.290355Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-19T01:30:30.425386Z",
-              "valid_from": "2026-06-19T01:30:30.425386Z",
+              "updated_at": "2026-06-20T21:14:17.290355Z",
+              "valid_from": "2026-06-20T21:14:17.290355Z",
               "valid_to": null
             }
           },
@@ -14705,19 +14705,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-06-19T01:30:30.410334Z",
+                      "created_at": "2026-06-20T21:14:17.274111Z",
                       "first_discovery_id": null,
-                      "id": "f8e0d596-f3c3-4519-9a94-ebc36c3dcdb3",
+                      "id": "3f9158cb-40f2-447f-9d78-9cfd1b2a596c",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-06-19T01:30:30.410334Z",
+                      "last_seen_at": "2026-06-20T21:14:17.274111Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-06-19T01:30:30.410334Z",
-                      "valid_from": "2026-06-19T01:30:30.410334Z",
+                      "updated_at": "2026-06-20T21:14:17.274111Z",
+                      "valid_from": "2026-06-20T21:14:17.274111Z",
                       "valid_to": null
                     }
                   ],
@@ -14731,7 +14731,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Prometheus",
+                  "service_definition": "Ceph",
                   "source": {
                     "type": "Manual"
                   },
@@ -15722,19 +15722,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-06-19T01:30:30.420682Z",
+                  "created_at": "2026-06-20T21:14:17.284899Z",
                   "first_discovery_id": null,
-                  "id": "62e5f913-522f-4bef-8bf0-711300ff6fc4",
+                  "id": "7d4cae46-1c43-4fea-9c90-0aed4cbb9b70",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-19T01:30:30.420682Z",
+                  "last_seen_at": "2026-06-20T21:14:17.284899Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-19T01:30:30.420682Z",
-                  "valid_from": "2026-06-19T01:30:30.420682Z",
+                  "updated_at": "2026-06-20T21:14:17.284899Z",
+                  "valid_from": "2026-06-20T21:14:17.284899Z",
                   "valid_to": null
                 }
               ],
@@ -15748,7 +15748,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Prometheus",
+              "service_definition": "Ceph",
               "source": {
                 "type": "Manual"
               },
@@ -17448,19 +17448,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-06-19T01:30:30.410591Z",
+          "created_at": "2026-06-20T21:14:17.274477Z",
           "first_discovery_id": null,
-          "id": "d6c8c687-f553-49a4-b9dc-476c7f1ed18c",
+          "id": "b7612242-6603-40e5-b792-3c0316ed5e78",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-06-19T01:30:30.410591Z",
+          "last_seen_at": "2026-06-20T21:14:17.274477Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-06-19T01:30:30.410591Z",
-          "valid_from": "2026-06-19T01:30:30.410591Z",
+          "updated_at": "2026-06-20T21:14:17.274477Z",
+          "valid_from": "2026-06-20T21:14:17.274477Z",
           "valid_to": null
         }
       },
@@ -18050,7 +18050,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Prometheus",
+              "service_definition": "Ceph",
               "tags": [],
               "virtualization": null
             }
@@ -18272,6 +18272,25 @@
         "oneOf": [
           {
             "type": "object",
+            "description": "SNMPv1 community string — for legacy devices that only speak v1.",
+            "required": [
+              "community",
+              "type"
+            ],
+            "properties": {
+              "community": {
+                "$ref": "#/components/schemas/SecretValue"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "SnmpV1"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
             "description": "SNMPv2c community string for querying network devices",
             "required": [
               "community",
@@ -18285,6 +18304,48 @@
                 "type": "string",
                 "enum": [
                   "SnmpV2c"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "SNMPv3 USM AuthPriv — security name + auth/priv protocols and passwords.",
+            "required": [
+              "security_name",
+              "auth_protocol",
+              "auth_password",
+              "priv_protocol",
+              "priv_password",
+              "type"
+            ],
+            "properties": {
+              "auth_password": {
+                "$ref": "#/components/schemas/SecretValue"
+              },
+              "auth_protocol": {
+                "$ref": "#/components/schemas/SnmpV3AuthProtocol"
+              },
+              "context_name": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Optional context name (default/empty context used if unset)."
+              },
+              "priv_password": {
+                "$ref": "#/components/schemas/SecretValue"
+              },
+              "priv_protocol": {
+                "$ref": "#/components/schemas/SnmpV3PrivProtocol"
+              },
+              "security_name": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "SnmpV3"
                 ]
               }
             }
@@ -20698,19 +20759,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-06-19T01:30:30.410001Z",
+                  "created_at": "2026-06-20T21:14:17.273681Z",
                   "first_discovery_id": null,
-                  "id": "d1489f84-d854-4a63-a4df-1ae64114464b",
+                  "id": "00ab7599-f574-4afb-941a-d74022a6e2ba",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-19T01:30:30.410001Z",
+                  "last_seen_at": "2026-06-20T21:14:17.273681Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-19T01:30:30.410001Z",
-                  "valid_from": "2026-06-19T01:30:30.410001Z",
+                  "updated_at": "2026-06-20T21:14:17.273681Z",
+                  "valid_from": "2026-06-20T21:14:17.273681Z",
                   "valid_to": null
                 }
               ],
@@ -20724,7 +20785,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Prometheus",
+              "service_definition": "Ceph",
               "source": {
                 "type": "Manual"
               },
@@ -23155,19 +23216,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-06-19T01:30:30.403554Z",
+                        "created_at": "2026-06-20T21:14:17.264120Z",
                         "first_discovery_id": null,
-                        "id": "0f2fdab7-b0d2-40f3-ba82-792965437b82",
+                        "id": "a5172fdf-081f-4824-ae00-43fc158516ff",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-06-19T01:30:30.403554Z",
+                        "last_seen_at": "2026-06-20T21:14:17.264120Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-06-19T01:30:30.403554Z",
-                        "valid_from": "2026-06-19T01:30:30.403554Z",
+                        "updated_at": "2026-06-20T21:14:17.264120Z",
+                        "valid_from": "2026-06-20T21:14:17.264120Z",
                         "valid_to": null
                       }
                     ],
@@ -23181,7 +23242,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Prometheus",
+                    "service_definition": "Ceph",
                     "source": {
                       "type": "Manual"
                     },
@@ -23302,19 +23363,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-06-19T01:30:30.419548Z",
+                    "created_at": "2026-06-20T21:14:17.283811Z",
                     "first_discovery_id": null,
-                    "id": "4f32baf2-deaf-4d69-8f1d-cb0a9ac640c9",
+                    "id": "d0b0e090-d50b-4e00-b738-0c2e9f22b450",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-06-19T01:30:30.419548Z",
+                    "last_seen_at": "2026-06-20T21:14:17.283811Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-06-19T01:30:30.419548Z",
-                    "valid_from": "2026-06-19T01:30:30.419548Z",
+                    "updated_at": "2026-06-20T21:14:17.283811Z",
+                    "valid_from": "2026-06-20T21:14:17.283811Z",
                     "valid_to": null
                   }
                 ],
@@ -23328,7 +23389,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Prometheus",
+                "service_definition": "Ceph",
                 "source": {
                   "type": "Manual"
                 },
@@ -24929,19 +24990,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-06-19T01:30:30.410540Z",
+              "created_at": "2026-06-20T21:14:17.274408Z",
               "first_discovery_id": null,
-              "id": "84b87929-8caa-419d-b7fa-218a5810aeea",
+              "id": "8e1d86fe-21b2-4811-b652-8f67ae7371ce",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-19T01:30:30.410540Z",
+              "last_seen_at": "2026-06-20T21:14:17.274408Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-19T01:30:30.410540Z",
-              "valid_from": "2026-06-19T01:30:30.410540Z",
+              "updated_at": "2026-06-20T21:14:17.274408Z",
+              "valid_from": "2026-06-20T21:14:17.274408Z",
               "valid_to": null
             }
           ],
@@ -24955,7 +25016,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Prometheus",
+          "service_definition": "Ceph",
           "source": {
             "type": "Manual"
           },
@@ -25429,6 +25490,22 @@
             "format": "date-time"
           }
         }
+      },
+      "SnmpV3AuthProtocol": {
+        "type": "string",
+        "description": "SNMPv3 USM authentication protocol. Variants are limited to the modern,\nsecure set Scanopy supports; MD5 / SHA-2 variants beyond these are\nintentionally excluded. Serialized form (e.g. \"Sha256\") is the wire value\nstored in the credential and used as the frontend select option value.",
+        "enum": [
+          "Sha1",
+          "Sha256"
+        ]
+      },
+      "SnmpV3PrivProtocol": {
+        "type": "string",
+        "description": "SNMPv3 USM privacy (encryption) protocol.",
+        "enum": [
+          "Aes128",
+          "Aes256"
+        ]
       },
       "Subnet": {
         "allOf": [

@@ -52,10 +52,27 @@ impl CredentialTypeDiscriminants {
     /// Used by `generate-fixtures` and anywhere variant iteration is needed.
     pub fn to_credential_type(&self) -> CredentialType {
         match self {
+            Self::SnmpV1 => CredentialType::SnmpV1 {
+                community: SecretValue::Inline {
+                    value: SecretString::from(String::new()),
+                },
+            },
             Self::SnmpV2c => CredentialType::SnmpV2c {
                 community: SecretValue::Inline {
                     value: SecretString::from(String::new()),
                 },
+            },
+            Self::SnmpV3 => CredentialType::SnmpV3 {
+                security_name: String::new(),
+                auth_protocol: super::SnmpV3AuthProtocol::default(),
+                auth_password: SecretValue::Inline {
+                    value: SecretString::from(String::new()),
+                },
+                priv_protocol: super::SnmpV3PrivProtocol::default(),
+                priv_password: SecretValue::Inline {
+                    value: SecretString::from(String::new()),
+                },
+                context_name: None,
             },
             Self::DockerProxy => CredentialType::DockerProxy {
                 port: default_docker_port(),
@@ -84,7 +101,7 @@ impl EntityMetadataProvider for CredentialTypeDiscriminants {
     fn icon(&self) -> Icon {
         // Fallback icon when the service logo is unavailable
         match self {
-            Self::SnmpV2c => Concept::SNMP.icon(),
+            Self::SnmpV1 | Self::SnmpV2c | Self::SnmpV3 => Concept::SNMP.icon(),
             Self::DockerProxy => Concept::Containerization.icon(),
             Self::DockerSocket => Concept::Containerization.icon(),
         }
@@ -94,7 +111,9 @@ impl EntityMetadataProvider for CredentialTypeDiscriminants {
 impl TypeMetadataProvider for CredentialTypeDiscriminants {
     fn name(&self) -> &'static str {
         match self {
+            Self::SnmpV1 => "SNMP v1",
             Self::SnmpV2c => "SNMP v2c",
+            Self::SnmpV3 => "SNMP v3",
             Self::DockerProxy => "Docker Proxy",
             Self::DockerSocket => "Docker Socket",
         }
@@ -102,7 +121,11 @@ impl TypeMetadataProvider for CredentialTypeDiscriminants {
 
     fn description(&self) -> &'static str {
         match self {
+            Self::SnmpV1 => "SNMPv1 community string for legacy devices that only speak v1",
             Self::SnmpV2c => "SNMPv2c community string for querying network devices",
+            Self::SnmpV3 => {
+                "SNMPv3 with authentication and privacy (AuthPriv) for hardened devices"
+            }
             Self::DockerProxy => "Docker API proxy credentials. TLS is optional.",
             Self::DockerSocket => {
                 "Local Docker socket access. Auto-managed from daemon capabilities."

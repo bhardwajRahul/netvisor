@@ -4,13 +4,10 @@ use crate::server::{
         base::Credential,
         junction::{HostCredentialStorage, NetworkCredentialStorage},
         mapping::{
-            CredentialMapping, CredentialQueryPayload, IpOverride, ResolvableSecret,
-            SnmpCredentialMapping, SnmpQueryCredential,
+            CredentialMapping, CredentialQueryPayload, IpOverride, SnmpCredentialMapping,
+            SnmpQueryCredential,
         },
-        types::{
-            CredentialAssignment, CredentialType, CredentialTypeDiscriminants, SecretValue,
-            SnmpVersion,
-        },
+        types::{CredentialAssignment, CredentialType, CredentialTypeDiscriminants, SnmpVersion},
     },
     hosts::{r#impl::base::Host, service::HostService},
     ip_addresses::{r#impl::base::IPAddress, service::IPAddressService},
@@ -29,7 +26,6 @@ use crate::server::{
 };
 use anyhow::Error;
 use async_trait::async_trait;
-use secrecy::ExposeSecret;
 use std::sync::{Arc, OnceLock};
 use strum::IntoDiscriminant;
 use uuid::Uuid;
@@ -99,10 +95,14 @@ impl CrudService<Credential> for CredentialService {
                     .await?;
             }
 
-            // SNMP-specific event (preserves existing Brevo tracking)
-            if matches!(created.base.credential_type, CredentialType::SnmpV2c { .. })
-                && organization
-                    .not_onboarded(&OnboardingOperationDiscriminants::FirstSnmpCredentialCreated)
+            // SNMP-specific event (preserves existing Brevo tracking) — any SNMP version counts.
+            if matches!(
+                created.base.credential_type,
+                CredentialType::SnmpV1 { .. }
+                    | CredentialType::SnmpV2c { .. }
+                    | CredentialType::SnmpV3 { .. }
+            ) && organization
+                .not_onboarded(&OnboardingOperationDiscriminants::FirstSnmpCredentialCreated)
             {
                 self.event_bus
                     .publish(Event::new(
@@ -243,22 +243,17 @@ impl CredentialService {
             credential_count = network_cred_ids.len(),
             "Credential IDs found for network via junction table"
         );
+        // Legacy mapping only carries SNMPv2c — pre-v0.15.0 daemons can't speak
+        // v1 or v3. v1/v3 credentials reach modern daemons via
+        // build_all_credential_mappings.
         let mut network_snmp_credential: Option<SnmpQueryCredential> = None;
         for cred_id in &network_cred_ids {
             if let Some(cred) = self.get_by_id(cred_id).await?
-                && let CredentialType::SnmpV2c { community } = &cred.base.credential_type
+                && let CredentialQueryPayload::Snmp(snmp) =
+                    cred.base.credential_type.to_query_payload()
+                && snmp.version == SnmpVersion::V2c
             {
-                network_snmp_credential = Some(SnmpQueryCredential {
-                    version: SnmpVersion::V2c,
-                    community: match community {
-                        SecretValue::Inline { value } => ResolvableSecret::Value {
-                            value: value.expose_secret().to_string(),
-                        },
-                        SecretValue::FilePath { path } => {
-                            ResolvableSecret::FilePath { path: path.clone() }
-                        }
-                    },
-                });
+                network_snmp_credential = Some(snmp);
                 break;
             }
         }
@@ -278,19 +273,10 @@ impl CredentialService {
             if let Some(assignments) = host_cred_map.get(&host.id) {
                 for assignment in assignments {
                     if let Some(cred) = self.get_by_id(&assignment.credential_id).await?
-                        && let CredentialType::SnmpV2c { community } = &cred.base.credential_type
+                        && let CredentialQueryPayload::Snmp(query_cred) =
+                            cred.base.credential_type.to_query_payload()
+                        && query_cred.version == SnmpVersion::V2c
                     {
-                        let query_cred = SnmpQueryCredential {
-                            version: SnmpVersion::V2c,
-                            community: match community {
-                                SecretValue::Inline { value } => ResolvableSecret::Value {
-                                    value: value.expose_secret().to_string(),
-                                },
-                                SecretValue::FilePath { path } => {
-                                    ResolvableSecret::FilePath { path: path.clone() }
-                                }
-                            },
-                        };
                         // If ip_address_ids is set, only create overrides for those ip_addresses
                         let relevant_interfaces: Vec<_> = ip_addresses
                             .iter()
