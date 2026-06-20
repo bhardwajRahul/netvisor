@@ -10891,19 +10891,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-06-19T01:30:30.425392Z",
+              "created_at": "2026-06-20T20:54:37.132264Z",
               "first_discovery_id": null,
-              "id": "3b7a8474-fba7-48e7-92a3-d0239fe64cde",
+              "id": "8a611e68-abff-4b8b-b61f-201fb66b7ce8",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-19T01:30:30.425392Z",
+              "last_seen_at": "2026-06-20T20:54:37.132264Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-19T01:30:30.425392Z",
-              "valid_from": "2026-06-19T01:30:30.425392Z",
+              "updated_at": "2026-06-20T20:54:37.132264Z",
+              "valid_from": "2026-06-20T20:54:37.132264Z",
               "valid_to": null
             }
           },
@@ -11889,19 +11889,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-06-19T01:30:30.410335Z",
+                      "created_at": "2026-06-20T20:54:37.112930Z",
                       "first_discovery_id": null,
-                      "id": "b15dae83-a74a-43e2-8851-9fe129c6b25f",
+                      "id": "83d6373d-636b-40de-81c6-e0a776e6acc2",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-06-19T01:30:30.410335Z",
+                      "last_seen_at": "2026-06-20T20:54:37.112930Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-06-19T01:30:30.410335Z",
-                      "valid_from": "2026-06-19T01:30:30.410335Z",
+                      "updated_at": "2026-06-20T20:54:37.112930Z",
+                      "valid_from": "2026-06-20T20:54:37.112930Z",
                       "valid_to": null
                     }
                   ],
@@ -11915,7 +11915,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Prometheus",
+                  "service_definition": "Print Server",
                   "source": {
                     "type": "Manual"
                   },
@@ -12906,19 +12906,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-06-19T01:30:30.420700Z",
+                  "created_at": "2026-06-20T20:54:37.125979Z",
                   "first_discovery_id": null,
-                  "id": "0c6100de-5dfb-4585-bb2f-4a5ba6b9e2e5",
+                  "id": "6123c7e8-9316-4a73-a378-8fcc387a2efd",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-19T01:30:30.420700Z",
+                  "last_seen_at": "2026-06-20T20:54:37.125979Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-19T01:30:30.420700Z",
-                  "valid_from": "2026-06-19T01:30:30.420700Z",
+                  "updated_at": "2026-06-20T20:54:37.125979Z",
+                  "valid_from": "2026-06-20T20:54:37.125979Z",
                   "valid_to": null
                 }
               ],
@@ -12932,7 +12932,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Prometheus",
+              "service_definition": "Print Server",
               "source": {
                 "type": "Manual"
               },
@@ -14632,19 +14632,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-06-19T01:30:30.410594Z",
+          "created_at": "2026-06-20T20:54:37.113452Z",
           "first_discovery_id": null,
-          "id": "9ce9f147-83b6-418a-8611-a9ea34e909d2",
+          "id": "821c8475-0bc8-4d65-8a62-aa2c716f1676",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-06-19T01:30:30.410594Z",
+          "last_seen_at": "2026-06-20T20:54:37.113452Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-06-19T01:30:30.410594Z",
-          "valid_from": "2026-06-19T01:30:30.410594Z",
+          "updated_at": "2026-06-20T20:54:37.113452Z",
+          "valid_from": "2026-06-20T20:54:37.113452Z",
           "valid_to": null
         }
       },
@@ -15234,7 +15234,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Prometheus",
+              "service_definition": "Print Server",
               "tags": [],
               "virtualization": null
             }
@@ -17344,6 +17344,30 @@
           }
         ]
       },
+      "EsxiVirtualization": {
+        "type": "object",
+        "required": [
+          "service_id"
+        ],
+        "properties": {
+          "service_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "vm_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "vm_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "FileOrInline": {
         "oneOf": [
           {
@@ -17882,19 +17906,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-06-19T01:30:30.410002Z",
+                  "created_at": "2026-06-20T20:54:37.112408Z",
                   "first_discovery_id": null,
-                  "id": "d71d6b12-7d02-4f2a-accd-b0d814a7508e",
+                  "id": "84016d5d-da99-47f7-b89d-29e9a34eac03",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-19T01:30:30.410002Z",
+                  "last_seen_at": "2026-06-20T20:54:37.112408Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-19T01:30:30.410002Z",
-                  "valid_from": "2026-06-19T01:30:30.410002Z",
+                  "updated_at": "2026-06-20T20:54:37.112408Z",
+                  "valid_from": "2026-06-20T20:54:37.112408Z",
                   "valid_to": null
                 }
               ],
@@ -17908,7 +17932,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Prometheus",
+              "service_definition": "Print Server",
               "source": {
                 "type": "Manual"
               },
@@ -17944,6 +17968,44 @@
                 "type": "string",
                 "enum": [
                   "Proxmox"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "title": "VCenter",
+            "required": [
+              "details",
+              "type"
+            ],
+            "properties": {
+              "details": {
+                "$ref": "#/components/schemas/VCenterVirtualization"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "VCenter"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "title": "ESXi",
+            "required": [
+              "details",
+              "type"
+            ],
+            "properties": {
+              "details": {
+                "$ref": "#/components/schemas/EsxiVirtualization"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "ESXi"
                 ]
               }
             }
@@ -20339,19 +20401,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-06-19T01:30:30.403532Z",
+                        "created_at": "2026-06-20T20:54:37.100874Z",
                         "first_discovery_id": null,
-                        "id": "dd33bcc2-3926-4df4-bf52-86ba09067578",
+                        "id": "28bc2537-3853-4bdf-86b9-6e7b03a323e9",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-06-19T01:30:30.403532Z",
+                        "last_seen_at": "2026-06-20T20:54:37.100874Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-06-19T01:30:30.403532Z",
-                        "valid_from": "2026-06-19T01:30:30.403532Z",
+                        "updated_at": "2026-06-20T20:54:37.100874Z",
+                        "valid_from": "2026-06-20T20:54:37.100874Z",
                         "valid_to": null
                       }
                     ],
@@ -20365,7 +20427,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Prometheus",
+                    "service_definition": "Print Server",
                     "source": {
                       "type": "Manual"
                     },
@@ -20486,19 +20548,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-06-19T01:30:30.419563Z",
+                    "created_at": "2026-06-20T20:54:37.124806Z",
                     "first_discovery_id": null,
-                    "id": "de93f955-f84c-439e-8810-1a400b074740",
+                    "id": "cd4ac11a-697e-42e9-a2ed-99531c0df552",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-06-19T01:30:30.419563Z",
+                    "last_seen_at": "2026-06-20T20:54:37.124806Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-06-19T01:30:30.419563Z",
-                    "valid_from": "2026-06-19T01:30:30.419563Z",
+                    "updated_at": "2026-06-20T20:54:37.124806Z",
+                    "valid_from": "2026-06-20T20:54:37.124806Z",
                     "valid_to": null
                   }
                 ],
@@ -20512,7 +20574,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Prometheus",
+                "service_definition": "Print Server",
                 "source": {
                   "type": "Manual"
                 },
@@ -21234,6 +21296,36 @@
             ],
             "format": "int64",
             "minimum": 0
+          }
+        }
+      },
+      "PodmanVirtualization": {
+        "type": "object",
+        "required": [
+          "service_id"
+        ],
+        "properties": {
+          "compose_project": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "container_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "container_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "service_id": {
+            "type": "string",
+            "format": "uuid"
           }
         }
       },
@@ -22113,19 +22205,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-06-19T01:30:30.410543Z",
+              "created_at": "2026-06-20T20:54:37.113340Z",
               "first_discovery_id": null,
-              "id": "f4329711-48ec-4b82-8702-45bbfb2aec0d",
+              "id": "1b53d81b-2be8-4ab5-9c7d-0634d6dbe74b",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-19T01:30:30.410543Z",
+              "last_seen_at": "2026-06-20T20:54:37.113340Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-19T01:30:30.410543Z",
-              "valid_from": "2026-06-19T01:30:30.410543Z",
+              "updated_at": "2026-06-20T20:54:37.113340Z",
+              "valid_from": "2026-06-20T20:54:37.113340Z",
               "valid_to": null
             }
           ],
@@ -22139,7 +22231,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Prometheus",
+          "service_definition": "Print Server",
           "source": {
             "type": "Manual"
           },
@@ -22340,6 +22432,25 @@
                 "type": "string",
                 "enum": [
                   "Docker"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "title": "Podman",
+            "required": [
+              "details",
+              "type"
+            ],
+            "properties": {
+              "details": {
+                "$ref": "#/components/schemas/PodmanVirtualization"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "Podman"
                 ]
               }
             }
@@ -23769,6 +23880,30 @@
           "y": {
             "type": "integer",
             "minimum": 0
+          }
+        }
+      },
+      "VCenterVirtualization": {
+        "type": "object",
+        "required": [
+          "service_id"
+        ],
+        "properties": {
+          "service_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "vm_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "vm_name": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },

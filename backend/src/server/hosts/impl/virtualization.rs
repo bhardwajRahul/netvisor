@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::hash::Hash;
-use strum_macros::{EnumIter, IntoStaticStr, VariantNames};
+use strum_macros::{EnumDiscriminants, EnumIter, IntoStaticStr, VariantNames};
 use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::Validate;
@@ -19,13 +19,28 @@ use crate::server::{
 };
 
 #[derive(
-    Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, IntoStaticStr, VariantNames, ToSchema,
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Hash,
+    Serialize,
+    Deserialize,
+    IntoStaticStr,
+    EnumDiscriminants,
+    VariantNames,
+    ToSchema,
 )]
+#[strum_discriminants(derive(IntoStaticStr))]
 #[schema(title = "HostVirtualization")]
 #[serde(tag = "type", content = "details")]
 pub enum HostVirtualization {
     #[schema(title = "Proxmox")]
     Proxmox(ProxmoxVirtualization),
+    #[schema(title = "VCenter")]
+    VCenter(VCenterVirtualization),
+    #[schema(title = "ESXi")]
+    ESXi(EsxiVirtualization),
 }
 
 #[derive(Debug, Clone, Serialize, Validate, Deserialize, PartialEq, Eq, Hash, ToSchema)]
@@ -35,16 +50,34 @@ pub struct ProxmoxVirtualization {
     pub service_id: Uuid,
 }
 
+#[derive(Debug, Clone, Serialize, Validate, Deserialize, PartialEq, Eq, Hash, ToSchema)]
+pub struct VCenterVirtualization {
+    pub vm_name: Option<String>,
+    pub vm_id: Option<String>,
+    pub service_id: Uuid,
+}
+
+#[derive(Debug, Clone, Serialize, Validate, Deserialize, PartialEq, Eq, Hash, ToSchema)]
+pub struct EsxiVirtualization {
+    pub vm_name: Option<String>,
+    pub vm_id: Option<String>,
+    pub service_id: Uuid,
+}
+
 impl HostVirtualization {
     pub fn service_id(&self) -> Option<Uuid> {
         match self {
             Self::Proxmox(p) => Some(p.service_id),
+            Self::VCenter(v) => Some(v.service_id),
+            Self::ESXi(e) => Some(e.service_id),
         }
     }
 
     pub fn set_service_id(&mut self, id: Uuid) {
         match self {
             Self::Proxmox(p) => p.service_id = id,
+            Self::VCenter(v) => v.service_id = id,
+            Self::ESXi(e) => e.service_id = id,
         }
     }
 }
@@ -66,11 +99,19 @@ impl EntityMetadataProvider for HostVirtualization {
 
 impl TypeMetadataProvider for HostVirtualization {
     fn name(&self) -> &'static str {
-        "Proxmox"
+        match self {
+            Self::Proxmox(_) => "Proxmox",
+            Self::VCenter(_) => "vCenter",
+            Self::ESXi(_) => "ESXi",
+        }
     }
 
     fn description(&self) -> &'static str {
-        "A host running as a Proxmox VM"
+        match self {
+            Self::Proxmox(_) => "A host running as a Proxmox VM",
+            Self::VCenter(_) => "A host running as a vCenter-managed VM",
+            Self::ESXi(_) => "A host running as an ESXi VM",
+        }
     }
 }
 
@@ -150,5 +191,46 @@ impl HasFilterValues for Host {
             HostVirtualizationState::from_host_virtualization(self.base.virtualization.as_ref());
         values.insert(MetadataFilterType::Virtualization, state.id().to_string());
         values
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn host_virtualization_variants_round_trip_by_tag() {
+        // The serde "type" tag is what the manual-assignment UI sends (sourced
+        // from ServiceDefinition::virtualization_variant). Confirm each tag
+        // deserializes and round-trips, and that the tag == HasId::id().
+        for tag in ["Proxmox", "VCenter", "ESXi"] {
+            let json = format!(
+                r#"{{"type":"{tag}","details":{{"vm_name":null,"vm_id":null,"service_id":"00000000-0000-0000-0000-000000000000"}}}}"#
+            );
+            let v: HostVirtualization =
+                serde_json::from_str(&json).unwrap_or_else(|e| panic!("{tag}: {e}"));
+            assert_eq!(v.id(), tag, "id() must equal serde tag for {tag}");
+            assert_eq!(v.service_id(), Some(Uuid::nil()));
+            let reserialized = serde_json::to_value(&v).unwrap();
+            assert_eq!(reserialized["type"], tag);
+        }
+    }
+
+    #[test]
+    fn host_virtualization_discriminant_static_str_matches_serde_tag() {
+        // The discriminant's IntoStaticStr is what VirtualizationRole::variant_tag
+        // derives from; it must equal the serde "type" tag above.
+        assert_eq!(
+            <&'static str>::from(HostVirtualizationDiscriminants::Proxmox),
+            "Proxmox"
+        );
+        assert_eq!(
+            <&'static str>::from(HostVirtualizationDiscriminants::VCenter),
+            "VCenter"
+        );
+        assert_eq!(
+            <&'static str>::from(HostVirtualizationDiscriminants::ESXi),
+            "ESXi"
+        );
     }
 }
