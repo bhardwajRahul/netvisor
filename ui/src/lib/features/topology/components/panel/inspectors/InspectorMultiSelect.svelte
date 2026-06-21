@@ -9,6 +9,7 @@
 		baseFlowEdges,
 		activeView,
 		topologyOptions,
+		topologyReadOnly,
 		updateSharedElementRules
 	} from '../../../queries';
 	import type { RenderableTopology } from '../../../types/base';
@@ -195,7 +196,7 @@
 	let editState = $derived(
 		isTutorial
 			? { isReadonly: false, isEditable: true, disabledReason: null }
-			: getTopologyEditState(topology, false, isReadOnly)
+			: getTopologyEditState(topology, false, isReadOnly || $topologyReadOnly)
 	);
 
 	let mutateDisabledReason = $derived.by(() => {

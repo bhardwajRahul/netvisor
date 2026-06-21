@@ -321,9 +321,19 @@ export function prepareTopologyData(
 	const isNewStructure = state.sessionStructureKey !== structureKey;
 	const isNewBaseStructure = state.sessionBaseKey !== baseKey;
 
-	// Capture expanded sizes before rebuilding the graph
-	const prevExpandedSizes = state.layoutGraph?.getExpandedContainerSizes();
-	const prevChildPositions = state.layoutGraph?.getContainerChildPositions();
+	// Capture expanded sizes/positions before rebuilding the graph — but NOT
+	// across a view switch. The existing layoutGraph belongs to the previous
+	// view, whose nodes/containers differ from this view's slice; restoring its
+	// sizes/positions onto the new view's graph piles children at the origin on
+	// the first expand. On a view switch we start fresh (like a reload) and let
+	// ELK lay out; each view's persisted positions come from its own backend
+	// slice. Same-view re-renders (e.g. expanding a container) still reuse them.
+	const prevExpandedSizes = viewChanged
+		? undefined
+		: state.layoutGraph?.getExpandedContainerSizes();
+	const prevChildPositions = viewChanged
+		? undefined
+		: state.layoutGraph?.getContainerChildPositions();
 
 	// Build/rebuild layout graph when structure changes
 	if (!state.layoutGraph || isNewStructure) {

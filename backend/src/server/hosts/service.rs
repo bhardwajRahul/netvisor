@@ -330,7 +330,7 @@ impl HostService {
         // Hydrate tags from junction table
         let tags_map = self
             .entity_tag_service
-            .get_tags_map(&host_ids, EntityDiscriminants::Host)
+            .get_tags_map(&host_ids, EntityDiscriminants::Host, None)
             .await?;
 
         let responses = hosts
@@ -383,7 +383,7 @@ impl HostService {
         // Hydrate tags from junction table
         let tags_map = self
             .entity_tag_service
-            .get_tags_map(&host_ids, EntityDiscriminants::Host)
+            .get_tags_map(&host_ids, EntityDiscriminants::Host, None)
             .await?;
 
         let responses = result

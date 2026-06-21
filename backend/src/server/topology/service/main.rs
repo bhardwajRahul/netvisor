@@ -267,12 +267,20 @@ impl TopologyService {
         network_id: Uuid,
         snapshot_id: Option<Uuid>,
     ) -> Result<TopologyData, Error> {
+        // Hosts/services/subnets carry the tags that drive topology grouping +
+        // display, so hydrate their tag associations as-of the snapshot (from
+        // the closed `entity_tags`), not from live `entity_tags` (which key on
+        // live, not closed, entity ids). Other entity types don't surface tags
+        // in the topology, so plain `get_all` (live hydration) is fine for them.
         let hosts = self
             .host_service
-            .get_all(apply_snapshot(
-                StorableFilter::<Host>::new_from_network_ids(&[network_id]).hidden_is(false),
+            .get_all_as_of_snapshot(
+                apply_snapshot(
+                    StorableFilter::<Host>::new_from_network_ids(&[network_id]).hidden_is(false),
+                    snapshot_id,
+                ),
                 snapshot_id,
-            ))
+            )
             .await?;
         let ip_addresses = self
             .ip_address_service
@@ -283,10 +291,13 @@ impl TopologyService {
             .await?;
         let subnets = self
             .subnet_service
-            .get_all(apply_snapshot(
-                StorableFilter::<Subnet>::new_from_network_ids(&[network_id]),
+            .get_all_as_of_snapshot(
+                apply_snapshot(
+                    StorableFilter::<Subnet>::new_from_network_ids(&[network_id]),
+                    snapshot_id,
+                ),
                 snapshot_id,
-            ))
+            )
             .await?;
         let dependencies = self
             .dependency_service
@@ -318,10 +329,13 @@ impl TopologyService {
             .await?;
         let services = self
             .service_service
-            .get_all(apply_snapshot(
-                StorableFilter::<Service>::new_from_network_ids(&[network_id]),
+            .get_all_as_of_snapshot(
+                apply_snapshot(
+                    StorableFilter::<Service>::new_from_network_ids(&[network_id]),
+                    snapshot_id,
+                ),
                 snapshot_id,
-            ))
+            )
             .await?;
         let vlans = self
             .vlan_service
@@ -330,9 +344,7 @@ impl TopologyService {
                 snapshot_id,
             ))
             .await?;
-        let tags = self
-            .get_entity_tags(&hosts, &services, &subnets, snapshot_id)
-            .await?;
+        let tags = self.get_entity_tags(&hosts, &services, &subnets).await?;
 
         Ok(TopologyData {
             hosts,
@@ -348,19 +360,20 @@ impl TopologyService {
         })
     }
 
-    /// Fetch tag definitions for all tags used by hosts, services, and subnets.
+    /// Fetch tag *definitions* for all tags referenced by hosts, services, and
+    /// subnets (the referenced ids come from each entity's hydrated `tags`).
     ///
-    /// Live view: `tag_id IN <referenced> AND valid_to IS NULL`.
-    /// Snapshot view: the entities themselves came from close-and-clone, and
-    /// their `tags` field already references the snapshot's closed tag rows
-    /// (close-and-clone rewrites `tags` to point at the new ids via the
-    /// `FkMaps` remap). So we filter by the referenced ids + `snapshot_id`.
+    /// Always read **live** — tag definitions are org-scoped and are NOT cloned
+    /// at snapshot time, so there is no snapshot-pinned tag row to read. The
+    /// per-snapshot part is the *association* (the closed `entity_tags`, which
+    /// populate the entities' `tags` upstream); the definition (name/color) is
+    /// shown as it is now, consistent with the "inspector entity details are
+    /// always live" model.
     pub async fn get_entity_tags(
         &self,
         hosts: &[Host],
         services: &[Service],
         subnets: &[Subnet],
-        snapshot_id: Option<Uuid>,
     ) -> Result<Vec<Tag>, Error> {
         let mut tag_ids: Vec<Uuid> = Vec::new();
         for host in hosts {
@@ -380,10 +393,7 @@ impl TopologyService {
             return Ok(vec![]);
         }
 
-        let filter = match snapshot_id {
-            None => StorableFilter::<Tag>::new_from_entity_ids(&tag_ids).live(),
-            Some(id) => StorableFilter::<Tag>::new_from_entity_ids(&tag_ids).snapshot_id(&id),
-        };
+        let filter = StorableFilter::<Tag>::new_from_entity_ids(&tag_ids).live();
         let tags = self.tag_service.get_all(filter).await?;
 
         Ok(tags)

@@ -398,7 +398,7 @@ async fn get_by_id(
     let tags_map = state
         .services
         .entity_tag_service
-        .get_tags_map(&[daemon.id], EntityDiscriminants::Daemon)
+        .get_tags_map(&[daemon.id], EntityDiscriminants::Daemon, None)
         .await?;
     if let Some(tags) = tags_map.get(&daemon.id) {
         daemon.base.tags = tags.clone();

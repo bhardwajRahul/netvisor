@@ -12,7 +12,7 @@
 	import { isDisabledEdge } from '../../../layout/edge-classification';
 	import { getTopologyEditState, getOptionDisabledTooltip } from '../../../state';
 	import { edgeTypes, views } from '$lib/shared/stores/metadata';
-	import { activeView } from '../../../queries';
+	import { activeView, topologyReadOnly } from '../../../queries';
 	import { type Color } from '$lib/shared/utils/styling';
 	import { useHostsQuery } from '$lib/features/hosts/queries';
 	import { useServicesCacheQuery } from '$lib/features/services/queries';
@@ -53,7 +53,7 @@
 	let topology = $derived(topologiesData.find((t) => t.id === $selectedTopologyId));
 
 	// Unified edit state for gating request-path options
-	let editState = $derived(getTopologyEditState(topology, false, false));
+	let editState = $derived(getTopologyEditState(topology, false, $topologyReadOnly));
 
 	// Live entity arrays drive tag-filter sections. Hosts query populates the
 	// services cache as a side-effect; subnets fetch directly.
