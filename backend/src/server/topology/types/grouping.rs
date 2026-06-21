@@ -210,7 +210,9 @@ impl TypeMetadataProvider for ContainerRule {
     fn description(&self) -> &'static str {
         match self {
             ContainerRule::BySubnet => "Group nodes by network subnet",
-            ContainerRule::MergeDockerBridges => "Merge Docker bridge subnets under their host",
+            ContainerRule::MergeDockerBridges => {
+                "Merge Docker Bridge subnets from the same host into a single container"
+            }
             ContainerRule::ByApplication { .. } => "Group services by application tag",
             ContainerRule::ByHost => "Group elements by host",
         }

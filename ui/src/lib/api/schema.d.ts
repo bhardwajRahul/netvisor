@@ -3099,19 +3099,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-06-20T22:33:07.988584Z",
+             *       "created_at": "2026-06-21T01:58:48.718703Z",
              *       "first_discovery_id": null,
-             *       "id": "ed711395-97d2-4077-8b8c-4a22b69128a4",
+             *       "id": "cd50ab69-0443-455f-953f-3ba3b549c5a1",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-06-20T22:33:07.988584Z",
+             *       "last_seen_at": "2026-06-21T01:58:48.718703Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-06-20T22:33:07.988584Z",
-             *       "valid_from": "2026-06-20T22:33:07.988584Z",
+             *       "updated_at": "2026-06-21T01:58:48.718703Z",
+             *       "valid_from": "2026-06-21T01:58:48.718703Z",
              *       "valid_to": null
              *     }
              */
@@ -3448,19 +3448,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-06-20T22:33:07.971424Z",
+             *               "created_at": "2026-06-21T01:58:48.705926Z",
              *               "first_discovery_id": null,
-             *               "id": "66bddfcb-2815-4986-ab6b-c75a9da93ff1",
+             *               "id": "b4b80fbb-af71-439f-ac21-0f2ac3435cc6",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-06-20T22:33:07.971424Z",
+             *               "last_seen_at": "2026-06-21T01:58:48.705926Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-06-20T22:33:07.971424Z",
-             *               "valid_from": "2026-06-20T22:33:07.971424Z",
+             *               "updated_at": "2026-06-21T01:58:48.705926Z",
+             *               "valid_from": "2026-06-21T01:58:48.705926Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3474,7 +3474,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Eero Repeater",
+             *           "service_definition": "MeTube",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3830,19 +3830,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-06-20T22:33:07.982923Z",
+             *           "created_at": "2026-06-21T01:58:48.714148Z",
              *           "first_discovery_id": null,
-             *           "id": "f64209db-1df1-4080-b6d7-67fb310b8264",
+             *           "id": "8ef376b1-d2b4-43da-899d-3e38c1a44067",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-06-20T22:33:07.982923Z",
+             *           "last_seen_at": "2026-06-21T01:58:48.714148Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-06-20T22:33:07.982923Z",
-             *           "valid_from": "2026-06-20T22:33:07.982923Z",
+             *           "updated_at": "2026-06-21T01:58:48.714148Z",
+             *           "valid_from": "2026-06-21T01:58:48.714148Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -3856,7 +3856,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Eero Repeater",
+             *       "service_definition": "MeTube",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4309,19 +4309,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-06-20T22:33:07.971831Z",
+         *       "created_at": "2026-06-21T01:58:48.706185Z",
          *       "first_discovery_id": null,
-         *       "id": "5be88680-5f29-4a81-b2bf-0b1d0e42214b",
+         *       "id": "39fe87ac-c242-487b-aa42-4cc1a2f4417d",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-06-20T22:33:07.971831Z",
+         *       "last_seen_at": "2026-06-21T01:58:48.706185Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-06-20T22:33:07.971831Z",
-         *       "valid_from": "2026-06-20T22:33:07.971831Z",
+         *       "updated_at": "2026-06-21T01:58:48.706185Z",
+         *       "valid_from": "2026-06-21T01:58:48.706185Z",
          *       "valid_to": null
          *     }
          */
@@ -4536,7 +4536,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Eero Repeater",
+         *           "service_definition": "MeTube",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -4640,7 +4640,21 @@ export interface components {
         CredentialType: {
             community: components["schemas"]["SecretValue"];
             /** @enum {string} */
+            type: "SnmpV1";
+        } | {
+            community: components["schemas"]["SecretValue"];
+            /** @enum {string} */
             type: "SnmpV2c";
+        } | {
+            auth_password: components["schemas"]["SecretValue"];
+            auth_protocol: components["schemas"]["SnmpV3AuthProtocol"];
+            /** @description Optional context name (default/empty context used if unset). */
+            context_name?: string | null;
+            priv_password: components["schemas"]["SecretValue"];
+            priv_protocol: components["schemas"]["SnmpV3PrivProtocol"];
+            security_name: string;
+            /** @enum {string} */
+            type: "SnmpV3";
         } | {
             /** @description Optional URL path prefix (e.g. "/v1.43") */
             path?: string | null;
@@ -5504,19 +5518,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-06-20T22:33:07.970970Z",
+         *               "created_at": "2026-06-21T01:58:48.705635Z",
          *               "first_discovery_id": null,
-         *               "id": "bd478871-cc7f-4c8a-b66f-d7e12a651db3",
+         *               "id": "949db91c-d01d-4fe3-b7aa-18ca79b0a593",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-06-20T22:33:07.970970Z",
+         *               "last_seen_at": "2026-06-21T01:58:48.705635Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-06-20T22:33:07.970970Z",
-         *               "valid_from": "2026-06-20T22:33:07.970970Z",
+         *               "updated_at": "2026-06-21T01:58:48.705635Z",
+         *               "valid_from": "2026-06-21T01:58:48.705635Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -5530,7 +5544,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Eero Repeater",
+         *           "service_definition": "MeTube",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -6960,19 +6974,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-06-20T22:33:07.971744Z",
+         *           "created_at": "2026-06-21T01:58:48.706129Z",
          *           "first_discovery_id": null,
-         *           "id": "a68e9c67-95e7-4ef4-8b2f-88f814a0643c",
+         *           "id": "0ed3b6db-1323-4a09-be4b-34b7f3e10838",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-06-20T22:33:07.971744Z",
+         *           "last_seen_at": "2026-06-21T01:58:48.706129Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-06-20T22:33:07.971744Z",
-         *           "valid_from": "2026-06-20T22:33:07.971744Z",
+         *           "updated_at": "2026-06-21T01:58:48.706129Z",
+         *           "valid_from": "2026-06-21T01:58:48.706129Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -6986,7 +7000,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Eero Repeater",
+         *       "service_definition": "MeTube",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -7176,6 +7190,19 @@ export interface components {
             taken_at: string;
         };
         /**
+         * @description SNMPv3 USM authentication protocol. Variants are limited to the modern,
+         *     secure set Scanopy supports; MD5 / SHA-2 variants beyond these are
+         *     intentionally excluded. Serialized form (e.g. "Sha256") is the wire value
+         *     stored in the credential and used as the frontend select option value.
+         * @enum {string}
+         */
+        SnmpV3AuthProtocol: "Sha1" | "Sha256";
+        /**
+         * @description SNMPv3 USM privacy (encryption) protocol.
+         * @enum {string}
+         */
+        SnmpV3PrivProtocol: "Aes128" | "Aes256";
+        /**
          * @example {
          *       "cidr": "192.168.1.0/24",
          *       "created_at": "2026-01-15T10:30:00Z",
@@ -7312,10 +7339,14 @@ export interface components {
             readonly updated_at: string;
         };
         TopologyBase: {
-            edges: components["schemas"]["Edge"][];
+            edges?: {
+                [key: string]: components["schemas"]["Edge"][];
+            };
             /** Format: uuid */
             network_id: string;
-            nodes: components["schemas"]["Node"][];
+            nodes?: {
+                [key: string]: components["schemas"]["Node"][];
+            };
             options: components["schemas"]["TopologyOptions"];
             /**
              * Format: uuid
@@ -7365,6 +7396,8 @@ export interface components {
             source_handle: components["schemas"]["EdgeHandle"];
             /** @description New target handle position */
             target_handle: components["schemas"]["EdgeHandle"];
+            /** @description View whose node/edge slice this update targets */
+            view: components["schemas"]["TopologyView"];
         };
         TopologyLocalOptions: {
             bundle_edges?: boolean;
@@ -7393,6 +7426,8 @@ export interface components {
             node_id: string;
             /** @description New position for the node */
             position: components["schemas"]["Ixy"];
+            /** @description View whose node/edge slice this update targets */
+            view: components["schemas"]["TopologyView"];
         };
         /**
          * @description Lightweight request type for updating a node's size and position.
@@ -7416,6 +7451,8 @@ export interface components {
             position: components["schemas"]["Ixy"];
             /** @description New size for the node */
             size: components["schemas"]["Uxy"];
+            /** @description View whose node/edge slice this update targets */
+            view: components["schemas"]["TopologyView"];
         };
         TopologyOptions: {
             local: components["schemas"]["TopologyLocalOptions"];
@@ -14263,7 +14300,10 @@ export interface operations {
     };
     export_confluence: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description View to export. Defaults to the default view when omitted. */
+                view?: components["schemas"]["TopologyView"];
+            };
             header?: never;
             path: {
                 /** @description Topology ID */
@@ -14304,7 +14344,10 @@ export interface operations {
     };
     export_mermaid: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description View to export. Defaults to the default view when omitted. */
+                view?: components["schemas"]["TopologyView"];
+            };
             header?: never;
             path: {
                 /** @description Topology ID */
