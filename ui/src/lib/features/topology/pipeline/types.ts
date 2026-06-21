@@ -5,6 +5,7 @@ import type { Node, Edge } from '@xyflow/svelte';
 import type { Writable } from 'svelte/store';
 import type { AggregatedEdge } from '../collapse';
 import type { TopologyParentIndex } from '../topology-parent-index';
+import type { TopologyView } from '../queries';
 
 export type XY = { x: number; y: number };
 
@@ -66,7 +67,7 @@ export interface PrepareResult {
 	hiddenEdgeTypes: string[];
 	prevExpandedSizes: Map<string, { width: number; height: number }> | undefined;
 	prevChildPositions: Map<string, Map<string, { x: number; y: number }>> | undefined;
-	currentView: string;
+	currentView: TopologyView;
 	topologyId: string;
 	needsElk: boolean;
 	isViewTransition: boolean;

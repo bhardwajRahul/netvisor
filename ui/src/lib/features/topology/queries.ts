@@ -159,8 +159,7 @@ function defaultRequestOptions(): components['schemas']['TopologyRequestOptions'
 		hide_entities: {},
 		hide_metadata_values: hideMetadataValues,
 		container_rules: containerRules,
-		element_rules: elementRules,
-		view: 'L3Logical'
+		element_rules: elementRules
 	};
 }
 
@@ -479,8 +478,7 @@ export const sharedElementRules = derived(topologyOptionsStore, ($store) => {
 export const topologyOptions = derived([topologyOptionsStore, activeView], ([$store, $view]) => ({
 	local: $store.perViewLocal[$view],
 	request: {
-		...$store.request,
-		view: $view
+		...$store.request
 	}
 }));
 
@@ -492,7 +490,7 @@ export function updateTopologyOptions(
 	topologyOptionsStore.update((store) => {
 		const currentOpts: TopologyOptions = {
 			local: store.perViewLocal[view],
-			request: { ...store.request, view: view }
+			request: { ...store.request }
 		};
 		const updated = updater(currentOpts);
 		return {
@@ -528,8 +526,7 @@ function buildOptionsForApi(): TopologyOptions {
 	return sanitizeOptionsForApi({
 		local: store.perViewLocal[view],
 		request: {
-			...store.request,
-			view: view
+			...store.request
 		}
 	});
 }
@@ -553,14 +550,11 @@ export function hydrateStoresFromTopology(
 	hydrating = true;
 	try {
 		const opts = topology.options;
-		const storedView = opts.request.view as TopologyView;
 
-		// Only set view on initial load — not on SSE updates, which would
-		// revert the user's view switch mid-flight
-		if (isInitial) {
-			activeView.set(storedView);
-		}
-
+		// The active view is no longer persisted on the row — it's driven by the
+		// URL (`?view=`) with an L3Logical default (see TopologyTab) for the app,
+		// and by the explicit view prop for shares. Hydration only restores the
+		// view-agnostic request options + the active view's local options.
 		if (isInitial) {
 			const request = { ...opts.request };
 
@@ -598,7 +592,7 @@ export function hydrateStoresFromTopology(
 				request,
 				perViewLocal: {
 					...initDefaultLocalOptions(),
-					...(useDefaultLocal ? {} : { [storedView]: opts.local })
+					...(useDefaultLocal ? {} : { [get(activeView)]: opts.local })
 				}
 			});
 		} else {

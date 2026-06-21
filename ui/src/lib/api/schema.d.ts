@@ -3099,19 +3099,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-06-21T01:58:48.718703Z",
+             *       "created_at": "2026-06-21T03:53:52.132391Z",
              *       "first_discovery_id": null,
-             *       "id": "cd50ab69-0443-455f-953f-3ba3b549c5a1",
+             *       "id": "79412b8c-f181-44f7-9f2e-3ecaeb31750c",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-06-21T01:58:48.718703Z",
+             *       "last_seen_at": "2026-06-21T03:53:52.132391Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-06-21T01:58:48.718703Z",
-             *       "valid_from": "2026-06-21T01:58:48.718703Z",
+             *       "updated_at": "2026-06-21T03:53:52.132391Z",
+             *       "valid_from": "2026-06-21T03:53:52.132391Z",
              *       "valid_to": null
              *     }
              */
@@ -3448,19 +3448,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-06-21T01:58:48.705926Z",
+             *               "created_at": "2026-06-21T03:53:52.113078Z",
              *               "first_discovery_id": null,
-             *               "id": "b4b80fbb-af71-439f-ac21-0f2ac3435cc6",
+             *               "id": "c846d3ed-f62b-4462-8296-d632ddc365b3",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-06-21T01:58:48.705926Z",
+             *               "last_seen_at": "2026-06-21T03:53:52.113078Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-06-21T01:58:48.705926Z",
-             *               "valid_from": "2026-06-21T01:58:48.705926Z",
+             *               "updated_at": "2026-06-21T03:53:52.113078Z",
+             *               "valid_from": "2026-06-21T03:53:52.113078Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3474,7 +3474,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "MeTube",
+             *           "service_definition": "FreeIPA",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3830,19 +3830,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-06-21T01:58:48.714148Z",
+             *           "created_at": "2026-06-21T03:53:52.126125Z",
              *           "first_discovery_id": null,
-             *           "id": "8ef376b1-d2b4-43da-899d-3e38c1a44067",
+             *           "id": "d4883e5b-dc06-425e-83d9-16e462acab90",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-06-21T01:58:48.714148Z",
+             *           "last_seen_at": "2026-06-21T03:53:52.126125Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-06-21T01:58:48.714148Z",
-             *           "valid_from": "2026-06-21T01:58:48.714148Z",
+             *           "updated_at": "2026-06-21T03:53:52.126125Z",
+             *           "valid_from": "2026-06-21T03:53:52.126125Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -3856,7 +3856,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "MeTube",
+             *       "service_definition": "FreeIPA",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4067,6 +4067,14 @@ export interface components {
              *     persisted on the topology row.
              */
             data?: {
+                /**
+                 * @description Views whose data is present in this entity set (L3/Workloads always;
+                 *     L2 Physical iff LLDP/CDP neighbors exist; Application iff app-flagged
+                 *     tags are used). The topology tab restricts a snapshot's view picker to
+                 *     these — you can't set up SNMP or create app tags on a historical
+                 *     snapshot — while the live view shows all views with setup prompts.
+                 */
+                available_views?: components["schemas"]["TopologyView"][];
                 bindings: components["schemas"]["Binding"][];
                 dependencies: components["schemas"]["Dependency"][];
                 hosts: components["schemas"]["Host"][];
@@ -4309,19 +4317,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-06-21T01:58:48.706185Z",
+         *       "created_at": "2026-06-21T03:53:52.113531Z",
          *       "first_discovery_id": null,
-         *       "id": "39fe87ac-c242-487b-aa42-4cc1a2f4417d",
+         *       "id": "d6fffd70-3e6f-4cca-ad12-698c65457c50",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-06-21T01:58:48.706185Z",
+         *       "last_seen_at": "2026-06-21T03:53:52.113531Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-06-21T01:58:48.706185Z",
-         *       "valid_from": "2026-06-21T01:58:48.706185Z",
+         *       "updated_at": "2026-06-21T03:53:52.113531Z",
+         *       "valid_from": "2026-06-21T03:53:52.113531Z",
          *       "valid_to": null
          *     }
          */
@@ -4536,7 +4544,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "MeTube",
+         *           "service_definition": "FreeIPA",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -5518,19 +5526,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-06-21T01:58:48.705635Z",
+         *               "created_at": "2026-06-21T03:53:52.112561Z",
          *               "first_discovery_id": null,
-         *               "id": "949db91c-d01d-4fe3-b7aa-18ca79b0a593",
+         *               "id": "1b84504d-171e-4a08-b037-103f9229a5cf",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-06-21T01:58:48.705635Z",
+         *               "last_seen_at": "2026-06-21T03:53:52.112561Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-06-21T01:58:48.705635Z",
-         *               "valid_from": "2026-06-21T01:58:48.705635Z",
+         *               "updated_at": "2026-06-21T03:53:52.112561Z",
+         *               "valid_from": "2026-06-21T03:53:52.112561Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -5544,7 +5552,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "MeTube",
+         *           "service_definition": "FreeIPA",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -6974,19 +6982,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-06-21T01:58:48.706129Z",
+         *           "created_at": "2026-06-21T03:53:52.113435Z",
          *           "first_discovery_id": null,
-         *           "id": "0ed3b6db-1323-4a09-be4b-34b7f3e10838",
+         *           "id": "b617af18-d40c-48cf-9a13-04d8c82ac660",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-06-21T01:58:48.706129Z",
+         *           "last_seen_at": "2026-06-21T03:53:52.113435Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-06-21T01:58:48.706129Z",
-         *           "valid_from": "2026-06-21T01:58:48.706129Z",
+         *           "updated_at": "2026-06-21T03:53:52.113435Z",
+         *           "valid_from": "2026-06-21T03:53:52.113435Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -7000,7 +7008,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "MeTube",
+         *       "service_definition": "FreeIPA",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -7363,6 +7371,14 @@ export interface components {
          *     persisted on the topology row.
          */
         TopologyData: {
+            /**
+             * @description Views whose data is present in this entity set (L3/Workloads always;
+             *     L2 Physical iff LLDP/CDP neighbors exist; Application iff app-flagged
+             *     tags are used). The topology tab restricts a snapshot's view picker to
+             *     these — you can't set up SNMP or create app tags on a historical
+             *     snapshot — while the live view shows all views with setup prompts.
+             */
+            available_views?: components["schemas"]["TopologyView"][];
             bindings: components["schemas"]["Binding"][];
             dependencies: components["schemas"]["Dependency"][];
             hosts: components["schemas"]["Host"][];
@@ -7486,7 +7502,6 @@ export interface components {
                     };
                 };
             };
-            view?: components["schemas"]["TopologyView"];
         };
         /** @description Filter settings for hiding entities by tag in topology visualization. */
         TopologyTagFilter: {

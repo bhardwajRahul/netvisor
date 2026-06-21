@@ -34,7 +34,7 @@ use crate::server::{
         },
         handlers::traits::{CrudHandlers, create_handler, update_handler},
         services::traits::CrudService,
-        storage::traits::{Entity, Storage},
+        storage::traits::Entity,
         types::api::{ApiError, ApiErrorResponse, ApiResponse, ApiResult},
     },
     shares::r#impl::{
@@ -240,7 +240,6 @@ async fn get_share_org_plan(state: &AppState, share: &Share) -> Result<BillingPl
     let network = state
         .services
         .network_service
-        .storage()
         .get_by_id(&share.base.network_id)
         .await
         .map_err(|e| ApiError::internal_error(&e.to_string()))?
@@ -289,7 +288,6 @@ async fn get_public_share_metadata(
     let topology = state
         .services
         .topology_service
-        .storage()
         .get_by_id(&share.base.topology_id)
         .await
         .map_err(|e| ApiError::internal_error(&e.to_string()))?
@@ -423,10 +421,9 @@ async fn get_share_topology(
     // server-side referer check here cannot enforce what it appears to.
 
     // Get topology data
-    let mut topology = state
+    let topology = state
         .services
         .topology_service
-        .storage()
         .get_by_id(&share.base.topology_id)
         .await
         .map_err(|e| ApiError::internal_error(&e.to_string()))?
@@ -462,11 +459,8 @@ async fn get_share_topology(
         .map_err(|e| ApiError::internal_error(&e.to_string()))?;
 
     // The row carries a pre-built node/edge slice for every view, so there's no
-    // ephemeral rebuild: just point the stored view scalar at the requested
-    // view so the share renders it by default (the viewer selects that slice).
-    if topology.base.options.request.view != body.view {
-        topology.base.options.request.view = body.view;
-    }
+    // ephemeral rebuild — the viewer selects the requested view's slice
+    // client-side (the request's `view` field drives that selection).
 
     let export_features = ExportFeatures {
         png_export: plan_features.png_export,
@@ -560,7 +554,6 @@ async fn get_share_topology(
         let org_id = state
             .services
             .network_service
-            .storage()
             .get_by_id(&share.base.network_id)
             .await
             .ok()

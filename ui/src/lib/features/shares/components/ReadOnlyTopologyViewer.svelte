@@ -14,10 +14,12 @@
 	import type { ExportFeatures } from '../types/base';
 	import {
 		hydrateStoresFromTopology,
+		activeView,
 		optionsPanelExpanded,
 		topologyReadOnly,
 		MINIMAP_WIDTH_PX,
-		MINIMAP_OFFSET_PX
+		MINIMAP_OFFSET_PX,
+		type TopologyView
 	} from '$lib/features/topology/queries';
 	import { searchOpen } from '$lib/features/topology/interactions';
 	import { createTopologyKeydownHandler } from '$lib/features/topology/keyboard';
@@ -55,8 +57,10 @@
 	// prevents localStorage state from the app leaking into embeds.
 	optionsPanelExpanded.set(false);
 
-	// Hydrate the global activeView + topologyOptions stores so the rendering
-	// pipeline sees the correct view for this shared topology.
+	// Drive the active view from the explicit `currentView` prop (ShareView owns
+	// it and refetches per view) — the view is no longer persisted on the row.
+	// Set it before hydrating so local options are keyed to the right view.
+	activeView.set(currentView as TopologyView);
 	hydrateStoresFromTopology(topology, true, true);
 
 	// Shares/embeds are view-only — drive the single read-only signal so the
@@ -82,6 +86,7 @@
 
 	// Keep context in sync with prop and re-hydrate on topology change (view switch)
 	$: {
+		activeView.set(currentView as TopologyView);
 		topologyContext.set(topology);
 		hydrateStoresFromTopology(topology, true, true);
 	}

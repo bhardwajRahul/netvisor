@@ -280,7 +280,20 @@ mod tests {
     #[test]
     fn test_empty_topology() {
         let options = TopologyOptions::default();
-        let ctx = TopologyContext::new(&[], &[], &[], &[], &[], &[], &[], &[], &[], &[], &options);
+        let ctx = TopologyContext::new(
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &options,
+            crate::server::topology::types::views::TopologyView::L3Logical,
+        );
         let builder = L2Builder;
         let (nodes, edges) = builder.build(&ctx, &l2_grouping());
         assert!(nodes.is_empty());
@@ -306,6 +319,7 @@ mod tests {
             &[],
             &[],
             &options,
+            crate::server::topology::types::views::TopologyView::L3Logical,
         );
 
         let builder = L2Builder;
@@ -342,6 +356,7 @@ mod tests {
             &[],
             &[],
             &options,
+            crate::server::topology::types::views::TopologyView::L3Logical,
         );
 
         let builder = L2Builder;
@@ -403,6 +418,7 @@ mod tests {
             &[],
             &[],
             &options,
+            crate::server::topology::types::views::TopologyView::L3Logical,
         );
 
         let builder = L2Builder;
@@ -446,6 +462,7 @@ mod tests {
             &[],
             &[],
             &options,
+            crate::server::topology::types::views::TopologyView::L3Logical,
         );
 
         let builder = L2Builder;

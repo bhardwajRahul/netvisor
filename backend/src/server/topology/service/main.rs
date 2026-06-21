@@ -211,6 +211,9 @@ pub struct BuildGraphParams<'a> {
     pub old_nodes: &'a [Node],
     pub old_edges: &'a [Edge],
     pub old_view: Option<TopologyView>,
+    /// View this graph is being built for — selects the builder, grouping, and
+    /// per-edge view config.
+    pub view: TopologyView,
 }
 
 impl TopologyService {
@@ -468,9 +471,6 @@ impl TopologyService {
         let mut edges_by_view = HashMap::new();
 
         for view in TopologyView::iter() {
-            let mut view_options = options.clone();
-            view_options.request.view = view;
-
             let (nodes, edges) = self.build_graph(BuildGraphParams {
                 hosts: &data.hosts,
                 ip_addresses: &data.ip_addresses,
@@ -484,8 +484,9 @@ impl TopologyService {
                 vlans: &data.vlans,
                 old_nodes: old.map(|t| t.nodes_for(view)).unwrap_or(&[]),
                 old_edges: old.map(|t| t.edges_for(view)).unwrap_or(&[]),
-                options: &view_options,
+                options,
                 old_view: Some(view),
+                view,
             });
 
             nodes_by_view.insert(view, nodes);
@@ -511,6 +512,7 @@ impl TopologyService {
             old_nodes,
             options,
             old_view,
+            view,
         } = params;
 
         // Create context to avoid parameter passing
@@ -526,17 +528,17 @@ impl TopologyService {
             entity_tags,
             vlans,
             options,
+            view,
         );
 
         // Build grouping config from request options
-        let grouping = GroupingConfig::from_request_options(&options.request);
+        let grouping = GroupingConfig::from_request_options(&options.request, view);
 
         // Select builder by view and build nodes + edges
-        let builder = super::view::builder_for_view(options.request.view);
+        let builder = super::view::builder_for_view(view);
         let (all_nodes, mut all_edges) = builder.build(&ctx, &grouping);
 
         // Set per-view edge configuration
-        let view = options.request.view;
         for edge in &mut all_edges {
             edge.view_config = view.edge_view_config((&edge.edge_type).into());
         }

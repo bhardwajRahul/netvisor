@@ -1,6 +1,7 @@
 import { get } from 'svelte/store';
 import type { Edge, EdgeMarkerType } from '@xyflow/svelte';
-import type { TopologyEdge, RenderableTopology } from '../types/base';
+import type { TopologyEdge } from '../types/base';
+import type { TopologyView } from '../queries';
 import type { EdgeHandles } from '../layout/elk-layout';
 import { computeOptimalHandles } from '../layout/elk-layout';
 import type { SelectionStores } from '../selection';
@@ -86,7 +87,8 @@ export interface BuildFlowEdgesParams {
 	aggregatedEdges: AggregatedEdge[];
 	hiddenEdgeTypes: string[];
 	layoutNodes: import('../types/base').TopologyNode[];
-	topology: RenderableTopology;
+	/** Active view — drives the per-view edge-handle rule (L2 left/right). */
+	view: TopologyView;
 	layoutGraph: LayoutGraph | null;
 	bundleEnabled: boolean;
 	currentExpandedBundles: Set<string>;
@@ -106,7 +108,7 @@ export function buildFlowEdges(params: BuildFlowEdgesParams): BuildFlowEdgesResu
 		aggregatedEdges,
 		hiddenEdgeTypes,
 		layoutNodes,
-		topology,
+		view,
 		layoutGraph,
 		bundleEnabled,
 		currentExpandedBundles,
@@ -122,7 +124,7 @@ export function buildFlowEdges(params: BuildFlowEdgesParams): BuildFlowEdgesResu
 		elevatedEdges,
 		aggregatedEdges,
 		layoutGraph,
-		topology
+		view
 	);
 
 	let baseEdges: TopologyEdge[];
@@ -295,12 +297,12 @@ function computeHandlesFromLayout(
 	elevatedEdges: TopologyEdge[],
 	aggregatedEdges: AggregatedEdge[],
 	layoutGraph: LayoutGraph | null,
-	topology: RenderableTopology
+	view: TopologyView
 ): Map<string, EdgeHandles> {
 	const out = new Map<string, EdgeHandles>();
 	if (!layoutGraph) return out;
 
-	const viewId = topology.options?.request?.view as string | undefined;
+	const viewId = view as string | undefined;
 
 	const sizeFor = (id: string): { w: number; h: number } | undefined => {
 		const c = layoutGraph.getContainerSize(id);

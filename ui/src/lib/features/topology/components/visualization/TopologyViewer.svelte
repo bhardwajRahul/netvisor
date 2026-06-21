@@ -40,15 +40,11 @@
 	// Overlay state
 	let shortcutsHelpOpen = $state(false);
 
-	// Edit mode state — defaults to view mode (locked), resets on page load
+	// Edit mode is disabled: topology editing (drag/resize/reconnect) is turned
+	// off product-wide. `editMode` is permanently false — the edit toggle (button
+	// + hotkey) is unwired below — but the state and read-only resets are kept so
+	// `editModeEnabled` stays a coherent (always-false) signal for consumers.
 	let editMode = $state(false);
-
-	function toggleEditMode() {
-		// View-only (snapshot / embed) can't enter edit mode.
-		if ($topologyReadOnly) return;
-		editMode = !editMode;
-		editModeEnabled.set(editMode);
-	}
 
 	// Force view mode whenever the topology becomes read-only (e.g. selecting a
 	// snapshot while in edit mode).
@@ -148,7 +144,6 @@
 		setShortcutsHelpOpen: (open) => (shortcutsHelpOpen = open),
 		selectionStores: { selectedNode, selectedEdge, selectedNodes },
 		isEnabled: () => isActive,
-		onToggleEditMode: toggleEditMode,
 		onToggleLock: () => onToggleLock?.(),
 		onRebuild: () => onRebuild?.()
 	});
@@ -165,7 +160,7 @@
 			showControls={true}
 			{editMode}
 			{sidebarCollapsed}
-			onToggleEditMode={$topologyReadOnly ? null : toggleEditMode}
+			onToggleEditMode={null}
 			onNodeDragStop={handleNodeDragStop}
 			onReconnect={handleReconnect}
 			onOpenShortcuts={() => (shortcutsHelpOpen = true)}

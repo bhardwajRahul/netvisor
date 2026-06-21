@@ -107,7 +107,7 @@ function buildElkGraph(
 
 	// Determine if the current view benefits from layered child layout
 	// (crossing minimization for port-to-port edges)
-	const view = input.topology?.options?.request?.view;
+	const view = input.view;
 	const useLayeredChildren = view === 'L2Physical';
 
 	// Create container (parent) nodes
@@ -1351,7 +1351,7 @@ function repackDisconnectedContainers(
 	result: ElkLayoutResult,
 	input: ElkLayoutInput
 ): ElkLayoutResult {
-	const view = input.topology?.options?.request?.view;
+	const view = input.view;
 	if (view === 'L2Physical' || view === 'Workloads') return result;
 
 	// Build element → root container mapping
@@ -1521,7 +1521,7 @@ export async function computeElkLayout(input: ElkLayoutInput): Promise<ElkLayout
 
 	// L2: top-align layers by shifting each layer's top node to the same Y.
 	// ELK centers layers independently, causing vertical misalignment.
-	if (input.topology?.options?.request?.view === 'L2Physical' && result2.children) {
+	if (input.view === 'L2Physical' && result2.children) {
 		// Group children by X-band (layer). Merge bands whose containers
 		// would horizontally overlap after top-alignment — without merging,
 		// containers in nearby but distinct X-bands both get y=TOP and overlap.
