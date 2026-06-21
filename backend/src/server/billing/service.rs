@@ -9,7 +9,6 @@ use crate::server::billing::types::api::{
 use crate::server::billing::types::base::{BillingInvoice, BillingPlan, CancelReason, PlanStatus};
 use crate::server::billing::types::features::Feature;
 use crate::server::billing::types::stripe_metadata::StripeSubscriptionMetadata;
-use crate::server::hosts::r#impl::base::Host;
 use crate::server::hosts::service::HostService;
 use crate::server::networks::r#impl::Network;
 use crate::server::networks::service::NetworkService;
@@ -1879,14 +1878,11 @@ impl BillingService {
         let networks = self.network_service.get_all(org_filter.clone()).await?;
         let network_ids: Vec<Uuid> = networks.iter().map(|n| n.id).collect();
 
-        let host_filter = StorableFilter::<Host>::new_from_network_ids(&network_ids);
-        let host_count = self.host_service.get_all(host_filter).await?.len() as u64;
+        // count_for_networks narrows to live rows, so snapshot closed-copies
+        // don't inflate the billable host count against plan limits.
+        let host_count = self.host_service.count_for_networks(&network_ids).await?;
 
-        let user_filter =
-            StorableFilter::<crate::server::users::r#impl::base::User>::new_from_org_id(
-                &organization_id,
-            );
-        let seat_count = self.user_service.get_all(user_filter).await?.len() as u64;
+        let seat_count = self.user_service.count_for_org(&organization_id).await?;
 
         let target_config = target_plan.config();
 

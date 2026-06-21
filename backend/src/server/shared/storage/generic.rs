@@ -646,6 +646,23 @@ where
         rows.into_iter().map(|r| T::from_row(&r)).collect()
     }
 
+    async fn count(&self, filter: StorableFilter<T>) -> Result<u64, anyhow::Error> {
+        // Include JOIN so filters on joined tables count correctly.
+        let count_query_str = format!(
+            "SELECT COUNT(*) FROM {} {} {}",
+            T::table_name(),
+            filter.to_join_clause(),
+            filter.to_where_clause()
+        );
+        let mut count_query = sqlx::query(&count_query_str);
+        for value in filter.values() {
+            count_query = Self::bind_value(count_query, value)?;
+        }
+        let count_row = count_query.fetch_one(&self.pool).await?;
+        let total_count: i64 = sqlx::Row::get(&count_row, 0);
+        Ok(total_count as u64)
+    }
+
     async fn get_paginated(
         &self,
         filter: StorableFilter<T>,

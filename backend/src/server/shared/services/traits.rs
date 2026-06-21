@@ -176,6 +176,29 @@ where
         Ok(paginated)
     }
 
+    /// Count rows for the given networks. Scope is standardized here (not built
+    /// at the call site): SCD2 entities are narrowed to live rows so snapshot
+    /// closed-copies aren't counted; non-SCD2 entities get a plain count. For
+    /// scopes more custom than network/org (e.g. parent-scoped junctions), drop
+    /// to `storage().count(filter)` with a bespoke filter.
+    async fn count_for_networks(&self, network_ids: &[Uuid]) -> Result<u64, anyhow::Error> {
+        let mut filter = StorableFilter::<T>::new_from_network_ids(network_ids);
+        if T::HAS_SCD2 {
+            filter = filter.live();
+        }
+        self.storage().count(filter).await
+    }
+
+    /// Count rows for an organization. Same SCD2-aware live narrowing as
+    /// [`count_for_networks`].
+    async fn count_for_org(&self, organization_id: &Uuid) -> Result<u64, anyhow::Error> {
+        let mut filter = StorableFilter::<T>::new_from_org_id(organization_id);
+        if T::HAS_SCD2 {
+            filter = filter.live();
+        }
+        self.storage().count(filter).await
+    }
+
     /// Get one entity with filter
     async fn get_one(&self, filter: StorableFilter<T>) -> Result<Option<T>, anyhow::Error> {
         if let Some(mut entity) = self.storage().get_one(filter).await? {

@@ -443,6 +443,11 @@
 	// Handle network selection
 	function handleNetworkChange(value: string) {
 		selectedNetworkId.set(value);
+		// Reset to live view synchronously here (not just via the network-change
+		// $effect) so the snapshot is cleared before the data query recomputes —
+		// otherwise it briefly fires with the new network + old snapshot id and
+		// the backend 403s ("Snapshot belongs to a different network").
+		selectedSnapshotId.set(null);
 		clearSelection();
 	}
 
