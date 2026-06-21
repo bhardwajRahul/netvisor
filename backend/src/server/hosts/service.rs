@@ -1019,7 +1019,10 @@ impl HostService {
                             );
                             let mut updated = existing_svc.clone();
                             updated.base.virtualization = reassigned.base.virtualization.clone();
-                            let _ = self.service_service.update(&mut updated, authentication.clone()).await;
+                            let _ = self
+                                .service_service
+                                .update(&mut updated, authentication.clone())
+                                .await;
                         }
                     }
 
@@ -1237,7 +1240,10 @@ impl HostService {
                     .as_mut()
                     .unwrap()
                     .set_service_id(new_id);
-                let _ = self.service_service.update(&mut updated, authentication.clone()).await;
+                let _ = self
+                    .service_service
+                    .update(&mut updated, authentication.clone())
+                    .await;
             }
         }
 
@@ -1297,7 +1303,10 @@ impl HostService {
                                 }
                             }
                         }
-                        let _ = self.service_service.update(&mut updated, authentication.clone()).await;
+                        let _ = self
+                            .service_service
+                            .update(&mut updated, authentication.clone())
+                            .await;
                     }
                 }
             }

@@ -84,7 +84,6 @@
 	border-color: #6b7280 !important; /* gray-500: lighter than the card so it reads on dark containers */
 }
 
-
 /* Force full opacity on all nodes during export to disable focus effect */
 .hide-for-export .svelte-flow__node .card {
 	opacity: 1 !important;
