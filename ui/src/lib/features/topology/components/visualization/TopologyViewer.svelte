@@ -2,6 +2,7 @@
 	import { type Node, type Edge, type Connection } from '@xyflow/svelte';
 	import {
 		activeView,
+		topologyReadOnly,
 		selectedEdge,
 		selectedNode,
 		selectedNodes,
@@ -43,9 +44,20 @@
 	let editMode = $state(false);
 
 	function toggleEditMode() {
+		// View-only (snapshot / embed) can't enter edit mode.
+		if ($topologyReadOnly) return;
 		editMode = !editMode;
 		editModeEnabled.set(editMode);
 	}
+
+	// Force view mode whenever the topology becomes read-only (e.g. selecting a
+	// snapshot while in edit mode).
+	$effect(() => {
+		if ($topologyReadOnly && editMode) {
+			editMode = false;
+			editModeEnabled.set(false);
+		}
+	});
 
 	// Sidebar buttons show labels briefly on first visit per session, then stay collapsed
 	const SIDEBAR_SEEN_KEY = 'topology_sidebar_labels_shown';
@@ -149,11 +161,11 @@
 		<BaseTopologyViewer
 			bind:this={baseViewer}
 			{topology}
-			readonly={!editMode}
+			readonly={!editMode || $topologyReadOnly}
 			showControls={true}
 			{editMode}
 			{sidebarCollapsed}
-			onToggleEditMode={toggleEditMode}
+			onToggleEditMode={$topologyReadOnly ? null : toggleEditMode}
 			onNodeDragStop={handleNodeDragStop}
 			onReconnect={handleReconnect}
 			onOpenShortcuts={() => (shortcutsHelpOpen = true)}

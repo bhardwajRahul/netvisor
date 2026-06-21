@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Node } from '@xyflow/svelte';
-	import { activeView } from '$lib/features/topology/queries';
+	import { activeView, topologyReadOnly } from '$lib/features/topology/queries';
 	import type { TopologyNode, RenderableTopology } from '$lib/features/topology/types/base';
 	import { resolveContainerNode } from '$lib/features/topology/resolvers';
 	import { useTopology, selectedTopologyId } from '$lib/features/topology/context';
@@ -20,7 +20,7 @@
 					| undefined)
 	);
 
-	let editState = $derived(getTopologyEditState(topology, false, isReadonly));
+	let editState = $derived(getTopologyEditState(topology, false, isReadonly || $topologyReadOnly));
 
 	let containerCtx = $derived(
 		topology ? resolveContainerNode(node.id, node.data as TopologyNode, topology) : null

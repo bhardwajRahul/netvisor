@@ -23,6 +23,7 @@
 		selectedNodes,
 		consumePreferredNetwork,
 		activeView,
+		topologyReadOnly,
 		topologyOptions,
 		updateTopologyOptions,
 		hydrateStoresFromTopology,
@@ -143,12 +144,20 @@
 
 	let currentInspectorConfig = $derived(getInspectorConfig($activeView));
 
-	// Auto-open wizard when entering a view with app picker and no app tags
+	// View-only when the tab is read-only or a snapshot is selected. Single
+	// reactive source consumed by the inspectors / grouping editor / edit mode.
+	$effect(() => {
+		topologyReadOnly.set(isReadOnly || $selectedSnapshotId !== null);
+	});
+
+	// Auto-open wizard when entering a view with app picker and no app tags.
+	// Never on a read-only view — the wizard creates tags.
 	let tagsLoaded = $derived(!tagsQuery.isLoading && !tagsQuery.isPending);
 	$effect(() => {
 		if (
 			isActive &&
 			tagsLoaded &&
+			!$topologyReadOnly &&
 			currentInspectorConfig.show_application_picker &&
 			appTags.length === 0 &&
 			!wizardOpen
@@ -547,7 +556,10 @@
 				{#if currentTopology}
 					<div class="flex items-center gap-2">
 						<ExportButton onclick={() => (isExportModalOpen = true)} />
-						{#if !isReadOnly}
+						<!-- Sharing is live-only: a share stores a topology row but always
+						     renders with live entity data, so sharing a snapshot would mix
+						     snapshot layout with live entities. Hide the button on snapshots. -->
+						{#if !isReadOnly && $selectedSnapshotId == null}
 							{#if currentUser && !currentUser.email_verified}
 								<span data-tooltip="Please verify email to share topology" use:tooltip>
 									<button class="btn-secondary opacity-50" disabled title="Share">

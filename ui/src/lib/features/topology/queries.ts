@@ -403,6 +403,13 @@ export const previewEdges = writable<Edge[]>([]);
 export const baseFlowEdges = writable<Edge[]>([]);
 export const activeView = writable<TopologyView>('L3Logical');
 
+/** When true, the topology is view-only: entity edits (tags, dependencies,
+ *  descriptions), grouping-rule edits, and canvas layout edits are disabled.
+ *  Driven by `TopologyTab` from `isReadOnly || a snapshot being selected` — a
+ *  snapshot is historical, so it gets the same view-only treatment as an embed.
+ *  The single reactive source the inspectors / grouping editor / edit-mode read. */
+export const topologyReadOnly = writable(false);
+
 // Tutorial / hint flags (set by nudges, consumed by topology components)
 export const showViewSwitcherHint = writable(false);
 export const showDependencyTutorial = writable(false);
@@ -716,6 +723,9 @@ function saveSelectedNetworkToStorage(networkId: string | null): void {
 let saveOptionsTimer: ReturnType<typeof setTimeout> | undefined;
 function saveOptionsForCurrentTopology(): void {
 	if (!browser) return;
+	// View-only (snapshot / embed): never persist option/layout edits — they'd
+	// mutate the snapshot row.
+	if (get(topologyReadOnly)) return;
 	clearTimeout(saveOptionsTimer);
 	saveOptionsTimer = setTimeout(() => {
 		const topologyId = get(selectedTopologyId);
