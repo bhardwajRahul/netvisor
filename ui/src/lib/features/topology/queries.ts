@@ -697,7 +697,7 @@ function saveExpandedToStorage(expanded: boolean): void {
 }
 
 /** Persist the topology tab's selected network id across reloads. */
-function loadSelectedNetworkFromStorage(): string | null {
+export function loadSelectedNetworkFromStorage(): string | null {
 	if (!browser) return null;
 	try {
 		return localStorage.getItem(SELECTED_NETWORK_KEY);
@@ -774,9 +774,10 @@ if (browser) {
 		networkInitialized = true;
 	});
 
-	// Hydrate the persisted network selection on first load
-	const persistedNetwork = loadSelectedNetworkFromStorage();
-	if (persistedNetwork) selectedNetworkId.set(persistedNetwork);
+	// NOTE: the persisted network selection is NOT hydrated here. It is validated
+	// against the accessible networks list and applied by the init `$effect` in
+	// TopologyTab — hydrating a stale id here would fire a 404/403 topology fetch
+	// before validation could run.
 
 	// NOTE: switching the active view does NOT persist options or hit the
 	// network — every view's node/edge slice is pre-built on the row, so a
