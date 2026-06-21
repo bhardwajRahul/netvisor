@@ -184,13 +184,16 @@
 		}))
 		.sort((a, b) => a.label.localeCompare(b.label));
 
-	// All tags as toggleable pills
+	// All tags as toggleable pills, sorted alphabetically (matches the
+	// service-category pills, which are already sorted).
 	let allTagsWithColors = $derived(
-		allTags.map((t) => ({
-			value: t.id,
-			label: t.name,
-			color: t.color as Color
-		}))
+		allTags
+			.map((t) => ({
+				value: t.id,
+				label: t.name,
+				color: t.color as Color
+			}))
+			.sort((a, b) => a.label.localeCompare(b.label))
 	);
 
 	// --- Container Rules ---

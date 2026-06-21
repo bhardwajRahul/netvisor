@@ -78,7 +78,8 @@
 
 	// Tags query — always up-to-date, survives SSE topology overwrites
 	const tagsQuery = useTagsQuery();
-	let allTags = $derived(tagsQuery.data ?? []);
+	// Sorted alphabetically so the filter view's tag lists are stable + scannable.
+	let allTags = $derived([...(tagsQuery.data ?? [])].sort((a, b) => a.name.localeCompare(b.name)));
 
 	// Derive tags that are actually used per entity type
 	let hostTagIds = $derived(new Set(hostsData.flatMap((h) => h.tags)));
@@ -700,11 +701,13 @@
 							<CategoryFilterGroup
 								entityType={section.entityType}
 								filterType={filter.filter_type}
-								categories={filter.values.map((v) => ({
-									value: v.id,
-									label: v.label,
-									color: v.color as Color
-								}))}
+								categories={filter.values
+									.map((v) => ({
+										value: v.id,
+										label: v.label,
+										color: v.color as Color
+									}))
+									.sort((a, b) => a.label.localeCompare(b.label))}
 								hiddenCategories={hiddenMetadataValuesFor(section.entityType, filter.filter_type)}
 								onToggle={(valueId) =>
 									toggleMetadataFilterValue(section.entityType, filter.filter_type, valueId)}
