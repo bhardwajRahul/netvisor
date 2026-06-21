@@ -1,0 +1,71 @@
+//! Email verification and resend handlers.
+use super::*;
+
+#[utoipa::path(
+    post,
+    path = "/verify-email",
+    tags = ["auth", "internal"],
+    request_body = VerifyEmailRequest,
+    responses(
+        (status = 200, description = "Email verified successfully", body = ApiResponse<User>),
+        (status = 400, description = "Invalid or expired token", body = ApiErrorResponse),
+    )
+)]
+pub(crate) async fn verify_email(
+    State(state): State<Arc<AppState>>,
+    ClientIp(ip): ClientIp,
+    user_agent: Option<TypedHeader<UserAgent>>,
+    session: Session,
+    Json(request): Json<VerifyEmailRequest>,
+) -> ApiResult<Json<ApiResponse<User>>> {
+    let user_agent = user_agent.map(|u| u.to_string());
+
+    let user = state
+        .services
+        .auth_service
+        .verify_email(&request.token, ip, user_agent)
+        .await?;
+
+    // Cycle session ID to prevent session fixation attacks
+    session
+        .cycle_id()
+        .await
+        .map_err(|e| ApiError::internal_error(&format!("Failed to cycle session: {}", e)))?;
+
+    // Auto-login user after successful verification
+    session
+        .insert("user_id", user.id)
+        .await
+        .map_err(|e| ApiError::internal_error(&format!("Failed to save session: {}", e)))?;
+
+    Ok(Json(ApiResponse::success(user)))
+}
+
+#[utoipa::path(
+    post,
+    path = "/resend-verification",
+    tags = ["auth", "internal"],
+    request_body = ResendVerificationRequest,
+    responses(
+        (status = 200, description = "Verification email sent", body = EmptyApiResponse),
+        (status = 400, description = "Invalid request or already verified", body = ApiErrorResponse),
+        (status = 429, description = "Rate limited", body = ApiErrorResponse),
+    )
+)]
+
+pub(crate) async fn resend_verification(
+    State(state): State<Arc<AppState>>,
+    ClientIp(ip): ClientIp,
+    user_agent: Option<TypedHeader<UserAgent>>,
+    Json(request): Json<ResendVerificationRequest>,
+) -> ApiResult<Json<ApiResponse<()>>> {
+    let user_agent = user_agent.map(|u| u.to_string());
+
+    state
+        .services
+        .auth_service
+        .resend_verification_email(&request.email, ip, user_agent)
+        .await?;
+
+    Ok(Json(ApiResponse::success(())))
+}

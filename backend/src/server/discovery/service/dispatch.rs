@@ -1,0 +1,612 @@
+//! Session lookups, daemon-request building, and session start/update/cancel.
+use super::*;
+
+impl DiscoveryService {
+    /// Get pending_credential_ids for a session by reverse-looking up the discovery entity.
+    pub async fn get_pending_credential_ids_for_session(&self, session_id: &Uuid) -> Vec<Uuid> {
+        let discovery_id = self
+            .discovery_sessions
+            .read()
+            .await
+            .iter()
+            .find(|(_, sid)| *sid == session_id)
+            .map(|(did, _)| *did);
+
+        if let Some(discovery_id) = discovery_id
+            && let Ok(Some(discovery)) = self.discovery_storage.get_by_id(&discovery_id).await
+        {
+            return discovery.pending_credential_ids;
+        }
+        vec![]
+    }
+
+    /// Reverse-lookup the discovery_id for a given session_id from the discovery_sessions map.
+    pub(crate) async fn lookup_discovery_id(&self, session_id: &Uuid) -> Option<Uuid> {
+        self.discovery_sessions
+            .read()
+            .await
+            .iter()
+            .find(|(_, sid)| *sid == session_id)
+            .map(|(did, _)| *did)
+    }
+
+    /// Top-N historical Discovery row IDs for a network, ordered by
+    /// `updated_at DESC` (which equals the session's finished-at timestamp
+    /// for historical records). Used by the digest service to decide
+    /// whether a missing child is "possibly missing" (one of the recent N
+    /// discoveries still references it) or fully "removed."
+    pub async fn get_recent_historical_ids(
+        &self,
+        network_id: Uuid,
+        limit: usize,
+    ) -> Result<Vec<Uuid>, anyhow::Error> {
+        let filter = StorableFilter::<Discovery>::new_from_network_ids(&[network_id])
+            .historical_discovery()
+            .limit(limit as u32);
+        let discoveries = self
+            .discovery_storage
+            .get_all_ordered(filter, "updated_at DESC")
+            .await?;
+        Ok(discoveries.into_iter().map(|d| d.id).collect())
+    }
+
+    /// Build a DaemonDiscoveryRequest with all credential mappings resolved.
+    /// Called by both DaemonPoll and ServerPoll dispatch points.
+    pub async fn build_daemon_request(
+        &self,
+        session: &DiscoveryUpdatePayload,
+        network_id: Uuid,
+        pending_credential_ids: &[Uuid],
+    ) -> Result<DaemonDiscoveryRequest, anyhow::Error> {
+        let credential_mappings = if matches!(session.discovery_type, DiscoveryType::Unified { .. })
+        {
+            self.credential_service
+                .build_all_credential_mappings(network_id, pending_credential_ids)
+                .await
+                .unwrap_or_default()
+        } else {
+            vec![]
+        };
+
+        Ok(DaemonDiscoveryRequest {
+            session_id: session.session_id,
+            discovery_id: session.discovery_id.unwrap_or_default(),
+            discovery_type: session.discovery_type.clone(),
+            credential_mappings,
+        })
+    }
+
+    /// Create a new discovery session
+    pub async fn start_session(
+        &self,
+        mut discovery: Discovery,
+        authentication: AuthenticatedEntity,
+    ) -> Result<DiscoveryUpdatePayload, ApiError> {
+        // Enforce one active session per discovery configuration
+        if self
+            .discovery_sessions
+            .read()
+            .await
+            .contains_key(&discovery.id)
+        {
+            return Err(ApiError::conflict(
+                "A session is already running for this discovery",
+            ));
+        }
+
+        // Update last_run on the discovery (covers all code paths: handler, scheduler, registration)
+        match &mut discovery.base.run_type {
+            RunType::Scheduled { last_run, .. } => *last_run = Some(Utc::now()),
+            RunType::AdHoc { last_run, .. } => *last_run = Some(Utc::now()),
+            _ => {}
+        }
+        discovery.updated_at = Utc::now();
+        if let Err(e) = self.discovery_storage.update(&mut discovery).await {
+            tracing::error!(
+                "Failed to update last_run for discovery {}: {}",
+                discovery.id,
+                e
+            );
+        }
+
+        let session_id = Uuid::new_v4();
+
+        // Hydrate SNMP credentials
+        let discovery_type = if let DiscoveryType::Network {
+            host_naming_fallback,
+            subnet_ids,
+            ..
+        } = discovery.base.discovery_type
+        {
+            DiscoveryType::Network {
+                subnet_ids,
+                host_naming_fallback,
+                snmp_credentials: self
+                    .credential_service
+                    .build_snmp_credentials_for_discovery(discovery.base.network_id)
+                    .await
+                    .map_err(|e| ApiError::internal_error(&e.to_string()))?,
+            }
+        } else {
+            discovery.base.discovery_type
+        };
+
+        let mut session_payload = DiscoveryUpdatePayload::new(
+            session_id,
+            discovery.base.daemon_id,
+            discovery.base.network_id,
+            discovery_type,
+            Some(discovery.id),
+        );
+
+        // Compute whether this scan should be a full port scan and set on scan_settings
+        if let DiscoveryType::Unified {
+            ref mut scan_settings,
+            ..
+        } = session_payload.discovery_type
+        {
+            let full_scan_interval = scan_settings.full_scan_interval.unwrap_or(
+                crate::server::discovery::r#impl::scan_settings::defaults::full_scan_interval(),
+            );
+            // 0 = never full scan (all light), 1 = every scan is full
+            scan_settings.is_full_scan = discovery.force_full_scan
+                || (full_scan_interval != 0
+                    && (full_scan_interval == 1
+                        || discovery.scan_count == 1
+                        || (discovery.scan_count > 1
+                            && discovery.scan_count.is_multiple_of(full_scan_interval))));
+        }
+
+        // Track discovery -> session mapping
+        self.discovery_sessions
+            .write()
+            .await
+            .insert(discovery.id, session_id);
+
+        // Hold running_snapshots.read across the session insertion. This
+        // serializes against try_acquire_network_for_snapshot (which takes
+        // running_snapshots.write before reading sessions): the snapshot
+        // either sees this session and returns false, or this session sees
+        // the running_snapshots entry and starts in AwaitingSnapshot. Lock
+        // order: running_snapshots → sessions → daemon_sessions.
+        let snapshot_lock = self.running_snapshots.read().await;
+        let snapshot_blocked = snapshot_lock.contains(&discovery.base.network_id);
+
+        // Check if daemon has any sessions running
+        let daemon_is_running_discovery = if let Some(daemon_sessions) = self
+            .daemon_sessions
+            .read()
+            .await
+            .get(&discovery.base.daemon_id)
+        {
+            !daemon_sessions.is_empty()
+        } else {
+            false
+        };
+
+        // Phase decision:
+        //   - snapshot in progress on this network → AwaitingSnapshot.
+        //     Daemon's queue is irrelevant; release_network_for_snapshot
+        //     will run the Queued/Pending decision when the snapshot finishes.
+        //   - daemon idle → Pending (front of queue, dispatch event published below).
+        //   - daemon busy → Queued (default; promoted later).
+        if snapshot_blocked {
+            session_payload.phase = DiscoveryPhase::AwaitingSnapshot;
+        } else if !daemon_is_running_discovery {
+            session_payload.phase = DiscoveryPhase::Pending;
+            self.session_last_updated
+                .write()
+                .await
+                .insert(session_id, Utc::now());
+        }
+
+        // Add to session map
+        self.sessions
+            .write()
+            .await
+            .insert(session_id, session_payload.clone());
+
+        // Add session to queue
+        self.daemon_sessions
+            .write()
+            .await
+            .entry(discovery.base.daemon_id)
+            .or_default()
+            .push(session_id);
+
+        // Drop the running_snapshots guard before any awaits that may take
+        // running_snapshots.write (e.g. release_network_for_snapshot fired
+        // by another task observing our session via the published event).
+        drop(snapshot_lock);
+
+        // Publish event only if the session is dispatchable now: not blocked
+        // by a snapshot, and the daemon is otherwise idle. AwaitingSnapshot
+        // and Queued sessions are published later by release_network_for_snapshot
+        // or the existing terminal-completion promotion path.
+        if !snapshot_blocked && !daemon_is_running_discovery {
+            self.event_bus()
+                .publish(session_payload.into_discovery_event_with_auth(authentication))
+                .await
+                .map_err(|e| ApiError::internal_error(&e.to_string()))?;
+        }
+
+        let _ = self.update_tx.send(session_payload.clone());
+
+        Ok(session_payload)
+    }
+
+    /// Update progress for a session
+    /// If the session doesn't exist (e.g., server restarted during discovery),
+    /// auto-creates it from the payload context to maintain resilience.
+    pub async fn update_session(&self, mut update: DiscoveryUpdatePayload) -> Result<(), Error> {
+        // Enrich discovery_id from authoritative server-side map.
+        // Daemon-sent payloads won't have this; server always fills it in.
+        if update.discovery_id.is_none() {
+            update.discovery_id = self.lookup_discovery_id(&update.session_id).await;
+        }
+
+        tracing::debug!("Updated session {:?}", update);
+
+        let mut sessions = self.sessions.write().await;
+
+        let mut last_updated = self.session_last_updated.write().await;
+        // Check if we've seen this session before (used as tombstone for completed sessions)
+        let already_seen = last_updated.contains_key(&update.session_id);
+        // Track last update time
+        last_updated.insert(update.session_id, Utc::now());
+
+        // Auto-create session if it doesn't exist (handles server restarts during discovery)
+        if let std::collections::hash_map::Entry::Vacant(e) = sessions.entry(update.session_id) {
+            // If we already tracked this session but it's no longer in the sessions map,
+            // it was already processed and removed. Skip redundant terminal updates from
+            // old daemons that don't clear their terminal payload after serving it.
+            if update.phase.is_terminal() && already_seen {
+                tracing::debug!(
+                    session_id = %update.session_id,
+                    phase = %update.phase,
+                    "Ignoring redundant terminal update (already processed)"
+                );
+                return Ok(());
+            }
+
+            tracing::info!(
+                session_id = %update.session_id,
+                daemon_id = %update.daemon_id,
+                network_id = %update.network_id,
+                "Auto-creating session from daemon update"
+            );
+
+            // Track in daemon_sessions map
+            let mut daemon_sessions = self.daemon_sessions.write().await;
+            daemon_sessions
+                .entry(update.daemon_id)
+                .or_default()
+                .push(update.session_id);
+            drop(daemon_sessions);
+
+            // Track in discovery_sessions map so concurrent session guard works
+            if let Some(discovery_id) = update.discovery_id {
+                self.discovery_sessions
+                    .write()
+                    .await
+                    .insert(discovery_id, update.session_id);
+            }
+
+            // Insert the session
+            e.insert(update.clone());
+        }
+
+        let session = sessions.get_mut(&update.session_id).unwrap();
+
+        let daemon_id = session.daemon_id;
+        let network_id = session.network_id;
+
+        tracing::debug!(
+            session_id = %update.session_id,
+            phase = %update.phase,
+            progress = %update.progress,
+            "Updated session",
+        );
+
+        // Publish onboarding milestone BEFORE SSE update so it's
+        // in the DB when the SSE-triggered org refetch arrives
+        if update.phase == DiscoveryPhase::Complete
+            && matches!(
+                update.discovery_type,
+                DiscoveryType::Network { .. } | DiscoveryType::Unified { .. }
+            )
+            && let Ok(Some(network)) = self.network_service.get_by_id(&network_id).await
+            && let Ok(Some(org)) = self
+                .organization_service
+                .get_by_id(&network.base.organization_id)
+                .await
+            && org.not_onboarded(&OnboardingOperationDiscriminants::FirstDiscoveryCompleted)
+        {
+            let _ = self
+                .event_bus
+                .publish(Event::new(
+                    OrgScope {
+                        organization_id: org.id,
+                    },
+                    OnboardingOperation::FirstDiscoveryCompleted {
+                        discovery_type: update.discovery_type.clone(),
+                    },
+                    AuthenticatedEntity::System,
+                ))
+                .await;
+        }
+
+        let _ = self.update_tx.send(update.clone());
+
+        *session = update.clone();
+
+        if session.phase.is_terminal() {
+            self.event_bus()
+                .publish(session.into_discovery_event())
+                .await?;
+
+            // If user cancelled session, but it finished before we could send cancellation, remove key so it doesn't cancel upcoming sessions
+            self.pull_cancellation_for_daemon(&session.daemon_id).await;
+
+            // Create historical discovery record
+            let network_name = match self.network_service.get_by_id(&session.network_id).await {
+                Ok(Some(network)) => network.base.name,
+                _ => "Unknown Network".to_string(),
+            };
+
+            let historical_discovery = Discovery {
+                id: Uuid::new_v4(),
+                created_at: session.started_at.unwrap_or(Utc::now()),
+                updated_at: Utc::now(),
+                base: DiscoveryBase {
+                    daemon_id: session.daemon_id,
+                    network_id: session.network_id,
+                    name: if matches!(session.discovery_type, DiscoveryType::Unified { .. }) {
+                        "Discovery".to_string()
+                    } else {
+                        format!("{} \u{2014} {}", session.discovery_type, network_name)
+                    },
+                    tags: Vec::new(),
+                    discovery_type: session.discovery_type.clone(),
+                    run_type: RunType::Historical {
+                        results: Box::new(session.clone()),
+                    },
+                },
+                scan_count: 0,
+                force_full_scan: false,
+                pending_credential_ids: vec![],
+            };
+
+            // Increment scan_count and clear ephemeral fields only on successful completion.
+            // Failures/cancellations preserve these so the next retry uses the same config.
+            if session.phase == DiscoveryPhase::Complete {
+                // Reverse-lookup: find discovery_id from session_id
+                let discovery_id = self
+                    .discovery_sessions
+                    .read()
+                    .await
+                    .iter()
+                    .find(|(_, sid)| **sid == session.session_id)
+                    .map(|(did, _)| *did);
+
+                if let Some(discovery_id) = discovery_id
+                    && let Ok(Some(mut parent_discovery)) =
+                        self.discovery_storage.get_by_id(&discovery_id).await
+                {
+                    parent_discovery.scan_count += 1;
+                    parent_discovery.force_full_scan = false;
+                    parent_discovery.pending_credential_ids = vec![];
+                    parent_discovery.updated_at = Utc::now();
+                    if let Err(e) = self.discovery_storage.update(&mut parent_discovery).await {
+                        tracing::error!(
+                            "Failed to increment scan_count for discovery {}: {}",
+                            discovery_id,
+                            e
+                        );
+                    }
+                }
+            }
+
+            // Save to database
+            if let Err(e) = self.discovery_storage.create(&historical_discovery).await {
+                tracing::error!(
+                    "Failed to create historical discovery record for session {}: {}",
+                    session.session_id,
+                    e
+                );
+            } else if let Some(scope) = EntityScope::from_ids(
+                historical_discovery.id(),
+                historical_discovery.clone().into(),
+                self.get_network_id(&historical_discovery),
+                self.get_organization_id(&historical_discovery),
+            ) {
+                self.event_bus()
+                    .publish(
+                        Event::new(scope, EntityOperation::Created, AuthenticatedEntity::System)
+                            .with_flags(EntityEventFlags::default()),
+                    )
+                    .await?;
+            }
+
+            // Get next session info BEFORE trying to send request
+            let next_session_info = if let Some(daemon_sessions) = self
+                .daemon_sessions
+                .write()
+                .await
+                .get_mut(&session.daemon_id)
+            {
+                daemon_sessions.retain(|s| *s != session.session_id);
+
+                // Promote next Queued session to Pending and start its stall clock
+                daemon_sessions
+                    .first()
+                    .and_then(|next_session_id| sessions.get_mut(next_session_id))
+                    .map(|next_session| {
+                        next_session.phase = DiscoveryPhase::Pending;
+                        last_updated.insert(next_session.session_id, Utc::now());
+                        (
+                            next_session.discovery_type.clone(),
+                            next_session.session_id,
+                            next_session.discovery_id,
+                        )
+                    })
+            } else {
+                None
+            };
+
+            // Remove the completed session
+            sessions.remove(&update.session_id);
+
+            // Remove from discovery_sessions map (find by session_id value)
+            self.discovery_sessions
+                .write()
+                .await
+                .retain(|_, sid| *sid != update.session_id);
+
+            drop(sessions);
+            drop(last_updated);
+
+            // Publish event which will trigger notifying any daemons in ServerPoll to start session
+            // If daemon is daemon_poll mode, it will request next session on its next poll
+            if let Some((discovery_type, session_id, discovery_id)) = next_session_info {
+                let mut started_payload = DiscoveryUpdatePayload::new(
+                    session_id,
+                    daemon_id,
+                    network_id,
+                    discovery_type,
+                    discovery_id,
+                );
+                started_payload.phase = DiscoveryPhase::Pending;
+
+                self.event_bus()
+                    .publish(started_payload.into_discovery_event())
+                    .await?;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub async fn cancel_session(
+        &self,
+        session_id: Uuid,
+        authentication: AuthenticatedEntity,
+    ) -> Result<(), Error> {
+        // Get the session
+        let session = match self.get_session(&session_id).await {
+            Some(session) => session,
+            None => {
+                return Err(anyhow!("Session '{}' not found", session_id));
+            }
+        };
+
+        let network_id = session.network_id;
+        let daemon_id = session.daemon_id;
+        let phase = session.phase;
+        let discovery_id = self.lookup_discovery_id(&session_id).await;
+
+        let cancelled_update = DiscoveryUpdatePayload {
+            session_id,
+            network_id,
+            daemon_id,
+            phase: DiscoveryPhase::Cancelled,
+            progress: 0,
+            error: None,
+            started_at: session.started_at,
+            finished_at: Some(Utc::now()),
+            discovery_type: session.discovery_type,
+            hosts_discovered: None,
+            estimated_remaining_secs: None,
+            discovery_id,
+            scanned: None,
+        };
+
+        // Handle based on current phase
+        match phase {
+            // Queued/Pending/AwaitingSnapshot sessions: just remove from queue.
+            // AwaitingSnapshot is treated like Queued for cancellation — the
+            // session has not yet been dispatched to the daemon, so cleanup
+            // is just a queue removal.
+            DiscoveryPhase::Queued | DiscoveryPhase::Pending | DiscoveryPhase::AwaitingSnapshot => {
+                let mut sessions = self.sessions.write().await;
+                let mut daemon_sessions = self.daemon_sessions.write().await;
+
+                let was_pending = phase == DiscoveryPhase::Pending;
+
+                // Remove from sessions map
+                sessions.remove(&session_id);
+
+                // Remove from daemon queue
+                if let Some(queue) = daemon_sessions.get_mut(&daemon_id) {
+                    queue.retain(|id| *id != session_id);
+
+                    // If we removed the Pending session, promote next Queued → Pending
+                    if was_pending
+                        && let Some(next_session) =
+                            queue.first().and_then(|next_id| sessions.get_mut(next_id))
+                    {
+                        next_session.phase = DiscoveryPhase::Pending;
+                        self.session_last_updated
+                            .write()
+                            .await
+                            .insert(next_session.session_id, Utc::now());
+                    }
+                }
+
+                // Remove from discovery_sessions map
+                self.discovery_sessions
+                    .write()
+                    .await
+                    .retain(|_, sid| *sid != session_id);
+
+                drop(sessions);
+                drop(daemon_sessions);
+
+                // Broadcast cancellation update so frontend knows
+                let _ = self.update_tx.send(cancelled_update);
+
+                tracing::info!("Cancelled {} session {} from queue", phase, session_id);
+                Ok(())
+            }
+
+            // Starting phase: wait briefly then retry
+            DiscoveryPhase::Starting => Err(anyhow!(
+                "Session is starting on daemon. Please try again in a moment."
+            )),
+
+            // Active phases: send cancellation to daemon
+            // We do BOTH actions to support both daemon modes:
+            // 1. Publish DiscoveryCancelled event - DaemonService subscriber handles ServerPoll mode
+            // 2. Set cancellation flag - DaemonPoll mode checks on next poll via request_work
+            DiscoveryPhase::Started | DiscoveryPhase::Scanning => {
+                self.event_bus()
+                    .publish(cancelled_update.into_discovery_event_with_auth(authentication))
+                    .await?;
+
+                // Set cancellation flag for DaemonPoll mode (checked on next poll)
+                self.daemon_pull_cancellations
+                    .write()
+                    .await
+                    .insert(daemon_id, (true, session_id));
+
+                tracing::info!(
+                    daemon_id = %daemon_id,
+                    session_id = %session_id,
+                    "Discovery cancellation requested",
+                );
+
+                Ok(())
+            }
+
+            // Terminal phases: already done
+            DiscoveryPhase::Complete | DiscoveryPhase::Failed | DiscoveryPhase::Cancelled => {
+                tracing::info!(
+                    "Session {} is already in terminal state: {}, nothing to cancel",
+                    session_id,
+                    phase
+                );
+                Ok(())
+            }
+        }
+    }
+}
