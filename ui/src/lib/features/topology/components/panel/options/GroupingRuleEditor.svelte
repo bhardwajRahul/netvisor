@@ -549,7 +549,7 @@
 
 {#if !editState.isEditable}
 	<div class="mb-3">
-		<InlineInfo title={topology_groupingReadOnlySnapshot()} />
+		<InlineInfo title="" body={topology_groupingReadOnlySnapshot()} />
 	</div>
 {/if}
 

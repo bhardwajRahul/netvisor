@@ -269,7 +269,7 @@
 	{/snippet}
 
 	{#if isSnapshotView}
-		<div class="px-1 pb-3">
+		<div class="px-6 pb-2 pt-4">
 			<InlineInfo title={shares_snapshotShareInfoTitle()} body={shares_snapshotShareInfoBody()} />
 		</div>
 	{/if}

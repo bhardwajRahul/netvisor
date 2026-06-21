@@ -1272,7 +1272,7 @@
 	"topology_focusNode": "Focus node",
 	"topology_focusSelection": "Focus selection",
 	"topology_groupRuleTitlePlaceholder": "Optional title",
-	"topology_groupingReadOnlySnapshot": "Grouping rules are read-only while viewing a snapshot.",
+	"topology_groupingReadOnlySnapshot": "Grouping rules are read-only while viewing a snapshot. Switch to the live view to edit them.",
 	"topology_groupsHelp": "Configure how the topology view is organized, from the top-level structure down to groupings within each box.",
 	"topology_hideDisabledRules": "Hide inactive rules ({count} hidden)",
 	"topology_hideEntity": "Hide {entity}",

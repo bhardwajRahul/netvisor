@@ -23,6 +23,8 @@
 	import { useTopology, selectedTopologyId } from '../../context';
 	import type { RenderableTopology, TopologyNode } from '../../types/base';
 	import { resolveContainerNode } from '../../resolvers';
+	import { queryClient, queryKeys } from '$lib/api/query-client';
+	import type { Tag } from '$lib/features/tags/types/base';
 	import { type Writable, get } from 'svelte/store';
 	import { getContext } from 'svelte';
 	import { editModeEnabled } from '../../state';
@@ -198,6 +200,18 @@
 		return (rules as any[]).find((r: { id: string }) => r.id === elementRuleId) ?? null;
 	});
 
+	// Resolve a tag's name/color for a grouping pill. Prefer the app's tags cache
+	// (holds every org tag, so a just-added rule tag resolves instantly with no
+	// id→name flicker while the bundle catches up); fall back to the topology
+	// bundle, which is the only source in the unauthenticated share viewer (no
+	// cache there — the backend ships rule tags on the bundle for that case).
+	function resolveTagPill(tagId: string): { label: string; color: Color } {
+		const tag =
+			queryClient.getQueryData<Tag[]>(queryKeys.tags.all)?.find((t) => t.id === tagId) ??
+			topology?.entity_tags?.find((t) => t.id === tagId);
+		return { label: tag?.name ?? tagId, color: (tag?.color as Color) ?? 'Gray' };
+	}
+
 	let groupLabels = $derived.by((): { label: string; color: Color }[] => {
 		if (isInfraRule) return [];
 		if (!elementRule?.rule) return [];
@@ -215,13 +229,7 @@
 			});
 		}
 		if ('ByTag' in rule) {
-			return (rule.ByTag.tag_ids ?? []).map((tagId: string) => {
-				const tag = topology?.entity_tags?.find((t) => t.id === tagId);
-				return {
-					label: tag?.name ?? tagId,
-					color: (tag?.color as Color) ?? 'Gray'
-				};
-			});
+			return (rule.ByTag.tag_ids ?? []).map((tagId: string) => resolveTagPill(tagId));
 		}
 		return [];
 	});
@@ -290,10 +298,9 @@
 						);
 					}
 					if ('ByTag' in r) {
-						return ((r.ByTag as { tag_ids?: string[] }).tag_ids ?? []).map((tagId) => {
-							const tag = topology?.entity_tags?.find((t) => t.id === tagId);
-							return { label: tag?.name ?? tagId, color: (tag?.color ?? 'Gray') as Color };
-						});
+						return ((r.ByTag as { tag_ids?: string[] }).tag_ids ?? []).map((tagId) =>
+							resolveTagPill(tagId)
+						);
 					}
 					return [];
 				})();
