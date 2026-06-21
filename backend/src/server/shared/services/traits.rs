@@ -131,13 +131,21 @@ where
     /// Use when `filter` is already snapshot-scoped (so the rows are closed
     /// copies): tag associations hydrate from the same snapshot rather than
     /// from live `entity_tags`, which reference live (different) entity ids.
+    ///
+    /// Delegates to `get_all` (NOT `storage().get_all`) so per-service
+    /// hydration overrides — e.g. `ServiceService::get_all` populating
+    /// `bindings`, which the topology edge builder needs — still run. Then it
+    /// re-hydrates tags as-of the snapshot, overwriting the live tags `get_all`
+    /// applied. For the live view (`snapshot_id = None`) it is exactly `get_all`.
     async fn get_all_as_of_snapshot(
         &self,
         filter: StorableFilter<T>,
         snapshot_id: Option<Uuid>,
     ) -> Result<Vec<T>, anyhow::Error> {
-        let mut all = self.storage().get_all(filter).await?;
-        self.bulk_hydrate_tags(&mut all, snapshot_id).await?;
+        let mut all = self.get_all(filter).await?;
+        if snapshot_id.is_some() {
+            self.bulk_hydrate_tags(&mut all, snapshot_id).await?;
+        }
         Ok(all)
     }
 
