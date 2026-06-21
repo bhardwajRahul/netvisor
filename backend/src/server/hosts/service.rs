@@ -1019,7 +1019,7 @@ impl HostService {
                             );
                             let mut updated = existing_svc.clone();
                             updated.base.virtualization = reassigned.base.virtualization.clone();
-                            let _ = self.service_service.storage().update(&mut updated).await;
+                            let _ = self.service_service.update(&mut updated, authentication.clone()).await;
                         }
                     }
 
@@ -1237,7 +1237,7 @@ impl HostService {
                     .as_mut()
                     .unwrap()
                     .set_service_id(new_id);
-                let _ = self.service_service.storage().update(&mut updated).await;
+                let _ = self.service_service.update(&mut updated, authentication.clone()).await;
             }
         }
 
@@ -1297,7 +1297,7 @@ impl HostService {
                                 }
                             }
                         }
-                        let _ = self.service_service.storage().update(&mut updated).await;
+                        let _ = self.service_service.update(&mut updated, authentication.clone()).await;
                     }
                 }
             }
@@ -1341,8 +1341,7 @@ impl HostService {
         // Full-sweep prune of interfaces no longer reported for this host.
         //
         // Scanopy has no partial-scan mode; a successful SNMP query returns the
-        // host's complete ifTable. Zero incoming interfaces means discovery
-        // couldn't run (network error, credentials revoked), NOT "all removed" —
+        // host's complete ifTable. Zero incoming interfaces none were found, NOT "all removed" —
         // the empty-set guard below preserves existing rows in that case.
         if !created_interfaces.is_empty() {
             let kept_ids: HashSet<Uuid> = created_interfaces.iter().map(|i| i.id).collect();
