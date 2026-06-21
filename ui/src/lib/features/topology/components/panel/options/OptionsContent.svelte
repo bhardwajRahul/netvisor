@@ -12,7 +12,7 @@
 	import { isDisabledEdge } from '../../../layout/edge-classification';
 	import { getTopologyEditState, getOptionDisabledTooltip } from '../../../state';
 	import { edgeTypes, views } from '$lib/shared/stores/metadata';
-	import { activeView, topologyReadOnly } from '../../../queries';
+	import { activeView } from '../../../queries';
 	import { type Color } from '$lib/shared/utils/styling';
 	import { useHostsQuery } from '$lib/features/hosts/queries';
 	import { useServicesCacheQuery } from '$lib/features/services/queries';
@@ -53,7 +53,12 @@
 	let topology = $derived(topologiesData.find((t) => t.id === $selectedTopologyId));
 
 	// Unified edit state for gating request-path options
-	let editState = $derived(getTopologyEditState(topology, false, $topologyReadOnly));
+	// Display filters (category / visibility) apply client-side via
+	// `tagHiddenNodeIds`, so they work in a read-only snapshot just like the tag
+	// and edge-type filters — they don't persist (`saveOptions` bails when
+	// read-only) and don't need a rebuild. Read-only enforcement that matters
+	// (grouping rules, which DO need a rebuild) lives in `GroupingRuleEditor`.
+	let editState = $derived(getTopologyEditState(topology, false, false));
 
 	// Live entity arrays drive tag-filter sections. Hosts query populates the
 	// services cache as a side-effect; subnets fetch directly.
