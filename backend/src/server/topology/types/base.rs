@@ -123,14 +123,11 @@ impl TopologyBase {
 impl ChangeTriggersTopologyStaleness<Topology> for Topology {
     fn triggers_staleness(&self, other: Option<Topology>) -> bool {
         if let Some(other_topology) = other {
-            // Compare request options ignoring the `view` scalar: switching the
-            // active view is a client-side slice selection (all views are
-            // pre-built on the row), not an options change that warrants a
-            // rebuild. Grouping/hide-rule edits still trip this.
-            let a = &self.base.options.request;
-            let mut b = other_topology.base.options.request.clone();
-            b.view = a.view;
-            *a != b
+            // Switching the active view is a client-side slice selection (all
+            // views are pre-built on the row), not an options change — request
+            // options no longer carry a view scalar. Grouping/hide-rule edits
+            // still trip this.
+            self.base.options.request != other_topology.base.options.request
         } else {
             false
         }
@@ -213,8 +210,6 @@ pub struct TopologyRequestOptions {
     pub container_rules: HashMap<TopologyView, Vec<IdentifiedRule<ContainerRule>>>,
     #[serde(default = "default_element_rules")]
     pub element_rules: Vec<IdentifiedRule<ElementRule>>,
-    #[serde(default)]
-    pub view: TopologyView,
 }
 
 fn default_hide_metadata_values()
@@ -290,7 +285,6 @@ impl Default for TopologyRequestOptions {
             hide_metadata_values: default_hide_metadata_values(),
             container_rules: default_container_rules(),
             element_rules: default_element_rules(),
-            view: TopologyView::default(),
         }
     }
 }

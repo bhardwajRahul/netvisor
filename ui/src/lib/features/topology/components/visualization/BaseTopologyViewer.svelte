@@ -555,7 +555,7 @@
 			aggregatedEdges: prep.aggregatedEdges,
 			hiddenEdgeTypes: prep.hiddenEdgeTypes,
 			layoutNodes: prep.layoutNodes,
-			topology,
+			view: prep.currentView,
 			layoutGraph: layoutState.layoutGraph,
 			bundleEnabled: $topologyOptions.local.bundle_edges ?? false,
 			currentExpandedBundles: get(expandedBundles),

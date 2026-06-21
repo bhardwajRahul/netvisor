@@ -197,9 +197,13 @@ mod tests {
             &tags,
             &[],
             &options,
+            crate::server::topology::types::views::TopologyView::L3Logical,
         );
 
-        let grouping = GroupingConfig::from_request_options(&ctx.options.request);
+        let grouping = GroupingConfig::from_request_options(
+            &ctx.options.request,
+            crate::server::topology::types::views::TopologyView::L3Logical,
+        );
         let builder = L3Builder;
         let (nodes, _edges) = builder.build(&ctx, &grouping);
 

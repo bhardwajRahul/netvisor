@@ -10891,19 +10891,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-06-21T01:58:48.718702Z",
+              "created_at": "2026-06-21T03:53:52.132392Z",
               "first_discovery_id": null,
-              "id": "0f796320-4e7b-4d70-835b-a0587362727e",
+              "id": "a5333ea2-8b7c-43e9-af1e-572de6e2d279",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-21T01:58:48.718702Z",
+              "last_seen_at": "2026-06-21T03:53:52.132392Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-21T01:58:48.718702Z",
-              "valid_from": "2026-06-21T01:58:48.718702Z",
+              "updated_at": "2026-06-21T03:53:52.132392Z",
+              "valid_from": "2026-06-21T03:53:52.132392Z",
               "valid_to": null
             }
           },
@@ -11889,19 +11889,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-06-21T01:58:48.705921Z",
+                      "created_at": "2026-06-21T03:53:52.113091Z",
                       "first_discovery_id": null,
-                      "id": "336ada20-9279-453f-9875-35114444b392",
+                      "id": "2e06970f-b609-4447-b5c6-c1e7bd6e68ca",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-06-21T01:58:48.705921Z",
+                      "last_seen_at": "2026-06-21T03:53:52.113091Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-06-21T01:58:48.705921Z",
-                      "valid_from": "2026-06-21T01:58:48.705921Z",
+                      "updated_at": "2026-06-21T03:53:52.113091Z",
+                      "valid_from": "2026-06-21T03:53:52.113091Z",
                       "valid_to": null
                     }
                   ],
@@ -11915,7 +11915,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "MeTube",
+                  "service_definition": "FreeIPA",
                   "source": {
                     "type": "Manual"
                   },
@@ -12906,19 +12906,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-06-21T01:58:48.714135Z",
+                  "created_at": "2026-06-21T03:53:52.126152Z",
                   "first_discovery_id": null,
-                  "id": "d54fd021-c5aa-4501-8b89-4873313e82df",
+                  "id": "812a6528-27f5-4e0d-b9d6-b41cef604427",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-21T01:58:48.714135Z",
+                  "last_seen_at": "2026-06-21T03:53:52.126152Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-21T01:58:48.714135Z",
-                  "valid_from": "2026-06-21T01:58:48.714135Z",
+                  "updated_at": "2026-06-21T03:53:52.126152Z",
+                  "valid_from": "2026-06-21T03:53:52.126152Z",
                   "valid_to": null
                 }
               ],
@@ -12932,7 +12932,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "MeTube",
+              "service_definition": "FreeIPA",
               "source": {
                 "type": "Manual"
               },
@@ -13485,6 +13485,13 @@
               "tags"
             ],
             "properties": {
+              "available_views": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/TopologyView"
+                },
+                "description": "Views whose data is present in this entity set (L3/Workloads always;\nL2 Physical iff LLDP/CDP neighbors exist; Application iff app-flagged\ntags are used). The topology tab restricts a snapshot's view picker to\nthese — you can't set up SNMP or create app tags on a historical\nsnapshot — while the live view shows all views with setup prompts."
+              },
               "bindings": {
                 "type": "array",
                 "items": {
@@ -14632,19 +14639,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-06-21T01:58:48.706175Z",
+          "created_at": "2026-06-21T03:53:52.113552Z",
           "first_discovery_id": null,
-          "id": "2d2dda05-eaa4-40ad-bbaa-5976f5c7ce6c",
+          "id": "903101a0-06d8-44bd-b567-78f8fe466d8b",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-06-21T01:58:48.706175Z",
+          "last_seen_at": "2026-06-21T03:53:52.113552Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-06-21T01:58:48.706175Z",
-          "valid_from": "2026-06-21T01:58:48.706175Z",
+          "updated_at": "2026-06-21T03:53:52.113552Z",
+          "valid_from": "2026-06-21T03:53:52.113552Z",
           "valid_to": null
         }
       },
@@ -15234,7 +15241,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "MeTube",
+              "service_definition": "FreeIPA",
               "tags": [],
               "virtualization": null
             }
@@ -17967,19 +17974,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-06-21T01:58:48.705633Z",
+                  "created_at": "2026-06-21T03:53:52.112557Z",
                   "first_discovery_id": null,
-                  "id": "db1ba77d-fd28-45cf-9b27-96dd72c36975",
+                  "id": "9307a4b7-c3de-4deb-a460-2d62c1e890d3",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-21T01:58:48.705633Z",
+                  "last_seen_at": "2026-06-21T03:53:52.112557Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-21T01:58:48.705633Z",
-                  "valid_from": "2026-06-21T01:58:48.705633Z",
+                  "updated_at": "2026-06-21T03:53:52.112557Z",
+                  "valid_from": "2026-06-21T03:53:52.112557Z",
                   "valid_to": null
                 }
               ],
@@ -17993,7 +18000,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "MeTube",
+              "service_definition": "FreeIPA",
               "source": {
                 "type": "Manual"
               },
@@ -20462,19 +20469,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-06-21T01:58:48.699412Z",
+                        "created_at": "2026-06-21T03:53:52.100840Z",
                         "first_discovery_id": null,
-                        "id": "73b052dc-d661-4e76-9574-f97ffabcd566",
+                        "id": "2c4c109f-fb18-4796-8caf-181df00c9372",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-06-21T01:58:48.699412Z",
+                        "last_seen_at": "2026-06-21T03:53:52.100840Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-06-21T01:58:48.699412Z",
-                        "valid_from": "2026-06-21T01:58:48.699412Z",
+                        "updated_at": "2026-06-21T03:53:52.100840Z",
+                        "valid_from": "2026-06-21T03:53:52.100840Z",
                         "valid_to": null
                       }
                     ],
@@ -20488,7 +20495,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "MeTube",
+                    "service_definition": "FreeIPA",
                     "source": {
                       "type": "Manual"
                     },
@@ -20609,19 +20616,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-06-21T01:58:48.713280Z",
+                    "created_at": "2026-06-21T03:53:52.124949Z",
                     "first_discovery_id": null,
-                    "id": "0eaa8c92-0d51-4763-95e1-27ec1008893b",
+                    "id": "19bf9cd4-7526-46bf-af93-4fd164270090",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-06-21T01:58:48.713280Z",
+                    "last_seen_at": "2026-06-21T03:53:52.124949Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-06-21T01:58:48.713280Z",
-                    "valid_from": "2026-06-21T01:58:48.713280Z",
+                    "updated_at": "2026-06-21T03:53:52.124949Z",
+                    "valid_from": "2026-06-21T03:53:52.124949Z",
                     "valid_to": null
                   }
                 ],
@@ -20635,7 +20642,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "MeTube",
+                "service_definition": "FreeIPA",
                 "source": {
                   "type": "Manual"
                 },
@@ -22266,19 +22273,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-06-21T01:58:48.706121Z",
+              "created_at": "2026-06-21T03:53:52.113451Z",
               "first_discovery_id": null,
-              "id": "bc43e584-4ba3-42d8-81ee-5a442e788da6",
+              "id": "0a362117-8aeb-4745-bf10-3a529d54952b",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-21T01:58:48.706121Z",
+              "last_seen_at": "2026-06-21T03:53:52.113451Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-21T01:58:48.706121Z",
-              "valid_from": "2026-06-21T01:58:48.706121Z",
+              "updated_at": "2026-06-21T03:53:52.113451Z",
+              "valid_from": "2026-06-21T03:53:52.113451Z",
               "valid_to": null
             }
           ],
@@ -22292,7 +22299,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "MeTube",
+          "service_definition": "FreeIPA",
           "source": {
             "type": "Manual"
           },
@@ -23273,6 +23280,13 @@
           "tags"
         ],
         "properties": {
+          "available_views": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TopologyView"
+            },
+            "description": "Views whose data is present in this entity set (L3/Workloads always;\nL2 Physical iff LLDP/CDP neighbors exist; Application iff app-flagged\ntags are used). The topology tab restricts a snapshot's view picker to\nthese — you can't set up SNMP or create app tags on a historical\nsnapshot — while the live view shows all views with setup prompts."
+          },
           "bindings": {
             "type": "array",
             "items": {
@@ -23586,9 +23600,6 @@
                 "Application"
               ]
             }
-          },
-          "view": {
-            "$ref": "#/components/schemas/TopologyView"
           }
         }
       },

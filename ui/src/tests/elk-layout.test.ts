@@ -109,11 +109,13 @@ function makeSubnet(id: string, subnetType: SubnetType): Subnet {
 function makeTopology(
 	nodes: TopologyNode[],
 	edges: TopologyEdge[],
-	subnets: Subnet[]
+	subnets: Subnet[],
+	view: ElkLayoutInput['view'] = 'L3Logical'
 ): ElkLayoutInput {
 	return {
 		nodes,
 		edges,
+		view,
 		topology: {
 			id: uuid(),
 			created_at: '2026-01-01T00:00:00Z',
@@ -226,6 +228,7 @@ describe('computeElkLayout', () => {
 		const result = await computeElkLayout({
 			nodes: [],
 			edges: [],
+			view: 'L3Logical',
 			topology: makeTopology([], [], []).topology
 		});
 		expect(result.nodePositions.size).toBe(0);

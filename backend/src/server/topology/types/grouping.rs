@@ -422,9 +422,7 @@ pub struct GroupingConfig {
 }
 
 impl GroupingConfig {
-    pub fn from_request_options(options: &TopologyRequestOptions) -> Self {
-        let view = options.view;
-
+    pub fn from_request_options(options: &TopologyRequestOptions, view: TopologyView) -> Self {
         // Container rules: look up current view directly (per-view HashMap)
         let container_rules = options
             .container_rules
@@ -483,7 +481,7 @@ mod tests {
             TopologyView::L3Logical,
             vec![IdentifiedRule::new(ContainerRule::BySubnet)],
         );
-        let config = GroupingConfig::from_request_options(&options);
+        let config = GroupingConfig::from_request_options(&options, TopologyView::L3Logical);
 
         assert!(!config.should_group_docker_bridges());
     }

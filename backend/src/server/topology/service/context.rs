@@ -15,6 +15,7 @@ use crate::server::{
         base::TopologyOptions,
         edges::Edge,
         nodes::{ElementEntityType, Node, NodeType},
+        views::TopologyView,
     },
     vlans::r#impl::base::Vlan,
 };
@@ -33,6 +34,8 @@ pub struct TopologyContext<'a> {
     pub entity_tags: &'a [Tag],
     pub vlans: &'a [Vlan],
     pub options: &'a TopologyOptions,
+    /// View this context is building — drives grouping rule selection.
+    pub view: TopologyView,
 }
 
 impl<'a> TopologyContext<'a> {
@@ -49,6 +52,7 @@ impl<'a> TopologyContext<'a> {
         entity_tags: &'a [Tag],
         vlans: &'a [Vlan],
         options: &'a TopologyOptions,
+        view: TopologyView,
     ) -> Self {
         Self {
             hosts,
@@ -62,6 +66,7 @@ impl<'a> TopologyContext<'a> {
             entity_tags,
             vlans,
             options,
+            view,
         }
     }
 

@@ -885,6 +885,7 @@ mod tests {
             &[],
             &[],
             &options,
+            crate::server::topology::types::views::TopologyView::L3Logical,
         );
         WorkloadsBuilder.build(&ctx, &workloads_grouping())
     }
