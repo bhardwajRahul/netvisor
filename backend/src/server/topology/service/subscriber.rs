@@ -127,12 +127,25 @@ impl Subscriber<EntityOperation> for TopologyService {
 }
 
 impl TopologyService {
+    /// Rebuild one topology row's `nodes`/`edges` in place from its own entity
+    /// set — live (`snapshot_id IS NULL`) or snapshot closed-copy
+    /// (`snapshot_id = Some`). The row's existing per-view slices seed `old_*`
+    /// so `build_graph`'s layout-preservation logic fires. Shared by the
+    /// event-driven live rebuild and the one-shot bootstrap rebuild.
+    async fn rebuild_topology_row(&self, row: &mut Topology) -> Result<(), Error> {
+        let data = self
+            .get_topology_data(row.base.network_id, row.base.snapshot_id)
+            .await?;
+        let (nodes, edges) = self.build_all_view_graphs(&data, &row.base.options, Some(&*row));
+        row.set_all_graphs(nodes, edges);
+        self.storage().update(row).await?;
+        Ok(())
+    }
+
     /// UPDATE the live-view topology row for `network_id` in place so its
-    /// `nodes`/`edges` reflect current entity state. The existing
-    /// `nodes`/`edges` are passed as `old_*` to `build_graph` so its
-    /// layout-preservation logic fires (nodes don't randomly jump on every
-    /// discovery). Errors if no live-view row exists for the network —
-    /// that's a real bug, since live rows are created at network creation.
+    /// `nodes`/`edges` reflect current entity state. Errors if no live-view row
+    /// exists for the network — that's a real bug, since live rows are created
+    /// at network creation.
     async fn rebuild_topology(&self, network_id: Uuid) -> Result<(), Error> {
         let topo_filter = StorageFilter::<Topology>::new_from_network_ids(&[network_id]);
         let mut live = self
@@ -147,15 +160,38 @@ impl TopologyService {
                 )
             })?;
 
-        let data = self.get_topology_data(network_id, None).await?;
+        self.rebuild_topology_row(&mut live).await
+    }
 
-        // Rebuild every view's slice so any active perspective reflects current
-        // entity state. The existing per-view slices seed `old_*` so layout is
-        // preserved across rebuilds.
-        let (nodes, edges) = self.build_all_view_graphs(&data, &live.base.options, Some(&live));
-
-        live.set_all_graphs(nodes, edges);
-        self.storage().update(&mut live).await?;
+    /// ONE-SHOT bootstrap (remove next release): rebuild every topology row in
+    /// the database — live and snapshot-pinned — so each row's four per-view
+    /// slices populate from current / closed-copy entity data. Needed once on
+    /// the v0.16.2 upgrade: empty live rows created by the backfill migration
+    /// have no entity events to trigger a rebuild, and snapshots converted from
+    /// legacy locks only render once their closed-copy entities (extracted by
+    /// migration `20260502120003`) are sliced into per-view graphs.
+    ///
+    /// Idempotent: rebuilds overwrite each row's `nodes`/`edges` in place. A
+    /// per-row failure is logged and skipped so one bad row can't abort boot.
+    pub async fn rebuild_all_topologies(&self) -> Result<(), Error> {
+        let rows = self
+            .get_all(StorageFilter::<Topology>::new_for_retention_sweep())
+            .await?;
+        let total = rows.len();
+        let mut rebuilt = 0usize;
+        for mut row in rows {
+            if let Err(e) = self.rebuild_topology_row(&mut row).await {
+                tracing::error!(
+                    topology_id = %row.id,
+                    network_id = %row.base.network_id,
+                    snapshot_id = ?row.base.snapshot_id,
+                    "Bootstrap topology rebuild failed for row, skipping: {e:#}",
+                );
+            } else {
+                rebuilt += 1;
+            }
+        }
+        tracing::info!("Bootstrap topology rebuild complete: {rebuilt}/{total} rows rebuilt");
         Ok(())
     }
 
