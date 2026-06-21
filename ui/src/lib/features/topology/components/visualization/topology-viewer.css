@@ -48,6 +48,42 @@
 	opacity: 0;
 }
 
+/* Raster export fidelity. html-to-image serializes the topology into an SVG
+ * <foreignObject> and asks the browser to rasterize it. Browser foreignObject
+ * rasterizers don't faithfully reproduce GPU-composited effects: Blink bakes
+ * random blur from backdrop-filter (illegible labels), WebKit emits offset
+ * box-shadow ghosts. Neutralize both on the captured subtree only — the live
+ * UI keeps its glass + shadows. .hide-for-export is added in
+ * ExportModal.withExportCapture before every raster (PNG / PDF / HTML) path. */
+.hide-for-export .card,
+.hide-for-export .glass,
+.hide-for-export .label-dark,
+.hide-for-export [class*='backdrop-blur'] {
+	backdrop-filter: none !important;
+	-webkit-backdrop-filter: none !important;
+}
+
+/* Edge labels (.card, rendered in .svelte-flow__edgelabel-renderer outside the
+ * node tree) keep their shadow without the explicit edge-label selectors. */
+.hide-for-export .svelte-flow__node,
+.hide-for-export .svelte-flow__node *,
+.hide-for-export .card,
+.hide-for-export .svelte-flow__edgelabel-renderer * {
+	box-shadow: none !important;
+}
+
+/* Without the drop shadow, node cards blend into their containers. The border is
+ * now the only separator, so strengthen it on export — stronger color + slightly
+ * wider, chosen per theme. Live UI is unaffected. */
+.hide-for-export .svelte-flow__node .card {
+	border-color: #94a3b8 !important; /* slate-400: darker than the card so it reads on light containers */
+	border-width: 1.5px !important;
+}
+
+.dark .hide-for-export .svelte-flow__node .card {
+	border-color: #6b7280 !important; /* gray-500: lighter than the card so it reads on dark containers */
+}
+
 /* Force full opacity on all nodes during export to disable focus effect */
 .hide-for-export .svelte-flow__node .card {
 	opacity: 1 !important;
