@@ -71,8 +71,8 @@
 				return daemons_dockerDisabledHelp();
 			case 'local_socket':
 				return daemons_dockerLocalSocketHelp();
-			case 'proxy':
-				return daemons_dockerProxyHelp();
+			// case 'proxy':
+			// 	return daemons_dockerProxyHelp();
 			default:
 				return '';
 		}
