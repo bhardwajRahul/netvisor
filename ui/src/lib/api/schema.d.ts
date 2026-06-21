@@ -3099,19 +3099,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-06-20T22:49:58.414450Z",
+             *       "created_at": "2026-06-21T02:23:04.880457Z",
              *       "first_discovery_id": null,
-             *       "id": "bef7b783-3171-4cf5-b30d-2d0b96b440a8",
+             *       "id": "46bc69e8-e2d7-4bfd-9cc0-a374f1869fa7",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-06-20T22:49:58.414450Z",
+             *       "last_seen_at": "2026-06-21T02:23:04.880457Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-06-20T22:49:58.414450Z",
-             *       "valid_from": "2026-06-20T22:49:58.414450Z",
+             *       "updated_at": "2026-06-21T02:23:04.880457Z",
+             *       "valid_from": "2026-06-21T02:23:04.880457Z",
              *       "valid_to": null
              *     }
              */
@@ -3448,19 +3448,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-06-20T22:49:58.385425Z",
+             *               "created_at": "2026-06-21T02:23:04.862873Z",
              *               "first_discovery_id": null,
-             *               "id": "3235efde-a161-4d20-923e-9a83deb3d722",
+             *               "id": "6c63258e-105a-4dd3-9d9d-d46198037c96",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-06-20T22:49:58.385425Z",
+             *               "last_seen_at": "2026-06-21T02:23:04.862873Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-06-20T22:49:58.385425Z",
-             *               "valid_from": "2026-06-20T22:49:58.385425Z",
+             *               "updated_at": "2026-06-21T02:23:04.862873Z",
+             *               "valid_from": "2026-06-21T02:23:04.862873Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3474,7 +3474,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "WireGuard",
+             *           "service_definition": "Paperless-NGX",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3830,19 +3830,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-06-20T22:49:58.404972Z",
+             *           "created_at": "2026-06-21T02:23:04.874684Z",
              *           "first_discovery_id": null,
-             *           "id": "bc1e9a4a-46b4-44eb-a067-42bff9c5201b",
+             *           "id": "7bfcd456-b779-4757-a118-a02f900d5c94",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-06-20T22:49:58.404972Z",
+             *           "last_seen_at": "2026-06-21T02:23:04.874684Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-06-20T22:49:58.404972Z",
-             *           "valid_from": "2026-06-20T22:49:58.404972Z",
+             *           "updated_at": "2026-06-21T02:23:04.874684Z",
+             *           "valid_from": "2026-06-21T02:23:04.874684Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -3856,7 +3856,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "WireGuard",
+             *       "service_definition": "Paperless-NGX",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4067,6 +4067,14 @@ export interface components {
              *     persisted on the topology row.
              */
             data?: {
+                /**
+                 * @description Views whose data is present in this entity set (L3/Workloads always;
+                 *     L2 Physical iff LLDP/CDP neighbors exist; Application iff app-flagged
+                 *     tags are used). The topology tab restricts a snapshot's view picker to
+                 *     these — you can't set up SNMP or create app tags on a historical
+                 *     snapshot — while the live view shows all views with setup prompts.
+                 */
+                available_views?: components["schemas"]["TopologyView"][];
                 bindings: components["schemas"]["Binding"][];
                 dependencies: components["schemas"]["Dependency"][];
                 hosts: components["schemas"]["Host"][];
@@ -4309,19 +4317,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-06-20T22:49:58.386043Z",
+         *       "created_at": "2026-06-21T02:23:04.863321Z",
          *       "first_discovery_id": null,
-         *       "id": "06479a00-3f28-4fa1-b1bb-47435ad2caf2",
+         *       "id": "7ae1d9bb-8086-412f-9984-02501e7a12db",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-06-20T22:49:58.386043Z",
+         *       "last_seen_at": "2026-06-21T02:23:04.863321Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-06-20T22:49:58.386043Z",
-         *       "valid_from": "2026-06-20T22:49:58.386043Z",
+         *       "updated_at": "2026-06-21T02:23:04.863321Z",
+         *       "valid_from": "2026-06-21T02:23:04.863321Z",
          *       "valid_to": null
          *     }
          */
@@ -4536,7 +4544,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "WireGuard",
+         *           "service_definition": "Paperless-NGX",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -5518,19 +5526,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-06-20T22:49:58.384818Z",
+         *               "created_at": "2026-06-21T02:23:04.862346Z",
          *               "first_discovery_id": null,
-         *               "id": "6fb496e8-f42a-487e-9848-65e515dd6059",
+         *               "id": "bc1f3e12-4085-40e9-9e27-ed40fff4cafb",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-06-20T22:49:58.384818Z",
+         *               "last_seen_at": "2026-06-21T02:23:04.862346Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-06-20T22:49:58.384818Z",
-         *               "valid_from": "2026-06-20T22:49:58.384818Z",
+         *               "updated_at": "2026-06-21T02:23:04.862346Z",
+         *               "valid_from": "2026-06-21T02:23:04.862346Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -5544,7 +5552,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "WireGuard",
+         *           "service_definition": "Paperless-NGX",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -6974,19 +6982,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-06-20T22:49:58.385920Z",
+         *           "created_at": "2026-06-21T02:23:04.863227Z",
          *           "first_discovery_id": null,
-         *           "id": "226ace53-1762-4ab2-8898-d1ae51f284ec",
+         *           "id": "dfeaaff9-9d8a-4e80-9739-8e43e0561ccd",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-06-20T22:49:58.385920Z",
+         *           "last_seen_at": "2026-06-21T02:23:04.863227Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-06-20T22:49:58.385920Z",
-         *           "valid_from": "2026-06-20T22:49:58.385920Z",
+         *           "updated_at": "2026-06-21T02:23:04.863227Z",
+         *           "valid_from": "2026-06-21T02:23:04.863227Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -7000,7 +7008,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "WireGuard",
+         *       "service_definition": "Paperless-NGX",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -7363,6 +7371,14 @@ export interface components {
          *     persisted on the topology row.
          */
         TopologyData: {
+            /**
+             * @description Views whose data is present in this entity set (L3/Workloads always;
+             *     L2 Physical iff LLDP/CDP neighbors exist; Application iff app-flagged
+             *     tags are used). The topology tab restricts a snapshot's view picker to
+             *     these — you can't set up SNMP or create app tags on a historical
+             *     snapshot — while the live view shows all views with setup prompts.
+             */
+            available_views?: components["schemas"]["TopologyView"][];
             bindings: components["schemas"]["Binding"][];
             dependencies: components["schemas"]["Dependency"][];
             hosts: components["schemas"]["Host"][];

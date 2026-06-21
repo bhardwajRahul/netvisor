@@ -346,6 +346,22 @@ impl TopologyService {
             .await?;
         let tags = self.get_entity_tags(&hosts, &services, &subnets).await?;
 
+        // Which views have data in THIS entity set (snapshot-aware). Reuses the
+        // same `TopologyViewSupport` / `is_supported` logic that governs shares,
+        // but computed from the entities just loaded (so a snapshot reflects its
+        // captured data, not live). The topology tab uses this to hide views a
+        // snapshot can't populate (no LLDP neighbors → no L2; no app tags → no
+        // Application).
+        let support = TopologyViewSupport {
+            l2_physical: interfaces
+                .iter()
+                .any(|i| matches!(i.base.neighbor, Some(Neighbor::Interface(_)))),
+            application: tags.iter().any(|t| t.base.is_application),
+        };
+        let available_views: Vec<TopologyView> = TopologyView::iter()
+            .filter(|v| v.is_supported(&support))
+            .collect();
+
         Ok(TopologyData {
             hosts,
             ip_addresses,
@@ -357,6 +373,7 @@ impl TopologyService {
             services,
             vlans,
             tags,
+            available_views,
         })
     }
 

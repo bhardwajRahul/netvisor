@@ -10891,19 +10891,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-06-20T22:49:58.415802Z",
+              "created_at": "2026-06-21T02:23:04.880474Z",
               "first_discovery_id": null,
-              "id": "b1eca978-6daa-4dea-8351-135b62ac220a",
+              "id": "c9aa4262-0a0a-4431-a382-2026fcad2abb",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-20T22:49:58.415802Z",
+              "last_seen_at": "2026-06-21T02:23:04.880474Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-20T22:49:58.415802Z",
-              "valid_from": "2026-06-20T22:49:58.415802Z",
+              "updated_at": "2026-06-21T02:23:04.880474Z",
+              "valid_from": "2026-06-21T02:23:04.880474Z",
               "valid_to": null
             }
           },
@@ -11889,19 +11889,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-06-20T22:49:58.385790Z",
+                      "created_at": "2026-06-21T02:23:04.862887Z",
                       "first_discovery_id": null,
-                      "id": "d9d0ff08-ada3-447c-96be-873b95014b25",
+                      "id": "e812dade-6bbc-4ba5-80fb-371afbf961d4",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-06-20T22:49:58.385790Z",
+                      "last_seen_at": "2026-06-21T02:23:04.862887Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-06-20T22:49:58.385790Z",
-                      "valid_from": "2026-06-20T22:49:58.385790Z",
+                      "updated_at": "2026-06-21T02:23:04.862887Z",
+                      "valid_from": "2026-06-21T02:23:04.862887Z",
                       "valid_to": null
                     }
                   ],
@@ -11915,7 +11915,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "WireGuard",
+                  "service_definition": "Paperless-NGX",
                   "source": {
                     "type": "Manual"
                   },
@@ -12906,19 +12906,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-06-20T22:49:58.407453Z",
+                  "created_at": "2026-06-21T02:23:04.874693Z",
                   "first_discovery_id": null,
-                  "id": "040575b0-a821-47d0-9061-60ee36039cbf",
+                  "id": "dfb2ba4f-92f4-45a9-be51-ad8f7a93f5f4",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-20T22:49:58.407453Z",
+                  "last_seen_at": "2026-06-21T02:23:04.874693Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-20T22:49:58.407453Z",
-                  "valid_from": "2026-06-20T22:49:58.407453Z",
+                  "updated_at": "2026-06-21T02:23:04.874693Z",
+                  "valid_from": "2026-06-21T02:23:04.874693Z",
                   "valid_to": null
                 }
               ],
@@ -12932,7 +12932,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "WireGuard",
+              "service_definition": "Paperless-NGX",
               "source": {
                 "type": "Manual"
               },
@@ -13485,6 +13485,13 @@
               "tags"
             ],
             "properties": {
+              "available_views": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/TopologyView"
+                },
+                "description": "Views whose data is present in this entity set (L3/Workloads always;\nL2 Physical iff LLDP/CDP neighbors exist; Application iff app-flagged\ntags are used). The topology tab restricts a snapshot's view picker to\nthese — you can't set up SNMP or create app tags on a historical\nsnapshot — while the live view shows all views with setup prompts."
+              },
               "bindings": {
                 "type": "array",
                 "items": {
@@ -14632,19 +14639,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-06-20T22:49:58.386334Z",
+          "created_at": "2026-06-21T02:23:04.863347Z",
           "first_discovery_id": null,
-          "id": "a3e06b72-bdc0-4e1a-bd49-5d32294f3c1d",
+          "id": "e5364cd5-fe87-481d-96e3-5febba92e3a3",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-06-20T22:49:58.386334Z",
+          "last_seen_at": "2026-06-21T02:23:04.863347Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-06-20T22:49:58.386334Z",
-          "valid_from": "2026-06-20T22:49:58.386334Z",
+          "updated_at": "2026-06-21T02:23:04.863347Z",
+          "valid_from": "2026-06-21T02:23:04.863347Z",
           "valid_to": null
         }
       },
@@ -15234,7 +15241,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "WireGuard",
+              "service_definition": "Paperless-NGX",
               "tags": [],
               "virtualization": null
             }
@@ -17967,19 +17974,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-06-20T22:49:58.384816Z",
+                  "created_at": "2026-06-21T02:23:04.862344Z",
                   "first_discovery_id": null,
-                  "id": "edd8d96d-29ad-4eac-aadf-1fac9c277439",
+                  "id": "27f260f3-57cd-4d2d-b693-db57fd2da9aa",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-20T22:49:58.384816Z",
+                  "last_seen_at": "2026-06-21T02:23:04.862344Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-20T22:49:58.384816Z",
-                  "valid_from": "2026-06-20T22:49:58.384816Z",
+                  "updated_at": "2026-06-21T02:23:04.862344Z",
+                  "valid_from": "2026-06-21T02:23:04.862344Z",
                   "valid_to": null
                 }
               ],
@@ -17993,7 +18000,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "WireGuard",
+              "service_definition": "Paperless-NGX",
               "source": {
                 "type": "Manual"
               },
@@ -20462,19 +20469,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-06-20T22:49:58.369890Z",
+                        "created_at": "2026-06-21T02:23:04.854078Z",
                         "first_discovery_id": null,
-                        "id": "661de8c4-fc7c-4851-a39a-951bd413a96d",
+                        "id": "c41af8b9-2854-44e2-80d0-9e4e6fd4aadb",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-06-20T22:49:58.369890Z",
+                        "last_seen_at": "2026-06-21T02:23:04.854078Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-06-20T22:49:58.369890Z",
-                        "valid_from": "2026-06-20T22:49:58.369890Z",
+                        "updated_at": "2026-06-21T02:23:04.854078Z",
+                        "valid_from": "2026-06-21T02:23:04.854078Z",
                         "valid_to": null
                       }
                     ],
@@ -20488,7 +20495,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "WireGuard",
+                    "service_definition": "Paperless-NGX",
                     "source": {
                       "type": "Manual"
                     },
@@ -20609,19 +20616,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-06-20T22:49:58.404616Z",
+                    "created_at": "2026-06-21T02:23:04.873499Z",
                     "first_discovery_id": null,
-                    "id": "0640d07b-a82b-458b-b894-7c2a77760581",
+                    "id": "ec80ab64-77f0-4297-b459-2eb89b073eea",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-06-20T22:49:58.404616Z",
+                    "last_seen_at": "2026-06-21T02:23:04.873499Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-06-20T22:49:58.404616Z",
-                    "valid_from": "2026-06-20T22:49:58.404616Z",
+                    "updated_at": "2026-06-21T02:23:04.873499Z",
+                    "valid_from": "2026-06-21T02:23:04.873499Z",
                     "valid_to": null
                   }
                 ],
@@ -20635,7 +20642,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "WireGuard",
+                "service_definition": "Paperless-NGX",
                 "source": {
                   "type": "Manual"
                 },
@@ -22266,19 +22273,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-06-20T22:49:58.386232Z",
+              "created_at": "2026-06-21T02:23:04.863249Z",
               "first_discovery_id": null,
-              "id": "7b07d24a-4b23-44d7-b7ae-9b9eb1675625",
+              "id": "b98c0352-5ab4-4b08-a90e-98815e14a4c6",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-20T22:49:58.386232Z",
+              "last_seen_at": "2026-06-21T02:23:04.863249Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-20T22:49:58.386232Z",
-              "valid_from": "2026-06-20T22:49:58.386232Z",
+              "updated_at": "2026-06-21T02:23:04.863249Z",
+              "valid_from": "2026-06-21T02:23:04.863249Z",
               "valid_to": null
             }
           ],
@@ -22292,7 +22299,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "WireGuard",
+          "service_definition": "Paperless-NGX",
           "source": {
             "type": "Manual"
           },
@@ -23272,6 +23279,13 @@
           "tags"
         ],
         "properties": {
+          "available_views": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TopologyView"
+            },
+            "description": "Views whose data is present in this entity set (L3/Workloads always;\nL2 Physical iff LLDP/CDP neighbors exist; Application iff app-flagged\ntags are used). The topology tab restricts a snapshot's view picker to\nthese — you can't set up SNMP or create app tags on a historical\nsnapshot — while the live view shows all views with setup prompts."
+          },
           "bindings": {
             "type": "array",
             "items": {
