@@ -613,10 +613,11 @@
 				{#if currentTopology}
 					<div class="flex items-center gap-2">
 						<ExportButton onclick={() => (isExportModalOpen = true)} />
-						<!-- Sharing is live-only: a share stores a topology row but always
-						     renders with live entity data, so sharing a snapshot would mix
-						     snapshot layout with live entities. Hide the button on snapshots. -->
-						{#if !isReadOnly && $selectedSnapshotId == null}
+						<!-- A share always renders the LIVE view (the backend builds the share
+						     graph from live entities + options), so the button stays available
+						     while viewing a snapshot; the share modal shows an inline notice
+						     clarifying that a share captures the live view, not the snapshot. -->
+						{#if !isReadOnly}
 							{#if currentUser && !currentUser.email_verified}
 								<span data-tooltip="Please verify email to share topology" use:tooltip>
 									<button class="btn-secondary opacity-50" disabled title="Share">
@@ -798,6 +799,7 @@
 		isOpen={isShareModalOpen}
 		topologyId={currentTopology.id}
 		networkId={currentTopology.network_id}
+		isSnapshotView={$selectedSnapshotId != null}
 		onClose={() => (isShareModalOpen = false)}
 	/>
 {/if}

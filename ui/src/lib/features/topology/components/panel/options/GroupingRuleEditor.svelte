@@ -77,8 +77,10 @@
 		topology_noHiddenRules,
 		topology_byTagRuleDescription,
 		topology_infraRuleDescription,
-		topology_infraRuleNote
+		topology_infraRuleNote,
+		topology_groupingReadOnlySnapshot
 	} from '$lib/paraglide/messages';
+	import InlineInfo from '$lib/shared/components/feedback/InlineInfo.svelte';
 	import viewsJson from '$lib/data/views.json';
 
 	// Topology for edit state and option-saving
@@ -303,17 +305,22 @@
 		updateContainerRules(newRules);
 	}
 
+	// All edit/add/remove/reorder affordances follow read-only: in a snapshot (or
+	// any read-only topology) the grouping rules are view-only.
 	function canRemoveContainerRule(rule: ContainerGraphRule): boolean {
+		if (!editState.isEditable) return false;
 		const meta = containerRuleMeta[getContainerRuleDiscriminant(rule.rule)];
 		return meta?.metadata?.is_removable ?? false;
 	}
 
 	function canReorderContainerRule(rule: ContainerGraphRule): boolean {
+		if (!editState.isEditable) return false;
 		const meta = containerRuleMeta[getContainerRuleDiscriminant(rule.rule)];
 		return meta?.metadata?.is_reorderable ?? false;
 	}
 
 	function canRemoveElementRule(item: ElementGraphRule): boolean {
+		if (!editState.isEditable) return false;
 		const meta = elementRuleMeta[getElementRuleType(item.rule)];
 		if (!meta?.metadata?.is_removable) return false;
 		if (item.id === getInfrastructureRuleId()) return false;
@@ -321,6 +328,7 @@
 	}
 
 	function canReorderElementRule(item: ElementGraphRule): boolean {
+		if (!editState.isEditable) return false;
 		const meta = elementRuleMeta[getElementRuleType(item.rule)];
 		if (!meta?.metadata?.is_reorderable) return false;
 		if (item.id === getInfrastructureRuleId()) return false;
@@ -328,6 +336,7 @@
 	}
 
 	function canConfigureElementRule(item: ElementGraphRule): boolean {
+		if (!editState.isEditable) return false;
 		const meta = elementRuleMeta[getElementRuleType(item.rule)];
 		return meta?.metadata?.is_configurable ?? false;
 	}
@@ -538,6 +547,12 @@
 	}
 </script>
 
+{#if !editState.isEditable}
+	<div class="mb-3">
+		<InlineInfo title={topology_groupingReadOnlySnapshot()} />
+	</div>
+{/if}
+
 <!-- Container grouping section -->
 <div class="mb-4">
 	<ListManager
@@ -549,7 +564,7 @@
 		itemDisplayComponent={containerRuleDisplayComponent}
 		allowReorder={true}
 		allowDuplicates={false}
-		allowAddFromOptions={containerAddOptions.length > 0}
+		allowAddFromOptions={editState.isEditable && containerAddOptions.length > 0}
 		allowItemEdit={() => false}
 		allowItemRemove={canRemoveContainerRule}
 		allowItemReorder={canReorderContainerRule}
@@ -583,6 +598,7 @@
 	itemDisplayComponent={elementRuleDisplayComponent}
 	allowReorder={true}
 	allowDuplicates={true}
+	allowAddFromOptions={editState.isEditable && elementAddOptions.length > 0}
 	allowItemEdit={(item) => canConfigureElementRule(item) && isElementRuleApplicable(item)}
 	allowItemRemove={(item) => isElementRuleApplicable(item) && canRemoveElementRule(item)}
 	allowItemReorder={canReorderElementRule}

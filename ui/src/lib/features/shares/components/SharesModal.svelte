@@ -27,6 +27,7 @@
 	import { billingPlans, entities } from '$lib/shared/stores/metadata';
 	import EmptyState from '$lib/shared/components/layout/EmptyState.svelte';
 	import UpgradeButton from '$lib/shared/components/UpgradeButton.svelte';
+	import InlineInfo from '$lib/shared/components/feedback/InlineInfo.svelte';
 	import { pushError } from '$lib/shared/stores/feedback';
 	import {
 		common_close,
@@ -39,7 +40,9 @@
 		shares_noShareSelected,
 		shares_noSharesSubtitle,
 		shares_noSharesYet,
-		shares_selectToEdit
+		shares_selectToEdit,
+		shares_snapshotShareInfoTitle,
+		shares_snapshotShareInfoBody
 	} from '$lib/paraglide/messages';
 
 	let {
@@ -48,7 +51,8 @@
 		topologyId = '',
 		networkId = '',
 		name = undefined,
-		topologyDisplayName = ''
+		topologyDisplayName = '',
+		isSnapshotView = false
 	}: {
 		isOpen?: boolean;
 		onClose: () => void;
@@ -60,6 +64,9 @@
 		 *  a name field, so callers pass it explicitly (network name for live,
 		 *  formatted snapshot timestamp otherwise). */
 		topologyDisplayName?: string;
+		/** True when the user opened this while viewing a snapshot. A share always
+		 *  renders the live view, so we surface an inline notice. */
+		isSnapshotView?: boolean;
 	} = $props();
 
 	// Queries
@@ -260,6 +267,12 @@
 	{#snippet headerIcon()}
 		<ModalHeaderIcon Icon={Share2} color={entities.getColorHelper('Share').color} />
 	{/snippet}
+
+	{#if isSnapshotView}
+		<div class="px-1 pb-3">
+			<InlineInfo title={shares_snapshotShareInfoTitle()} body={shares_snapshotShareInfoBody()} />
+		</div>
+	{/if}
 
 	{#if !hasShareViews}
 		<div class="flex min-h-0 flex-1 flex-col items-center justify-center p-6">

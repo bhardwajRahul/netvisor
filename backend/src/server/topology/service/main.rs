@@ -1,4 +1,7 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use anyhow::Error;
 use async_trait::async_trait;
@@ -39,7 +42,7 @@ use crate::server::{
             api::TopologyData,
             base::{Topology, TopologyOptions},
             edges::Edge,
-            grouping::GroupingConfig,
+            grouping::{ContainerRule, ElementRule, GroupingConfig},
             nodes::Node,
             views::{TopologyView, TopologyViewSupport},
         },
@@ -439,10 +442,56 @@ impl TopologyService {
     ) -> Result<TopologyData, Error> {
         let options = self.network_topology_options(network_id).await?;
         let mut data = self.get_topology_data(network_id, snapshot_id).await?;
+        // `data.tags` only carries tags applied to entities. A grouping rule can
+        // reference a tag applied to nothing (e.g. ByTag on an unused tag); the
+        // frontend needs its name/color to label the group, so ship it too.
+        self.augment_grouping_rule_tags(&mut data, &options).await?;
         let (nodes, edges) = self.build_all_view_graphs(&data, &options);
         data.nodes = nodes;
         data.edges = edges;
         Ok(data)
+    }
+
+    /// Add tags referenced by grouping rules (ByTag element rules, ByApplication
+    /// container rules) to `data.tags` when not already present, so the frontend
+    /// can resolve their name/color. Tag definitions are org-scoped and never
+    /// snapshot-cloned, so these are always loaded live.
+    async fn augment_grouping_rule_tags(
+        &self,
+        data: &mut TopologyData,
+        options: &TopologyOptions,
+    ) -> Result<(), Error> {
+        let mut rule_tag_ids: Vec<Uuid> = Vec::new();
+        for r in &options.request.element_rules {
+            if let ElementRule::ByTag { tag_ids, .. } = &r.rule {
+                rule_tag_ids.extend(tag_ids);
+            }
+        }
+        for rules in options.request.container_rules.values() {
+            for r in rules {
+                if let ContainerRule::ByApplication { tag_ids } = &r.rule {
+                    rule_tag_ids.extend(tag_ids);
+                }
+            }
+        }
+
+        let present: HashSet<Uuid> = data.tags.iter().map(|t| t.id).collect();
+        let mut missing: Vec<Uuid> = rule_tag_ids
+            .into_iter()
+            .filter(|id| !present.contains(id))
+            .collect();
+        missing.sort();
+        missing.dedup();
+        if missing.is_empty() {
+            return Ok(());
+        }
+
+        let extra = self
+            .tag_service
+            .get_all(StorableFilter::<Tag>::new_from_entity_ids(&missing).live())
+            .await?;
+        data.tags.extend(extra);
+        Ok(())
     }
 
     /// The network's single live topology row holds the user's grouping

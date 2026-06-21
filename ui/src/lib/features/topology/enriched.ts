@@ -91,11 +91,24 @@ export function toRenderableTopology(
 	const ports = bundle.ports.filter((p) => hostIds.has(p.host_id));
 	const interfaces = bundle.interfaces.filter((i) => hostIds.has(i.host_id));
 	const bindings = bundle.bindings.filter((b) => b.network_id === networkId);
-	// Tags are org-scoped; filter to ids referenced by entities here.
+	// Tags are org-scoped; keep the ones referenced by entities here, plus tags
+	// referenced by grouping rules (ByTag / ByApplication) — those may apply to no
+	// entity but still need their name/color to label the group (the backend ships
+	// them in the bundle; see TopologyService::augment_grouping_rule_tags).
 	const referencedTagIds = new Set<string>();
 	for (const h of hosts) for (const t of h.tags ?? []) referencedTagIds.add(t);
 	for (const s of services) for (const t of s.tags ?? []) referencedTagIds.add(t);
 	for (const s of subnets) for (const t of s.tags ?? []) referencedTagIds.add(t);
+	for (const r of topology.options?.request?.element_rules ?? []) {
+		if (typeof r.rule === 'object' && 'ByTag' in r.rule)
+			for (const t of r.rule.ByTag.tag_ids ?? []) referencedTagIds.add(t);
+	}
+	for (const rules of Object.values(topology.options?.request?.container_rules ?? {})) {
+		for (const r of rules ?? []) {
+			if (typeof r.rule === 'object' && 'ByApplication' in r.rule)
+				for (const t of r.rule.ByApplication.tag_ids ?? []) referencedTagIds.add(t);
+		}
+	}
 	const entityTags = bundle.entity_tags.filter((t) => referencedTagIds.has(t.id));
 
 	return {
