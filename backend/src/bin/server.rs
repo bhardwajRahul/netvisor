@@ -91,6 +91,17 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!(target: LOG_TARGET, "  Database connected, migrations applied");
     tracing::info!(target: LOG_TARGET, "  Services initialized");
 
+    // ONE-SHOT (remove next release): rebuild every topology row so the
+    // v0.16.2 upgrade's empty live rows + converted snapshots populate all
+    // four view slices from current / closed-copy entity data. Idempotent;
+    // runs on every boot this release only.
+    state
+        .services
+        .topology_service
+        .rebuild_all_topologies()
+        .await?;
+    tracing::info!(target: LOG_TARGET, "  Topologies rebuilt");
+
     let discovery_service = state.services.discovery_service.clone();
     let billing_service = state.services.billing_service.clone();
     let deployment_type = get_deployment_type(&state.config);
