@@ -20,7 +20,7 @@
 		daemons_dockerProxyCreated,
 		daemons_dockerDisabledHelp,
 		daemons_dockerLocalSocketHelp,
-		daemons_dockerProxyHelp,
+		// daemons_dockerProxyHelp,
 		daemons_dockerGoToScanCredentials,
 		daemons_dockerProxyWizardCta
 	} from '$lib/paraglide/messages';
