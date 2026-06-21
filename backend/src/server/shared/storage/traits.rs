@@ -69,6 +69,10 @@ pub trait Storage<T: Storable>: Send + Sync {
         order_by: &str,
     ) -> Result<PaginatedResult<T>, anyhow::Error>;
     async fn get_one(&self, filter: StorableFilter<T>) -> Result<Option<T>, anyhow::Error>;
+    /// Count rows matching the filter (`SELECT COUNT(*)`), without fetching them.
+    /// For internal count-only needs (dashboards, limit checks) — avoids the
+    /// row fetch + tag hydration that `get_paginated`/`get_all` do.
+    async fn count(&self, filter: StorableFilter<T>) -> Result<u64, anyhow::Error>;
     async fn update(&self, entity: &mut T) -> Result<T, anyhow::Error>;
     async fn delete(&self, id: &Uuid) -> Result<(), anyhow::Error>;
     async fn create_many(&self, entities: &[T]) -> Result<Vec<T>, anyhow::Error>;

@@ -180,19 +180,14 @@
 	const takeSnapshotMutation = useTakeSnapshotMutation();
 	const deleteSnapshotMutation = useDeleteSnapshotMutation();
 
-	// Selected topology row: live row when no snapshot, else the row whose
-	// snapshot_id matches the selected snapshot's id. Filter to the active
-	// network so we don't grab a row from a different network with NULL
-	// snapshot_id.
+	// There is exactly one topology row per network (it holds only grouping
+	// `options`). Both live and snapshot views use it — the snapshot-ness lives
+	// in the entity/graph bundle, which is built on request from the snapshot's
+	// closed copies when one is selected.
 	let currentTopologyRow = $derived.by(() => {
 		const networkId = $selectedNetworkId;
 		if (!networkId) return null;
-		const forNetwork = topologiesData.filter((t) => t.network_id === networkId);
-		if ($selectedSnapshotId) {
-			return forNetwork.find((t) => t.snapshot_id === $selectedSnapshotId) ?? null;
-		}
-		// Live view = topology row with snapshot_id null/undefined
-		return forNetwork.find((t) => !t.snapshot_id) ?? null;
+		return topologiesData.find((t) => t.network_id === networkId) ?? null;
 	});
 
 	// Display name for the currently selected topology — network name for
@@ -225,7 +220,10 @@
 				interfaces: bundle.interfaces,
 				dependencies: bundle.dependencies,
 				vlans: bundle.vlans,
-				entity_tags: bundle.tags
+				entity_tags: bundle.tags,
+				// Per-view graph built on request by the backend (snapshot-aware).
+				nodes: bundle.nodes,
+				edges: bundle.edges
 			},
 			currentTopologyName,
 			$activeView
@@ -443,6 +441,11 @@
 	// Handle network selection
 	function handleNetworkChange(value: string) {
 		selectedNetworkId.set(value);
+		// Reset to live view synchronously here (not just via the network-change
+		// $effect) so the snapshot is cleared before the data query recomputes —
+		// otherwise it briefly fires with the new network + old snapshot id and
+		// the backend 403s ("Snapshot belongs to a different network").
+		selectedSnapshotId.set(null);
 		clearSelection();
 	}
 
@@ -610,10 +613,11 @@
 				{#if currentTopology}
 					<div class="flex items-center gap-2">
 						<ExportButton onclick={() => (isExportModalOpen = true)} />
-						<!-- Sharing is live-only: a share stores a topology row but always
-						     renders with live entity data, so sharing a snapshot would mix
-						     snapshot layout with live entities. Hide the button on snapshots. -->
-						{#if !isReadOnly && $selectedSnapshotId == null}
+						<!-- A share always renders the LIVE view (the backend builds the share
+						     graph from live entities + options), so the button stays available
+						     while viewing a snapshot; the share modal shows an inline notice
+						     clarifying that a share captures the live view, not the snapshot. -->
+						{#if !isReadOnly}
 							{#if currentUser && !currentUser.email_verified}
 								<span data-tooltip="Please verify email to share topology" use:tooltip>
 									<button class="btn-secondary opacity-50" disabled title="Share">
@@ -795,6 +799,7 @@
 		isOpen={isShareModalOpen}
 		topologyId={currentTopology.id}
 		networkId={currentTopology.network_id}
+		isSnapshotView={$selectedSnapshotId != null}
 		onClose={() => (isShareModalOpen = false)}
 	/>
 {/if}

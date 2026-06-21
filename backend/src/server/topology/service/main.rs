@@ -1,8 +1,11 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use anyhow::Error;
 use async_trait::async_trait;
-use petgraph::{Graph, graph::NodeIndex, visit::EdgeRef};
+use petgraph::{Graph, graph::NodeIndex};
 use strum::IntoEnumIterator;
 use tokio::sync::broadcast;
 use uuid::Uuid;
@@ -38,8 +41,8 @@ use crate::server::{
         types::{
             api::TopologyData,
             base::{Topology, TopologyOptions},
-            edges::{Edge, EdgeHandle},
-            grouping::GroupingConfig,
+            edges::Edge,
+            grouping::{ContainerRule, ElementRule, GroupingConfig},
             nodes::Node,
             views::{TopologyView, TopologyViewSupport},
         },
@@ -92,36 +95,19 @@ impl CrudService<Topology> for TopologyService {
 
     /// Create a topology row.
     ///
-    /// Live-view rows: caller passes `snapshot_id = None`. Snapshot rows:
-    /// caller passes `snapshot_id = Some(snapshot.id)` and is responsible for
-    /// supplying the entity data (via the `Snapshot` subscriber path) — the
-    /// service no longer fetches+caches entities on the topology row.
+    /// The row holds only the user's grouping `options`; the per-view graph is
+    /// built on request from entities + options (see `build_all_view_graphs`),
+    /// so there's nothing to seed here. One live row per network.
     async fn create(
         &self,
         entity: Topology,
         authentication: AuthenticatedEntity,
     ) -> Result<Topology, anyhow::Error> {
-        let mut topology = if entity.id() == Uuid::nil() {
+        let topology = if entity.id() == Uuid::nil() {
             Topology::new(entity.get_base())
         } else {
             entity
         };
-
-        // For live-view rows we still seed nodes/edges from the current
-        // entity state so the first render after network creation has a
-        // graph to display. Snapshot rows are inserted directly by the
-        // subscriber with already-built nodes/edges and don't pass through
-        // here as `id == nil`.
-        if topology.base.snapshot_id.is_none()
-            && topology.base.nodes.is_empty()
-            && topology.base.edges.is_empty()
-        {
-            let data = self
-                .get_topology_data(topology.base.network_id, None)
-                .await?;
-            let (nodes, edges) = self.build_all_view_graphs(&data, &topology.base.options, None);
-            topology.set_all_graphs(nodes, edges);
-        }
 
         let created = self.storage().create(&topology).await?;
 
@@ -142,15 +128,13 @@ impl CrudService<Topology> for TopologyService {
         Ok(created)
     }
 
-    /// Persist a topology update, rebuilding every view's graph when the
-    /// request options changed.
+    /// Persist a topology update (grouping `options` only).
     ///
-    /// View switching is a client-side slice selection and does NOT reach here
-    /// (it changes only the `view` scalar, which `triggers_staleness` ignores).
-    /// Grouping/hide-rule edits DO change `options.request`, so we reload the
-    /// row's entity set (live or snapshot closed-copy) and rebuild all view
-    /// slices, overwriting the stale graphs the client echoed back. Pure
-    /// layout PUTs (no options change) keep the client-sent graphs.
+    /// The graph is no longer stored — grouping/hide-rule edits change
+    /// `options.request` and take effect on the next on-request build, so there
+    /// is nothing to rebuild here. `trigger_stale` still rides on the published
+    /// event so any interested consumer can tell a grouping change from a no-op.
+    /// View switching is a client-side slice selection and does NOT reach here.
     async fn update(
         &self,
         entity: &mut Topology,
@@ -162,15 +146,6 @@ impl CrudService<Topology> for TopologyService {
             .ok_or_else(|| anyhow::anyhow!("Could not find topology {}", entity.id()))?;
 
         let trigger_stale = entity.triggers_staleness(Some(current.clone()));
-
-        if trigger_stale {
-            let data = self
-                .get_topology_data(current.base.network_id, current.base.snapshot_id)
-                .await?;
-            let (nodes, edges) =
-                self.build_all_view_graphs(&data, &entity.base.options, Some(&current));
-            entity.set_all_graphs(nodes, edges);
-        }
 
         let updated = self.storage().update(entity).await?;
 
@@ -377,6 +352,10 @@ impl TopologyService {
             vlans,
             tags,
             available_views,
+            // Built on request by `get_topology_render_data`; the bare entity
+            // loader leaves them empty.
+            nodes: HashMap::new(),
+            edges: HashMap::new(),
         })
     }
 
@@ -451,18 +430,98 @@ impl TopologyService {
         })
     }
 
+    /// Load the entity set for `(network_id, snapshot_id)` and build the
+    /// per-view graph on request from it + the network's grouping options.
+    /// Single source for the render, export, and share paths now that the graph
+    /// is no longer persisted. Snapshots use the network's (live) options —
+    /// the same behaviour the former `build_snapshot_topology` had.
+    pub async fn get_topology_render_data(
+        &self,
+        network_id: Uuid,
+        snapshot_id: Option<Uuid>,
+    ) -> Result<TopologyData, Error> {
+        let options = self.network_topology_options(network_id).await?;
+        let mut data = self.get_topology_data(network_id, snapshot_id).await?;
+        // `data.tags` only carries tags applied to entities. A grouping rule can
+        // reference a tag applied to nothing (e.g. ByTag on an unused tag); the
+        // frontend needs its name/color to label the group, so ship it too.
+        self.augment_grouping_rule_tags(&mut data, &options).await?;
+        let (nodes, edges) = self.build_all_view_graphs(&data, &options);
+        data.nodes = nodes;
+        data.edges = edges;
+        Ok(data)
+    }
+
+    /// Add tags referenced by grouping rules (ByTag element rules, ByApplication
+    /// container rules) to `data.tags` when not already present, so the frontend
+    /// can resolve their name/color. Tag definitions are org-scoped and never
+    /// snapshot-cloned, so these are always loaded live.
+    async fn augment_grouping_rule_tags(
+        &self,
+        data: &mut TopologyData,
+        options: &TopologyOptions,
+    ) -> Result<(), Error> {
+        let mut rule_tag_ids: Vec<Uuid> = Vec::new();
+        for r in &options.request.element_rules {
+            if let ElementRule::ByTag { tag_ids, .. } = &r.rule {
+                rule_tag_ids.extend(tag_ids);
+            }
+        }
+        for rules in options.request.container_rules.values() {
+            for r in rules {
+                if let ContainerRule::ByApplication { tag_ids } = &r.rule {
+                    rule_tag_ids.extend(tag_ids);
+                }
+            }
+        }
+
+        let present: HashSet<Uuid> = data.tags.iter().map(|t| t.id).collect();
+        let mut missing: Vec<Uuid> = rule_tag_ids
+            .into_iter()
+            .filter(|id| !present.contains(id))
+            .collect();
+        missing.sort();
+        missing.dedup();
+        if missing.is_empty() {
+            return Ok(());
+        }
+
+        let extra = self
+            .tag_service
+            .get_all(StorableFilter::<Tag>::new_from_entity_ids(&missing).live())
+            .await?;
+        data.tags.extend(extra);
+        Ok(())
+    }
+
+    /// The network's single live topology row holds the user's grouping
+    /// `options`. Defaults if the row is somehow absent.
+    pub async fn network_topology_options(
+        &self,
+        network_id: Uuid,
+    ) -> Result<TopologyOptions, Error> {
+        let rows = self
+            .get_all(StorableFilter::<Topology>::new_from_network_ids(&[
+                network_id,
+            ]))
+            .await?;
+        Ok(rows
+            .into_iter()
+            .next()
+            .map(|t| t.base.options)
+            .unwrap_or_default())
+    }
+
     /// Build a node/edge set for every view from a single entity snapshot.
     ///
-    /// Each view's previously-stored slice (when `old` is given) is fed to
-    /// `build_graph` as `old_*` with `old_view = Some(view)`, so per-view
-    /// handle/position preservation fires (nodes don't jump on rebuild). The
-    /// returned maps are stored directly on the row via `set_all_graphs`, so
-    /// the client can switch views by slice selection without a rebuild.
+    /// Pure function of `data` + `options` — called on request by the read,
+    /// export, and share paths (the graph is no longer persisted). Returns one
+    /// node/edge slice per view so the client can switch views without a
+    /// refetch.
     pub fn build_all_view_graphs(
         &self,
         data: &TopologyData,
         options: &TopologyOptions,
-        old: Option<&Topology>,
     ) -> (
         HashMap<TopologyView, Vec<Node>>,
         HashMap<TopologyView, Vec<Edge>>,
@@ -482,10 +541,12 @@ impl TopologyService {
                 interfaces: &data.interfaces,
                 entity_tags: &data.tags,
                 vlans: &data.vlans,
-                old_nodes: old.map(|t| t.nodes_for(view)).unwrap_or(&[]),
-                old_edges: old.map(|t| t.edges_for(view)).unwrap_or(&[]),
+                // No stored prior graph to preserve handles from — overrides
+                // aren't persisted (handle-preservation is disabled below).
+                old_nodes: &[],
+                old_edges: &[],
                 options,
-                old_view: Some(view),
+                old_view: None,
                 view,
             });
 
@@ -559,6 +620,13 @@ impl TopologyService {
         // Add edges to graph
         EdgeBuilder::add_edges_to_graph(&mut graph, &node_indices, final_edges);
 
+        // User layout overrides (edge handle reconnect) are no longer persisted,
+        // so there's no prior graph to carry handles forward from. The
+        // handle-preservation pass below is DISABLED — kept (commented) for
+        // revival if override persistence is reintroduced. `old_nodes` /
+        // `old_edges` / `old_view` are fed empty by `build_all_view_graphs`.
+        let _ = (old_nodes, old_edges, old_view);
+        /*
         // Skip handle preservation when view has changed — old handles are not meaningful
         let view_unchanged = match old_view {
             Some(old_v) => old_v == view,
@@ -623,6 +691,7 @@ impl TopologyService {
                 }
             }
         }
+        */
 
         (
             graph.node_weights().cloned().collect(),

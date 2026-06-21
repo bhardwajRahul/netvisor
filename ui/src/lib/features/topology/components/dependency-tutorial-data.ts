@@ -33,7 +33,6 @@ export const TUTORIAL_TOPOLOGY: RenderableTopology = {
 	id: uuidv4(),
 	name: 'Tutorial',
 	network_id: uuidv4(),
-	snapshot_id: null,
 	created_at: new Date().toISOString(),
 	updated_at: new Date().toISOString(),
 	nodes: [],

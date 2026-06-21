@@ -6,7 +6,6 @@ import { createQuery, createMutation, useQueryClient } from '@tanstack/svelte-qu
 import { queryKeys } from '$lib/api/query-client';
 import { apiClient } from '$lib/api/client';
 import type { Dependency } from './types/base';
-import type { Topology } from '$lib/features/topology/types/base';
 
 /**
  * Query hook for fetching all dependencies
@@ -103,28 +102,10 @@ export function useDeleteDependencyMutation() {
 				queryKeys.dependencies.all,
 				(old) => old?.filter((d) => d.id !== id) ?? []
 			);
-			// Optimistically strip the dependency's edges from the topology graph
-			// (dependency rows themselves now live in the dedicated dependencies cache,
-			// not on the topology row).
-			queryClient.setQueryData<Topology[]>(queryKeys.topology.all, (old) =>
-				old?.map((t) => ({
-					...t,
-					// `edges` is keyed per view — strip the dependency's edges from
-					// every view's slice.
-					edges: Object.fromEntries(
-						Object.entries(t.edges ?? {}).map(([view, edges]) => [
-							view,
-							edges.filter(
-								(e) =>
-									!(
-										(e.edge_type === 'HubAndSpoke' || e.edge_type === 'RequestPath') &&
-										e.dependency_id === id
-									)
-							)
-						])
-					)
-				}))
-			);
+			// The topology graph is built on request (not stored on the row), so
+			// invalidate the topology queries to refetch a graph rebuilt without
+			// the deleted dependency's edges.
+			queryClient.invalidateQueries({ queryKey: queryKeys.topology.all });
 			// Invalidate services as dependency deletion may affect service bindings
 			queryClient.invalidateQueries({ queryKey: queryKeys.services.all });
 		}

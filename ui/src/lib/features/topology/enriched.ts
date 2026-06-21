@@ -1,20 +1,26 @@
 /**
  * Enriched topology helpers.
  *
- * The slim backend `Topology` row carries only graph layout
- * (`nodes`, `edges`, `options`, `snapshot_id`, …). Entity arrays
- * (`hosts`, `services`, `subnets`, …) used to be embedded in the
- * topology row but are now read live via per-entity queries. This
- * module wraps a `Topology` with those entity arrays so consumers can
- * keep reading `topology.hosts` etc. uniformly.
+ * The slim backend `Topology` row carries only the user's grouping
+ * `options` (plus `id`/`network_id`). The per-view graph (`nodes`/`edges`)
+ * is built on request and returned on the `TopologyData` bundle alongside
+ * the entity arrays (`hosts`, `services`, `subnets`, …). This module wraps
+ * the row + bundle so consumers can keep reading `topology.nodes` /
+ * `topology.hosts` etc. uniformly.
  *
- * Snapshot vs live: per project plan, entity reads are always live —
- * the snapshot row's `nodes`/`edges` already encode captured visual
- * state, and inspector-level entity details show the current live row
- * (matches the snapshot when nothing has changed since).
+ * Snapshot vs live: the bundle is snapshot-aware (its `nodes`/`edges` are
+ * built from the snapshot's closed copies when a snapshot is selected); the
+ * entity arrays it carries are the as-of-T set for that snapshot.
  */
 
-import type { RenderableTopology, Topology, Binding, Vlan } from './types/base';
+import type {
+	RenderableTopology,
+	Topology,
+	TopologyNode,
+	TopologyEdge,
+	Binding,
+	Vlan
+} from './types/base';
 import type { TopologyView } from './queries';
 import type { Host, IPAddress, Interface, Port } from '$lib/features/hosts/types/base';
 import type { Service } from '$lib/features/services/types/base';
@@ -33,6 +39,9 @@ export interface EntityBundle {
 	dependencies: Dependency[];
 	vlans: Vlan[];
 	entity_tags: Tag[];
+	/** Per-view graph built on request by the backend (keyed by view). */
+	nodes?: Partial<Record<TopologyView, TopologyNode[]>>;
+	edges?: Partial<Record<TopologyView, TopologyEdge[]>>;
 }
 
 export const EMPTY_ENTITY_BUNDLE: EntityBundle = {
@@ -49,7 +58,8 @@ export const EMPTY_ENTITY_BUNDLE: EntityBundle = {
 };
 
 /**
- * Combine a slim `Topology` with the entity arrays it used to embed.
+ * Combine a slim `Topology` row with the entity arrays + built graph from the
+ * `TopologyData` bundle.
  *
  * `name` is a UI-side display string supplied by the caller (network
  * name for live view, formatted `taken_at` for snapshots, share name
@@ -58,9 +68,9 @@ export const EMPTY_ENTITY_BUNDLE: EntityBundle = {
  * Filters entity arrays to the topology's network so a multi-network
  * cache doesn't leak into the inspector.
  *
- * `view` selects which per-view node/edge slice to flatten onto the result.
- * The row stores all views; switching `view` is a pure slice selection (no
- * fetch, no rebuild).
+ * `view` selects which per-view node/edge slice (built on request, carried on
+ * the bundle) to flatten onto the result. Switching `view` is a pure slice
+ * selection (no fetch, no rebuild).
  */
 export function toRenderableTopology(
 	topology: Topology,
@@ -69,8 +79,8 @@ export function toRenderableTopology(
 	view: TopologyView
 ): RenderableTopology {
 	const networkId = topology.network_id;
-	const nodes = topology.nodes?.[view] ?? [];
-	const edges = topology.edges?.[view] ?? [];
+	const nodes = bundle.nodes?.[view] ?? [];
+	const edges = bundle.edges?.[view] ?? [];
 	const hosts = bundle.hosts.filter((h) => h.network_id === networkId);
 	const subnets = bundle.subnets.filter((s) => s.network_id === networkId);
 	const dependencies = bundle.dependencies.filter((d) => d.network_id === networkId);
@@ -81,11 +91,24 @@ export function toRenderableTopology(
 	const ports = bundle.ports.filter((p) => hostIds.has(p.host_id));
 	const interfaces = bundle.interfaces.filter((i) => hostIds.has(i.host_id));
 	const bindings = bundle.bindings.filter((b) => b.network_id === networkId);
-	// Tags are org-scoped; filter to ids referenced by entities here.
+	// Tags are org-scoped; keep the ones referenced by entities here, plus tags
+	// referenced by grouping rules (ByTag / ByApplication) — those may apply to no
+	// entity but still need their name/color to label the group (the backend ships
+	// them in the bundle; see TopologyService::augment_grouping_rule_tags).
 	const referencedTagIds = new Set<string>();
 	for (const h of hosts) for (const t of h.tags ?? []) referencedTagIds.add(t);
 	for (const s of services) for (const t of s.tags ?? []) referencedTagIds.add(t);
 	for (const s of subnets) for (const t of s.tags ?? []) referencedTagIds.add(t);
+	for (const r of topology.options?.request?.element_rules ?? []) {
+		if (typeof r.rule === 'object' && 'ByTag' in r.rule)
+			for (const t of r.rule.ByTag.tag_ids ?? []) referencedTagIds.add(t);
+	}
+	for (const rules of Object.values(topology.options?.request?.container_rules ?? {})) {
+		for (const r of rules ?? []) {
+			if (typeof r.rule === 'object' && 'ByApplication' in r.rule)
+				for (const t of r.rule.ByApplication.tag_ids ?? []) referencedTagIds.add(t);
+		}
+	}
 	const entityTags = bundle.entity_tags.filter((t) => referencedTagIds.has(t.id));
 
 	return {

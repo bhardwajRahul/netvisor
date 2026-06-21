@@ -273,11 +273,17 @@ export function useUpdateTopologyMutation() {
 	}));
 }
 
+// === DISABLED: layout-override mutations ===
+// Node position / container resize / edge handle reconnect are no longer
+// persisted — the graph builds on request and ELK re-lays out every render, so
+// there is no mechanism to save these. The backend endpoints are likewise
+// commented out (see topology `handlers.rs`). Kept here for revival.
+/*
 /**
  * Mutation hook for updating a single node's position
  * Lightweight endpoint - only sends node ID and position instead of full topology
  * Fixes HTTP 413 errors on drag operations for large topologies
- */
+ *\/
 export function useUpdateNodePositionMutation() {
 	return createMutation(() => ({
 		mutationFn: async (params: {
@@ -307,7 +313,7 @@ export function useUpdateNodePositionMutation() {
  * Mutation hook for updating a node's size and position (resize)
  * Lightweight endpoint - only sends node ID, size, and position instead of full topology
  * Fixes HTTP 413 errors on resize operations for large topologies
- */
+ *\/
 export function useUpdateNodeResizeMutation() {
 	return createMutation(() => ({
 		mutationFn: async (params: {
@@ -339,7 +345,7 @@ export function useUpdateNodeResizeMutation() {
  * Mutation hook for updating an edge's handles
  * Lightweight endpoint - only sends edge ID and handles instead of full topology
  * Fixes HTTP 413 errors on edge reconnect operations for large topologies
- */
+ *\/
 export function useUpdateEdgeHandlesMutation() {
 	return createMutation(() => ({
 		mutationFn: async (params: {
@@ -366,6 +372,7 @@ export function useUpdateEdgeHandlesMutation() {
 		}
 	}));
 }
+*/
 
 // ============================================================================
 // UI State (not server data - kept as Svelte stores)

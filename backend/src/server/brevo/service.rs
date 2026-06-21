@@ -10,7 +10,7 @@ use crate::server::{
         service::CredentialService,
     },
     daemons::{r#impl::base::Daemon, service::DaemonService},
-    hosts::{r#impl::base::Host, service::HostService},
+    hosts::service::HostService,
     networks::{r#impl::Network, service::NetworkService},
     organizations::{r#impl::base::Organization, service::OrganizationService},
     shared::{
@@ -820,13 +820,10 @@ impl BrevoService {
         let network_ids: Vec<Uuid> = networks.iter().map(|n| n.id).collect();
         let network_count = networks.len() as i64;
 
-        let host_filter = StorableFilter::<Host>::new_from_network_ids(&network_ids);
-        let hosts = self.host_service.get_all(host_filter).await?;
-        let host_count = hosts.len() as i64;
-
-        let user_filter = StorableFilter::new_from_org_id(&org_id);
-        let users = self.user_service.get_all(user_filter).await?;
-        let user_count = users.len() as i64;
+        // count_for_networks/count_for_org narrow SCD2 entities to live rows so
+        // snapshot closed-copies don't inflate the synced counts.
+        let host_count = self.host_service.count_for_networks(&network_ids).await? as i64;
+        let user_count = self.user_service.count_for_org(&org_id).await? as i64;
 
         self.sync_organization_metrics(org_id, network_count, host_count, user_count)
             .await?;
@@ -957,13 +954,10 @@ impl BrevoService {
             attrs = attrs.with_second_network_date(second_network.created_at);
         }
 
-        let host_filter = StorableFilter::<Host>::new_from_network_ids(&network_ids);
-        let hosts = self.host_service.get_all(host_filter).await?;
-        let host_count = hosts.len() as i64;
-
-        let user_filter = StorableFilter::<User>::new_from_org_id(&org_id);
-        let users = self.user_service.get_all(user_filter).await?;
-        let user_count = users.len() as i64;
+        // count_for_networks/count_for_org narrow SCD2 entities to live rows so
+        // snapshot closed-copies don't inflate the synced counts.
+        let host_count = self.host_service.count_for_networks(&network_ids).await? as i64;
+        let user_count = self.user_service.count_for_org(&org_id).await? as i64;
 
         attrs = attrs
             .with_network_count(network_count)

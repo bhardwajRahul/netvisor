@@ -14,7 +14,7 @@
 	import { getInfrastructureRuleId } from '../../queries';
 	import { formatElementSummary, tallyContainerElements, tallyDirectElements } from '../../labels';
 	import {
-		useUpdateNodeResizeMutation,
+		// useUpdateNodeResizeMutation — DISABLED (container resize is not persisted)
 		topologyOptions,
 		activeView,
 		selectedNode as globalSelectedNode,
@@ -23,6 +23,8 @@
 	import { useTopology, selectedTopologyId } from '../../context';
 	import type { RenderableTopology, TopologyNode } from '../../types/base';
 	import { resolveContainerNode } from '../../resolvers';
+	import { queryClient, queryKeys } from '$lib/api/query-client';
+	import type { Tag } from '$lib/features/tags/types/base';
 	import { type Writable, get } from 'svelte/store';
 	import { getContext } from 'svelte';
 	import { editModeEnabled } from '../../state';
@@ -87,7 +89,10 @@
 					| RenderableTopology
 					| undefined)
 	);
-	const updateNodeResizeMutation = useUpdateNodeResizeMutation();
+	// Container resize is DISABLED — size changes are no longer persisted (the
+	// graph builds on request and ELK re-lays out every render, so there's no
+	// mechanism to save them). Kept commented for revival:
+	// const updateNodeResizeMutation = useUpdateNodeResizeMutation();
 
 	// Try to get selection from context (for share/embed pages), fallback to global store
 	const selectedNodeContext = getContext<Writable<Node | null> | undefined>('selectedNode');
@@ -195,6 +200,18 @@
 		return (rules as any[]).find((r: { id: string }) => r.id === elementRuleId) ?? null;
 	});
 
+	// Resolve a tag's name/color for a grouping pill. Prefer the app's tags cache
+	// (holds every org tag, so a just-added rule tag resolves instantly with no
+	// id→name flicker while the bundle catches up); fall back to the topology
+	// bundle, which is the only source in the unauthenticated share viewer (no
+	// cache there — the backend ships rule tags on the bundle for that case).
+	function resolveTagPill(tagId: string): { label: string; color: Color } {
+		const tag =
+			queryClient.getQueryData<Tag[]>(queryKeys.tags.all)?.find((t) => t.id === tagId) ??
+			topology?.entity_tags?.find((t) => t.id === tagId);
+		return { label: tag?.name ?? tagId, color: (tag?.color as Color) ?? 'Gray' };
+	}
+
 	let groupLabels = $derived.by((): { label: string; color: Color }[] => {
 		if (isInfraRule) return [];
 		if (!elementRule?.rule) return [];
@@ -212,13 +229,7 @@
 			});
 		}
 		if ('ByTag' in rule) {
-			return (rule.ByTag.tag_ids ?? []).map((tagId: string) => {
-				const tag = topology?.entity_tags?.find((t) => t.id === tagId);
-				return {
-					label: tag?.name ?? tagId,
-					color: (tag?.color as Color) ?? 'Gray'
-				};
-			});
+			return (rule.ByTag.tag_ids ?? []).map((tagId: string) => resolveTagPill(tagId));
 		}
 		return [];
 	});
@@ -287,10 +298,9 @@
 						);
 					}
 					if ('ByTag' in r) {
-						return ((r.ByTag as { tag_ids?: string[] }).tag_ids ?? []).map((tagId) => {
-							const tag = topology?.entity_tags?.find((t) => t.id === tagId);
-							return { label: tag?.name ?? tagId, color: (tag?.color ?? 'Gray') as Color };
-						});
+						return ((r.ByTag as { tag_ids?: string[] }).tag_ids ?? []).map((tagId) =>
+							resolveTagPill(tagId)
+						);
 					}
 					return [];
 				})();
@@ -341,14 +351,15 @@
 			node.position.x = roundedX;
 			node.position.y = roundedY;
 
-			await updateNodeResizeMutation.mutateAsync({
-				topologyId: topology.id,
-				networkId: topology.network_id,
-				view: $activeView,
-				nodeId: node.id,
-				size: { x: roundedWidth, y: roundedHeight },
-				position: { x: roundedX, y: roundedY }
-			});
+			// DISABLED: no mechanism to persist container resize.
+			// await updateNodeResizeMutation.mutateAsync({
+			// 	topologyId: topology.id,
+			// 	networkId: topology.network_id,
+			// 	view: $activeView,
+			// 	nodeId: node.id,
+			// 	size: { x: roundedWidth, y: roundedHeight },
+			// 	position: { x: roundedX, y: roundedY }
+			// });
 		}
 	}
 </script>

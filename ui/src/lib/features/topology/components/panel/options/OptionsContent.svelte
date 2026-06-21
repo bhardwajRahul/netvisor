@@ -10,6 +10,7 @@
 	} from '../../../queries';
 	import { hoveredEdgeType } from '../../../interactions';
 	import { isDisabledEdge } from '../../../layout/edge-classification';
+	import { useTopology } from '../../../context';
 	import { getTopologyEditState, getOptionDisabledTooltip } from '../../../state';
 	import { edgeTypes, views } from '$lib/shared/stores/metadata';
 	import { activeView } from '../../../queries';
@@ -47,10 +48,16 @@
 
 	let { activeTab }: { activeTab: 'filter' | 'group' | 'visual' } = $props();
 
-	// Get topology for layout/edit state
+	// Get topology row for layout/edit state.
 	const topologiesQuery = useTopologiesQuery();
 	let topologiesData = $derived(topologiesQuery.data ?? []);
 	let topology = $derived(topologiesData.find((t) => t.id === $selectedTopologyId));
+
+	// The enriched topology (from context) carries the active view's built
+	// graph; the row no longer stores nodes/edges.
+	const topo = useTopology();
+	const renderStore = topo.fromContext ? topo.store : null;
+	let renderTopology = $derived(renderStore ? $renderStore : null);
 
 	// Unified edit state for gating request-path options
 	// Display filters (category / visibility) apply client-side via
@@ -71,7 +78,8 @@
 
 	// Tags query — always up-to-date, survives SSE topology overwrites
 	const tagsQuery = useTagsQuery();
-	let allTags = $derived(tagsQuery.data ?? []);
+	// Sorted alphabetically so the filter view's tag lists are stable + scannable.
+	let allTags = $derived([...(tagsQuery.data ?? [])].sort((a, b) => a.name.localeCompare(b.name)));
 
 	// Derive tags that are actually used per entity type
 	let hostTagIds = $derived(new Set(hostsData.flatMap((h) => h.tags)));
@@ -473,9 +481,9 @@
 	// Sentinel value for the unified dependency toggle
 	const DEPENDENCIES_GROUP = 'Dependencies';
 
-	// Edges for the active view. `topology` is the raw row, whose `edges` are
-	// keyed per view; the options panel reflects the perspective on screen.
-	let activeViewEdges = $derived(topology?.edges?.[$activeView] ?? []);
+	// Edges for the active view, read from the enriched topology's built graph
+	// (already the active view's flat slice).
+	let activeViewEdges = $derived(renderTopology?.edges ?? []);
 
 	// Determine which edge types are dependency edges from metadata
 	let dependencyEdgeTypeIds = $derived.by(() => {
@@ -693,11 +701,13 @@
 							<CategoryFilterGroup
 								entityType={section.entityType}
 								filterType={filter.filter_type}
-								categories={filter.values.map((v) => ({
-									value: v.id,
-									label: v.label,
-									color: v.color as Color
-								}))}
+								categories={filter.values
+									.map((v) => ({
+										value: v.id,
+										label: v.label,
+										color: v.color as Color
+									}))
+									.sort((a, b) => a.label.localeCompare(b.label))}
 								hiddenCategories={hiddenMetadataValuesFor(section.entityType, filter.filter_type)}
 								onToggle={(valueId) =>
 									toggleMetadataFilterValue(section.entityType, filter.filter_type, valueId)}
