@@ -22,6 +22,7 @@
 		selectedSnapshotId,
 		selectedNodes,
 		consumePreferredNetwork,
+		loadSelectedNetworkFromStorage,
 		activeView,
 		topologyReadOnly,
 		topologyOptions,
@@ -342,16 +343,31 @@
 	const urlParams = getTopologyParamsFromUrl();
 	let urlViewConsumed = false;
 
-	// Initialize selected network from preferred / first available
+	// Initialize/validate the selected network against the accessible list.
+	// Runs whenever networksData changes so a stale persisted id (deleted network,
+	// changed org, revoked perms) is replaced instead of fetched — which would 404
+	// and fire a toast on every reload.
 	$effect(() => {
-		if (networksData.length > 0 && !$selectedNetworkId) {
-			const preferredNetworkId = consumePreferredNetwork();
-			if (preferredNetworkId && networksData.find((n) => n.id === preferredNetworkId)) {
-				selectedNetworkId.set(preferredNetworkId);
-				return;
-			}
-			selectedNetworkId.set(networksData[0].id);
+		// No networks: leave selection null so useTopologyDataQuery stays disabled.
+		if (networksData.length === 0) return;
+		// Current selection is still accessible — nothing to do.
+		if ($selectedNetworkId && networksData.some((n) => n.id === $selectedNetworkId)) return;
+
+		// Persisted selection, if still accessible.
+		const persisted = loadSelectedNetworkFromStorage();
+		if (persisted && networksData.some((n) => n.id === persisted)) {
+			selectedNetworkId.set(persisted);
+			return;
 		}
+		// Preferred (e.g. just-onboarded network), if accessible.
+		const preferredNetworkId = consumePreferredNetwork();
+		if (preferredNetworkId && networksData.some((n) => n.id === preferredNetworkId)) {
+			selectedNetworkId.set(preferredNetworkId);
+			return;
+		}
+		// Fall back to the first available network; the store subscription persists
+		// it, overwriting any stale value in localStorage.
+		selectedNetworkId.set(networksData[0].id);
 	});
 
 	// Reset snapshot selection when network changes (live view by default)
@@ -524,12 +540,14 @@
 		const snapshotId = $selectedSnapshotId;
 		if (!networkId || !snapshotId) return;
 		if (!confirm(topology_snapshotDeleteConfirm())) return;
+		// Return to live view BEFORE deleting: the mutation's onSuccess invalidates
+		// the topology queries, which would otherwise refetch the just-deleted
+		// snapshot's data and 404 with a misleading "snapshot not found" toast.
+		selectedSnapshotId.set(null);
 		await deleteSnapshotMutation.mutateAsync({
 			snapshot_id: snapshotId,
 			network_id: networkId
 		});
-		// Return to live view after delete
-		selectedSnapshotId.set(null);
 	}
 
 	function handleWizardComplete() {

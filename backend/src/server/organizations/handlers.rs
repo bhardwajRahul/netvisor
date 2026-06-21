@@ -463,8 +463,6 @@ pub async fn populate_demo_data(
 ) -> ApiResult<Json<ApiResponse<()>>> {
     use crate::server::organizations::demo_data::DemoData;
     use crate::server::services::r#impl::base::Service;
-    use crate::server::shared::handlers::traits::CrudHandlers;
-    use crate::server::topology::types::base::Topology;
 
     let user_org_id = auth
         .organization_id()
@@ -742,13 +740,18 @@ pub async fn populate_demo_data(
         }
     }
 
-    // 10. Topologies (depends on networks)
-    state
-        .services
-        .topology_service
-        .storage()
-        .create_many(&demo_data.topologies)
-        .await?;
+    // 10. Topologies (depends on networks + the entities created above).
+    // Live-view rows are auto-built by `TopologyService::create` when
+    // nodes/edges are empty — it reads the now-persisted hosts/subnets/services
+    // and builds each view's graph. Must run before shares (step 11), whose
+    // `topology_id` FK references these rows.
+    for topology in demo_data.topologies {
+        state
+            .services
+            .topology_service
+            .create(topology, entity.clone())
+            .await?;
+    }
 
     // 10.5. Bulk insert all entity tags (single INSERT for all tagged entities)
     if !all_entity_tags.is_empty() {
@@ -794,14 +797,6 @@ pub async fn populate_demo_data(
             .create_with_networks(api_key, network_ids, entity.clone())
             .await
             .map_err(|e| ApiError::internal_error(&e.to_string()))?;
-    }
-
-    // 14. Topologies — live-view rows are auto-built by `TopologyService::create`
-    // when nodes/edges are empty. Snapshot rows (if any in demo data) would be
-    // inserted by the snapshot subscriber, but demo data only seeds live views.
-    let topology_service = Topology::get_service(&state);
-    for topology in demo_data.topologies {
-        topology_service.create(topology, entity.clone()).await?;
     }
 
     Ok(Json(ApiResponse::success(())))
