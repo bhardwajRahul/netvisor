@@ -14,7 +14,7 @@
 	import { getInfrastructureRuleId } from '../../queries';
 	import { formatElementSummary, tallyContainerElements, tallyDirectElements } from '../../labels';
 	import {
-		useUpdateNodeResizeMutation,
+		// useUpdateNodeResizeMutation — DISABLED (container resize is not persisted)
 		topologyOptions,
 		activeView,
 		selectedNode as globalSelectedNode,
@@ -87,7 +87,10 @@
 					| RenderableTopology
 					| undefined)
 	);
-	const updateNodeResizeMutation = useUpdateNodeResizeMutation();
+	// Container resize is DISABLED — size changes are no longer persisted (the
+	// graph builds on request and ELK re-lays out every render, so there's no
+	// mechanism to save them). Kept commented for revival:
+	// const updateNodeResizeMutation = useUpdateNodeResizeMutation();
 
 	// Try to get selection from context (for share/embed pages), fallback to global store
 	const selectedNodeContext = getContext<Writable<Node | null> | undefined>('selectedNode');
@@ -341,14 +344,15 @@
 			node.position.x = roundedX;
 			node.position.y = roundedY;
 
-			await updateNodeResizeMutation.mutateAsync({
-				topologyId: topology.id,
-				networkId: topology.network_id,
-				view: $activeView,
-				nodeId: node.id,
-				size: { x: roundedWidth, y: roundedHeight },
-				position: { x: roundedX, y: roundedY }
-			});
+			// DISABLED: no mechanism to persist container resize.
+			// await updateNodeResizeMutation.mutateAsync({
+			// 	topologyId: topology.id,
+			// 	networkId: topology.network_id,
+			// 	view: $activeView,
+			// 	nodeId: node.id,
+			// 	size: { x: roundedWidth, y: roundedHeight },
+			// 	position: { x: roundedX, y: roundedY }
+			// });
 		}
 	}
 </script>

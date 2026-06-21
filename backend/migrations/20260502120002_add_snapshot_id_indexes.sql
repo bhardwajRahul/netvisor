@@ -9,7 +9,7 @@ SET lock_timeout = '5s';
 
 SET statement_timeout = '0';
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_topologies_snapshot_id ON topologies (snapshot_id);
+-- topologies has no snapshot_id column (snapshot graphs build on request).
 
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_hosts_snapshot_id ON hosts (snapshot_id) WHERE snapshot_id IS NOT NULL;
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_ip_addresses_snapshot_id ON ip_addresses (snapshot_id) WHERE snapshot_id IS NOT NULL;

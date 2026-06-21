@@ -3,14 +3,15 @@
 --   * unlocked, no parent_id (the "live view" for its network)
 --   * parent_id IS NOT NULL (a branch — view configuration, not a snapshot)
 --
--- New shape: per network, exactly one row with snapshot_id IS NULL (live view)
--- and zero or more rows with snapshot_id pointing at a snapshots record.
+-- New shape: per network, exactly one topology row (the live view, holding only
+-- grouping `options`). Snapshots are recorded in the `snapshots` table with
+-- their entity state in closed-copy SCD2 rows; a snapshot's graph builds on
+-- request from those copies, so there are NO snapshot-pinned topology rows.
 --
 -- Backfill steps (idempotent on re-run):
 --   1. Convert each locked topology into a snapshots row:
 --        snapshots.taken_at        = topologies.locked_at
 --        snapshots.created_by_user_id = topologies.locked_by
---        topologies.snapshot_id    = snapshots.id
 --      Skip locks with locked_at IS NULL (data corruption — emit NOTICE).
 --      JSONB EXTRACTION: each locked topology carries denormalized entity
 --      blobs (hosts/ip_addresses/subnets/services/dependencies/ports/bindings/
@@ -32,13 +33,11 @@
 --      legacy JSONB after this, so extraction is one-shot at upgrade time.
 --      Limitation: if the SAME network was locked more than once, only the
 --      first-applied lock's entities are extracted per derived id (best-effort).
+--      Then DELETE the consumed locked topology row.
 --
---   2. Per network: keep the most-recently-updated unlocked, non-parent-branched
---      row as the live view (snapshot_id = NULL) and DELETE the rest.
---      If a network has no qualifying row, INSERT a fresh empty live-view row.
---
---   3. DELETE any remaining rows whose snapshot_id is still NULL beyond the
---      one canonical live view per network.
+--   2./3. Per network: keep the most-recently-updated unlocked, non-parent-
+--      branched row as the live view and DELETE the rest. If a network has no
+--      qualifying row, INSERT a fresh empty live-view row.
 
 SET lock_timeout = '5s';
 SET statement_timeout = '0';
@@ -56,7 +55,6 @@ BEGIN
         SELECT id, network_id, locked_at, locked_by
         FROM topologies
         WHERE is_locked = TRUE
-          AND snapshot_id IS NULL
         ORDER BY locked_at NULLS LAST, id
     LOOP
         IF locked_row.locked_at IS NULL THEN
@@ -70,10 +68,10 @@ BEGIN
         INSERT INTO snapshots (id, network_id, taken_at, created_by_user_id)
         VALUES (new_snap_id, locked_row.network_id, locked_row.locked_at, locked_row.locked_by);
 
-        UPDATE topologies
-        SET snapshot_id = new_snap_id,
-            updated_at = NOW()
-        WHERE id = locked_row.id;
+        -- The locked topology row is consumed into a `snapshots` row + closed
+        -- copies (below) and then DELETEd at the end of this iteration — there
+        -- are no snapshot-pinned topology rows; the snapshot's graph builds on
+        -- request from its closed copies.
 
         -- Extract the locked topology's denormalized JSONB entity blobs into
         -- closed-copy SCD2 rows (see header). Closed ids are deterministic:
@@ -438,27 +436,27 @@ BEGIN
         WHERE t.id = locked_row.id
         ON CONFLICT (id) DO NOTHING;
 
+        -- Consume the locked row: its data now lives in the snapshot + closed
+        -- copies, and no snapshot-pinned topology row is kept.
+        DELETE FROM topologies WHERE id = locked_row.id;
+
         converted_count := converted_count + 1;
     END LOOP;
 
     RAISE NOTICE 'Converted % locked topologies to snapshots; skipped % (locked_at NULL)',
         converted_count, skipped_count;
 
-    -- 2. Per network, choose one live-view row; delete the rest.
+    -- 2. Per network, choose one live-view row; delete the rest. (Locked rows
+    -- were already consumed + deleted in step 1.)
     FOR network_row IN
         SELECT DISTINCT n.id AS network_id
         FROM networks n
     LOOP
-        -- Delete everything else with snapshot_id NULL on this network beyond
-        -- the most-recently-updated unlocked, non-parent-branched row.
-        -- (Locked rows already have snapshot_id set and are excluded.)
         DELETE FROM topologies
         WHERE network_id = network_row.network_id
-          AND snapshot_id IS NULL
           AND id <> COALESCE(
               (SELECT id FROM topologies
                WHERE network_id = network_row.network_id
-                 AND snapshot_id IS NULL
                  AND parent_id IS NULL
                  AND is_locked = FALSE
                ORDER BY updated_at DESC, id
@@ -469,10 +467,10 @@ BEGIN
         -- 3. If no live-view row exists, create one with empty graph state.
         IF NOT EXISTS (
             SELECT 1 FROM topologies
-            WHERE network_id = network_row.network_id AND snapshot_id IS NULL
+            WHERE network_id = network_row.network_id
         ) THEN
             INSERT INTO topologies (
-                id, network_id, name, snapshot_id,
+                id, network_id, name,
                 nodes, edges, options,
                 hosts, ip_addresses, ports, bindings, subnets, services,
                 dependencies, interfaces, entity_tags, vlans,
@@ -483,7 +481,7 @@ BEGIN
                 tags,
                 created_at, updated_at
             ) VALUES (
-                gen_random_uuid(), network_row.network_id, '', NULL,
+                gen_random_uuid(), network_row.network_id, '',
                 '{}'::jsonb, '{}'::jsonb, '{}'::jsonb,
                 '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb,
                 '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb,
@@ -498,17 +496,10 @@ BEGIN
     END LOOP;
 END $$;
 
--- Legacy rows store nodes/edges as the v0.16.2 single-view ARRAY shape, which
--- the current `HashMap<TopologyView, Vec<Node>>` type cannot deserialize (the
--- typed storage layer reads these rows). The one-shot post-migration rebuild
--- (`TopologyService::rebuild_all_topologies`) repopulates every row's per-view
--- slices from entity data, so reset any non-object nodes/edges to an empty map
--- here: it makes the rows readable by `get_all` (which the rebuild calls) and
--- the rebuild overwrites them immediately afterward. Layout is not preserved
--- across this one-way shape change, which is expected for the upgrade.
-UPDATE topologies
-SET nodes = '{}'::jsonb, edges = '{}'::jsonb
-WHERE jsonb_typeof(nodes) <> 'object' OR jsonb_typeof(edges) <> 'object';
+-- The `nodes`/`edges` columns are dropped by migration
+-- `20260502120004_drop_legacy_topology_columns` (the graph builds on request
+-- now), so legacy array-shape values left in them here don't matter — no
+-- normalization needed.
 
 -- `options` must hold a full `TopologyOptions` (both `local` and `request`
 -- sub-objects, which are required by the type). Rows created with `options =

@@ -10,6 +10,7 @@
 	} from '../../../queries';
 	import { hoveredEdgeType } from '../../../interactions';
 	import { isDisabledEdge } from '../../../layout/edge-classification';
+	import { useTopology } from '../../../context';
 	import { getTopologyEditState, getOptionDisabledTooltip } from '../../../state';
 	import { edgeTypes, views } from '$lib/shared/stores/metadata';
 	import { activeView } from '../../../queries';
@@ -47,10 +48,16 @@
 
 	let { activeTab }: { activeTab: 'filter' | 'group' | 'visual' } = $props();
 
-	// Get topology for layout/edit state
+	// Get topology row for layout/edit state.
 	const topologiesQuery = useTopologiesQuery();
 	let topologiesData = $derived(topologiesQuery.data ?? []);
 	let topology = $derived(topologiesData.find((t) => t.id === $selectedTopologyId));
+
+	// The enriched topology (from context) carries the active view's built
+	// graph; the row no longer stores nodes/edges.
+	const topo = useTopology();
+	const renderStore = topo.fromContext ? topo.store : null;
+	let renderTopology = $derived(renderStore ? $renderStore : null);
 
 	// Unified edit state for gating request-path options
 	// Display filters (category / visibility) apply client-side via
@@ -473,9 +480,9 @@
 	// Sentinel value for the unified dependency toggle
 	const DEPENDENCIES_GROUP = 'Dependencies';
 
-	// Edges for the active view. `topology` is the raw row, whose `edges` are
-	// keyed per view; the options panel reflects the perspective on screen.
-	let activeViewEdges = $derived(topology?.edges?.[$activeView] ?? []);
+	// Edges for the active view, read from the enriched topology's built graph
+	// (already the active view's flat slice).
+	let activeViewEdges = $derived(renderTopology?.edges ?? []);
 
 	// Determine which edge types are dependency edges from metadata
 	let dependencyEdgeTypeIds = $derived.by(() => {

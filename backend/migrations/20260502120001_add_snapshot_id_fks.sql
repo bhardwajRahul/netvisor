@@ -1,7 +1,10 @@
--- Add snapshot_id FK columns to topologies + every Snapshotable entity table.
--- NULL on live rows; non-NULL on closed copies and on snapshot topology rows.
--- ON DELETE CASCADE means deleting a snapshots row reaps closed entity rows
--- and snapshot topology rows automatically — retention becomes one DELETE.
+-- Add snapshot_id FK columns to every Snapshotable entity table. NULL on live
+-- rows; non-NULL on closed copies. ON DELETE CASCADE means deleting a snapshots
+-- row reaps its closed entity rows automatically — retention becomes one DELETE.
+--
+-- The topologies table does NOT get a snapshot_id column: snapshot graphs are
+-- built on request from the closed copies below, so there are no snapshot-pinned
+-- topology rows to reap.
 --
 -- App-layer invariant (not enforced as DB CHECK because of the SCD2 transition
 -- window): (valid_to IS NULL) ⇔ (snapshot_id IS NULL). Live rows: both NULL.
@@ -9,9 +12,6 @@
 
 SET lock_timeout = '5s';
 SET statement_timeout = '5s';
-
-ALTER TABLE topologies
-    ADD COLUMN snapshot_id UUID NULL REFERENCES snapshots(id) ON DELETE CASCADE;
 
 ALTER TABLE hosts
     ADD COLUMN snapshot_id UUID NULL REFERENCES snapshots(id) ON DELETE CASCADE;

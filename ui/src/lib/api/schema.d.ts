@@ -2760,23 +2760,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/topology/{id}/edge-handles": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Update an edge's handles */
-        post: operations["update_edge_handles"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/topology/{id}/export/confluence": {
         parameters: {
             query?: never;
@@ -2805,40 +2788,6 @@ export interface paths {
         get: operations["export_mermaid"];
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/topology/{id}/node-position": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Update a single node's position */
-        post: operations["update_node_position"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/topology/{id}/node-resize": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Update a node's size and position */
-        post: operations["update_node_resize"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3099,19 +3048,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-06-21T03:53:52.132391Z",
+             *       "created_at": "2026-06-21T20:42:25.865980Z",
              *       "first_discovery_id": null,
-             *       "id": "79412b8c-f181-44f7-9f2e-3ecaeb31750c",
+             *       "id": "48768037-990a-4fef-854e-0d3540f8108e",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-06-21T03:53:52.132391Z",
+             *       "last_seen_at": "2026-06-21T20:42:25.865980Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-06-21T03:53:52.132391Z",
-             *       "valid_from": "2026-06-21T03:53:52.132391Z",
+             *       "updated_at": "2026-06-21T20:42:25.865980Z",
+             *       "valid_from": "2026-06-21T20:42:25.865980Z",
              *       "valid_to": null
              *     }
              */
@@ -3448,19 +3397,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-06-21T03:53:52.113078Z",
+             *               "created_at": "2026-06-21T20:42:25.847097Z",
              *               "first_discovery_id": null,
-             *               "id": "c846d3ed-f62b-4462-8296-d632ddc365b3",
+             *               "id": "f8a9f4b1-38af-4b24-979c-e3e5a0251b88",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-06-21T03:53:52.113078Z",
+             *               "last_seen_at": "2026-06-21T20:42:25.847097Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-06-21T03:53:52.113078Z",
-             *               "valid_from": "2026-06-21T03:53:52.113078Z",
+             *               "updated_at": "2026-06-21T20:42:25.847097Z",
+             *               "valid_from": "2026-06-21T20:42:25.847097Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3474,7 +3423,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "FreeIPA",
+             *           "service_definition": "Dockge",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3830,19 +3779,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-06-21T03:53:52.126125Z",
+             *           "created_at": "2026-06-21T20:42:25.859782Z",
              *           "first_discovery_id": null,
-             *           "id": "d4883e5b-dc06-425e-83d9-16e462acab90",
+             *           "id": "640caf04-3bbc-48fc-a248-0b75685d980e",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-06-21T03:53:52.126125Z",
+             *           "last_seen_at": "2026-06-21T20:42:25.859782Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-06-21T03:53:52.126125Z",
-             *           "valid_from": "2026-06-21T03:53:52.126125Z",
+             *           "updated_at": "2026-06-21T20:42:25.859782Z",
+             *           "valid_from": "2026-06-21T20:42:25.859782Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -3856,7 +3805,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "FreeIPA",
+             *       "service_definition": "Dockge",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4059,12 +4008,15 @@ export interface components {
         };
         ApiResponse_TopologyData: {
             /**
-             * @description Bundle of entities that feed `build_graph` and the topology export pipeline.
+             * @description Bundle of entities + the built graph that feed the topology render, export,
+             *     and share pipelines.
              *
              *     Loaded by [`crate::server::topology::service::main::TopologyService::get_topology_data`]
-             *     for either the live view (`at = None`) or a point-in-time snapshot
-             *     (`at = Some(taken_at)`). Replaces the entity-blob columns previously
-             *     persisted on the topology row.
+             *     for either the live view (`snapshot_id = None`) or a point-in-time snapshot
+             *     (`snapshot_id = Some(id)`). The per-view `nodes`/`edges` are built on request
+             *     from these entities + the network's grouping options
+             *     (`build_all_view_graphs`) — they are not persisted. The frontend selects the
+             *     active view's slice client-side.
              */
             data?: {
                 /**
@@ -4077,9 +4029,20 @@ export interface components {
                 available_views?: components["schemas"]["TopologyView"][];
                 bindings: components["schemas"]["Binding"][];
                 dependencies: components["schemas"]["Dependency"][];
+                edges?: {
+                    [key: string]: components["schemas"]["Edge"][];
+                };
                 hosts: components["schemas"]["Host"][];
                 interfaces: components["schemas"]["Interface"][];
                 ip_addresses: components["schemas"]["IPAddress"][];
+                /**
+                 * @description Per-view graph built on request from the entities above + grouping
+                 *     options. Keyed by view so switching the active perspective is a
+                 *     client-side slice selection.
+                 */
+                nodes?: {
+                    [key: string]: components["schemas"]["Node"][];
+                };
                 ports: components["schemas"]["Port"][];
                 services: components["schemas"]["Service"][];
                 subnets: components["schemas"]["Subnet"][];
@@ -4317,19 +4280,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-06-21T03:53:52.113531Z",
+         *       "created_at": "2026-06-21T20:42:25.847562Z",
          *       "first_discovery_id": null,
-         *       "id": "d6fffd70-3e6f-4cca-ad12-698c65457c50",
+         *       "id": "f42c5580-fc1e-4e10-b511-0e2e5878bbf2",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-06-21T03:53:52.113531Z",
+         *       "last_seen_at": "2026-06-21T20:42:25.847562Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-06-21T03:53:52.113531Z",
-         *       "valid_from": "2026-06-21T03:53:52.113531Z",
+         *       "updated_at": "2026-06-21T20:42:25.847562Z",
+         *       "valid_from": "2026-06-21T20:42:25.847562Z",
          *       "valid_to": null
          *     }
          */
@@ -4544,7 +4507,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "FreeIPA",
+         *           "service_definition": "Dockge",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -5526,19 +5489,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-06-21T03:53:52.112561Z",
+         *               "created_at": "2026-06-21T20:42:25.846585Z",
          *               "first_discovery_id": null,
-         *               "id": "1b84504d-171e-4a08-b037-103f9229a5cf",
+         *               "id": "5750a714-e29b-4b2b-aaff-f1cdcc074824",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-06-21T03:53:52.112561Z",
+         *               "last_seen_at": "2026-06-21T20:42:25.846585Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-06-21T03:53:52.112561Z",
-         *               "valid_from": "2026-06-21T03:53:52.112561Z",
+         *               "updated_at": "2026-06-21T20:42:25.846585Z",
+         *               "valid_from": "2026-06-21T20:42:25.846585Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -5552,7 +5515,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "FreeIPA",
+         *           "service_definition": "Dockge",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -6982,19 +6945,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-06-21T03:53:52.113435Z",
+         *           "created_at": "2026-06-21T20:42:25.847465Z",
          *           "first_discovery_id": null,
-         *           "id": "b617af18-d40c-48cf-9a13-04d8c82ac660",
+         *           "id": "b41cc89d-37a5-4fdf-89f0-a7d6ae6fa787",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-06-21T03:53:52.113435Z",
+         *           "last_seen_at": "2026-06-21T20:42:25.847465Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-06-21T03:53:52.113435Z",
-         *           "valid_from": "2026-06-21T03:53:52.113435Z",
+         *           "updated_at": "2026-06-21T20:42:25.847465Z",
+         *           "valid_from": "2026-06-21T20:42:25.847465Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -7008,7 +6971,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "FreeIPA",
+         *       "service_definition": "Dockge",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -7347,28 +7310,20 @@ export interface components {
             readonly updated_at: string;
         };
         TopologyBase: {
-            edges?: {
-                [key: string]: components["schemas"]["Edge"][];
-            };
             /** Format: uuid */
             network_id: string;
-            nodes?: {
-                [key: string]: components["schemas"]["Node"][];
-            };
             options: components["schemas"]["TopologyOptions"];
-            /**
-             * Format: uuid
-             * @description FK to `snapshots.id`. NULL = live view; Some = snapshot row.
-             */
-            snapshot_id?: string | null;
         };
         /**
-         * @description Bundle of entities that feed `build_graph` and the topology export pipeline.
+         * @description Bundle of entities + the built graph that feed the topology render, export,
+         *     and share pipelines.
          *
          *     Loaded by [`crate::server::topology::service::main::TopologyService::get_topology_data`]
-         *     for either the live view (`at = None`) or a point-in-time snapshot
-         *     (`at = Some(taken_at)`). Replaces the entity-blob columns previously
-         *     persisted on the topology row.
+         *     for either the live view (`snapshot_id = None`) or a point-in-time snapshot
+         *     (`snapshot_id = Some(id)`). The per-view `nodes`/`edges` are built on request
+         *     from these entities + the network's grouping options
+         *     (`build_all_view_graphs`) — they are not persisted. The frontend selects the
+         *     active view's slice client-side.
          */
         TopologyData: {
             /**
@@ -7381,39 +7336,25 @@ export interface components {
             available_views?: components["schemas"]["TopologyView"][];
             bindings: components["schemas"]["Binding"][];
             dependencies: components["schemas"]["Dependency"][];
+            edges?: {
+                [key: string]: components["schemas"]["Edge"][];
+            };
             hosts: components["schemas"]["Host"][];
             interfaces: components["schemas"]["Interface"][];
             ip_addresses: components["schemas"]["IPAddress"][];
+            /**
+             * @description Per-view graph built on request from the entities above + grouping
+             *     options. Keyed by view so switching the active perspective is a
+             *     client-side slice selection.
+             */
+            nodes?: {
+                [key: string]: components["schemas"]["Node"][];
+            };
             ports: components["schemas"]["Port"][];
             services: components["schemas"]["Service"][];
             subnets: components["schemas"]["Subnet"][];
             tags: components["schemas"]["Tag"][];
             vlans: components["schemas"]["Vlan"][];
-        };
-        /**
-         * @description Lightweight request type for updating an edge's handles.
-         *
-         *     Used for edge reconnect operations - instead of sending the entire topology,
-         *     only sends the edge ID and new handle positions.
-         *     Fixes HTTP 413 errors on edge reconnect operations.
-         */
-        TopologyEdgeHandleUpdate: {
-            /**
-             * Format: uuid
-             * @description ID of the edge to update
-             */
-            edge_id: string;
-            /**
-             * Format: uuid
-             * @description Network ID for authorization
-             */
-            network_id: string;
-            /** @description New source handle position */
-            source_handle: components["schemas"]["EdgeHandle"];
-            /** @description New target handle position */
-            target_handle: components["schemas"]["EdgeHandle"];
-            /** @description View whose node/edge slice this update targets */
-            view: components["schemas"]["TopologyView"];
         };
         TopologyLocalOptions: {
             bundle_edges?: boolean;
@@ -7421,54 +7362,6 @@ export interface components {
             no_fade_edges: boolean;
             show_minimap?: boolean;
             tag_filter?: components["schemas"]["TopologyTagFilter"];
-        };
-        /**
-         * @description Lightweight request type for updating a single node's position.
-         *
-         *     Used for drag operations - instead of sending the entire topology (which can be
-         *     several megabytes for large networks), only sends the node ID and new position.
-         *     Fixes HTTP 413 errors on drag operations.
-         */
-        TopologyNodePositionUpdate: {
-            /**
-             * Format: uuid
-             * @description Network ID for authorization
-             */
-            network_id: string;
-            /**
-             * Format: uuid
-             * @description ID of the node to update
-             */
-            node_id: string;
-            /** @description New position for the node */
-            position: components["schemas"]["Ixy"];
-            /** @description View whose node/edge slice this update targets */
-            view: components["schemas"]["TopologyView"];
-        };
-        /**
-         * @description Lightweight request type for updating a node's size and position.
-         *
-         *     Used for subnet resize operations - instead of sending the entire topology,
-         *     only sends the node ID, new size, and new position.
-         *     Fixes HTTP 413 errors on resize operations.
-         */
-        TopologyNodeResizeUpdate: {
-            /**
-             * Format: uuid
-             * @description Network ID for authorization
-             */
-            network_id: string;
-            /**
-             * Format: uuid
-             * @description ID of the node to update
-             */
-            node_id: string;
-            /** @description New position for the node */
-            position: components["schemas"]["Ixy"];
-            /** @description New size for the node */
-            size: components["schemas"]["Uxy"];
-            /** @description View whose node/edge slice this update targets */
-            view: components["schemas"]["TopologyView"];
         };
         TopologyOptions: {
             local: components["schemas"]["TopologyLocalOptions"];
@@ -14268,51 +14161,6 @@ export interface operations {
             };
         };
     };
-    update_edge_handles: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Topology ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TopologyEdgeHandleUpdate"];
-            };
-        };
-        responses: {
-            /** @description Edge handles updated */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse"];
-                };
-            };
-            /** @description Access denied */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiErrorResponse"];
-                };
-            };
-            /** @description Topology or edge not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiErrorResponse"];
-                };
-            };
-        };
-    };
     export_confluence: {
         parameters: {
             query?: {
@@ -14391,96 +14239,6 @@ export interface operations {
                 };
             };
             /** @description Topology not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiErrorResponse"];
-                };
-            };
-        };
-    };
-    update_node_position: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Topology ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TopologyNodePositionUpdate"];
-            };
-        };
-        responses: {
-            /** @description Node position updated */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse"];
-                };
-            };
-            /** @description Access denied */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiErrorResponse"];
-                };
-            };
-            /** @description Topology or node not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiErrorResponse"];
-                };
-            };
-        };
-    };
-    update_node_resize: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Topology ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TopologyNodeResizeUpdate"];
-            };
-        };
-        responses: {
-            /** @description Node resized */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse"];
-                };
-            };
-            /** @description Access denied */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiErrorResponse"];
-                };
-            };
-            /** @description Topology or node not found */
             404: {
                 headers: {
                     [name: string]: unknown;

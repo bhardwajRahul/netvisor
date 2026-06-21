@@ -1,10 +1,11 @@
 -- DOWNTIME MIGRATION
 --
 -- Strips the legacy lock/stale/parent state machine + entity-blob JSONB cache
--- + name/tags from the topologies table. After this migration, a topology row
--- holds only graph-layout state (nodes/edges/options) plus its identity
--- (network_id, snapshot_id). The point-in-time and entity-state semantics live
--- in the snapshots table + SCD2 substrate respectively.
+-- + name/tags + the per-view graph (nodes/edges) from the topologies table.
+-- After this migration, a topology row holds only the user's grouping `options`
+-- plus its identity (network_id). The per-view graph is built on request from
+-- entities + options (it was a pure cache); the point-in-time and entity-state
+-- semantics live in the snapshots table + SCD2 substrate respectively.
 --
 -- Squawk will flag every DROP COLUMN as unsafe (correctness in zero-downtime
 -- deploys requires expand-and-contract). This migration is run during a
@@ -40,4 +41,6 @@ ALTER TABLE topologies
     DROP COLUMN entity_tags,
     DROP COLUMN vlans,
     DROP COLUMN tags,
-    DROP COLUMN name;
+    DROP COLUMN name,
+    DROP COLUMN nodes,
+    DROP COLUMN edges;

@@ -820,12 +820,8 @@ pub async fn populate_demo_data(
             .run_close_and_clone(created.base.network_id, created.base.taken_at, created.id)
             .await
             .map_err(|e| ApiError::internal_error(&e.to_string()))?;
-        state
-            .services
-            .topology_service
-            .build_snapshot_topology(created.id, created.base.network_id)
-            .await
-            .map_err(|e| ApiError::internal_error(&e.to_string()))?;
+        // No snapshot topology row — the graph is built on request from the
+        // closed copies stamped above.
     }
 
     Ok(Json(ApiResponse::success(())))

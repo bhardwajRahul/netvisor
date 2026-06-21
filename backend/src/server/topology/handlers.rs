@@ -17,19 +17,14 @@ use crate::server::{
         },
         services::traits::CrudService,
         storage::filter::StorableFilter,
-        types::api::{
-            ApiError, ApiErrorResponse, ApiResponse, ApiResult, EmptyApiResponse,
-            PaginatedApiResponse,
-        },
+        types::api::{ApiError, ApiErrorResponse, ApiResponse, ApiResult, PaginatedApiResponse},
     },
-    topology::types::{
-        api::TopologyData,
-        base::{
-            Topology, TopologyEdgeHandleUpdate, TopologyNodePositionUpdate,
-            TopologyNodeResizeUpdate,
-        },
-        views::TopologyView,
-    },
+    // NOTE: `EmptyApiResponse` and the layout-override request DTOs
+    // (`TopologyNodePositionUpdate` / `TopologyNodeResizeUpdate` /
+    // `TopologyEdgeHandleUpdate`, defined in `topology::types::base`) are only
+    // needed by the disabled node-position / node-resize / edge-handle
+    // endpoints below. Re-add them here when those endpoints are revived.
+    topology::types::{api::TopologyData, base::Topology, views::TopologyView},
 };
 use axum::{
     body::Body,
@@ -58,14 +53,15 @@ mod generated {
 
 /// Topology endpoints are internal-only (hidden from public docs).
 ///
-/// Topology rows are now read-mostly: `get_all` and `get_by_id` for listing,
-/// `update_topology` (nodes/edges/options) plus the lightweight node/edge
-/// mutators for layout edits, exports, and a single SSE channel.
+/// A topology row now holds only the user's grouping `options` (one live row
+/// per network). The per-view graph is built on request and returned on the
+/// `/data` bundle; `get_all` / `get_by_id` list the slim rows, `update_topology`
+/// persists `options`, plus exports and a single SSE channel.
 ///
-/// Creation, deletion, lock/unlock, refresh, rebuild, and metadata updates
-/// are gone — topology rows are now derived state managed by the service:
-/// the live row is auto-created at network creation; snapshot rows are
-/// inserted by the `Snapshot::Created` subscriber.
+/// Creation, deletion, lock/unlock, refresh, rebuild, metadata updates, and the
+/// layout-override mutators are gone (overrides aren't persisted — see the
+/// disabled handlers below). The live row is auto-created at network creation;
+/// snapshots build their graph on request from closed copies (no snapshot rows).
 pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
     OpenApiRouter::new()
         .routes(routes!(get_all_topologies))
@@ -74,9 +70,13 @@ pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
         .routes(routes!(generated::export_csv))
         .routes(routes!(export_mermaid))
         .routes(routes!(export_confluence))
-        .routes(routes!(update_node_position))
-        .routes(routes!(update_node_resize))
-        .routes(routes!(update_edge_handles))
+        // Layout-override endpoints are DISABLED — overrides are no longer
+        // persisted (the graph builds on request and ELK re-lays out every
+        // render, so there's no mechanism to save position/size/handle
+        // changes). Kept (commented) for revival; see the handlers below.
+        // .routes(routes!(update_node_position))
+        // .routes(routes!(update_node_resize))
+        // .routes(routes!(update_edge_handles))
         // SSE endpoint (not well-supported by OpenAPI)
         .route("/stream", get(live_topology_updates_stream))
 }
@@ -148,10 +148,13 @@ async fn get_topology_data(
         }
     }
 
+    // Build the per-view graph on request from entities + the network's
+    // grouping options (live or snapshot entity set). The frontend selects the
+    // active view's slice client-side and runs ELK each render.
     let data = state
         .services
         .topology_service
-        .get_topology_data(params.network_id, params.snapshot_id)
+        .get_topology_render_data(params.network_id, params.snapshot_id)
         .await
         .map_err(|e| ApiError::internal_error(&e.to_string()))?;
 
@@ -263,6 +266,13 @@ async fn get_all_topologies(
     )))
 }
 
+// === DISABLED: layout-override endpoints ===
+// Overrides (node drag/resize, edge handle reconnect) are no longer persisted —
+// there is no mechanism to save position/size/handle changes (the graph builds
+// on request and ELK re-lays out every render). Kept commented for revival;
+// when reviving, re-add the routes in `create_router` and the imports
+// (`EmptyApiResponse` + the `Topology*Update` DTOs).
+/*
 /// Update a single node's position
 #[utoipa::path(
     post,
@@ -426,6 +436,7 @@ async fn update_node_resize(
 
     Ok(Json(ApiResponse::success(())))
 }
+*/
 
 /// Export topology as Mermaid flowchart
 #[utoipa::path(
@@ -460,14 +471,23 @@ async fn export_mermaid(
         ));
     }
 
-    let snapshot_id = topology_snapshot_id(&topology);
+    // Build the graph on request and export the requested view's slice.
     let data = service
-        .get_topology_data(topology.base.network_id, snapshot_id)
+        .get_topology_render_data(topology.base.network_id, None)
         .await
         .map_err(|e| ApiError::internal_error(&e.to_string()))?;
+    let nodes = data
+        .nodes
+        .get(&query.view)
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
+    let edges = data
+        .edges
+        .get(&query.view)
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
 
-    let content =
-        crate::server::topology::types::export::topology_to_mermaid(&topology, &data, query.view);
+    let content = crate::server::topology::types::export::topology_to_mermaid(nodes, edges, &data);
 
     let mut headers = HeaderMap::new();
     headers.insert(
@@ -515,15 +535,24 @@ async fn export_confluence(
         ));
     }
 
-    let snapshot_id = topology_snapshot_id(&topology);
+    // Build the graph on request and export the requested view's slice.
     let data = service
-        .get_topology_data(topology.base.network_id, snapshot_id)
+        .get_topology_render_data(topology.base.network_id, None)
         .await
         .map_err(|e| ApiError::internal_error(&e.to_string()))?;
+    let nodes = data
+        .nodes
+        .get(&query.view)
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
+    let edges = data
+        .edges
+        .get(&query.view)
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
 
-    let content = crate::server::topology::types::export::topology_to_confluence(
-        &topology, &data, query.view,
-    );
+    let content =
+        crate::server::topology::types::export::topology_to_confluence(nodes, edges, &data);
 
     let mut headers = HeaderMap::new();
     headers.insert(
@@ -536,16 +565,6 @@ async fn export_confluence(
     );
 
     Ok((headers, Body::from(content)))
-}
-
-/// Resolve the snapshot's `taken_at` for a topology row, or `None` for the
-/// live view. Used by the export pipeline to load the right entity set.
-///
-/// Return the topology row's snapshot id (if any). Used by exports to load
-/// the topology's entity bundle via `get_topology_data(_, Some(snapshot_id))`
-/// for snapshot views, or `None` for the live view.
-fn topology_snapshot_id(topology: &Topology) -> Option<Uuid> {
-    topology.base.snapshot_id
 }
 
 /// SSE stream of live-topology updates: emits `{ "network_id": "<uuid>" }`
