@@ -3,16 +3,12 @@ use crate::server::{
     config::AppState,
     daemons::r#impl::{api::DaemonResponse, base::Daemon, version::DaemonVersionPolicy},
     discovery::r#impl::base::Discovery,
-    hosts::r#impl::base::Host,
     networks::r#impl::Network,
-    services::r#impl::base::Service,
     shared::{
         services::traits::CrudService,
         storage::filter::StorableFilter,
         types::api::{ApiError, ApiResponse, ApiResult},
     },
-    subnets::r#impl::base::Subnet,
-    users::r#impl::base::User,
 };
 
 use super::types::{DashboardSummary, NetworkSummary, PlanUsage};
@@ -56,49 +52,40 @@ async fn get_dashboard_summary(
         .await
         .map_err(|e| ApiError::internal_error(&e.to_string()))?;
 
-    // Build per-network summaries with counts
+    // Build per-network summaries with counts. `count_for_networks` narrows
+    // SCD2 entities to live rows itself, so snapshot closed-copies aren't
+    // counted (daemons are non-SCD2 → plain count).
     let mut network_summaries = Vec::new();
     for network in &networks_result.items {
-        let host_filter = StorableFilter::<Host>::new_from_network_ids(&[network.id]).limit(0);
-        let host_result = state
-            .services
-            .host_service
-            .get_paginated(host_filter)
-            .await
-            .map_err(|e| ApiError::internal_error(&e.to_string()))?;
-
-        let service_filter =
-            StorableFilter::<Service>::new_from_network_ids(&[network.id]).limit(0);
-        let service_result = state
-            .services
-            .service_service
-            .get_paginated(service_filter)
-            .await
-            .map_err(|e| ApiError::internal_error(&e.to_string()))?;
-
-        let subnet_filter = StorableFilter::<Subnet>::new_from_network_ids(&[network.id]).limit(0);
-        let subnet_result = state
-            .services
-            .subnet_service
-            .get_paginated(subnet_filter)
-            .await
-            .map_err(|e| ApiError::internal_error(&e.to_string()))?;
-
-        let daemon_filter = StorableFilter::<Daemon>::new_from_network_ids(&[network.id]).limit(0);
-        let daemon_result = state
-            .services
-            .daemon_service
-            .get_paginated(daemon_filter)
-            .await
-            .map_err(|e| ApiError::internal_error(&e.to_string()))?;
-
+        let ids = [network.id];
+        let map_err = |e: anyhow::Error| ApiError::internal_error(&e.to_string());
         network_summaries.push(NetworkSummary {
             id: network.id,
             name: network.base.name.clone(),
-            host_count: host_result.total_count,
-            service_count: service_result.total_count,
-            subnet_count: subnet_result.total_count,
-            daemon_count: daemon_result.total_count,
+            host_count: state
+                .services
+                .host_service
+                .count_for_networks(&ids)
+                .await
+                .map_err(map_err)?,
+            service_count: state
+                .services
+                .service_service
+                .count_for_networks(&ids)
+                .await
+                .map_err(map_err)?,
+            subnet_count: state
+                .services
+                .subnet_service
+                .count_for_networks(&ids)
+                .await
+                .map_err(map_err)?,
+            daemon_count: state
+                .services
+                .daemon_service
+                .count_for_networks(&ids)
+                .await
+                .map_err(map_err)?,
         });
     }
 
@@ -149,31 +136,27 @@ async fn get_dashboard_summary(
     let (host_limit, network_limit, seat_limit) =
         (plan.host_limit(), plan.network_limit(), plan.seat_limit());
 
-    // Total host count across all networks
-    let total_host_filter = StorableFilter::<Host>::new_from_network_ids(&network_ids).limit(0);
-    let total_host_result = state
+    // Total host count across all networks (live only) and org seat count.
+    let host_count = state
         .services
         .host_service
-        .get_paginated(total_host_filter)
+        .count_for_networks(&network_ids)
         .await
         .map_err(|e| ApiError::internal_error(&e.to_string()))?;
-
-    // User (seat) count for the organization
-    let user_filter = StorableFilter::<User>::new_from_org_id(&organization_id).limit(0);
-    let user_result = state
+    let seat_count = state
         .services
         .user_service
-        .get_paginated(user_filter)
+        .count_for_org(&organization_id)
         .await
         .map_err(|e| ApiError::internal_error(&e.to_string()))?;
 
     let plan_usage = PlanUsage {
         host_limit,
-        host_count: total_host_result.total_count,
+        host_count,
         network_limit,
         network_count: networks_result.total_count,
         seat_limit,
-        seat_count: user_result.total_count,
+        seat_count,
     };
 
     Ok(Json(ApiResponse::success(DashboardSummary {

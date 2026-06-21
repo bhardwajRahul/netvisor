@@ -18,27 +18,25 @@ export type Binding = components['schemas']['Binding'];
 export type Vlan = components['schemas']['Vlan'];
 
 /**
- * Topology graph row plus the live entity arrays needed for inspectors,
+ * Topology row plus the built graph + entity arrays needed for inspectors,
  * resolvers, and rendering. The slim backend `Topology` only carries
- * `{ id, network_id, snapshot_id, nodes, edges, options, ... }`. Entity
- * data (hosts, services, subnets, etc.) is loaded separately via per-entity
- * queries and bundled here so consumers can read everything off a single
- * object — preserving the pre-refactor field shape used across many
- * components.
+ * `{ id, network_id, options, ... }`. The per-view graph (`nodes`/`edges`) is
+ * built on request and the entity arrays (hosts, services, subnets, etc.) are
+ * loaded via the `TopologyData` bundle; both are merged here so consumers can
+ * read everything off a single object — preserving the field shape used across
+ * many components.
  *
- * Always loaded live: snapshot rows still receive live entity data because
- * the snapshot's nodes/edges already encode the captured visual state, and
- * inspectors are expected to show current entity details.
+ * Snapshot-aware: when a snapshot is selected, the bundle's graph + entities are
+ * the snapshot's (built from its closed copies).
  *
  * `name` is a UI-side display string (network name for live, formatted
  * `taken_at` for snapshots, share name for shared topologies).
  *
- * The backend `Topology` row stores `nodes`/`edges` keyed per view
- * (`Record<TopologyView, …[]>`). `toRenderableTopology` selects the active view's
- * slice, so `RenderableTopology` flattens those back to plain arrays — the shape
- * every pipeline/layout/renderer consumer already expects.
+ * The built graph carries `nodes`/`edges` keyed per view; `toRenderableTopology`
+ * selects the active view's slice, so `RenderableTopology` holds those as plain
+ * arrays — the shape every pipeline/layout/renderer consumer already expects.
  */
-export interface RenderableTopology extends Omit<Topology, 'nodes' | 'edges'> {
+export interface RenderableTopology extends Topology {
 	nodes: TopologyNode[];
 	edges: TopologyEdge[];
 	hosts: Host[];

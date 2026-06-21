@@ -10891,19 +10891,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-06-21T03:53:52.132392Z",
+              "created_at": "2026-06-21T20:42:25.865984Z",
               "first_discovery_id": null,
-              "id": "a5333ea2-8b7c-43e9-af1e-572de6e2d279",
+              "id": "42fd6df4-e52e-4ed1-afb3-c0ef1e3ddaa2",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-21T03:53:52.132392Z",
+              "last_seen_at": "2026-06-21T20:42:25.865984Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-21T03:53:52.132392Z",
-              "valid_from": "2026-06-21T03:53:52.132392Z",
+              "updated_at": "2026-06-21T20:42:25.865984Z",
+              "valid_from": "2026-06-21T20:42:25.865984Z",
               "valid_to": null
             }
           },
@@ -11889,19 +11889,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-06-21T03:53:52.113091Z",
+                      "created_at": "2026-06-21T20:42:25.847086Z",
                       "first_discovery_id": null,
-                      "id": "2e06970f-b609-4447-b5c6-c1e7bd6e68ca",
+                      "id": "a8bff4bc-e0a3-4256-8e5a-26d10710fb36",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-06-21T03:53:52.113091Z",
+                      "last_seen_at": "2026-06-21T20:42:25.847086Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-06-21T03:53:52.113091Z",
-                      "valid_from": "2026-06-21T03:53:52.113091Z",
+                      "updated_at": "2026-06-21T20:42:25.847086Z",
+                      "valid_from": "2026-06-21T20:42:25.847086Z",
                       "valid_to": null
                     }
                   ],
@@ -11915,7 +11915,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "FreeIPA",
+                  "service_definition": "Dockge",
                   "source": {
                     "type": "Manual"
                   },
@@ -12906,19 +12906,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-06-21T03:53:52.126152Z",
+                  "created_at": "2026-06-21T20:42:25.859806Z",
                   "first_discovery_id": null,
-                  "id": "812a6528-27f5-4e0d-b9d6-b41cef604427",
+                  "id": "aa59518d-fcec-4ad3-926d-adb8c1bcf15a",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-21T03:53:52.126152Z",
+                  "last_seen_at": "2026-06-21T20:42:25.859806Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-21T03:53:52.126152Z",
-                  "valid_from": "2026-06-21T03:53:52.126152Z",
+                  "updated_at": "2026-06-21T20:42:25.859806Z",
+                  "valid_from": "2026-06-21T20:42:25.859806Z",
                   "valid_to": null
                 }
               ],
@@ -12932,7 +12932,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "FreeIPA",
+              "service_definition": "Dockge",
               "source": {
                 "type": "Manual"
               },
@@ -13471,7 +13471,7 @@
         "properties": {
           "data": {
             "type": "object",
-            "description": "Bundle of entities that feed `build_graph` and the topology export pipeline.\n\nLoaded by [`crate::server::topology::service::main::TopologyService::get_topology_data`]\nfor either the live view (`at = None`) or a point-in-time snapshot\n(`at = Some(taken_at)`). Replaces the entity-blob columns previously\npersisted on the topology row.",
+            "description": "Bundle of entities + the built graph that feed the topology render, export,\nand share pipelines.\n\nLoaded by [`crate::server::topology::service::main::TopologyService::get_topology_data`]\nfor either the live view (`snapshot_id = None`) or a point-in-time snapshot\n(`snapshot_id = Some(id)`). The per-view `nodes`/`edges` are built on request\nfrom these entities + the network's grouping options\n(`build_all_view_graphs`) — they are not persisted. The frontend selects the\nactive view's slice client-side.",
             "required": [
               "hosts",
               "ip_addresses",
@@ -13504,6 +13504,25 @@
                   "$ref": "#/components/schemas/Dependency"
                 }
               },
+              "edges": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Edge"
+                  }
+                },
+                "propertyNames": {
+                  "type": "string",
+                  "description": "Which topology view is being rendered",
+                  "enum": [
+                    "L2Physical",
+                    "L3Logical",
+                    "Workloads",
+                    "Application"
+                  ]
+                }
+              },
               "hosts": {
                 "type": "array",
                 "items": {
@@ -13520,6 +13539,26 @@
                 "type": "array",
                 "items": {
                   "$ref": "#/components/schemas/IPAddress"
+                }
+              },
+              "nodes": {
+                "type": "object",
+                "description": "Per-view graph built on request from the entities above + grouping\noptions. Keyed by view so switching the active perspective is a\nclient-side slice selection.",
+                "additionalProperties": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Node"
+                  }
+                },
+                "propertyNames": {
+                  "type": "string",
+                  "description": "Which topology view is being rendered",
+                  "enum": [
+                    "L2Physical",
+                    "L3Logical",
+                    "Workloads",
+                    "Application"
+                  ]
                 }
               },
               "ports": {
@@ -14639,19 +14678,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-06-21T03:53:52.113552Z",
+          "created_at": "2026-06-21T20:42:25.847535Z",
           "first_discovery_id": null,
-          "id": "903101a0-06d8-44bd-b567-78f8fe466d8b",
+          "id": "359ec7a0-9eb2-4205-9743-b3186f3ed000",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-06-21T03:53:52.113552Z",
+          "last_seen_at": "2026-06-21T20:42:25.847535Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-06-21T03:53:52.113552Z",
-          "valid_from": "2026-06-21T03:53:52.113552Z",
+          "updated_at": "2026-06-21T20:42:25.847535Z",
+          "valid_from": "2026-06-21T20:42:25.847535Z",
           "valid_to": null
         }
       },
@@ -15241,7 +15280,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "FreeIPA",
+              "service_definition": "Dockge",
               "tags": [],
               "virtualization": null
             }
@@ -17974,19 +18013,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-06-21T03:53:52.112557Z",
+                  "created_at": "2026-06-21T20:42:25.846579Z",
                   "first_discovery_id": null,
-                  "id": "9307a4b7-c3de-4deb-a460-2d62c1e890d3",
+                  "id": "77267696-7fe9-4003-aa6f-bd9e7b16be73",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-21T03:53:52.112557Z",
+                  "last_seen_at": "2026-06-21T20:42:25.846579Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-21T03:53:52.112557Z",
-                  "valid_from": "2026-06-21T03:53:52.112557Z",
+                  "updated_at": "2026-06-21T20:42:25.846579Z",
+                  "valid_from": "2026-06-21T20:42:25.846579Z",
                   "valid_to": null
                 }
               ],
@@ -18000,7 +18039,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "FreeIPA",
+              "service_definition": "Dockge",
               "source": {
                 "type": "Manual"
               },
@@ -20469,19 +20508,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-06-21T03:53:52.100840Z",
+                        "created_at": "2026-06-21T20:42:25.834787Z",
                         "first_discovery_id": null,
-                        "id": "2c4c109f-fb18-4796-8caf-181df00c9372",
+                        "id": "58bcaa48-9060-47a0-bf7b-368fa83f51ed",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-06-21T03:53:52.100840Z",
+                        "last_seen_at": "2026-06-21T20:42:25.834787Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-06-21T03:53:52.100840Z",
-                        "valid_from": "2026-06-21T03:53:52.100840Z",
+                        "updated_at": "2026-06-21T20:42:25.834787Z",
+                        "valid_from": "2026-06-21T20:42:25.834787Z",
                         "valid_to": null
                       }
                     ],
@@ -20495,7 +20534,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "FreeIPA",
+                    "service_definition": "Dockge",
                     "source": {
                       "type": "Manual"
                     },
@@ -20616,19 +20655,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-06-21T03:53:52.124949Z",
+                    "created_at": "2026-06-21T20:42:25.858602Z",
                     "first_discovery_id": null,
-                    "id": "19bf9cd4-7526-46bf-af93-4fd164270090",
+                    "id": "df157949-0538-4a65-b1c9-27b71f8b46dd",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-06-21T03:53:52.124949Z",
+                    "last_seen_at": "2026-06-21T20:42:25.858602Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-06-21T03:53:52.124949Z",
-                    "valid_from": "2026-06-21T03:53:52.124949Z",
+                    "updated_at": "2026-06-21T20:42:25.858602Z",
+                    "valid_from": "2026-06-21T20:42:25.858602Z",
                     "valid_to": null
                   }
                 ],
@@ -20642,7 +20681,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "FreeIPA",
+                "service_definition": "Dockge",
                 "source": {
                   "type": "Manual"
                 },
@@ -22273,19 +22312,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-06-21T03:53:52.113451Z",
+              "created_at": "2026-06-21T20:42:25.847443Z",
               "first_discovery_id": null,
-              "id": "0a362117-8aeb-4745-bf10-3a529d54952b",
+              "id": "7b36c496-af11-42ff-ab0a-4784dfe2104e",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-21T03:53:52.113451Z",
+              "last_seen_at": "2026-06-21T20:42:25.847443Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-21T03:53:52.113451Z",
-              "valid_from": "2026-06-21T03:53:52.113451Z",
+              "updated_at": "2026-06-21T20:42:25.847443Z",
+              "valid_from": "2026-06-21T20:42:25.847443Z",
               "valid_to": null
             }
           ],
@@ -22299,7 +22338,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "FreeIPA",
+          "service_definition": "Dockge",
           "source": {
             "type": "Manual"
           },
@@ -23209,64 +23248,18 @@
           "options"
         ],
         "properties": {
-          "edges": {
-            "type": "object",
-            "additionalProperties": {
-              "type": "array",
-              "items": {
-                "$ref": "#/components/schemas/Edge"
-              }
-            },
-            "propertyNames": {
-              "type": "string",
-              "description": "Which topology view is being rendered",
-              "enum": [
-                "L2Physical",
-                "L3Logical",
-                "Workloads",
-                "Application"
-              ]
-            }
-          },
           "network_id": {
             "type": "string",
             "format": "uuid"
           },
-          "nodes": {
-            "type": "object",
-            "additionalProperties": {
-              "type": "array",
-              "items": {
-                "$ref": "#/components/schemas/Node"
-              }
-            },
-            "propertyNames": {
-              "type": "string",
-              "description": "Which topology view is being rendered",
-              "enum": [
-                "L2Physical",
-                "L3Logical",
-                "Workloads",
-                "Application"
-              ]
-            }
-          },
           "options": {
             "$ref": "#/components/schemas/TopologyOptions"
-          },
-          "snapshot_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "uuid",
-            "description": "FK to `snapshots.id`. NULL = live view; Some = snapshot row."
           }
         }
       },
       "TopologyData": {
         "type": "object",
-        "description": "Bundle of entities that feed `build_graph` and the topology export pipeline.\n\nLoaded by [`crate::server::topology::service::main::TopologyService::get_topology_data`]\nfor either the live view (`at = None`) or a point-in-time snapshot\n(`at = Some(taken_at)`). Replaces the entity-blob columns previously\npersisted on the topology row.",
+        "description": "Bundle of entities + the built graph that feed the topology render, export,\nand share pipelines.\n\nLoaded by [`crate::server::topology::service::main::TopologyService::get_topology_data`]\nfor either the live view (`snapshot_id = None`) or a point-in-time snapshot\n(`snapshot_id = Some(id)`). The per-view `nodes`/`edges` are built on request\nfrom these entities + the network's grouping options\n(`build_all_view_graphs`) — they are not persisted. The frontend selects the\nactive view's slice client-side.",
         "required": [
           "hosts",
           "ip_addresses",
@@ -23299,6 +23292,25 @@
               "$ref": "#/components/schemas/Dependency"
             }
           },
+          "edges": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/Edge"
+              }
+            },
+            "propertyNames": {
+              "type": "string",
+              "description": "Which topology view is being rendered",
+              "enum": [
+                "L2Physical",
+                "L3Logical",
+                "Workloads",
+                "Application"
+              ]
+            }
+          },
           "hosts": {
             "type": "array",
             "items": {
@@ -23315,6 +23327,26 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/IPAddress"
+            }
+          },
+          "nodes": {
+            "type": "object",
+            "description": "Per-view graph built on request from the entities above + grouping\noptions. Keyed by view so switching the active perspective is a\nclient-side slice selection.",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/Node"
+              }
+            },
+            "propertyNames": {
+              "type": "string",
+              "description": "Which topology view is being rendered",
+              "enum": [
+                "L2Physical",
+                "L3Logical",
+                "Workloads",
+                "Application"
+              ]
             }
           },
           "ports": {
@@ -23349,41 +23381,6 @@
           }
         }
       },
-      "TopologyEdgeHandleUpdate": {
-        "type": "object",
-        "description": "Lightweight request type for updating an edge's handles.\n\nUsed for edge reconnect operations - instead of sending the entire topology,\nonly sends the edge ID and new handle positions.\nFixes HTTP 413 errors on edge reconnect operations.",
-        "required": [
-          "network_id",
-          "view",
-          "edge_id",
-          "source_handle",
-          "target_handle"
-        ],
-        "properties": {
-          "edge_id": {
-            "type": "string",
-            "format": "uuid",
-            "description": "ID of the edge to update"
-          },
-          "network_id": {
-            "type": "string",
-            "format": "uuid",
-            "description": "Network ID for authorization"
-          },
-          "source_handle": {
-            "$ref": "#/components/schemas/EdgeHandle",
-            "description": "New source handle position"
-          },
-          "target_handle": {
-            "$ref": "#/components/schemas/EdgeHandle",
-            "description": "New target handle position"
-          },
-          "view": {
-            "$ref": "#/components/schemas/TopologyView",
-            "description": "View whose node/edge slice this update targets"
-          }
-        }
-      },
       "TopologyLocalOptions": {
         "type": "object",
         "required": [
@@ -23408,71 +23405,6 @@
           },
           "tag_filter": {
             "$ref": "#/components/schemas/TopologyTagFilter"
-          }
-        }
-      },
-      "TopologyNodePositionUpdate": {
-        "type": "object",
-        "description": "Lightweight request type for updating a single node's position.\n\nUsed for drag operations - instead of sending the entire topology (which can be\nseveral megabytes for large networks), only sends the node ID and new position.\nFixes HTTP 413 errors on drag operations.",
-        "required": [
-          "network_id",
-          "view",
-          "node_id",
-          "position"
-        ],
-        "properties": {
-          "network_id": {
-            "type": "string",
-            "format": "uuid",
-            "description": "Network ID for authorization"
-          },
-          "node_id": {
-            "type": "string",
-            "format": "uuid",
-            "description": "ID of the node to update"
-          },
-          "position": {
-            "$ref": "#/components/schemas/Ixy",
-            "description": "New position for the node"
-          },
-          "view": {
-            "$ref": "#/components/schemas/TopologyView",
-            "description": "View whose node/edge slice this update targets"
-          }
-        }
-      },
-      "TopologyNodeResizeUpdate": {
-        "type": "object",
-        "description": "Lightweight request type for updating a node's size and position.\n\nUsed for subnet resize operations - instead of sending the entire topology,\nonly sends the node ID, new size, and new position.\nFixes HTTP 413 errors on resize operations.",
-        "required": [
-          "network_id",
-          "view",
-          "node_id",
-          "size",
-          "position"
-        ],
-        "properties": {
-          "network_id": {
-            "type": "string",
-            "format": "uuid",
-            "description": "Network ID for authorization"
-          },
-          "node_id": {
-            "type": "string",
-            "format": "uuid",
-            "description": "ID of the node to update"
-          },
-          "position": {
-            "$ref": "#/components/schemas/Ixy",
-            "description": "New position for the node"
-          },
-          "size": {
-            "$ref": "#/components/schemas/Uxy",
-            "description": "New size for the node"
-          },
-          "view": {
-            "$ref": "#/components/schemas/TopologyView",
-            "description": "View whose node/edge slice this update targets"
           }
         }
       },

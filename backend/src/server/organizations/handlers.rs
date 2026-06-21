@@ -15,6 +15,7 @@ use crate::server::shared::types::api::ApiResponse;
 use crate::server::shared::types::api::ApiResult;
 use crate::server::shared::types::api::{ApiError, ApiErrorResponse, EmptyApiResponse};
 use crate::server::shared::types::error_codes::ErrorCode;
+use crate::server::snapshots::types::base::{Snapshot, SnapshotBase};
 use crate::server::tags::entity_tags::EntityTag;
 use crate::server::topology::types::base::Topology;
 use crate::server::users::r#impl::base::{User, UserBase};
@@ -797,6 +798,30 @@ pub async fn populate_demo_data(
             .create_with_networks(api_key, network_ids, entity.clone())
             .await
             .map_err(|e| ApiError::internal_error(&e.to_string()))?;
+    }
+
+    // 14. One snapshot per network so the snapshot UI is exercised in demo orgs.
+    // Must run last: close-and-clone captures the live entity set, so all demo
+    // entities (and their entity-tags + live topology rows) must already exist.
+    for network in &created_networks {
+        let snapshot = Snapshot {
+            base: SnapshotBase::new(network.id, chrono::Utc::now(), Some(user_id)),
+            ..Default::default()
+        };
+        let created = state
+            .services
+            .snapshot_service
+            .create(snapshot, entity.clone())
+            .await
+            .map_err(ApiError::from)?;
+        state
+            .services
+            .snapshot_service
+            .run_close_and_clone(created.base.network_id, created.base.taken_at, created.id)
+            .await
+            .map_err(|e| ApiError::internal_error(&e.to_string()))?;
+        // No snapshot topology row — the graph is built on request from the
+        // closed copies stamped above.
     }
 
     Ok(Json(ApiResponse::success(())))

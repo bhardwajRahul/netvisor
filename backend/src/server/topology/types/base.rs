@@ -1,12 +1,11 @@
 use crate::server::services::r#impl::categories::ServiceCategory;
 use crate::server::shared::entities::{ChangeTriggersTopologyStaleness, EntityDiscriminants};
 use crate::server::shared::types::metadata::HasId;
-use crate::server::topology::types::edges::{Edge, EdgeHandle, EdgeTypeDiscriminants};
+use crate::server::topology::types::edges::{EdgeHandle, EdgeTypeDiscriminants};
 use crate::server::topology::types::grouping::{
     ContainerRule, ElementRule, GraphRule, IdentifiedRule,
 };
 use crate::server::topology::types::layout::{Ixy, Uxy};
-use crate::server::topology::types::nodes::Node;
 use crate::server::topology::types::views::{
     MetadataFilterType, TopologyView, TopologyViewSupport,
 };
@@ -35,32 +34,6 @@ pub struct Topology {
 }
 
 impl Topology {
-    /// Nodes for a single view, or an empty slice if that view hasn't been
-    /// built yet. The row stores one node/edge set per view (`nodes`/`edges`
-    /// are keyed by `TopologyView`) so switching the active view is a pure
-    /// slice selection — no rebuild, no fetch.
-    pub fn nodes_for(&self, view: TopologyView) -> &[Node] {
-        self.base.nodes.get(&view).map(Vec::as_slice).unwrap_or(&[])
-    }
-
-    pub fn edges_for(&self, view: TopologyView) -> &[Edge] {
-        self.base.edges.get(&view).map(Vec::as_slice).unwrap_or(&[])
-    }
-
-    pub fn set_graph(&mut self, view: TopologyView, nodes: Vec<Node>, edges: Vec<Edge>) {
-        self.base.nodes.insert(view, nodes);
-        self.base.edges.insert(view, edges);
-    }
-
-    pub fn set_all_graphs(
-        &mut self,
-        nodes: HashMap<TopologyView, Vec<Node>>,
-        edges: HashMap<TopologyView, Vec<Edge>>,
-    ) {
-        self.base.nodes = nodes;
-        self.base.edges = edges;
-    }
-
     /// Resolve the available views for a share, filtering by data availability.
     /// If `configured` is None or empty, all data-supported views are returned.
     /// If `configured` is Some(non-empty list), returns the intersection preserving list order.
@@ -94,18 +67,11 @@ impl Topology {
 pub struct TopologyBase {
     pub network_id: Uuid,
     pub options: TopologyOptions,
-
-    // Graph layout, one node/edge set per view (kept across snapshots so
-    // user-customized positions are preserved). Keyed by view so switching the
-    // active perspective is a client-side slice selection rather than a rebuild.
-    #[serde(default)]
-    pub nodes: HashMap<TopologyView, Vec<Node>>,
-    #[serde(default)]
-    pub edges: HashMap<TopologyView, Vec<Edge>>,
-
-    /// FK to `snapshots.id`. NULL = live view; Some = snapshot row.
-    #[serde(default)]
-    pub snapshot_id: Option<Uuid>,
+    // The per-view node/edge graph is no longer persisted — it's a pure
+    // function of entities + `options` and is built on request by the read
+    // path (`build_all_view_graphs`). The row holds only the user's grouping
+    // `options`; snapshots build their graph on request from closed copies, so
+    // there are no snapshot-pinned topology rows (and no `snapshot_id`).
 }
 
 impl TopologyBase {
@@ -113,9 +79,6 @@ impl TopologyBase {
         Self {
             network_id,
             options: TopologyOptions::default(),
-            nodes: HashMap::new(),
-            edges: HashMap::new(),
-            snapshot_id: None,
         }
     }
 }

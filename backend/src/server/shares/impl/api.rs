@@ -4,7 +4,7 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 use super::base::{Share, ShareOptions};
-use crate::server::topology::types::views::TopologyView;
+use crate::server::topology::types::{api::TopologyData, base::Topology, views::TopologyView};
 
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreateUpdateShareRequest {
@@ -48,11 +48,17 @@ pub struct ExportFeatures {
     pub remove_created_with: bool,
 }
 
-/// Share with topology data (returned after authentication/verification)
+/// Share with topology data (returned after authentication/verification).
+///
+/// Returns the slim topology row (`{ id, network_id, options }`) plus the
+/// `TopologyData` bundle (entities + the per-view graph built on request). The
+/// share viewer composes these with the same `toRenderableTopology` the app
+/// uses — no server-side merge.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct ShareWithTopology {
     pub share: PublicShareMetadata,
-    pub topology: serde_json::Value,
+    pub topology: Topology,
+    pub data: TopologyData,
     pub export_features: ExportFeatures,
 }
 

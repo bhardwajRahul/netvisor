@@ -156,14 +156,11 @@ impl BillingService {
         let networks = self.network_service.get_all(org_filter.clone()).await?;
         let network_ids: Vec<Uuid> = networks.iter().map(|n| n.id).collect();
 
-        let host_filter = StorableFilter::<Host>::new_from_network_ids(&network_ids);
-        let host_count = self.host_service.get_all(host_filter).await?.len() as u64;
-
-        let user_filter =
-            StorableFilter::<crate::server::users::r#impl::base::User>::new_from_org_id(
-                &organization_id,
-            );
-        let seat_count = self.user_service.get_all(user_filter).await?.len() as u64;
+        // count_for_networks/count_for_org narrow to live rows, so snapshot
+        // closed-copies don't inflate the billable host/seat counts against
+        // plan limits.
+        let host_count = self.host_service.count_for_networks(&network_ids).await?;
+        let seat_count = self.user_service.count_for_org(&organization_id).await?;
 
         let target_config = target_plan.config();
 

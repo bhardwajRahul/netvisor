@@ -1,15 +1,16 @@
 <script lang="ts">
 	import { type Node, type Edge, type Connection } from '@xyflow/svelte';
 	import {
-		activeView,
 		topologyReadOnly,
 		selectedEdge,
 		selectedNode,
-		selectedNodes,
-		useUpdateNodePositionMutation,
-		useUpdateEdgeHandlesMutation
+		selectedNodes
+		// Layout-override mutations are DISABLED — overrides aren't persisted
+		// (no save mechanism); re-import useUpdateNodePositionMutation /
+		// useUpdateEdgeHandlesMutation (and `activeView` for their payload) here
+		// when reviving.
 	} from '../../queries';
-	import { type EdgeHandle, type TopologyEdge, type RenderableTopology } from '../../types/base';
+	import { type TopologyEdge, type RenderableTopology } from '../../types/base';
 	import { searchOpen } from '../../interactions';
 	import { editModeEnabled } from '../../state';
 	import { createTopologyKeydownHandler } from '../../keyboard';
@@ -31,9 +32,12 @@
 		isActive?: boolean;
 	} = $props();
 
-	// TanStack Query hooks
-	const updateNodePositionMutation = useUpdateNodePositionMutation();
-	const updateEdgeHandlesMutation = useUpdateEdgeHandlesMutation();
+	// Layout-override mutations are DISABLED — node position / edge handle
+	// changes are no longer persisted (the graph builds on request and ELK
+	// re-lays out every render, so there's no mechanism to save them). Kept
+	// commented for revival:
+	// const updateNodePositionMutation = useUpdateNodePositionMutation();
+	// const updateEdgeHandlesMutation = useUpdateEdgeHandlesMutation();
 
 	let baseViewer: BaseTopologyViewer | null = $state(null);
 
@@ -87,6 +91,10 @@
 		baseViewer?.triggerFitView();
 	}
 
+	// Drag/reconnect handlers are wired to BaseTopologyViewer but only fire in
+	// edit mode, which is permanently disabled (above). Their persistence (the
+	// node-position / edge-handle mutations) is commented out — overrides are
+	// no longer saved. Kept for revival.
 	async function handleNodeDragStop(targetNode: Node) {
 		if (!topology) return;
 		let movedNode = topology.nodes.find((node) => node.id == targetNode?.id);
@@ -98,14 +106,14 @@
 			// Update local state for immediate feedback
 			movedNode.position.x = x;
 			movedNode.position.y = y;
-			// Send lightweight update to server (fixes HTTP 413 for large topologies)
-			await updateNodePositionMutation.mutateAsync({
-				topologyId: topology.id,
-				networkId: topology.network_id,
-				view: $activeView,
-				nodeId: movedNode.id,
-				position: { x, y }
-			});
+			// DISABLED: no mechanism to persist position changes.
+			// await updateNodePositionMutation.mutateAsync({
+			// 	topologyId: topology.id,
+			// 	networkId: topology.network_id,
+			// 	view: $activeView,
+			// 	nodeId: movedNode.id,
+			// 	position: { x, y }
+			// });
 		}
 	}
 
@@ -123,17 +131,17 @@
 				newConnection.targetHandle
 			) {
 				// Update local state for immediate feedback
-				topologyEdge.source_handle = newConnection.sourceHandle as EdgeHandle;
-				topologyEdge.target_handle = newConnection.targetHandle as EdgeHandle;
-				// Send lightweight update to server (fixes HTTP 413 for large topologies)
-				await updateEdgeHandlesMutation.mutateAsync({
-					topologyId: topology.id,
-					networkId: topology.network_id,
-					view: $activeView,
-					edgeId: topologyEdge.id,
-					sourceHandle: newConnection.sourceHandle as 'Top' | 'Bottom' | 'Left' | 'Right',
-					targetHandle: newConnection.targetHandle as 'Top' | 'Bottom' | 'Left' | 'Right'
-				});
+				topologyEdge.source_handle = newConnection.sourceHandle as TopologyEdge['source_handle'];
+				topologyEdge.target_handle = newConnection.targetHandle as TopologyEdge['target_handle'];
+				// DISABLED: no mechanism to persist edge handle changes.
+				// await updateEdgeHandlesMutation.mutateAsync({
+				// 	topologyId: topology.id,
+				// 	networkId: topology.network_id,
+				// 	view: $activeView,
+				// 	edgeId: topologyEdge.id,
+				// 	sourceHandle: newConnection.sourceHandle as 'Top' | 'Bottom' | 'Left' | 'Right',
+				// 	targetHandle: newConnection.targetHandle as 'Top' | 'Bottom' | 'Left' | 'Right'
+				// });
 			}
 		}
 	}

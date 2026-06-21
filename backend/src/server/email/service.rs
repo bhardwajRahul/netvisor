@@ -19,14 +19,14 @@ use crate::server::{
     auth::middleware::auth::AuthenticatedEntity,
     billing::types::base::{BillingInvoice, BillingPlan, BillingRate},
     config::DeploymentType,
-    daemons::{r#impl::base::Daemon, service::DaemonService},
+    daemons::service::DaemonService,
     digest::payload::DiscoveryDigestPayload,
-    hosts::{r#impl::base::Host, service::HostService},
+    hosts::service::HostService,
     networks::{r#impl::Network, service::NetworkService},
     organizations::{r#impl::base::LimitNotificationLevel, service::OrganizationService},
-    services::{r#impl::base::Service, service::ServiceService},
+    services::service::ServiceService,
     shared::{services::traits::CrudService, storage::filter::StorableFilter},
-    users::{r#impl::base::User, service::UserService},
+    users::service::UserService,
 };
 
 /// Counts of entities discovered/created during the trial, plus elapsed days
@@ -582,11 +582,10 @@ impl EmailService {
             .await?;
         let network_ids: Vec<Uuid> = networks.iter().map(|n| n.id).collect();
 
-        let host_filter = StorableFilter::<Host>::new_from_network_ids(&network_ids);
-        let host_count = self.host_service.get_all(host_filter).await?.len() as u64;
-
-        let user_filter = StorableFilter::<User>::new_from_org_id(&org_id);
-        let seat_count = self.user_service.get_all(user_filter).await?.len() as u64;
+        // count_for_* narrow SCD2 entities to live rows so snapshot closed-copies
+        // don't trip plan-limit warnings.
+        let host_count = self.host_service.count_for_networks(&network_ids).await?;
+        let seat_count = self.user_service.count_for_org(&org_id).await?;
 
         let config = plan.config();
         let checks = vec![
@@ -722,25 +721,16 @@ impl EmailService {
         let networks_count = networks.len() as u64;
         let network_ids: Vec<Uuid> = networks.iter().map(|n| n.id).collect();
 
-        let hosts_count = self
-            .host_service
-            .get_all(StorableFilter::<Host>::new_from_network_ids(&network_ids))
-            .await?
-            .len() as u64;
+        // count_for_networks narrows SCD2 entities to live rows so snapshot
+        // closed-copies don't inflate digest counts.
+        let hosts_count = self.host_service.count_for_networks(&network_ids).await?;
 
         let services_count = self
             .service_service
-            .get_all(StorableFilter::<Service>::new_from_network_ids(
-                &network_ids,
-            ))
-            .await?
-            .len() as u64;
+            .count_for_networks(&network_ids)
+            .await?;
 
-        let daemons_count = self
-            .daemon_service
-            .get_all(StorableFilter::<Daemon>::new_from_network_ids(&network_ids))
-            .await?
-            .len() as u64;
+        let daemons_count = self.daemon_service.count_for_networks(&network_ids).await?;
 
         let days_into_trial = (chrono::Utc::now() - org.created_at).num_days();
 

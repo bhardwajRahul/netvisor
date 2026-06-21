@@ -14,6 +14,8 @@
 	import PasswordGate from './PasswordGate.svelte';
 	import ReadOnlyTopologyViewer from './ReadOnlyTopologyViewer.svelte';
 	import { AlertTriangle } from 'lucide-svelte';
+	import { toRenderableTopology } from '$lib/features/topology/enriched';
+	import type { TopologyView } from '$lib/features/topology/queries';
 
 	const SHARE_TOKEN_INVALID: ErrorCode = 'share_token_invalid';
 	interface Props {
@@ -26,6 +28,32 @@
 	let shareMetadata: PublicShareMetadata | null = $state(null);
 	let topologyData: ShareWithTopology | null = $state(null);
 	let loading = $state(true);
+
+	// Compose the slim topology row + the TopologyData bundle into a
+	// RenderableTopology for the requested view — the same merge the app uses.
+	let renderableTopology = $derived.by(() => {
+		if (!topologyData) return null;
+		const d = topologyData.data;
+		return toRenderableTopology(
+			topologyData.topology,
+			{
+				hosts: d.hosts,
+				services: d.services,
+				subnets: d.subnets,
+				ip_addresses: d.ip_addresses,
+				ports: d.ports,
+				bindings: d.bindings,
+				interfaces: d.interfaces,
+				dependencies: d.dependencies,
+				vlans: d.vlans,
+				entity_tags: d.tags,
+				nodes: d.nodes,
+				edges: d.edges
+			},
+			topologyData.share.name,
+			currentView as TopologyView
+		);
+	});
 	let viewLoading = $state(false);
 	let error: string | null = $state(null);
 	let passwordVerified = $state(false);
@@ -209,10 +237,10 @@
 			<AlertTriangle class="h-8 w-8 text-yellow-500" />
 			<p class="text-secondary text-sm">{error}</p>
 		</div>
-	{:else if topologyData}
+	{:else if topologyData && renderableTopology}
 		<div class={isEmbed ? 'h-full' : 'h-screen'}>
 			<ReadOnlyTopologyViewer
-				topology={topologyData.topology}
+				topology={renderableTopology}
 				shareName={isEmbed ? undefined : topologyData.share.name}
 				showControls={topologyData.share.options.show_zoom_controls}
 				showInspectPanel={topologyData.share.options.show_inspect_panel}

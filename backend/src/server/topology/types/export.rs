@@ -1,8 +1,6 @@
 use super::api::TopologyData;
-use super::base::Topology;
-use super::edges::EdgeType;
-use super::nodes::{ElementEntityType, NodeType};
-use super::views::TopologyView;
+use super::edges::{Edge, EdgeType};
+use super::nodes::{ElementEntityType, Node, NodeType};
 use std::collections::HashMap;
 use std::fmt::Write;
 use uuid::Uuid;
@@ -30,7 +28,7 @@ fn edge_type_name(edge_type: &EdgeType) -> &'static str {
     }
 }
 
-pub fn topology_to_mermaid(topology: &Topology, data: &TopologyData, view: TopologyView) -> String {
+pub fn topology_to_mermaid(nodes: &[Node], edges: &[Edge], data: &TopologyData) -> String {
     let mut output = String::new();
     writeln!(output, "flowchart TD").unwrap();
 
@@ -41,7 +39,7 @@ pub fn topology_to_mermaid(topology: &Topology, data: &TopologyData, view: Topol
 
     // Group Element nodes by subnet_id (only Interface elements have subnet_id)
     let mut nodes_by_subnet: HashMap<Uuid, Vec<_>> = HashMap::new();
-    for node in topology.nodes_for(view) {
+    for node in nodes {
         if let NodeType::Element {
             element: ElementEntityType::IPAddress { subnet_id, .. },
             ..
@@ -99,15 +97,14 @@ pub fn topology_to_mermaid(topology: &Topology, data: &TopologyData, view: Topol
     }
 
     // Build set of Container IDs (their node ID == subnet ID, rendered as subgraphs)
-    let subnet_node_ids: std::collections::HashSet<Uuid> = topology
-        .nodes_for(view)
+    let subnet_node_ids: std::collections::HashSet<Uuid> = nodes
         .iter()
         .filter(|n| matches!(n.node_type, NodeType::Container { .. }))
         .map(|n| n.id)
         .collect();
 
     // Generate edges — use sub_ prefix for subgraph nodes, n_ for interface nodes
-    for edge in topology.edges_for(view) {
+    for edge in edges {
         let arrow = match &edge.edge_type {
             EdgeType::RequestPath { .. } | EdgeType::HubAndSpoke { .. } => "-->",
             EdgeType::SameHost { .. } | EdgeType::PhysicalLink { .. } => "---",
@@ -147,11 +144,7 @@ pub fn topology_to_mermaid(topology: &Topology, data: &TopologyData, view: Topol
     output
 }
 
-pub fn topology_to_confluence(
-    topology: &Topology,
-    data: &TopologyData,
-    view: TopologyView,
-) -> String {
+pub fn topology_to_confluence(nodes: &[Node], edges: &[Edge], data: &TopologyData) -> String {
     let mut output = String::new();
 
     // Header
@@ -224,9 +217,9 @@ pub fn topology_to_confluence(
         .iter()
         .map(|h| (h.id, h.base.name.as_str()))
         .collect();
-    let nodes_map: HashMap<Uuid, _> = topology.nodes_for(view).iter().map(|n| (n.id, n)).collect();
+    let nodes_map: HashMap<Uuid, _> = nodes.iter().map(|n| (n.id, n)).collect();
 
-    for edge in topology.edges_for(view) {
+    for edge in edges {
         let source_host = nodes_map
             .get(&edge.source)
             .and_then(|n| match &n.node_type {
@@ -259,29 +252,20 @@ pub fn topology_to_confluence(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::server::topology::types::base::TopologyBase;
 
     #[test]
     fn test_mermaid_empty_topology() {
-        let topology = Topology {
-            base: TopologyBase::new(Uuid::new_v4()),
-            ..Default::default()
-        };
         let data = TopologyData::default();
 
-        let result = topology_to_mermaid(&topology, &data, TopologyView::default());
+        let result = topology_to_mermaid(&[], &[], &data);
         assert!(result.contains("flowchart TD"));
     }
 
     #[test]
     fn test_confluence_empty_topology() {
-        let topology = Topology {
-            base: TopologyBase::new(Uuid::new_v4()),
-            ..Default::default()
-        };
         let data = TopologyData::default();
 
-        let result = topology_to_confluence(&topology, &data, TopologyView::default());
+        let result = topology_to_confluence(&[], &[], &data);
         assert!(result.contains("h1. Network Topology"));
         assert!(result.contains("|| Name || CIDR || Type || Description ||"));
         assert!(result.contains("|| Name || Hostname || IP Addresses || Services ||"));

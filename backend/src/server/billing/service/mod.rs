@@ -9,7 +9,6 @@ use crate::server::billing::types::api::{
 use crate::server::billing::types::base::{BillingInvoice, BillingPlan, CancelReason, PlanStatus};
 use crate::server::billing::types::features::Feature;
 use crate::server::billing::types::stripe_metadata::StripeSubscriptionMetadata;
-use crate::server::hosts::r#impl::base::Host;
 use crate::server::hosts::service::HostService;
 use crate::server::networks::r#impl::Network;
 use crate::server::networks::service::NetworkService;

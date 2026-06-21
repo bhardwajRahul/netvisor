@@ -453,14 +453,12 @@ async fn get_share_topology(
     // service is fully wired into AppState.
     let service = &state.services.topology_service;
     let network_id = topology.base.network_id;
+    // Build the per-view graph on request from current entities + the network's
+    // grouping options (the graph is no longer persisted).
     let data = service
-        .get_topology_data(network_id, None)
+        .get_topology_render_data(network_id, None)
         .await
         .map_err(|e| ApiError::internal_error(&e.to_string()))?;
-
-    // The row carries a pre-built node/edge slice for every view, so there's no
-    // ephemeral rebuild — the viewer selects the requested view's slice
-    // client-side (the request's `view` field drives that selection).
 
     let export_features = ExportFeatures {
         png_export: plan_features.png_export,
@@ -472,80 +470,14 @@ async fn get_share_topology(
         remove_created_with: plan_features.remove_created_with,
     };
 
-    // Topology entity blobs are no longer part of the slim Topology struct;
-    // re-merge the loaded TopologyData into the topology JSON so the existing
-    // share frontend keeps working without a wire-protocol change.
-    let mut topology_value =
-        serde_json::to_value(&topology).map_err(|e| ApiError::internal_error(&e.to_string()))?;
-    if let Some(obj) = topology_value.as_object_mut() {
-        // The row stores nodes/edges per view; a share renders one requested
-        // view, so flatten that view's slice to plain arrays — the shape the
-        // read-only viewer's EnrichedTopology expects.
-        obj.insert(
-            "nodes".to_string(),
-            serde_json::to_value(topology.nodes_for(body.view))
-                .map_err(|e| ApiError::internal_error(&e.to_string()))?,
-        );
-        obj.insert(
-            "edges".to_string(),
-            serde_json::to_value(topology.edges_for(body.view))
-                .map_err(|e| ApiError::internal_error(&e.to_string()))?,
-        );
-        obj.insert(
-            "hosts".to_string(),
-            serde_json::to_value(&data.hosts)
-                .map_err(|e| ApiError::internal_error(&e.to_string()))?,
-        );
-        obj.insert(
-            "ip_addresses".to_string(),
-            serde_json::to_value(&data.ip_addresses)
-                .map_err(|e| ApiError::internal_error(&e.to_string()))?,
-        );
-        obj.insert(
-            "subnets".to_string(),
-            serde_json::to_value(&data.subnets)
-                .map_err(|e| ApiError::internal_error(&e.to_string()))?,
-        );
-        obj.insert(
-            "services".to_string(),
-            serde_json::to_value(&data.services)
-                .map_err(|e| ApiError::internal_error(&e.to_string()))?,
-        );
-        obj.insert(
-            "dependencies".to_string(),
-            serde_json::to_value(&data.dependencies)
-                .map_err(|e| ApiError::internal_error(&e.to_string()))?,
-        );
-        obj.insert(
-            "ports".to_string(),
-            serde_json::to_value(&data.ports)
-                .map_err(|e| ApiError::internal_error(&e.to_string()))?,
-        );
-        obj.insert(
-            "bindings".to_string(),
-            serde_json::to_value(&data.bindings)
-                .map_err(|e| ApiError::internal_error(&e.to_string()))?,
-        );
-        obj.insert(
-            "interfaces".to_string(),
-            serde_json::to_value(&data.interfaces)
-                .map_err(|e| ApiError::internal_error(&e.to_string()))?,
-        );
-        obj.insert(
-            "vlans".to_string(),
-            serde_json::to_value(&data.vlans)
-                .map_err(|e| ApiError::internal_error(&e.to_string()))?,
-        );
-        obj.insert(
-            "entity_tags".to_string(),
-            serde_json::to_value(&data.tags)
-                .map_err(|e| ApiError::internal_error(&e.to_string()))?,
-        );
-    }
-
+    // Return the slim topology row + the built bundle; the share viewer composes
+    // them with the same `toRenderableTopology` the app uses (no server-side
+    // merge). `data` already carries the per-view graph from
+    // `get_topology_render_data`.
     let response_data = ShareWithTopology {
         share: PublicShareMetadata::new(&share, enabled_views),
-        topology: topology_value,
+        topology,
+        data,
         export_features,
     };
 

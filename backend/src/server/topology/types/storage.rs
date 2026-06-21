@@ -4,27 +4,20 @@ use crate::server::{
         entity_metadata::EntityCategory,
         storage::traits::{Entity, SqlValue, Storable},
     },
-    topology::types::{
-        base::{Topology, TopologyBase, TopologyOptions},
-        edges::Edge,
-        nodes::Node,
-        views::TopologyView,
-    },
+    topology::types::base::{Topology, TopologyBase, TopologyOptions},
 };
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use sqlx::Row;
 use sqlx::postgres::PgRow;
-use std::collections::HashMap;
 use uuid::Uuid;
 
-/// CSV row representation for Topology export (slimmed: nodes/edges/options live in JSONB,
-/// snapshot_id surfaces the captured-vs-live distinction without exposing layout JSON).
+/// CSV row representation for Topology export (slimmed: `options` lives in JSONB;
+/// the per-view graph is built on request and never persisted).
 #[derive(Serialize)]
 pub struct TopologyCsvRow {
     pub id: Uuid,
     pub network_id: Uuid,
-    pub snapshot_id: Option<Uuid>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -59,44 +52,23 @@ impl Storable for Topology {
             base:
                 Self::BaseData {
                     network_id,
-                    nodes,
-                    edges,
                     options,
-                    snapshot_id,
                 },
         } = self.clone();
 
         Ok((
-            vec![
-                "id",
-                "created_at",
-                "updated_at",
-                "network_id",
-                "nodes",
-                "edges",
-                "options",
-                "snapshot_id",
-            ],
+            vec!["id", "created_at", "updated_at", "network_id", "options"],
             vec![
                 SqlValue::Uuid(id),
                 SqlValue::Timestamp(created_at),
                 SqlValue::Timestamp(updated_at),
                 SqlValue::Uuid(network_id),
-                SqlValue::Nodes(nodes),
-                SqlValue::Edges(edges),
                 SqlValue::TopologyOptions(options),
-                SqlValue::OptionalUuid(snapshot_id),
             ],
         ))
     }
 
     fn from_row(row: &PgRow) -> Result<Self, anyhow::Error> {
-        let nodes: HashMap<TopologyView, Vec<Node>> =
-            serde_json::from_value(row.get::<serde_json::Value, _>("nodes"))
-                .map_err(|e| anyhow::anyhow!("Failed to deserialize nodes: {}", e))?;
-        let edges: HashMap<TopologyView, Vec<Edge>> =
-            serde_json::from_value(row.get::<serde_json::Value, _>("edges"))
-                .map_err(|e| anyhow::anyhow!("Failed to deserialize edges: {}", e))?;
         let options: TopologyOptions =
             serde_json::from_value(row.get::<serde_json::Value, _>("options"))
                 .map_err(|e| anyhow::anyhow!("Failed to deserialize options: {}", e))?;
@@ -107,10 +79,7 @@ impl Storable for Topology {
             updated_at: row.get("updated_at"),
             base: TopologyBase {
                 network_id: row.get("network_id"),
-                nodes,
-                edges,
                 options,
-                snapshot_id: row.get("snapshot_id"),
             },
         })
     }
@@ -139,7 +108,6 @@ impl Entity for Topology {
         TopologyCsvRow {
             id: self.id,
             network_id: self.base.network_id,
-            snapshot_id: self.base.snapshot_id,
             created_at: self.created_at,
             updated_at: self.updated_at,
         }
@@ -176,8 +144,6 @@ impl Entity for Topology {
 
     fn preserve_immutable_fields(&mut self, existing: &Self) {
         self.id = existing.id;
-        // snapshot_id is immutable — set at insert and never changes.
-        self.base.snapshot_id = existing.base.snapshot_id;
         self.created_at = existing.created_at;
         self.updated_at = existing.updated_at;
     }
