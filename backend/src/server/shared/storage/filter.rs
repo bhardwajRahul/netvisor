@@ -47,9 +47,28 @@ impl<T: Storable> StorableFilter<T> {
         Self::new().organization_id(org_id)
     }
 
-    /// Empty filter (no WHERE conditions). Useful for chaining ad-hoc helper
-    /// methods like `id_or_lineage_in` + `as_of` without an initial scope.
-    pub fn new_unfiltered() -> Self {
+    /// Empty filter (no WHERE conditions). Test-only base for exercising filter
+    /// modifiers (`id_or_lineage_in`, `as_of`, `live`, …) in isolation. Not part
+    /// of the public API: production callers must start from a scoped
+    /// constructor (`new_from_*` / `new_for_*`) so queries can't accidentally
+    /// fan out across every tenant.
+    #[cfg(test)]
+    fn new_unfiltered() -> Self {
+        Self::new()
+    }
+
+    /// All rows captured under one snapshot (`snapshot_id = $1`). Used by the
+    /// snapshot close-and-clone post-pass to re-read the just-cloned closed
+    /// copies of a type.
+    pub fn new_from_snapshot_id(snapshot_id: &Uuid) -> Self {
+        Self::new().snapshot_id(snapshot_id)
+    }
+
+    /// Every row of `T`, unscoped — for the daily org-wide retention sweep,
+    /// which by definition iterates all organizations. Intentionally unfiltered;
+    /// named so the "I really mean everything" intent is explicit at the call
+    /// site rather than an ad-hoc empty filter.
+    pub fn new_for_retention_sweep() -> Self {
         Self::new()
     }
 
