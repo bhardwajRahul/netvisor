@@ -142,7 +142,9 @@ impl Display for Topology {
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq, ToSchema)]
 pub struct TopologyOptions {
+    #[serde(default)]
     pub local: TopologyLocalOptions,
+    #[serde(default)]
     pub request: TopologyRequestOptions,
 }
 
@@ -161,6 +163,7 @@ pub struct TopologyTagFilter {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash, ToSchema)]
+#[serde(default)]
 pub struct TopologyLocalOptions {
     pub no_fade_edges: bool,
     pub hide_edge_types: Vec<EdgeTypeDiscriminants>,
@@ -189,6 +192,7 @@ impl Default for TopologyLocalOptions {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
+#[serde(default)]
 pub struct TopologyRequestOptions {
     /// Entity types hidden per view. Keyed by TopologyView, values are entity
     /// types (matching those declared as container/element/inline in the

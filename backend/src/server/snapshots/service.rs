@@ -361,12 +361,6 @@ impl SnapshotService {
     /// to the deleted snapshots automatically. Live rows (snapshot_id IS NULL)
     /// are untouched.
     pub async fn trim_org(&self, org_id: Uuid, retention_days: u32) -> Result<()> {
-        if retention_days == 0 {
-            return Ok(());
-        }
-
-        let cutoff = Utc::now() - Duration::days(retention_days as i64);
-
         let networks = self
             .network_service
             .get_all(StorableFilter::<Network>::new_from_org_id(&org_id))
@@ -377,6 +371,12 @@ impl SnapshotService {
             return Ok(());
         }
 
+        // `retention_days == 0` means the plan doesn't grant snapshot retention at
+        // all — every existing snapshot is older than the cutoff and should be
+        // deleted. (TakeSnapshotFeature treats 0 the same way: snapshots aren't
+        // a feature on this plan, new ones are blocked, and the sweep is what
+        // clears any inherited from a higher tier.)
+        let cutoff = Utc::now() - Duration::days(retention_days as i64);
         let filter =
             StorableFilter::<Snapshot>::new_from_network_ids(&network_ids).taken_at_lt(cutoff);
         self.storage.delete_by_filter(filter).await?;
