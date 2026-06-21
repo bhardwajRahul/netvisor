@@ -5,7 +5,17 @@ import { openModal } from '$lib/shared/stores/modal-registry';
 import { upgradeContext, reopenSettingsAfterBilling } from '$lib/features/billing/stores';
 import type { UpgradeFeature } from '$lib/shared/stores/metadata';
 
-const PRICING_URL = 'https://scanopy.net/pricing';
+const PRICING_URL_BASE = 'https://scanopy.net/pricing';
+
+function pricingUrlFor(surface: PaywallSurface): string {
+	const params = new URLSearchParams({
+		utm_source: 'app',
+		utm_medium: 'in_app',
+		utm_campaign: 'plan_upgrade',
+		utm_content: surface
+	});
+	return `${PRICING_URL_BASE}?${params.toString()}`;
+}
 
 export type PaywallSurface =
 	| 'export_modal'
@@ -61,7 +71,7 @@ export function triggerUpgrade(options: TriggerUpgradeOptions): void {
 
 	if (!billingEnabled) {
 		options.beforeModal?.();
-		window.open(PRICING_URL, '_blank', 'noopener,noreferrer');
+		window.open(pricingUrlFor(options.surface), '_blank', 'noopener,noreferrer');
 		return;
 	}
 
