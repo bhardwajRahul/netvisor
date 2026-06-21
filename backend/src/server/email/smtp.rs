@@ -1,6 +1,6 @@
 use lettre::{
     AsyncSmtpTransport, AsyncTransport, Tokio1Executor,
-    message::{Mailbox, MultiPart, SinglePart},
+    message::{Attachment, Mailbox, MultiPart, SinglePart, header::ContentType},
     transport::smtp::authentication::Credentials,
 };
 
@@ -23,13 +23,22 @@ impl SmtpEmailProvider {
         smtp_password: String,
         smtp_email: String,
         smtp_relay: String,
+        smtp_port: Option<u16>,
     ) -> Result<Self, Error> {
         let creds = Credentials::new(smtp_username, smtp_password);
 
-        let mailer = AsyncSmtpTransport::<Tokio1Executor>::relay(&smtp_relay)
-            .map_err(|e| anyhow!("Failed to create SMTP transport: {}", e))?
-            .credentials(creds)
-            .build();
+        // Port 465 (or unset) uses implicit TLS (SMTPS) via `relay`, preserving
+        // the historical default. Any other port uses STARTTLS, which is what
+        // submission ports like 587 and 25 expect.
+        let builder = match smtp_port {
+            None | Some(465) => AsyncSmtpTransport::<Tokio1Executor>::relay(&smtp_relay)
+                .map_err(|e| anyhow!("Failed to create SMTP transport: {}", e))?,
+            Some(port) => AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&smtp_relay)
+                .map_err(|e| anyhow!("Failed to create SMTP transport: {}", e))?
+                .port(port),
+        };
+
+        let mailer = builder.credentials(creds).build();
 
         let from = Mailbox::new(
             Some("Scanopy".to_string()),
@@ -61,15 +70,30 @@ impl EmailTransport for SmtpEmailProvider {
         let html = email.render_html(base_url, self_hosted);
         let text = email.render_text(base_url, self_hosted);
 
+        let body_alternative = MultiPart::alternative()
+            .singlepart(SinglePart::plain(text))
+            .singlepart(SinglePart::html(html));
+
+        // With no attachments, send the plain/HTML alternative directly. With
+        // attachments, wrap it in a `mixed` part and append each file.
+        let attachments = email.attachments();
+        let body = if attachments.is_empty() {
+            body_alternative
+        } else {
+            let mut mixed = MultiPart::mixed().multipart(body_alternative);
+            for a in attachments {
+                let content_type = ContentType::parse(&a.content_type)
+                    .map_err(|e| anyhow!("Invalid attachment content type: {}", e))?;
+                mixed = mixed.singlepart(Attachment::new(a.filename).body(a.bytes, content_type));
+            }
+            mixed
+        };
+
         let message = lettre::Message::builder()
             .from(self.from.clone())
             .to(to_mbox)
             .subject(email.subject())
-            .multipart(
-                MultiPart::alternative()
-                    .singlepart(SinglePart::plain(text))
-                    .singlepart(SinglePart::html(html)),
-            )?;
+            .multipart(body)?;
 
         self.mailer
             .send(message)

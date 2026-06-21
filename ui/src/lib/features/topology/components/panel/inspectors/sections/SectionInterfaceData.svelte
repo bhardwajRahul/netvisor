@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Node } from '@xyflow/svelte';
-	import type { EnrichedTopology, TopologyNode } from '$lib/features/topology/types/base';
+	import type { RenderableTopology, TopologyNode } from '$lib/features/topology/types/base';
 	import type { ElementRenderContext } from '$lib/features/topology/resolvers';
 	import InterfaceDetailsCard from '$lib/features/hosts/components/InterfaceDetailsCard.svelte';
 
@@ -10,7 +10,7 @@
 		elementContext
 	}: {
 		node: Node;
-		topology: EnrichedTopology;
+		topology: RenderableTopology;
 		elementContext?: ElementRenderContext;
 	} = $props();
 

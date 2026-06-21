@@ -3,8 +3,8 @@
 	import BaseTopologyViewer from '$lib/features/topology/components/visualization/BaseTopologyViewer.svelte';
 	import SearchOverlay from '$lib/features/topology/components/visualization/SearchOverlay.svelte';
 	import ShortcutsHelpOverlay from '$lib/features/topology/components/visualization/ShortcutsHelpOverlay.svelte';
-	import type { EnrichedTopology } from '$lib/features/topology/types/base';
-	import { setContext } from 'svelte';
+	import type { RenderableTopology } from '$lib/features/topology/types/base';
+	import { setContext, onMount } from 'svelte';
 	import { writable } from 'svelte/store';
 	import ReadOnlyInspectorPanel from './ReadOnlyInspectorPanel.svelte';
 	import ExportButton from '$lib/features/topology/components/ExportButton.svelte';
@@ -14,15 +14,18 @@
 	import type { ExportFeatures } from '../types/base';
 	import {
 		hydrateStoresFromTopology,
+		activeView,
 		optionsPanelExpanded,
+		topologyReadOnly,
 		MINIMAP_WIDTH_PX,
-		MINIMAP_OFFSET_PX
+		MINIMAP_OFFSET_PX,
+		type TopologyView
 	} from '$lib/features/topology/queries';
 	import { searchOpen } from '$lib/features/topology/interactions';
 	import { createTopologyKeydownHandler } from '$lib/features/topology/keyboard';
 	import { views } from '$lib/shared/stores/metadata';
 
-	export let topology: EnrichedTopology;
+	export let topology: RenderableTopology;
 	export let showControls: boolean = true;
 	export let showInspectPanel: boolean = true;
 	export let showExport: boolean = false;
@@ -54,12 +57,22 @@
 	// prevents localStorage state from the app leaking into embeds.
 	optionsPanelExpanded.set(false);
 
-	// Hydrate the global activeView + topologyOptions stores so the rendering
-	// pipeline sees the correct view for this shared topology.
+	// Drive the active view from the explicit `currentView` prop (ShareView owns
+	// it and refetches per view) — the view is no longer persisted on the row.
+	// Set it before hydrating so local options are keyed to the right view.
+	activeView.set(currentView as TopologyView);
 	hydrateStoresFromTopology(topology, true, true);
 
+	// Shares/embeds are view-only — drive the single read-only signal so the
+	// shared inspectors (descriptions/tags) and multi-select are gated the same
+	// way snapshots are. Reset on unmount so navigating back to the app is clean.
+	onMount(() => {
+		topologyReadOnly.set(true);
+		return () => topologyReadOnly.set(false);
+	});
+
 	// Create a context store for the topology so child components (inspectors) can access it
-	const topologyContext = writable<EnrichedTopology>(topology);
+	const topologyContext = writable<RenderableTopology>(topology);
 	setContext('topology', topologyContext);
 
 	// Create local stores for selected node/edge (instead of using global store).
@@ -73,6 +86,7 @@
 
 	// Keep context in sync with prop and re-hydrate on topology change (view switch)
 	$: {
+		activeView.set(currentView as TopologyView);
 		topologyContext.set(topology);
 		hydrateStoresFromTopology(topology, true, true);
 	}

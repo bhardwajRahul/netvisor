@@ -12,7 +12,7 @@
 	import { useTopology, selectedTopologyId } from '../../context';
 	import { edgeTypes } from '$lib/shared/stores/metadata';
 	import { createColorHelper, type Color } from '$lib/shared/utils/styling';
-	import type { TopologyEdge, EnrichedTopology } from '../../types/base';
+	import type { TopologyEdge, RenderableTopology } from '../../types/base';
 	import { isExporting, hoveredEdgeType } from '../../interactions';
 	import { isDashedEdge } from '../../layout/edge-classification';
 
@@ -37,7 +37,7 @@
 		topoStore
 			? $topoStore
 			: (topo.query?.data?.find((t) => t.id === $selectedTopologyId) as
-					| EnrichedTopology
+					| RenderableTopology
 					| undefined)
 	);
 

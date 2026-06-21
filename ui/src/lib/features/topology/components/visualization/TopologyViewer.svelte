@@ -1,13 +1,15 @@
 <script lang="ts">
 	import { type Node, type Edge, type Connection } from '@xyflow/svelte';
 	import {
+		activeView,
+		topologyReadOnly,
 		selectedEdge,
 		selectedNode,
 		selectedNodes,
 		useUpdateNodePositionMutation,
 		useUpdateEdgeHandlesMutation
 	} from '../../queries';
-	import { type EdgeHandle, type TopologyEdge, type EnrichedTopology } from '../../types/base';
+	import { type EdgeHandle, type TopologyEdge, type RenderableTopology } from '../../types/base';
 	import { searchOpen } from '../../interactions';
 	import { editModeEnabled } from '../../state';
 	import { createTopologyKeydownHandler } from '../../keyboard';
@@ -23,7 +25,7 @@
 		onRebuild,
 		isActive = false
 	}: {
-		topology: EnrichedTopology | null | undefined;
+		topology: RenderableTopology | null | undefined;
 		onToggleLock?: () => void;
 		onRebuild?: () => void;
 		isActive?: boolean;
@@ -38,13 +40,20 @@
 	// Overlay state
 	let shortcutsHelpOpen = $state(false);
 
-	// Edit mode state — defaults to view mode (locked), resets on page load
+	// Edit mode is disabled: topology editing (drag/resize/reconnect) is turned
+	// off product-wide. `editMode` is permanently false — the edit toggle (button
+	// + hotkey) is unwired below — but the state and read-only resets are kept so
+	// `editModeEnabled` stays a coherent (always-false) signal for consumers.
 	let editMode = $state(false);
 
-	function toggleEditMode() {
-		editMode = !editMode;
-		editModeEnabled.set(editMode);
-	}
+	// Force view mode whenever the topology becomes read-only (e.g. selecting a
+	// snapshot while in edit mode).
+	$effect(() => {
+		if ($topologyReadOnly && editMode) {
+			editMode = false;
+			editModeEnabled.set(false);
+		}
+	});
 
 	// Sidebar buttons show labels briefly on first visit per session, then stay collapsed
 	const SIDEBAR_SEEN_KEY = 'topology_sidebar_labels_shown';
@@ -93,6 +102,7 @@
 			await updateNodePositionMutation.mutateAsync({
 				topologyId: topology.id,
 				networkId: topology.network_id,
+				view: $activeView,
 				nodeId: movedNode.id,
 				position: { x, y }
 			});
@@ -119,6 +129,7 @@
 				await updateEdgeHandlesMutation.mutateAsync({
 					topologyId: topology.id,
 					networkId: topology.network_id,
+					view: $activeView,
 					edgeId: topologyEdge.id,
 					sourceHandle: newConnection.sourceHandle as 'Top' | 'Bottom' | 'Left' | 'Right',
 					targetHandle: newConnection.targetHandle as 'Top' | 'Bottom' | 'Left' | 'Right'
@@ -133,7 +144,6 @@
 		setShortcutsHelpOpen: (open) => (shortcutsHelpOpen = open),
 		selectionStores: { selectedNode, selectedEdge, selectedNodes },
 		isEnabled: () => isActive,
-		onToggleEditMode: toggleEditMode,
 		onToggleLock: () => onToggleLock?.(),
 		onRebuild: () => onRebuild?.()
 	});
@@ -146,11 +156,11 @@
 		<BaseTopologyViewer
 			bind:this={baseViewer}
 			{topology}
-			readonly={!editMode}
+			readonly={!editMode || $topologyReadOnly}
 			showControls={true}
 			{editMode}
 			{sidebarCollapsed}
-			onToggleEditMode={toggleEditMode}
+			onToggleEditMode={null}
 			onNodeDragStop={handleNodeDragStop}
 			onReconnect={handleReconnect}
 			onOpenShortcuts={() => (shortcutsHelpOpen = true)}

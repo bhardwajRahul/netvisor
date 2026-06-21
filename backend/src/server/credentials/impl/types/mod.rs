@@ -20,15 +20,15 @@ mod fields;
 mod metadata;
 mod secrets;
 
-pub use fields::{FieldDefinition, FieldType, InlineFormat, PemTag};
+pub use fields::{FieldDefinition, FieldType, InlineFormat, PemTag, SelectOption};
 pub use metadata::{CredentialAssignment, CredentialCategory, ScopeModel};
 pub use secrets::{
     FileOrInline, REDACTED_SECRET_SENTINEL, SecretValue, StorageCredentialType,
     deserialize_optional_file_or_inline, deserialize_optional_secret_value,
 };
 
-// Re-export SnmpVersion from snmp submodule
-pub use snmp::SnmpVersion;
+// Re-export SnmpVersion and v3 protocol enums from snmp submodule
+pub use snmp::{SnmpV3AuthProtocol, SnmpV3PrivProtocol, SnmpVersion};
 
 fn default_docker_port() -> u16 {
     PortType::Docker.number()
@@ -37,13 +37,34 @@ fn default_docker_port() -> u16 {
 /// Universal credential type — tagged enum stored as JSONB.
 /// Each variant represents a different credential protocol/method.
 #[derive(
-    Debug, Clone, Serialize, Deserialize, ToSchema, EnumDiscriminants, IntoStaticStr, VariantNames,
+    Debug,
+    Clone,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    ToSchema,
+    EnumDiscriminants,
+    IntoStaticStr,
+    VariantNames,
 )]
 #[strum_discriminants(derive(Display, Hash, Serialize, Deserialize, IntoStaticStr, EnumIter))]
 #[serde(tag = "type")]
 pub enum CredentialType {
+    /// SNMPv1 community string — for legacy devices that only speak v1.
+    SnmpV1 { community: SecretValue },
     /// SNMPv2c community string for querying network devices
     SnmpV2c { community: SecretValue },
+    /// SNMPv3 USM AuthPriv — security name + auth/priv protocols and passwords.
+    SnmpV3 {
+        security_name: String,
+        auth_protocol: SnmpV3AuthProtocol,
+        auth_password: SecretValue,
+        priv_protocol: SnmpV3PrivProtocol,
+        priv_password: SecretValue,
+        /// Optional context name (default/empty context used if unset).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        context_name: Option<String>,
+    },
     /// Docker API proxy credentials. Target IP determined from host ip_addresses at scan time.
     DockerProxy {
         /// Port for the Docker API proxy (default 2375)
@@ -79,56 +100,29 @@ pub enum CredentialType {
     DockerSocket {},
 }
 
-impl PartialEq for CredentialType {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::DockerSocket {}, Self::DockerSocket {}) => true,
-            (Self::SnmpV2c { community: c1 }, Self::SnmpV2c { community: c2 }) => match (c1, c2) {
-                (SecretValue::Inline { value: a }, SecretValue::Inline { value: b }) => {
-                    a.expose_secret() == b.expose_secret()
-                }
-                (SecretValue::FilePath { path: a }, SecretValue::FilePath { path: b }) => a == b,
-                _ => false,
-            },
-            (
-                Self::DockerProxy {
-                    port: p1,
-                    path: pa1,
-                    ssl_cert: c1,
-                    ssl_key: k1,
-                    ssl_chain: ch1,
-                },
-                Self::DockerProxy {
-                    port: p2,
-                    path: pa2,
-                    ssl_cert: c2,
-                    ssl_key: k2,
-                    ssl_chain: ch2,
-                },
-            ) => {
-                p1 == p2
-                    && pa1 == pa2
-                    && c1 == c2
-                    && match (k1, k2) {
-                        (
-                            Some(SecretValue::Inline { value: a }),
-                            Some(SecretValue::Inline { value: b }),
-                        ) => a.expose_secret() == b.expose_secret(),
-                        (
-                            Some(SecretValue::FilePath { path: a }),
-                            Some(SecretValue::FilePath { path: b }),
-                        ) => a == b,
-                        (None, None) => true,
-                        _ => false,
-                    }
-                    && ch1 == ch2
-            }
-            _ => false,
-        }
+/// Convert a stored `SecretValue` into a daemon-bound `ResolvableSecret`,
+/// exposing inline secrets and passing through file paths.
+fn secret_to_resolvable(secret: &SecretValue) -> ResolvableSecret {
+    match secret {
+        SecretValue::Inline { value } => ResolvableSecret::Value {
+            value: value.expose_secret().to_string(),
+        },
+        SecretValue::FilePath { path } => ResolvableSecret::FilePath { path: path.clone() },
     }
 }
 
-/// Returns a discriminant string for `CredentialType` (the serde tag value).
+/// Extract the inline string value of a secret, or `None` for file-path mode
+/// or the redacted sentinel.
+fn inline_secret(secret: &SecretValue) -> Option<String> {
+    match secret {
+        SecretValue::Inline { value } => {
+            let v = value.expose_secret().to_string();
+            (v != REDACTED_SECRET_SENTINEL).then_some(v)
+        }
+        SecretValue::FilePath { .. } => None,
+    }
+}
+
 impl CredentialType {
     /// Merge redacted sentinel values from the existing credential.
     /// When the API response redacts secrets to "********" and the UI sends that back,
@@ -136,6 +130,12 @@ impl CredentialType {
     pub fn merge_redacted_secrets(&mut self, existing: &CredentialType) {
         match (self, existing) {
             (
+                Self::SnmpV1 { community },
+                Self::SnmpV1 {
+                    community: existing_community,
+                },
+            )
+            | (
                 Self::SnmpV2c { community },
                 Self::SnmpV2c {
                     community: existing_community,
@@ -143,6 +143,25 @@ impl CredentialType {
             ) => {
                 if community.is_redacted_sentinel() {
                     *community = existing_community.clone();
+                }
+            }
+            (
+                Self::SnmpV3 {
+                    auth_password,
+                    priv_password,
+                    ..
+                },
+                Self::SnmpV3 {
+                    auth_password: existing_auth,
+                    priv_password: existing_priv,
+                    ..
+                },
+            ) => {
+                if auth_password.is_redacted_sentinel() {
+                    *auth_password = existing_auth.clone();
+                }
+                if priv_password.is_redacted_sentinel() {
+                    *priv_password = existing_priv.clone();
                 }
             }
             (
@@ -166,7 +185,9 @@ impl CredentialType {
 
     pub fn credential_category(&self) -> CredentialCategory {
         match self {
-            Self::SnmpV2c { .. } => CredentialCategory::NetworkMonitoring,
+            Self::SnmpV1 { .. } | Self::SnmpV2c { .. } | Self::SnmpV3 { .. } => {
+                CredentialCategory::NetworkMonitoring
+            }
             Self::DockerProxy { .. } => CredentialCategory::ContainerVirtualization,
             Self::DockerSocket {} => CredentialCategory::ContainerVirtualization,
         }
@@ -174,7 +195,9 @@ impl CredentialType {
 
     pub fn scope_models(&self) -> Vec<ScopeModel> {
         match self {
-            Self::SnmpV2c { .. } => vec![ScopeModel::Broadcast, ScopeModel::PerHost],
+            Self::SnmpV1 { .. } | Self::SnmpV2c { .. } | Self::SnmpV3 { .. } => {
+                vec![ScopeModel::Broadcast, ScopeModel::PerHost]
+            }
             Self::DockerProxy { .. } => vec![ScopeModel::PerHost],
             Self::DockerSocket {} => vec![ScopeModel::PerHost],
         }
@@ -184,18 +207,17 @@ impl CredentialType {
     /// Returns None for FilePath mode, None fields, or redacted sentinels.
     fn get_inline_value(&self, field_id: &str) -> Option<String> {
         match self {
-            Self::SnmpV2c { community } => match field_id {
-                "community" => match community {
-                    SecretValue::Inline { value } => {
-                        let v = value.expose_secret().to_string();
-                        if v == REDACTED_SECRET_SENTINEL {
-                            None
-                        } else {
-                            Some(v)
-                        }
-                    }
-                    SecretValue::FilePath { .. } => None,
-                },
+            Self::SnmpV1 { community } | Self::SnmpV2c { community } => match field_id {
+                "community" => inline_secret(community),
+                _ => None,
+            },
+            Self::SnmpV3 {
+                auth_password,
+                priv_password,
+                ..
+            } => match field_id {
+                "auth_password" => inline_secret(auth_password),
+                "priv_password" => inline_secret(priv_password),
                 _ => None,
             },
             Self::DockerProxy {
@@ -208,17 +230,7 @@ impl CredentialType {
                     FileOrInline::Inline { value } => Some(value.clone()),
                     FileOrInline::FilePath { .. } => None,
                 },
-                "ssl_key" => match ssl_key.as_ref()? {
-                    SecretValue::Inline { value } => {
-                        let v = value.expose_secret().to_string();
-                        if v == REDACTED_SECRET_SENTINEL {
-                            None
-                        } else {
-                            Some(v)
-                        }
-                    }
-                    SecretValue::FilePath { .. } => None,
-                },
+                "ssl_key" => inline_secret(ssl_key.as_ref()?),
                 "ssl_chain" => match ssl_chain.as_ref()? {
                     FileOrInline::Inline { value } => Some(value.clone()),
                     FileOrInline::FilePath { .. } => None,
@@ -248,7 +260,9 @@ impl CredentialType {
     /// metadata enrichment, and Phase 2 integration dispatch.
     pub fn associated_service(&self) -> Box<dyn ServiceDefinition> {
         match self {
-            Self::SnmpV2c { .. } => Box::new(crate::server::services::definitions::snmp::Snmp),
+            Self::SnmpV1 { .. } | Self::SnmpV2c { .. } | Self::SnmpV3 { .. } => {
+                Box::new(crate::server::services::definitions::snmp::Snmp)
+            }
             Self::DockerProxy { .. } => {
                 Box::new(crate::server::services::definitions::docker_daemon::Docker)
             }
@@ -267,20 +281,43 @@ impl CredentialType {
     /// Convert to wire format payload for daemon transmission.
     /// No wildcard match — compiler forces update when new variants added.
     pub fn to_query_payload(&self) -> CredentialQueryPayload {
+        use crate::server::credentials::r#impl::mapping::{SnmpQueryCredential, SnmpV3Params};
         match self {
-            CredentialType::SnmpV2c { community } => CredentialQueryPayload::Snmp(
-                crate::server::credentials::r#impl::mapping::SnmpQueryCredential {
+            CredentialType::SnmpV1 { community } => {
+                CredentialQueryPayload::Snmp(SnmpQueryCredential {
+                    version: SnmpVersion::V1,
+                    community: secret_to_resolvable(community),
+                    v3: None,
+                })
+            }
+            CredentialType::SnmpV2c { community } => {
+                CredentialQueryPayload::Snmp(SnmpQueryCredential {
                     version: SnmpVersion::V2c,
-                    community: match community {
-                        SecretValue::Inline { value } => ResolvableSecret::Value {
-                            value: value.expose_secret().to_string(),
-                        },
-                        SecretValue::FilePath { path } => {
-                            ResolvableSecret::FilePath { path: path.clone() }
-                        }
-                    },
+                    community: secret_to_resolvable(community),
+                    v3: None,
+                })
+            }
+            CredentialType::SnmpV3 {
+                security_name,
+                auth_protocol,
+                auth_password,
+                priv_protocol,
+                priv_password,
+                context_name,
+            } => CredentialQueryPayload::Snmp(SnmpQueryCredential {
+                version: SnmpVersion::V3,
+                community: ResolvableSecret::Value {
+                    value: String::new(),
                 },
-            ),
+                v3: Some(SnmpV3Params {
+                    security_name: security_name.clone(),
+                    auth_protocol: *auth_protocol,
+                    auth_password: secret_to_resolvable(auth_password),
+                    priv_protocol: *priv_protocol,
+                    priv_password: secret_to_resolvable(priv_password),
+                    context_name: context_name.clone(),
+                }),
+            }),
             CredentialType::DockerProxy {
                 port,
                 path,
@@ -298,14 +335,7 @@ impl CredentialType {
                         ResolvableValue::FilePath { path: path.clone() }
                     }
                 }),
-                ssl_key: ssl_key.as_ref().map(|s| match s {
-                    SecretValue::Inline { value } => ResolvableSecret::Value {
-                        value: value.expose_secret().to_string(),
-                    },
-                    SecretValue::FilePath { path } => {
-                        ResolvableSecret::FilePath { path: path.clone() }
-                    }
-                }),
+                ssl_key: ssl_key.as_ref().map(secret_to_resolvable),
                 ssl_chain: ssl_chain.as_ref().map(|f| match f {
                     FileOrInline::Inline { value } => ResolvableValue::Value {
                         value: value.clone(),
@@ -325,6 +355,7 @@ impl CredentialType {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::server::credentials::r#impl::mapping::CredentialQueryPayload;
     use secrecy::SecretString;
 
     fn snmp_cred(community: &str) -> CredentialType {
@@ -332,6 +363,29 @@ mod tests {
             community: SecretValue::Inline {
                 value: SecretString::from(community.to_string()),
             },
+        }
+    }
+
+    fn inline(value: &str) -> SecretValue {
+        SecretValue::Inline {
+            value: SecretString::from(value.to_string()),
+        }
+    }
+
+    fn snmpv1_cred(community: &str) -> CredentialType {
+        CredentialType::SnmpV1 {
+            community: inline(community),
+        }
+    }
+
+    fn snmpv3_cred(auth_pw: &str, priv_pw: &str) -> CredentialType {
+        CredentialType::SnmpV3 {
+            security_name: "snmp-user".to_string(),
+            auth_protocol: SnmpV3AuthProtocol::Sha256,
+            auth_password: inline(auth_pw),
+            priv_protocol: SnmpV3PrivProtocol::Aes128,
+            priv_password: inline(priv_pw),
+            context_name: Some("ctx-1".to_string()),
         }
     }
 
@@ -432,5 +486,126 @@ mod tests {
             path: REDACTED_SECRET_SENTINEL.to_string(),
         };
         assert!(!filepath.is_redacted_sentinel());
+    }
+
+    #[test]
+    fn merge_redacted_secrets_snmpv1_preserves_original() {
+        let existing = snmpv1_cred("legacy-community");
+        let mut updated = snmpv1_cred(REDACTED_SECRET_SENTINEL);
+        updated.merge_redacted_secrets(&existing);
+        match &updated {
+            CredentialType::SnmpV1 {
+                community: SecretValue::Inline { value },
+            } => assert_eq!(value.expose_secret(), "legacy-community"),
+            _ => panic!("expected SnmpV1 inline"),
+        }
+    }
+
+    #[test]
+    fn merge_redacted_secrets_snmpv3_preserves_both_passwords_when_sentinel() {
+        let existing = snmpv3_cred("auth-real", "priv-real");
+        let mut updated = snmpv3_cred(REDACTED_SECRET_SENTINEL, REDACTED_SECRET_SENTINEL);
+        updated.merge_redacted_secrets(&existing);
+        match &updated {
+            CredentialType::SnmpV3 {
+                auth_password: SecretValue::Inline { value: a },
+                priv_password: SecretValue::Inline { value: p },
+                ..
+            } => {
+                assert_eq!(a.expose_secret(), "auth-real");
+                assert_eq!(p.expose_secret(), "priv-real");
+            }
+            _ => panic!("expected SnmpV3 inline passwords"),
+        }
+    }
+
+    #[test]
+    fn merge_redacted_secrets_snmpv3_independent_per_password() {
+        // Only the priv password is the sentinel — auth must keep its new value.
+        let existing = snmpv3_cred("auth-real", "priv-real");
+        let mut updated = snmpv3_cred("auth-new", REDACTED_SECRET_SENTINEL);
+        updated.merge_redacted_secrets(&existing);
+        match &updated {
+            CredentialType::SnmpV3 {
+                auth_password: SecretValue::Inline { value: a },
+                priv_password: SecretValue::Inline { value: p },
+                ..
+            } => {
+                assert_eq!(a.expose_secret(), "auth-new");
+                assert_eq!(p.expose_secret(), "priv-real");
+            }
+            _ => panic!("expected SnmpV3 inline passwords"),
+        }
+    }
+
+    #[test]
+    fn to_query_payload_snmpv1_sets_version_and_community() {
+        match snmpv1_cred("comm").to_query_payload() {
+            CredentialQueryPayload::Snmp(s) => {
+                assert_eq!(s.version, SnmpVersion::V1);
+                assert!(s.v3.is_none());
+                assert_eq!(
+                    s.community,
+                    ResolvableSecret::Value {
+                        value: "comm".to_string()
+                    }
+                );
+            }
+            _ => panic!("expected Snmp payload"),
+        }
+    }
+
+    #[test]
+    fn to_query_payload_snmpv3_populates_usm_params() {
+        match snmpv3_cred("auth-pw", "priv-pw").to_query_payload() {
+            CredentialQueryPayload::Snmp(s) => {
+                assert_eq!(s.version, SnmpVersion::V3);
+                let v3 = s.v3.expect("v3 params present");
+                assert_eq!(v3.security_name, "snmp-user");
+                assert_eq!(v3.auth_protocol, SnmpV3AuthProtocol::Sha256);
+                assert_eq!(v3.priv_protocol, SnmpV3PrivProtocol::Aes128);
+                assert_eq!(v3.context_name.as_deref(), Some("ctx-1"));
+                assert_eq!(
+                    v3.auth_password,
+                    ResolvableSecret::Value {
+                        value: "auth-pw".to_string()
+                    }
+                );
+                assert_eq!(
+                    v3.priv_password,
+                    ResolvableSecret::Value {
+                        value: "priv-pw".to_string()
+                    }
+                );
+            }
+            _ => panic!("expected Snmp payload"),
+        }
+    }
+
+    #[test]
+    fn snmpv3_default_serialization_redacts_passwords() {
+        // The default Serialize impl (API responses) must never leak secrets.
+        let json = serde_json::to_string(&snmpv3_cred("super-secret-auth", "super-secret-priv"))
+            .expect("serialize");
+        assert!(!json.contains("super-secret-auth"));
+        assert!(!json.contains("super-secret-priv"));
+        assert!(json.contains(REDACTED_SECRET_SENTINEL));
+    }
+
+    #[test]
+    fn snmpv3_storage_serialization_exposes_passwords() {
+        // StorageCredentialType is used only for DB writes and must expose secrets.
+        let cred = snmpv3_cred("auth-xyz-plain", "priv-xyz-plain");
+        let json = serde_json::to_string(&StorageCredentialType(&cred)).expect("serialize");
+        assert!(json.contains("auth-xyz-plain"));
+        assert!(json.contains("priv-xyz-plain"));
+    }
+
+    #[test]
+    fn snmpv3_query_payload_debug_redacts_passwords() {
+        let payload = snmpv3_cred("auth-dbg", "priv-dbg").to_query_payload();
+        let dbg = format!("{:?}", payload);
+        assert!(!dbg.contains("auth-dbg"));
+        assert!(!dbg.contains("priv-dbg"));
     }
 }

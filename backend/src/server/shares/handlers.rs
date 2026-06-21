@@ -34,7 +34,7 @@ use crate::server::{
         },
         handlers::traits::{CrudHandlers, create_handler, update_handler},
         services::traits::CrudService,
-        storage::traits::{Entity, Storage},
+        storage::traits::Entity,
         types::api::{ApiError, ApiErrorResponse, ApiResponse, ApiResult},
     },
     shares::r#impl::{
@@ -240,7 +240,6 @@ async fn get_share_org_plan(state: &AppState, share: &Share) -> Result<BillingPl
     let network = state
         .services
         .network_service
-        .storage()
         .get_by_id(&share.base.network_id)
         .await
         .map_err(|e| ApiError::internal_error(&e.to_string()))?
@@ -289,7 +288,6 @@ async fn get_public_share_metadata(
     let topology = state
         .services
         .topology_service
-        .storage()
         .get_by_id(&share.base.topology_id)
         .await
         .map_err(|e| ApiError::internal_error(&e.to_string()))?
@@ -423,10 +421,9 @@ async fn get_share_topology(
     // server-side referer check here cannot enforce what it appears to.
 
     // Get topology data
-    let mut topology = state
+    let topology = state
         .services
         .topology_service
-        .storage()
         .get_by_id(&share.base.topology_id)
         .await
         .map_err(|e| ApiError::internal_error(&e.to_string()))?
@@ -461,33 +458,9 @@ async fn get_share_topology(
         .await
         .map_err(|e| ApiError::internal_error(&e.to_string()))?;
 
-    // If requested view differs from stored view, rebuild graph ephemerally.
-    let stored_view = topology.base.options.request.view;
-    if stored_view != body.view {
-        let mut options = topology.base.options.clone();
-        options.request.view = body.view;
-
-        let (nodes, edges) =
-            service.build_graph(crate::server::topology::service::main::BuildGraphParams {
-                options: &options,
-                hosts: &data.hosts,
-                ip_addresses: &data.ip_addresses,
-                subnets: &data.subnets,
-                services: &data.services,
-                dependencies: &data.dependencies,
-                ports: &data.ports,
-                bindings: &data.bindings,
-                interfaces: &data.interfaces,
-                entity_tags: &data.tags,
-                vlans: &data.vlans,
-                old_nodes: &[],
-                old_edges: &[],
-                old_view: Some(stored_view),
-            });
-
-        topology.set_graph(nodes, edges);
-        topology.base.options = options;
-    }
+    // The row carries a pre-built node/edge slice for every view, so there's no
+    // ephemeral rebuild — the viewer selects the requested view's slice
+    // client-side (the request's `view` field drives that selection).
 
     let export_features = ExportFeatures {
         png_export: plan_features.png_export,
@@ -505,6 +478,19 @@ async fn get_share_topology(
     let mut topology_value =
         serde_json::to_value(&topology).map_err(|e| ApiError::internal_error(&e.to_string()))?;
     if let Some(obj) = topology_value.as_object_mut() {
+        // The row stores nodes/edges per view; a share renders one requested
+        // view, so flatten that view's slice to plain arrays — the shape the
+        // read-only viewer's EnrichedTopology expects.
+        obj.insert(
+            "nodes".to_string(),
+            serde_json::to_value(topology.nodes_for(body.view))
+                .map_err(|e| ApiError::internal_error(&e.to_string()))?,
+        );
+        obj.insert(
+            "edges".to_string(),
+            serde_json::to_value(topology.edges_for(body.view))
+                .map_err(|e| ApiError::internal_error(&e.to_string()))?,
+        );
         obj.insert(
             "hosts".to_string(),
             serde_json::to_value(&data.hosts)
@@ -568,7 +554,6 @@ async fn get_share_topology(
         let org_id = state
             .services
             .network_service
-            .storage()
             .get_by_id(&share.base.network_id)
             .await
             .ok()

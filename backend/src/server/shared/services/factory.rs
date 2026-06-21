@@ -308,9 +308,13 @@ impl ServiceFactory {
             config.smtp_email,
             config.smtp_relay,
         ) {
-            if let Ok(smtp_provider) =
-                SmtpEmailProvider::new(smtp_username, smtp_password, smtp_email, smtp_relay)
-            {
+            if let Ok(smtp_provider) = SmtpEmailProvider::new(
+                smtp_username,
+                smtp_password,
+                smtp_email,
+                smtp_relay,
+                config.smtp_port,
+            ) {
                 Some(Arc::new(EmailService::new(
                     Box::new(smtp_provider),
                     user_service.clone(),

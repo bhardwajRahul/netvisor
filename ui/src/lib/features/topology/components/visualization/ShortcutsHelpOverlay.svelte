@@ -6,13 +6,11 @@
 		topology_shortcutFitView,
 		topology_shortcutZoomSelection,
 		topology_shortcutToggleLock,
-		topology_shortcutRebuild,
 		topology_shortcutDeselect,
 		topology_shortcutHelp,
 		topology_shortcutSelectAll,
 		topology_shortcutBoxSelect,
 		topology_shortcutToggleSelect,
-		topology_shortcutToggleEditMode,
 		topology_shortcutStepExpand,
 		topology_shortcutStepCollapse
 	} from '$lib/paraglide/messages';
@@ -26,9 +24,7 @@
 		{ keys: ['/'], description: () => topology_shortcutSearch() },
 		{ keys: ['F'], description: () => topology_shortcutFitView() },
 		{ keys: ['Z'], description: () => topology_shortcutZoomSelection() },
-		{ keys: ['E'], description: () => topology_shortcutToggleEditMode(), editOnly: true },
 		{ keys: ['L'], description: () => topology_shortcutToggleLock(), editOnly: true },
-		{ keys: ['R'], description: () => topology_shortcutRebuild(), editOnly: true },
 		{ keys: ['Escape'], description: () => topology_shortcutDeselect() },
 		{ keys: ['?'], description: () => topology_shortcutHelp() },
 		{ keys: ['Ctrl/Cmd', 'A'], description: () => topology_shortcutSelectAll() },

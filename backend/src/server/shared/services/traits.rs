@@ -94,12 +94,21 @@ where
         Ok(())
     }
 
-    /// Hydrate tags from junction table for multiple entities, if they support it
-    async fn bulk_hydrate_tags(&self, entities: &mut [T]) -> Result<(), Error> {
+    /// Hydrate tags from junction table for multiple entities, if they support it.
+    ///
+    /// `snapshot_id = None` hydrates from live associations; `Some(id)` hydrates
+    /// from the associations captured under that snapshot (the entities must
+    /// then be the snapshot's closed copies, so their ids match the closed
+    /// `entity_tags`).
+    async fn bulk_hydrate_tags(
+        &self,
+        entities: &mut [T],
+        snapshot_id: Option<Uuid>,
+    ) -> Result<(), Error> {
         if let Some(entity_tag_service) = self.entity_tag_service() {
             let ids: Vec<Uuid> = entities.iter().map(|e| e.id()).collect();
             let tags_map = entity_tag_service
-                .get_tags_map(&ids, T::entity_type())
+                .get_tags_map(&ids, T::entity_type(), snapshot_id)
                 .await?;
             for entity in entities {
                 if let Some(tags) = tags_map.get(&entity.id()) {
@@ -110,10 +119,33 @@ where
         Ok(())
     }
 
-    /// Get all entities with filter
+    /// Get all entities with filter (live tag hydration).
     async fn get_all(&self, filter: StorableFilter<T>) -> Result<Vec<T>, anyhow::Error> {
         let mut all = self.storage().get_all(filter).await?;
-        self.bulk_hydrate_tags(&mut all).await?;
+        self.bulk_hydrate_tags(&mut all, None).await?;
+        Ok(all)
+    }
+
+    /// Get all entities with filter, hydrating tags as-of a snapshot.
+    ///
+    /// Use when `filter` is already snapshot-scoped (so the rows are closed
+    /// copies): tag associations hydrate from the same snapshot rather than
+    /// from live `entity_tags`, which reference live (different) entity ids.
+    ///
+    /// Delegates to `get_all` (NOT `storage().get_all`) so per-service
+    /// hydration overrides — e.g. `ServiceService::get_all` populating
+    /// `bindings`, which the topology edge builder needs — still run. Then it
+    /// re-hydrates tags as-of the snapshot, overwriting the live tags `get_all`
+    /// applied. For the live view (`snapshot_id = None`) it is exactly `get_all`.
+    async fn get_all_as_of_snapshot(
+        &self,
+        filter: StorableFilter<T>,
+        snapshot_id: Option<Uuid>,
+    ) -> Result<Vec<T>, anyhow::Error> {
+        let mut all = self.get_all(filter).await?;
+        if snapshot_id.is_some() {
+            self.bulk_hydrate_tags(&mut all, snapshot_id).await?;
+        }
         Ok(all)
     }
 
@@ -127,7 +159,7 @@ where
             .get_paginated(filter, "created_at ASC")
             .await?;
         let mut entities = paginated.items;
-        self.bulk_hydrate_tags(&mut entities).await?;
+        self.bulk_hydrate_tags(&mut entities, None).await?;
         paginated.items = entities;
         Ok(paginated)
     }
@@ -140,7 +172,7 @@ where
         order_by: &str,
     ) -> Result<PaginatedResult<T>, anyhow::Error> {
         let mut paginated = self.storage().get_paginated(filter, order_by).await?;
-        self.bulk_hydrate_tags(&mut paginated.items).await?;
+        self.bulk_hydrate_tags(&mut paginated.items, None).await?;
         Ok(paginated)
     }
 

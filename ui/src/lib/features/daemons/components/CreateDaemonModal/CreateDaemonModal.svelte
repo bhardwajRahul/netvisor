@@ -851,13 +851,15 @@
 										};
 									});
 									const created = await bulkCreateCredentialsMutation.mutateAsync(toCreate);
-									credentialIds = [...credentialIds, ...created.map((c) => c.id), ...existingIds];
+									credentialIds = [
+										...new Set([...credentialIds, ...created.map((c) => c.id), ...existingIds])
+									];
 								} catch {
 									return;
 								}
 							} else if (existingIds.length > 0) {
 								// No new credentials but some existing ones to add
-								credentialIds = [...credentialIds, ...existingIds];
+								credentialIds = [...new Set([...credentialIds, ...existingIds])];
 							}
 							showCredentialWizard = false;
 						}}

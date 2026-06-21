@@ -1,4 +1,4 @@
-import type { EnrichedTopology } from '../types/base';
+import type { RenderableTopology } from '../types/base';
 import type { Node } from '@xyflow/svelte';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -29,7 +29,7 @@ export const TUTORIAL_SERVICES = [
 	}
 ];
 
-export const TUTORIAL_TOPOLOGY: EnrichedTopology = {
+export const TUTORIAL_TOPOLOGY: RenderableTopology = {
 	id: uuidv4(),
 	name: 'Tutorial',
 	network_id: uuidv4(),
@@ -87,7 +87,7 @@ export const TUTORIAL_TOPOLOGY: EnrichedTopology = {
 		updated_at: new Date().toISOString()
 	})),
 	subnets: []
-} as unknown as EnrichedTopology;
+} as unknown as RenderableTopology;
 
 // Xyflow nodes positioned in a triangle for the mini topology viewer
 const POSITIONS = [

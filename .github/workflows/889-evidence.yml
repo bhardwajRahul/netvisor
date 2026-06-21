@@ -12,7 +12,7 @@ name: 889 Evidence
 # rule, and the evidence reaches `main` automatically at the next dev->main
 # release merge. `dev` is the always-current copy; `main` reflects last release.
 #
-# Runs scripts/889-evidence.sh in CI (so the private server-commercial image is
+# Runs tools/889/889-evidence.sh in CI (so the private server-commercial image is
 # included via GITHUB_TOKEN), then overwrites compliance/ndaa-889/ with the
 # current bundle - latest only, no per-version history. Dispatch it before a deal
 # to refresh; the monthly schedule keeps it from going stale; it also auto-runs
@@ -63,7 +63,7 @@ jobs:
       - name: Generate evidence bundle
         run: |
           rm -rf compliance/ndaa-889
-          ./scripts/889-evidence.sh \
+          ./tools/889/889-evidence.sh \
             --tag "${{ inputs.image_tag || 'latest' }}" \
             --out "$GITHUB_WORKSPACE/compliance/ndaa-889"
 

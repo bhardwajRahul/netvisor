@@ -33,7 +33,11 @@
 		billing_trialPillOneDay,
 		billing_trialPillToday
 	} from '$lib/paraglide/messages';
-	import { getTrialDaysLeft, isTrialingWithoutPayment } from '$lib/shared/utils/trial';
+	import {
+		getTrialDaysLeft,
+		isTrialingWithoutPayment,
+		isMissingPaymentMethod
+	} from '$lib/shared/utils/trial';
 	import { daemonSetupState } from '$lib/features/daemons/stores/daemon-setup';
 	import { isAllComplete } from '$lib/shared/onboarding/checklist';
 	import SidebarChecklist from './SidebarChecklist.svelte';
@@ -134,10 +138,10 @@
 	// blocks the entire app, so a sidebar dot would be noise.
 	let showBillingNotification = $derived.by(() => {
 		if (!organization) return false;
-		const isPastDue = organization.plan_status === 'past_due';
-		const isTrialing = organization.plan_status === 'trialing';
-		const hasPayment = organization.has_payment_method ?? false;
-		return isPastDue || (isTrialing && !hasPayment);
+		// past_due stays its own clause: dunning needs attention even with a card
+		// on file. isMissingPaymentMethod is the shared no-card predicate, so this
+		// dot, the banner, and the BillingTab card all key off the same rule.
+		return organization.plan_status === 'past_due' || isMissingPaymentMethod(organization);
 	});
 
 	// Active discovery sessions — used for notification dot on sidebar and sub-tabs

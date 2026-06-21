@@ -307,7 +307,7 @@ async fn get_host_by_id(
     let tags_map = state
         .services
         .entity_tag_service
-        .get_tags_map(&[host.id], EntityDiscriminants::Host)
+        .get_tags_map(&[host.id], EntityDiscriminants::Host, None)
         .await?;
     if let Some(tags) = tags_map.get(&host.id) {
         host.tags = tags.clone();
@@ -595,7 +595,7 @@ async fn update_host(
     let tags_map = state
         .services
         .entity_tag_service
-        .get_tags_map(&[host_response.id], EntityDiscriminants::Host)
+        .get_tags_map(&[host_response.id], EntityDiscriminants::Host, None)
         .await?;
     if let Some(tags) = tags_map.get(&host_response.id) {
         host_response.tags = tags.clone();
@@ -767,7 +767,7 @@ async fn consolidate_hosts(
     let tags_map = state
         .services
         .entity_tag_service
-        .get_tags_map(&[host_response.id], EntityDiscriminants::Host)
+        .get_tags_map(&[host_response.id], EntityDiscriminants::Host, None)
         .await?;
     if let Some(tags) = tags_map.get(&host_response.id) {
         host_response.tags = tags.clone();

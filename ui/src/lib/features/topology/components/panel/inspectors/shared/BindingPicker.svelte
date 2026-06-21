@@ -17,7 +17,7 @@
 		dependencies_noOpenPortsError,
 		topology_multiSelectNoBindings
 	} from '$lib/paraglide/messages';
-	import type { EnrichedTopology } from '../../../../types/base';
+	import type { RenderableTopology } from '../../../../types/base';
 	import type { Binding } from '$lib/features/services/types/base';
 	import type { IPAddress } from '$lib/features/hosts/types/base';
 
@@ -35,7 +35,7 @@
 		form: any;
 		/** Prefix for the form field path — final field is `${fieldPrefix}.${fieldKey}`. */
 		fieldPrefix?: string;
-		topology: EnrichedTopology;
+		topology: RenderableTopology;
 		serviceId: string;
 		/** Unique per-card key for the form entry. Defaults to serviceId when absent
 		 *  (backwards compat with callers that use BindingPicker for a single service).

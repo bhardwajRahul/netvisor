@@ -78,7 +78,6 @@ impl Subscriber<BillingOperation> for EmailService {
                         plan.name(),
                         trial_days,
                         plan.billing_period(),
-                        &plan.base_price_formatted(),
                     )
                     .await?;
                 }
@@ -92,7 +91,6 @@ impl Subscriber<BillingOperation> for EmailService {
                             org_owner,
                             plan.name(),
                             plan.billing_period(),
-                            &plan.base_price_formatted(),
                         )
                         .await?;
                     } else {
@@ -117,7 +115,6 @@ impl Subscriber<BillingOperation> for EmailService {
                         plan.name(),
                         has_payment_method,
                         plan.billing_period(),
-                        &plan.base_price_formatted(),
                     )
                     .await?;
                 }
@@ -167,23 +164,10 @@ impl Subscriber<BillingOperation> for EmailService {
                 BillingOperation::Reactivated { .. } => {
                     self.send_subscription_reactivated_email(org_owner).await?;
                 }
-                BillingOperation::Paused {
-                    resumes_at,
-                    plan,
-                    duration_days,
-                } => {
+                BillingOperation::Paused { resumes_at, .. } => {
                     let resumes_at_str = resumes_at.format("%B %-d, %Y").to_string();
-                    let is_yearly = matches!(
-                        plan.config().rate,
-                        crate::server::billing::types::base::BillingRate::Year
-                    );
-                    self.send_subscription_paused_email(
-                        org_owner,
-                        &resumes_at_str,
-                        is_yearly,
-                        duration_days,
-                    )
-                    .await?;
+                    self.send_subscription_paused_email(org_owner, &resumes_at_str)
+                        .await?;
                 }
                 BillingOperation::Resumed { .. } => {
                     self.send_subscription_resumed_email(org_owner).await?;

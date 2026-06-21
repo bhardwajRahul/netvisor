@@ -7,13 +7,12 @@
 		selectedNodes,
 		previewEdges,
 		baseFlowEdges,
-		useUpdateTopologyMutation,
 		activeView,
 		topologyOptions,
-		updateSharedElementRules,
-		sanitizeOptionsForApi
+		topologyReadOnly,
+		updateSharedElementRules
 	} from '../../../queries';
-	import type { EnrichedTopology } from '../../../types/base';
+	import type { RenderableTopology } from '../../../types/base';
 	import type { TopologyNode } from '../../../types/base';
 	import {
 		getNodeSelectionIds,
@@ -98,7 +97,7 @@
 		editingDependency = null,
 		onDone
 	}: {
-		topology: EnrichedTopology | undefined;
+		topology: RenderableTopology | undefined;
 		isReadOnly?: boolean;
 		isTutorial?: boolean;
 		onClearSelection: () => void;
@@ -120,7 +119,6 @@
 	const bulkRemoveTagMutation = useBulkRemoveTagMutation();
 	const createDependencyMutation = useCreateDependencyMutation();
 	const updateDependencyMutation = useUpdateDependencyMutation();
-	const updateTopologyMutation = useUpdateTopologyMutation();
 
 	// Subscribe to selectedNodes
 	let nodes = $state<Node[]>(get(selectedNodes));
@@ -198,7 +196,7 @@
 	let editState = $derived(
 		isTutorial
 			? { isReadonly: false, isEditable: true, disabledReason: null }
-			: getTopologyEditState(topology, false, isReadOnly)
+			: getTopologyEditState(topology, false, isReadOnly || $topologyReadOnly)
 	);
 
 	let mutateDisabledReason = $derived.by(() => {
@@ -392,13 +390,11 @@
 			}
 		]);
 		recentlyAddedTagIds = [];
-		// Persist the new grouping rule via the topology layout PUT.
-		if (topology) {
-			updateTopologyMutation.mutate({
-				...topology,
-				options: sanitizeOptionsForApi(topology.options)
-			});
-		}
+		// `updateSharedElementRules` updates the options store, which the
+		// debounced options-store subscription persists (PUTting the raw
+		// topology row). No explicit PUT here — spreading the enriched
+		// topology would send a flat, view-sliced graph the backend can't
+		// deserialize into its per-view node/edge map.
 	}
 
 	// Dependency creation state — always visible, no expand/collapse

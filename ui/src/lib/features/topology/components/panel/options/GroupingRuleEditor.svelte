@@ -21,6 +21,7 @@
 		topologyOptions,
 		updateTopologyOptions,
 		activeView,
+		topologyReadOnly,
 		sharedElementRules,
 		updateSharedElementRules,
 		getInfrastructureRuleId,
@@ -85,7 +86,7 @@
 	const updateTopologyMutation = useUpdateTopologyMutation();
 	let topologiesData = $derived(topologiesQuery.data ?? []);
 	let topology = $derived(topologiesData.find((t) => t.id === $selectedTopologyId));
-	let editState = $derived(getTopologyEditState(topology, false, false));
+	let editState = $derived(getTopologyEditState(topology, false, $topologyReadOnly));
 
 	function saveOptions() {
 		if (!topology) return;

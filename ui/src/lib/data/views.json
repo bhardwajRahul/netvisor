@@ -300,6 +300,12 @@
                   "label": "Identity & Access"
                 },
                 {
+                  "color": "Cyan",
+                  "icon": "workflow",
+                  "id": "Integration",
+                  "label": "Integration"
+                },
+                {
                   "color": "Blue",
                   "icon": "file-text",
                   "id": "Office",
@@ -631,6 +637,12 @@
                   "label": "Identity & Access"
                 },
                 {
+                  "color": "Cyan",
+                  "icon": "workflow",
+                  "id": "Integration",
+                  "label": "Integration"
+                },
+                {
                   "color": "Blue",
                   "icon": "file-text",
                   "id": "Office",
@@ -933,6 +945,12 @@
                   "icon": "key-round",
                   "id": "IdentityAndAccess",
                   "label": "Identity & Access"
+                },
+                {
+                  "color": "Cyan",
+                  "icon": "workflow",
+                  "id": "Integration",
+                  "label": "Integration"
                 },
                 {
                   "color": "Blue",

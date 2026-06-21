@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::Result;
 use email_address::EmailAddress;
@@ -6,12 +7,12 @@ use uuid::Uuid;
 
 use super::messages::{
     CancellationInitiated, CheckoutCompleted, DaemonStandby, DaemonUnreachable, DiscoveryDigest,
-    DiscoveryGuide, Email, EmailChangedOld, EmailPreference, InstallCommand, Invite, OidcLinked,
-    OidcUnlinked, OrganizationDeleted, PasswordChanged, PasswordReset, PaymentActionRequired,
-    PaymentFailed, PaymentMethodAdded, PaymentMethodRemoved, PaymentRecovered, PlanChanged,
-    PlanLimitApproaching, PlanLimitReached, SubscriptionCancelled, SubscriptionPaused,
-    SubscriptionReactivated, SubscriptionResumed, TrialConverted, TrialEnding, TrialExpired,
-    TrialStarted, UsageSummary, Verification,
+    DiscoveryGuide, Email, EmailAttachment, EmailChangedOld, EmailPreference, InstallCommand,
+    Invite, OidcLinked, OidcUnlinked, OrganizationDeleted, PasswordChanged, PasswordReset,
+    PaymentActionRequired, PaymentFailed, PaymentMethodAdded, PaymentMethodRemoved,
+    PaymentRecovered, PlanChanged, PlanLimitApproaching, PlanLimitReached, SubscriptionCancelled,
+    SubscriptionPaused, SubscriptionReactivated, SubscriptionResumed, TrialConverted, TrialEnding,
+    TrialExpired, TrialStarted, UsageSummary, Verification,
 };
 use super::transport::EmailTransport;
 use crate::server::{
@@ -63,6 +64,9 @@ pub struct EmailService {
     /// Deployment type of this instance — gates the footer's sender-identity
     /// block (cloud discloses Scanopy LLC; self-hosted does not).
     pub deployment_type: DeploymentType,
+    /// HTTP client for fetching invoice PDFs from Stripe's public links before
+    /// attaching them to billing emails.
+    http: reqwest::Client,
 }
 
 impl EmailService {
@@ -88,6 +92,7 @@ impl EmailService {
             daemon_service,
             public_url,
             deployment_type,
+            http: reqwest::Client::new(),
         }
     }
 
@@ -214,7 +219,6 @@ impl EmailService {
         plan_name: &str,
         trial_days: u32,
         billing_period: &str,
-        base_price: &str,
     ) -> Result<()> {
         self.dispatch(
             to,
@@ -222,7 +226,6 @@ impl EmailService {
                 plan_name,
                 trial_days,
                 billing_period,
-                base_price,
             },
         )
         .await
@@ -235,7 +238,6 @@ impl EmailService {
         plan_name: &str,
         has_payment: bool,
         billing_period: &str,
-        base_price: &str,
     ) -> Result<()> {
         let metrics = self.compute_trial_recap_metrics(org_id).await?;
         self.dispatch(
@@ -244,7 +246,6 @@ impl EmailService {
                 has_payment,
                 plan_name,
                 billing_period,
-                base_price,
                 hosts_count: metrics.hosts_count,
                 networks_count: metrics.networks_count,
                 daemons_count: metrics.daemons_count,
@@ -276,14 +277,12 @@ impl EmailService {
         to: EmailAddress,
         plan_name: &str,
         billing_period: &str,
-        base_price: &str,
     ) -> Result<()> {
         self.dispatch(
             to,
             &TrialConverted {
                 plan_name,
                 billing_period,
-                base_price,
             },
         )
         .await
@@ -335,18 +334,8 @@ impl EmailService {
         &self,
         to: EmailAddress,
         resumes_at: &str,
-        is_yearly: bool,
-        duration_days: u32,
     ) -> Result<()> {
-        self.dispatch(
-            to,
-            &SubscriptionPaused {
-                resumes_at,
-                is_yearly,
-                duration_days,
-            },
-        )
-        .await
+        self.dispatch(to, &SubscriptionPaused { resumes_at }).await
     }
 
     pub async fn send_subscription_resumed_email(&self, to: EmailAddress) -> Result<()> {
@@ -394,30 +383,51 @@ impl EmailService {
             .map(|item| format_invoice_period(item.period_start, item.period_end))
             .unwrap_or_else(|| format_invoice_period(invoice.period_start, invoice.period_end));
         let invoice_date = format_timestamp(invoice.created_at);
-        let currency_str = invoice.currency.clone();
 
-        let mut line_items_html = String::new();
-        for item in &invoice.line_items {
-            let description = item.description.as_deref().unwrap_or("Subscription");
-            let amount = format_cents(item.amount_cents, &currency_str);
-            line_items_html.push_str(&format!(
-                r#"<tr><td style="padding: 8px 0; border-bottom: 1px solid #e5e7eb; font-size: 14px; color: #4a4a4a;">{}</td><td style="padding: 8px 0; border-bottom: 1px solid #e5e7eb; font-size: 14px; color: #4a4a4a; text-align: right;">{}</td></tr>"#,
-                description, amount
-            ));
-        }
-
-        let total = format_cents(invoice.amount_paid_cents, &currency_str);
+        // `amount_paid` already reflects discounts, account credits and pause
+        // credits, so this total is authoritative — but we never re-render line
+        // items here, because a hand-built table won't reconcile against those
+        // separate Stripe credit lines. The canonical breakdown is the invoice
+        // itself: attach the PDF, falling back to the hosted link if Stripe
+        // hasn't rendered the PDF yet.
+        let total = format_cents(invoice.amount_paid_cents, &invoice.currency);
+        let attachment = self.fetch_invoice_pdf(invoice).await;
 
         self.dispatch(
             to,
             &UsageSummary {
                 period: &period,
                 invoice_date: &invoice_date,
-                line_items_html: &line_items_html,
                 total: &total,
+                attachment,
+                hosted_invoice_url: invoice.hosted_invoice_url.as_deref(),
             },
         )
         .await
+    }
+
+    /// Best-effort fetch of the Stripe invoice PDF for attaching. Stripe
+    /// renders the PDF lazily and `invoice_pdf` is a public signed link, so we
+    /// GET it directly with a short timeout; any miss (not ready, slow, error)
+    /// returns `None` and the caller falls back to the hosted invoice URL.
+    async fn fetch_invoice_pdf(&self, invoice: &BillingInvoice) -> Option<EmailAttachment> {
+        let url = invoice.invoice_pdf.as_deref()?;
+        let response = self
+            .http
+            .get(url)
+            .timeout(Duration::from_secs(2))
+            .send()
+            .await
+            .ok()?;
+        if !response.status().is_success() {
+            return None;
+        }
+        let bytes = response.bytes().await.ok()?;
+        Some(EmailAttachment {
+            filename: format!("scanopy-invoice-{}.pdf", invoice.stripe_invoice_id),
+            content_type: "application/pdf".to_string(),
+            bytes: bytes.to_vec(),
+        })
     }
 
     // ========================================================================

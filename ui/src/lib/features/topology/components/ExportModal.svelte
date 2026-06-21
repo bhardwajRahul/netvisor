@@ -12,6 +12,7 @@
 		Moon
 	} from 'lucide-svelte';
 	import { pushError, pushSuccess } from '$lib/shared/stores/feedback';
+	import { activeView } from '../queries';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
 	import { billingPlans } from '$lib/shared/stores/metadata';
 	import { isExporting } from '../interactions';
@@ -680,7 +681,7 @@
 	async function handleMermaidExport() {
 		isOpen = false;
 		try {
-			await downloadTopologyExport(topologyId, 'mermaid');
+			await downloadTopologyExport(topologyId, 'mermaid', $activeView);
 			pushSuccess(topology_exportComplete());
 			trackEvent('topology_exported', { format: 'mermaid' });
 		} catch {
@@ -691,7 +692,7 @@
 	async function handleConfluenceExport() {
 		isOpen = false;
 		try {
-			await downloadTopologyExport(topologyId, 'confluence');
+			await downloadTopologyExport(topologyId, 'confluence', $activeView);
 			pushSuccess(topology_exportComplete());
 			trackEvent('topology_exported', { format: 'confluence' });
 		} catch {

@@ -1,6 +1,5 @@
 use crate::server::{
     billing::types::features::Feature,
-    email::service::format_cents,
     shared::types::{
         Color, Icon,
         metadata::{EntityMetadataProvider, HasId, TypeMetadataProvider},
@@ -311,16 +310,6 @@ impl BillingPlan {
 
     pub fn billing_period(&self) -> &str {
         self.config().rate.billing_period()
-    }
-
-    /// Format a plan's base price for display in emails (e.g. "$14.99/mo")
-    pub fn base_price_formatted(&self) -> String {
-        let config = self.config();
-        let amount = format_cents(config.base_cents, "usd");
-        match config.rate {
-            BillingRate::Month => format!("{}/mo", amount),
-            BillingRate::Year => format!("{}/yr", amount),
-        }
     }
 }
 
@@ -1184,6 +1173,7 @@ impl TypeMetadataProvider for BillingPlan {
     Display,
     strum::EnumString,
     EnumIter,
+    IntoStaticStr,
     ToSchema,
 )]
 #[serde(rename_all = "snake_case")]
@@ -1203,6 +1193,53 @@ pub enum PlanStatus {
     #[serde(alias = "canceled")]
     #[strum(serialize = "cancelled", serialize = "canceled")]
     Cancelled,
+}
+
+impl HasId for PlanStatus {
+    fn id(&self) -> &'static str {
+        self.into()
+    }
+}
+
+impl EntityMetadataProvider for PlanStatus {
+    fn color(&self) -> Color {
+        // Mirrors the former `getPlanStatusColor` mapping in BillingTab.svelte
+        // so the badge text colour is unchanged by the move to metadata.
+        match self {
+            Self::Active => Color::Green,
+            Self::Trialing => Color::Blue,
+            Self::PastDue => Color::Red,
+            Self::PendingCancellation => Color::Amber,
+            Self::Paused => Color::Orange,
+            Self::Cancelled => Color::Yellow,
+        }
+    }
+
+    fn icon(&self) -> Icon {
+        match self {
+            Self::Active => Icon::CircleCheck,
+            Self::Trialing => Icon::Clock,
+            Self::PastDue => Icon::CircleAlert,
+            Self::Paused => Icon::Pause,
+            Self::PendingCancellation => Icon::TriangleAlert,
+            Self::Cancelled => Icon::CircleX,
+        }
+    }
+}
+
+impl TypeMetadataProvider for PlanStatus {
+    fn name(&self) -> &'static str {
+        // `PendingCancellation` reads as "Downgrading" to match the prior
+        // `formatPlanStatus` label the badge rendered.
+        match self {
+            Self::Active => "Active",
+            Self::Trialing => "Trialing",
+            Self::PastDue => "Past due",
+            Self::Paused => "Paused",
+            Self::PendingCancellation => "Downgrading",
+            Self::Cancelled => "Cancelled",
+        }
+    }
 }
 
 // ===========================================================================
@@ -1247,6 +1284,12 @@ pub struct BillingInvoice {
     pub period_end: DateTime<Utc>,
     pub billing_reason: BillingReason,
     pub line_items: Vec<BillingInvoiceLineItem>,
+    /// Public link to Stripe's rendered PDF for this invoice. Stripe generates
+    /// it lazily, so it can be `None` immediately after payment.
+    pub invoice_pdf: Option<String>,
+    /// Public link to Stripe's hosted invoice page — the fallback when the PDF
+    /// isn't ready in time to attach.
+    pub hosted_invoice_url: Option<String>,
 }
 
 // Stripe ships unix-epoch i64 timestamps; fall back to `Utc::now()` on a
@@ -1271,6 +1314,8 @@ impl From<&stripe_billing::Invoice> for BillingInvoice {
                 .iter()
                 .map(BillingInvoiceLineItem::from)
                 .collect(),
+            invoice_pdf: inv.invoice_pdf.clone(),
+            hosted_invoice_url: inv.hosted_invoice_url.clone(),
         }
     }
 }

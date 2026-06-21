@@ -687,7 +687,7 @@ jobs:
   # ============================================
   # Scans the released source tree and every published image for components
   # originating with 889 covered entities. Fails the release on a hit; uploads
-  # the SBOMs as release assets on success. See scripts/889-check.md.
+  # the SBOMs as release assets on success. See tools/889/889-check.md.
   supply-chain-889:
     name: NDAA Section 889 check
     runs-on: ubuntu-latest
@@ -725,7 +725,7 @@ jobs:
           syft scan "registry:${repo}/daemon:${TAG}" -o cyclonedx-json | jq . > "sbom-daemon-${TAG}.cdx.json"
 
       - name: Run 889 check
-        run: ./scripts/check-889.sh sbom-source-"${TAG}".cdx.json sbom-server-"${TAG}".cdx.json sbom-server-commercial-"${TAG}".cdx.json sbom-daemon-"${TAG}".cdx.json
+        run: ./tools/889/check-889.sh sbom-source-"${TAG}".cdx.json sbom-server-"${TAG}".cdx.json sbom-server-commercial-"${TAG}".cdx.json sbom-daemon-"${TAG}".cdx.json
 
       - name: Summary
         if: always()

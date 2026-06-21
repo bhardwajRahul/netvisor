@@ -206,11 +206,26 @@ impl Subscriber<BillingOperation> for OrganizationService {
                     if organization.base.plan.as_ref() != Some(&free_plan) {
                         organization.base.plan = Some(free_plan);
                     }
-                    organization.base.has_payment_method = false;
+                    // NOTE: do NOT touch `has_payment_method` here. Cancelling a
+                    // subscription does not detach the customer's saved cards;
+                    // the flag's sole authoritative writers are
+                    // `PaymentMethodAdded` / `PaymentMethodRemoved` (driven by
+                    // the Stripe `payment_method.attached`/`detached` webhooks).
+                    // Resetting it on cancel/downgrade left it stale-false after
+                    // downgrade-to-Free or resubscribe-without-trial.
                     // Subscription is gone; clear the renewal mirror.
                     if organization.base.next_renewal_at.is_some() {
                         organization.base.next_renewal_at = None;
                     }
+                    // Drop any active save-offer discount — the subscription it
+                    // applied to is gone, so leaving these set would show a stale
+                    // "discount active" chip and could re-apply on resubscribe.
+                    // `last_discount_at` is deliberately preserved so the
+                    // once-per-org eligibility gate still blocks a second
+                    // discount. The Stripe-side discount is removed in
+                    // `BillingService::handle_subscription_deleted`.
+                    organization.base.discount_save_offer_active_until = None;
+                    organization.base.discount_save_offer_percent_off = None;
                     changed = true;
                 }
                 BillingOperation::DiscountApplied {

@@ -1,5 +1,5 @@
 import { get } from 'svelte/store';
-import type { EnrichedTopology } from '../types/base';
+import type { RenderableTopology } from '../types/base';
 import type { LayoutState, PrepareResult } from './types';
 import { LayoutGraph } from '../layout/layout-graph';
 import {
@@ -26,7 +26,7 @@ import { buildTopologyParentIndex } from '../topology-parent-index';
  * "Service entities live in topology.services". Adding a new inlinable entity
  * type is a one-line append.
  */
-const INLINE_ENTITY_COLLECTIONS: Record<string, keyof EnrichedTopology> = {
+const INLINE_ENTITY_COLLECTIONS: Record<string, keyof RenderableTopology> = {
 	Service: 'services',
 	Port: 'ports',
 	Interface: 'interfaces',
@@ -47,7 +47,7 @@ const INLINE_ENTITY_COLLECTIONS: Record<string, keyof EnrichedTopology> = {
  * design trade-off: view-agnostic, fully deterministic, bounded over-trigger
  * (a service name change that doesn't affect card height still re-layouts).
  */
-function getInlineContentKey(topo: EnrichedTopology, view: string): string {
+function getInlineContentKey(topo: RenderableTopology, view: string): string {
 	const meta = views.getMetadata(view) as {
 		element_config?: {
 			element_entities?: Array<{ entity_type: string; inline_entities: string[] }>;
@@ -91,7 +91,7 @@ function getHideStateKey(): string {
 	return [...hidden].sort().join(',');
 }
 
-function getStructureKey(topo: EnrichedTopology, view: string): string {
+function getStructureKey(topo: RenderableTopology, view: string): string {
 	const nodeKeys = topo.nodes
 		.map((n) => {
 			const parentId = n.node_type === 'Element' ? n.container_id : n.parent_container_id;
@@ -111,7 +111,7 @@ function getStructureKey(topo: EnrichedTopology, view: string): string {
  * @returns null to signal "skip this run" (view mismatch, stale data)
  */
 export function prepareTopologyData(
-	topology: EnrichedTopology,
+	topology: RenderableTopology,
 	state: LayoutState,
 	getInfrastructureRuleId: () => string | null
 ): PrepareResult | null {
@@ -132,14 +132,12 @@ export function prepareTopologyData(
 		}
 	}
 
-	// Skip if view changed but topology data hasn't been rebuilt yet
+	// Skip if view changed but the enriched topology hasn't re-sliced yet.
+	// The topology now carries one node/edge set per view and the active
+	// view's slice is selected upstream (toRenderableTopology), so a view switch
+	// always changes the structure key — no per-view data-readiness guard
+	// is needed here.
 	if (viewChanged && !topologyChanged) {
-		return null;
-	}
-
-	// Skip if data was built for a different view than the active view
-	const dataView = topology.options?.request?.view;
-	if (dataView && dataView !== currentView) {
 		return null;
 	}
 
@@ -323,9 +321,19 @@ export function prepareTopologyData(
 	const isNewStructure = state.sessionStructureKey !== structureKey;
 	const isNewBaseStructure = state.sessionBaseKey !== baseKey;
 
-	// Capture expanded sizes before rebuilding the graph
-	const prevExpandedSizes = state.layoutGraph?.getExpandedContainerSizes();
-	const prevChildPositions = state.layoutGraph?.getContainerChildPositions();
+	// Capture expanded sizes/positions before rebuilding the graph — but NOT
+	// across a view switch. The existing layoutGraph belongs to the previous
+	// view, whose nodes/containers differ from this view's slice; restoring its
+	// sizes/positions onto the new view's graph piles children at the origin on
+	// the first expand. On a view switch we start fresh (like a reload) and let
+	// ELK lay out; each view's persisted positions come from its own backend
+	// slice. Same-view re-renders (e.g. expanding a container) still reuse them.
+	const prevExpandedSizes = viewChanged
+		? undefined
+		: state.layoutGraph?.getExpandedContainerSizes();
+	const prevChildPositions = viewChanged
+		? undefined
+		: state.layoutGraph?.getContainerChildPositions();
 
 	// Build/rebuild layout graph when structure changes
 	if (!state.layoutGraph || isNewStructure) {

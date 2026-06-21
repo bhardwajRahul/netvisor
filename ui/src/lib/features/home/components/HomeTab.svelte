@@ -113,7 +113,7 @@
 						<h3 class="text-primary text-base font-semibold">{home_demoEmbedTitle()}</h3>
 						<div class="flex items-center gap-3">
 							<a
-								href="https://demo.scanopy.net/share/a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+								href="https://demo.scanopy.net/share/a1b2c3d4-e5f6-7890-abcd-ef1234567890?utm_source=app&utm_medium=in_app&utm_campaign=demo_embed&utm_content=home_link"
 								target="_blank"
 								rel="noopener noreferrer"
 								class="text-link text-sm hover:underline"
@@ -133,7 +133,7 @@
 					</p>
 					<div class="h-[400px] w-full">
 						<iframe
-							src="https://demo.scanopy.net/share/a1b2c3d4-e5f6-7890-abcd-ef1234567890/embed"
+							src="https://demo.scanopy.net/share/a1b2c3d4-e5f6-7890-abcd-ef1234567890/embed?utm_source=app&utm_medium=in_app&utm_campaign=demo_embed&utm_content=home_embed"
 							width="100%"
 							height="100%"
 							frameborder="0"

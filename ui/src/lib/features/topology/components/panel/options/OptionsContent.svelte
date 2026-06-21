@@ -53,6 +53,11 @@
 	let topology = $derived(topologiesData.find((t) => t.id === $selectedTopologyId));
 
 	// Unified edit state for gating request-path options
+	// Display filters (category / visibility) apply client-side via
+	// `tagHiddenNodeIds`, so they work in a read-only snapshot just like the tag
+	// and edge-type filters — they don't persist (`saveOptions` bails when
+	// read-only) and don't need a rebuild. Read-only enforcement that matters
+	// (grouping rules, which DO need a rebuild) lives in `GroupingRuleEditor`.
 	let editState = $derived(getTopologyEditState(topology, false, false));
 
 	// Live entity arrays drive tag-filter sections. Hosts query populates the
@@ -468,12 +473,15 @@
 	// Sentinel value for the unified dependency toggle
 	const DEPENDENCIES_GROUP = 'Dependencies';
 
+	// Edges for the active view. `topology` is the raw row, whose `edges` are
+	// keyed per view; the options panel reflects the perspective on screen.
+	let activeViewEdges = $derived(topology?.edges?.[$activeView] ?? []);
+
 	// Determine which edge types are dependency edges from metadata
 	let dependencyEdgeTypeIds = $derived.by(() => {
-		if (!topology?.edges) return [] as string[];
 		const seen = new SvelteSet<string>();
 		const depTypes: string[] = [];
-		for (const edge of topology.edges) {
+		for (const edge of activeViewEdges) {
 			const et = edge.edge_type;
 			if (et && !seen.has(et) && !isDisabledEdge(edge)) {
 				seen.add(et);
@@ -487,11 +495,10 @@
 	// Build edge types with colors from edges present in the topology
 	// Dependency edges are collapsed into a single "Dependencies" toggle
 	let edgeTypesWithColors = $derived.by(() => {
-		if (!topology?.edges) return [];
 		const seen: Record<string, boolean> = {};
 		const result: { value: string; label: string; color: Color }[] = [];
 		let addedDepGroup = false;
-		for (const edge of topology.edges) {
+		for (const edge of activeViewEdges) {
 			const edgeType = edge.edge_type;
 			if (edgeType && !seen[edgeType] && !isDisabledEdge(edge)) {
 				seen[edgeType] = true;

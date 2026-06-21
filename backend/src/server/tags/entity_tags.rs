@@ -21,6 +21,23 @@ use crate::server::shared::storage::{
 use crate::server::shared::types::api::ApiError;
 use crate::server::tags::service::TagService;
 
+/// Build the `entity_tags` lookup filter for a batch of entities.
+///
+/// `snapshot_id = None` → live associations (`valid_to IS NULL`).
+/// `snapshot_id = Some(id)` → the associations captured under that snapshot.
+fn entity_tags_filter(
+    entity_ids: &[Uuid],
+    entity_type: &EntityDiscriminants,
+    snapshot_id: Option<Uuid>,
+) -> StorableFilter<EntityTag> {
+    let base = StorableFilter::<EntityTag>::new_from_uuids_column("entity_id", entity_ids)
+        .entity_type(entity_type);
+    match snapshot_id {
+        None => base.live(),
+        Some(id) => base.snapshot_id(&id),
+    }
+}
+
 // =============================================================================
 // Entity Tag (Junction Table)
 // =============================================================================
@@ -212,21 +229,26 @@ impl EntityTagStorage {
     }
 
     /// Get tag IDs for multiple entities of the same type (batch loading).
-    /// SCD2: live rows only — soft-closed associations are excluded.
     /// Returns a map of entity_id -> Vec<tag_id>.
+    ///
+    /// `snapshot_id = None` reads live associations (`valid_to IS NULL`).
+    /// `snapshot_id = Some(id)` reads the closed copies captured under that
+    /// snapshot — `entity_ids` are then the closed-copy entity ids (matching
+    /// the snapshot entities the topology read loads).
     pub async fn get_for_entities(
         &self,
         entity_ids: &[Uuid],
         entity_type: &EntityDiscriminants,
+        snapshot_id: Option<Uuid>,
     ) -> Result<HashMap<Uuid, Vec<Uuid>>> {
         if entity_ids.is_empty() {
             return Ok(HashMap::new());
         }
 
-        let filter = StorableFilter::<EntityTag>::new_from_uuids_column("entity_id", entity_ids)
-            .entity_type(entity_type)
-            .live();
-        let records = self.storage.get_all(filter).await?;
+        let records = self
+            .storage
+            .get_all(entity_tags_filter(entity_ids, entity_type, snapshot_id))
+            .await?;
 
         let mut result: HashMap<Uuid, Vec<Uuid>> = HashMap::new();
         for record in records {
@@ -484,7 +506,7 @@ impl EntityTagService {
         let ids: Vec<Uuid> = entities.iter().map(|e| e.id()).collect();
         let tags_map = self
             .storage
-            .get_for_entities(&ids, &T::entity_type())
+            .get_for_entities(&ids, &T::entity_type(), None)
             .await?;
 
         for entity in entities {
@@ -496,13 +518,17 @@ impl EntityTagService {
     }
 
     /// Get tags for multiple entities as a map (useful when building response types).
+    ///
+    /// `snapshot_id = None` reads live associations; `Some(id)` reads the
+    /// associations captured under that snapshot (entity_ids are closed-copy ids).
     pub async fn get_tags_map(
         &self,
         entity_ids: &[Uuid],
         entity_type: EntityDiscriminants,
+        snapshot_id: Option<Uuid>,
     ) -> Result<HashMap<Uuid, Vec<Uuid>>> {
         self.storage
-            .get_for_entities(entity_ids, &entity_type)
+            .get_for_entities(entity_ids, &entity_type, snapshot_id)
             .await
     }
 
@@ -714,5 +740,37 @@ impl EntityTagService {
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod entity_tags_filter_tests {
+    use super::*;
+
+    #[test]
+    fn live_filter_excludes_closed_and_omits_snapshot_id() {
+        let ids = [Uuid::new_v4()];
+        let where_clause =
+            entity_tags_filter(&ids, &EntityDiscriminants::Host, None).to_where_clause();
+        assert!(
+            where_clause.contains("valid_to IS NULL"),
+            "live filter must restrict to live rows: {where_clause}"
+        );
+        assert!(
+            !where_clause.contains("snapshot_id"),
+            "live filter must not filter by snapshot_id: {where_clause}"
+        );
+    }
+
+    #[test]
+    fn snapshot_filter_scopes_to_snapshot_id() {
+        let ids = [Uuid::new_v4()];
+        let snapshot_id = Uuid::new_v4();
+        let where_clause = entity_tags_filter(&ids, &EntityDiscriminants::Host, Some(snapshot_id))
+            .to_where_clause();
+        assert!(
+            where_clause.contains("snapshot_id"),
+            "snapshot filter must scope by snapshot_id: {where_clause}"
+        );
     }
 }

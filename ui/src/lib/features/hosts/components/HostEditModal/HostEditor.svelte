@@ -554,6 +554,8 @@
 				<div class="flex h-full flex-col">
 					<VirtualizationForm
 						virtualizationManagerServices={vmManagerServices}
+						managedHostUpdates={vmManagedHostUpdates}
+						editedServices={formData.services}
 						onServiceChange={handleVirtualizationServiceChange}
 						onVirtualizedHostChange={handleVirtualizationHostChange}
 					/>

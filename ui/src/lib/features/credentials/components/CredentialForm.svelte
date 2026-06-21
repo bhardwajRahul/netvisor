@@ -150,6 +150,7 @@
 			}
 		}
 		fieldValues = values;
+		syncSelectFieldsToForm(raw.type as string);
 	}
 
 	function initDefaultFieldValues(typeId: string) {
@@ -164,6 +165,22 @@
 			}
 		}
 		fieldValues = values;
+		syncSelectFieldsToForm(typeId);
+	}
+
+	// `select` fields are rendered manually and only push their value into the
+	// TanStack form on change. Seed the form with the current value so a required
+	// select with a default validates without the user re-picking the option.
+	function syncSelectFieldsToForm(typeId: string) {
+		const fields = credentialTypes.getMetadata(typeId)?.fields ?? [];
+		for (const field of fields) {
+			if (field.field_type === 'select') {
+				form.setFieldValue?.(
+					fieldName(field.id),
+					fieldValues[field.id] ?? field.default_value ?? ''
+				);
+			}
+		}
 	}
 
 	export function reset() {
@@ -632,7 +649,7 @@
 				</div>
 			{/if}
 
-			{#if selectedTypeId === 'SnmpV2c'}
+			{#if selectedTypeId === 'SnmpV1' || selectedTypeId === 'SnmpV2c' || selectedTypeId === 'SnmpV3'}
 				<DocsHint
 					text={credentials_docsSnmp()}
 					href="https://scanopy.net/docs/guides/snmp-credentials/"
@@ -692,8 +709,8 @@
 						class="select-trigger text-primary w-full rounded-md px-3 py-2 text-sm"
 						class:input-field-error={formField.state.meta.errors?.length > 0}
 					>
-						{#each field.options ?? [] as option (option)}
-							<option value={option}>{option}</option>
+						{#each field.options ?? [] as option (option.value)}
+							<option value={option.value}>{option.label}</option>
 						{/each}
 					</select>
 				{/snippet}
@@ -797,7 +814,9 @@
 									formField.handleChange(target.value);
 								}}
 								onblur={() => formField.handleBlur()}
-								placeholder="/etc/docker/certs/key.pem"
+								placeholder={field.inline_format === 'pemprivatekey'
+									? '/path/to/key.pem'
+									: '/path/to/secret'}
 								class="input-field text-primary w-full rounded-md px-3 py-2 text-sm"
 								class:input-field-error={formField.state.meta.errors?.length > 0}
 							/>

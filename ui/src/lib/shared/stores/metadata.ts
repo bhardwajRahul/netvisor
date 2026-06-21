@@ -9,6 +9,7 @@ import portsJson from '$lib/data/ports.json';
 import discoveryTypesJson from '$lib/data/discovery-types.json';
 import discoveryPhasesJson from '$lib/data/discovery-phases.json';
 import billingPlansJson from '$lib/data/billing-plans-all.json';
+import planStatusesJson from '$lib/data/plan-statuses.json';
 import featuresJson from '$lib/data/features.json';
 import permissionsJson from '$lib/data/permissions.json';
 import credentialTypesJson from '$lib/data/credential-types.json';
@@ -48,7 +49,8 @@ export interface FieldDefinition {
 	secret: boolean;
 	optional: boolean;
 	help_text?: string;
-	options?: string[];
+	/** Choices for `select` fields: wire `value` + human-facing `label`. */
+	options?: { value: string; label: string }[];
 	default_value?: string;
 	inline_format?: 'plain' | 'pemprivatekey' | 'pemcertificate';
 	group?: string;
@@ -79,6 +81,7 @@ export interface MetadataRegistry {
 	discovery_types: TypeMetadata[];
 	discovery_phases: TypeMetadata[];
 	billing_plans: TypeMetadata[];
+	plan_statuses: TypeMetadata[];
 	features: TypeMetadata[];
 	permissions: TypeMetadata[];
 	concepts: EntityMetadata[];
@@ -150,6 +153,15 @@ export interface BillingPlanMetadata {
 export interface ServicedDefinitionMetadata {
 	can_be_added: boolean;
 	manages_virtualization: 'vms' | 'containers';
+	/**
+	 * Serde discriminant the manual-assignment UI must use when associating
+	 * VMs/containers with this manager (e.g. 'Proxmox', 'VCenter', 'Podman').
+	 * null for services that don't manage virtualization.
+	 */
+	virtualization_variant:
+		| components['schemas']['HostVirtualization']['type']
+		| components['schemas']['ServiceVirtualization']['type']
+		| null;
 	has_logo: boolean;
 	logo_ext: string;
 	logo_needs_white_background: boolean;
@@ -224,6 +236,7 @@ export const metadata = writable<MetadataRegistry>({
 	discovery_types: discoveryTypesJson,
 	discovery_phases: discoveryPhasesJson,
 	billing_plans: billingPlansJson,
+	plan_statuses: planStatusesJson,
 	features: featuresJson,
 	permissions: permissionsJson,
 	concepts: conceptsJson,
@@ -416,6 +429,7 @@ export const discoveryPhases = createTypeMetadataHelpers<
 export const billingPlans = createTypeMetadataHelpers<'billing_plans', BillingPlanMetadata>(
 	'billing_plans'
 );
+export const planStatuses = createTypeMetadataHelpers<'plan_statuses', object>('plan_statuses');
 export const features = createTypeMetadataHelpers<'features', FeatureMetadata>('features');
 export const permissions = createTypeMetadataHelpers<'permissions', PermissionsMetadata>(
 	'permissions'

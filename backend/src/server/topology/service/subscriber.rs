@@ -32,7 +32,7 @@ use crate::server::{
         storage::{filter::StorableFilter as StorageFilter, traits::Storage},
     },
     topology::{
-        service::main::{BuildGraphParams, TopologyService},
+        service::main::TopologyService,
         types::base::{Topology, TopologyBase},
     },
 };
@@ -149,25 +149,12 @@ impl TopologyService {
 
         let data = self.get_topology_data(network_id, None).await?;
 
-        let (nodes, edges) = self.build_graph(BuildGraphParams {
-            options: &live.base.options,
-            hosts: &data.hosts,
-            ip_addresses: &data.ip_addresses,
-            subnets: &data.subnets,
-            services: &data.services,
-            dependencies: &data.dependencies,
-            ports: &data.ports,
-            bindings: &data.bindings,
-            interfaces: &data.interfaces,
-            entity_tags: &data.tags,
-            vlans: &data.vlans,
-            old_nodes: live.base.nodes.as_slice(),
-            old_edges: live.base.edges.as_slice(),
-            old_view: None,
-        });
+        // Rebuild every view's slice so any active perspective reflects current
+        // entity state. The existing per-view slices seed `old_*` so layout is
+        // preserved across rebuilds.
+        let (nodes, edges) = self.build_all_view_graphs(&data, &live.base.options, Some(&live));
 
-        live.base.nodes = nodes;
-        live.base.edges = edges;
+        live.set_all_graphs(nodes, edges);
         self.storage().update(&mut live).await?;
         Ok(())
     }
@@ -199,22 +186,7 @@ impl TopologyService {
             .get_topology_data(network_id, Some(snapshot_id))
             .await?;
 
-        let (nodes, edges) = self.build_graph(BuildGraphParams {
-            options: &live_options,
-            hosts: &data.hosts,
-            ip_addresses: &data.ip_addresses,
-            subnets: &data.subnets,
-            services: &data.services,
-            dependencies: &data.dependencies,
-            ports: &data.ports,
-            bindings: &data.bindings,
-            interfaces: &data.interfaces,
-            entity_tags: &data.tags,
-            vlans: &data.vlans,
-            old_nodes: &[],
-            old_edges: &[],
-            old_view: None,
-        });
+        let (nodes, edges) = self.build_all_view_graphs(&data, &live_options, None);
 
         let topology = Topology {
             id: Uuid::new_v4(),

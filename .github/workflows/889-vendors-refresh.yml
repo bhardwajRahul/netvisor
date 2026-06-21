@@ -1,8 +1,8 @@
 # Quarterly reminder to review the NDAA Section 889 prohibited-vendor list.
 # Opens (or refreshes) a tracking issue prompting a maintainer to re-pull SAM.gov
-# (FAR 52.204-25) and review ASPI, then update scripts/889-vendors.txt. The
+# (FAR 52.204-25) and review ASPI, then update tools/889/889-vendors.txt. The
 # matcher stays offline; this job never edits the list itself. See
-# scripts/889-check.md for why automated fetch-and-PR was deferred.
+# tools/889/889-check.md for why automated fetch-and-PR was deferred.
 name: 889 Vendor List Refresh
 
 on:
@@ -24,7 +24,7 @@ jobs:
           script: |
             const title = 'Quarterly review: NDAA Section 889 vendor list';
             const body = [
-              'Time for the quarterly review of `scripts/889-vendors.txt`.',
+              'Time for the quarterly review of `tools/889/889-vendors.txt`.',
               '',
               '- [ ] Re-pull the SAM.gov Exclusions extract filtered to FAR 52.204-25',
               '      (https://sam.gov/data-services/Exclusions/Public) and add any new',
@@ -33,9 +33,9 @@ jobs:
               '      (https://chinatechmap.aspi.org.au/) for new affiliates.',
               '- [ ] Confirm the five named entities and known subsidiaries are still current.',
               '- [ ] Update the `date` stamp on any reviewed/added rows.',
-              '- [ ] Re-check `scripts/889-allow.txt` exceptions still apply.',
+              '- [ ] Re-check `tools/889/889-allow.txt` exceptions still apply.',
               '',
-              'Methodology and rationale: `scripts/889-check.md`.',
+              'Methodology and rationale: `tools/889/889-check.md`.',
             ].join('\n');
 
             const existing = await github.rest.issues.listForRepo({

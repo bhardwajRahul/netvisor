@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { Node } from '@xyflow/svelte';
 	import TagPickerInline from '$lib/features/tags/components/TagPickerInline.svelte';
-	import type { EnrichedTopology, TopologyNode } from '$lib/features/topology/types/base';
+	import type { RenderableTopology, TopologyNode } from '$lib/features/topology/types/base';
 	import type { TopologyEditState } from '$lib/features/topology/state';
 	import { resolveTagTarget } from '$lib/features/topology/resolvers';
 	import { useTagsQuery } from '$lib/features/tags/queries';
@@ -13,7 +13,7 @@
 		editState
 	}: {
 		node: Node;
-		topology: EnrichedTopology;
+		topology: RenderableTopology;
 		editState: TopologyEditState;
 	} = $props();
 

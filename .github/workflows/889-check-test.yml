@@ -2,7 +2,7 @@ name: 889 Check (test)
 
 # One-off, manually triggered end-to-end exercise of the NDAA Section 889
 # supply-chain check. Generates a source SBOM and a container-image SBOM with
-# syft, then runs scripts/check-889.sh against both. Fully offline matcher; no
+# syft, then runs tools/889/check-889.sh against both. Fully offline matcher; no
 # secrets required. Run this from the Actions tab and watch it go green before
 # relying on the release/PR wiring.
 
@@ -75,7 +75,7 @@ jobs:
           # to stderr. Capture the exit code, surface both, then fail on a hit.
           set +e
           # shellcheck disable=SC2086
-          ./scripts/check-889.sh --json $SBOMS > hits.jsonl
+          ./tools/889/check-889.sh --json $SBOMS > hits.jsonl
           rc=$?
           set -e
           cat hits.jsonl

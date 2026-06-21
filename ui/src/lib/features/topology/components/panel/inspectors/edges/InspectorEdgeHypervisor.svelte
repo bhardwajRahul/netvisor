@@ -5,7 +5,8 @@
 	import { HostDisplay } from '$lib/shared/components/forms/selection/display/HostDisplay.svelte';
 	import { useTopology, selectedTopologyId } from '$lib/features/topology/context';
 	import { getTopologyEditState } from '$lib/features/topology/state';
-	import type { EnrichedTopology } from '$lib/features/topology/types/base';
+	import { topologyReadOnly } from '$lib/features/topology/queries';
+	import type { RenderableTopology } from '$lib/features/topology/types/base';
 	import {
 		hosts_virtualization_hypervisorService,
 		hosts_virtualization_virtualMachines,
@@ -16,12 +17,12 @@
 
 	const topo = useTopology();
 	const topoStore = topo.fromContext ? topo.store : null;
-	let isReadonly = topo.isReadonly;
+	let isReadonly = $derived(topo.isReadonly || $topologyReadOnly);
 	let topology = $derived(
 		topoStore
 			? $topoStore
 			: (topo.query?.data?.find((t) => t.id === $selectedTopologyId) as
-					| EnrichedTopology
+					| RenderableTopology
 					| undefined)
 	);
 

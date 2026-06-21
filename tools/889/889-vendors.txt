@@ -1,0 +1,49 @@
+# ==============================================================================
+# 889-vendors.txt — NDAA Section 889 prohibited-vendor pattern list
+# ==============================================================================
+#
+# Single source of truth read by tools/889/check-889.sh. Each component in an
+# SBOM is matched (case-insensitively) against the patterns below.
+#
+# FORMAT (one entry per line, no spaces around the ';' delimiters):
+#   pattern;source;date;note
+#     pattern  Extended regular expression (ERE). Use one entry per alternative
+#              rather than '|' alternation, for clarity. For short, ambiguous
+#              tokens use portable word boundaries: (^|[^a-z0-9])tok([^a-z0-9]|$)
+#     source   Where the entry came from: "named-entity" | "SAM.gov" | "ASPI"
+#              | "internal review"
+#     date     ISO date the entry was added / last reviewed (YYYY-MM-DD)
+#     note     Free text (may contain spaces); typically the parent entity
+#
+# Lines starting with '#' and blank lines are ignored.
+#
+# Seed methodology, source URLs, and the refresh process: see tools/889/889-check.md
+# ==============================================================================
+
+# --- Root covered entities (NDAA Sec. 889(f)(3)) ------------------------------
+huawei;named-entity;2026-06-18;Huawei Technologies — 889 covered entity
+(^|[^a-z0-9])zte([^a-z0-9]|$);named-entity;2026-06-18;ZTE Corporation — 889 covered entity
+hytera;named-entity;2026-06-18;Hytera Communications — 889 covered entity
+hikvision;named-entity;2026-06-18;Hangzhou Hikvision — 889 covered entity
+dahua;named-entity;2026-06-18;Dahua Technology — 889 covered entity
+
+# --- Known subsidiaries / brand names traceable to a covered entity -----------
+hisilicon;internal review;2026-06-18;HiSilicon — Huawei semiconductor subsidiary
+harmonyos;internal review;2026-06-18;HarmonyOS — Huawei operating system
+openharmony;internal review;2026-06-18;OpenHarmony — Huawei-originated OS project
+ezviz;internal review;2026-06-18;EZVIZ — Hikvision consumer brand
+(^|[^a-z0-9])nubia([^a-z0-9]|$);internal review;2026-06-18;Nubia — ZTE smartphone brand
+(^|[^a-z0-9])lorex([^a-z0-9]|$);internal review;2026-06-18;Lorex — formerly Dahua-owned brand
+zhejiang dahua;internal review;2026-06-18;Zhejiang Dahua — Dahua legal entity name
+hangzhou hikvision;internal review;2026-06-18;Hangzhou Hikvision Digital Technology
+
+# --- SAM.gov FAR 52.204-25 excluded parties (seed) ----------------------------
+# Pulled from the SAM.gov Exclusions extract filtered to FAR 52.204-25 causes.
+# Dataset URL documented in tools/889/889-check.md. Re-pull each refresh cycle.
+huawei technologies;SAM.gov;2026-06-18;FAR 52.204-25 excluded party
+zte corporation;SAM.gov;2026-06-18;FAR 52.204-25 excluded party
+hytera communications;SAM.gov;2026-06-18;FAR 52.204-25 excluded party
+
+# --- ASPI "Mapping China's Tech Giants" affiliates ----------------------------
+# Affiliates that add identity patterns the lists above do not already cover.
+honor device;ASPI;2026-06-18;Honor — former Huawei sub-brand, divested 2020 (kept for legacy artifacts)

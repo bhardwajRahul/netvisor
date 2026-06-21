@@ -3099,19 +3099,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-06-19T01:30:30.425386Z",
+             *       "created_at": "2026-06-21T03:53:52.132391Z",
              *       "first_discovery_id": null,
-             *       "id": "beec4571-b558-442a-8ddf-5f7f6ed03736",
+             *       "id": "79412b8c-f181-44f7-9f2e-3ecaeb31750c",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-06-19T01:30:30.425386Z",
+             *       "last_seen_at": "2026-06-21T03:53:52.132391Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-06-19T01:30:30.425386Z",
-             *       "valid_from": "2026-06-19T01:30:30.425386Z",
+             *       "updated_at": "2026-06-21T03:53:52.132391Z",
+             *       "valid_from": "2026-06-21T03:53:52.132391Z",
              *       "valid_to": null
              *     }
              */
@@ -3448,19 +3448,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-06-19T01:30:30.410334Z",
+             *               "created_at": "2026-06-21T03:53:52.113078Z",
              *               "first_discovery_id": null,
-             *               "id": "f8e0d596-f3c3-4519-9a94-ebc36c3dcdb3",
+             *               "id": "c846d3ed-f62b-4462-8296-d632ddc365b3",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-06-19T01:30:30.410334Z",
+             *               "last_seen_at": "2026-06-21T03:53:52.113078Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-06-19T01:30:30.410334Z",
-             *               "valid_from": "2026-06-19T01:30:30.410334Z",
+             *               "updated_at": "2026-06-21T03:53:52.113078Z",
+             *               "valid_from": "2026-06-21T03:53:52.113078Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3474,7 +3474,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Prometheus",
+             *           "service_definition": "FreeIPA",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3830,19 +3830,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-06-19T01:30:30.420682Z",
+             *           "created_at": "2026-06-21T03:53:52.126125Z",
              *           "first_discovery_id": null,
-             *           "id": "62e5f913-522f-4bef-8bf0-711300ff6fc4",
+             *           "id": "d4883e5b-dc06-425e-83d9-16e462acab90",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-06-19T01:30:30.420682Z",
+             *           "last_seen_at": "2026-06-21T03:53:52.126125Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-06-19T01:30:30.420682Z",
-             *           "valid_from": "2026-06-19T01:30:30.420682Z",
+             *           "updated_at": "2026-06-21T03:53:52.126125Z",
+             *           "valid_from": "2026-06-21T03:53:52.126125Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -3856,7 +3856,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Prometheus",
+             *       "service_definition": "FreeIPA",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4067,6 +4067,14 @@ export interface components {
              *     persisted on the topology row.
              */
             data?: {
+                /**
+                 * @description Views whose data is present in this entity set (L3/Workloads always;
+                 *     L2 Physical iff LLDP/CDP neighbors exist; Application iff app-flagged
+                 *     tags are used). The topology tab restricts a snapshot's view picker to
+                 *     these — you can't set up SNMP or create app tags on a historical
+                 *     snapshot — while the live view shows all views with setup prompts.
+                 */
+                available_views?: components["schemas"]["TopologyView"][];
                 bindings: components["schemas"]["Binding"][];
                 dependencies: components["schemas"]["Dependency"][];
                 hosts: components["schemas"]["Host"][];
@@ -4309,19 +4317,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-06-19T01:30:30.410591Z",
+         *       "created_at": "2026-06-21T03:53:52.113531Z",
          *       "first_discovery_id": null,
-         *       "id": "d6c8c687-f553-49a4-b9dc-476c7f1ed18c",
+         *       "id": "d6fffd70-3e6f-4cca-ad12-698c65457c50",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-06-19T01:30:30.410591Z",
+         *       "last_seen_at": "2026-06-21T03:53:52.113531Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-06-19T01:30:30.410591Z",
-         *       "valid_from": "2026-06-19T01:30:30.410591Z",
+         *       "updated_at": "2026-06-21T03:53:52.113531Z",
+         *       "valid_from": "2026-06-21T03:53:52.113531Z",
          *       "valid_to": null
          *     }
          */
@@ -4536,7 +4544,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Prometheus",
+         *           "service_definition": "FreeIPA",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -4640,7 +4648,21 @@ export interface components {
         CredentialType: {
             community: components["schemas"]["SecretValue"];
             /** @enum {string} */
+            type: "SnmpV1";
+        } | {
+            community: components["schemas"]["SecretValue"];
+            /** @enum {string} */
             type: "SnmpV2c";
+        } | {
+            auth_password: components["schemas"]["SecretValue"];
+            auth_protocol: components["schemas"]["SnmpV3AuthProtocol"];
+            /** @description Optional context name (default/empty context used if unset). */
+            context_name?: string | null;
+            priv_password: components["schemas"]["SecretValue"];
+            priv_protocol: components["schemas"]["SnmpV3PrivProtocol"];
+            security_name: string;
+            /** @enum {string} */
+            type: "SnmpV3";
         } | {
             /** @description Optional URL path prefix (e.g. "/v1.43") */
             path?: string | null;
@@ -5278,6 +5300,12 @@ export interface components {
             /** @enum {string} */
             type: "Unknown";
         };
+        EsxiVirtualization: {
+            /** Format: uuid */
+            service_id: string;
+            vm_id?: string | null;
+            vm_name?: string | null;
+        };
         /** @description Non-secret value that can be inline content or a file path on daemon host. */
         FileOrInline: {
             /** @enum {string} */
@@ -5498,19 +5526,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-06-19T01:30:30.410001Z",
+         *               "created_at": "2026-06-21T03:53:52.112561Z",
          *               "first_discovery_id": null,
-         *               "id": "d1489f84-d854-4a63-a4df-1ae64114464b",
+         *               "id": "1b84504d-171e-4a08-b037-103f9229a5cf",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-06-19T01:30:30.410001Z",
+         *               "last_seen_at": "2026-06-21T03:53:52.112561Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-06-19T01:30:30.410001Z",
-         *               "valid_from": "2026-06-19T01:30:30.410001Z",
+         *               "updated_at": "2026-06-21T03:53:52.112561Z",
+         *               "valid_from": "2026-06-21T03:53:52.112561Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -5524,7 +5552,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Prometheus",
+         *           "service_definition": "FreeIPA",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -5577,6 +5605,14 @@ export interface components {
             details: components["schemas"]["ProxmoxVirtualization"];
             /** @enum {string} */
             type: "Proxmox";
+        } | {
+            details: components["schemas"]["VCenterVirtualization"];
+            /** @enum {string} */
+            type: "VCenter";
+        } | {
+            details: components["schemas"]["EsxiVirtualization"];
+            /** @enum {string} */
+            type: "ESXi";
         };
         /**
          * @example {
@@ -6585,6 +6621,13 @@ export interface components {
             /** Format: int64 */
             seat_limit?: number | null;
         };
+        PodmanVirtualization: {
+            compose_project?: string | null;
+            container_id?: string | null;
+            container_name?: string | null;
+            /** Format: uuid */
+            service_id: string;
+        };
         /**
          * @description Port entity with custom serialization that flattens PortType fields.
          * @example {
@@ -6939,19 +6982,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-06-19T01:30:30.410540Z",
+         *           "created_at": "2026-06-21T03:53:52.113435Z",
          *           "first_discovery_id": null,
-         *           "id": "84b87929-8caa-419d-b7fa-218a5810aeea",
+         *           "id": "b617af18-d40c-48cf-9a13-04d8c82ac660",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-06-19T01:30:30.410540Z",
+         *           "last_seen_at": "2026-06-21T03:53:52.113435Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-06-19T01:30:30.410540Z",
-         *           "valid_from": "2026-06-19T01:30:30.410540Z",
+         *           "updated_at": "2026-06-21T03:53:52.113435Z",
+         *           "valid_from": "2026-06-21T03:53:52.113435Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -6965,7 +7008,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Prometheus",
+         *       "service_definition": "FreeIPA",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -7015,7 +7058,7 @@ export interface components {
             virtualization?: null | components["schemas"]["ServiceVirtualization"];
         };
         /** @enum {string} */
-        ServiceCategory: "NetworkCore" | "NetworkAccess" | "NetworkAppliance" | "RemoteAccess" | "Storage" | "Backup" | "Media" | "HomeAutomation" | "Hypervisor" | "ContainerRuntime" | "Container" | "Orchestrator" | "DNS" | "VPN" | "Monitoring" | "AdBlock" | "ReverseProxy" | "Workstation" | "Mobile" | "IoT" | "Printer" | "Database" | "Development" | "Dashboard" | "MessageQueue" | "IdentityAndAccess" | "Office" | "ProjectManagement" | "Messaging" | "Conferencing" | "Telephony" | "Email" | "Publishing" | "Unknown" | "Custom" | "Scanopy" | "OpenPorts";
+        ServiceCategory: "NetworkCore" | "NetworkAccess" | "NetworkAppliance" | "RemoteAccess" | "Storage" | "Backup" | "Media" | "HomeAutomation" | "Hypervisor" | "ContainerRuntime" | "Container" | "Orchestrator" | "DNS" | "VPN" | "Monitoring" | "AdBlock" | "ReverseProxy" | "Workstation" | "Mobile" | "IoT" | "Printer" | "Database" | "Development" | "Dashboard" | "MessageQueue" | "IdentityAndAccess" | "Integration" | "Office" | "ProjectManagement" | "Messaging" | "Conferencing" | "Telephony" | "Email" | "Publishing" | "Unknown" | "Custom" | "Scanopy" | "OpenPorts";
         /**
          * @description Input for creating or updating a service.
          *     Used in both CreateHostRequest and UpdateHostRequest.
@@ -7055,6 +7098,10 @@ export interface components {
             details: components["schemas"]["DockerVirtualization"];
             /** @enum {string} */
             type: "Docker";
+        } | {
+            details: components["schemas"]["PodmanVirtualization"];
+            /** @enum {string} */
+            type: "Podman";
         };
         /** @description Request body for setting all tags on an entity */
         SetTagsRequest: {
@@ -7150,6 +7197,19 @@ export interface components {
             /** Format: date-time */
             taken_at: string;
         };
+        /**
+         * @description SNMPv3 USM authentication protocol. Variants are limited to the modern,
+         *     secure set Scanopy supports; MD5 / SHA-2 variants beyond these are
+         *     intentionally excluded. Serialized form (e.g. "Sha256") is the wire value
+         *     stored in the credential and used as the frontend select option value.
+         * @enum {string}
+         */
+        SnmpV3AuthProtocol: "Sha1" | "Sha256";
+        /**
+         * @description SNMPv3 USM privacy (encryption) protocol.
+         * @enum {string}
+         */
+        SnmpV3PrivProtocol: "Aes128" | "Aes256";
         /**
          * @example {
          *       "cidr": "192.168.1.0/24",
@@ -7287,10 +7347,14 @@ export interface components {
             readonly updated_at: string;
         };
         TopologyBase: {
-            edges: components["schemas"]["Edge"][];
+            edges?: {
+                [key: string]: components["schemas"]["Edge"][];
+            };
             /** Format: uuid */
             network_id: string;
-            nodes: components["schemas"]["Node"][];
+            nodes?: {
+                [key: string]: components["schemas"]["Node"][];
+            };
             options: components["schemas"]["TopologyOptions"];
             /**
              * Format: uuid
@@ -7307,6 +7371,14 @@ export interface components {
          *     persisted on the topology row.
          */
         TopologyData: {
+            /**
+             * @description Views whose data is present in this entity set (L3/Workloads always;
+             *     L2 Physical iff LLDP/CDP neighbors exist; Application iff app-flagged
+             *     tags are used). The topology tab restricts a snapshot's view picker to
+             *     these — you can't set up SNMP or create app tags on a historical
+             *     snapshot — while the live view shows all views with setup prompts.
+             */
+            available_views?: components["schemas"]["TopologyView"][];
             bindings: components["schemas"]["Binding"][];
             dependencies: components["schemas"]["Dependency"][];
             hosts: components["schemas"]["Host"][];
@@ -7340,6 +7412,8 @@ export interface components {
             source_handle: components["schemas"]["EdgeHandle"];
             /** @description New target handle position */
             target_handle: components["schemas"]["EdgeHandle"];
+            /** @description View whose node/edge slice this update targets */
+            view: components["schemas"]["TopologyView"];
         };
         TopologyLocalOptions: {
             bundle_edges?: boolean;
@@ -7368,6 +7442,8 @@ export interface components {
             node_id: string;
             /** @description New position for the node */
             position: components["schemas"]["Ixy"];
+            /** @description View whose node/edge slice this update targets */
+            view: components["schemas"]["TopologyView"];
         };
         /**
          * @description Lightweight request type for updating a node's size and position.
@@ -7391,6 +7467,8 @@ export interface components {
             position: components["schemas"]["Ixy"];
             /** @description New size for the node */
             size: components["schemas"]["Uxy"];
+            /** @description View whose node/edge slice this update targets */
+            view: components["schemas"]["TopologyView"];
         };
         TopologyOptions: {
             local: components["schemas"]["TopologyLocalOptions"];
@@ -7424,7 +7502,6 @@ export interface components {
                     };
                 };
             };
-            view?: components["schemas"]["TopologyView"];
         };
         /** @description Filter settings for hiding entities by tag in topology visualization. */
         TopologyTagFilter: {
@@ -7566,6 +7643,12 @@ export interface components {
         Uxy: {
             x: number;
             y: number;
+        };
+        VCenterVirtualization: {
+            /** Format: uuid */
+            service_id: string;
+            vm_id?: string | null;
+            vm_name?: string | null;
         };
         /** @description Request to verify email using token */
         VerifyEmailRequest: {
@@ -14232,7 +14315,10 @@ export interface operations {
     };
     export_confluence: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description View to export. Defaults to the default view when omitted. */
+                view?: components["schemas"]["TopologyView"];
+            };
             header?: never;
             path: {
                 /** @description Topology ID */
@@ -14273,7 +14359,10 @@ export interface operations {
     };
     export_mermaid: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description View to export. Defaults to the default view when omitted. */
+                view?: components["schemas"]["TopologyView"];
+            };
             header?: never;
             path: {
                 /** @description Topology ID */

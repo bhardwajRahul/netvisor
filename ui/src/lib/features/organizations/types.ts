@@ -21,3 +21,16 @@ export function isBillingPlanActive(organization: Organization): boolean {
 		organization.plan_status == 'paused'
 	);
 }
+
+/**
+ * A genuine paid subscription is live. Stricter than {@link isBillingPlanActive}
+ * (which is the permissive hard-gate predicate): this gates the
+ * "Subscription activated successfully!" toast so it doesn't fire for
+ * downgrade-to-Free, pause, past_due, or pending_cancellation.
+ */
+export function isPaidSubscriptionActive(organization: Organization): boolean {
+	const type = organization.plan?.type;
+	if (type == null) return false;
+	if (billingPlans.getMetadata(type).is_stripe_managed !== true) return false;
+	return organization.plan_status == 'active' || organization.plan_status == 'trialing';
+}

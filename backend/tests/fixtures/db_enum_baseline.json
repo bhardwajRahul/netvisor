@@ -40,7 +40,9 @@
   "CredentialType": [
     "SnmpV2c",
     "DockerProxy",
-    "DockerSocket"
+    "DockerSocket",
+    "SnmpV1",
+    "SnmpV3"
   ],
   "DaemonMode": [
     "ServerPoll",
@@ -90,7 +92,9 @@
     "Unknown"
   ],
   "HostVirtualization": [
-    "Proxmox"
+    "Proxmox",
+    "VCenter",
+    "ESXi"
   ],
   "LldpChassisId": [
     "ChassisComponent",
@@ -139,7 +143,8 @@
     "AdHoc"
   ],
   "ServiceVirtualization": [
-    "Docker"
+    "Docker",
+    "Podman"
   ],
   "SubnetVirtualization": [
     "Docker"

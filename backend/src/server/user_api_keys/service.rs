@@ -105,7 +105,7 @@ impl UserApiKeyService {
             key.base.network_ids = network_map.get(&key.id).cloned().unwrap_or_default();
         }
 
-        self.bulk_hydrate_tags(&mut keys).await?;
+        self.bulk_hydrate_tags(&mut keys, None).await?;
 
         Ok(keys)
     }

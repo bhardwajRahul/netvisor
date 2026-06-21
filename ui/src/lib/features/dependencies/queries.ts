@@ -109,12 +109,19 @@ export function useDeleteDependencyMutation() {
 			queryClient.setQueryData<Topology[]>(queryKeys.topology.all, (old) =>
 				old?.map((t) => ({
 					...t,
-					edges: t.edges.filter(
-						(e) =>
-							!(
-								(e.edge_type === 'HubAndSpoke' || e.edge_type === 'RequestPath') &&
-								e.dependency_id === id
+					// `edges` is keyed per view — strip the dependency's edges from
+					// every view's slice.
+					edges: Object.fromEntries(
+						Object.entries(t.edges ?? {}).map(([view, edges]) => [
+							view,
+							edges.filter(
+								(e) =>
+									!(
+										(e.edge_type === 'HubAndSpoke' || e.edge_type === 'RequestPath') &&
+										e.dependency_id === id
+									)
 							)
+						])
 					)
 				}))
 			);

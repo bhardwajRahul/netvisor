@@ -1,4 +1,5 @@
 import type { Organization } from '$lib/features/organizations/types';
+import { billingPlans } from '$lib/shared/stores/metadata';
 
 export function getTrialEndDate(org: Organization | null | undefined): Date | null {
 	return org?.trial_end_date ? new Date(org.trial_end_date) : null;
@@ -13,6 +14,26 @@ export function getTrialDaysLeft(org: Organization | null | undefined): number |
 
 export function isTrialingWithoutPayment(org: Organization | null | undefined): boolean {
 	return org?.plan_status === 'trialing' && !(org?.has_payment_method ?? false);
+}
+
+/**
+ * True when the org is on a Stripe-managed plan that requires a card on file
+ * but has none. Single source of truth for every payment-method nag (banner,
+ * sidebar pill, BillingTab card) so they show/hide together. `is_stripe_managed
+ * === true` fails safe: missing/stale plan metadata hides the nag rather than
+ * showing it. `has_payment_method` is authoritative — it only flips on Stripe
+ * `payment_method.attached`/`detached` webhooks, not on plan changes.
+ */
+export function isMissingPaymentMethod(org: Organization | null | undefined): boolean {
+	if (!org) return false;
+	const meta = billingPlans.getMetadata(org.plan?.type ?? null);
+	return (
+		meta.is_stripe_managed === true &&
+		(org.plan_status === 'trialing' ||
+			org.plan_status === 'active' ||
+			org.plan_status === 'past_due') &&
+		!(org.has_payment_method ?? false)
+	);
 }
 
 export function getDaysIntoTrial(org: Organization | null | undefined): number | null {

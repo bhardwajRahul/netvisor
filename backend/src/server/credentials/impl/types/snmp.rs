@@ -27,16 +27,19 @@ use utoipa::ToSchema;
     ToSchema,
 )]
 pub enum SnmpVersion {
-    /// SNMPv2c (MVP - community string based)
+    /// SNMPv1 (community string based, distinct wire PDU set, no GET-BULK)
+    V1,
+    /// SNMPv2c (community string based)
     #[default]
     V2c,
-    /// SNMPv3 (future - authentication + privacy)
+    /// SNMPv3 (authentication + privacy)
     V3,
 }
 
 impl std::fmt::Display for SnmpVersion {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            SnmpVersion::V1 => write!(f, "V1"),
             SnmpVersion::V2c => write!(f, "V2c"),
             SnmpVersion::V3 => write!(f, "V3"),
         }
@@ -48,6 +51,7 @@ impl std::str::FromStr for SnmpVersion {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_uppercase().as_str() {
+            "V1" | "1" => Ok(SnmpVersion::V1),
             "V2C" | "2C" | "2" => Ok(SnmpVersion::V2c),
             "V3" | "3" => Ok(SnmpVersion::V3),
             _ => Err(anyhow::anyhow!("Invalid SNMP version: {}", s)),
@@ -55,12 +59,136 @@ impl std::str::FromStr for SnmpVersion {
     }
 }
 
-/// Minimal SNMP credential for daemon queries (version + community only)
+/// SNMPv3 USM authentication protocol. Variants are limited to the modern,
+/// secure set Scanopy supports; MD5 / SHA-2 variants beyond these are
+/// intentionally excluded. Serialized form (e.g. "Sha256") is the wire value
+/// stored in the credential and used as the frontend select option value.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Serialize,
+    Deserialize,
+    Eq,
+    PartialEq,
+    Hash,
+    Default,
+    strum::VariantNames,
+    ToSchema,
+)]
+pub enum SnmpV3AuthProtocol {
+    /// HMAC-SHA-1
+    Sha1,
+    /// HMAC-SHA-256
+    #[default]
+    Sha256,
+}
+
+impl SnmpV3AuthProtocol {
+    /// Human-facing label for the credential form dropdown.
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::Sha1 => "SHA-1",
+            Self::Sha256 => "SHA-256",
+        }
+    }
+
+    /// Select options surfaced to the frontend via `field_definitions()`.
+    pub const OPTIONS: &'static [super::fields::SelectOption] = &[
+        super::fields::SelectOption {
+            value: "Sha1",
+            label: "SHA-1",
+        },
+        super::fields::SelectOption {
+            value: "Sha256",
+            label: "SHA-256",
+        },
+    ];
+}
+
+/// SNMPv3 USM privacy (encryption) protocol.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Serialize,
+    Deserialize,
+    Eq,
+    PartialEq,
+    Hash,
+    Default,
+    strum::VariantNames,
+    ToSchema,
+)]
+pub enum SnmpV3PrivProtocol {
+    /// AES-128-CFB
+    #[default]
+    Aes128,
+    /// AES-256-CFB
+    Aes256,
+}
+
+impl SnmpV3PrivProtocol {
+    /// Human-facing label for the credential form dropdown.
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::Aes128 => "AES-128",
+            Self::Aes256 => "AES-256",
+        }
+    }
+
+    /// Select options surfaced to the frontend via `field_definitions()`.
+    pub const OPTIONS: &'static [super::fields::SelectOption] = &[
+        super::fields::SelectOption {
+            value: "Aes128",
+            label: "AES-128",
+        },
+        super::fields::SelectOption {
+            value: "Aes256",
+            label: "AES-256",
+        },
+    ];
+}
+
+/// SNMPv3 USM AuthPriv parameters for daemon queries.
+/// `community` on the parent struct is unused for v3; these params carry the
+/// security material instead. Both passwords are `ResolvableSecret` (inline or
+/// daemon-read file path) and never logged in plaintext.
+#[derive(Clone, Serialize, Deserialize, Eq, PartialEq, Hash, ToSchema)]
+pub struct SnmpV3Params {
+    pub security_name: String,
+    pub auth_protocol: SnmpV3AuthProtocol,
+    pub auth_password: ResolvableSecret,
+    pub priv_protocol: SnmpV3PrivProtocol,
+    pub priv_password: ResolvableSecret,
+    /// Context name. snmp2 0.4.10 only transmits the default (empty) context;
+    /// stored and forwarded for forward-compatibility but not yet sent on the wire.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_name: Option<String>,
+}
+
+impl std::fmt::Debug for SnmpV3Params {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SnmpV3Params")
+            .field("security_name", &self.security_name)
+            .field("auth_protocol", &self.auth_protocol)
+            .field("auth_password", &"********")
+            .field("priv_protocol", &self.priv_protocol)
+            .field("priv_password", &"********")
+            .field("context_name", &self.context_name)
+            .finish()
+    }
+}
+
+/// SNMP credential for daemon queries. `community` carries the v1/v2c community
+/// string; `v3` carries USM parameters when `version` is `V3`.
 #[derive(Clone, Serialize, Deserialize, Eq, PartialEq, Hash, ToSchema)]
 pub struct SnmpQueryCredential {
     #[serde(default)]
     pub version: SnmpVersion,
     pub community: ResolvableSecret,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub v3: Option<SnmpV3Params>,
 }
 
 impl Default for SnmpQueryCredential {
@@ -70,6 +198,7 @@ impl Default for SnmpQueryCredential {
             community: ResolvableSecret::Value {
                 value: String::new(),
             },
+            v3: None,
         }
     }
 }
@@ -79,6 +208,7 @@ impl std::fmt::Debug for SnmpQueryCredential {
         f.debug_struct("SnmpQueryCredential")
             .field("version", &self.version)
             .field("community", &"********")
+            .field("v3", &self.v3)
             .finish()
     }
 }
@@ -90,6 +220,7 @@ impl SnmpQueryCredential {
             community: ResolvableSecret::Value {
                 value: "public".to_string(),
             },
+            v3: None,
         }
     }
 }
@@ -101,16 +232,41 @@ impl SnmpQueryCredential {
 /// Banner lines for SNMP credentials
 impl SnmpQueryCredential {
     pub fn banner_lines(&self) -> Vec<BannerField> {
-        vec![
-            BannerField {
-                label: "Community",
-                value: self.community.banner_value(),
-            },
-            BannerField {
-                label: "Version",
-                value: BannerFieldValue::Plain(self.version.to_string()),
-            },
-        ]
+        let mut lines = vec![BannerField {
+            label: "Version",
+            value: BannerFieldValue::Plain(self.version.to_string()),
+        }];
+        match (&self.version, &self.v3) {
+            (SnmpVersion::V3, Some(v3)) => {
+                lines.push(BannerField {
+                    label: "Security Name",
+                    value: BannerFieldValue::Plain(v3.security_name.clone()),
+                });
+                lines.push(BannerField {
+                    label: "Auth Protocol",
+                    value: BannerFieldValue::Plain(v3.auth_protocol.label().to_string()),
+                });
+                lines.push(BannerField {
+                    label: "Auth Password",
+                    value: v3.auth_password.banner_value(),
+                });
+                lines.push(BannerField {
+                    label: "Priv Protocol",
+                    value: BannerFieldValue::Plain(v3.priv_protocol.label().to_string()),
+                });
+                lines.push(BannerField {
+                    label: "Priv Password",
+                    value: v3.priv_password.banner_value(),
+                });
+            }
+            _ => {
+                lines.push(BannerField {
+                    label: "Community",
+                    value: self.community.banner_value(),
+                });
+            }
+        }
+        lines
     }
 }
 
@@ -244,6 +400,7 @@ mod tests {
             community: ResolvableSecret::Value {
                 value: community.to_string(),
             },
+            v3: None,
         }
     }
 
@@ -364,12 +521,12 @@ mod tests {
         let payload = CredentialQueryPayload::Snmp(cred("my-community"));
         let lines = payload.banner_lines();
         assert_eq!(lines.len(), 2);
-        assert_eq!(lines[0].label, "Community");
+        assert_eq!(lines[0].label, "Version");
+        assert!(matches!(&lines[0].value, BannerFieldValue::Plain(v) if v == "V2c"));
+        assert_eq!(lines[1].label, "Community");
         assert!(matches!(
-            lines[0].value,
+            lines[1].value,
             BannerFieldValue::RedactedInline(12)
         )); // "my-community".len()
-        assert_eq!(lines[1].label, "Version");
-        assert!(matches!(&lines[1].value, BannerFieldValue::Plain(v) if v == "V2c"));
     }
 }

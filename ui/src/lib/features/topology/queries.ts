@@ -8,7 +8,7 @@
 import { createQuery, createMutation } from '@tanstack/svelte-query';
 import { queryClient, queryKeys } from '$lib/api/query-client';
 import { apiClient } from '$lib/api/client';
-import type { Topology, TopologyEdge, TopologyOptions } from './types/base';
+import type { Topology, TopologyEdge, TopologyOptions, RenderableTopology } from './types/base';
 import type { ContainerGraphRule, ElementGraphRule, ElementRule } from './types/grouping';
 import { makeGraphRule } from './types/grouping';
 import type { ContainerRule } from './types/grouping';
@@ -159,8 +159,7 @@ function defaultRequestOptions(): components['schemas']['TopologyRequestOptions'
 		hide_entities: {},
 		hide_metadata_values: hideMetadataValues,
 		container_rules: containerRules,
-		element_rules: elementRules,
-		view: 'L3Logical'
+		element_rules: elementRules
 	};
 }
 
@@ -284,6 +283,7 @@ export function useUpdateNodePositionMutation() {
 		mutationFn: async (params: {
 			topologyId: string;
 			networkId: string;
+			view: TopologyView;
 			nodeId: string;
 			position: { x: number; y: number };
 		}) => {
@@ -291,6 +291,7 @@ export function useUpdateNodePositionMutation() {
 				params: { path: { id: params.topologyId } },
 				body: {
 					network_id: params.networkId,
+					view: params.view,
 					node_id: params.nodeId,
 					position: params.position
 				}
@@ -312,6 +313,7 @@ export function useUpdateNodeResizeMutation() {
 		mutationFn: async (params: {
 			topologyId: string;
 			networkId: string;
+			view: TopologyView;
 			nodeId: string;
 			size: { x: number; y: number };
 			position: { x: number; y: number };
@@ -320,6 +322,7 @@ export function useUpdateNodeResizeMutation() {
 				params: { path: { id: params.topologyId } },
 				body: {
 					network_id: params.networkId,
+					view: params.view,
 					node_id: params.nodeId,
 					size: params.size,
 					position: params.position
@@ -342,6 +345,7 @@ export function useUpdateEdgeHandlesMutation() {
 		mutationFn: async (params: {
 			topologyId: string;
 			networkId: string;
+			view: TopologyView;
 			edgeId: string;
 			sourceHandle: 'Top' | 'Bottom' | 'Left' | 'Right';
 			targetHandle: 'Top' | 'Bottom' | 'Left' | 'Right';
@@ -350,6 +354,7 @@ export function useUpdateEdgeHandlesMutation() {
 				params: { path: { id: params.topologyId } },
 				body: {
 					network_id: params.networkId,
+					view: params.view,
 					edge_id: params.edgeId,
 					source_handle: params.sourceHandle,
 					target_handle: params.targetHandle
@@ -396,6 +401,13 @@ export const previewEdges = writable<Edge[]>([]);
  *  preview edges for the same source/target pair). */
 export const baseFlowEdges = writable<Edge[]>([]);
 export const activeView = writable<TopologyView>('L3Logical');
+
+/** When true, the topology is view-only: entity edits (tags, dependencies,
+ *  descriptions), grouping-rule edits, and canvas layout edits are disabled.
+ *  Driven by `TopologyTab` from `isReadOnly || a snapshot being selected` — a
+ *  snapshot is historical, so it gets the same view-only treatment as an embed.
+ *  The single reactive source the inspectors / grouping editor / edit-mode read. */
+export const topologyReadOnly = writable(false);
 
 // Tutorial / hint flags (set by nudges, consumed by topology components)
 export const showViewSwitcherHint = writable(false);
@@ -466,8 +478,7 @@ export const sharedElementRules = derived(topologyOptionsStore, ($store) => {
 export const topologyOptions = derived([topologyOptionsStore, activeView], ([$store, $view]) => ({
 	local: $store.perViewLocal[$view],
 	request: {
-		...$store.request,
-		view: $view
+		...$store.request
 	}
 }));
 
@@ -479,7 +490,7 @@ export function updateTopologyOptions(
 	topologyOptionsStore.update((store) => {
 		const currentOpts: TopologyOptions = {
 			local: store.perViewLocal[view],
-			request: { ...store.request, view: view }
+			request: { ...store.request }
 		};
 		const updated = updater(currentOpts);
 		return {
@@ -515,8 +526,7 @@ function buildOptionsForApi(): TopologyOptions {
 	return sanitizeOptionsForApi({
 		local: store.perViewLocal[view],
 		request: {
-			...store.request,
-			view: view
+			...store.request
 		}
 	});
 }
@@ -533,21 +543,18 @@ let hydrating = false;
  *   stored preferences and the creator's local options shouldn't leak through.
  */
 export function hydrateStoresFromTopology(
-	topology: Topology,
+	topology: Topology | RenderableTopology,
 	isInitial = true,
 	useDefaultLocal = false
 ): void {
 	hydrating = true;
 	try {
 		const opts = topology.options;
-		const storedView = opts.request.view as TopologyView;
 
-		// Only set view on initial load — not on SSE updates, which would
-		// revert the user's view switch mid-flight
-		if (isInitial) {
-			activeView.set(storedView);
-		}
-
+		// The active view is no longer persisted on the row — it's driven by the
+		// URL (`?view=`) with an L3Logical default (see TopologyTab) for the app,
+		// and by the explicit view prop for shares. Hydration only restores the
+		// view-agnostic request options + the active view's local options.
 		if (isInitial) {
 			const request = { ...opts.request };
 
@@ -585,7 +592,7 @@ export function hydrateStoresFromTopology(
 				request,
 				perViewLocal: {
 					...initDefaultLocalOptions(),
-					...(useDefaultLocal ? {} : { [storedView]: opts.local })
+					...(useDefaultLocal ? {} : { [get(activeView)]: opts.local })
 				}
 			});
 		} else {
@@ -684,7 +691,7 @@ function saveExpandedToStorage(expanded: boolean): void {
 }
 
 /** Persist the topology tab's selected network id across reloads. */
-function loadSelectedNetworkFromStorage(): string | null {
+export function loadSelectedNetworkFromStorage(): string | null {
 	if (!browser) return null;
 	try {
 		return localStorage.getItem(SELECTED_NETWORK_KEY);
@@ -710,6 +717,9 @@ function saveSelectedNetworkToStorage(networkId: string | null): void {
 let saveOptionsTimer: ReturnType<typeof setTimeout> | undefined;
 function saveOptionsForCurrentTopology(): void {
 	if (!browser) return;
+	// View-only (snapshot / embed): never persist option/layout edits — they'd
+	// mutate the snapshot row.
+	if (get(topologyReadOnly)) return;
 	clearTimeout(saveOptionsTimer);
 	saveOptionsTimer = setTimeout(() => {
 		const topologyId = get(selectedTopologyId);
@@ -717,10 +727,17 @@ function saveOptionsForCurrentTopology(): void {
 		const topologies = queryClient.getQueryData<Topology[]>(queryKeys.topology.all);
 		const topology = topologies?.find((t) => t.id === topologyId);
 		if (!topology) return;
-		apiClient.PUT('/api/v1/topology/{id}', {
-			params: { path: { id: topologyId } },
-			body: { ...topology, options: buildOptionsForApi() }
-		});
+		void apiClient
+			.PUT('/api/v1/topology/{id}', {
+				params: { path: { id: topologyId } },
+				body: { ...topology, options: buildOptionsForApi() }
+			})
+			.then(() => {
+				// Grouping/hide-rule edits trigger a server-side rebuild of every
+				// view's node/edge slice. Invalidate the topology list so the
+				// rebuilt row flows back and the active slice re-renders.
+				void queryClient.invalidateQueries({ queryKey: queryKeys.topology.all });
+			});
 	}, 500);
 }
 
@@ -751,15 +768,15 @@ if (browser) {
 		networkInitialized = true;
 	});
 
-	// Hydrate the persisted network selection on first load
-	const persistedNetwork = loadSelectedNetworkFromStorage();
-	if (persistedNetwork) selectedNetworkId.set(persistedNetwork);
+	// NOTE: the persisted network selection is NOT hydrated here. It is validated
+	// against the accessible networks list and applied by the init `$effect` in
+	// TopologyTab — hydrating a stale id here would fire a 404/403 topology fetch
+	// before validation could run.
 
-	activeView.subscribe(() => {
-		if (!hydrating) {
-			saveOptionsForCurrentTopology();
-		}
-	});
+	// NOTE: switching the active view does NOT persist options or hit the
+	// network — every view's node/edge slice is pre-built on the row, so a
+	// view switch is a pure client-side slice selection (see toRenderableTopology).
+	// View deep-linking is handled via URL params below.
 
 	// Sync stores → URL (replaceState, no history entry)
 	// User-initiated changes use pushTopologyParams from TopologyTab instead.

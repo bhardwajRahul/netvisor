@@ -1,6 +1,6 @@
 import type { Node } from '@xyflow/svelte';
 import type { components } from '$lib/api/schema';
-import type { EnrichedTopology, TopologyNode } from './types/base';
+import type { RenderableTopology, TopologyNode } from './types/base';
 import { entities, views } from '$lib/shared/stores/metadata';
 import { lowercasePreservingAcronyms } from '$lib/shared/utils/formatting';
 import { tags_entityTags, tags_noCommonTagsHint } from '$lib/paraglide/messages';
@@ -97,7 +97,7 @@ function tallyByEntityType(nodes: Iterable<TopologyNode>): Map<Entity, number> {
  *  `resolveInlineServiceIds`. */
 export function tallyContainerElements(
 	containerId: string,
-	topology: EnrichedTopology
+	topology: RenderableTopology
 ): Map<Entity, number> {
 	const { elementNodeIds } = getContainerContents(containerId, topology.nodes);
 	const counts = tallyByEntityType(topology.nodes.filter((n) => elementNodeIds.has(n.id)));
@@ -114,7 +114,7 @@ export function tallyContainerElements(
  *  collapsed-root containers. */
 export function tallyDirectElements(
 	containerId: string,
-	topology: EnrichedTopology
+	topology: RenderableTopology
 ): Map<Entity, number> {
 	const directElementIds = new Set<string>(
 		topology.nodes

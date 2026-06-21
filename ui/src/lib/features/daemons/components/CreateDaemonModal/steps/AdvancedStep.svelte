@@ -20,7 +20,7 @@
 		daemons_dockerProxyCreated,
 		daemons_dockerDisabledHelp,
 		daemons_dockerLocalSocketHelp,
-		daemons_dockerProxyHelp,
+		// daemons_dockerProxyHelp,
 		daemons_dockerGoToScanCredentials,
 		daemons_dockerProxyWizardCta
 	} from '$lib/paraglide/messages';
@@ -71,8 +71,8 @@
 				return daemons_dockerDisabledHelp();
 			case 'local_socket':
 				return daemons_dockerLocalSocketHelp();
-			case 'proxy':
-				return daemons_dockerProxyHelp();
+			// case 'proxy':
+			// 	return daemons_dockerProxyHelp();
 			default:
 				return '';
 		}

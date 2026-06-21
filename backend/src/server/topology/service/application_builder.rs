@@ -193,9 +193,11 @@ impl ViewBuilder for ApplicationBuilder {
                 let categories = HashSet::from([service.base.service_definition.category()]);
                 let tag_ids =
                     resolve_element_tag_ids(EntityDiscriminants::Service, service.id, &tag_lookups);
-                let compose_project = service.base.virtualization.as_ref().and_then(|v| match v {
-                    ServiceVirtualization::Docker(dv) => dv.compose_project.clone(),
-                });
+                let compose_project = service
+                    .base
+                    .virtualization
+                    .as_ref()
+                    .and_then(|v| v.compose_project().map(str::to_string));
                 Some(ElementMatchData {
                     categories,
                     tag_ids,
@@ -476,12 +478,13 @@ mod tests {
             &[],
             &[],
             &options,
+            TopologyView::L3Logical,
         );
 
         let builder = ApplicationBuilder;
         let (nodes, _edges) = builder.build(
             &ctx,
-            &GroupingConfig::from_request_options(&options.request),
+            &GroupingConfig::from_request_options(&options.request, TopologyView::L3Logical),
         );
 
         // Should have one "Ungrouped" container + one element
@@ -520,12 +523,13 @@ mod tests {
             &[],
             &[],
             &options,
+            TopologyView::L3Logical,
         );
 
         let builder = ApplicationBuilder;
         let (nodes, _edges) = builder.build(
             &ctx,
-            &GroupingConfig::from_request_options(&options.request),
+            &GroupingConfig::from_request_options(&options.request, TopologyView::L3Logical),
         );
         assert!(nodes.is_empty());
     }
@@ -568,12 +572,13 @@ mod tests {
             &[],
             &[],
             &options,
+            TopologyView::L3Logical,
         );
 
         let builder = ApplicationBuilder;
         let (nodes, edges) = builder.build(
             &ctx,
-            &GroupingConfig::from_request_options(&options.request),
+            &GroupingConfig::from_request_options(&options.request, TopologyView::L3Logical),
         );
 
         // No app tags applied — all services land in the single "Ungrouped" container.
@@ -639,12 +644,13 @@ mod tests {
             &[],
             &[],
             &options,
+            TopologyView::L3Logical,
         );
 
         let builder = ApplicationBuilder;
         let (_nodes, edges) = builder.build(
             &ctx,
-            &GroupingConfig::from_request_options(&options.request),
+            &GroupingConfig::from_request_options(&options.request, TopologyView::L3Logical),
         );
 
         // Hub (svc1) → svc2, svc1 → svc3
@@ -700,12 +706,13 @@ mod tests {
             &[],
             &[],
             &options,
+            TopologyView::L3Logical,
         );
 
         let builder = ApplicationBuilder;
         let (_nodes, edges) = builder.build(
             &ctx,
-            &GroupingConfig::from_request_options(&options.request),
+            &GroupingConfig::from_request_options(&options.request, TopologyView::L3Logical),
         );
 
         let flow_edges: Vec<&Edge> = edges
@@ -792,7 +799,6 @@ mod tests {
         let tags = vec![app_tag_a, app_tag_b];
 
         let mut options = TopologyOptions::default();
-        options.request.view = TopologyView::Application;
         options.request.container_rules.insert(
             TopologyView::Application,
             vec![IdentifiedRule::new(ContainerRule::ByApplication {
@@ -816,12 +822,13 @@ mod tests {
             &tags,
             &[],
             &options,
+            TopologyView::Application,
         );
 
         let builder = ApplicationBuilder;
         let (nodes, _edges) = builder.build(
             &ctx,
-            &GroupingConfig::from_request_options(&options.request),
+            &GroupingConfig::from_request_options(&options.request, TopologyView::Application),
         );
 
         // 2 AppGroup containers + 2 NestedTag subcontainers + 2 element nodes = 6
@@ -942,7 +949,6 @@ mod tests {
         let tags = vec![app_tag_a, app_tag_b];
 
         let mut options = TopologyOptions::default();
-        options.request.view = TopologyView::Application;
         options.request.container_rules.insert(
             TopologyView::Application,
             vec![IdentifiedRule::new(ContainerRule::ByApplication {
@@ -974,12 +980,13 @@ mod tests {
             &tags,
             &[],
             &options,
+            TopologyView::Application,
         );
 
         let builder = ApplicationBuilder;
         let (nodes, _edges) = builder.build(
             &ctx,
-            &GroupingConfig::from_request_options(&options.request),
+            &GroupingConfig::from_request_options(&options.request, TopologyView::Application),
         );
 
         // Services don't have monitoring_tag_id; only hosts do. ByTag rule

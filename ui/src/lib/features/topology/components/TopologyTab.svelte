@@ -22,7 +22,9 @@
 		selectedSnapshotId,
 		selectedNodes,
 		consumePreferredNetwork,
+		loadSelectedNetworkFromStorage,
 		activeView,
+		topologyReadOnly,
 		topologyOptions,
 		updateTopologyOptions,
 		hydrateStoresFromTopology,
@@ -55,9 +57,9 @@
 	import { trackEvent } from '$lib/shared/utils/analytics';
 	import { useTagsQuery } from '$lib/features/tags/queries';
 	import { useActiveSessionsQuery } from '$lib/features/discovery/queries';
-	import { enrichTopology } from '$lib/features/topology/enriched';
-	import type { EnrichedTopology } from '$lib/features/topology/types/base';
-	import { formatTimestamp } from '$lib/shared/utils/formatting';
+	import { toRenderableTopology } from '$lib/features/topology/enriched';
+	import type { RenderableTopology } from '$lib/features/topology/types/base';
+	import { formatTimestamp, formatDate } from '$lib/shared/utils/formatting';
 	import ApplicationSetupWizard from './application-wizard/ApplicationSetupWizard.svelte';
 	import L2EmptyStateOverlay from './L2EmptyStateOverlay.svelte';
 	import ViewSwitcherHint from './ViewSwitcherHint.svelte';
@@ -73,6 +75,7 @@
 	import type { TabProps } from '$lib/shared/types';
 	import {
 		common_delete,
+		topology_lastScanned,
 		topology_liveView,
 		topology_noTopologySelected,
 		topology_snapshotDeleteConfirm,
@@ -143,12 +146,20 @@
 
 	let currentInspectorConfig = $derived(getInspectorConfig($activeView));
 
-	// Auto-open wizard when entering a view with app picker and no app tags
+	// View-only when the tab is read-only or a snapshot is selected. Single
+	// reactive source consumed by the inspectors / grouping editor / edit mode.
+	$effect(() => {
+		topologyReadOnly.set(isReadOnly || $selectedSnapshotId !== null);
+	});
+
+	// Auto-open wizard when entering a view with app picker and no app tags.
+	// Never on a read-only view — the wizard creates tags.
 	let tagsLoaded = $derived(!tagsQuery.isLoading && !tagsQuery.isPending);
 	$effect(() => {
 		if (
 			isActive &&
 			tagsLoaded &&
+			!$topologyReadOnly &&
 			currentInspectorConfig.show_application_picker &&
 			appTags.length === 0 &&
 			!wizardOpen
@@ -202,7 +213,7 @@
 		if (!currentTopologyRow) return null;
 		const bundle = topologyDataQuery.data;
 		if (!bundle) return null;
-		return enrichTopology(
+		return toRenderableTopology(
 			currentTopologyRow,
 			{
 				hosts: bundle.hosts,
@@ -216,14 +227,15 @@
 				vlans: bundle.vlans,
 				entity_tags: bundle.tags
 			},
-			currentTopologyName
+			currentTopologyName,
+			$activeView
 		);
 	});
 
 	// Expose the enriched topology to descendant inspectors via context. They
 	// resolve it through `useTopology()` and read entity arrays off it.
 	// svelte-ignore state_referenced_locally
-	const topologyContext = writable<EnrichedTopology | null>(currentTopology);
+	const topologyContext = writable<RenderableTopology | null>(currentTopology);
 	setContext('topology', topologyContext);
 	$effect(() => {
 		topologyContext.set(currentTopology);
@@ -264,13 +276,34 @@
 	// View selector — built from fixture data
 	import viewsJson from '$lib/data/views.json';
 
-	const viewOptions: SimpleOption[] = viewsJson.map((p) => ({
+	const allViewOptions: SimpleOption[] = viewsJson.map((p) => ({
 		value: p.id,
 		label: p.name,
 		description: p.description,
 		icon: views.getIconComponent(p.id),
 		iconColor: views.getColorHelper(p.id).icon
 	}));
+
+	// A snapshot can only show views whose data it captured (you can't set up
+	// SNMP or create app tags on a historical snapshot), so restrict the picker
+	// to `available_views`. Live shows every view, with its setup prompts.
+	let viewOptions = $derived.by<SimpleOption[]>(() => {
+		if ($selectedSnapshotId == null) return allViewOptions;
+		const available = topologyDataQuery.data?.available_views;
+		if (!available) return allViewOptions;
+		return allViewOptions.filter((o) => available.includes(o.value as TopologyView));
+	});
+
+	// If the active view isn't available in the selected snapshot, fall back to
+	// an available one (prefer L3Logical) so the picker and canvas stay in sync.
+	$effect(() => {
+		if ($selectedSnapshotId == null) return;
+		const available = topologyDataQuery.data?.available_views;
+		if (available && available.length > 0 && !available.includes($activeView)) {
+			activeView.set(available.includes('L3Logical') ? 'L3Logical' : available[0]);
+		}
+	});
+
 	let viewColorStyle = $derived(views.getColorHelper($activeView));
 
 	type OnboardingOperation = components['schemas']['OnboardingOperationDiscriminants'];
@@ -310,16 +343,31 @@
 	const urlParams = getTopologyParamsFromUrl();
 	let urlViewConsumed = false;
 
-	// Initialize selected network from preferred / first available
+	// Initialize/validate the selected network against the accessible list.
+	// Runs whenever networksData changes so a stale persisted id (deleted network,
+	// changed org, revoked perms) is replaced instead of fetched — which would 404
+	// and fire a toast on every reload.
 	$effect(() => {
-		if (networksData.length > 0 && !$selectedNetworkId) {
-			const preferredNetworkId = consumePreferredNetwork();
-			if (preferredNetworkId && networksData.find((n) => n.id === preferredNetworkId)) {
-				selectedNetworkId.set(preferredNetworkId);
-				return;
-			}
-			selectedNetworkId.set(networksData[0].id);
+		// No networks: leave selection null so useTopologyDataQuery stays disabled.
+		if (networksData.length === 0) return;
+		// Current selection is still accessible — nothing to do.
+		if ($selectedNetworkId && networksData.some((n) => n.id === $selectedNetworkId)) return;
+
+		// Persisted selection, if still accessible.
+		const persisted = loadSelectedNetworkFromStorage();
+		if (persisted && networksData.some((n) => n.id === persisted)) {
+			selectedNetworkId.set(persisted);
+			return;
 		}
+		// Preferred (e.g. just-onboarded network), if accessible.
+		const preferredNetworkId = consumePreferredNetwork();
+		if (preferredNetworkId && networksData.some((n) => n.id === preferredNetworkId)) {
+			selectedNetworkId.set(preferredNetworkId);
+			return;
+		}
+		// Fall back to the first available network; the store subscription persists
+		// it, overwriting any stale value in localStorage.
+		selectedNetworkId.set(networksData[0].id);
 	});
 
 	// Reset snapshot selection when network changes (live view by default)
@@ -412,15 +460,29 @@
 		...snapshotsData
 	]);
 
+	// Live view subtitle: when the network was last scanned, derived from the
+	// most recent `last_seen_at` across the live host set (discovery refreshes
+	// it on every observation). Empty when nothing has been scanned yet.
+	let lastScannedDescription = $derived.by(() => {
+		const times = (topologyDataQuery.data?.hosts ?? [])
+			.map((h) => h.last_seen_at)
+			.filter((t): t is string => !!t);
+		if (times.length === 0) return '';
+		const latest = times.reduce((a, b) => (a > b ? a : b));
+		return topology_lastScanned({ date: formatDate(latest) });
+	});
+
 	// Override the SnapshotDisplay to render the live-view sentinel with a
-	// localized label rather than a date string.
-	const snapshotDisplayWithLive = {
+	// localized label and a "last scanned" subtitle rather than a date string.
+	let snapshotDisplayWithLive = $derived({
 		...SnapshotDisplay,
 		getLabel: (s: Snapshot, ctx: object) =>
 			s.id === LIVE_VIEW_SENTINEL ? topology_liveView() : SnapshotDisplay.getLabel(s, ctx),
 		getDescription: (s: Snapshot, ctx: object) =>
-			s.id === LIVE_VIEW_SENTINEL ? '' : (SnapshotDisplay.getDescription?.(s, ctx) ?? '')
-	};
+			s.id === LIVE_VIEW_SENTINEL
+				? lastScannedDescription
+				: (SnapshotDisplay.getDescription?.(s, ctx) ?? '')
+	});
 
 	function handleSnapshotChange(value: string) {
 		const next = value === LIVE_VIEW_SENTINEL ? null : value;
@@ -478,12 +540,14 @@
 		const snapshotId = $selectedSnapshotId;
 		if (!networkId || !snapshotId) return;
 		if (!confirm(topology_snapshotDeleteConfirm())) return;
+		// Return to live view BEFORE deleting: the mutation's onSuccess invalidates
+		// the topology queries, which would otherwise refetch the just-deleted
+		// snapshot's data and 404 with a misleading "snapshot not found" toast.
+		selectedSnapshotId.set(null);
 		await deleteSnapshotMutation.mutateAsync({
 			snapshot_id: snapshotId,
 			network_id: networkId
 		});
-		// Return to live view after delete
-		selectedSnapshotId.set(null);
 	}
 
 	function handleWizardComplete() {
@@ -546,7 +610,10 @@
 				{#if currentTopology}
 					<div class="flex items-center gap-2">
 						<ExportButton onclick={() => (isExportModalOpen = true)} />
-						{#if !isReadOnly}
+						<!-- Sharing is live-only: a share stores a topology row but always
+						     renders with live entity data, so sharing a snapshot would mix
+						     snapshot layout with live entities. Hide the button on snapshots. -->
+						{#if !isReadOnly && $selectedSnapshotId == null}
 							{#if currentUser && !currentUser.email_verified}
 								<span data-tooltip="Please verify email to share topology" use:tooltip>
 									<button class="btn-secondary opacity-50" disabled title="Share">
@@ -610,7 +677,7 @@
 						displayComponent={snapshotDisplayWithLive}
 						onSelect={handleSnapshotChange}
 						options={snapshotOptions}
-						minWidth="22rem"
+						fitToContent
 					/>
 
 					{#if !isReadOnly && $selectedSnapshotId == null}

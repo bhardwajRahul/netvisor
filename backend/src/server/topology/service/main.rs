@@ -3,9 +3,11 @@ use std::{collections::HashMap, sync::Arc};
 use anyhow::Error;
 use async_trait::async_trait;
 use petgraph::{Graph, graph::NodeIndex, visit::EdgeRef};
+use strum::IntoEnumIterator;
 use tokio::sync::broadcast;
 use uuid::Uuid;
 
+use crate::server::shared::entities::ChangeTriggersTopologyStaleness;
 use crate::server::shared::events::traits::{EntityEventFlags, EntityScope, Event};
 use crate::server::{
     auth::middleware::auth::AuthenticatedEntity,
@@ -117,23 +119,8 @@ impl CrudService<Topology> for TopologyService {
             let data = self
                 .get_topology_data(topology.base.network_id, None)
                 .await?;
-            let (nodes, edges) = self.build_graph(BuildGraphParams {
-                hosts: &data.hosts,
-                ip_addresses: &data.ip_addresses,
-                services: &data.services,
-                subnets: &data.subnets,
-                dependencies: &data.dependencies,
-                ports: &data.ports,
-                bindings: &data.bindings,
-                interfaces: &data.interfaces,
-                entity_tags: &data.tags,
-                vlans: &data.vlans,
-                old_edges: &[],
-                old_nodes: &[],
-                options: &topology.base.options,
-                old_view: None,
-            });
-            topology.set_graph(nodes, edges);
+            let (nodes, edges) = self.build_all_view_graphs(&data, &topology.base.options, None);
+            topology.set_all_graphs(nodes, edges);
         }
 
         let created = self.storage().create(&topology).await?;
@@ -154,6 +141,59 @@ impl CrudService<Topology> for TopologyService {
 
         Ok(created)
     }
+
+    /// Persist a topology update, rebuilding every view's graph when the
+    /// request options changed.
+    ///
+    /// View switching is a client-side slice selection and does NOT reach here
+    /// (it changes only the `view` scalar, which `triggers_staleness` ignores).
+    /// Grouping/hide-rule edits DO change `options.request`, so we reload the
+    /// row's entity set (live or snapshot closed-copy) and rebuild all view
+    /// slices, overwriting the stale graphs the client echoed back. Pure
+    /// layout PUTs (no options change) keep the client-sent graphs.
+    async fn update(
+        &self,
+        entity: &mut Topology,
+        authentication: AuthenticatedEntity,
+    ) -> Result<Topology, Error> {
+        let current = self
+            .get_by_id(&entity.id())
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("Could not find topology {}", entity.id()))?;
+
+        let trigger_stale = entity.triggers_staleness(Some(current.clone()));
+
+        if trigger_stale {
+            let data = self
+                .get_topology_data(current.base.network_id, current.base.snapshot_id)
+                .await?;
+            let (nodes, edges) =
+                self.build_all_view_graphs(&data, &entity.base.options, Some(&current));
+            entity.set_all_graphs(nodes, edges);
+        }
+
+        let updated = self.storage().update(entity).await?;
+
+        if let Some(scope) = EntityScope::from_ids(
+            updated.id(),
+            updated.clone().into(),
+            self.get_network_id(&updated),
+            self.get_organization_id(&updated),
+        ) {
+            self.event_bus()
+                .publish(
+                    Event::new(scope, EntityOperation::Updated, authentication).with_flags(
+                        EntityEventFlags {
+                            trigger_stale,
+                            ..Default::default()
+                        },
+                    ),
+                )
+                .await?;
+        }
+
+        Ok(updated)
+    }
 }
 
 pub struct BuildGraphParams<'a> {
@@ -171,6 +211,9 @@ pub struct BuildGraphParams<'a> {
     pub old_nodes: &'a [Node],
     pub old_edges: &'a [Edge],
     pub old_view: Option<TopologyView>,
+    /// View this graph is being built for — selects the builder, grouping, and
+    /// per-edge view config.
+    pub view: TopologyView,
 }
 
 impl TopologyService {
@@ -227,12 +270,20 @@ impl TopologyService {
         network_id: Uuid,
         snapshot_id: Option<Uuid>,
     ) -> Result<TopologyData, Error> {
+        // Hosts/services/subnets carry the tags that drive topology grouping +
+        // display, so hydrate their tag associations as-of the snapshot (from
+        // the closed `entity_tags`), not from live `entity_tags` (which key on
+        // live, not closed, entity ids). Other entity types don't surface tags
+        // in the topology, so plain `get_all` (live hydration) is fine for them.
         let hosts = self
             .host_service
-            .get_all(apply_snapshot(
-                StorableFilter::<Host>::new_from_network_ids(&[network_id]).hidden_is(false),
+            .get_all_as_of_snapshot(
+                apply_snapshot(
+                    StorableFilter::<Host>::new_from_network_ids(&[network_id]).hidden_is(false),
+                    snapshot_id,
+                ),
                 snapshot_id,
-            ))
+            )
             .await?;
         let ip_addresses = self
             .ip_address_service
@@ -243,10 +294,13 @@ impl TopologyService {
             .await?;
         let subnets = self
             .subnet_service
-            .get_all(apply_snapshot(
-                StorableFilter::<Subnet>::new_from_network_ids(&[network_id]),
+            .get_all_as_of_snapshot(
+                apply_snapshot(
+                    StorableFilter::<Subnet>::new_from_network_ids(&[network_id]),
+                    snapshot_id,
+                ),
                 snapshot_id,
-            ))
+            )
             .await?;
         let dependencies = self
             .dependency_service
@@ -278,10 +332,13 @@ impl TopologyService {
             .await?;
         let services = self
             .service_service
-            .get_all(apply_snapshot(
-                StorableFilter::<Service>::new_from_network_ids(&[network_id]),
+            .get_all_as_of_snapshot(
+                apply_snapshot(
+                    StorableFilter::<Service>::new_from_network_ids(&[network_id]),
+                    snapshot_id,
+                ),
                 snapshot_id,
-            ))
+            )
             .await?;
         let vlans = self
             .vlan_service
@@ -290,9 +347,23 @@ impl TopologyService {
                 snapshot_id,
             ))
             .await?;
-        let tags = self
-            .get_entity_tags(&hosts, &services, &subnets, snapshot_id)
-            .await?;
+        let tags = self.get_entity_tags(&hosts, &services, &subnets).await?;
+
+        // Which views have data in THIS entity set (snapshot-aware). Reuses the
+        // same `TopologyViewSupport` / `is_supported` logic that governs shares,
+        // but computed from the entities just loaded (so a snapshot reflects its
+        // captured data, not live). The topology tab uses this to hide views a
+        // snapshot can't populate (no LLDP neighbors → no L2; no app tags → no
+        // Application).
+        let support = TopologyViewSupport {
+            l2_physical: interfaces
+                .iter()
+                .any(|i| matches!(i.base.neighbor, Some(Neighbor::Interface(_)))),
+            application: tags.iter().any(|t| t.base.is_application),
+        };
+        let available_views: Vec<TopologyView> = TopologyView::iter()
+            .filter(|v| v.is_supported(&support))
+            .collect();
 
         Ok(TopologyData {
             hosts,
@@ -305,22 +376,24 @@ impl TopologyService {
             services,
             vlans,
             tags,
+            available_views,
         })
     }
 
-    /// Fetch tag definitions for all tags used by hosts, services, and subnets.
+    /// Fetch tag *definitions* for all tags referenced by hosts, services, and
+    /// subnets (the referenced ids come from each entity's hydrated `tags`).
     ///
-    /// Live view: `tag_id IN <referenced> AND valid_to IS NULL`.
-    /// Snapshot view: the entities themselves came from close-and-clone, and
-    /// their `tags` field already references the snapshot's closed tag rows
-    /// (close-and-clone rewrites `tags` to point at the new ids via the
-    /// `FkMaps` remap). So we filter by the referenced ids + `snapshot_id`.
+    /// Always read **live** — tag definitions are org-scoped and are NOT cloned
+    /// at snapshot time, so there is no snapshot-pinned tag row to read. The
+    /// per-snapshot part is the *association* (the closed `entity_tags`, which
+    /// populate the entities' `tags` upstream); the definition (name/color) is
+    /// shown as it is now, consistent with the "inspector entity details are
+    /// always live" model.
     pub async fn get_entity_tags(
         &self,
         hosts: &[Host],
         services: &[Service],
         subnets: &[Subnet],
-        snapshot_id: Option<Uuid>,
     ) -> Result<Vec<Tag>, Error> {
         let mut tag_ids: Vec<Uuid> = Vec::new();
         for host in hosts {
@@ -340,10 +413,7 @@ impl TopologyService {
             return Ok(vec![]);
         }
 
-        let filter = match snapshot_id {
-            None => StorableFilter::<Tag>::new_from_entity_ids(&tag_ids).live(),
-            Some(id) => StorableFilter::<Tag>::new_from_entity_ids(&tag_ids).snapshot_id(&id),
-        };
+        let filter = StorableFilter::<Tag>::new_from_entity_ids(&tag_ids).live();
         let tags = self.tag_service.get_all(filter).await?;
 
         Ok(tags)
@@ -381,6 +451,51 @@ impl TopologyService {
         })
     }
 
+    /// Build a node/edge set for every view from a single entity snapshot.
+    ///
+    /// Each view's previously-stored slice (when `old` is given) is fed to
+    /// `build_graph` as `old_*` with `old_view = Some(view)`, so per-view
+    /// handle/position preservation fires (nodes don't jump on rebuild). The
+    /// returned maps are stored directly on the row via `set_all_graphs`, so
+    /// the client can switch views by slice selection without a rebuild.
+    pub fn build_all_view_graphs(
+        &self,
+        data: &TopologyData,
+        options: &TopologyOptions,
+        old: Option<&Topology>,
+    ) -> (
+        HashMap<TopologyView, Vec<Node>>,
+        HashMap<TopologyView, Vec<Edge>>,
+    ) {
+        let mut nodes_by_view = HashMap::new();
+        let mut edges_by_view = HashMap::new();
+
+        for view in TopologyView::iter() {
+            let (nodes, edges) = self.build_graph(BuildGraphParams {
+                hosts: &data.hosts,
+                ip_addresses: &data.ip_addresses,
+                services: &data.services,
+                subnets: &data.subnets,
+                dependencies: &data.dependencies,
+                ports: &data.ports,
+                bindings: &data.bindings,
+                interfaces: &data.interfaces,
+                entity_tags: &data.tags,
+                vlans: &data.vlans,
+                old_nodes: old.map(|t| t.nodes_for(view)).unwrap_or(&[]),
+                old_edges: old.map(|t| t.edges_for(view)).unwrap_or(&[]),
+                options,
+                old_view: Some(view),
+                view,
+            });
+
+            nodes_by_view.insert(view, nodes);
+            edges_by_view.insert(view, edges);
+        }
+
+        (nodes_by_view, edges_by_view)
+    }
+
     pub fn build_graph(&self, params: BuildGraphParams) -> (Vec<Node>, Vec<Edge>) {
         let BuildGraphParams {
             hosts,
@@ -397,6 +512,7 @@ impl TopologyService {
             old_nodes,
             options,
             old_view,
+            view,
         } = params;
 
         // Create context to avoid parameter passing
@@ -412,17 +528,17 @@ impl TopologyService {
             entity_tags,
             vlans,
             options,
+            view,
         );
 
         // Build grouping config from request options
-        let grouping = GroupingConfig::from_request_options(&options.request);
+        let grouping = GroupingConfig::from_request_options(&options.request, view);
 
         // Select builder by view and build nodes + edges
-        let builder = super::view::builder_for_view(options.request.view);
+        let builder = super::view::builder_for_view(view);
         let (all_nodes, mut all_edges) = builder.build(&ctx, &grouping);
 
         // Set per-view edge configuration
-        let view = options.request.view;
         for edge in &mut all_edges {
             edge.view_config = view.edge_view_config((&edge.edge_type).into());
         }

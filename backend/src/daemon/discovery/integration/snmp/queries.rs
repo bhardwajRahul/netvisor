@@ -219,6 +219,14 @@ pub async fn walk_if_table(
         ip,
         result.len()
     );
+    // Diagnostic for issue #614 (high-ifIndex interfaces missing): log the full set of
+    // collected ifIndex values, not just the count, so we can tell whether a high-ifIndex
+    // switch (e.g. ifIndex 49153-49168) is dropped at walk time or later during ingestion.
+    debug!(
+        ip = %ip,
+        if_indexes = ?result.iter().map(|e| e.if_index).collect::<Vec<_>>(),
+        "SNMP ifTable walk ifIndex set"
+    );
 
     Ok(result)
 }

@@ -279,7 +279,7 @@ impl SubnetGraphBuilder {
         ctx: &TopologyContext,
         child_nodes: &mut Vec<Node>,
     ) {
-        let grouping = GroupingConfig::from_request_options(&ctx.options.request);
+        let grouping = GroupingConfig::from_request_options(&ctx.options.request, ctx.view);
         let children_by_id: HashMap<Uuid, &SubnetChildData> =
             children.iter().map(|c| (c.id, c)).collect();
         let host_lookup: HashMap<Uuid, &Host> = ctx.hosts.iter().map(|h| (h.id, h)).collect();
@@ -579,7 +579,6 @@ mod tests {
         // Rules: ByServiceCategory first, then ByTag
         // Use Application view so ByServiceCategory is applicable
         let mut options = TopologyOptions::default();
-        options.request.view = crate::server::topology::types::views::TopologyView::Application;
         options.request.element_rules = vec![
             IdentifiedRule::new(ElementRule::ByServiceCategory {
                 categories: vec![ServiceCategory::ReverseProxy],
@@ -608,6 +607,7 @@ mod tests {
             &tags,
             &[],
             &options,
+            crate::server::topology::types::views::TopologyView::Application,
         );
 
         let planner = SubnetGraphBuilder::new();
@@ -727,6 +727,7 @@ mod tests {
             &tags,
             &[],
             &options,
+            crate::server::topology::types::views::TopologyView::L3Logical,
         );
 
         let mut child_nodes = vec![make_element_node(child_id, host.id, subnet_id)];
@@ -813,6 +814,7 @@ mod tests {
             &tags,
             &[],
             &options,
+            crate::server::topology::types::views::TopologyView::L3Logical,
         );
 
         let planner = SubnetGraphBuilder::new();

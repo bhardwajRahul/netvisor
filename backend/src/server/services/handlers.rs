@@ -253,6 +253,7 @@ async fn get_all_services(
         .get_tags_map(
             &entity_ids,
             crate::server::shared::entities::EntityDiscriminants::Service,
+            None,
         )
         .await?;
 

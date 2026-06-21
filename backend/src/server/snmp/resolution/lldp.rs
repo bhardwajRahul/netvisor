@@ -93,7 +93,7 @@ impl LldpChassisId {
             3 => Some(Self::PortComponent(
                 String::from_utf8_lossy(value).to_string(),
             )),
-            4 if value.len() == 6 => Some(Self::MacAddress(format_mac(value))),
+            4 => parse_mac_id(value).map(Self::MacAddress),
             5 => parse_network_address(value).map(Self::NetworkAddress),
             6 => Some(Self::InterfaceName(
                 String::from_utf8_lossy(value).to_string(),
@@ -143,7 +143,7 @@ impl LldpPortId {
             2 => Some(Self::PortComponent(
                 String::from_utf8_lossy(value).to_string(),
             )),
-            3 if value.len() == 6 => Some(Self::MacAddress(format_mac(value))),
+            3 => parse_mac_id(value).map(Self::MacAddress),
             4 => parse_network_address(value).map(Self::NetworkAddress),
             5 => Some(Self::InterfaceName(
                 String::from_utf8_lossy(value).to_string(),
@@ -180,6 +180,24 @@ impl LldpPortId {
             // These subtypes don't have reliable resolution strategies
             Self::PortComponent(_) | Self::AgentCircuitId(_) | Self::LocallyAssigned(_) => None,
         }
+    }
+}
+
+/// Parse an LLDP MAC-address identifier (chassis subtype 4 / port subtype 3).
+///
+/// Per IEEE 802.1AB a macAddress value is 6 raw octets, but some vendors
+/// (MikroTik RouterOS, Extreme EXOS) instead send it as an ASCII string such as
+/// `"48:A9:8A:BD:B4:7D"`. Accept both shapes and normalize to the same canonical
+/// lowercase colon-separated form (`format_mac`) so downstream MAC matching is
+/// independent of the wire encoding. Returns `None` for values that are neither.
+fn parse_mac_id(value: &[u8]) -> Option<String> {
+    if value.len() == 6 {
+        Some(format_mac(value))
+    } else {
+        // Vendor quirk: MAC encoded as an ASCII string instead of 6 raw octets.
+        let s = std::str::from_utf8(value).ok()?.trim();
+        let mac: mac_address::MacAddress = s.parse().ok()?;
+        Some(format_mac(&mac.bytes()))
     }
 }
 
@@ -232,6 +250,44 @@ mod tests {
         assert_eq!(
             chassis_id,
             Some(LldpChassisId::MacAddress("00:1a:2b:3c:4d:5e".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_chassis_id_from_snmp_mac_ascii_string() {
+        // MikroTik/Extreme quirk: subtype 4 sent as 17-byte ASCII "48:A9:8A:BD:B4:7D"
+        let ascii = b"48:A9:8A:BD:B4:7D";
+        let chassis_id = LldpChassisId::from_snmp(4, ascii);
+        assert_eq!(
+            chassis_id,
+            Some(LldpChassisId::MacAddress("48:a9:8a:bd:b4:7d".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_chassis_id_from_snmp_mac_invalid() {
+        // A non-MAC, non-6-byte value for subtype 4 is rejected.
+        let chassis_id = LldpChassisId::from_snmp(4, b"not-a-mac");
+        assert_eq!(chassis_id, None);
+    }
+
+    #[test]
+    fn test_port_id_from_snmp_mac_raw_octets() {
+        let mac_bytes = [0x00, 0x1a, 0x2b, 0x3c, 0x4d, 0x5e];
+        let port_id = LldpPortId::from_snmp(3, &mac_bytes);
+        assert_eq!(
+            port_id,
+            Some(LldpPortId::MacAddress("00:1a:2b:3c:4d:5e".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_port_id_from_snmp_mac_ascii_string() {
+        let ascii = b"48:A9:8A:BD:B4:7D";
+        let port_id = LldpPortId::from_snmp(3, ascii);
+        assert_eq!(
+            port_id,
+            Some(LldpPortId::MacAddress("48:a9:8a:bd:b4:7d".to_string()))
         );
     }
 

@@ -159,8 +159,19 @@ async fn create_checkout_session(
                         )
                         .await?;
                     Ok(Json(ApiResponse::success(result)))
-                } else if !org.base.has_payment_method {
-                    // No payment method, not trial-eligible — collect via Checkout
+                } else if has_non_free_plan && org.base.has_payment_method {
+                    // Live paid subscription + card on file — modify it in place.
+                    let result = billing_service
+                        .change_plan(organization_id, request.plan, auth.into_entity())
+                        .await?;
+                    Ok(Json(ApiResponse::success(result)))
+                } else {
+                    // No live subscription to modify (e.g. currently on Free
+                    // after a downgrade) or no card on file — (re)subscribe via
+                    // Checkout, which creates a fresh subscription and reuses the
+                    // existing customer/card. Routing a Free org to change_plan
+                    // would fail with "No active subscription found to modify" —
+                    // it only updates an existing paid sub.
                     let cancel_url = request.url.clone();
                     let session = billing_service
                         .create_checkout_session(
@@ -172,12 +183,6 @@ async fn create_checkout_session(
                         )
                         .await?;
                     Ok(Json(ApiResponse::success(session.url.unwrap())))
-                } else {
-                    // Has payment, not trial-eligible — direct subscription update
-                    let result = billing_service
-                        .change_plan(organization_id, request.plan, auth.into_entity())
-                        .await?;
-                    Ok(Json(ApiResponse::success(result)))
                 }
             }
         } else {

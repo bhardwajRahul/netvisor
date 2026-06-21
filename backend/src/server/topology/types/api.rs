@@ -3,7 +3,7 @@ use crate::server::{
     hosts::r#impl::base::Host, interfaces::r#impl::base::Interface,
     ip_addresses::r#impl::base::IPAddress, ports::r#impl::base::Port,
     services::r#impl::base::Service, subnets::r#impl::base::Subnet, tags::r#impl::base::Tag,
-    vlans::r#impl::base::Vlan,
+    topology::types::views::TopologyView, vlans::r#impl::base::Vlan,
 };
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -26,4 +26,11 @@ pub struct TopologyData {
     pub services: Vec<Service>,
     pub vlans: Vec<Vlan>,
     pub tags: Vec<Tag>,
+    /// Views whose data is present in this entity set (L3/Workloads always;
+    /// L2 Physical iff LLDP/CDP neighbors exist; Application iff app-flagged
+    /// tags are used). The topology tab restricts a snapshot's view picker to
+    /// these — you can't set up SNMP or create app tags on a historical
+    /// snapshot — while the live view shows all views with setup prompts.
+    #[serde(default)]
+    pub available_views: Vec<TopologyView>,
 }

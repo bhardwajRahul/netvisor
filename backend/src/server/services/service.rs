@@ -96,7 +96,7 @@ impl CrudService<Service> for ServiceService {
             }
         }
 
-        self.bulk_hydrate_tags(&mut services).await?;
+        self.bulk_hydrate_tags(&mut services, None).await?;
 
         Ok(services)
     }
@@ -135,7 +135,7 @@ impl CrudService<Service> for ServiceService {
                 }
             }
 
-            self.bulk_hydrate_tags(&mut paginated.items).await?;
+            self.bulk_hydrate_tags(&mut paginated.items, None).await?;
         }
 
         Ok(paginated)
@@ -455,7 +455,7 @@ impl ServiceService {
             }
         }
 
-        self.bulk_hydrate_tags(&mut services).await?;
+        self.bulk_hydrate_tags(&mut services, None).await?;
 
         Ok(services)
     }
@@ -479,7 +479,7 @@ impl ServiceService {
                 }
             }
 
-            self.bulk_hydrate_tags(&mut paginated.items).await?;
+            self.bulk_hydrate_tags(&mut paginated.items, None).await?;
         }
 
         Ok(paginated)

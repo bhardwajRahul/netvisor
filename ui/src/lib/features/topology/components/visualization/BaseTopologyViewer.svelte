@@ -35,7 +35,8 @@
 		MINIMAP_HEIGHT_PX,
 		MINIMAP_OFFSET_PX,
 		aggregatedEdgeOriginals,
-		getInfrastructureRuleId
+		getInfrastructureRuleId,
+		topologyReadOnly
 	} from '../../queries';
 	import { isExporting, expandedPortNodeIds } from '../../interactions';
 
@@ -44,7 +45,7 @@
 	import ElementNode from './ElementNode.svelte';
 	import CustomEdge from './CustomEdge.svelte';
 	import TopologySidebarControls from './TopologySidebarControls.svelte';
-	import type { EnrichedTopology } from '../../types/base';
+	import type { RenderableTopology } from '../../types/base';
 	import { collapsedContainers, collapseLevel, stepExpand, stepCollapse } from '../../collapse';
 	import type { CollapseLevel } from '../../collapse';
 	import {
@@ -96,7 +97,7 @@
 		onToggleEditMode = null,
 		sidebarCollapsed = false
 	}: {
-		topology: EnrichedTopology;
+		topology: RenderableTopology;
 		readonly?: boolean;
 		showControls?: boolean;
 		isEmbed?: boolean;
@@ -115,7 +116,7 @@
 	// The effect below keeps the store in sync with the prop across updates;
 	// the initial read of `topology` here is just seeding the store.
 	// svelte-ignore state_referenced_locally
-	const topologyContext = svelteWritable<EnrichedTopology>(topology);
+	const topologyContext = svelteWritable<RenderableTopology>(topology);
 	setContext('topology', topologyContext);
 	$effect(() => {
 		topologyContext.set(topology);
@@ -554,7 +555,7 @@
 			aggregatedEdges: prep.aggregatedEdges,
 			hiddenEdgeTypes: prep.hiddenEdgeTypes,
 			layoutNodes: prep.layoutNodes,
-			topology,
+			view: prep.currentView,
 			layoutGraph: layoutState.layoutGraph,
 			bundleEnabled: $topologyOptions.local.bundle_edges ?? false,
 			currentExpandedBundles: get(expandedBundles),
@@ -684,7 +685,11 @@
 
 	function handleNodeClick({ node, event }: { node: Node; event: MouseEvent | TouchEvent }) {
 		if (viewportMoved) return;
-		const isModifierClick = event instanceof MouseEvent && (event.ctrlKey || event.metaKey);
+		// Multi-select drives dependency creation, so it's an edit action: disable
+		// it when read-only (snapshot / share). Single-select (read-only inspect)
+		// still works.
+		const isModifierClick =
+			event instanceof MouseEvent && (event.ctrlKey || event.metaKey) && !$topologyReadOnly;
 		if (isModifierClick) {
 			handleModifierNodeClick(node, selectionStores);
 			ignoreNextSelectionChange = true;

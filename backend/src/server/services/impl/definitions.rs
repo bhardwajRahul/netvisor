@@ -1,8 +1,13 @@
+use crate::server::hosts::r#impl::virtualization::HostVirtualizationDiscriminants;
 use crate::server::services::definitions::ServiceDefinitionRegistry;
 use crate::server::services::definitions::docker_daemon::Docker;
+use crate::server::services::definitions::esxi::Esxi;
+use crate::server::services::definitions::podman::Podman;
 use crate::server::services::definitions::proxmox::Proxmox;
+use crate::server::services::definitions::vcenter::VCenter;
 use crate::server::services::r#impl::categories::ServiceCategory;
 use crate::server::services::r#impl::patterns::Pattern;
+use crate::server::services::r#impl::virtualization::ServiceVirtualizationDiscriminants;
 use crate::server::shared::types::metadata::TypeMetadataProvider;
 use crate::server::shared::types::metadata::{EntityMetadataProvider, HasId};
 use crate::server::shared::types::{Color, Icon};
@@ -12,6 +17,7 @@ use dyn_hash::DynHash;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::hash::Hash;
+use strum_macros::IntoStaticStr;
 use utoipa::openapi::schema::{ObjectBuilder, SchemaType};
 use utoipa::openapi::{RefOr, Schema};
 use utoipa::{PartialSchema, ToSchema};
@@ -91,9 +97,35 @@ impl ServiceDefinition for Box<dyn ServiceDefinition> {
 }
 
 // Helper methods to be used in rest of codebase, not overridable by definition implementations
+/// The virtualization role a manager service definition plays, paired with the
+/// backing `HostVirtualization` / `ServiceVirtualization` enum variant it
+/// produces. The variant strings (kind + serde tag) are derived from the actual
+/// enum discriminants, so they cannot drift from the persisted/deserialized
+/// variants.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, IntoStaticStr)]
+#[strum(serialize_all = "snake_case")]
+pub enum VirtualizationRole {
+    /// Manages VM hosts (Proxmox, vCenter, ESXi, …) -> "vms".
+    Vms(HostVirtualizationDiscriminants),
+    /// Manages containers (Docker, Podman, …) -> "containers".
+    Containers(ServiceVirtualizationDiscriminants),
+}
+
+impl VirtualizationRole {
+    /// Serde "type" discriminant of the backing virtualization enum variant
+    /// (e.g. "Proxmox", "VCenter", "Podman"). This is what the manual-assignment
+    /// UI sends and what the host/service virtualization field deserializes to.
+    pub fn variant_tag(&self) -> &'static str {
+        match self {
+            Self::Vms(d) => (*d).into(),
+            Self::Containers(d) => (*d).into(),
+        }
+    }
+}
+
 pub trait ServiceDefinitionExt {
     fn can_be_manually_added(&self) -> bool;
-    fn manages_virtualization(&self) -> Option<&'static str>;
+    fn virtualization_role(&self) -> Option<VirtualizationRole>;
     fn is_scanopy(&self) -> bool;
     fn is_generic(&self) -> bool;
     fn is_gateway(&self) -> bool;
@@ -137,11 +169,28 @@ impl ServiceDefinitionExt for Box<dyn ServiceDefinition> {
         self.discovery_pattern().has_raw_socket_endpoint()
     }
 
-    fn manages_virtualization(&self) -> Option<&'static str> {
+    /// Single source of truth mapping a manager service definition to the
+    /// virtualization role + backing enum variant it produces. The "vms"/
+    /// "containers" kind and the serde variant tag are both derived from this
+    /// (see `VirtualizationRole`), so they cannot drift apart or from the enums.
+    fn virtualization_role(&self) -> Option<VirtualizationRole> {
         let id = self.id();
         match id {
-            _ if id == Proxmox.id() => Some("vms"),
-            _ if id == Docker.id() => Some("containers"),
+            _ if id == Proxmox.id() => Some(VirtualizationRole::Vms(
+                HostVirtualizationDiscriminants::Proxmox,
+            )),
+            _ if id == VCenter.id() => Some(VirtualizationRole::Vms(
+                HostVirtualizationDiscriminants::VCenter,
+            )),
+            _ if id == Esxi.id() => Some(VirtualizationRole::Vms(
+                HostVirtualizationDiscriminants::ESXi,
+            )),
+            _ if id == Docker.id() => Some(VirtualizationRole::Containers(
+                ServiceVirtualizationDiscriminants::Docker,
+            )),
+            _ if id == Podman.id() => Some(VirtualizationRole::Containers(
+                ServiceVirtualizationDiscriminants::Podman,
+            )),
             _ => None,
         }
     }
@@ -178,9 +227,11 @@ impl TypeMetadataProvider for Box<dyn ServiceDefinition> {
                 .filter(|e| matches!(*e, "svg" | "png" | "webp"))
                 .unwrap_or("svg")
         };
+        let role = self.virtualization_role();
         serde_json::json!({
             "can_be_added": self.can_be_manually_added(),
-            "manages_virtualization": self.manages_virtualization(),
+            "manages_virtualization": role.as_ref().map(<&'static str>::from),
+            "virtualization_variant": role.as_ref().map(VirtualizationRole::variant_tag),
             "is_gateway": self.is_gateway(),
             "is_generic": ServiceDefinition::is_generic(&**self),
             "has_logo": self.has_logo(),
@@ -283,5 +334,37 @@ impl ServiceDefinition for DefaultServiceDefinition {
     }
     fn discovery_pattern(&self) -> Pattern<'_> {
         Pattern::None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn virtualization_managers_declare_role_and_variant() {
+        // (service id, kind == "vms"/"containers", variant serde tag)
+        let cases = [
+            ("Proxmox VE", "vms", "Proxmox"),
+            ("vCenter", "vms", "VCenter"),
+            ("ESXi", "vms", "ESXi"),
+            ("Docker", "containers", "Docker"),
+            ("Podman", "containers", "Podman"),
+        ];
+        for (id, kind, variant) in cases {
+            let def = ServiceDefinitionRegistry::find_by_id(id)
+                .unwrap_or_else(|| panic!("{id} not registered"));
+            let role = def
+                .virtualization_role()
+                .unwrap_or_else(|| panic!("{id} should declare a virtualization role"));
+            assert_eq!(<&'static str>::from(&role), kind, "{id} kind");
+            assert_eq!(role.variant_tag(), variant, "{id} variant");
+        }
+    }
+
+    #[test]
+    fn non_virtualizer_services_have_no_role() {
+        let def = ServiceDefinitionRegistry::find_by_id("Termix").expect("Termix registered");
+        assert!(def.virtualization_role().is_none());
     }
 }

@@ -42,7 +42,7 @@ mod verification;
 
 pub use cancellation_initiated::CancellationInitiated;
 pub use checkout_completed::CheckoutCompleted;
-pub use compose::{Body, Content};
+pub use compose::{BILLING_DETAILS_TAGLINE, Body, Content};
 pub use daemon_standby::DaemonStandby;
 pub use daemon_unreachable::DaemonUnreachable;
 pub use discovery_digest::DiscoveryDigest;
@@ -139,6 +139,15 @@ pub enum PausableCategory {
     TrialAndUsage,
 }
 
+/// A binary file delivered alongside an email body (e.g. a Stripe invoice
+/// PDF). Carried by value so the bytes are fetched before the email is
+/// constructed; the transports base64/MIME-encode them at send time.
+pub struct EmailAttachment {
+    pub filename: String,
+    pub content_type: String,
+    pub bytes: Vec<u8>,
+}
+
 /// A single transactional email.
 ///
 /// Implementors are plain data structs carrying the template variables for one
@@ -224,6 +233,14 @@ pub trait Email: Send + Sync {
     /// Plaintext alternative, derived from the wrapped HTML.
     fn render_text(&self, base_url: &str, self_hosted: bool) -> String {
         strip_html_tags(self.render_html(base_url, self_hosted))
+    }
+
+    /// Binary files to deliver with the message. Default-empty so the vast
+    /// majority of emails opt out by doing nothing; transports MIME/base64
+    /// encode whatever is returned. Bytes must be fetched before the email is
+    /// constructed (this is sync), so an attaching email holds them by value.
+    fn attachments(&self) -> Vec<EmailAttachment> {
+        Vec::new()
     }
 }
 
@@ -398,14 +415,12 @@ mod tests {
             plan_name: "Pro",
             trial_days: 14,
             billing_period: "Monthly",
-            base_price: "$14.99/mo",
         });
         for has_payment in [true, false] {
             assert_fully_rendered(&TrialEnding {
                 has_payment,
                 plan_name: "Pro",
                 billing_period: "Monthly",
-                base_price: "$14.99/mo",
                 hosts_count: 12,
                 networks_count: 3,
                 daemons_count: 2,
@@ -420,7 +435,6 @@ mod tests {
         assert_fully_rendered(&TrialConverted {
             plan_name: "Pro",
             billing_period: "Monthly",
-            base_price: "$14.99/mo",
         });
         assert_fully_rendered(&PlanChanged { plan_name: "Pro" });
         assert_fully_rendered(&SubscriptionCancelled {
@@ -439,21 +453,27 @@ mod tests {
         assert_fully_rendered(&SubscriptionReactivated);
         assert_fully_rendered(&SubscriptionPaused {
             resumes_at: "July 1, 2026",
-            is_yearly: false,
-            duration_days: 30,
-        });
-        assert_fully_rendered(&SubscriptionPaused {
-            resumes_at: "July 1, 2026",
-            is_yearly: true,
-            duration_days: 30,
         });
         assert_fully_rendered(&SubscriptionResumed);
         assert_fully_rendered(&CheckoutCompleted { plan_name: "Pro" });
         assert_fully_rendered(&UsageSummary {
             period: "Dec 1, 2025 – Jan 1, 2026",
             invoice_date: "January 1, 2026",
-            line_items_html: "<tr><td>Subscription</td><td>$14.99</td></tr>",
             total: "$14.99",
+            attachment: None,
+            hosted_invoice_url: Some("https://billing.example.test/invoice/abc"),
+        });
+        // Attached variant: PDF present, no hosted-URL fallback needed.
+        assert_fully_rendered(&UsageSummary {
+            period: "Dec 1, 2025 – Jan 1, 2026",
+            invoice_date: "January 1, 2026",
+            total: "$14.99",
+            attachment: Some(EmailAttachment {
+                filename: "scanopy-invoice-in_123.pdf".to_string(),
+                content_type: "application/pdf".to_string(),
+                bytes: vec![0x25, 0x50, 0x44, 0x46],
+            }),
+            hosted_invoice_url: None,
         });
         for has_overage in [true, false] {
             assert_fully_rendered(&PlanLimitApproaching {
@@ -578,7 +598,6 @@ mod tests {
                 plan_name: "Pro",
                 trial_days: 14,
                 billing_period: "Monthly",
-                base_price: "$14.99/mo",
             },
         );
         f(
@@ -587,7 +606,6 @@ mod tests {
                 has_payment: true,
                 plan_name: "Pro",
                 billing_period: "Monthly",
-                base_price: "$14.99/mo",
                 hosts_count: 12,
                 networks_count: 3,
                 daemons_count: 2,
@@ -601,7 +619,6 @@ mod tests {
                 has_payment: false,
                 plan_name: "Pro",
                 billing_period: "Monthly",
-                base_price: "$14.99/mo",
                 hosts_count: 12,
                 networks_count: 3,
                 daemons_count: 2,
@@ -621,7 +638,6 @@ mod tests {
             &TrialConverted {
                 plan_name: "Pro",
                 billing_period: "Monthly",
-                base_price: "$14.99/mo",
             },
         );
         f("plan_changed", &PlanChanged { plan_name: "Pro" });
@@ -649,19 +665,9 @@ mod tests {
         );
         f("subscription_reactivated", &SubscriptionReactivated);
         f(
-            "subscription_paused_monthly",
+            "subscription_paused",
             &SubscriptionPaused {
                 resumes_at: "July 1, 2026",
-                is_yearly: false,
-                duration_days: 30,
-            },
-        );
-        f(
-            "subscription_paused_yearly",
-            &SubscriptionPaused {
-                resumes_at: "July 1, 2026",
-                is_yearly: true,
-                duration_days: 30,
             },
         );
         f("subscription_resumed", &SubscriptionResumed);
@@ -670,12 +676,27 @@ mod tests {
             &CheckoutCompleted { plan_name: "Pro" },
         );
         f(
-            "usage_summary",
+            "usage_summary_attached",
             &UsageSummary {
                 period: "Dec 1, 2025 – Jan 1, 2026",
                 invoice_date: "January 1, 2026",
-                line_items_html: "<tr><td>Subscription</td><td>$14.99</td></tr>",
                 total: "$14.99",
+                attachment: Some(EmailAttachment {
+                    filename: "scanopy-invoice-in_123.pdf".to_string(),
+                    content_type: "application/pdf".to_string(),
+                    bytes: vec![0x25, 0x50, 0x44, 0x46],
+                }),
+                hosted_invoice_url: None,
+            },
+        );
+        f(
+            "usage_summary_hosted_link",
+            &UsageSummary {
+                period: "Dec 1, 2025 – Jan 1, 2026",
+                invoice_date: "January 1, 2026",
+                total: "$14.99",
+                attachment: None,
+                hosted_invoice_url: Some("https://billing.example.test/invoice/abc"),
             },
         );
         f(

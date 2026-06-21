@@ -16,7 +16,7 @@ Scanopy replaces manual network diagrams with a continuously maintained model of
 ![Daemon](https://img.shields.io/github/actions/workflow/status/scanopy/scanopy/daemon-ci.yml?label=daemon-ci&style=for-the-badge)  ![Server](https://img.shields.io/github/actions/workflow/status/scanopy/scanopy/server-ci.yml?label=server-ci&style=for-the-badge)  ![UI](https://img.shields.io/github/actions/workflow/status/scanopy/scanopy/ui-ci.yml?label=ui-ci&style=for-the-badge)<br>
 [![Discord](https://img.shields.io/discord/1432872786828726392?logo=discord&label=discord&labelColor=white&color=7289da&style=for-the-badge)](https://discord.gg/b7ffQr8AcZ) [![Translations](https://img.shields.io/weblate/progress/scanopy?style=for-the-badge&logo=weblate)](https://hosted.weblate.org/engage/scanopy/)
 
-> 💡 **Prefer not to self-host?** [Get a free trial](https://scanopy.net) of Scanopy Cloud
+> 💡 **Prefer not to self-host?** [Get a free trial](https://scanopy.net?utm_source=github&utm_medium=readme&utm_campaign=cloud_trial) of Scanopy Cloud
 
 <table>
   <tr>
@@ -26,7 +26,7 @@ Scanopy replaces manual network diagrams with a continuously maintained model of
     </td>
     <td width="50%" valign="top">
       <img src="./media/l3.png" alt="L3 view" />
-      <p align="center"><strong>L3 (Logical)</strong><br/><sub>Subnets, VLANs, and how hosts bridge them.</sub></p>
+      <p align="center"><strong>L3 (Logical)</strong><br/><sub>Subnets and how hosts connect across them.</sub></p>
     </td>
   </tr>
   <tr>
@@ -62,7 +62,7 @@ Scanopy replaces manual network diagrams with a continuously maintained model of
 ## 📋 Licensing
 **Self-hosted ([AGPL-3.0](LICENSE.md)):** Free for all use. Requires source disclosure for network services and copyleft compliance.   
 **Self-hosted ([Commercial license](COMMERCIAL-LICENSE.md)):** For those who cannot comply with AGPL-3.0 terms. Contact licensing@scanopy.net  
-**Hosted Solution:** **[Scanopy Cloud](https://scanopy.net)** subscription for zero infrastructure management  
+**Hosted Solution:** **[Scanopy Cloud](https://scanopy.net?utm_source=github&utm_medium=readme&utm_campaign=cloud_trial)** subscription for zero infrastructure management  
 
 ## 🚀 Quick Start for Self Hosting
 
@@ -81,21 +81,21 @@ Use this [helper script](https://community-scripts.github.io/ProxmoxVE/scripts?i
 
 Available as an Unraid community app.
 
-> 💡 **Prefer not to self-host?** [Get a free trial](https://scanopy.net) of Scanopy Cloud
+> 💡 **Prefer not to self-host?** [Get a free trial](https://scanopy.net?utm_source=github&utm_medium=readme&utm_campaign=cloud_trial) of Scanopy Cloud
 
 ---
 
 Access the UI at `http://<your-server-ip>:60072`, create your account, and wait for the first discovery to complete.
 
-For detailed setup options and configuration, see the [Installation Guide](https://scanopy.net/docs/server-installation).
+For detailed setup options and configuration, see the [Installation Guide](https://scanopy.net/docs/server-installation?utm_source=github&utm_medium=readme&utm_campaign=docs).
 
 ## 📚 Documentation + API
 
-**[scanopy.net/docs](https://scanopy.net/docs)**
+**[scanopy.net/docs](https://scanopy.net/docs?utm_source=github&utm_medium=readme&utm_campaign=docs)**
 
 ## 🚀 Demo
 
-**[demo.scanopy.net](https://demo.scanopy.net/)**. Hosted demo app with a sample dataset. Try the full UI without installing anything.
+**[demo.scanopy.net](https://demo.scanopy.net/?utm_source=github&utm_medium=readme&utm_campaign=demo)**. Hosted demo app with a sample dataset. Try the full UI without installing anything.
 
 ## 🤝 Contributing
 

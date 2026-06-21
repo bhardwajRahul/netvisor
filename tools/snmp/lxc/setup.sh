@@ -11,12 +11,21 @@ set -euo pipefail
 # Edit HOSTS/CIDR/IFACE below to match your network.
 # ══════════════════════════════════════════════════════════════════════
 
-HOSTS=(192.168.7.230 192.168.7.231 192.168.7.232 192.168.7.233 192.168.7.234 192.168.7.235)
+HOSTS=(192.168.7.230 192.168.7.231 192.168.7.232 192.168.7.233 192.168.7.234 192.168.7.235 192.168.7.236 192.168.7.237)
 CIDR="22"
 IFACE="eth0"
 
-COMMUNITIES=(netdefault netdefault secret42 secret42 public netdefault)
-SYSNAMES=(switch-core-01 switch-access-01 router-gw-01 firewall-01 printer-lobby ap-wireless-01)
+# Per-host SNMP version. The first six are v2c (community string); the last two
+# exercise the v1-only and v3-only code paths added for #557. Per-host
+# communities are written directly into each snmpd config below.
+VERSIONS=(v2c v2c v2c v2c v2c v2c v1 v3)
+SYSNAMES=(switch-core-01 switch-access-01 router-gw-01 firewall-01 printer-lobby ap-wireless-01 legacy-switch-01 secure-switch-01)
+
+# SNMPv3 USM credentials for secure-switch-01 (192.168.7.237).
+# AuthPriv with SHA-256 / AES-128 — the broadly-supported pure-Rust default.
+V3_USER="scanopyv3"
+V3_AUTH_PASS="authpass12345"
+V3_PRIV_PASS="privpass12345"
 
 CONF_DIR="/etc/snmp-test"
 DATA_DIR="$CONF_DIR/data"
@@ -408,6 +417,94 @@ cat > "$DATA_DIR/ap-wireless-01-lldp.txt" << 'EOF'
 .1.0.8802.1.1.2.1.4.1.1.10.0.1.1 string Cisco IOS Software, C3750 Software (C3750-IPSERVICESK9-M), Version 15.0(2)SE11
 EOF
 
+# legacy-switch-01 IF-MIB (SNMPv1-only device)
+cat > "$DATA_DIR/legacy-switch-01-iftable.txt" << 'EOF'
+.1.3.6.1.2.1.2.2.1.1.1 integer 1
+.1.3.6.1.2.1.2.2.1.1.2 integer 2
+.1.3.6.1.2.1.2.2.1.2.1 string FastEthernet0/1
+.1.3.6.1.2.1.2.2.1.2.2 string FastEthernet0/2
+.1.3.6.1.2.1.2.2.1.3.1 integer 6
+.1.3.6.1.2.1.2.2.1.3.2 integer 6
+.1.3.6.1.2.1.2.2.1.5.1 gauge 100000000
+.1.3.6.1.2.1.2.2.1.5.2 gauge 100000000
+.1.3.6.1.2.1.2.2.1.6.1 string 0:1a:2b:0:16:01
+.1.3.6.1.2.1.2.2.1.6.2 string 0:1a:2b:0:16:02
+.1.3.6.1.2.1.2.2.1.7.1 integer 1
+.1.3.6.1.2.1.2.2.1.7.2 integer 1
+.1.3.6.1.2.1.2.2.1.8.1 integer 1
+.1.3.6.1.2.1.2.2.1.8.2 integer 1
+.1.3.6.1.2.1.31.1.1.1.1.1 string Fa0/1
+.1.3.6.1.2.1.31.1.1.1.1.2 string Fa0/2
+.1.3.6.1.2.1.31.1.1.1.15.1 gauge 100
+.1.3.6.1.2.1.31.1.1.1.15.2 gauge 100
+.1.3.6.1.2.1.31.1.1.1.18.1 string Uplink to switch-access-01
+.1.3.6.1.2.1.31.1.1.1.18.2 string Access port
+EOF
+
+# legacy-switch-01 LLDP
+cat > "$DATA_DIR/legacy-switch-01-lldp.txt" << 'EOF'
+.1.0.8802.1.1.2.1.3.1.0 integer 4
+.1.0.8802.1.1.2.1.3.2.0 string 0:1a:2b:0:16:0
+.1.0.8802.1.1.2.1.3.3.0 string legacy-switch-01
+.1.0.8802.1.1.2.1.3.4.0 string Cisco IOS Software, C2950 Software, Version 12.1(22)EA14
+.1.0.8802.1.1.2.1.4.1.1.4.0.1.1 integer 4
+.1.0.8802.1.1.2.1.4.1.1.5.0.1.1 string 0:1a:2b:0:11:0
+.1.0.8802.1.1.2.1.4.1.1.6.0.1.1 integer 5
+.1.0.8802.1.1.2.1.4.1.1.7.0.1.1 string Gi0/2
+.1.0.8802.1.1.2.1.4.1.1.8.0.1.1 string GigabitEthernet0/2
+.1.0.8802.1.1.2.1.4.1.1.9.0.1.1 string switch-access-01
+.1.0.8802.1.1.2.1.4.1.1.10.0.1.1 string Cisco IOS Software, C3750 Software (C3750-IPSERVICESK9-M), Version 15.0(2)SE11
+EOF
+
+# secure-switch-01 IF-MIB (SNMPv3-only device — hardened, mirrors Huawei S5000)
+cat > "$DATA_DIR/secure-switch-01-iftable.txt" << 'EOF'
+.1.3.6.1.2.1.2.2.1.1.1 integer 1
+.1.3.6.1.2.1.2.2.1.1.2 integer 2
+.1.3.6.1.2.1.2.2.1.1.3 integer 3
+.1.3.6.1.2.1.2.2.1.2.1 string GigabitEthernet0/0/1
+.1.3.6.1.2.1.2.2.1.2.2 string GigabitEthernet0/0/2
+.1.3.6.1.2.1.2.2.1.2.3 string GigabitEthernet0/0/3
+.1.3.6.1.2.1.2.2.1.3.1 integer 6
+.1.3.6.1.2.1.2.2.1.3.2 integer 6
+.1.3.6.1.2.1.2.2.1.3.3 integer 6
+.1.3.6.1.2.1.2.2.1.5.1 gauge 1000000000
+.1.3.6.1.2.1.2.2.1.5.2 gauge 1000000000
+.1.3.6.1.2.1.2.2.1.5.3 gauge 1000000000
+.1.3.6.1.2.1.2.2.1.6.1 string 0:1a:2b:0:17:01
+.1.3.6.1.2.1.2.2.1.6.2 string 0:1a:2b:0:17:02
+.1.3.6.1.2.1.2.2.1.6.3 string 0:1a:2b:0:17:03
+.1.3.6.1.2.1.2.2.1.7.1 integer 1
+.1.3.6.1.2.1.2.2.1.7.2 integer 1
+.1.3.6.1.2.1.2.2.1.7.3 integer 1
+.1.3.6.1.2.1.2.2.1.8.1 integer 1
+.1.3.6.1.2.1.2.2.1.8.2 integer 1
+.1.3.6.1.2.1.2.2.1.8.3 integer 1
+.1.3.6.1.2.1.31.1.1.1.1.1 string GE0/0/1
+.1.3.6.1.2.1.31.1.1.1.1.2 string GE0/0/2
+.1.3.6.1.2.1.31.1.1.1.1.3 string GE0/0/3
+.1.3.6.1.2.1.31.1.1.1.15.1 gauge 1000
+.1.3.6.1.2.1.31.1.1.1.15.2 gauge 1000
+.1.3.6.1.2.1.31.1.1.1.15.3 gauge 1000
+.1.3.6.1.2.1.31.1.1.1.18.1 string Uplink to switch-core-01
+.1.3.6.1.2.1.31.1.1.1.18.2 string Server port
+.1.3.6.1.2.1.31.1.1.1.18.3 string Server port
+EOF
+
+# secure-switch-01 LLDP
+cat > "$DATA_DIR/secure-switch-01-lldp.txt" << 'EOF'
+.1.0.8802.1.1.2.1.3.1.0 integer 4
+.1.0.8802.1.1.2.1.3.2.0 string 0:1a:2b:0:17:0
+.1.0.8802.1.1.2.1.3.3.0 string secure-switch-01
+.1.0.8802.1.1.2.1.3.4.0 string Huawei S5000 Series, VRP V200R019C10
+.1.0.8802.1.1.2.1.4.1.1.4.0.1.1 integer 4
+.1.0.8802.1.1.2.1.4.1.1.5.0.1.1 string 0:1a:2b:0:10:0
+.1.0.8802.1.1.2.1.4.1.1.6.0.1.1 integer 5
+.1.0.8802.1.1.2.1.4.1.1.7.0.1.1 string Gi0/1
+.1.0.8802.1.1.2.1.4.1.1.8.0.1.1 string GigabitEthernet0/1
+.1.0.8802.1.1.2.1.4.1.1.9.0.1.1 string switch-core-01
+.1.0.8802.1.1.2.1.4.1.1.10.0.1.1 string Cisco IOS Software, C2960 Software (C2960-LANBASEK9-M), Version 15.2(7)E3
+EOF
+
 # ── 5. Write snmpd configs ───────────────────────────────────────────
 echo "Writing snmpd configs..."
 
@@ -497,6 +594,46 @@ pass .1.3.6.1.2.1.31.1.1 /bin/bash $H $D/ap-wireless-01-iftable.txt
 pass .1.0.8802.1.1.2 /bin/bash $H $D/ap-wireless-01-lldp.txt
 EOF
 
+# legacy-switch-01 — SNMPv1-ONLY. VACM grants access only via the v1 security
+# model, so v2c/v3 queries are denied (a plain `rocommunity` would answer both
+# v1 and v2c, which wouldn't prove version negotiation).
+cat > "$CONF_DIR/snmpd-legacy-switch-01.conf" << EOF
+agentAddress udp:${HOSTS[6]}:161
+com2sec v1sec default legacyv1
+group   v1group v1 v1sec
+view    all included .1
+access  v1group "" v1 noauth exact all none none
+sysdescr Cisco IOS Software, C2950 Software, Version 12.1(22)EA14
+syscontact netops@example.com
+sysname legacy-switch-01
+syslocation Closet 1, Legacy Rack
+sysobjectid .1.3.6.1.4.1.9.1.359
+sysservices 6
+pass .1.3.6.1.2.1.2.2 /bin/bash $H $D/legacy-switch-01-iftable.txt
+pass .1.3.6.1.2.1.31.1.1 /bin/bash $H $D/legacy-switch-01-iftable.txt
+pass .1.0.8802.1.1.2 /bin/bash $H $D/legacy-switch-01-lldp.txt
+EOF
+
+# secure-switch-01 — SNMPv3-ONLY (AuthPriv). No rocommunity, so v1/v2c are
+# denied. createUser is consumed on first start; localized keys persist to the
+# per-instance persistentDir. SHA-256 / AES-128 (broadly supported).
+mkdir -p "$CONF_DIR/state/secure-switch-01"
+cat > "$CONF_DIR/snmpd-secure-switch-01.conf" << EOF
+agentAddress udp:${HOSTS[7]}:161
+persistentDir $CONF_DIR/state/secure-switch-01
+createUser $V3_USER SHA-256 "$V3_AUTH_PASS" AES "$V3_PRIV_PASS"
+rouser $V3_USER priv
+sysdescr Huawei S5000 Series, VRP V200R019C10
+syscontact netops@example.com
+sysname secure-switch-01
+syslocation Server Room A, Rack 4
+sysobjectid .1.3.6.1.4.1.2011.2.23.999
+sysservices 6
+pass .1.3.6.1.2.1.2.2 /bin/bash $H $D/secure-switch-01-iftable.txt
+pass .1.3.6.1.2.1.31.1.1 /bin/bash $H $D/secure-switch-01-iftable.txt
+pass .1.0.8802.1.1.2 /bin/bash $H $D/secure-switch-01-lldp.txt
+EOF
+
 # ── 6. Create systemd services ───────────────────────────────────────
 echo "Creating systemd services..."
 for i in "${!SYSNAMES[@]}"; do
@@ -548,7 +685,6 @@ auto ${mvname}
 iface ${mvname} inet static
     address ${HOSTS[$i]}/${CIDR}
 EOF
-            fi
         fi
     done
 fi
@@ -563,27 +699,37 @@ for name in "${SYSNAMES[@]}"; do
 done
 
 # ── 9. Verify ─────────────────────────────────────────────────────────
+#
+# NOTE: we check systemd service health here, NOT snmpget. The agents bind to
+# macvlan interfaces, and the Linux kernel does not let a host reach its own
+# macvlan child interfaces — so an snmpget from THIS VM to 192.168.7.x always
+# fails even when the agents are perfectly healthy. Query them from an external
+# host instead (see the end of this output).
 echo ""
-echo "Verifying..."
+echo "Verifying service health..."
 sleep 1
 all_ok=true
 for i in "${!HOSTS[@]}"; do
+    name="${SYSNAMES[$i]}"
     ip="${HOSTS[$i]}"
-    community="${COMMUNITIES[$i]}"
-    expected="${SYSNAMES[$i]}"
-
-    result=$(snmpget -v2c -c "$community" -t 2 -r 1 "$ip" sysName.0 2>/dev/null | sed 's/.*= STRING: //' || echo "FAILED")
-    if echo "$result" | grep -q "$expected"; then
-        printf "  \033[0;32m✓\033[0m %-18s %-20s community=%-12s\n" "$ip" "$expected" "$community"
+    version="${VERSIONS[$i]}"
+    if systemctl is-active --quiet "snmpd-${name}"; then
+        printf "  \033[0;32m✓\033[0m %-18s %-20s %s (active)\n" "$ip" "$name" "$version"
     else
-        printf "  \033[0;31m✗\033[0m %-18s expected=%-20s got=%s\n" "$ip" "$expected" "$result"
+        printf "  \033[0;31m✗\033[0m %-18s %-20s %s (not active — journalctl -u snmpd-%s)\n" "$ip" "$name" "$version" "$name"
         all_ok=false
     fi
 done
 
 echo ""
 if $all_ok; then
-    printf "\033[0;32mAll 6 SNMP test hosts are running.\033[0m\n"
+    printf "\033[0;32mAll %d SNMP agents are active.\033[0m\n" "${#HOSTS[@]}"
+    echo ""
+    echo "macvlan blocks queries from this VM. Verify reachability from an"
+    echo "external host (e.g. your Mac) with: make snmp-verify"
+    echo "Or manually, e.g.:"
+    echo "  snmpget -v1  -c legacyv1 192.168.7.236 sysName.0"
+    echo "  snmpget -v3 -l authPriv -u ${V3_USER} -a SHA-256 -A ${V3_AUTH_PASS} -x AES -X ${V3_PRIV_PASS} 192.168.7.237 sysName.0"
 else
-    echo "Some hosts failed. Check: journalctl -u snmpd-<name>"
+    echo "Some agents are not active. Check: journalctl -u snmpd-<name>"
 fi
