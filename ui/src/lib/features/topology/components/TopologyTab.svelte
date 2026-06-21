@@ -74,6 +74,7 @@
 	import type { TabProps } from '$lib/shared/types';
 	import {
 		common_delete,
+		topology_lastScanned,
 		topology_liveView,
 		topology_noTopologySelected,
 		topology_snapshotDeleteConfirm,
@@ -274,13 +275,34 @@
 	// View selector — built from fixture data
 	import viewsJson from '$lib/data/views.json';
 
-	const viewOptions: SimpleOption[] = viewsJson.map((p) => ({
+	const allViewOptions: SimpleOption[] = viewsJson.map((p) => ({
 		value: p.id,
 		label: p.name,
 		description: p.description,
 		icon: views.getIconComponent(p.id),
 		iconColor: views.getColorHelper(p.id).icon
 	}));
+
+	// A snapshot can only show views whose data it captured (you can't set up
+	// SNMP or create app tags on a historical snapshot), so restrict the picker
+	// to `available_views`. Live shows every view, with its setup prompts.
+	let viewOptions = $derived.by<SimpleOption[]>(() => {
+		if ($selectedSnapshotId == null) return allViewOptions;
+		const available = topologyDataQuery.data?.available_views;
+		if (!available) return allViewOptions;
+		return allViewOptions.filter((o) => available.includes(o.value as TopologyView));
+	});
+
+	// If the active view isn't available in the selected snapshot, fall back to
+	// an available one (prefer L3Logical) so the picker and canvas stay in sync.
+	$effect(() => {
+		if ($selectedSnapshotId == null) return;
+		const available = topologyDataQuery.data?.available_views;
+		if (available && available.length > 0 && !available.includes($activeView)) {
+			activeView.set(available.includes('L3Logical') ? 'L3Logical' : available[0]);
+		}
+	});
+
 	let viewColorStyle = $derived(views.getColorHelper($activeView));
 
 	type OnboardingOperation = components['schemas']['OnboardingOperationDiscriminants'];
@@ -422,15 +444,29 @@
 		...snapshotsData
 	]);
 
+	// Live view subtitle: when the network was last scanned, derived from the
+	// most recent `last_seen_at` across the live host set (discovery refreshes
+	// it on every observation). Empty when nothing has been scanned yet.
+	let lastScannedDescription = $derived.by(() => {
+		const times = (topologyDataQuery.data?.hosts ?? [])
+			.map((h) => h.last_seen_at)
+			.filter((t): t is string => !!t);
+		if (times.length === 0) return '';
+		const latest = times.reduce((a, b) => (a > b ? a : b));
+		return topology_lastScanned({ date: formatTimestamp(latest) });
+	});
+
 	// Override the SnapshotDisplay to render the live-view sentinel with a
-	// localized label rather than a date string.
-	const snapshotDisplayWithLive = {
+	// localized label and a "last scanned" subtitle rather than a date string.
+	let snapshotDisplayWithLive = $derived({
 		...SnapshotDisplay,
 		getLabel: (s: Snapshot, ctx: object) =>
 			s.id === LIVE_VIEW_SENTINEL ? topology_liveView() : SnapshotDisplay.getLabel(s, ctx),
 		getDescription: (s: Snapshot, ctx: object) =>
-			s.id === LIVE_VIEW_SENTINEL ? '' : (SnapshotDisplay.getDescription?.(s, ctx) ?? '')
-	};
+			s.id === LIVE_VIEW_SENTINEL
+				? lastScannedDescription
+				: (SnapshotDisplay.getDescription?.(s, ctx) ?? '')
+	});
 
 	function handleSnapshotChange(value: string) {
 		const next = value === LIVE_VIEW_SENTINEL ? null : value;

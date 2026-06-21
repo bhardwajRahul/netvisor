@@ -24,7 +24,12 @@
 	import { createColorHelper } from '$lib/shared/utils/styling';
 	import type { Dependency } from '$lib/features/dependencies/types/base';
 	import type { RenderableTopology } from '$lib/features/topology/types/base';
-	import { editingDependencyId, selectedNodes, selectedEdge } from '$lib/features/topology/queries';
+	import {
+		editingDependencyId,
+		selectedNodes,
+		selectedEdge,
+		topologyReadOnly
+	} from '$lib/features/topology/queries';
 	import { useTopology, selectedTopologyId } from '$lib/features/topology/context';
 	import { getTopologyEditState } from '$lib/features/topology/state';
 	import { clearSelection } from '$lib/features/topology/selection';
@@ -50,7 +55,7 @@
 
 	const topo = useTopology();
 	const topoStore = topo.fromContext ? topo.store : null;
-	let isReadonly = topo.isReadonly;
+	let isReadonly = $derived(topo.isReadonly || $topologyReadOnly);
 	let topology = $derived(
 		topoStore
 			? $topoStore

@@ -4,7 +4,7 @@
 	import SearchOverlay from '$lib/features/topology/components/visualization/SearchOverlay.svelte';
 	import ShortcutsHelpOverlay from '$lib/features/topology/components/visualization/ShortcutsHelpOverlay.svelte';
 	import type { RenderableTopology } from '$lib/features/topology/types/base';
-	import { setContext } from 'svelte';
+	import { setContext, onMount } from 'svelte';
 	import { writable } from 'svelte/store';
 	import ReadOnlyInspectorPanel from './ReadOnlyInspectorPanel.svelte';
 	import ExportButton from '$lib/features/topology/components/ExportButton.svelte';
@@ -15,6 +15,7 @@
 	import {
 		hydrateStoresFromTopology,
 		optionsPanelExpanded,
+		topologyReadOnly,
 		MINIMAP_WIDTH_PX,
 		MINIMAP_OFFSET_PX
 	} from '$lib/features/topology/queries';
@@ -57,6 +58,14 @@
 	// Hydrate the global activeView + topologyOptions stores so the rendering
 	// pipeline sees the correct view for this shared topology.
 	hydrateStoresFromTopology(topology, true, true);
+
+	// Shares/embeds are view-only — drive the single read-only signal so the
+	// shared inspectors (descriptions/tags) and multi-select are gated the same
+	// way snapshots are. Reset on unmount so navigating back to the app is clean.
+	onMount(() => {
+		topologyReadOnly.set(true);
+		return () => topologyReadOnly.set(false);
+	});
 
 	// Create a context store for the topology so child components (inspectors) can access it
 	const topologyContext = writable<RenderableTopology>(topology);

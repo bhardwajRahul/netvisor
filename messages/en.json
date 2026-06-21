@@ -1284,6 +1284,7 @@
 	"topology_levelFullyCollapsed": "Fully collapsed",
 	"topology_levelFullyExpanded": "Fully expanded",
 	"topology_levelSubcontainersExpanded": "Subcontainers expanded",
+	"topology_lastScanned": "Last scan: {date}",
 	"topology_liveView": "Live view",
 	"topology_multiSelectGroupName": "Dependency name",
 	"topology_multiSelectNoBindings": "(no bindings)",

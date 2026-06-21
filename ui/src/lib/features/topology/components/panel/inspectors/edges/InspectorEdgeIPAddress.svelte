@@ -5,6 +5,7 @@
 	import { IPAddressDisplay } from '$lib/shared/components/forms/selection/display/IPAddressDisplay.svelte';
 	import { useTopology, selectedTopologyId } from '$lib/features/topology/context';
 	import { getTopologyEditState } from '$lib/features/topology/state';
+	import { topologyReadOnly } from '$lib/features/topology/queries';
 	import type { RenderableTopology } from '$lib/features/topology/types/base';
 
 	import type { components } from '$lib/api/schema';
@@ -24,7 +25,7 @@
 
 	const topo = useTopology();
 	const topoStore = topo.fromContext ? topo.store : null;
-	let isReadonly = topo.isReadonly;
+	let isReadonly = $derived(topo.isReadonly || $topologyReadOnly);
 	let topology = $derived(
 		topoStore
 			? $topoStore

@@ -11,7 +11,7 @@
 
 	const topo = useTopology();
 	const topoStore = topo.fromContext ? topo.store : null;
-	let isReadonly = topo.isReadonly;
+	let isReadonly = $derived(topo.isReadonly || $topologyReadOnly);
 	let topology = $derived(
 		topoStore
 			? $topoStore
@@ -20,7 +20,7 @@
 					| undefined)
 	);
 
-	let editState = $derived(getTopologyEditState(topology, false, isReadonly || $topologyReadOnly));
+	let editState = $derived(getTopologyEditState(topology, false, isReadonly));
 
 	let containerCtx = $derived(
 		topology ? resolveContainerNode(node.id, node.data as TopologyNode, topology) : null
