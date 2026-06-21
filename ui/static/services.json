@@ -272,6 +272,24 @@
   {
     "category": "IoT",
     "color": "Yellow",
+    "description": "Wiz IoT Devices",
+    "discovery_pattern": "MAC Address belongs to WiZ",
+    "logo_needs_white_background": false,
+    "logo_url": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/wiz.svg",
+    "name": "Wiz"
+  },
+  {
+    "category": "IoT",
+    "color": "Yellow",
+    "description": "Tuya Smart IoT Devices",
+    "discovery_pattern": "All of: (MAC Address belongs to Tuya Smart Inc., 6668/tcp is open)",
+    "logo_needs_white_background": false,
+    "logo_url": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/tuya-smart-inc.svg",
+    "name": "Tuya Smart"
+  },
+  {
+    "category": "IoT",
+    "color": "Yellow",
     "description": "ESP device firmware",
     "discovery_pattern": "No match pattern provided",
     "logo_needs_white_background": true,
@@ -900,6 +918,15 @@
     "name": "Tomcat"
   },
   {
+    "category": "Integration",
+    "color": "Cyan",
+    "description": "Open-source AS2 server for B2B/EDI file exchange",
+    "discovery_pattern": "Endpoint response body from <ip>:8443/as2/HttpReceiver contains \"mendelson opensource\"",
+    "logo_needs_white_background": false,
+    "logo_url": "",
+    "name": "Mendelson AS2"
+  },
+  {
     "category": "Publishing",
     "color": "Purple",
     "description": "Publishing platform",
@@ -1235,6 +1262,15 @@
   {
     "category": "Database",
     "color": "Gray",
+    "description": "PC SOFT HFSQL Client-Server database (WinDev/WebDev)",
+    "discovery_pattern": "4900/tcp is open",
+    "logo_needs_white_background": false,
+    "logo_url": "",
+    "name": "HyperFile Server"
+  },
+  {
+    "category": "Database",
+    "color": "Gray",
     "description": "Distributed search and analytics engine",
     "discovery_pattern": "Endpoint response body from <ip>:9200/ contains \"lucene\"",
     "logo_needs_white_background": false,
@@ -1269,6 +1305,15 @@
     "name": "Cassandra"
   },
   {
+    "category": "Hypervisor",
+    "color": "Amber",
+    "description": "VMware vCenter Server virtualization management platform",
+    "discovery_pattern": "Endpoint response body from <ip>:443/ contains \"VMware vCenter\"",
+    "logo_needs_white_background": false,
+    "logo_url": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/vmware.svg",
+    "name": "vCenter"
+  },
+  {
     "category": "Orchestrator",
     "color": "Purple",
     "description": "Kubernetes management",
@@ -1296,6 +1341,15 @@
     "name": "Portainer"
   },
   {
+    "category": "ContainerRuntime",
+    "color": "Blue",
+    "description": "Daemonless container runtime",
+    "discovery_pattern": "No match pattern provided",
+    "logo_needs_white_background": false,
+    "logo_url": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/podman.svg",
+    "name": "Podman"
+  },
+  {
     "category": "Orchestrator",
     "color": "Purple",
     "description": "Enterprise Kubernetes",
@@ -1321,6 +1375,15 @@
     "logo_needs_white_background": false,
     "logo_url": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/kubernetes.svg",
     "name": "Kubernetes"
+  },
+  {
+    "category": "Hypervisor",
+    "color": "Amber",
+    "description": "VMware ESXi bare-metal hypervisor",
+    "discovery_pattern": "Endpoint response body from <ip>:443/ contains \"VMware ESXi\"",
+    "logo_needs_white_background": false,
+    "logo_url": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/vmware-esxi.svg",
+    "name": "ESXi"
   },
   {
     "category": "Orchestrator",
@@ -1442,6 +1505,15 @@
   {
     "category": "Media",
     "color": "Blue",
+    "description": "DLNA media streaming server",
+    "discovery_pattern": "Endpoint response body from <ip>:23423/rest/application contains \"<serviioId>\"",
+    "logo_needs_white_background": false,
+    "logo_url": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/serviio.svg",
+    "name": "Serviio"
+  },
+  {
+    "category": "Media",
+    "color": "Blue",
     "description": "A NZB Files Downloader.",
     "discovery_pattern": "Endpoint response body from <ip>:8080/Content/manifest.json contains \"SABnzbd\"",
     "logo_needs_white_background": false,
@@ -1555,6 +1627,15 @@
     "logo_needs_white_background": false,
     "logo_url": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/veeam.svg",
     "name": "Veeam"
+  },
+  {
+    "category": "Backup",
+    "color": "Gray",
+    "description": "Network device configuration backup and change management",
+    "discovery_pattern": "Endpoint response body from <ip>:8085/ contains \"<title>Unimus</title>\"",
+    "logo_needs_white_background": false,
+    "logo_url": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/unimus.svg",
+    "name": "Unimus"
   },
   {
     "category": "Backup",
@@ -1775,6 +1856,15 @@
   {
     "category": "ReverseProxy",
     "color": "Cyan",
+    "description": "Microsoft Internet Information Services web server",
+    "discovery_pattern": "Endpoint response from <ip> has header \"Server\" with value \"Microsoft-IIS\"",
+    "logo_needs_white_background": false,
+    "logo_url": "",
+    "name": "Microsoft IIS"
+  },
+  {
+    "category": "ReverseProxy",
+    "color": "Cyan",
     "description": "Load balancer and proxy",
     "discovery_pattern": "Endpoint response body from <ip>:8404/stats contains \"haproxy\"",
     "logo_needs_white_background": false,
@@ -1807,6 +1897,15 @@
     "logo_needs_white_background": false,
     "logo_url": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/wireguard.svg",
     "name": "WGDashboard"
+  },
+  {
+    "category": "VPN",
+    "color": "Green",
+    "description": "Open-source IPsec VPN daemon (IKE / NAT-T)",
+    "discovery_pattern": "All of: (500/udp is open, 4500/udp is open)",
+    "logo_needs_white_background": false,
+    "logo_url": "",
+    "name": "StrongSwan"
   },
   {
     "category": "VPN",
@@ -2027,6 +2126,15 @@
   {
     "category": "RemoteAccess",
     "color": "Amber",
+    "description": "Web-based server management with SSH terminal, tunneling, and file editing",
+    "discovery_pattern": "Any of: (Endpoint response body from <ip>:80/ contains \"<title>Termix</title>\", Endpoint response body from <ip>:443/ contains \"<title>Termix</title>\")",
+    "logo_needs_white_background": false,
+    "logo_url": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/termix.svg",
+    "name": "Termix"
+  },
+  {
+    "category": "RemoteAccess",
+    "color": "Amber",
     "description": "Telnet remote access",
     "discovery_pattern": "23/tcp is open",
     "logo_needs_white_background": false,
@@ -2077,6 +2185,15 @@
     "logo_needs_white_background": false,
     "logo_url": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/salt-project.svg",
     "name": "Salt Master"
+  },
+  {
+    "category": "RemoteAccess",
+    "color": "Amber",
+    "description": "Self-hosted remote desktop server",
+    "discovery_pattern": "Endpoint response body from <ip>:21114/ contains \"RustDesk API Admin\"",
+    "logo_needs_white_background": false,
+    "logo_url": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/rustdesk.svg",
+    "name": "RustDesk"
   },
   {
     "category": "RemoteAccess",
