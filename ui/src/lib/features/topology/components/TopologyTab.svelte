@@ -58,7 +58,7 @@
 	import { useActiveSessionsQuery } from '$lib/features/discovery/queries';
 	import { toRenderableTopology } from '$lib/features/topology/enriched';
 	import type { RenderableTopology } from '$lib/features/topology/types/base';
-	import { formatTimestamp } from '$lib/shared/utils/formatting';
+	import { formatTimestamp, formatDate } from '$lib/shared/utils/formatting';
 	import ApplicationSetupWizard from './application-wizard/ApplicationSetupWizard.svelte';
 	import L2EmptyStateOverlay from './L2EmptyStateOverlay.svelte';
 	import ViewSwitcherHint from './ViewSwitcherHint.svelte';
@@ -453,7 +453,7 @@
 			.filter((t): t is string => !!t);
 		if (times.length === 0) return '';
 		const latest = times.reduce((a, b) => (a > b ? a : b));
-		return topology_lastScanned({ date: formatTimestamp(latest) });
+		return topology_lastScanned({ date: formatDate(latest) });
 	});
 
 	// Override the SnapshotDisplay to render the live-view sentinel with a

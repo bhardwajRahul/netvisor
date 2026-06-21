@@ -74,6 +74,19 @@ export function formatTimestamp(timestamp: string): string {
 	}
 }
 
+/** Date only (no time), e.g. "Jun 21, 2026". */
+export function formatDate(timestamp: string): string {
+	try {
+		return new Date(timestamp).toLocaleDateString('en-US', {
+			year: 'numeric',
+			month: 'short',
+			day: 'numeric'
+		});
+	} catch {
+		return timestamp;
+	}
+}
+
 // Truncate ID for display (show first 8 characters + ellipsis if longer than 12)
 export function formatId(id: string): string {
 	if (id.length <= 12) {
