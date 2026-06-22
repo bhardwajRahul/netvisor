@@ -101,6 +101,14 @@ jobs:
         with:
           ref: ${{ github.event.release.target_commitish }}
 
+      # Cache the backend build so `cargo run --bin migrate` isn't a cold
+      # compile every release — matters most in downtime mode, where the later
+      # `cargo test --lib` step is skipped and this is the job's only build.
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend
+
       - name: Parse deploy mode from release body
         id: deploy_mode
         env:
@@ -141,11 +149,6 @@ jobs:
           api_key: ${{ secrets.NEON_API_KEY }}
           expires_at: ${{ env.EXPIRES_AT }}
 
-      - name: Install sqlx-cli
-        uses: taiki-e/install-action@v2
-        with:
-          tool: sqlx-cli
-
       - name: Install PostgreSQL 17 client
         run: |
           sudo install -d /usr/share/postgresql-common/pgdg
@@ -166,7 +169,14 @@ jobs:
 
       - name: Apply migrations
         working-directory: backend
-        run: sqlx migrate run
+        # Use the project's own migration runner (the same code path the server
+        # runs at startup), NOT `sqlx migrate run`. sqlx-cli sends each migration
+        # as a single multi-statement batch, which Postgres executes in an
+        # implicit transaction — so `-- no-transaction` migrations containing
+        # `CREATE INDEX CONCURRENTLY` fail ("cannot run inside a transaction
+        # block"). The custom runner splits statements, matching prod-app
+        # behavior, so the release check exercises migrations exactly as prod will.
+        run: cargo run --bin migrate -- --database-url "$DATABASE_URL"
         env:
           DATABASE_URL: ${{ steps.create_branch.outputs.db_url }}
 
