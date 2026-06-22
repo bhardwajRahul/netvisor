@@ -15,6 +15,11 @@ FROM chef AS rust-builder
 
 # Build dependencies first (cached layer)
 COPY --from=planner /app/recipe.json recipe.json
+# `snmp2` is a path dependency (vendor/snmp2). cargo-chef's cook step compiles
+# dependencies from recipe.json, so the path-dep source must be present here or
+# cook fails reading vendor/snmp2/Cargo.toml. Copy it before cooking (it rarely
+# changes, so the dependency cache layer stays warm).
+COPY backend/vendor/ ./vendor/
 RUN cargo chef cook --release --recipe-path recipe.json
 
 # Build server and generate-fixtures binaries
