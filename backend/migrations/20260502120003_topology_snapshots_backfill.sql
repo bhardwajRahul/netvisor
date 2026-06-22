@@ -28,7 +28,11 @@
 --      so references stay internally consistent within the snapshot. lineage_id
 --      = the original id. tag_id is left as-is (tag definitions are org-scoped
 --      and never cloned). Best-effort: fields absent from the v0.16.2 blob are
---      defaulted (NULL where allowed, '' for required text). Idempotent via
+--      defaulted (NULL where allowed, '' for required text). FK-safe against
+--      orphan refs in legacy blobs: each child INSERT is guarded so a row whose
+--      required parent has no closed copy (or whose tag was deleted) is skipped,
+--      and optional refs to missing parents are NULLed — such an element could
+--      not render in the snapshot anyway. Idempotent via
 --      ON CONFLICT (id) DO NOTHING on the derived id. Migration E drops the
 --      legacy JSONB after this, so extraction is one-shot at upgrade time.
 --      Limitation: if the SAME network was locked more than once, only the
@@ -176,6 +180,13 @@ BEGIN
             locked_row.locked_at, (e->>'id')::uuid, NULL, NULL
         FROM topologies t, jsonb_array_elements(COALESCE(t.ip_addresses, '[]'::jsonb)) e
         WHERE t.id = locked_row.id
+          -- Skip orphan blob refs: required parents must have a closed copy.
+          AND EXISTS (SELECT 1 FROM hosts p
+                      WHERE p.id = md5(new_snap_id::text || (e->>'host_id'))::uuid
+                        AND p.snapshot_id = new_snap_id)
+          AND EXISTS (SELECT 1 FROM subnets p
+                      WHERE p.id = md5(new_snap_id::text || (e->>'subnet_id'))::uuid
+                        AND p.snapshot_id = new_snap_id)
         ON CONFLICT (id) DO NOTHING;
 
         -- ports (host_id remapped; JSONB keys: number/type)
@@ -198,6 +209,9 @@ BEGIN
             locked_row.locked_at, (e->>'id')::uuid, NULL, NULL
         FROM topologies t, jsonb_array_elements(COALESCE(t.ports, '[]'::jsonb)) e
         WHERE t.id = locked_row.id
+          AND EXISTS (SELECT 1 FROM hosts p
+                      WHERE p.id = md5(new_snap_id::text || (e->>'host_id'))::uuid
+                        AND p.snapshot_id = new_snap_id)
         ON CONFLICT (id) DO NOTHING;
 
         -- services (host_id remapped; service_definition kept as JSON text)
@@ -222,6 +236,9 @@ BEGIN
             locked_row.locked_at, (e->>'id')::uuid, NULL, NULL
         FROM topologies t, jsonb_array_elements(COALESCE(t.services, '[]'::jsonb)) e
         WHERE t.id = locked_row.id
+          AND EXISTS (SELECT 1 FROM hosts p
+                      WHERE p.id = md5(new_snap_id::text || (e->>'host_id'))::uuid
+                        AND p.snapshot_id = new_snap_id)
         ON CONFLICT (id) DO NOTHING;
 
         -- bindings (service_id/ip_address_id/port_id remapped; JSONB key: type)
@@ -237,8 +254,14 @@ BEGIN
             locked_row.network_id,
             COALESCE(e->>'type', 'Port'),
             CASE WHEN e->>'ip_address_id' IS NOT NULL
+                  AND EXISTS (SELECT 1 FROM ip_addresses p
+                              WHERE p.id = md5(new_snap_id::text || (e->>'ip_address_id'))::uuid
+                                AND p.snapshot_id = new_snap_id)
                  THEN md5(new_snap_id::text || (e->>'ip_address_id'))::uuid END,
             CASE WHEN e->>'port_id' IS NOT NULL
+                  AND EXISTS (SELECT 1 FROM ports p
+                              WHERE p.id = md5(new_snap_id::text || (e->>'port_id'))::uuid
+                                AND p.snapshot_id = new_snap_id)
                  THEN md5(new_snap_id::text || (e->>'port_id'))::uuid END,
             COALESCE((e->>'created_at')::timestamptz, locked_row.locked_at),
             COALESCE((e->>'updated_at')::timestamptz, locked_row.locked_at),
@@ -246,6 +269,23 @@ BEGIN
             locked_row.locked_at, (e->>'id')::uuid, NULL, NULL
         FROM topologies t, jsonb_array_elements(COALESCE(t.bindings, '[]'::jsonb)) e
         WHERE t.id = locked_row.id
+          AND EXISTS (SELECT 1 FROM services p
+                      WHERE p.id = md5(new_snap_id::text || (e->>'service_id'))::uuid
+                        AND p.snapshot_id = new_snap_id)
+          -- bindings CHECK: IPAddress→ip_address_id NOT NULL; Port→port_id NOT NULL.
+          -- Filter the binding when its CHECK-required closed copy is missing
+          -- (can't NULL it without violating the CHECK).
+          AND (
+            (COALESCE(e->>'type', 'Port') = 'IPAddress'
+              AND EXISTS (SELECT 1 FROM ip_addresses p
+                          WHERE p.id = md5(new_snap_id::text || (e->>'ip_address_id'))::uuid
+                            AND p.snapshot_id = new_snap_id))
+            OR
+            (COALESCE(e->>'type', 'Port') = 'Port'
+              AND EXISTS (SELECT 1 FROM ports p
+                          WHERE p.id = md5(new_snap_id::text || (e->>'port_id'))::uuid
+                            AND p.snapshot_id = new_snap_id))
+          )
         ON CONFLICT (id) DO NOTHING;
 
         -- interfaces (physical; host_id/ip_address_id/neighbor/vlan refs remapped;
@@ -281,10 +321,17 @@ BEGIN
                 ELSE 4 END,
             (e->>'mac_address')::macaddr,
             CASE WHEN e->>'ip_address_id' IS NOT NULL
+                  AND EXISTS (SELECT 1 FROM ip_addresses p
+                              WHERE p.id = md5(new_snap_id::text || (e->>'ip_address_id'))::uuid
+                                AND p.snapshot_id = new_snap_id)
                  THEN md5(new_snap_id::text || (e->>'ip_address_id'))::uuid END,
-            CASE WHEN e->'neighbor'->>'type' = 'Interface'
-                 THEN md5(new_snap_id::text || (e->'neighbor'->>'id'))::uuid END,
+            -- Self-reference: closed neighbor rows aren't visible to EXISTS
+            -- mid-INSERT, so fill this in a post-INSERT UPDATE (below).
+            NULL,
             CASE WHEN e->'neighbor'->>'type' = 'Host'
+                  AND EXISTS (SELECT 1 FROM hosts p
+                              WHERE p.id = md5(new_snap_id::text || (e->'neighbor'->>'id'))::uuid
+                                AND p.snapshot_id = new_snap_id)
                  THEN md5(new_snap_id::text || (e->'neighbor'->>'id'))::uuid END,
             NULLIF(e->'lldp_chassis_id', 'null'::jsonb),
             NULLIF(e->'lldp_port_id', 'null'::jsonb),
@@ -298,6 +345,9 @@ BEGIN
             (e->>'cdp_address')::inet,
             NULLIF(e->'fdb_macs', 'null'::jsonb),
             CASE WHEN e->>'native_vlan_id' IS NOT NULL
+                  AND EXISTS (SELECT 1 FROM vlans p
+                              WHERE p.id = md5(new_snap_id::text || (e->>'native_vlan_id'))::uuid
+                                AND p.snapshot_id = new_snap_id)
                  THEN md5(new_snap_id::text || (e->>'native_vlan_id'))::uuid END,
             (
                 SELECT jsonb_agg(to_jsonb(md5(new_snap_id::text || vid)::uuid))
@@ -309,7 +359,25 @@ BEGIN
             locked_row.locked_at, (e->>'id')::uuid, NULL, NULL
         FROM topologies t, jsonb_array_elements(COALESCE(t.interfaces, '[]'::jsonb)) e
         WHERE t.id = locked_row.id
+          AND EXISTS (SELECT 1 FROM hosts p
+                      WHERE p.id = md5(new_snap_id::text || (e->>'host_id'))::uuid
+                        AND p.snapshot_id = new_snap_id)
         ON CONFLICT (id) DO NOTHING;
+
+        -- Fill the self-referential neighbor_interface_id now that all of this
+        -- snapshot's interfaces exist. Only set it where the neighbor's closed
+        -- copy was actually inserted (orphan neighbors stay NULL — the FK is
+        -- ON DELETE SET NULL, so a missing neighbor is a no-op edge).
+        UPDATE interfaces i
+        SET neighbor_interface_id = md5(new_snap_id::text || (e->'neighbor'->>'id'))::uuid
+        FROM topologies t, jsonb_array_elements(COALESCE(t.interfaces, '[]'::jsonb)) e
+        WHERE t.id = locked_row.id
+          AND i.snapshot_id = new_snap_id
+          AND i.id = md5(new_snap_id::text || (e->>'id'))::uuid
+          AND e->'neighbor'->>'type' = 'Interface'
+          AND EXISTS (SELECT 1 FROM interfaces n
+                      WHERE n.id = md5(new_snap_id::text || (e->'neighbor'->>'id'))::uuid
+                        AND n.snapshot_id = new_snap_id);
 
         -- dependencies (Snapshotable only: no discovery/last_seen columns)
         INSERT INTO dependencies (
@@ -355,6 +423,12 @@ BEGIN
                  WITH ORDINALITY AS m(svc_id, ord)
         WHERE t.id = locked_row.id
           AND e->'members'->>'type' = 'Services'
+          AND EXISTS (SELECT 1 FROM dependencies p
+                      WHERE p.id = md5(new_snap_id::text || (e->>'id'))::uuid
+                        AND p.snapshot_id = new_snap_id)
+          AND EXISTS (SELECT 1 FROM services p
+                      WHERE p.id = md5(new_snap_id::text || m.svc_id)::uuid
+                        AND p.snapshot_id = new_snap_id)
         ON CONFLICT (id) DO NOTHING;
 
         -- dependency_members: Bindings variant (binding_ids[]) — binding_id
@@ -382,6 +456,14 @@ BEGIN
                  WITH ORDINALITY AS m(bnd_id, ord)
         WHERE t.id = locked_row.id
           AND e->'members'->>'type' = 'Bindings'
+          AND EXISTS (SELECT 1 FROM dependencies p
+                      WHERE p.id = md5(new_snap_id::text || (e->>'id'))::uuid
+                        AND p.snapshot_id = new_snap_id)
+          -- A closed binding implies its closed service exists (bindings guard),
+          -- so the resolved service_id below is valid.
+          AND EXISTS (SELECT 1 FROM bindings p
+                      WHERE p.id = md5(new_snap_id::text || m.bnd_id)::uuid
+                        AND p.snapshot_id = new_snap_id)
         ON CONFLICT (id) DO NOTHING;
 
         -- entity_tags junction: associations come from each entity's embedded
@@ -402,6 +484,13 @@ BEGIN
         FROM topologies t, jsonb_array_elements(COALESCE(t.hosts, '[]'::jsonb)) e,
              jsonb_array_elements_text(COALESCE(e->'tags', '[]'::jsonb)) tag
         WHERE t.id = locked_row.id
+          -- tag_id FKs the live `tags` table (tags aren't cloned); skip
+          -- associations to since-deleted tags. Skip if the host closed copy
+          -- was itself filtered out.
+          AND EXISTS (SELECT 1 FROM tags g WHERE g.id = tag::uuid)
+          AND EXISTS (SELECT 1 FROM hosts p
+                      WHERE p.id = md5(new_snap_id::text || (e->>'id'))::uuid
+                        AND p.snapshot_id = new_snap_id)
         ON CONFLICT (id) DO NOTHING;
 
         INSERT INTO entity_tags (
@@ -418,6 +507,10 @@ BEGIN
         FROM topologies t, jsonb_array_elements(COALESCE(t.subnets, '[]'::jsonb)) e,
              jsonb_array_elements_text(COALESCE(e->'tags', '[]'::jsonb)) tag
         WHERE t.id = locked_row.id
+          AND EXISTS (SELECT 1 FROM tags g WHERE g.id = tag::uuid)
+          AND EXISTS (SELECT 1 FROM subnets p
+                      WHERE p.id = md5(new_snap_id::text || (e->>'id'))::uuid
+                        AND p.snapshot_id = new_snap_id)
         ON CONFLICT (id) DO NOTHING;
 
         INSERT INTO entity_tags (
@@ -434,6 +527,10 @@ BEGIN
         FROM topologies t, jsonb_array_elements(COALESCE(t.services, '[]'::jsonb)) e,
              jsonb_array_elements_text(COALESCE(e->'tags', '[]'::jsonb)) tag
         WHERE t.id = locked_row.id
+          AND EXISTS (SELECT 1 FROM tags g WHERE g.id = tag::uuid)
+          AND EXISTS (SELECT 1 FROM services p
+                      WHERE p.id = md5(new_snap_id::text || (e->>'id'))::uuid
+                        AND p.snapshot_id = new_snap_id)
         ON CONFLICT (id) DO NOTHING;
 
         -- Consume the locked row: its data now lives in the snapshot + closed
