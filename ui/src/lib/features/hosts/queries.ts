@@ -305,6 +305,8 @@ export function useCreateHostMutation() {
 		onSuccess: (response: HostResponse) => {
 			// Invalidate all host list queries to refetch with updated data
 			queryClient.invalidateQueries({ queryKey: queryKeys.hosts.lists() });
+			// credential_assignments changes are reflected on credentials' host_assignments
+			queryClient.invalidateQueries({ queryKey: queryKeys.credentials.all });
 
 			// Add children to their caches
 			queryClient.setQueryData<Interface[]>(queryKeys.interfaces.all, (old) =>
@@ -395,6 +397,8 @@ export function useUpdateHostMutation() {
 
 			// Invalidate all host list queries to refetch with updated data
 			queryClient.invalidateQueries({ queryKey: queryKeys.hosts.lists() });
+			// credential_assignments changes are reflected on credentials' host_assignments
+			queryClient.invalidateQueries({ queryKey: queryKeys.credentials.all });
 
 			// Replace interfaces for this host
 			queryClient.setQueryData<Interface[]>(queryKeys.interfaces.all, (old) => {

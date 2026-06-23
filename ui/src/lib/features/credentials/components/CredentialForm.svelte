@@ -263,7 +263,7 @@
 		// Only read from form if this credential's prefix has an explicitly set value
 		// (not inherited from another credential in the shared form).
 		if (compact) {
-			targetIpValues = [''];
+			targetIpValues = [];
 			const formTargetIps = form.getFieldValue?.(`${fieldPrefix}targetIps`) as string[] | undefined;
 			const hasExplicitIps =
 				!!formTargetIps &&
@@ -474,10 +474,18 @@
 			form.setFieldValue?.(`${fieldPrefix}targetIps`, []);
 			onChange?.({ targetIps: [], scope: 'broadcast' });
 		} else {
-			// Entering per-host with nothing yet — start with one empty IP row
-			if (targetIpValues.length === 0) targetIpValues = [''];
+			// Per host: leave the target list as-is (empty until the user adds one)
 			syncTargets();
 		}
+	}
+
+	// Target-IP field validator. Returns valid for Broadcast credentials so a
+	// stale (unmounted) targetIps field left in the shared TanStack form after
+	// toggling Per host -> Broadcast can't block submission. Reads the live,
+	// reactive `targetMode`.
+	function validateTargetIp(value: string): string | undefined {
+		if (targetMode === 'broadcast') return undefined;
+		return required(value) || ipAddressFormat(value);
 	}
 
 	function handleAddIpTarget() {
@@ -571,20 +579,20 @@
 			{#each targetIpValues as ip, i (i)}
 				<div class="flex items-center gap-2">
 					{#if isDaemonHostValue(ip)}
-						<div class="text-secondary flex-1 rounded-md border border-gray-600 px-3 py-2 text-sm">
-							{daemons_credentialWizardDaemonHostTargetLabel()}
-						</div>
+						<input
+							type="text"
+							class="input-field min-w-0 flex-1"
+							value={daemons_credentialWizardDaemonHostTargetLabel()}
+							disabled
+						/>
 					{:else}
 						<div class="min-w-0 flex-1">
 							<form.Field
 								name={targetIpFieldName(i)}
 								validators={{
-									onBlur: ({ value }: { value: string }) =>
-										required(value) || ipAddressFormat(value),
-									onChange: ({ value }: { value: string }) =>
-										required(value) || ipAddressFormat(value),
-									onSubmit: ({ value }: { value: string }) =>
-										required(value) || ipAddressFormat(value)
+									onBlur: ({ value }: { value: string }) => validateTargetIp(value),
+									onChange: ({ value }: { value: string }) => validateTargetIp(value),
+									onSubmit: ({ value }: { value: string }) => validateTargetIp(value)
 								}}
 								listeners={{
 									onChange: ({ value }: { value: string }) => handleTargetIpChange(i, value)
