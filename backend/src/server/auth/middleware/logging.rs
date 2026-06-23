@@ -82,6 +82,14 @@ pub async fn request_logging_middleware(
     let duration = start.elapsed();
     let status = response.status().as_u16();
 
+    // Application error code, if the response came from a coded `ApiError`.
+    // Bounded snake_case value (or "none"); see `MetricErrorCode`.
+    let error_code = response
+        .extensions()
+        .get::<crate::server::shared::types::api::MetricErrorCode>()
+        .map(|c| c.0)
+        .unwrap_or("none");
+
     // Capture response size (approximate from Content-Length header)
     let response_size = response
         .headers()
@@ -124,12 +132,17 @@ pub async fn request_logging_middleware(
     };
     let entity_type_str = entity_type.to_string();
 
-    // Record metrics
+    // Record metrics.
+    // `status` keeps the coarse class (dashboards/alerts filter on it); `status_code`
+    // (exact) and `error_code` (coded `ApiError` reason, "none" otherwise) are additive
+    // for diagnosing which specific 4xx/5xx is occurring. Both are bounded.
     metrics::counter!(
         "http_requests_total",
         "method" => method_str.clone(),
         "path" => normalized_path.clone(),
         "status" => status_class.to_string(),
+        "status_code" => status.to_string(),
+        "error_code" => error_code.to_string(),
         "entity_type" => entity_type_str.clone()
     )
     .increment(1);
