@@ -603,6 +603,15 @@ impl ApiError {
     }
 }
 
+/// Response extension carrying the coded error's stable string for metric labeling.
+///
+/// Set by `ApiError::into_response` and read by the request-logging middleware so
+/// `http_requests_total` can be broken down by application error code without parsing
+/// the response body. The wrapped value is the bounded `ErrorCode::code()` static str
+/// (snake_case, inner fields stripped), so it never inflates label cardinality.
+#[derive(Clone, Copy, Debug)]
+pub struct MetricErrorCode(pub &'static str);
+
 impl axum::response::IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let (code, params) = if let Some(ref error_code) = self.error_code {
@@ -611,6 +620,9 @@ impl axum::response::IntoResponse for ApiError {
             (None, None)
         };
 
+        // Stable static code for metric labeling, captured before `self.message` moves.
+        let metric_code = self.error_code.as_ref().map(|c| c.code());
+
         let response = ApiErrorResponse {
             success: false,
             error: Some(self.message),
@@ -618,7 +630,11 @@ impl axum::response::IntoResponse for ApiError {
             params,
             meta: ApiMeta::default(),
         };
-        (self.status, Json(response)).into_response()
+        let mut response = (self.status, Json(response)).into_response();
+        if let Some(code) = metric_code {
+            response.extensions_mut().insert(MetricErrorCode(code));
+        }
+        response
     }
 }
 
@@ -779,4 +795,27 @@ where
 {
     let opt = Option::<Vec<T>>::deserialize(deserializer)?;
     Ok(opt.and_then(|vec| if vec.is_empty() { None } else { Some(vec) }))
+}
+
+#[cfg(test)]
+mod metric_error_code_tests {
+    use super::*;
+    use axum::response::IntoResponse;
+
+    #[test]
+    fn coded_error_sets_metric_extension() {
+        let resp = ApiError::coded(StatusCode::FORBIDDEN, ErrorCode::DaemonStandby).into_response();
+        let code = resp
+            .extensions()
+            .get::<MetricErrorCode>()
+            .expect("coded error should set MetricErrorCode extension");
+        assert_eq!(code.0, ErrorCode::DaemonStandby.code());
+    }
+
+    #[test]
+    fn uncoded_error_has_no_metric_extension() {
+        let resp =
+            ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "boom".to_string()).into_response();
+        assert!(resp.extensions().get::<MetricErrorCode>().is_none());
+    }
 }

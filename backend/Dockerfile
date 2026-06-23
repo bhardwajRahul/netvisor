@@ -112,6 +112,14 @@ WORKDIR /app
 COPY --from=rust-builder /app/target/release/server /usr/local/bin/server
 RUN chmod +x /usr/local/bin/server
 
+# Copy migrations — the server applies them at startup via the custom migration
+# runner (StorageFactory::new), which reads ./migrations from disk at runtime
+# (not embedded in the binary). WORKDIR is /app, so the server resolves
+# ./migrations to /app/migrations.
+COPY backend/migrations ./migrations
+RUN test -d /app/migrations && ls /app/migrations/*.sql >/dev/null \
+    || (echo "Migrations not copied correctly" && exit 1)
+
 # Copy UI static assets from ui-builder stage
 COPY --from=ui-builder /app/ui/build ./static
 
