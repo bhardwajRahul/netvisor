@@ -1,5 +1,6 @@
 //! Email check, registration, onboarding setup, and pending-setup application.
 use super::*;
+use crate::server::auth::email_domain::{DomainCheck, check_email_domain};
 
 #[utoipa::path(
     post,
@@ -115,6 +116,17 @@ pub(crate) async fn register(
     {
         return Err(ApiError::conflict(
             "Email address uses a disposable domain. Please register with a non-disposable email address.",
+        ));
+    }
+
+    // DNS deliverability gate (cloud only): reject domains that definitively
+    // cannot receive mail (no MX/A/AAAA). Transient DNS failures fail open.
+    if get_deployment_type(&state.config) == DeploymentType::Cloud
+        && check_email_domain(request.email.domain()).await == DomainCheck::Undeliverable
+    {
+        return Err(ApiError::coded(
+            StatusCode::CONFLICT,
+            ErrorCode::ValidationEmailDomainUndeliverable,
         ));
     }
 

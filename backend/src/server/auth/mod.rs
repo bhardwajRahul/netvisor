@@ -1,3 +1,4 @@
+pub mod email_domain;
 pub mod handlers;
 pub mod r#impl;
 pub mod middleware;
