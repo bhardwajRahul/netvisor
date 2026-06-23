@@ -112,7 +112,7 @@
 	{isOpen}
 	title={common_settings()}
 	{name}
-	size="xl"
+	size="full"
 	onClose={handleClose}
 	onOpen={handleOpen}
 	preventCloseOnClickOutside={!dismissible}

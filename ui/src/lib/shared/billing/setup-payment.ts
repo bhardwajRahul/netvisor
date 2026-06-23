@@ -8,7 +8,7 @@ type SetupPaymentMutation = ReturnType<typeof useSetupPaymentMethodMutation>;
 interface StartSetupPaymentArgs {
 	mutation: SetupPaymentMutation;
 	org: Organization | null | undefined;
-	source: 'trial_card' | 'trial_banner' | 'trial_modal' | 'sidebar_trial_pill';
+	source: 'trial_card' | 'trial_banner' | 'trial_modal' | 'sidebar_trial_pill' | 'billing_tab';
 	trialDaysLeft: number | null;
 }
 

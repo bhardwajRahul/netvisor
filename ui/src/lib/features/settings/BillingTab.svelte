@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { CreditCard, AlertTriangle } from 'lucide-svelte';
+	import { CreditCard } from 'lucide-svelte';
 	import ProgressTrack from '$lib/shared/components/data/ProgressTrack.svelte';
 	import { triggerUpgrade } from '$lib/features/billing/trigger-upgrade';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
@@ -18,13 +18,16 @@
 	import InfoCard from '$lib/shared/components/data/InfoCard.svelte';
 	import { useDashboardQuery } from '$lib/features/home/queries';
 	import {
+		common_atLimit,
 		common_billingExtra,
 		common_billingUsage,
 		common_close,
+		common_hosts,
 		common_included,
 		common_networks,
 		common_seats,
 		common_tryAgainLater,
+		common_usage,
 		settings_billing_billingQuestions,
 		settings_billing_canceled,
 		settings_billing_contactUs,
@@ -32,14 +35,16 @@
 		settings_billing_discount_active,
 		settings_billing_discount_active_yearly,
 		settings_billing_downgrade_pending,
-		settings_billing_manageSubscription,
+		settings_billing_paymentAndInvoices,
 		settings_billing_needHelp,
 		settings_billing_pastDue,
 		settings_billing_cancelSubscription,
 		settings_billing_per,
-		settings_billing_trialActive,
 		settings_billing_unableToLoad,
+		settings_billing_updatePaymentMethod,
 		settings_billing_upgradePlan,
+		settings_billing_usageAddOn,
+		settings_billing_usageUpgradeToAddMore,
 		settings_billing_changePlan,
 		settings_billing_resume_button,
 		settings_billing_resume_confirmBody,
@@ -53,8 +58,8 @@
 		billing_noPaymentMethodBannerBody
 	} from '$lib/paraglide/messages';
 	import InlineWarning from '$lib/shared/components/feedback/InlineWarning.svelte';
-	import InlineInfo from '$lib/shared/components/feedback/InlineInfo.svelte';
 	import InlineDanger from '$lib/shared/components/feedback/InlineDanger.svelte';
+	import ButtonMenu, { type ButtonMenuItem } from '$lib/shared/components/ButtonMenu.svelte';
 	import { pushSuccess, pushWarning } from '$lib/shared/stores/feedback';
 	import { startSetupPayment } from '$lib/shared/billing/setup-payment';
 	import { waitForOrgUpdate } from '$lib/shared/billing/wait-for-org-update';
@@ -92,27 +97,20 @@
 	let networkCount = $derived(planUsage?.network_count ?? 0);
 	let hostCount = $derived(planUsage?.host_count ?? 0);
 
-	let extraSeats = $derived.by(() => {
-		if (!org?.plan?.included_seats) return 0;
-		return Math.max(seatCount - org.plan.included_seats, 0);
-	});
-
-	let extraNetworks = $derived.by(() => {
-		if (!org?.plan?.included_networks) return 0;
-		return Math.max(networkCount - org.plan.included_networks, 0);
-	});
-
-	let extraSeatsCents = $derived(extraSeats * (org?.plan?.seat_cents || 0));
-	let extraNetworksCents = $derived(extraNetworks * (org?.plan?.network_cents || 0));
-
-	// Status badge color + icon now come from PlanStatus metadata (backend
-	// EntityMetadataProvider), replacing the former inline getPlanStatusColor /
-	// hardcoded CheckCircle. `StatusIcon` is capitalized so it renders as a
+	// Status badge color + icon come from PlanStatus metadata (backend
+	// EntityMetadataProvider). `StatusIcon` is capitalized so it renders as a
 	// component in the markup.
 	let StatusIcon = $derived(planStatuses.getIconComponent(org?.plan_status ?? null));
 	let planStatusColor = $derived(planStatuses.getColorHelper(org?.plan_status ?? null).text);
 
 	let isFree = $derived(billingPlans.getMetadata(org?.plan?.type ?? null).is_free === true);
+
+	// Plan-status shorthands used across the banner + CTA section.
+	let isTrialing = $derived(org?.plan_status === 'trialing');
+	let isActive = $derived(org?.plan_status === 'active');
+	let isPastDue = $derived(org?.plan_status === 'past_due');
+	let isPaused = $derived(org?.plan_status === 'paused');
+	let isPendingCancellation = $derived(org?.plan_status === 'pending_cancellation');
 
 	// Live Stripe subscription whose lifecycle these CTAs can act on. Non-Stripe
 	// plans (Free/Community/Demo/SelfHosted/Enterprise) have plan_status === null;
@@ -120,15 +118,12 @@
 	// paid plan) — neither is manageable here, so neither should show
 	// Manage/Cancel/Resume/Reactivate.
 	let hasManageableSubscription = $derived(
-		!isFree &&
-			(org?.plan_status === 'active' ||
-				org?.plan_status === 'trialing' ||
-				org?.plan_status === 'past_due' ||
-				org?.plan_status === 'paused' ||
-				org?.plan_status === 'pending_cancellation')
+		!isFree && (isActive || isTrialing || isPastDue || isPaused || isPendingCancellation)
 	);
 
 	let hasPaymentMethod = $derived(org?.has_payment_method ?? false);
+	// Stripe-managed plan that needs a card on file but has none.
+	let missingCard = $derived(isMissingPaymentMethod(org));
 	let trialEndDate = $derived(org?.trial_end_date ? new Date(org.trial_end_date) : null);
 
 	// Renewal / subscription-ends label for the current plan; null when not
@@ -140,6 +135,107 @@
 		const now = new Date();
 		const diff = trialEndDate.getTime() - now.getTime();
 		return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+	});
+
+	// Extend trial is offered to any trialing org in the final stretch that
+	// hasn't already used its one-time extension — independent of card status.
+	let canExtendTrial = $derived(
+		isTrialing && trialDaysLeft !== null && trialDaysLeft <= 3 && !org?.trial_extended_used
+	);
+
+	// Change Plan moves into the overflow menu (rather than the primary) when the
+	// primary slot is taken by Add Payment Method, i.e. an active/trialing org
+	// missing a card.
+	let showChangePlanItem = $derived(missingCard && (isActive || isTrialing));
+	// Cancel is available while on a live, manageable active/trial subscription.
+	let showCancelItem = $derived(hasManageableSubscription && (isActive || isTrialing));
+	// Stripe portal (invoices + card management) for any manageable sub except
+	// the states whose primary already opens the portal / has no portal value.
+	let showPortalItem = $derived(hasManageableSubscription && !isPastDue && !isPaused);
+
+	// The single primary action for the current state.
+	let primaryAction = $derived.by(() => {
+		if (missingCard)
+			return { label: billing_addPaymentMethod(), onclick: handleSetupPayment, icon: CreditCard };
+		if (isPastDue)
+			return { label: settings_billing_updatePaymentMethod(), onclick: handleManageSubscription };
+		if (isPaused)
+			return {
+				label: settings_billing_resume_button(),
+				onclick: handleResume,
+				disabled: resumeMutation.isPending
+			};
+		if (isPendingCancellation)
+			return {
+				label: settings_billing_reactivateSubscription(),
+				onclick: handleReactivate,
+				disabled: reactivateMutation.isPending
+			};
+		return {
+			label: hasManageableSubscription
+				? settings_billing_changePlan()
+				: settings_billing_upgradePlan(),
+			onclick: openPlanPicker
+		};
+	});
+
+	// Extend trial gets its own prominent secondary CTA under the primary
+	// (rather than being buried in the menu) when it's available.
+	let secondaryAction = $derived(
+		canExtendTrial
+			? {
+					label: settings_billing_extendTrial_link(),
+					onclick: handleExtendTrial,
+					disabled: extendTrialMutation.isPending
+				}
+			: undefined
+	);
+
+	// Ancillary actions tucked behind the "More Actions" menu.
+	let menuItems = $derived.by(() => {
+		const items: ButtonMenuItem[] = [];
+		if (showChangePlanItem)
+			items.push({ label: settings_billing_changePlan(), onclick: openPlanPicker });
+		if (showPortalItem)
+			items.push({
+				label: settings_billing_paymentAndInvoices(),
+				onclick: handleManageSubscription
+			});
+		// Cancel is the destructive action — always last in the list.
+		if (showCancelItem)
+			items.push({
+				label: settings_billing_cancelSubscription(),
+				onclick: openCancelModal,
+				tone: 'danger'
+			});
+		return items;
+	});
+
+	// Single source of status messaging for the whole tab. One button-less
+	// banner replaces the former trial/no-payment cards and the in-card
+	// Inline* chain so each state shows exactly one status message.
+	let statusBanner = $derived.by(() => {
+		if (!org) return null;
+		if (isTrialing && !hasPaymentMethod) {
+			const date =
+				trialEndDate?.toLocaleDateString(undefined, {
+					month: 'long',
+					day: 'numeric',
+					year: 'numeric'
+				}) ?? '';
+			return {
+				kind: 'warning' as const,
+				message: `${settings_billing_trialCountdown({ days: trialDaysLeft ?? 0, date })} ${settings_billing_addPaymentMethodSubtitle()}`
+			};
+		}
+		if (isPastDue) return { kind: 'danger' as const, message: settings_billing_pastDue() };
+		if (missingCard)
+			return { kind: 'warning' as const, message: billing_noPaymentMethodBannerBody() };
+		if (org.plan_status === 'cancelled')
+			return { kind: 'warning' as const, message: settings_billing_canceled() };
+		if (isPendingCancellation)
+			return { kind: 'warning' as const, message: settings_billing_downgrade_pending() };
+		return null;
 	});
 
 	// Render the active save-offer discount chip only while the discount
@@ -172,6 +268,15 @@
 		return discounted.toFixed(2);
 	});
 
+	// Show the Usage card only when the plan defines at least one metered
+	// resource (Free plans may define none).
+	let hasAnyUsageRow = $derived(
+		!!org?.plan &&
+			(org.plan.included_seats !== null ||
+				org.plan.included_networks !== null ||
+				org.plan.included_hosts !== null)
+	);
+
 	// Track billing tab view
 	$effect(() => {
 		if (isOpen && org) {
@@ -184,13 +289,22 @@
 
 	// Trial-card impression: once per browser tab session
 	$effect(() => {
-		if (org?.plan_status === 'trialing' && trialDaysLeft !== null && !hasPaymentMethod) {
+		if (isTrialing && trialDaysLeft !== null && !hasPaymentMethod) {
 			trackOncePerSession('trial_card_impression', 'trial_card_impression', {
 				trial_days_left: trialDaysLeft,
 				has_payment_method: hasPaymentMethod
 			});
 		}
 	});
+
+	function openPlanPicker() {
+		triggerUpgrade({
+			source: 'settings_billing',
+			surface: 'billing_tab',
+			reopenSettings: true,
+			beforeModal: () => onClose()
+		});
+	}
 
 	async function handleManageSubscription() {
 		// New tab — this tab stays put, so track immediately rather than stashing
@@ -293,83 +407,83 @@
 		return startSetupPayment({
 			mutation: setupPaymentMutation,
 			org,
-			source: 'trial_card',
+			source: 'billing_tab',
 			trialDaysLeft
 		});
 	}
 </script>
 
+{#snippet usageRow(label: string, used: number, included: number, overageCents: number | null)}
+	{@const expandable = overageCents != null && overageCents > 0}
+	{@const over = used > included}
+	{@const atCap = !expandable && used >= included}
+	<div class="border-t pt-3" style="border-color: var(--color-border)">
+		<div class="flex items-baseline justify-between gap-3">
+			<div>
+				<p class="text-primary font-medium">{label}</p>
+				<p class="text-secondary text-sm">
+					{common_billingUsage({ count: used, included })}
+					{#if overageCents != null && overageCents > 0 && over}
+						{common_billingExtra({ extra: used - included, price: overageCents / 100 })}
+					{:else})
+					{/if}
+				</p>
+			</div>
+			{#if overageCents != null && overageCents > 0}
+				<!-- Expandable: surface the add-on price so it's clear more can be
+				     bought; exceeding the included count is normal paid usage, not a
+				     warning, so it stays neutral (never amber). -->
+				{#if over}
+					<div class="text-right">
+						<p class="text-primary text-xl font-bold">
+							+${((used - included) * overageCents) / 100}
+						</p>
+						<p class="text-secondary text-xs">
+							{settings_billing_per({ rate: org?.plan?.rate ?? 'Month' })}
+						</p>
+					</div>
+				{:else}
+					<p class="text-secondary text-sm">
+						{settings_billing_usageAddOn({ price: overageCents / 100 })}
+					</p>
+				{/if}
+			{:else if atCap}
+				<!-- Hard cap: can't buy more on this plan — flag it and point to the
+				     only way to get more. -->
+				<div class="text-right">
+					<p class="text-secondary text-sm">{common_atLimit()}</p>
+					<button type="button" onclick={openPlanPicker} class="text-link text-xs hover:underline">
+						{settings_billing_usageUpgradeToAddMore()}
+					</button>
+				</div>
+			{:else}
+				<p class="text-tertiary text-sm">{common_included()}</p>
+			{/if}
+		</div>
+		{#if used > 0}
+			<ProgressTrack
+				class="mt-2 w-full"
+				progress={Math.min(100, (used / (included || 1)) * 100)}
+				color="bg-blue-500"
+			/>
+		{/if}
+	</div>
+{/snippet}
+
 <div class="flex min-h-0 flex-1 flex-col">
 	<div class="flex-1 overflow-auto p-6">
 		{#if org}
 			<div class="space-y-6">
-				<!-- Trial Countdown (shown above current plan when trialing without payment) -->
-				{#if org.plan_status === 'trialing' && trialDaysLeft !== null && !hasPaymentMethod}
-					<InfoCard>
-						<div class="flex items-center justify-between">
-							<div class="flex items-center gap-3">
-								<AlertTriangle class="h-5 w-5 text-amber-500" />
-								<div>
-									<p class="text-primary text-sm font-medium">
-										{settings_billing_trialCountdown({
-											days: trialDaysLeft,
-											date:
-												trialEndDate?.toLocaleDateString(undefined, {
-													month: 'long',
-													day: 'numeric',
-													year: 'numeric'
-												}) ?? ''
-										})}
-									</p>
-									<p class="text-secondary mt-1 text-xs">
-										{settings_billing_addPaymentMethodSubtitle()}
-									</p>
-								</div>
-							</div>
-							<button
-								onclick={handleSetupPayment}
-								class="btn-primary flex items-center gap-1.5 text-sm"
-							>
-								<CreditCard size={14} />
-								{billing_addPaymentMethod()}
-							</button>
-						</div>
-						{#if !org.trial_extended_used && trialDaysLeft !== null && trialDaysLeft <= 3}
-							<div class="mt-3 border-t pt-3" style="border-color: var(--color-border)">
-								<button
-									type="button"
-									onclick={handleExtendTrial}
-									class="text-link text-sm hover:underline disabled:opacity-50"
-									disabled={extendTrialMutation.isPending}
-								>
-									{settings_billing_extendTrial_link()}
-								</button>
-							</div>
-						{/if}
-					</InfoCard>
-				{:else if isMissingPaymentMethod(org) && org.plan_status !== 'trialing'}
-					<!-- Active / past_due on a Stripe-managed plan with no card on file:
-					     mirror the NoPaymentMethodBanner so the modal matches it. -->
-					<InfoCard>
-						<div class="flex items-center justify-between">
-							<div class="flex items-center gap-3">
-								<AlertTriangle class="h-5 w-5 text-amber-500" />
-								<p class="text-primary text-sm font-medium">
-									{billing_noPaymentMethodBannerBody()}
-								</p>
-							</div>
-							<button
-								onclick={handleSetupPayment}
-								class="btn-primary flex items-center gap-1.5 text-sm"
-							>
-								<CreditCard size={14} />
-								{billing_addPaymentMethod()}
-							</button>
-						</div>
-					</InfoCard>
+				<!-- Single status banner: one message per state, no embedded action. -->
+				{#if statusBanner}
+					{#if statusBanner.kind === 'danger'}
+						<InlineDanger title={statusBanner.message} />
+					{:else}
+						<InlineWarning title={statusBanner.message} />
+					{/if}
 				{/if}
 
-				<!-- Current Plan -->
+				<!-- Current Plan: status, price, and the single CTA section. -->
 				<InfoCard>
 					<svelte:fragment slot="default">
 						<div class="mb-3 flex items-center justify-between">
@@ -390,7 +504,7 @@
 										<p class="text-primary text-lg font-semibold">
 											{billingPlans.getName(org.plan.type || null)}
 										</p>
-										{#if org.plan_status === 'trialing' && trialEndDate}
+										{#if isTrialing && trialEndDate}
 											<p class="text-secondary mt-1 text-xs">
 												{settings_billing_trialEndsOn({
 													date: trialEndDate.toLocaleDateString(undefined, {
@@ -438,191 +552,55 @@
 										</p>
 									</div>
 								</div>
-
-								<!-- Seats Usage -->
-								{#if org.plan.included_seats !== null}
-									<div class="border-t pt-3" style="border-color: var(--color-border)">
-										<div class="flex items-baseline justify-between">
-											<div>
-												<p class="text-primary font-medium">{common_seats()}</p>
-												<p class="text-secondary text-sm">
-													{common_billingUsage({
-														count: seatCount,
-														included: org.plan.included_seats ?? 0
-													})}
-													{#if extraSeats > 0}
-														{common_billingExtra({
-															extra: extraSeats,
-															price: org.plan.seat_cents ? org.plan.seat_cents / 100 : 0
-														})}
-													{:else})
-													{/if}
-												</p>
-											</div>
-											{#if extraSeatsCents > 0}
-												<div class="text-right">
-													<p class="text-primary text-xl font-bold">
-														+${extraSeatsCents / 100}
-													</p>
-													<p class="text-secondary text-xs">
-														{settings_billing_per({ rate: org.plan.rate })}
-													</p>
-												</div>
-											{:else}
-												<p class="text-tertiary text-sm">{common_included()}</p>
-											{/if}
-										</div>
-									</div>
-								{/if}
-
-								<!-- Networks Usage -->
-								{#if org.plan.included_networks !== null}
-									<div class="border-t pt-3" style="border-color: var(--color-border)">
-										<div class="flex items-baseline justify-between">
-											<div>
-												<p class="text-primary font-medium">{common_networks()}</p>
-												<p class="text-secondary text-sm">
-													{common_billingUsage({
-														count: networkCount,
-														included: org.plan.included_networks ?? 0
-													})}
-													{#if extraNetworks > 0}
-														{common_billingExtra({
-															extra: extraNetworks,
-															price: org.plan.network_cents ? org.plan.network_cents / 100 : 0
-														})}
-													{:else})
-													{/if}
-												</p>
-											</div>
-											{#if extraNetworksCents > 0}
-												<div class="text-right">
-													<p class="text-primary text-xl font-bold">
-														+${extraNetworksCents / 100}
-													</p>
-													<p class="text-secondary text-xs">
-														{settings_billing_per({ rate: org.plan.rate })}
-													</p>
-												</div>
-											{:else}
-												<p class="text-tertiary text-sm">{common_included()}</p>
-											{/if}
-										</div>
-									</div>
-								{/if}
-
-								<!-- Hosts Usage -->
-								{#if org.plan.included_hosts !== null}
-									<div class="border-t pt-3" style="border-color: var(--color-border)">
-										<div class="flex items-baseline justify-between">
-											<div>
-												<p class="text-primary font-medium">Hosts</p>
-												<p class="text-secondary text-sm">
-													{hostCount} / {org.plan.included_hosts} used
-												</p>
-											</div>
-											{#if hostCount >= (org.plan.included_hosts ?? 0)}
-												<p class="text-sm text-amber-600 dark:text-amber-400">At limit</p>
-											{:else}
-												<p class="text-tertiary text-sm">{common_included()}</p>
-											{/if}
-										</div>
-										{#if hostCount > 0}
-											<ProgressTrack
-												class="mt-2 w-full"
-												progress={Math.min(100, (hostCount / (org.plan.included_hosts || 1)) * 100)}
-												color={hostCount >= (org.plan.included_hosts ?? 0)
-													? 'bg-amber-500'
-													: 'bg-blue-500'}
-											/>
-										{/if}
-									</div>
-								{/if}
 							{/if}
 
-							{#if org.plan_status === 'trialing'}
-								<InlineInfo title={settings_billing_trialActive()} />
-							{:else if org.plan_status === 'past_due'}
-								<InlineDanger title={settings_billing_pastDue()} />
-							{:else if org.plan_status === 'cancelled'}
-								<InlineWarning title={settings_billing_canceled()} />
-							{:else if org.plan_status === 'pending_cancellation'}
-								<InlineWarning title={settings_billing_downgrade_pending()} />
-							{/if}
-
-							<!-- All CTAs share one flex container so the gap between adjacent
-							     buttons is uniform regardless of which combination renders,
-							     and the gap from the card content to the first CTA is the
-							     same whether it's primary, secondary, or a text link.
-							     pending_cancellation pushes users to Reactivate; paused
-							     pushes them to Resume; past_due needs the payment fixed
-							     first (Manage Subscription) — so the plan-change button is
-							     hidden in all three, leaving one focused CTA. -->
-							<div class="flex flex-col gap-2">
-								{#if org.plan_status !== 'pending_cancellation' && org.plan_status !== 'paused' && org.plan_status !== 'past_due'}
-									<button
-										onclick={() =>
-											triggerUpgrade({
-												source: 'settings_billing',
-												surface: 'billing_tab',
-												reopenSettings: true,
-												beforeModal: () => onClose()
-											})}
-										class="btn-primary w-full"
-									>
-										{hasManageableSubscription
-											? settings_billing_changePlan()
-											: settings_billing_upgradePlan()}
-									</button>
-								{/if}
-
-								{#if hasManageableSubscription}
-									{#if org.plan_status === 'paused'}
-										<button
-											type="button"
-											onclick={handleResume}
-											class="btn-primary w-full"
-											disabled={resumeMutation.isPending}
-										>
-											{settings_billing_resume_button()}
-										</button>
-									{:else if org.plan_status === 'past_due'}
-										<button onclick={handleManageSubscription} class="btn-primary w-full">
-											{settings_billing_manageSubscription()}
-										</button>
-									{:else if org.plan_status === 'pending_cancellation'}
-										<button
-											type="button"
-											onclick={handleReactivate}
-											class="btn-primary w-full"
-											disabled={reactivateMutation.isPending}
-										>
-											{settings_billing_reactivateSubscription()}
-										</button>
-										<button
-											type="button"
-											onclick={handleManageSubscription}
-											class="text-link self-center text-sm hover:underline"
-										>
-											{settings_billing_manageSubscription()}
-										</button>
-									{:else if org.plan_status === 'active' || org.plan_status === 'trialing'}
-										<button onclick={openCancelModal} class="btn-secondary w-full">
-											{settings_billing_cancelSubscription()}
-										</button>
-										<button
-											type="button"
-											onclick={handleManageSubscription}
-											class="text-link self-center text-sm hover:underline"
-										>
-											{settings_billing_manageSubscription()}
-										</button>
-									{/if}
-								{/if}
-							</div>
+							<!-- CTA section: one primary action; every ancillary action
+							     collapses into the caret menu so the section stays a single
+							     control. Add Payment Method / Update Payment Method / Resume /
+							     Reactivate take the primary slot ahead of plan changes. -->
+							<ButtonMenu
+								label={primaryAction.label}
+								onclick={primaryAction.onclick}
+								icon={primaryAction.icon}
+								disabled={primaryAction.disabled ?? false}
+								{secondaryAction}
+								items={menuItems}
+							/>
 						</div>
 					</svelte:fragment>
 				</InfoCard>
+
+				<!-- Usage -->
+				{#if hasAnyUsageRow && org.plan}
+					<InfoCard title={common_usage()}>
+						<div class="space-y-4">
+							{#if org.plan.included_seats !== null}
+								{@render usageRow(
+									common_seats(),
+									seatCount,
+									org.plan.included_seats ?? 0,
+									org.plan.seat_cents ?? null
+								)}
+							{/if}
+							{#if org.plan.included_networks !== null}
+								{@render usageRow(
+									common_networks(),
+									networkCount,
+									org.plan.included_networks ?? 0,
+									org.plan.network_cents ?? null
+								)}
+							{/if}
+							{#if org.plan.included_hosts !== null}
+								{@render usageRow(
+									common_hosts(),
+									hostCount,
+									org.plan.included_hosts ?? 0,
+									org.plan.host_cents ?? null
+								)}
+							{/if}
+						</div>
+					</InfoCard>
+				{/if}
 
 				<!-- Additional Info -->
 				<InfoCard title={settings_billing_needHelp()}>
