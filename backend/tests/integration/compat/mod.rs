@@ -25,8 +25,8 @@ mod types;
 pub use replay::*;
 
 use crate::infra::{
-    SERVERPOLL_CONTAINER, SERVERPOLL_DAEMON_URL, TestClient, clear_discovery_data, pause_daemons,
-    setup_authenticated_user, unpause_daemon,
+    DAEMONPOLL_CONTAINER, SERVERPOLL_CONTAINER, SERVERPOLL_DAEMON_URL, TestClient,
+    clear_discovery_data, pause_daemons, setup_authenticated_user, unpause_daemon,
 };
 use scanopy::server::daemon_api_keys::r#impl::api::DaemonApiKeyResponse;
 use scanopy::server::daemon_api_keys::r#impl::base::{DaemonApiKey, DaemonApiKeyBase};
@@ -207,6 +207,10 @@ pub async fn run_compat_tests(
     };
 
     run_daemon_compat_tests(SERVERPOLL_DAEMON_URL, &daemon_ctx).await?;
+
+    // Resume the DaemonPoll daemon now that compat is done — later phases (e.g.
+    // fixture generation) `docker exec` into it, which fails while it is paused.
+    unpause_daemon(DAEMONPOLL_CONTAINER);
 
     println!("\n✅ All compatibility tests passed!");
     Ok(())
