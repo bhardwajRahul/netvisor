@@ -365,6 +365,8 @@ fn generate_credentials(organization_id: Uuid, now: DateTime<Utc>) -> Vec<Creden
                 },
                 target_ips: None,
                 tags: Vec::new(),
+                assigned_network_ids: Vec::new(),
+                host_assignments: Vec::new(),
             },
         },
         Credential {
@@ -381,6 +383,8 @@ fn generate_credentials(organization_id: Uuid, now: DateTime<Utc>) -> Vec<Creden
                 },
                 target_ips: None,
                 tags: Vec::new(),
+                assigned_network_ids: Vec::new(),
+                host_assignments: Vec::new(),
             },
         },
         Credential {
@@ -399,6 +403,8 @@ fn generate_credentials(organization_id: Uuid, now: DateTime<Utc>) -> Vec<Creden
                 },
                 target_ips: None,
                 tags: Vec::new(),
+                assigned_network_ids: Vec::new(),
+                host_assignments: Vec::new(),
             },
         },
     ]

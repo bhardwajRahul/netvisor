@@ -1064,8 +1064,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Credential by ID */
-        get: operations["get_credential_by_id"];
+        /** Get a Credential by ID */
+        get: operations["get_by_id_credential"];
         /** Update Credential */
         put: operations["update_credential"];
         post?: never;
@@ -3023,7 +3023,7 @@ export interface components {
          * @description API metadata included in all responses
          * @example {
          *       "api_version": 1,
-         *       "server_version": "0.16.2"
+         *       "server_version": "0.17.0"
          *     }
          */
         ApiMeta: {
@@ -3034,7 +3034,7 @@ export interface components {
             api_version: number;
             /**
              * @description Server version (semver)
-             * @example 0.16.2
+             * @example 0.17.0
              */
             server_version: string;
         };
@@ -3048,19 +3048,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-06-21T20:42:25.865980Z",
+             *       "created_at": "2026-06-23T22:01:20.033216Z",
              *       "first_discovery_id": null,
-             *       "id": "48768037-990a-4fef-854e-0d3540f8108e",
+             *       "id": "20544d84-8112-4eac-be71-534d3edaa5e1",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-06-21T20:42:25.865980Z",
+             *       "last_seen_at": "2026-06-23T22:01:20.033216Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-06-21T20:42:25.865980Z",
-             *       "valid_from": "2026-06-21T20:42:25.865980Z",
+             *       "updated_at": "2026-06-23T22:01:20.033216Z",
+             *       "valid_from": "2026-06-23T22:01:20.033216Z",
              *       "valid_to": null
              *     }
              */
@@ -3397,19 +3397,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-06-21T20:42:25.847097Z",
+             *               "created_at": "2026-06-23T22:01:20.013927Z",
              *               "first_discovery_id": null,
-             *               "id": "f8a9f4b1-38af-4b24-979c-e3e5a0251b88",
+             *               "id": "c4cec59b-aa1a-44fa-8126-47b117a7435f",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-06-21T20:42:25.847097Z",
+             *               "last_seen_at": "2026-06-23T22:01:20.013927Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-06-21T20:42:25.847097Z",
-             *               "valid_from": "2026-06-21T20:42:25.847097Z",
+             *               "updated_at": "2026-06-23T22:01:20.013927Z",
+             *               "valid_from": "2026-06-23T22:01:20.013927Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3423,7 +3423,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Dockge",
+             *           "service_definition": "JetDirect",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3779,19 +3779,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-06-21T20:42:25.859782Z",
+             *           "created_at": "2026-06-23T22:01:20.027211Z",
              *           "first_discovery_id": null,
-             *           "id": "640caf04-3bbc-48fc-a248-0b75685d980e",
+             *           "id": "7c439c36-00e7-491e-a878-262d49797676",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-06-21T20:42:25.859782Z",
+             *           "last_seen_at": "2026-06-23T22:01:20.027211Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-06-21T20:42:25.859782Z",
-             *           "valid_from": "2026-06-21T20:42:25.859782Z",
+             *           "updated_at": "2026-06-23T22:01:20.027211Z",
+             *           "valid_from": "2026-06-23T22:01:20.027211Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -3805,7 +3805,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Dockge",
+             *       "service_definition": "JetDirect",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4280,19 +4280,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-06-21T20:42:25.847562Z",
+         *       "created_at": "2026-06-23T22:01:20.014379Z",
          *       "first_discovery_id": null,
-         *       "id": "f42c5580-fc1e-4e10-b511-0e2e5878bbf2",
+         *       "id": "9b85e8fb-ca2b-413d-bdc5-836c33d633d2",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-06-21T20:42:25.847562Z",
+         *       "last_seen_at": "2026-06-23T22:01:20.014379Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-06-21T20:42:25.847562Z",
-         *       "valid_from": "2026-06-21T20:42:25.847562Z",
+         *       "updated_at": "2026-06-23T22:01:20.014379Z",
+         *       "valid_from": "2026-06-23T22:01:20.014379Z",
          *       "valid_to": null
          *     }
          */
@@ -4507,7 +4507,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Dockge",
+         *           "service_definition": "JetDirect",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -4591,7 +4591,17 @@ export interface components {
             ip_address_ids: string[] | null;
         };
         CredentialBase: {
+            /**
+             * @description Networks this credential is assigned to (Broadcast scope).
+             *     Hydrated from the `network_credentials` junction table.
+             */
+            assigned_network_ids: string[];
             credential_type: components["schemas"]["CredentialType"];
+            /**
+             * @description Hosts this credential is assigned to (PerHost scope), with optional IP scoping.
+             *     Hydrated from the `host_credentials` junction table.
+             */
+            host_assignments: components["schemas"]["CredentialHostAssignment"][];
             name: string;
             /** Format: uuid */
             organization_id: string;
@@ -4601,6 +4611,17 @@ export interface components {
              *     Cleared automatically when the next scan dispatches.
              */
             target_ips?: string[] | null;
+        };
+        /**
+         * @description Host-keyed mirror of [`CredentialAssignment`]: a host this credential is
+         *     assigned to, optionally limited to specific ip_addresses. Hydrated onto a
+         *     credential from the `host_credentials` junction (PerHost scope).
+         */
+        CredentialHostAssignment: {
+            /** Format: uuid */
+            host_id: string;
+            /** @description IP address IDs to limit this credential to on the host. None = all host ip_addresses. */
+            ip_address_ids: string[] | null;
         };
         /** @enum {string} */
         CredentialOrderField: "created_at" | "name" | "updated_at";
@@ -5489,19 +5510,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-06-21T20:42:25.846585Z",
+         *               "created_at": "2026-06-23T22:01:20.013413Z",
          *               "first_discovery_id": null,
-         *               "id": "5750a714-e29b-4b2b-aaff-f1cdcc074824",
+         *               "id": "ce2b94de-8bd2-496a-b76d-3ae6bcbe7524",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-06-21T20:42:25.846585Z",
+         *               "last_seen_at": "2026-06-23T22:01:20.013413Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-06-21T20:42:25.846585Z",
-         *               "valid_from": "2026-06-21T20:42:25.846585Z",
+         *               "updated_at": "2026-06-23T22:01:20.013413Z",
+         *               "valid_from": "2026-06-23T22:01:20.013413Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -5515,7 +5536,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Dockge",
+         *           "service_definition": "JetDirect",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -6037,12 +6058,6 @@ export interface components {
         /** @description Network configuration for setup */
         NetworkSetup: {
             name: string;
-            /** @description SNMP community string (for V2c) */
-            snmp_community?: string | null;
-            /** @description Whether SNMP is enabled for this network */
-            snmp_enabled?: boolean;
-            /** @description SNMP version ("V2c" or "V3") */
-            snmp_version?: string | null;
         };
         /** @description Per-network summary of entity counts */
         NetworkSummary: {
@@ -6125,12 +6140,6 @@ export interface components {
             id?: string | null;
             /** @description Network name */
             name: string;
-            /** @description SNMP community string */
-            snmp_community?: string | null;
-            /** @description Whether SNMP is enabled */
-            snmp_enabled?: boolean;
-            /** @description SNMP version */
-            snmp_version?: string | null;
         };
         /** @enum {string} */
         OnboardingOperationDiscriminants: "OrgCreated" | "OnboardingModalCompleted" | "PlanSelected" | "DaemonPromptDismissed" | "DaemonPromptAccepted" | "FirstDaemonRegistered" | "FirstTopologyRebuild" | "FirstDiscoveryCompleted" | "FirstHostDiscovered" | "SecondNetworkCreated" | "FirstTagCreated" | "FirstDependencyCreated" | "FirstUserApiKeyCreated" | "FirstSnmpCredentialCreated" | "FirstApplicationTagCreated" | "FirstCredentialCreated" | "FirstSnapshotCreated" | "InviteSent" | "InviteAccepted" | "ProfileCompleted" | "ReferralSourceCompleted";
@@ -6234,7 +6243,7 @@ export interface components {
          *         "offset": 0,
          *         "total_count": 142
          *       },
-         *       "server_version": "0.16.2"
+         *       "server_version": "0.17.0"
          *     }
          */
         PaginatedApiMeta: {
@@ -6247,7 +6256,7 @@ export interface components {
             pagination: components["schemas"]["PaginationMeta"];
             /**
              * @description Server version (semver)
-             * @example 0.16.2
+             * @example 0.17.0
              */
             server_version: string;
         };
@@ -6945,19 +6954,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-06-21T20:42:25.847465Z",
+         *           "created_at": "2026-06-23T22:01:20.014281Z",
          *           "first_discovery_id": null,
-         *           "id": "b41cc89d-37a5-4fdf-89f0-a7d6ae6fa787",
+         *           "id": "7577c01f-db01-4cdf-a7c9-44642e715a00",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-06-21T20:42:25.847465Z",
+         *           "last_seen_at": "2026-06-23T22:01:20.014281Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-06-21T20:42:25.847465Z",
-         *           "valid_from": "2026-06-21T20:42:25.847465Z",
+         *           "updated_at": "2026-06-23T22:01:20.014281Z",
+         *           "valid_from": "2026-06-23T22:01:20.014281Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -6971,7 +6980,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Dockge",
+         *       "service_definition": "JetDirect",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -7357,29 +7366,136 @@ export interface components {
             vlans: components["schemas"]["Vlan"][];
         };
         TopologyLocalOptions: {
-            bundle_edges?: boolean;
+            /** @default true */
+            bundle_edges: boolean;
+            /**
+             * @default [
+             *       "Hypervisor"
+             *     ]
+             */
             hide_edge_types: components["schemas"]["EdgeTypeDiscriminants"][];
+            /** @default false */
             no_fade_edges: boolean;
-            show_minimap?: boolean;
-            tag_filter?: components["schemas"]["TopologyTagFilter"];
+            /** @default true */
+            show_minimap: boolean;
+            /**
+             * @default {
+             *       "hidden_host_tag_ids": [],
+             *       "hidden_service_tag_ids": [],
+             *       "hidden_subnet_tag_ids": []
+             *     }
+             */
+            tag_filter: components["schemas"]["TopologyTagFilter"];
         };
         TopologyOptions: {
             local: components["schemas"]["TopologyLocalOptions"];
             request: components["schemas"]["TopologyRequestOptions"];
         };
         TopologyRequestOptions: {
-            container_rules?: {
+            /**
+             * @default {
+             *       "Application": [
+             *         {
+             *           "id": "33a288e7-59d8-442c-bd3b-311f34a1c8d3",
+             *           "rule": {
+             *             "ByApplication": {
+             *               "tag_ids": []
+             *             }
+             *           }
+             *         }
+             *       ],
+             *       "L2Physical": [
+             *         {
+             *           "id": "5fc1a3ce-b303-4186-ad2e-011b64ea3dbe",
+             *           "rule": "ByHost"
+             *         }
+             *       ],
+             *       "L3Logical": [
+             *         {
+             *           "id": "3a13a280-8df3-4828-be7f-0acd475b8de0",
+             *           "rule": "BySubnet"
+             *         },
+             *         {
+             *           "id": "8b7bc902-2abe-4dac-adb8-a4d21007ca1f",
+             *           "rule": "MergeDockerBridges"
+             *         }
+             *       ],
+             *       "Workloads": [
+             *         {
+             *           "id": "5fc1a3ce-b303-4186-ad2e-011b64ea3dbe",
+             *           "rule": "ByHost"
+             *         }
+             *       ]
+             *     }
+             */
+            container_rules: {
                 [key: string]: components["schemas"]["IdentifiedRule_ContainerRule"][];
             };
-            element_rules?: components["schemas"]["IdentifiedRule_ElementRule"][];
+            /**
+             * @default [
+             *       {
+             *         "id": "38ae299a-58fc-464a-ac7e-6b4e6872c8e2",
+             *         "rule": "ByTrunkPort"
+             *       },
+             *       {
+             *         "id": "5b6f2f2f-394f-4b8d-91b4-ae76e409028c",
+             *         "rule": "ByVLAN"
+             *       },
+             *       {
+             *         "id": "06722a0b-3400-40e0-b100-dc3fdcc05031",
+             *         "rule": "ByPortOpStatus"
+             *       },
+             *       {
+             *         "id": "bf431df4-d31c-4fac-adcf-12b272ba0b09",
+             *         "rule": {
+             *           "ByServiceCategory": {
+             *             "categories": [
+             *               "NetworkCore",
+             *               "NetworkAccess",
+             *               "RemoteAccess",
+             *               "Workstation",
+             *               "Mobile",
+             *               "Printer",
+             *               "OpenPorts"
+             *             ],
+             *             "is_infra_rule": true,
+             *             "title": "Infrastructure"
+             *           }
+             *         }
+             *       },
+             *       {
+             *         "id": "4d532c1a-17bd-48f6-ba5b-eaf3d4dc5b61",
+             *         "rule": {
+             *           "ByTag": {
+             *             "tag_ids": [],
+             *             "title": null
+             *           }
+             *         }
+             *       },
+             *       {
+             *         "id": "b5ac0366-2d82-4bd5-b711-d8f87179859b",
+             *         "rule": "ByHypervisor"
+             *       },
+             *       {
+             *         "id": "f9084ba1-0170-4542-9083-c9c2592b709b",
+             *         "rule": "ByContainerRuntime"
+             *       },
+             *       {
+             *         "id": "389a54c5-3475-424a-b795-1d50173623c9",
+             *         "rule": "ByStack"
+             *       }
+             *     ]
+             */
+            element_rules: components["schemas"]["IdentifiedRule_ElementRule"][];
             /**
              * @description Entity types hidden per view. Keyed by TopologyView, values are entity
              *     types (matching those declared as container/element/inline in the
              *     view's element_config). Hides every manifestation of the entity in
              *     that view — element nodes, container nodes, and inline rows on
              *     element cards. Supersedes the old `hide_ports` (L3-only, inline-only).
+             * @default {}
              */
-            hide_entities?: {
+            hide_entities: {
                 [key: string]: components["schemas"]["EntityDiscriminants"][];
             };
             /**
@@ -7387,8 +7503,38 @@ export interface components {
              *     (Category, Virtualization, etc). Supersedes the old
              *     `hide_service_categories`; nested so JSON keys are strings all the
              *     way down.
+             * @default {
+             *       "Application": {
+             *         "Service": {
+             *           "Category": [
+             *             "OpenPorts"
+             *           ]
+             *         }
+             *       },
+             *       "L2Physical": {
+             *         "Service": {
+             *           "Category": [
+             *             "OpenPorts"
+             *           ]
+             *         }
+             *       },
+             *       "L3Logical": {
+             *         "Service": {
+             *           "Category": [
+             *             "OpenPorts"
+             *           ]
+             *         }
+             *       },
+             *       "Workloads": {
+             *         "Service": {
+             *           "Category": [
+             *             "OpenPorts"
+             *           ]
+             *         }
+             *       }
+             *     }
              */
-            hide_metadata_values?: {
+            hide_metadata_values: {
                 [key: string]: {
                     [key: string]: {
                         [key: string]: string[];
@@ -9847,7 +9993,7 @@ export interface operations {
             };
         };
     };
-    get_credential_by_id: {
+    get_by_id_credential: {
         parameters: {
             query?: never;
             header?: never;

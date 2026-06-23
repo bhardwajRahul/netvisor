@@ -37,6 +37,9 @@
 		targetIps: string[];
 		fieldValues: Record<string, string>;
 		isExisting?: boolean;
+		// How the new credential is assigned: 'broadcast' (network default) or
+		// 'per_host' (target IPs). Defaults based on the type's scope_models.
+		scope?: 'broadcast' | 'per_host';
 	}
 
 	interface Props {
@@ -157,11 +160,35 @@
 		}
 
 		const fieldValues = initDefaultFieldValues(typeId);
+		// Broadcast-capable types (e.g. SNMP) default to network-default scope,
+		// matching CredentialForm's initial mode.
+		const supportsBroadcast = (credentialTypes.getMetadata(typeId)?.scope_models ?? []).includes(
+			'Broadcast'
+		);
 		pendingCredentials = [
 			...pendingCredentials,
-			{ credential: cred, targetIps: [''], fieldValues }
+			{
+				credential: cred,
+				targetIps: supportsBroadcast ? [] : [''],
+				fieldValues,
+				scope: supportsBroadcast ? 'broadcast' : 'per_host'
+			}
 		];
 		syncFormDefaults();
+	}
+
+	/**
+	 * Seed the wizard with one new credential per given type id (used to prefill
+	 * from the credential-type selection step). Types already present as a new
+	 * (non-existing) pending credential are skipped to avoid duplicates.
+	 */
+	export function addTypes(typeIds: string[]) {
+		for (const typeId of typeIds) {
+			const alreadyPending = pendingCredentials.some(
+				(p) => !p.isExisting && p.credential.credential_type.type === typeId
+			);
+			if (!alreadyPending) handleAddCredential(typeId);
+		}
 	}
 
 	function handleAddExistingCredential(credentialId: string) {
@@ -189,20 +216,29 @@
 
 	function handleConfigChange(
 		index: number,
-		data: { targetIps?: string[]; fieldValues?: Record<string, string> }
+		data: {
+			targetIps?: string[];
+			fieldValues?: Record<string, string>;
+			scope?: 'broadcast' | 'per_host';
+		}
 	) {
 		pendingCredentials = pendingCredentials.map((p, i) => {
 			if (i !== index) return p;
 			const updated = { ...p };
+			if (data.scope !== undefined) {
+				updated.scope = data.scope;
+			}
 			if (data.targetIps !== undefined) {
 				updated.targetIps = data.targetIps;
-				// Update credential name based on first targetIp (only for new credentials)
-				if (!p.isExisting) {
-					const ip = (data.targetIps[0] ?? '').trim();
-					const isLocalhost = ip === '127.0.0.1' || ip === '::1' || ip === 'localhost' || ip === '';
-					const name = isLocalhost ? daemonName : ip;
-					updated.credential = { ...p.credential, name };
-				}
+			}
+			// Name new credentials after their first target IP — but not broadcast
+			// credentials, which have no target IP (keep the type-based name).
+			const scope = data.scope ?? updated.scope;
+			if (!p.isExisting && scope !== 'broadcast' && data.targetIps !== undefined) {
+				const ip = (data.targetIps[0] ?? '').trim();
+				const isLocalhost = ip === '127.0.0.1' || ip === '::1' || ip === 'localhost' || ip === '';
+				const name = isLocalhost ? daemonName : ip;
+				updated.credential = { ...p.credential, name };
 			}
 			if (data.fieldValues !== undefined) {
 				updated.fieldValues = data.fieldValues;
@@ -226,12 +262,15 @@
 				const ref = credentialFormRefs[i];
 				const credentialType =
 					ref?.buildCredentialType() ?? (p.credential.credential_type as CredentialType);
+				const isBroadcast = p.scope === 'broadcast';
 				return {
 					credential: {
 						...p.credential,
-						credential_type: credentialType
+						credential_type: credentialType,
+						// Broadcast: assign as a network default. Per-host: leave to target_ips.
+						assigned_network_ids: isBroadcast && networkId ? [networkId] : []
 					},
-					targetIps: p.targetIps
+					targetIps: isBroadcast ? [] : p.targetIps
 				};
 			});
 	}

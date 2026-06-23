@@ -21,7 +21,9 @@ mod metadata;
 mod secrets;
 
 pub use fields::{FieldDefinition, FieldType, InlineFormat, PemTag, SelectOption};
-pub use metadata::{CredentialAssignment, CredentialCategory, ScopeModel};
+pub use metadata::{
+    CredentialAssignment, CredentialCategory, CredentialHostAssignment, ScopeModel,
+};
 pub use secrets::{
     FileOrInline, REDACTED_SECRET_SENTINEL, SecretValue, StorageCredentialType,
     deserialize_optional_file_or_inline, deserialize_optional_secret_value,

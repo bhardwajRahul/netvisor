@@ -47,6 +47,18 @@ pub struct CredentialAssignment {
     pub ip_address_ids: Option<Vec<Uuid>>,
 }
 
+/// Host-keyed mirror of [`CredentialAssignment`]: a host this credential is
+/// assigned to, optionally limited to specific ip_addresses. Hydrated onto a
+/// credential from the `host_credentials` junction (PerHost scope).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, ToSchema)]
+pub struct CredentialHostAssignment {
+    pub host_id: Uuid,
+    /// IP address IDs to limit this credential to on the host. None = all host ip_addresses.
+    #[serde(default)]
+    #[schema(required)]
+    pub ip_address_ids: Option<Vec<Uuid>>,
+}
+
 impl CredentialTypeDiscriminants {
     /// Create a `CredentialType` instance with default field values for this variant.
     /// Used by `generate-fixtures` and anywhere variant iteration is needed.

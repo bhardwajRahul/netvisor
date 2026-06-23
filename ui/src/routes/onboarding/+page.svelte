@@ -98,10 +98,7 @@
 			if (stateData.network) {
 				onboardingStore.setNetwork({
 					id: stateData.network.id ?? undefined,
-					name: stateData.network.name,
-					snmp_enabled: stateData.network.snmp_enabled ?? false,
-					snmp_version: stateData.network.snmp_version ?? undefined,
-					snmp_community: stateData.network.snmp_community ?? undefined
+					name: stateData.network.name
 				});
 			}
 

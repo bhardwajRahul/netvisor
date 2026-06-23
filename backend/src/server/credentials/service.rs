@@ -7,7 +7,10 @@ use crate::server::{
             CredentialMapping, CredentialQueryPayload, IpOverride, SnmpCredentialMapping,
             SnmpQueryCredential,
         },
-        types::{CredentialAssignment, CredentialType, CredentialTypeDiscriminants, SnmpVersion},
+        types::{
+            CredentialAssignment, CredentialHostAssignment, CredentialType,
+            CredentialTypeDiscriminants, SnmpVersion,
+        },
     },
     hosts::{r#impl::base::Host, service::HostService},
     ip_addresses::{r#impl::base::IPAddress, service::IPAddressService},
@@ -210,6 +213,68 @@ impl CredentialService {
     ) -> Result<(), Error> {
         self.host_credential_storage
             .save_for_host(host_id, assignments)
+            .await
+    }
+
+    /// Get the network IDs a credential is assigned to (reverse lookup).
+    pub async fn get_network_ids_for_credential(
+        &self,
+        credential_id: &Uuid,
+    ) -> Result<Vec<Uuid>, Error> {
+        self.network_credential_storage
+            .get_network_ids_for_credential(credential_id)
+            .await
+    }
+
+    /// Get the network IDs for multiple credentials (batch, reverse lookup).
+    pub async fn get_network_ids_for_credentials(
+        &self,
+        credential_ids: &[Uuid],
+    ) -> Result<std::collections::HashMap<Uuid, Vec<Uuid>>, Error> {
+        self.network_credential_storage
+            .get_network_ids_for_credentials(credential_ids)
+            .await
+    }
+
+    /// Get the host assignments for a credential (reverse lookup).
+    pub async fn get_host_assignments_for_credential(
+        &self,
+        credential_id: &Uuid,
+    ) -> Result<Vec<CredentialHostAssignment>, Error> {
+        self.host_credential_storage
+            .get_host_assignments_for_credential(credential_id)
+            .await
+    }
+
+    /// Get the host assignments for multiple credentials (batch, reverse lookup).
+    pub async fn get_host_assignments_for_credentials(
+        &self,
+        credential_ids: &[Uuid],
+    ) -> Result<std::collections::HashMap<Uuid, Vec<CredentialHostAssignment>>, Error> {
+        self.host_credential_storage
+            .get_host_assignments_for_credentials(credential_ids)
+            .await
+    }
+
+    /// Replace the full set of networks a credential is assigned to (atomic).
+    pub async fn set_credential_networks(
+        &self,
+        credential_id: &Uuid,
+        network_ids: &[Uuid],
+    ) -> Result<(), Error> {
+        self.network_credential_storage
+            .save_networks_for_credential(credential_id, network_ids)
+            .await
+    }
+
+    /// Replace the full set of host assignments for a credential (atomic).
+    pub async fn set_credential_host_assignments(
+        &self,
+        credential_id: &Uuid,
+        assignments: &[CredentialHostAssignment],
+    ) -> Result<(), Error> {
+        self.host_credential_storage
+            .save_host_assignments_for_credential(credential_id, assignments)
             .await
     }
 
