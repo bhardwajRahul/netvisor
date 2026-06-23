@@ -1,4 +1,4 @@
-use crate::server::credentials::r#impl::types::CredentialType;
+use crate::server::credentials::r#impl::types::{CredentialHostAssignment, CredentialType};
 use crate::server::shared::entities::ChangeTriggersTopologyStaleness;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -31,6 +31,16 @@ pub struct CredentialBase {
     #[serde(default = "default_tags")]
     #[schema(required)]
     pub tags: Vec<Uuid>,
+    /// Networks this credential is assigned to (Broadcast scope).
+    /// Hydrated from the `network_credentials` junction table.
+    #[serde(default)]
+    #[schema(required)]
+    pub assigned_network_ids: Vec<Uuid>,
+    /// Hosts this credential is assigned to (PerHost scope), with optional IP scoping.
+    /// Hydrated from the `host_credentials` junction table.
+    #[serde(default)]
+    #[schema(required)]
+    pub host_assignments: Vec<CredentialHostAssignment>,
 }
 
 impl PartialEq for CredentialBase {
@@ -40,6 +50,8 @@ impl PartialEq for CredentialBase {
             && self.credential_type == other.credential_type
             && self.target_ips == other.target_ips
             && self.tags == other.tags
+            && self.assigned_network_ids == other.assigned_network_ids
+            && self.host_assignments == other.host_assignments
     }
 }
 
@@ -57,6 +69,8 @@ impl Default for CredentialBase {
             },
             target_ips: None,
             tags: Vec::new(),
+            assigned_network_ids: Vec::new(),
+            host_assignments: Vec::new(),
         }
     }
 }

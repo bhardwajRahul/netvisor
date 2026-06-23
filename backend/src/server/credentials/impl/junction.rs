@@ -10,7 +10,7 @@ use std::fmt::Display;
 use uuid::Uuid;
 
 use crate::server::{
-    credentials::r#impl::types::CredentialAssignment,
+    credentials::r#impl::types::{CredentialAssignment, CredentialHostAssignment},
     shared::storage::{
         filter::StorableFilter,
         generic::GenericPostgresStorage,
@@ -210,6 +210,73 @@ impl NetworkCredentialStorage {
         tx.commit().await?;
         Ok(())
     }
+
+    /// Get the network IDs a credential is assigned to (reverse lookup).
+    pub async fn get_network_ids_for_credential(&self, credential_id: &Uuid) -> Result<Vec<Uuid>> {
+        let filter = StorableFilter::<NetworkCredential>::new_from_uuid_column(
+            "credential_id",
+            credential_id,
+        );
+        let records = self
+            .storage
+            .get_all_ordered(filter, "network_id ASC")
+            .await?;
+        Ok(records.into_iter().map(|r| r.network_id).collect())
+    }
+
+    /// Get the network IDs for multiple credentials (batch, reverse lookup).
+    pub async fn get_network_ids_for_credentials(
+        &self,
+        credential_ids: &[Uuid],
+    ) -> Result<HashMap<Uuid, Vec<Uuid>>> {
+        if credential_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+        let filter = StorableFilter::<NetworkCredential>::new_from_uuids_column(
+            "credential_id",
+            credential_ids,
+        );
+        let records = self
+            .storage
+            .get_all_ordered(filter, "credential_id ASC")
+            .await?;
+
+        let mut map: HashMap<Uuid, Vec<Uuid>> = HashMap::new();
+        for record in records {
+            map.entry(record.credential_id)
+                .or_default()
+                .push(record.network_id);
+        }
+        Ok(map)
+    }
+
+    /// Replace the full set of networks a credential is assigned to (atomic).
+    /// Only touches rows for this credential, so other credentials on the same
+    /// networks are left untouched.
+    pub async fn save_networks_for_credential(
+        &self,
+        credential_id: &Uuid,
+        network_ids: &[Uuid],
+    ) -> Result<()> {
+        let mut tx = self.storage.begin_transaction().await?;
+
+        let filter = StorableFilter::<NetworkCredential>::new_from_uuid_column(
+            "credential_id",
+            credential_id,
+        );
+        tx.delete_by_filter(filter).await?;
+
+        for network_id in network_ids {
+            let record = NetworkCredential {
+                network_id: *network_id,
+                credential_id: *credential_id,
+            };
+            tx.create(&record).await?;
+        }
+
+        tx.commit().await?;
+        Ok(())
+    }
 }
 
 // =============================================================================
@@ -285,6 +352,79 @@ impl HostCredentialStorage {
             let record = HostCredential {
                 host_id: *host_id,
                 credential_id: assignment.credential_id,
+                ip_address_ids: assignment.ip_address_ids.clone(),
+            };
+            tx.create(&record).await?;
+        }
+
+        tx.commit().await?;
+        Ok(())
+    }
+
+    /// Get the host assignments for a credential (reverse lookup).
+    pub async fn get_host_assignments_for_credential(
+        &self,
+        credential_id: &Uuid,
+    ) -> Result<Vec<CredentialHostAssignment>> {
+        let filter =
+            StorableFilter::<HostCredential>::new_from_uuid_column("credential_id", credential_id);
+        let records = self.storage.get_all_ordered(filter, "host_id ASC").await?;
+        Ok(records
+            .into_iter()
+            .map(|r| CredentialHostAssignment {
+                host_id: r.host_id,
+                ip_address_ids: r.ip_address_ids,
+            })
+            .collect())
+    }
+
+    /// Get the host assignments for multiple credentials (batch, reverse lookup).
+    pub async fn get_host_assignments_for_credentials(
+        &self,
+        credential_ids: &[Uuid],
+    ) -> Result<HashMap<Uuid, Vec<CredentialHostAssignment>>> {
+        if credential_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+        let filter = StorableFilter::<HostCredential>::new_from_uuids_column(
+            "credential_id",
+            credential_ids,
+        );
+        let records = self
+            .storage
+            .get_all_ordered(filter, "credential_id ASC")
+            .await?;
+
+        let mut map: HashMap<Uuid, Vec<CredentialHostAssignment>> = HashMap::new();
+        for record in records {
+            map.entry(record.credential_id)
+                .or_default()
+                .push(CredentialHostAssignment {
+                    host_id: record.host_id,
+                    ip_address_ids: record.ip_address_ids,
+                });
+        }
+        Ok(map)
+    }
+
+    /// Replace the full set of host assignments for a credential (atomic).
+    /// Only touches rows for this credential, so other credentials on the same
+    /// hosts are left untouched.
+    pub async fn save_host_assignments_for_credential(
+        &self,
+        credential_id: &Uuid,
+        assignments: &[CredentialHostAssignment],
+    ) -> Result<()> {
+        let mut tx = self.storage.begin_transaction().await?;
+
+        let filter =
+            StorableFilter::<HostCredential>::new_from_uuid_column("credential_id", credential_id);
+        tx.delete_by_filter(filter).await?;
+
+        for assignment in assignments {
+            let record = HostCredential {
+                host_id: assignment.host_id,
+                credential_id: *credential_id,
                 ip_address_ids: assignment.ip_address_ids.clone(),
             };
             tx.create(&record).await?;

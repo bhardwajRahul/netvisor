@@ -110,15 +110,6 @@ pub struct ResetPasswordRequest {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct NetworkSetup {
     pub name: String,
-    /// Whether SNMP is enabled for this network
-    #[serde(default)]
-    pub snmp_enabled: bool,
-    /// SNMP version ("V2c" or "V3")
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub snmp_version: Option<String>,
-    /// SNMP community string (for V2c)
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub snmp_community: Option<String>,
 }
 
 /// Setup request for pre-registration org/network configuration
@@ -163,15 +154,6 @@ pub struct OnboardingNetworkState {
     pub id: Option<Uuid>,
     /// Network name
     pub name: String,
-    /// Whether SNMP is enabled
-    #[serde(default)]
-    pub snmp_enabled: bool,
-    /// SNMP version
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub snmp_version: Option<String>,
-    /// SNMP community string
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub snmp_community: Option<String>,
 }
 
 /// Response from onboarding state endpoint

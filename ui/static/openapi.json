@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Scanopy API",
-    "description": "\nNetwork topology discovery and visualization API.\n\n## Authentication\n\nTwo authentication methods are supported:\n\n| Method | Header | Use Case |\n|--------|--------|----------|\n| User API key | `Authorization: Bearer scp_u_...` | Programmatic access, integrations |\n| Session cookie | `Cookie: session_id=...` | Web UI (via `/api/auth/login`) |\n\nUser API keys require your organization to have API access enabled. Create keys at **Platform > API Keys**.\n\n## Rate Limiting\n\nLimit: 300 requests/minute\n\nBurst: 150\n\nResponse headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`\n\nWhen rate limited, you'll receive HTTP `429 Too Many Requests` with a `Retry-After` header.\n\n## Pagination\n\nList endpoints support pagination via query parameters:\n\n| Parameter | Type | Default | Description |\n|-----------|------|---------|-------------|\n| `limit` | integer | 50 | Maximum results to return (1-1000). Use 0 for no limit. |\n| `offset` | integer | 0 | Number of results to skip |\n\nExample: `GET /api/v1/hosts?limit=10&offset=20`\n\n## Response Format\n\nAll responses use a standard envelope:\n\n```json\n{\n  \"success\": true,\n  \"data\": { ... },\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.16.2\"\n  }\n}\n```\n\n**Paginated list responses** include pagination metadata:\n\n```json\n{\n  \"success\": true,\n  \"data\": [ ... ],\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.16.2\",\n    \"pagination\": {\n      \"total_count\": 142,\n      \"limit\": 50,\n      \"offset\": 0,\n      \"has_more\": true\n    }\n  }\n}\n```\n\n| Field | Description |\n|-------|-------------|\n| `total_count` | Total items matching your query (ignoring pagination) |\n| `limit` | Applied limit (your request or default) |\n| `offset` | Applied offset |\n| `has_more` | `true` if more results exist beyond this page |\n\n**Error responses** include an `error` field instead of `data`:\n\n```json\n{\n  \"success\": false,\n  \"error\": \"Resource not found\",\n  \"meta\": { ... }\n}\n```\n\n**Common status codes:** `400` validation error, `401` unauthorized, `403` forbidden, `404` not found, `409` conflict, `429` rate limited.\n\n## Versioning\n\nEndpoints are prefixed with `/api/v1/`. The API version is an integer (`api_version: 1`) returned in every response, versioned independently from the application. Check `GET /api/version` for current versions.\n\n**While Scanopy is pre-v1.0 (current: 0.16.2)**, the API should be considered unstable. Breaking changes may be introduced in any release without incrementing the API version. We recommend pinning to a specific Scanopy release if you depend on API stability, and reviewing the [changelog](/changelog) before upgrading. After Scanopy reaches v1.0, breaking API changes will only occur with an API version increment.\n\n## Multi-Tenancy\n\nResources are scoped to your **organization** and **network(s)**:\n\n- You can only access entities within your organization\n- Network-level entities (hosts, services, etc.) are filtered to networks you have access to\n- Use `?network_id=<UUID>` to filter list endpoints to a specific network\n- API keys can be scoped to a subset of your accessible networks\n",
+    "description": "\nNetwork topology discovery and visualization API.\n\n## Authentication\n\nTwo authentication methods are supported:\n\n| Method | Header | Use Case |\n|--------|--------|----------|\n| User API key | `Authorization: Bearer scp_u_...` | Programmatic access, integrations |\n| Session cookie | `Cookie: session_id=...` | Web UI (via `/api/auth/login`) |\n\nUser API keys require your organization to have API access enabled. Create keys at **Platform > API Keys**.\n\n## Rate Limiting\n\nLimit: 300 requests/minute\n\nBurst: 150\n\nResponse headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`\n\nWhen rate limited, you'll receive HTTP `429 Too Many Requests` with a `Retry-After` header.\n\n## Pagination\n\nList endpoints support pagination via query parameters:\n\n| Parameter | Type | Default | Description |\n|-----------|------|---------|-------------|\n| `limit` | integer | 50 | Maximum results to return (1-1000). Use 0 for no limit. |\n| `offset` | integer | 0 | Number of results to skip |\n\nExample: `GET /api/v1/hosts?limit=10&offset=20`\n\n## Response Format\n\nAll responses use a standard envelope:\n\n```json\n{\n  \"success\": true,\n  \"data\": { ... },\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.17.0\"\n  }\n}\n```\n\n**Paginated list responses** include pagination metadata:\n\n```json\n{\n  \"success\": true,\n  \"data\": [ ... ],\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.17.0\",\n    \"pagination\": {\n      \"total_count\": 142,\n      \"limit\": 50,\n      \"offset\": 0,\n      \"has_more\": true\n    }\n  }\n}\n```\n\n| Field | Description |\n|-------|-------------|\n| `total_count` | Total items matching your query (ignoring pagination) |\n| `limit` | Applied limit (your request or default) |\n| `offset` | Applied offset |\n| `has_more` | `true` if more results exist beyond this page |\n\n**Error responses** include an `error` field instead of `data`:\n\n```json\n{\n  \"success\": false,\n  \"error\": \"Resource not found\",\n  \"meta\": { ... }\n}\n```\n\n**Common status codes:** `400` validation error, `401` unauthorized, `403` forbidden, `404` not found, `409` conflict, `429` rate limited.\n\n## Versioning\n\nEndpoints are prefixed with `/api/v1/`. The API version is an integer (`api_version: 1`) returned in every response, versioned independently from the application. Check `GET /api/version` for current versions.\n\n**While Scanopy is pre-v1.0 (current: 0.17.0)**, the API should be considered unstable. Breaking changes may be introduced in any release without incrementing the API version. We recommend pinning to a specific Scanopy release if you depend on API stability, and reviewing the [changelog](/changelog) before upgrading. After Scanopy reaches v1.0, breaking API changes will only occur with an API version increment.\n\n## Multi-Tenancy\n\nResources are scoped to your **organization** and **network(s)**:\n\n- You can only access entities within your organization\n- Network-level entities (hosts, services, etc.) are filtered to networks you have access to\n- Use `?network_id=<UUID>` to filter list endpoints to a specific network\n- API keys can be scoped to a subset of your accessible networks\n",
     "license": {
       "name": "Dual (AGPL3.0, Commercial License Available)"
     },
@@ -3601,8 +3601,8 @@
         "tags": [
           "Credentials"
         ],
-        "summary": "Get Credential by ID",
-        "operationId": "get_credential_by_id",
+        "summary": "Get a Credential by ID",
+        "operationId": "get_by_id_credential",
         "parameters": [
           {
             "name": "id",
@@ -13388,12 +13388,12 @@
           "server_version": {
             "type": "string",
             "description": "Server version (semver)",
-            "example": "0.16.2"
+            "example": "0.17.0"
           }
         },
         "example": {
           "api_version": 1,
-          "server_version": "0.16.2"
+          "server_version": "0.17.0"
         }
       },
       "ApiResponse": {
@@ -13509,19 +13509,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-06-21T20:42:25.865980Z",
+              "created_at": "2026-06-23T22:01:20.033216Z",
               "first_discovery_id": null,
-              "id": "48768037-990a-4fef-854e-0d3540f8108e",
+              "id": "20544d84-8112-4eac-be71-534d3edaa5e1",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-21T20:42:25.865980Z",
+              "last_seen_at": "2026-06-23T22:01:20.033216Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-21T20:42:25.865980Z",
-              "valid_from": "2026-06-21T20:42:25.865980Z",
+              "updated_at": "2026-06-23T22:01:20.033216Z",
+              "valid_from": "2026-06-23T22:01:20.033216Z",
               "valid_to": null
             }
           },
@@ -14507,19 +14507,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-06-21T20:42:25.847097Z",
+                      "created_at": "2026-06-23T22:01:20.013927Z",
                       "first_discovery_id": null,
-                      "id": "f8a9f4b1-38af-4b24-979c-e3e5a0251b88",
+                      "id": "c4cec59b-aa1a-44fa-8126-47b117a7435f",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-06-21T20:42:25.847097Z",
+                      "last_seen_at": "2026-06-23T22:01:20.013927Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-06-21T20:42:25.847097Z",
-                      "valid_from": "2026-06-21T20:42:25.847097Z",
+                      "updated_at": "2026-06-23T22:01:20.013927Z",
+                      "valid_from": "2026-06-23T22:01:20.013927Z",
                       "valid_to": null
                     }
                   ],
@@ -14533,7 +14533,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Dockge",
+                  "service_definition": "JetDirect",
                   "source": {
                     "type": "Manual"
                   },
@@ -15524,19 +15524,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-06-21T20:42:25.859782Z",
+                  "created_at": "2026-06-23T22:01:20.027211Z",
                   "first_discovery_id": null,
-                  "id": "640caf04-3bbc-48fc-a248-0b75685d980e",
+                  "id": "7c439c36-00e7-491e-a878-262d49797676",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-21T20:42:25.859782Z",
+                  "last_seen_at": "2026-06-23T22:01:20.027211Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-21T20:42:25.859782Z",
-                  "valid_from": "2026-06-21T20:42:25.859782Z",
+                  "updated_at": "2026-06-23T22:01:20.027211Z",
+                  "valid_from": "2026-06-23T22:01:20.027211Z",
                   "valid_to": null
                 }
               ],
@@ -15550,7 +15550,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Dockge",
+              "service_definition": "JetDirect",
               "source": {
                 "type": "Manual"
               },
@@ -17296,19 +17296,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-06-21T20:42:25.847562Z",
+          "created_at": "2026-06-23T22:01:20.014379Z",
           "first_discovery_id": null,
-          "id": "f42c5580-fc1e-4e10-b511-0e2e5878bbf2",
+          "id": "9b85e8fb-ca2b-413d-bdc5-836c33d633d2",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-06-21T20:42:25.847562Z",
+          "last_seen_at": "2026-06-23T22:01:20.014379Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-06-21T20:42:25.847562Z",
-          "valid_from": "2026-06-21T20:42:25.847562Z",
+          "updated_at": "2026-06-23T22:01:20.014379Z",
+          "valid_from": "2026-06-23T22:01:20.014379Z",
           "valid_to": null
         }
       },
@@ -17898,7 +17898,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Dockge",
+              "service_definition": "JetDirect",
               "tags": [],
               "virtualization": null
             }
@@ -18076,11 +18076,28 @@
           "organization_id",
           "name",
           "credential_type",
-          "tags"
+          "tags",
+          "assigned_network_ids",
+          "host_assignments"
         ],
         "properties": {
+          "assigned_network_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Networks this credential is assigned to (Broadcast scope).\nHydrated from the `network_credentials` junction table."
+          },
           "credential_type": {
             "$ref": "#/components/schemas/CredentialType"
+          },
+          "host_assignments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CredentialHostAssignment"
+            },
+            "description": "Hosts this credential is assigned to (PerHost scope), with optional IP scoping.\nHydrated from the `host_credentials` junction table."
           },
           "name": {
             "type": "string"
@@ -18105,6 +18122,31 @@
               "type": "string"
             },
             "description": "Ephemeral bootstrap IPs for pre-discovery credential resolution.\nCleared automatically when the next scan dispatches."
+          }
+        }
+      },
+      "CredentialHostAssignment": {
+        "type": "object",
+        "description": "Host-keyed mirror of [`CredentialAssignment`]: a host this credential is\nassigned to, optionally limited to specific ip_addresses. Hydrated onto a\ncredential from the `host_credentials` junction (PerHost scope).",
+        "required": [
+          "host_id",
+          "ip_address_ids"
+        ],
+        "properties": {
+          "host_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "ip_address_ids": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "IP address IDs to limit this credential to on the host. None = all host ip_addresses."
           }
         }
       },
@@ -20631,19 +20673,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-06-21T20:42:25.846585Z",
+                  "created_at": "2026-06-23T22:01:20.013413Z",
                   "first_discovery_id": null,
-                  "id": "5750a714-e29b-4b2b-aaff-f1cdcc074824",
+                  "id": "ce2b94de-8bd2-496a-b76d-3ae6bcbe7524",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-21T20:42:25.846585Z",
+                  "last_seen_at": "2026-06-23T22:01:20.013413Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-21T20:42:25.846585Z",
-                  "valid_from": "2026-06-21T20:42:25.846585Z",
+                  "updated_at": "2026-06-23T22:01:20.013413Z",
+                  "valid_from": "2026-06-23T22:01:20.013413Z",
                   "valid_to": null
                 }
               ],
@@ -20657,7 +20699,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Dockge",
+              "service_definition": "JetDirect",
               "source": {
                 "type": "Manual"
               },
@@ -22099,24 +22141,6 @@
         "properties": {
           "name": {
             "type": "string"
-          },
-          "snmp_community": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "SNMP community string (for V2c)"
-          },
-          "snmp_enabled": {
-            "type": "boolean",
-            "description": "Whether SNMP is enabled for this network"
-          },
-          "snmp_version": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "SNMP version (\"V2c\" or \"V3\")"
           }
         }
       },
@@ -22346,24 +22370,6 @@
           "name": {
             "type": "string",
             "description": "Network name"
-          },
-          "snmp_community": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "SNMP community string"
-          },
-          "snmp_enabled": {
-            "type": "boolean",
-            "description": "Whether SNMP is enabled"
-          },
-          "snmp_version": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "SNMP version"
           }
         }
       },
@@ -22654,7 +22660,7 @@
           "server_version": {
             "type": "string",
             "description": "Server version (semver)",
-            "example": "0.16.2"
+            "example": "0.17.0"
           }
         },
         "example": {
@@ -22665,7 +22671,7 @@
             "offset": 0,
             "total_count": 142
           },
-          "server_version": "0.16.2"
+          "server_version": "0.17.0"
         }
       },
       "PaginatedApiResponse_Credential": {
@@ -23126,19 +23132,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-06-21T20:42:25.834796Z",
+                        "created_at": "2026-06-23T22:01:20.001344Z",
                         "first_discovery_id": null,
-                        "id": "108d2069-2ffb-4317-8493-4dc482f42858",
+                        "id": "51e24c90-a0c4-4825-a1a6-7cbace7ef8a6",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-06-21T20:42:25.834796Z",
+                        "last_seen_at": "2026-06-23T22:01:20.001344Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-06-21T20:42:25.834796Z",
-                        "valid_from": "2026-06-21T20:42:25.834796Z",
+                        "updated_at": "2026-06-23T22:01:20.001344Z",
+                        "valid_from": "2026-06-23T22:01:20.001344Z",
                         "valid_to": null
                       }
                     ],
@@ -23152,7 +23158,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Dockge",
+                    "service_definition": "JetDirect",
                     "source": {
                       "type": "Manual"
                     },
@@ -23273,19 +23279,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-06-21T20:42:25.858609Z",
+                    "created_at": "2026-06-23T22:01:20.025952Z",
                     "first_discovery_id": null,
-                    "id": "59e128a4-e9dc-4b93-b8ad-8f42078608fb",
+                    "id": "1d271b08-aab7-4d96-893c-3570d741d826",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-06-21T20:42:25.858609Z",
+                    "last_seen_at": "2026-06-23T22:01:20.025952Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-06-21T20:42:25.858609Z",
-                    "valid_from": "2026-06-21T20:42:25.858609Z",
+                    "updated_at": "2026-06-23T22:01:20.025952Z",
+                    "valid_from": "2026-06-23T22:01:20.025952Z",
                     "valid_to": null
                   }
                 ],
@@ -23299,7 +23305,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Dockge",
+                "service_definition": "JetDirect",
                 "source": {
                   "type": "Manual"
                 },
@@ -24930,19 +24936,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-06-21T20:42:25.847465Z",
+              "created_at": "2026-06-23T22:01:20.014281Z",
               "first_discovery_id": null,
-              "id": "b41cc89d-37a5-4fdf-89f0-a7d6ae6fa787",
+              "id": "7577c01f-db01-4cdf-a7c9-44642e715a00",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-21T20:42:25.847465Z",
+              "last_seen_at": "2026-06-23T22:01:20.014281Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-21T20:42:25.847465Z",
-              "valid_from": "2026-06-21T20:42:25.847465Z",
+              "updated_at": "2026-06-23T22:01:20.014281Z",
+              "valid_from": "2026-06-23T22:01:20.014281Z",
               "valid_to": null
             }
           ],
@@ -24956,7 +24962,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Dockge",
+          "service_definition": "JetDirect",
           "source": {
             "type": "Manual"
           },
@@ -26001,28 +26007,39 @@
       },
       "TopologyLocalOptions": {
         "type": "object",
-        "required": [
-          "no_fade_edges",
-          "hide_edge_types"
-        ],
         "properties": {
           "bundle_edges": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true
           },
           "hide_edge_types": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/EdgeTypeDiscriminants"
-            }
+            },
+            "default": [
+              "Hypervisor"
+            ]
           },
           "no_fade_edges": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false
           },
           "show_minimap": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true
           },
           "tag_filter": {
-            "$ref": "#/components/schemas/TopologyTagFilter"
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TopologyTagFilter"
+              }
+            ],
+            "default": {
+              "hidden_host_tag_ids": [],
+              "hidden_service_tag_ids": [],
+              "hidden_subnet_tag_ids": []
+            }
           }
         }
       },
@@ -26046,6 +26063,40 @@
         "properties": {
           "container_rules": {
             "type": "object",
+            "default": {
+              "Application": [
+                {
+                  "id": "33a288e7-59d8-442c-bd3b-311f34a1c8d3",
+                  "rule": {
+                    "ByApplication": {
+                      "tag_ids": []
+                    }
+                  }
+                }
+              ],
+              "L2Physical": [
+                {
+                  "id": "5fc1a3ce-b303-4186-ad2e-011b64ea3dbe",
+                  "rule": "ByHost"
+                }
+              ],
+              "L3Logical": [
+                {
+                  "id": "3a13a280-8df3-4828-be7f-0acd475b8de0",
+                  "rule": "BySubnet"
+                },
+                {
+                  "id": "8b7bc902-2abe-4dac-adb8-a4d21007ca1f",
+                  "rule": "MergeDockerBridges"
+                }
+              ],
+              "Workloads": [
+                {
+                  "id": "5fc1a3ce-b303-4186-ad2e-011b64ea3dbe",
+                  "rule": "ByHost"
+                }
+              ]
+            },
             "additionalProperties": {
               "type": "array",
               "items": {
@@ -26067,11 +26118,65 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/IdentifiedRule_ElementRule"
-            }
+            },
+            "default": [
+              {
+                "id": "38ae299a-58fc-464a-ac7e-6b4e6872c8e2",
+                "rule": "ByTrunkPort"
+              },
+              {
+                "id": "5b6f2f2f-394f-4b8d-91b4-ae76e409028c",
+                "rule": "ByVLAN"
+              },
+              {
+                "id": "06722a0b-3400-40e0-b100-dc3fdcc05031",
+                "rule": "ByPortOpStatus"
+              },
+              {
+                "id": "bf431df4-d31c-4fac-adcf-12b272ba0b09",
+                "rule": {
+                  "ByServiceCategory": {
+                    "categories": [
+                      "NetworkCore",
+                      "NetworkAccess",
+                      "RemoteAccess",
+                      "Workstation",
+                      "Mobile",
+                      "Printer",
+                      "OpenPorts"
+                    ],
+                    "is_infra_rule": true,
+                    "title": "Infrastructure"
+                  }
+                }
+              },
+              {
+                "id": "4d532c1a-17bd-48f6-ba5b-eaf3d4dc5b61",
+                "rule": {
+                  "ByTag": {
+                    "tag_ids": [],
+                    "title": null
+                  }
+                }
+              },
+              {
+                "id": "b5ac0366-2d82-4bd5-b711-d8f87179859b",
+                "rule": "ByHypervisor"
+              },
+              {
+                "id": "f9084ba1-0170-4542-9083-c9c2592b709b",
+                "rule": "ByContainerRuntime"
+              },
+              {
+                "id": "389a54c5-3475-424a-b795-1d50173623c9",
+                "rule": "ByStack"
+              }
+            ]
           },
           "hide_entities": {
             "type": "object",
             "description": "Entity types hidden per view. Keyed by TopologyView, values are entity\ntypes (matching those declared as container/element/inline in the\nview's element_config). Hides every manifestation of the entity in\nthat view — element nodes, container nodes, and inline rows on\nelement cards. Supersedes the old `hide_ports` (L3-only, inline-only).",
+            "default": {},
             "additionalProperties": {
               "type": "array",
               "items": {
@@ -26092,6 +26197,36 @@
           "hide_metadata_values": {
             "type": "object",
             "description": "Generic per-(view, entity, filter) hide-set for metadata filters\n(Category, Virtualization, etc). Supersedes the old\n`hide_service_categories`; nested so JSON keys are strings all the\nway down.",
+            "default": {
+              "Application": {
+                "Service": {
+                  "Category": [
+                    "OpenPorts"
+                  ]
+                }
+              },
+              "L2Physical": {
+                "Service": {
+                  "Category": [
+                    "OpenPorts"
+                  ]
+                }
+              },
+              "L3Logical": {
+                "Service": {
+                  "Category": [
+                    "OpenPorts"
+                  ]
+                }
+              },
+              "Workloads": {
+                "Service": {
+                  "Category": [
+                    "OpenPorts"
+                  ]
+                }
+              }
+            },
             "additionalProperties": {
               "type": "object",
               "additionalProperties": {

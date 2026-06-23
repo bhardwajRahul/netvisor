@@ -38,8 +38,10 @@
 		daemons_credentialWizardAddTarget,
 		daemons_credentialWizardTargetDaemonHost,
 		daemons_credentialWizardDaemonHostHelp,
-		common_ipAddress,
-		common_target
+		daemons_credentialWizardApplyTo,
+		daemons_credentialWizardTargetBroadcast,
+		daemons_credentialWizardBroadcastHelp,
+		common_ipAddress
 	} from '$lib/paraglide/messages';
 
 	interface Props {
@@ -51,7 +53,12 @@
 		compact?: boolean;
 		hideFields?: boolean;
 		fieldPrefix?: string;
-		onChange?: (data: { targetIps?: string[]; fieldValues?: Record<string, string> }) => void;
+		onChange?: (data: {
+			targetIps?: string[];
+			fieldValues?: Record<string, string>;
+			scope?: 'broadcast' | 'per_host';
+		}) => void;
+		onTypeChange?: (typeId: string) => void;
 	}
 
 	let {
@@ -62,7 +69,8 @@
 		compact = false,
 		hideFields = false,
 		fieldPrefix = '',
-		onChange
+		onChange,
+		onTypeChange
 	}: Props = $props();
 
 	const organizationQuery = useOrganizationQuery();
@@ -73,11 +81,22 @@
 	// Selected credential type ID for dynamic form rendering
 	let selectedTypeId = $state<string>('SnmpV2c');
 
+	// Notify the parent when the selected type changes (drives the assignments surface)
+	$effect(() => {
+		onTypeChange?.(selectedTypeId);
+	});
+
 	// Dynamic field values keyed by field ID
 	let fieldValues = $state<Record<string, string>>({});
 
-	// Target mode: 'ip' for manual IP entry, 'daemon_host' for localhost
-	let targetMode = $state<'ip' | 'daemon_host'>('ip');
+	// Where the credential applies: 'broadcast' (network default), 'ip' (specific
+	// IP, per-host), or 'daemon_host' (the daemon's own host, per-host).
+	let targetMode = $state<'broadcast' | 'ip' | 'daemon_host'>('ip');
+
+	// Whether the selected type can be assigned as a network default (Broadcast scope)
+	let supportsBroadcast = $derived(
+		(credentialTypes.getMetadata(selectedTypeId)?.scope_models ?? []).includes('Broadcast')
+	);
 
 	// Get field definitions for the currently selected type
 	let currentFields: FieldDefinition[] = $derived.by(() => {
@@ -240,18 +259,22 @@
 		// (not inherited from another credential in the shared form).
 		if (compact) {
 			targetIpValues = [''];
-			targetMode = 'ip';
 			const formTargetIps = form.getFieldValue?.(`${fieldPrefix}targetIps`) as string[] | undefined;
-			if (
-				formTargetIps &&
+			const hasExplicitIps =
+				!!formTargetIps &&
 				formTargetIps.length > 0 &&
-				formTargetIps.some((ip: string) => ip !== '')
-			) {
+				formTargetIps.some((ip: string) => ip !== '');
+			if (hasExplicitIps) {
 				targetIpValues = [...formTargetIps];
 				const firstIp = formTargetIps[0];
-				if (firstIp === '127.0.0.1' || firstIp === '::1') {
-					targetMode = 'daemon_host';
-				}
+				targetMode = firstIp === '127.0.0.1' || firstIp === '::1' ? 'daemon_host' : 'ip';
+			} else {
+				// Default broadcast-capable types (e.g. SNMP) to network-default scope.
+				// Computed inline (not via the derived) to avoid init-time staleness.
+				const broadcastCapable = (
+					credentialTypes.getMetadata(selectedTypeId)?.scope_models ?? []
+				).includes('Broadcast');
+				targetMode = broadcastCapable ? 'broadcast' : 'ip';
 			}
 		}
 	}
@@ -434,16 +457,20 @@
 		onChange?.({ fieldValues: { ...fieldValues } });
 	}
 
-	function handleTargetModeChange(mode: 'ip' | 'daemon_host') {
+	function handleTargetModeChange(mode: 'broadcast' | 'ip' | 'daemon_host') {
 		targetMode = mode;
-		if (mode === 'daemon_host') {
+		if (mode === 'broadcast') {
+			targetIpValues = [];
+			form.setFieldValue?.(`${fieldPrefix}targetIps`, []);
+			onChange?.({ targetIps: [], scope: 'broadcast' });
+		} else if (mode === 'daemon_host') {
 			targetIpValues = ['127.0.0.1'];
 			form.setFieldValue?.(`${fieldPrefix}targetIps`, ['127.0.0.1']);
-			onChange?.({ targetIps: ['127.0.0.1'] });
+			onChange?.({ targetIps: ['127.0.0.1'], scope: 'per_host' });
 		} else {
 			targetIpValues = [''];
 			form.setFieldValue?.(`${fieldPrefix}targetIps`, ['']);
-			onChange?.({ targetIps: [''] });
+			onChange?.({ targetIps: [''], scope: 'per_host' });
 		}
 	}
 
@@ -515,19 +542,26 @@
 		<!-- Target mode selector (compact mode only) -->
 		<div class="space-y-2">
 			<!-- svelte-ignore a11y_label_has_associated_control -->
-			<label class="text-secondary block text-sm font-medium">{common_target()}</label>
+			<label class="text-secondary block text-sm font-medium"
+				>{daemons_credentialWizardApplyTo()}</label
+			>
 			<SegmentedControl
 				options={[
+					...(supportsBroadcast
+						? [{ value: 'broadcast', label: daemons_credentialWizardTargetBroadcast() }]
+						: []),
 					{ value: 'ip', label: common_ipAddress() },
 					{ value: 'daemon_host', label: daemons_credentialWizardTargetDaemonHost() }
 				]}
 				selected={targetMode}
-				onchange={(v) => handleTargetModeChange(v as 'ip' | 'daemon_host')}
+				onchange={(v) => handleTargetModeChange(v as 'broadcast' | 'ip' | 'daemon_host')}
 				size="sm"
 			/>
 		</div>
 
-		{#if targetMode === 'ip'}
+		{#if targetMode === 'broadcast'}
+			<p class="text-muted text-xs">{daemons_credentialWizardBroadcastHelp()}</p>
+		{:else if targetMode === 'ip'}
 			<!-- eslint-disable-next-line @typescript-eslint/no-unused-vars -->
 			{#each targetIpValues as _ip, i (i)}
 				<div class="flex items-center gap-2">

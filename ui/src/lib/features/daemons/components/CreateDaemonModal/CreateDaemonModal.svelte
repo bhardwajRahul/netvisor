@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
+	import { untrack, tick } from 'svelte';
 	import { createForm } from '@tanstack/svelte-form';
 	import { validateForm } from '$lib/shared/components/forms/form-context';
 	import GenericModal from '$lib/shared/components/layout/GenericModal.svelte';
@@ -55,15 +55,18 @@
 	import ConfigureStep from './steps/ConfigureStep.svelte';
 	import InstallStep from './steps/InstallStep.svelte';
 	import AdvancedStep from './steps/AdvancedStep.svelte';
+	import CredentialTypeSelectStep from './steps/CredentialTypeSelectStep.svelte';
 	import CredentialWizardStep, {
 		type PendingCredential
 	} from './steps/CredentialWizardStep.svelte';
 	import {
 		common_close,
 		common_configure,
+		common_continue,
 		common_failedGenerateApiKey,
 		common_install,
 		common_next,
+		common_skip,
 		daemons_createDaemon,
 		daemons_credentialWizardReturn,
 		daemons_credentialWizardReturnToInstall,
@@ -156,9 +159,10 @@
 	// Docker config state
 	let dockerMode = $state<string>('local_socket');
 
-	// Credential wizard state
+	// Credential setup state: 'none' (normal steps), 'typeSelect' (type grid), 'wizard'
 	let credentialWizardRef: ReturnType<typeof CredentialWizardStep> | undefined = $state();
-	let showCredentialWizard = $state(false);
+	let credentialStep = $state<'none' | 'typeSelect' | 'wizard'>('none');
+	let selectedCredentialTypeIds = $state<string[]>([]);
 	let pendingCredentials = $state<PendingCredential[]>([]);
 	let credentialIds = $state<string[]>([]);
 	let hasDockerProxyCredential = $derived(
@@ -220,7 +224,19 @@
 			];
 		}
 		showAdvanced = false;
-		showCredentialWizard = true;
+		credentialStep = 'wizard';
+	}
+
+	// Move from the type-selection step into the wizard, seeding the chosen types.
+	async function handleContinueToWizard() {
+		credentialStep = 'wizard';
+		await tick();
+		credentialWizardRef?.addTypes(selectedCredentialTypeIds);
+	}
+
+	function handleSkipCredentials() {
+		credentialStep = 'none';
+		activeTab = 'install';
 	}
 
 	// OS selection
@@ -373,6 +389,7 @@
 
 	function handleTabChange(tabId: string) {
 		showAdvanced = false;
+		credentialStep = 'none';
 		activeTab = tabId;
 	}
 
@@ -505,7 +522,11 @@
 			}
 
 			if (furthestReached < 1) furthestReached = 1;
-			nextTab();
+			// Detour through optional credential setup before install. The install
+			// tab is unlocked (furthestReached) and shown beneath the overlay; the
+			// user can skip straight to it.
+			activeTab = 'install';
+			credentialStep = 'typeSelect';
 		}
 	}
 
@@ -666,7 +687,8 @@
 		activeTab = 'configure';
 		furthestReached = 0;
 		showAdvanced = false;
-		showCredentialWizard = false;
+		credentialStep = 'none';
+		selectedCredentialTypeIds = [];
 		pendingCredentials = [];
 		credentialIds = [];
 		connectionStatus = 'idle';
@@ -721,7 +743,11 @@
 	{/snippet}
 
 	<div class="flex min-h-0 flex-1 flex-col overflow-hidden">
-		{#if showCredentialWizard}
+		{#if credentialStep === 'typeSelect'}
+			<div class="flex min-h-0 flex-1 flex-col">
+				<CredentialTypeSelectStep bind:selectedTypeIds={selectedCredentialTypeIds} />
+			</div>
+		{:else if credentialStep === 'wizard'}
 			<div class="flex min-h-0 flex-1 flex-col">
 				<CredentialWizardStep
 					bind:this={credentialWizardRef}
@@ -781,7 +807,7 @@
 							onViewDiscovery={handleViewDiscovery}
 							{hasEmailSupport}
 							onAdvanced={() => (showAdvanced = true)}
-							onCredentialWizard={() => (showCredentialWizard = true)}
+							onCredentialWizard={() => (credentialStep = 'typeSelect')}
 							daemonMode={String(formValues.mode ?? 'daemon_poll')}
 							daemonName={String(formValues.name ?? 'scanopy-daemon')}
 							logFilePath={String(formValues.logFile ?? '')}
@@ -807,7 +833,20 @@
 		<!-- Footer -->
 		<div class="modal-footer">
 			<div class="flex flex-wrap items-center justify-end gap-3">
-				{#if showCredentialWizard}
+				{#if credentialStep === 'typeSelect'}
+					<button type="button" class="btn-secondary" onclick={handleSkipCredentials}>
+						{common_skip()}
+					</button>
+					<button
+						type="button"
+						class="btn-primary"
+						disabled={selectedCredentialTypeIds.length === 0}
+						onclick={handleContinueToWizard}
+					>
+						{common_continue()}
+						<ArrowRight class="h-4 w-4" />
+					</button>
+				{:else if credentialStep === 'wizard'}
 					<button
 						type="button"
 						class="btn-primary"
@@ -861,7 +900,8 @@
 								// No new credentials but some existing ones to add
 								credentialIds = [...new Set([...credentialIds, ...existingIds])];
 							}
-							showCredentialWizard = false;
+							credentialStep = 'none';
+							activeTab = 'install';
 						}}
 					>
 						<ArrowLeft class="h-4 w-4" />

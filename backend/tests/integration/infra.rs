@@ -458,9 +458,6 @@ pub async fn setup_authenticated_user(client: &TestClient) -> Result<User, Strin
         organization_name: "My Organization".to_string(),
         network: NetworkSetup {
             name: "My Network".to_string(),
-            snmp_enabled: false,
-            snmp_version: None,
-            snmp_community: None,
         },
     };
 

@@ -1,21 +1,27 @@
 <script lang="ts">
 	import { createForm } from '@tanstack/svelte-form';
 	import GenericModal from '$lib/shared/components/layout/GenericModal.svelte';
+	import type { ModalTab } from '$lib/shared/components/layout/GenericModal.svelte';
 	import ModalHeaderIcon from '$lib/shared/components/layout/ModalHeaderIcon.svelte';
 	import EntityMetadataSection from '$lib/shared/components/forms/EntityMetadataSection.svelte';
+	import type { components } from '$lib/api/schema';
 	import type { Credential } from '../types/base';
-	import { createDefaultCredential } from '../types/base';
+	import { createDefaultCredential, getCredentialTypeId } from '../types/base';
 	import { entities } from '$lib/shared/stores/metadata';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
 	import { pushError } from '$lib/shared/stores/feedback';
 	import CredentialForm from './CredentialForm.svelte';
+	import CredentialAssignmentsSection from './CredentialAssignmentsSection.svelte';
 	import { submitForm } from '$lib/shared/components/forms/form-context';
 	import DocsHint from '$lib/shared/components/feedback/DocsHint.svelte';
+	import { Settings, Link } from 'lucide-svelte';
 	import {
+		common_assignments,
 		common_couldNotLoadOrganization,
 		common_create,
 		common_delete,
 		common_deleting,
+		common_details,
 		common_editName,
 		common_saving,
 		common_update,
@@ -24,6 +30,8 @@
 		credentials_docsGuide,
 		credentials_docsGuideLinkText
 	} from '$lib/paraglide/messages';
+
+	type CredentialHostAssignment = components['schemas']['CredentialHostAssignment'];
 
 	let {
 		credential = null,
@@ -58,6 +66,20 @@
 	let deleting = $state(false);
 	let saveLabel = $derived(isEditing ? common_update() : common_create());
 
+	// Tabs
+	let activeTab = $state('details');
+	let tabs: ModalTab[] = $derived([
+		{ id: 'details', label: common_details(), icon: Settings },
+		{ id: 'assignments', label: common_assignments(), icon: Link }
+	]);
+
+	// Assignment state (source of truth; synced into the submit payload).
+	// The selected type drives which assignment surface(s) show; kept in sync via
+	// CredentialForm's onTypeChange and reset on open.
+	let selectedTypeId = $state('SnmpV2c');
+	let assignedNetworkIds = $state<string[]>([]);
+	let hostAssignments = $state<CredentialHostAssignment[]>([]);
+
 	function getDefaultValues(): Credential {
 		if (credential) return { ...credential };
 		if (organization) return createDefaultCredential(organization.id);
@@ -79,7 +101,9 @@
 			const credentialData: Credential = {
 				...(value as Credential),
 				organization_id: organization.id,
-				credential_type: credentialType
+				credential_type: credentialType,
+				assigned_network_ids: assignedNetworkIds,
+				host_assignments: hostAssignments
 			};
 
 			if (isEditing && credential) {
@@ -91,6 +115,10 @@
 	}));
 
 	function handleOpen() {
+		activeTab = 'details';
+		assignedNetworkIds = credential?.assigned_network_ids ?? [];
+		hostAssignments = credential?.host_assignments ?? [];
+		selectedTypeId = credential ? getCredentialTypeId(credential) : 'SnmpV2c';
 		form.reset(getDefaultValues());
 		credentialFormRef?.reset();
 	}
@@ -125,13 +153,16 @@
 	{onClose}
 	onOpen={handleOpen}
 	showCloseButton={true}
+	{tabs}
+	{activeTab}
+	onTabChange={(id) => (activeTab = id)}
 >
 	{#snippet headerIcon()}
 		<ModalHeaderIcon Icon={entities.getIconComponent('Credential')} color={colorHelper.color} />
 	{/snippet}
 
-	<div class="min-h-0 flex-1 overflow-auto p-6">
-		<div class="space-y-4">
+	<div class="flex min-h-0 flex-1 flex-col overflow-auto p-6">
+		<div class="space-y-4" class:hidden={activeTab !== 'details'}>
 			<p class="text-secondary text-sm">
 				{credentials_description()}
 			</p>
@@ -141,8 +172,21 @@
 				linkText={credentials_docsGuideLinkText()}
 			/>
 
-			<CredentialForm bind:this={credentialFormRef} {form} {credential} />
+			<CredentialForm
+				bind:this={credentialFormRef}
+				{form}
+				{credential}
+				onTypeChange={(id) => (selectedTypeId = id)}
+			/>
 		</div>
+
+		{#if activeTab === 'assignments'}
+			<CredentialAssignmentsSection
+				credentialTypeId={selectedTypeId}
+				bind:assignedNetworkIds
+				bind:hostAssignments
+			/>
+		{/if}
 	</div>
 
 	{#if isEditing && credential}

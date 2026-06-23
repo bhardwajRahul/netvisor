@@ -44,6 +44,8 @@ export function createDefaultCredential(organization_id: string): Credential {
 		},
 		organization_id,
 		tags: [],
+		assigned_network_ids: [],
+		host_assignments: [],
 		id: uuidv4Sentinel,
 		created_at: utcTimeZoneSentinel,
 		updated_at: utcTimeZoneSentinel

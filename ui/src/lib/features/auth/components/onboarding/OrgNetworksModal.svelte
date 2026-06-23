@@ -3,7 +3,6 @@
 	import { submitForm } from '$lib/shared/components/forms/form-context';
 	import GenericModal from '$lib/shared/components/layout/GenericModal.svelte';
 	import TextInput from '$lib/shared/components/forms/input/TextInput.svelte';
-	import InlineInfo from '$lib/shared/components/feedback/InlineInfo.svelte';
 	import { type UseCase, type SetupRequest, getUseCases } from '../../types/base';
 	import { required, max, min } from '$lib/shared/components/forms/validators';
 	import { onboardingStore } from '../../stores/onboarding';
@@ -12,19 +11,10 @@
 		auth_scanopyLogo,
 		common_continue,
 		common_settingUp,
-		common_version,
 		onboarding_visualizeCompany,
 		onboarding_visualizeHomelab,
-		onboarding_visualizeMsp,
-		snmp_communityString,
-		snmp_communityStringPlaceholder,
-		snmp_enableForNetwork,
-		snmp_hostOverrideBody,
-		snmp_hostOverrideTitle,
-		snmp_versionV2c,
-		snmp_versionV3ComingSoon
+		onboarding_visualizeMsp
 	} from '$lib/paraglide/messages';
-	import SelectInput from '$lib/shared/components/forms/input/SelectInput.svelte';
 
 	interface Props {
 		isOpen?: boolean;
@@ -43,17 +33,11 @@
 	// Initialize from store (for back navigation persistence)
 	const storeState = onboardingStore.getState();
 
-	// Track SNMP enabled state
-	let snmpEnabled = $state(storeState.network.snmp_enabled ?? false);
-
 	function getDefaultValues() {
 		const storedNetwork = storeState.network;
 		return {
 			organizationName: storeState.organizationName || '',
-			network: storedNetwork.name || '',
-			snmp_enabled: storedNetwork.snmp_enabled ?? false,
-			snmp_version: storedNetwork.snmp_version ?? 'V2c',
-			snmp_community: storedNetwork.snmp_community ?? ''
+			network: storedNetwork.name || ''
 		};
 	}
 
@@ -62,12 +46,7 @@
 		onSubmit: async ({ value }) => {
 			const formValues = value as Record<string, string | boolean>;
 			const name = (formValues.network as string)?.trim();
-			const network = {
-				name,
-				snmp_enabled: snmpEnabled,
-				snmp_version: snmpEnabled ? (formValues.snmp_version as string) : undefined,
-				snmp_community: snmpEnabled ? (formValues.snmp_community as string) : undefined
-			};
+			const network = { name };
 
 			const formData: SetupRequest = {
 				organization_name: (formValues.organizationName as string).trim(),
@@ -76,7 +55,6 @@
 
 			trackEvent('onboarding_org_networks_selected', {
 				networks_count: 1,
-				snmp_enabled_count: snmpEnabled ? 1 : 0,
 				use_case: useCase
 			});
 
@@ -93,14 +71,8 @@
 	}
 
 	function handleOpen() {
-		snmpEnabled = storeState.network.snmp_enabled ?? false;
 		const defaults = getDefaultValues();
 		form.reset(defaults);
-	}
-
-	function toggleSnmpEnabled(enabled: boolean) {
-		snmpEnabled = enabled;
-		form.setFieldValue('snmp_enabled' as never, enabled as never);
 	}
 
 	let title = $derived(
@@ -176,70 +148,6 @@
 								{/snippet}
 							</form.Field>
 						</div>
-					</div>
-
-					<!-- SNMP Configuration -->
-					<div class="mt-4">
-						<form.Field name="snmp_enabled">
-							{#snippet children(field: AnyFieldApi)}
-								<div class="flex items-center gap-2">
-									<input
-										type="checkbox"
-										id="snmp-enabled"
-										checked={snmpEnabled}
-										onchange={(e) => {
-											toggleSnmpEnabled(e.currentTarget.checked);
-											field.handleChange(e.currentTarget.checked);
-										}}
-										class="checkbox-card h-4 w-4 focus:ring-1 focus:ring-blue-500"
-									/>
-									<label for="snmp-enabled" class="text-secondary flex items-center gap-2 text-sm">
-										{snmp_enableForNetwork()}
-									</label>
-								</div>
-							{/snippet}
-						</form.Field>
-
-						{#if snmpEnabled}
-							<div class="mt-3 space-y-3 pl-6">
-								<div class="grid grid-cols-2 gap-3">
-									<form.Field name="snmp_version">
-										{#snippet children(field: AnyFieldApi)}
-											<SelectInput
-												label={common_version()}
-												id="snmp-version"
-												{field}
-												options={[
-													{ value: 'V2c', label: snmp_versionV2c() },
-													{ value: 'V3', label: snmp_versionV3ComingSoon(), disabled: true }
-												]}
-											/>
-										{/snippet}
-									</form.Field>
-
-									<form.Field
-										name="snmp_community"
-										validators={{
-											onBlur: ({ value }: { value: string }) =>
-												snmpEnabled ? required(value) || max(256)(value) : undefined
-										}}
-									>
-										{#snippet children(field: AnyFieldApi)}
-											<TextInput
-												label={snmp_communityString()}
-												id="snmp-community"
-												type="password"
-												{field}
-												placeholder={snmp_communityStringPlaceholder()}
-												required={snmpEnabled}
-											/>
-										{/snippet}
-									</form.Field>
-								</div>
-
-								<InlineInfo title={snmp_hostOverrideTitle()} body={snmp_hostOverrideBody()} />
-							</div>
-						{/if}
 					</div>
 				</div>
 			</div>

@@ -105,9 +105,13 @@ impl Display for Topology {
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq, ToSchema)]
 pub struct TopologyOptions {
+    // `#[serde(default)]` keeps deserialization lenient (missing -> default), but
+    // these are always present in responses, so mark them required in the schema.
     #[serde(default)]
+    #[schema(required)]
     pub local: TopologyLocalOptions,
     #[serde(default)]
+    #[schema(required)]
     pub request: TopologyRequestOptions,
 }
 
