@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { Check } from 'lucide-svelte';
 	import { credentialTypes } from '$lib/shared/stores/metadata';
-	import { getScopeTagProps } from '$lib/features/credentials/types/base';
-	import Tag from '$lib/shared/components/data/Tag.svelte';
+	import ListSelectItem from '$lib/shared/components/forms/selection/ListSelectItem.svelte';
+	import { CredentialTypeDisplay } from '$lib/shared/components/forms/selection/display/CredentialTypeDisplay.svelte';
 	import {
 		daemons_credentialTypeSelectTitle,
 		daemons_credentialTypeSelectSubtitle
@@ -31,17 +31,14 @@
 		<p class="text-secondary mt-1 text-sm">{daemons_credentialTypeSelectSubtitle()}</p>
 	</div>
 
-	<div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
+	<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
 		{#each typeOptions as type (type.id)}
-			{@const Icon = credentialTypes.getIconComponent(type.id)}
-			{@const iconColor = credentialTypes.getColorHelper(type.id).icon}
 			{@const selected = selectedTypeIds.includes(type.id)}
-			{@const scopeTags = (type.metadata?.scope_models ?? []).map((s) => getScopeTagProps(s))}
 			<button
 				type="button"
 				onclick={() => toggle(type.id)}
 				aria-pressed={selected}
-				class="card relative flex flex-col items-start gap-2 rounded-lg border p-4 text-left transition-all
+				class="card relative rounded-lg border p-4 pr-9 text-left transition-all
 					{selected ? 'ring-2 ring-blue-500' : 'hover:border-gray-400 dark:hover:border-gray-500'}"
 			>
 				{#if selected}
@@ -51,15 +48,12 @@
 						<Check class="h-3.5 w-3.5" />
 					</div>
 				{/if}
-				<Icon class="h-6 w-6 {iconColor}" />
-				<span class="text-primary text-sm font-medium">{credentialTypes.getName(type.id)}</span>
-				{#if scopeTags.length > 0}
-					<div class="flex flex-wrap gap-1">
-						{#each scopeTags as tag (tag.label)}
-							<Tag label={tag.label} color={tag.color} title={tag.title} />
-						{/each}
-					</div>
-				{/if}
+				<ListSelectItem
+					item={type}
+					displayComponent={CredentialTypeDisplay}
+					context={{}}
+					staticTags={true}
+				/>
 			</button>
 		{/each}
 	</div>

@@ -33,15 +33,14 @@
 		credentials_docsSnmpLinkText,
 		credentials_docsDockerProxy,
 		credentials_docsDockerProxyLinkText,
-		daemons_credentialWizardTargetIp,
 		daemons_credentialWizardTargetIpHelp,
-		daemons_credentialWizardAddTarget,
-		daemons_credentialWizardTargetDaemonHost,
-		daemons_credentialWizardDaemonHostHelp,
+		daemons_credentialWizardAddIpTarget,
+		daemons_credentialWizardAddDaemonHostTarget,
+		daemons_credentialWizardDaemonHostTargetLabel,
 		daemons_credentialWizardApplyTo,
-		daemons_credentialWizardTargetBroadcast,
 		daemons_credentialWizardBroadcastHelp,
-		common_ipAddress
+		common_broadcast,
+		common_perHost
 	} from '$lib/paraglide/messages';
 
 	interface Props {
@@ -89,14 +88,19 @@
 	// Dynamic field values keyed by field ID
 	let fieldValues = $state<Record<string, string>>({});
 
-	// Where the credential applies: 'broadcast' (network default), 'ip' (specific
-	// IP, per-host), or 'daemon_host' (the daemon's own host, per-host).
-	let targetMode = $state<'broadcast' | 'ip' | 'daemon_host'>('ip');
+	// Where the credential applies: 'broadcast' (network default) or 'per_host'
+	// (a list of target IPs and/or the daemon's own host).
+	let targetMode = $state<'broadcast' | 'per_host'>('per_host');
 
 	// Whether the selected type can be assigned as a network default (Broadcast scope)
 	let supportsBroadcast = $derived(
 		(credentialTypes.getMetadata(selectedTypeId)?.scope_models ?? []).includes('Broadcast')
 	);
+
+	const DAEMON_HOST_IP = '127.0.0.1';
+	function isDaemonHostValue(value: string): boolean {
+		return value === '127.0.0.1' || value === '::1';
+	}
 
 	// Get field definitions for the currently selected type
 	let currentFields: FieldDefinition[] = $derived.by(() => {
@@ -137,6 +141,7 @@
 
 	// Track target IPs as local $state for reactivity (TanStack Form doesn't drive Svelte 5 reactivity)
 	let targetIpValues = $state<string[]>(['']);
+	let hasDaemonHostTarget = $derived(targetIpValues.some(isDaemonHostValue));
 
 	// --- Secret/file field mode tracking ---
 	let secretFieldModes = $state<Record<string, 'inline' | 'filepath'>>({});
@@ -219,7 +224,7 @@
 		secretFieldModes = {};
 		fileFieldModes = {};
 		secretFieldVisible = {};
-		targetMode = 'ip';
+		targetMode = 'per_host';
 
 		if (credential) {
 			selectedTypeId = credential.credential_type.type;
@@ -266,15 +271,14 @@
 				formTargetIps.some((ip: string) => ip !== '');
 			if (hasExplicitIps) {
 				targetIpValues = [...formTargetIps];
-				const firstIp = formTargetIps[0];
-				targetMode = firstIp === '127.0.0.1' || firstIp === '::1' ? 'daemon_host' : 'ip';
+				targetMode = 'per_host';
 			} else {
-				// Default broadcast-capable types (e.g. SNMP) to network-default scope.
+				// Default broadcast-capable types (e.g. SNMP) to Broadcast scope.
 				// Computed inline (not via the derived) to avoid init-time staleness.
 				const broadcastCapable = (
 					credentialTypes.getMetadata(selectedTypeId)?.scope_models ?? []
 				).includes('Broadcast');
-				targetMode = broadcastCapable ? 'broadcast' : 'ip';
+				targetMode = broadcastCapable ? 'broadcast' : 'per_host';
 			}
 		}
 	}
@@ -457,21 +461,34 @@
 		onChange?.({ fieldValues: { ...fieldValues } });
 	}
 
-	function handleTargetModeChange(mode: 'broadcast' | 'ip' | 'daemon_host') {
+	function syncTargets() {
+		const next = [...targetIpValues];
+		form.setFieldValue?.(`${fieldPrefix}targetIps`, next);
+		onChange?.({ targetIps: next, scope: 'per_host' });
+	}
+
+	function handleTargetModeChange(mode: 'broadcast' | 'per_host') {
 		targetMode = mode;
 		if (mode === 'broadcast') {
 			targetIpValues = [];
 			form.setFieldValue?.(`${fieldPrefix}targetIps`, []);
 			onChange?.({ targetIps: [], scope: 'broadcast' });
-		} else if (mode === 'daemon_host') {
-			targetIpValues = ['127.0.0.1'];
-			form.setFieldValue?.(`${fieldPrefix}targetIps`, ['127.0.0.1']);
-			onChange?.({ targetIps: ['127.0.0.1'], scope: 'per_host' });
 		} else {
-			targetIpValues = [''];
-			form.setFieldValue?.(`${fieldPrefix}targetIps`, ['']);
-			onChange?.({ targetIps: [''], scope: 'per_host' });
+			// Entering per-host with nothing yet — start with one empty IP row
+			if (targetIpValues.length === 0) targetIpValues = [''];
+			syncTargets();
 		}
+	}
+
+	function handleAddIpTarget() {
+		targetIpValues = [...targetIpValues, ''];
+		syncTargets();
+	}
+
+	function handleAddDaemonHostTarget() {
+		if (hasDaemonHostTarget) return;
+		targetIpValues = [...targetIpValues, DAEMON_HOST_IP];
+		syncTargets();
 	}
 
 	function handleFieldValueChange(fieldId: string, value: string) {
@@ -487,17 +504,9 @@
 		onChange?.({ targetIps: formValues });
 	}
 
-	function handleAddTarget() {
-		targetIpValues = [...targetIpValues, ''];
-		form.setFieldValue?.(`${fieldPrefix}targetIps`, [...targetIpValues]);
-		onChange?.({ targetIps: [...targetIpValues] });
-	}
-
 	function handleRemoveTarget(index: number) {
-		if (targetIpValues.length <= 1) return;
 		targetIpValues = targetIpValues.filter((_, i) => i !== index);
-		form.setFieldValue?.(`${fieldPrefix}targetIps`, [...targetIpValues]);
-		onChange?.({ targetIps: [...targetIpValues] });
+		syncTargets();
 	}
 
 	// Build validators for a credential field based on its definition
@@ -547,74 +556,72 @@
 			>
 			<SegmentedControl
 				options={[
-					...(supportsBroadcast
-						? [{ value: 'broadcast', label: daemons_credentialWizardTargetBroadcast() }]
-						: []),
-					{ value: 'ip', label: common_ipAddress() },
-					{ value: 'daemon_host', label: daemons_credentialWizardTargetDaemonHost() }
+					...(supportsBroadcast ? [{ value: 'broadcast', label: common_broadcast() }] : []),
+					{ value: 'per_host', label: common_perHost() }
 				]}
 				selected={targetMode}
-				onchange={(v) => handleTargetModeChange(v as 'broadcast' | 'ip' | 'daemon_host')}
+				onchange={(v) => handleTargetModeChange(v as 'broadcast' | 'per_host')}
 				size="sm"
 			/>
 		</div>
 
 		{#if targetMode === 'broadcast'}
 			<p class="text-muted text-xs">{daemons_credentialWizardBroadcastHelp()}</p>
-		{:else if targetMode === 'ip'}
-			<!-- eslint-disable-next-line @typescript-eslint/no-unused-vars -->
-			{#each targetIpValues as _ip, i (i)}
+		{:else}
+			{#each targetIpValues as ip, i (i)}
 				<div class="flex items-center gap-2">
-					<div class="min-w-0 flex-1">
-						<form.Field
-							name={targetIpFieldName(i)}
-							validators={{
-								onBlur: ({ value }: { value: string }) => required(value) || ipAddressFormat(value),
-								onChange: ({ value }: { value: string }) =>
-									required(value) || ipAddressFormat(value),
-								onSubmit: ({ value }: { value: string }) =>
-									required(value) || ipAddressFormat(value)
-							}}
-							listeners={{
-								onChange: ({ value }: { value: string }) => handleTargetIpChange(i, value)
-							}}
-						>
-							{#snippet children(field: AnyFieldApi)}
-								<TextInput
-									label={i === 0 ? daemons_credentialWizardTargetIp() : ''}
-									id="target-ip-{fieldPrefix}{i}"
-									placeholder="e.g. 192.168.1.1"
-									helpText={i === 0 ? daemons_credentialWizardTargetIpHelp() : ''}
-									required={true}
-									{field}
-								/>
-							{/snippet}
-						</form.Field>
-					</div>
-					{#if i > 0}
-						<button
-							type="button"
-							class="text-muted hover:text-primary {i === 0
-								? 'mt-7'
-								: ''} shrink-0 p-1 text-lg leading-none"
-							onclick={() => handleRemoveTarget(i)}>&times;</button
-						>
+					{#if isDaemonHostValue(ip)}
+						<div class="text-secondary flex-1 rounded-md border border-gray-600 px-3 py-2 text-sm">
+							{daemons_credentialWizardDaemonHostTargetLabel()}
+						</div>
+					{:else}
+						<div class="min-w-0 flex-1">
+							<form.Field
+								name={targetIpFieldName(i)}
+								validators={{
+									onBlur: ({ value }: { value: string }) =>
+										required(value) || ipAddressFormat(value),
+									onChange: ({ value }: { value: string }) =>
+										required(value) || ipAddressFormat(value),
+									onSubmit: ({ value }: { value: string }) =>
+										required(value) || ipAddressFormat(value)
+								}}
+								listeners={{
+									onChange: ({ value }: { value: string }) => handleTargetIpChange(i, value)
+								}}
+							>
+								{#snippet children(field: AnyFieldApi)}
+									<TextInput
+										label=""
+										id="target-ip-{fieldPrefix}{i}"
+										placeholder="e.g. 192.168.1.1"
+										required={true}
+										{field}
+									/>
+								{/snippet}
+							</form.Field>
+						</div>
 					{/if}
+					<button
+						type="button"
+						class="text-muted hover:text-primary shrink-0 p-1 text-lg leading-none"
+						onclick={() => handleRemoveTarget(i)}>&times;</button
+					>
 				</div>
 			{/each}
-			<button type="button" class="text-link text-sm" onclick={handleAddTarget}
-				>+ {daemons_credentialWizardAddTarget()}</button
-			>
-		{:else}
-			<p class="text-muted text-xs">{daemons_credentialWizardDaemonHostHelp()}</p>
-			<button
-				type="button"
-				class="text-link text-sm"
-				onclick={() => {
-					targetMode = 'ip';
-					handleAddTarget();
-				}}>+ {daemons_credentialWizardAddTarget()}</button
-			>
+			<div class="flex flex-wrap items-center gap-3">
+				<button type="button" class="text-link text-sm" onclick={handleAddIpTarget}
+					>+ {daemons_credentialWizardAddIpTarget()}</button
+				>
+				<button
+					type="button"
+					class="text-link text-sm disabled:opacity-40"
+					disabled={hasDaemonHostTarget}
+					onclick={handleAddDaemonHostTarget}
+					>+ {daemons_credentialWizardAddDaemonHostTarget()}</button
+				>
+			</div>
+			<p class="text-muted text-xs">{daemons_credentialWizardTargetIpHelp()}</p>
 		{/if}
 
 		<!-- Credential fields -->
