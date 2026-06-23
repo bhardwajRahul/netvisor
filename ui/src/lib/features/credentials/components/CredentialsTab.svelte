@@ -231,8 +231,8 @@
 		<EmptyState
 			title="No credentials yet"
 			subtitle="Create credentials to authenticate with network devices and services."
-			onClick={handleCreateCredential}
-			cta={common_create()}
+			onClick={canManage ? handleCreateCredential : undefined}
+			cta={canManage ? common_create() : ''}
 		/>
 	{:else}
 		<DataControls
