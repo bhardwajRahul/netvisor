@@ -5,7 +5,8 @@
 	import { createColorHelper } from '$lib/shared/utils/styling';
 	import { TagIcon } from 'lucide-svelte';
 	import { useCurrentUserQuery } from '$lib/features/auth/queries';
-	import { permissions, concepts } from '$lib/shared/stores/metadata';
+	import { useOrganizationQuery } from '$lib/features/organizations/queries';
+	import { permissions, concepts, billingPlans } from '$lib/shared/stores/metadata';
 	import {
 		common_color,
 		common_delete,
@@ -35,10 +36,22 @@
 	const currentUserQuery = useCurrentUserQuery();
 	let currentUser = $derived(currentUserQuery.data);
 
+	const organizationQuery = useOrganizationQuery();
+	let organization = $derived(organizationQuery.data);
+
 	let colorHelper = $derived(createColorHelper(tag.color));
 
-	let canManageNetworks = $derived(
-		(currentUser && permissions.getMetadata(currentUser.permissions).manage_org_entities) || false
+	// Demo orgs are read-only for non-owners (mirrors the credentials tab)
+	let isDemoOrg = $derived(
+		billingPlans.getMetadata(organization?.plan?.type ?? null).is_demo === true
+	);
+	let isNonOwnerInDemo = $derived(isDemoOrg && currentUser?.permissions !== 'Owner');
+
+	let canManage = $derived(
+		(!isNonOwnerInDemo &&
+			currentUser &&
+			permissions.getMetadata(currentUser.permissions).manage_org_entities) ||
+			false
 	);
 
 	let appIcon = $derived(tag.is_application ? concepts.getIconComponent('Application') : null);
@@ -69,7 +82,7 @@
 			}
 		],
 		actions: [
-			...(canManageNetworks
+			...(canManage
 				? [
 						{
 							label: common_delete(),
@@ -88,10 +101,4 @@
 	});
 </script>
 
-<GenericCard
-	{...cardData}
-	{viewMode}
-	{selected}
-	{onSelectionChange}
-	selectable={canManageNetworks}
-/>
+<GenericCard {...cardData} {viewMode} {selected} {onSelectionChange} selectable={canManage} />
