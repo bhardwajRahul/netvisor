@@ -1,18 +1,14 @@
 <script lang="ts">
+	import { SlidersHorizontal } from 'lucide-svelte';
 	import type { components } from '$lib/api/schema';
 	import type { Network } from '$lib/features/networks/types';
-	import type { Host } from '$lib/features/hosts/types/base';
-	import type { IPAddress } from '$lib/features/hosts/types/base';
+	import type { Host, IPAddress } from '$lib/features/hosts/types/base';
 	import { useNetworksQuery } from '$lib/features/networks/queries';
 	import { useHostsQuery } from '$lib/features/hosts/queries';
 	import { useIPAddressesQuery } from '$lib/features/ip-addresses/queries';
 	import { useSubnetsQuery } from '$lib/features/subnets/queries';
 	import { credentialTypes } from '$lib/shared/stores/metadata';
-	import SegmentedControl from '$lib/shared/components/forms/SegmentedControl.svelte';
 	import ListManager from '$lib/shared/components/forms/selection/ListManager.svelte';
-	import ListConfigEditor from '$lib/shared/components/forms/selection/ListConfigEditor.svelte';
-	import EntityConfigEmpty from '$lib/shared/components/forms/EntityConfigEmpty.svelte';
-	import ConfigHeader from '$lib/shared/components/forms/config/ConfigHeader.svelte';
 	import { NetworkDisplay } from '$lib/shared/components/forms/selection/display/NetworkDisplay.svelte';
 	import { HostDisplay } from '$lib/shared/components/forms/selection/display/HostDisplay.svelte';
 	import {
@@ -28,11 +24,7 @@
 		credentials_assignHostPlaceholder,
 		credentials_ipScopeAllDefault,
 		credentials_ipScopeLabel,
-		credentials_ipScopePlaceholder,
-		credentials_noHostSelected,
-		credentials_selectHostSubtitle,
-		credentials_addInterfaces,
-		hosts_credentialScopeSubtitle
+		credentials_ipScopePlaceholder
 	} from '$lib/paraglide/messages';
 
 	type CredentialHostAssignment = components['schemas']['CredentialHostAssignment'];
@@ -52,15 +44,6 @@
 	let scopeModels = $derived(credentialTypes.getMetadata(credentialTypeId)?.scope_models ?? []);
 	let supportsBroadcast = $derived(scopeModels.includes('Broadcast'));
 	let supportsPerHost = $derived(scopeModels.includes('PerHost'));
-	let dualScope = $derived(supportsBroadcast && supportsPerHost);
-
-	// Which surface is shown for dual-scope credentials
-	let activeSurface = $state<'networks' | 'hosts'>('networks');
-	$effect(() => {
-		// Default single-scope credentials to their one surface
-		if (!supportsBroadcast) activeSurface = 'hosts';
-		else if (!supportsPerHost) activeSurface = 'networks';
-	});
 
 	const networksQuery = useNetworksQuery();
 	const hostsQuery = useHostsQuery({ limit: 0 });
@@ -72,12 +55,7 @@
 	let allIpAddresses = $derived(ipAddressesQuery.data ?? []);
 	let subnets = $derived(subnetsQuery.data ?? []);
 
-	let segmentOptions = $derived([
-		{ value: 'networks', label: `${common_networks()} (${assignedNetworkIds.length})` },
-		{ value: 'hosts', label: `${common_hosts()} (${hostAssignments.length})` }
-	]);
-
-	// --- Broadcast (network) surface ---
+	// --- Networks (Broadcast) ---
 	let selectedNetworks = $derived(
 		assignedNetworkIds
 			.map((id) => allNetworks.find((n) => n.id === id))
@@ -91,10 +69,11 @@
 	}
 
 	function removeNetwork(index: number) {
-		assignedNetworkIds = assignedNetworkIds.filter((_, i) => i !== index);
+		const target = selectedNetworks[index];
+		if (target) assignedNetworkIds = assignedNetworkIds.filter((id) => id !== target.id);
 	}
 
-	// --- PerHost surface ---
+	// --- Hosts (PerHost), with per-host IP scoping via row expansion ---
 	let selectedHosts = $derived(
 		hostAssignments
 			.map((a) => allHosts.find((h) => h.id === a.host_id))
@@ -105,6 +84,13 @@
 		allHosts.filter((h) => !hostAssignments.some((a) => a.host_id === h.id))
 	);
 
+	// Which host row is expanded to show its IP-address scope (by host id)
+	let expandedHostId = $state<string | null>(null);
+
+	function toggleExpand(hostId: string) {
+		expandedHostId = expandedHostId === hostId ? null : hostId;
+	}
+
 	function addHost(id: string) {
 		if (!hostAssignments.some((a) => a.host_id === id)) {
 			hostAssignments = [...hostAssignments, { host_id: id, ip_address_ids: null }];
@@ -112,7 +98,8 @@
 	}
 
 	function removeHost(index: number) {
-		hostAssignments = hostAssignments.filter((_, i) => i !== index);
+		const target = selectedHosts[index];
+		if (target) hostAssignments = hostAssignments.filter((a) => a.host_id !== target.id);
 	}
 
 	function hostIpAddresses(hostId: string): IPAddress[] {
@@ -123,124 +110,105 @@
 		return { subnets };
 	}
 
-	// Resolve the scoped IP addresses for a host assignment (null = all)
-	function getScopedInterfaces(index: number): IPAddress[] {
-		const assignment = hostAssignments[index];
+	// Scoped IP addresses for a host assignment (null = all)
+	function getScopedInterfaces(hostId: string): IPAddress[] {
+		const assignment = hostAssignments.find((a) => a.host_id === hostId);
 		if (!assignment || assignment.ip_address_ids === null) return [];
 		return assignment.ip_address_ids
 			.map((id) => allIpAddresses.find((ip) => ip.id === id))
 			.filter((ip): ip is IPAddress => ip != null);
 	}
 
-	function addInterfaceToScope(index: number, interfaceId: string) {
-		const updated = [...hostAssignments];
-		const assignment = updated[index];
-		if (!assignment) return;
-		const current = assignment.ip_address_ids;
-		if (current === null) {
-			updated[index] = { ...assignment, ip_address_ids: [interfaceId] };
-		} else if (!current.includes(interfaceId)) {
-			updated[index] = { ...assignment, ip_address_ids: [...current, interfaceId] };
-		}
-		hostAssignments = updated;
+	function addInterfaceToScope(hostId: string, interfaceId: string) {
+		hostAssignments = hostAssignments.map((a) => {
+			if (a.host_id !== hostId) return a;
+			const current = a.ip_address_ids;
+			if (current === null) return { ...a, ip_address_ids: [interfaceId] };
+			if (current.includes(interfaceId)) return a;
+			return { ...a, ip_address_ids: [...current, interfaceId] };
+		});
 	}
 
-	function removeInterfaceFromScope(index: number, interfaceIndex: number) {
-		const updated = [...hostAssignments];
-		const assignment = updated[index];
-		if (!assignment || assignment.ip_address_ids === null) return;
-		const next = assignment.ip_address_ids.filter((_, i) => i !== interfaceIndex);
-		// Empty list reverts to "all interfaces" (null)
-		updated[index] = { ...assignment, ip_address_ids: next.length === 0 ? null : next };
-		hostAssignments = updated;
+	function removeInterfaceFromScope(hostId: string, interfaceIndex: number) {
+		hostAssignments = hostAssignments.map((a) => {
+			if (a.host_id !== hostId || a.ip_address_ids === null) return a;
+			const next = a.ip_address_ids.filter((_, i) => i !== interfaceIndex);
+			// Empty list reverts to "all interfaces" (null)
+			return { ...a, ip_address_ids: next.length === 0 ? null : next };
+		});
 	}
 </script>
 
 {#snippet networksSurface()}
-	<ListManager
-		label={common_networks()}
-		placeholder={credentials_assignNetworkPlaceholder()}
-		emptyMessage={credentials_assignNetworkEmpty()}
-		allowReorder={false}
-		options={allNetworks}
-		items={selectedNetworks}
-		optionDisplayComponent={NetworkDisplay}
-		itemDisplayComponent={NetworkDisplay}
-		onAdd={addNetwork}
-		onRemove={removeNetwork}
-	/>
+	<div class="min-w-0 flex-1">
+		<ListManager
+			label={`${common_networks()} (${assignedNetworkIds.length})`}
+			placeholder={credentials_assignNetworkPlaceholder()}
+			emptyMessage={credentials_assignNetworkEmpty()}
+			allowReorder={false}
+			options={allNetworks}
+			items={selectedNetworks}
+			optionDisplayComponent={NetworkDisplay}
+			itemDisplayComponent={NetworkDisplay}
+			onAdd={addNetwork}
+			onRemove={removeNetwork}
+		/>
+	</div>
 {/snippet}
 
 {#snippet hostsSurface()}
-	<ListConfigEditor items={selectedHosts}>
-		<svelte:fragment slot="list" let:items let:onEdit let:highlightedIndex>
-			<ListManager
-				label={common_hosts()}
-				placeholder={credentials_assignHostPlaceholder()}
-				emptyMessage={credentials_assignHostEmpty()}
-				allowReorder={false}
-				options={availableHosts}
-				{items}
-				itemClickAction="edit"
-				optionDisplayComponent={HostDisplay}
-				itemDisplayComponent={HostDisplay}
-				{onEdit}
-				{highlightedIndex}
-				onAdd={addHost}
-				onRemove={removeHost}
-			/>
-		</svelte:fragment>
-
-		<svelte:fragment slot="config" let:selectedItem let:selectedIndex>
-			{#if selectedItem}
-				{@const hostIps = hostIpAddresses(selectedItem.id)}
-				{#if hostIps.length > 0}
-					<div class="space-y-4">
-						<ConfigHeader title={selectedItem.name} subtitle={hosts_credentialScopeSubtitle()} />
+	<div class="min-w-0 flex-1">
+		<ListManager
+			label={`${common_hosts()} (${hostAssignments.length})`}
+			placeholder={credentials_assignHostPlaceholder()}
+			emptyMessage={credentials_assignHostEmpty()}
+			allowReorder={false}
+			options={availableHosts}
+			items={selectedHosts}
+			optionDisplayComponent={HostDisplay}
+			itemDisplayComponent={HostDisplay}
+			itemClickAction="edit"
+			editIcon={() => SlidersHorizontal}
+			isItemEditing={(host) => host.id === expandedHostId}
+			onEdit={(host) => toggleExpand(host.id)}
+			onAdd={addHost}
+			onRemove={removeHost}
+		>
+			{#snippet itemExpandedSnippet({ item })}
+				{#if item.id === expandedHostId}
+					{@const hostIps = hostIpAddresses(item.id)}
+					<div
+						role="presentation"
+						onclick={(e) => e.stopPropagation()}
+						onkeydown={(e) => e.stopPropagation()}
+						class="mt-2 w-full border-t border-gray-200 pt-3 dark:border-gray-700"
+					>
 						<ListManager
 							label={credentials_ipScopeLabel()}
 							emptyMessage={credentials_ipScopeAllDefault()}
 							placeholder={credentials_ipScopePlaceholder()}
 							allowReorder={false}
 							options={hostIps}
-							items={getScopedInterfaces(selectedIndex)}
+							items={getScopedInterfaces(item.id)}
 							optionDisplayComponent={IPAddressDisplay}
 							itemDisplayComponent={IPAddressDisplay}
 							getOptionContext={() => getInterfaceContext()}
 							getItemContext={() => getInterfaceContext()}
-							onAdd={(id) => addInterfaceToScope(selectedIndex, id)}
-							onRemove={(i) => removeInterfaceFromScope(selectedIndex, i)}
+							onAdd={(id) => addInterfaceToScope(item.id, id)}
+							onRemove={(i) => removeInterfaceFromScope(item.id, i)}
 						/>
 					</div>
-				{:else}
-					<EntityConfigEmpty title={selectedItem.name} subtitle={credentials_addInterfaces()} />
 				{/if}
-			{:else}
-				<EntityConfigEmpty
-					title={credentials_noHostSelected()}
-					subtitle={credentials_selectHostSubtitle()}
-				/>
-			{/if}
-		</svelte:fragment>
-	</ListConfigEditor>
+			{/snippet}
+		</ListManager>
+	</div>
 {/snippet}
 
-<div class="flex min-h-0 flex-1 flex-col gap-4">
-	{#if dualScope}
-		<SegmentedControl
-			options={segmentOptions}
-			selected={activeSurface}
-			onchange={(v) => (activeSurface = v as 'networks' | 'hosts')}
-			size="md"
-		/>
-		{#if activeSurface === 'networks'}
-			{@render networksSurface()}
-		{:else}
-			{@render hostsSurface()}
-		{/if}
-	{:else if supportsBroadcast}
+<div class="flex min-h-0 flex-1 gap-6">
+	{#if supportsBroadcast}
 		{@render networksSurface()}
-	{:else if supportsPerHost}
+	{/if}
+	{#if supportsPerHost}
 		{@render hostsSurface()}
 	{/if}
 </div>

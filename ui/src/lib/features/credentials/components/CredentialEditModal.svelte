@@ -161,7 +161,8 @@
 		<ModalHeaderIcon Icon={entities.getIconComponent('Credential')} color={colorHelper.color} />
 	{/snippet}
 
-	<div class="flex min-h-0 flex-1 flex-col overflow-auto p-6">
+	<!-- min-height keeps the modal from collapsing on the (shorter) Assignments tab -->
+	<div class="flex min-h-[30rem] flex-1 flex-col overflow-auto p-6 sm:min-h-[34rem]">
 		<div class="space-y-4" class:hidden={activeTab !== 'details'}>
 			<p class="text-secondary text-sm">
 				{credentials_description()}

@@ -16,7 +16,8 @@
 		ArrowLeft,
 		Mail,
 		Copy,
-		Check
+		Check,
+		KeyRound
 	} from 'lucide-svelte';
 	import confetti from 'canvas-confetti';
 	import {
@@ -63,6 +64,7 @@
 		common_close,
 		common_configure,
 		common_continue,
+		common_credentials,
 		common_failedGenerateApiKey,
 		common_install,
 		common_next,
@@ -159,9 +161,10 @@
 	// Docker config state
 	let dockerMode = $state<string>('local_socket');
 
-	// Credential setup state: 'none' (normal steps), 'typeSelect' (type grid), 'wizard'
+	// Credentials is its own stepper step (activeTab === 'credentials'); this
+	// tracks the sub-view within it: the type grid, then the wizard.
 	let credentialWizardRef: ReturnType<typeof CredentialWizardStep> | undefined = $state();
-	let credentialStep = $state<'none' | 'typeSelect' | 'wizard'>('none');
+	let credentialSubStep = $state<'typeSelect' | 'wizard'>('typeSelect');
 	let selectedCredentialTypeIds = $state<string[]>([]);
 	let pendingCredentials = $state<PendingCredential[]>([]);
 	let credentialIds = $state<string[]>([]);
@@ -224,18 +227,27 @@
 			];
 		}
 		showAdvanced = false;
-		credentialStep = 'wizard';
+		if (furthestReached < 1) furthestReached = 1;
+		activeTab = 'credentials';
+		credentialSubStep = 'wizard';
 	}
 
-	// Move from the type-selection step into the wizard, seeding the chosen types.
+	// Open the Credentials step at the type-selection grid (from the Install CTA).
+	function openCredentialStep() {
+		if (furthestReached < 1) furthestReached = 1;
+		showAdvanced = false;
+		activeTab = 'credentials';
+		credentialSubStep = 'typeSelect';
+	}
+
+	// Move from the type-selection grid into the wizard, seeding the chosen types.
 	async function handleContinueToWizard() {
-		credentialStep = 'wizard';
+		credentialSubStep = 'wizard';
 		await tick();
 		credentialWizardRef?.addTypes(selectedCredentialTypeIds);
 	}
 
 	function handleSkipCredentials() {
-		credentialStep = 'none';
 		activeTab = 'install';
 	}
 
@@ -363,15 +375,20 @@
 		return false;
 	});
 
-	// --- Tab / wizard state ---
-	const mainFlow = ['configure', 'install'] as const;
-
+	// --- Tab / step state ---
+	// Steps: Configure -> Credentials (optional) -> Install
 	let activeTab = $state('configure');
 	let furthestReached = $state(0);
 	let showAdvanced = $state(false);
 
 	let tabs: ModalTab[] = $derived([
 		{ id: 'configure', label: common_configure(), icon: Settings },
+		{
+			id: 'credentials',
+			label: common_credentials(),
+			icon: KeyRound,
+			disabled: furthestReached < 1
+		},
 		{
 			id: 'install',
 			label: common_install(),
@@ -380,16 +397,8 @@
 		}
 	]);
 
-	function nextTab() {
-		const idx = (mainFlow as readonly string[]).indexOf(activeTab);
-		if (idx >= 0 && idx < mainFlow.length - 1) {
-			activeTab = mainFlow[idx + 1];
-		}
-	}
-
 	function handleTabChange(tabId: string) {
 		showAdvanced = false;
-		credentialStep = 'none';
 		activeTab = tabId;
 	}
 
@@ -522,11 +531,10 @@
 			}
 
 			if (furthestReached < 1) furthestReached = 1;
-			// Detour through optional credential setup before install. The install
-			// tab is unlocked (furthestReached) and shown beneath the overlay; the
-			// user can skip straight to it.
-			activeTab = 'install';
-			credentialStep = 'typeSelect';
+			// Advance to the Credentials step (step 2). It's optional — the user can
+			// Skip to Install (step 3), which is also unlocked.
+			activeTab = 'credentials';
+			credentialSubStep = 'typeSelect';
 		}
 	}
 
@@ -687,7 +695,7 @@
 		activeTab = 'configure';
 		furthestReached = 0;
 		showAdvanced = false;
-		credentialStep = 'none';
+		credentialSubStep = 'typeSelect';
 		selectedCredentialTypeIds = [];
 		pendingCredentials = [];
 		credentialIds = [];
@@ -713,6 +721,8 @@
 		activeTab = 'configure';
 		furthestReached = 0;
 		showAdvanced = false;
+		credentialSubStep = 'typeSelect';
+		selectedCredentialTypeIds = [];
 		connectionStatus = 'idle';
 		startedAsFirstDaemon = isFirstDaemon;
 		serverPollReachable = null;
@@ -743,41 +753,45 @@
 	{/snippet}
 
 	<div class="flex min-h-0 flex-1 flex-col overflow-hidden">
-		{#if credentialStep === 'typeSelect'}
-			<div class="flex min-h-0 flex-1 flex-col">
-				<CredentialTypeSelectStep bind:selectedTypeIds={selectedCredentialTypeIds} />
-			</div>
-		{:else if credentialStep === 'wizard'}
-			<div class="flex min-h-0 flex-1 flex-col">
-				<CredentialWizardStep
-					bind:this={credentialWizardRef}
-					daemonName={formValues.name as string}
-					networkId={selectedNetworkId}
-					daemonHasDockerSocket={null}
-					bind:pendingCredentials
-					onRemoveCredential={(credential) => {
-						// If credential was already created on server, delete it
-						if (credentialIds.includes(credential.id)) {
-							deleteCredentialMutation.mutate(credential.id);
-							credentialIds = credentialIds.filter((id) => id !== credential.id);
-						}
-					}}
+		{#if showAdvanced}
+			<div class="flex-1 overflow-auto p-4 sm:p-6">
+				<AdvancedStep
+					{form}
+					{formValues}
+					{selectedOS}
+					{linuxMethod}
+					bind:dockerMode
+					{hasDockerProxyCredential}
+					onNavigateToCredentialWizard={handleNavigateToCredentialWizard}
 				/>
 			</div>
+		{:else if activeTab === 'credentials'}
+			{#if credentialSubStep === 'typeSelect'}
+				<div class="flex min-h-0 flex-1 flex-col">
+					<CredentialTypeSelectStep bind:selectedTypeIds={selectedCredentialTypeIds} />
+				</div>
+			{:else}
+				<div class="flex min-h-0 flex-1 flex-col">
+					<CredentialWizardStep
+						bind:this={credentialWizardRef}
+						daemonName={formValues.name as string}
+						networkId={selectedNetworkId}
+						daemonHasDockerSocket={null}
+						bind:pendingCredentials
+						onRemoveCredential={(credential) => {
+							// If credential was already created on server, delete it
+							if (credentialIds.includes(credential.id)) {
+								deleteCredentialMutation.mutate(credential.id);
+								credentialIds = credentialIds.filter((id) => id !== credential.id);
+							}
+						}}
+					/>
+				</div>
+			{/if}
 		{:else}
 			<div class="flex-1 overflow-auto p-4 sm:p-6">
 				{#key activeTab}
-					{#if showAdvanced}
-						<AdvancedStep
-							{form}
-							{formValues}
-							{selectedOS}
-							{linuxMethod}
-							bind:dockerMode
-							{hasDockerProxyCredential}
-							onNavigateToCredentialWizard={handleNavigateToCredentialWizard}
-						/>
-					{:else if activeTab === 'configure'}
+					{#if activeTab === 'configure'}
 						<ConfigureStep
 							{form}
 							{formValues}
@@ -807,7 +821,7 @@
 							onViewDiscovery={handleViewDiscovery}
 							{hasEmailSupport}
 							onAdvanced={() => (showAdvanced = true)}
-							onCredentialWizard={() => (credentialStep = 'typeSelect')}
+							onCredentialWizard={openCredentialStep}
 							daemonMode={String(formValues.mode ?? 'daemon_poll')}
 							daemonName={String(formValues.name ?? 'scanopy-daemon')}
 							logFilePath={String(formValues.logFile ?? '')}
@@ -833,7 +847,7 @@
 		<!-- Footer -->
 		<div class="modal-footer">
 			<div class="flex flex-wrap items-center justify-end gap-3">
-				{#if credentialStep === 'typeSelect'}
+				{#if activeTab === 'credentials' && credentialSubStep === 'typeSelect'}
 					<button type="button" class="btn-secondary" onclick={handleSkipCredentials}>
 						{common_skip()}
 					</button>
@@ -846,7 +860,7 @@
 						{common_continue()}
 						<ArrowRight class="h-4 w-4" />
 					</button>
-				{:else if credentialStep === 'wizard'}
+				{:else if activeTab === 'credentials' && credentialSubStep === 'wizard'}
 					<button
 						type="button"
 						class="btn-primary"
@@ -900,7 +914,6 @@
 								// No new credentials but some existing ones to add
 								credentialIds = [...new Set([...credentialIds, ...existingIds])];
 							}
-							credentialStep = 'none';
 							activeTab = 'install';
 						}}
 					>
