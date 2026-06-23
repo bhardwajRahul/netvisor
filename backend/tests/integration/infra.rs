@@ -31,6 +31,13 @@ pub const SERVERPOLL_DAEMON_URL: &str = "http://localhost:60074";
 /// ServerPoll daemon URL for server (Docker internal network)
 const SERVERPOLL_DAEMON_URL_INTERNAL: &str = "http://daemon-serverpoll:60074";
 
+/// DaemonPoll daemon container name (compose service `daemon`).
+/// Matches the compose default `<project>-<service>-<index>` naming, same as
+/// `scanopy-postgres-dev-1` used by `exec_sql`.
+pub const DAEMONPOLL_CONTAINER: &str = "scanopy-daemon-1";
+/// ServerPoll daemon container name (compose service `daemon-serverpoll`).
+pub const SERVERPOLL_CONTAINER: &str = "scanopy-daemon-serverpoll-1";
+
 // =============================================================================
 // Container Management
 // =============================================================================
@@ -647,4 +654,25 @@ pub fn clear_discovery_data() -> Result<(), String> {
 
     println!("  ✅ Discovery data cleared");
     Ok(())
+}
+
+/// Freeze the daemon containers so they cannot run real discoveries that would
+/// race the compat-test replay (the DaemonPoll daemon scans the shared test
+/// network on its own ~30s cadence). Uses `docker pause` (SIGSTOP) rather than
+/// stop, so no state is lost and the daemons resume exactly where they were.
+///
+/// Tolerant of already-paused state — a benign pause failure must not fail the
+/// suite.
+pub fn pause_daemons() {
+    println!("  Pausing daemon containers for compat replay...");
+    let _ = Command::new("docker")
+        .args(["pause", DAEMONPOLL_CONTAINER, SERVERPOLL_CONTAINER])
+        .output();
+}
+
+/// Resume a previously paused daemon container (see [`pause_daemons`]).
+/// Tolerant of already-running state.
+pub fn unpause_daemon(container: &str) {
+    println!("  Unpausing daemon container {}...", container);
+    let _ = Command::new("docker").args(["unpause", container]).output();
 }

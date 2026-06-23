@@ -25,7 +25,8 @@ mod types;
 pub use replay::*;
 
 use crate::infra::{
-    SERVERPOLL_DAEMON_URL, TestClient, clear_discovery_data, setup_authenticated_user,
+    SERVERPOLL_CONTAINER, SERVERPOLL_DAEMON_URL, TestClient, clear_discovery_data, pause_daemons,
+    setup_authenticated_user, unpause_daemon,
 };
 use scanopy::server::daemon_api_keys::r#impl::api::DaemonApiKeyResponse;
 use scanopy::server::daemon_api_keys::r#impl::base::{DaemonApiKey, DaemonApiKeyBase};
@@ -155,6 +156,15 @@ pub async fn run_compat_tests(
     user_id: Uuid,
     serverpoll_daemon_api_key: &str,
 ) -> Result<(), String> {
+    // Freeze the daemon containers BEFORE clearing/replaying. The DaemonPoll
+    // daemon scans the shared test network on its own ~30s cadence; if a real
+    // discovery interleaves with the replay (clear → POST /subnets → POST
+    // /hosts/discovery) it deletes/replaces the fixture subnet an ip references,
+    // causing an intermittent ip→subnet FK violation. Pause first so no new
+    // discovery data arrives between the clear and the replay. ServerPoll is
+    // unpaused again before daemon-compat (which replays fixtures to it).
+    pause_daemons();
+
     // Clear discovery data from previous test phases to give fixtures a clean slate
     // This prevents FK constraint violations when fixtures reference specific IDs
     clear_discovery_data()?;
@@ -175,6 +185,10 @@ pub async fn run_compat_tests(
     run_server_compat_tests(SERVER_URL, &ctx, clear_discovery_data).await?;
 
     println!("\n=== Daemon Compatibility (old server → current daemon) ===");
+    // Daemon-compat replays fixtures to the ServerPoll daemon, so it must be live
+    // again. DaemonPoll stays paused (unused here); cleanup's `down -v` releases it.
+    unpause_daemon(SERVERPOLL_CONTAINER);
+
     // Cancel any discovery sessions from Phase 1 before running daemon compat tests
     // First cancel on server (updates server state and notifies daemon via event)
     let client = TestClient::new();
