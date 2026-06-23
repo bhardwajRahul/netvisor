@@ -168,8 +168,9 @@
 		pendingCredentials = [
 			...pendingCredentials,
 			{
+				// Start with no targets — the user adds IP / daemon-host targets explicitly
 				credential: cred,
-				targetIps: supportsBroadcast ? [] : [''],
+				targetIps: [],
 				fieldValues,
 				scope: supportsBroadcast ? 'broadcast' : 'per_host'
 			}

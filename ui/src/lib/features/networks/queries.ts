@@ -49,6 +49,8 @@ export function useCreateNetworkMutation() {
 			queryClient.setQueryData<Network[]>(queryKeys.networks.all, (old) =>
 				old ? [...old, newNetwork] : [newNetwork]
 			);
+			// credential_ids changes are reflected on credentials' assigned_network_ids
+			queryClient.invalidateQueries({ queryKey: queryKeys.credentials.all });
 		}
 	}));
 }
@@ -75,6 +77,8 @@ export function useUpdateNetworkMutation() {
 				queryKeys.networks.all,
 				(old) => old?.map((n) => (n.id === updatedNetwork.id ? updatedNetwork : n)) ?? []
 			);
+			// credential_ids changes are reflected on credentials' assigned_network_ids
+			queryClient.invalidateQueries({ queryKey: queryKeys.credentials.all });
 		}
 	}));
 }

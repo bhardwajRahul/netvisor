@@ -14,7 +14,7 @@
 	import CredentialAssignmentsSection from './CredentialAssignmentsSection.svelte';
 	import { submitForm } from '$lib/shared/components/forms/form-context';
 	import DocsHint from '$lib/shared/components/feedback/DocsHint.svelte';
-	import { Settings, Link } from 'lucide-svelte';
+	import { Info, Link } from 'lucide-svelte';
 	import {
 		common_assignments,
 		common_couldNotLoadOrganization,
@@ -69,7 +69,7 @@
 	// Tabs
 	let activeTab = $state('details');
 	let tabs: ModalTab[] = $derived([
-		{ id: 'details', label: common_details(), icon: Settings },
+		{ id: 'details', label: common_details(), icon: Info },
 		{ id: 'assignments', label: common_assignments(), icon: Link }
 	]);
 
@@ -161,8 +161,7 @@
 		<ModalHeaderIcon Icon={entities.getIconComponent('Credential')} color={colorHelper.color} />
 	{/snippet}
 
-	<!-- min-height keeps the modal from collapsing on the (shorter) Assignments tab -->
-	<div class="flex min-h-[30rem] flex-1 flex-col overflow-auto p-6 sm:min-h-[34rem]">
+	<div class="flex min-h-0 flex-1 flex-col overflow-auto p-6">
 		<div class="space-y-4" class:hidden={activeTab !== 'details'}>
 			<p class="text-secondary text-sm">
 				{credentials_description()}

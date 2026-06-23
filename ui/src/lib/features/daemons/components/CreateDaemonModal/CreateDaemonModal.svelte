@@ -917,12 +917,12 @@
 							activeTab = 'install';
 						}}
 					>
-						<ArrowLeft class="h-4 w-4" />
 						{#if unsavedCredentialCount > 0}
 							{daemons_credentialWizardReturn({ count: unsavedCredentialCount })}
 						{:else}
 							{daemons_credentialWizardReturnToInstall()}
 						{/if}
+						<ArrowRight class="h-4 w-4" />
 					</button>
 				{:else if showAdvanced}
 					<button type="button" class="btn-primary" onclick={() => (showAdvanced = false)}>

@@ -204,7 +204,7 @@
 	</div>
 {/snippet}
 
-<div class="flex min-h-0 flex-1 gap-6">
+<div class="flex min-h-[18rem] flex-1 gap-6">
 	{#if supportsBroadcast}
 		{@render networksSurface()}
 	{/if}
