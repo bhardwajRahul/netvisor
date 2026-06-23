@@ -357,6 +357,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/billing/finalize-payment-method": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Finalize a client-confirmed SetupIntent (set the card as default) */
+        post: operations["finalize_payment_method"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/billing/inquiry": {
         parameters: {
             query?: never;
@@ -394,6 +411,23 @@ export interface paths {
          *     cooldown anchored on the org's `last_paused_at`.
          */
         post: operations["pause_subscription"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/billing/payment-method-setup-intent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create a SetupIntent for in-app card collection (Stripe Payment Element) */
+        post: operations["create_payment_method_setup_intent"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3736,6 +3770,13 @@ export interface components {
                  *     fixture default.
                  */
                 snapshot_retention_days_override?: number | null;
+                /**
+                 * @description Stripe publishable key, exposed so the frontend can mount Stripe
+                 *     Elements (Payment Element) for in-app card collection. `None` when
+                 *     billing isn't configured. Publishable keys are safe to expose to the
+                 *     browser (same as `posthog_key`).
+                 */
+                stripe_publishable_key?: string | null;
             };
             error?: string | null;
             meta: components["schemas"]["ApiMeta"];
@@ -3887,6 +3928,18 @@ export interface components {
                 readonly id: string;
                 /** Format: date-time */
                 readonly updated_at: string;
+            };
+            error?: string | null;
+            meta: components["schemas"]["ApiMeta"];
+            success: boolean;
+        };
+        ApiResponse_SetupIntentResponse: {
+            /**
+             * @description Response for creating a SetupIntent — the client secret the frontend
+             *     Payment Element uses to collect and confirm a card in-app.
+             */
+            data?: {
+                client_secret: string;
             };
             error?: string | null;
             meta: components["schemas"]["ApiMeta"];
@@ -5278,6 +5331,13 @@ export interface components {
             /** @enum {string} */
             mode: "FilePath";
             path: string;
+        };
+        /**
+         * @description Request to finalize a client-confirmed SetupIntent (set the collected card
+         *     as the customer's default payment method).
+         */
+        FinalizePaymentMethodRequest: {
+            setup_intent_id: string;
         };
         ForgotPasswordRequest: {
             /** Format: email */
@@ -6748,6 +6808,13 @@ export interface components {
              *     fixture default.
              */
             snapshot_retention_days_override?: number | null;
+            /**
+             * @description Stripe publishable key, exposed so the frontend can mount Stripe
+             *     Elements (Payment Element) for in-app card collection. `None` when
+             *     billing isn't configured. Publishable keys are safe to expose to the
+             *     browser (same as `posthog_key`).
+             */
+            stripe_publishable_key?: string | null;
         };
         /** @description Public share metadata (returned without authentication) */
         PublicShareMetadata: {
@@ -7077,6 +7144,13 @@ export interface components {
             entity_type: components["schemas"]["EntityDiscriminants"];
             /** @description The new list of tag IDs */
             tag_ids: string[];
+        };
+        /**
+         * @description Response for creating a SetupIntent — the client secret the frontend
+         *     Payment Element uses to collect and confirm a card in-app.
+         */
+        SetupIntentResponse: {
+            client_secret: string;
         };
         SetupPaymentMethodRequest: {
             url: string;
@@ -8331,6 +8405,68 @@ export interface operations {
                 };
             };
             /** @description Ineligible or billing not enabled */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    create_payment_method_setup_intent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description SetupIntent client secret */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SetupIntentResponse"];
+                };
+            };
+            /** @description Billing not enabled */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    finalize_payment_method: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FinalizePaymentMethodRequest"];
+            };
+        };
+        responses: {
+            /** @description Payment method finalized */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse"];
+                };
+            };
+            /** @description Billing not enabled or SetupIntent invalid */
             400: {
                 headers: {
                     [name: string]: unknown;

@@ -1,7 +1,8 @@
 use crate::server::auth::middleware::permissions::{Authorized, Owner, RequireVerified, Viewer};
 use crate::server::billing::types::api::{
     CancelSubscriptionRequest, CancelSubscriptionResponse, ChangePlanPreview, ChangePlanRequest,
-    CreateCheckoutRequest, PauseSubscriptionRequest, SaveOfferCoupon, SetupPaymentMethodRequest,
+    CreateCheckoutRequest, FinalizePaymentMethodRequest, PauseSubscriptionRequest, SaveOfferCoupon,
+    SetupIntentResponse, SetupPaymentMethodRequest,
 };
 use crate::server::billing::types::base::BillingPlan;
 use crate::server::config::AppState;
@@ -49,6 +50,8 @@ pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
         .routes(routes!(get_billing_plans))
         .routes(routes!(create_checkout_session))
         .routes(routes!(setup_payment_method))
+        .routes(routes!(create_payment_method_setup_intent))
+        .routes(routes!(finalize_payment_method))
         .routes(routes!(change_plan))
         .routes(routes!(preview_plan_change))
         .routes(routes!(handle_webhook))
@@ -165,13 +168,20 @@ async fn create_checkout_session(
                         .change_plan(organization_id, request.plan, auth.into_entity())
                         .await?;
                     Ok(Json(ApiResponse::success(result)))
-                } else {
+                } else if org.base.has_payment_method {
                     // No live subscription to modify (e.g. currently on Free
-                    // after a downgrade) or no card on file — (re)subscribe via
-                    // Checkout, which creates a fresh subscription and reuses the
-                    // existing customer/card. Routing a Free org to change_plan
-                    // would fail with "No active subscription found to modify" —
-                    // it only updates an existing paid sub.
+                    // after a downgrade) but a card is on file — create a fresh
+                    // paid subscription directly off the saved card, no Checkout
+                    // redirect. (change_plan would fail here — it only updates an
+                    // existing paid sub.)
+                    let result = billing_service
+                        .create_paid_subscription(organization_id, request.plan, auth.into_entity())
+                        .await?;
+                    Ok(Json(ApiResponse::success(result)))
+                } else {
+                    // No card on file — (re)subscribe via Checkout, which
+                    // collects the card and creates a fresh subscription reusing
+                    // the existing customer.
                     let cancel_url = request.url.clone();
                     let session = billing_service
                         .create_checkout_session(
@@ -199,8 +209,17 @@ async fn create_checkout_session(
                     .create_trial_subscription(organization_id, request.plan, auth.into_entity())
                     .await?;
                 Ok(Json(ApiResponse::success(result)))
+            } else if org.base.has_payment_method {
+                // No trial, but the card was already collected in-app via the
+                // SetupIntent flow (BillingPlanModal) — create the subscription
+                // directly off the saved card, no Checkout redirect.
+                let result = billing_service
+                    .create_paid_subscription(organization_id, request.plan, auth.into_entity())
+                    .await?;
+                Ok(Json(ApiResponse::success(result)))
             } else {
-                // No trial — go through Stripe Checkout
+                // No trial and no card on file — go through Stripe Checkout to
+                // collect the card.
                 let cancel_url = request.url.clone();
                 let session = billing_service
                     .create_checkout_session(
@@ -254,6 +273,68 @@ async fn setup_payment_method(
             .await?;
 
         Ok(Json(ApiResponse::success(session.url.unwrap())))
+    } else {
+        Err(ApiError::billing_setup_incomplete())
+    }
+}
+
+/// Create a SetupIntent for in-app card collection (Stripe Payment Element)
+#[utoipa::path(
+    post,
+    path = "/payment-method-setup-intent",
+    tags = ["billing", "internal"],
+    responses(
+        (status = 200, description = "SetupIntent client secret", body = ApiResponse<SetupIntentResponse>),
+        (status = 400, description = "Billing not enabled", body = ApiErrorResponse),
+    ),
+    security(("user_api_key" = []), ("session" = []))
+)]
+async fn create_payment_method_setup_intent(
+    State(state): State<Arc<AppState>>,
+    auth: Authorized<Owner>,
+) -> ApiResult<Json<ApiResponse<SetupIntentResponse>>> {
+    let organization_id = auth
+        .organization_id()
+        .ok_or_else(ApiError::organization_required)?;
+
+    if let Some(billing_service) = state.services.billing_service.clone() {
+        let client_secret = billing_service
+            .create_setup_intent(organization_id, auth.into_entity())
+            .await?;
+        Ok(Json(ApiResponse::success(SetupIntentResponse {
+            client_secret,
+        })))
+    } else {
+        Err(ApiError::billing_setup_incomplete())
+    }
+}
+
+/// Finalize a client-confirmed SetupIntent (set the card as default)
+#[utoipa::path(
+    post,
+    path = "/finalize-payment-method",
+    tags = ["billing", "internal"],
+    request_body = FinalizePaymentMethodRequest,
+    responses(
+        (status = 200, description = "Payment method finalized", body = EmptyApiResponse),
+        (status = 400, description = "Billing not enabled or SetupIntent invalid", body = ApiErrorResponse),
+    ),
+    security(("user_api_key" = []), ("session" = []))
+)]
+async fn finalize_payment_method(
+    State(state): State<Arc<AppState>>,
+    auth: Authorized<Owner>,
+    Json(request): Json<FinalizePaymentMethodRequest>,
+) -> ApiResult<Json<EmptyApiResponse>> {
+    let organization_id = auth
+        .organization_id()
+        .ok_or_else(ApiError::organization_required)?;
+
+    if let Some(billing_service) = state.services.billing_service.clone() {
+        billing_service
+            .finalize_payment_method(organization_id, request.setup_intent_id, auth.into_entity())
+            .await?;
+        Ok(Json(ApiResponse::success(())))
     } else {
         Err(ApiError::billing_setup_incomplete())
     }

@@ -186,6 +186,11 @@ pub struct PublicConfigResponse {
     pub disable_password_login: bool,
     pub oidc_providers: Vec<OidcProviderMetadata>,
     pub billing_enabled: bool,
+    /// Stripe publishable key, exposed so the frontend can mount Stripe
+    /// Elements (Payment Element) for in-app card collection. `None` when
+    /// billing isn't configured. Publishable keys are safe to expose to the
+    /// browser (same as `posthog_key`).
+    pub stripe_publishable_key: Option<String>,
     /// `STRIPE_SAVE_OFFER_COUPON_ID` env var is set. When false, the
     /// cancel modal hides the discount save-offer panel so the user
     /// doesn't see an option the deployment can't fulfil.
@@ -452,6 +457,7 @@ pub async fn get_public_config(State(state): State<Arc<AppState>>) -> impl IntoR
             disable_password_login: state.config.disable_password_login,
             oidc_providers,
             billing_enabled: state.config.stripe_secret.is_some(),
+            stripe_publishable_key: state.config.stripe_key.clone(),
             discount_save_offer_available: std::env::var("STRIPE_SAVE_OFFER_COUPON_ID").is_ok(),
             has_integrated_daemon: state.config.integrated_daemon_url.is_some(),
             has_email_service: state.config.brevo_api_key.is_some()
