@@ -11,7 +11,7 @@
 	import { createDefaultTag } from '$lib/features/tags/types/base';
 	import { createColorHelper, AVAILABLE_COLORS, type Color } from '$lib/shared/utils/styling';
 	import { useCurrentUserQuery } from '$lib/features/auth/queries';
-	import { permissions } from '$lib/shared/stores/metadata';
+	import { permissions, billingPlans } from '$lib/shared/stores/metadata';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
 	import { onMount } from 'svelte';
 	import { common_creating, tags_addTag, tags_createTagQuoted } from '$lib/paraglide/messages';
@@ -152,9 +152,16 @@
 	let organization = $derived(organizationQuery.data);
 	let currentUser = $derived(currentUserQuery.data);
 
+	// Demo orgs are read-only for non-owners (mirrors the credentials tab)
+	let isDemoOrg = $derived(
+		billingPlans.getMetadata(organization?.plan?.type ?? null).is_demo === true
+	);
+	let isNonOwnerInDemo = $derived(isDemoOrg && currentUser?.permissions !== 'Owner');
+
 	// Check if user can create tags
 	let canCreateTags = $derived(
 		allowCreate &&
+			!isNonOwnerInDemo &&
 			currentUser &&
 			permissions.getMetadata(currentUser.permissions).manage_org_entities
 	);

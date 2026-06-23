@@ -5,7 +5,7 @@
 	import { createDefaultTag } from '$lib/features/tags/types/base';
 	import { createColorHelper, AVAILABLE_COLORS, type Color } from '$lib/shared/utils/styling';
 	import { useCurrentUserQuery } from '$lib/features/auth/queries';
-	import { concepts, permissions } from '$lib/shared/stores/metadata';
+	import { concepts, permissions, billingPlans } from '$lib/shared/stores/metadata';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
 
 	/**
@@ -53,9 +53,17 @@
 	let organization = $derived(organizationQuery.data);
 	let currentUser = $derived(currentUserQuery.data);
 
+	// Demo orgs are read-only for non-owners (mirrors the credentials tab)
+	let isDemoOrg = $derived(
+		billingPlans.getMetadata(organization?.plan?.type ?? null).is_demo === true
+	);
+	let isNonOwnerInDemo = $derived(isDemoOrg && currentUser?.permissions !== 'Owner');
+
 	// Check if user can create tags
 	let canCreateTags = $derived(
-		currentUser && permissions.getMetadata(currentUser.permissions).manage_org_entities
+		!isNonOwnerInDemo &&
+			currentUser &&
+			permissions.getMetadata(currentUser.permissions).manage_org_entities
 	);
 
 	// Check if typed value matches an existing tag name exactly
