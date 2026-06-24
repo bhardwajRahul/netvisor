@@ -12,12 +12,15 @@
 
 	let {
 		clientSecret,
+		description = undefined,
 		submitLabel = common_continue(),
 		onSuccess,
 		onCancel = undefined
 	}: {
 		/** Client secret from a backend-created SetupIntent. */
 		clientSecret: string;
+		/** Optional lead-in text rendered above the Payment Element. */
+		description?: string;
 		submitLabel?: string;
 		/**
 		 * Called with the confirmed SetupIntent id after the card is collected.
@@ -117,29 +120,37 @@
 	}
 </script>
 
+<!-- Fills a modal-content flex column: the Payment Element scrolls, the action
+     buttons stay pinned in the footer so Continue is always reachable. -->
 <form
 	onsubmit={(e) => {
 		e.preventDefault();
 		handleSubmit();
 	}}
-	class="flex flex-col gap-4"
+	class="flex min-h-0 flex-1 flex-col"
 >
-	<!-- Stripe mounts the Payment Element iframe here. Reserve height so the
-	     layout doesn't jump while it loads. -->
-	<div class="relative min-h-[3rem]">
-		<div bind:this={container}></div>
-		{#if !ready && !loadFailed}
-			<p class="text-secondary absolute inset-0 flex items-center justify-center text-sm">
-				{common_loading()}
-			</p>
+	<div class="min-h-0 flex-1 space-y-4 overflow-auto p-6">
+		{#if description}
+			<p class="text-secondary text-sm">{description}</p>
+		{/if}
+
+		<!-- Stripe mounts the Payment Element iframe here. Reserve height so the
+		     layout doesn't jump while it loads. -->
+		<div class="relative min-h-[3rem]">
+			<div bind:this={container}></div>
+			{#if !ready && !loadFailed}
+				<p class="text-secondary absolute inset-0 flex items-center justify-center text-sm">
+					{common_loading()}
+				</p>
+			{/if}
+		</div>
+
+		{#if errorMessage}
+			<p class="text-sm text-red-400">{errorMessage}</p>
 		{/if}
 	</div>
 
-	{#if errorMessage}
-		<p class="text-sm text-red-400">{errorMessage}</p>
-	{/if}
-
-	<div class="flex items-center justify-end gap-3">
+	<div class="modal-footer flex items-center justify-end gap-3">
 		{#if onCancel}
 			<button type="button" class="btn-secondary" disabled={busy} onclick={onCancel}>
 				{common_cancel()}

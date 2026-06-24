@@ -249,16 +249,14 @@
 			showCloseButton={true}
 			onClose={() => (cardStep = null)}
 		>
-			<div class="p-6">
-				<p class="text-secondary mb-6 text-sm">
-					{billing_cardStepSubtitle({ planName: billingPlanHelpers.getName(cardStep.plan.type) })}
-				</p>
-				<StripeCardForm
-					clientSecret={cardStep.clientSecret}
-					onSuccess={handleCardConfirmed}
-					onCancel={() => (cardStep = null)}
-				/>
-			</div>
+			<StripeCardForm
+				clientSecret={cardStep.clientSecret}
+				description={billing_cardStepSubtitle({
+					planName: billingPlanHelpers.getName(cardStep.plan.type)
+				})}
+				onSuccess={handleCardConfirmed}
+				onCancel={() => (cardStep = null)}
+			/>
 		</GenericModal>
 	{/if}
 
