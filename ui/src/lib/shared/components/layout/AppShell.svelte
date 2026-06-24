@@ -23,6 +23,7 @@
 	import CookieConsent, {
 		hasAnalyticsConsent
 	} from '$lib/shared/components/feedback/CookieConsent.svelte';
+	import PaymentMethodModal from '$lib/features/billing/PaymentMethodModal.svelte';
 	import {
 		billing_paymentMethodAdded,
 		billing_subscriptionActivated,
@@ -273,3 +274,6 @@
 {#if configData && configData.needs_cookie_consent && !$page.url.pathname.startsWith('/share/')}
 	<CookieConsent />
 {/if}
+
+<!-- Global in-app card dialog, opened by any "Add/Update payment method" nudge -->
+<PaymentMethodModal />

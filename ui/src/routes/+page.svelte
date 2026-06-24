@@ -296,7 +296,6 @@
 		isOpen={showBillingModal}
 		name="billing-plan"
 		dismissible={!needsPlanSelection}
-		requireCard={needsPlanSelection}
 		onClose={() => {
 			planJustActivated = true;
 			closeModal();

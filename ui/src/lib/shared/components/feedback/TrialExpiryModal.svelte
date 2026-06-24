@@ -2,7 +2,6 @@
 	import { AlertTriangle, CreditCard } from 'lucide-svelte';
 	import GenericModal from '$lib/shared/components/layout/GenericModal.svelte';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
-	import { useSetupPaymentMethodMutation } from '$lib/features/billing/queries';
 	import { startSetupPayment } from '$lib/shared/billing/setup-payment';
 	import { getTrialDaysLeft, isTrialingWithoutPayment } from '$lib/shared/utils/trial';
 	import { wasDismissedToday, markDismissedToday } from '$lib/shared/utils/dismissed-today';
@@ -18,7 +17,6 @@
 	const DISMISS_KEY = 'trial_expiry_modal';
 
 	const organizationQuery = useOrganizationQuery();
-	const setupPaymentMutation = useSetupPaymentMethodMutation();
 
 	let org = $derived(organizationQuery.data);
 	let trialDaysLeft = $derived(getTrialDaysLeft(org));
@@ -58,14 +56,9 @@
 		trackEvent('trial_modal_dismissed_today', { trial_days_left: trialDaysLeft });
 	}
 
-	async function handleCta() {
+	function handleCta() {
 		trackEvent('trial_modal_cta_clicked', { trial_days_left: trialDaysLeft });
-		await startSetupPayment({
-			mutation: setupPaymentMutation,
-			org,
-			source: 'trial_modal',
-			trialDaysLeft
-		});
+		startSetupPayment({ org, source: 'trial_modal', trialDaysLeft });
 	}
 </script>
 
@@ -85,7 +78,6 @@
 				type="button"
 				class="btn-primary flex items-center gap-1.5 text-sm"
 				onclick={handleCta}
-				disabled={setupPaymentMutation.isPending}
 			>
 				<CreditCard size={14} />
 				{billing_addPaymentMethod()}

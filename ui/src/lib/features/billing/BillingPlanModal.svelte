@@ -8,13 +8,7 @@
 		type BillingPlanMetadata,
 		type FeatureMetadata
 	} from '$lib/shared/stores/metadata';
-	import {
-		useCheckoutMutation,
-		useCreateSetupIntentMutation,
-		useFinalizePaymentMethodMutation
-	} from '$lib/features/billing/queries';
-	import StripeCardForm from '$lib/features/billing/StripeCardForm.svelte';
-	import { billing_cardStepTitle } from '$lib/paraglide/messages';
+	import { useCheckoutMutation } from '$lib/features/billing/queries';
 	import { onboardingStore } from '$lib/features/auth/stores/onboarding';
 	import { useCurrentUserQuery } from '$lib/features/auth/queries';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
@@ -28,17 +22,11 @@
 	let {
 		isOpen = false,
 		dismissible = true,
-		requireCard = false,
 		onClose,
 		name = undefined
 	}: {
 		isOpen?: boolean;
 		dismissible?: boolean;
-		/**
-		 * Initial-signup gate: hide the Free plan so the user must pick a
-		 * Stripe-managed plan (which then requires a card on file).
-		 */
-		requireCard?: boolean;
 		onClose: () => void;
 		name?: string;
 	} = $props();
@@ -99,12 +87,6 @@
 
 	// Mutations
 	const checkoutMutation = useCheckoutMutation();
-	const createSetupIntentMutation = useCreateSetupIntentMutation();
-	const finalizeMutation = useFinalizePaymentMethodMutation();
-
-	// In-app card-collection step: set after a Stripe-managed plan is selected
-	// with no card on file. Holds the chosen plan and the SetupIntent secret.
-	let cardStep = $state<{ plan: BillingPlan; clientSecret: string } | null>(null);
 
 	// Determine initial filter based on use case from onboarding
 	let useCase = $derived($onboardingStore.useCase);
@@ -133,62 +115,56 @@
 	let recommendedPlan = $derived(contextHighlightPlan ?? baseRecommendedPlan);
 
 	async function handlePlanSelect(plan: BillingPlan) {
-		const metadata = billingPlanHelpers.getMetadata(plan.type);
-		trackEvent('plan_selected', {
-			plan: plan.type,
-			is_commercial: metadata?.is_commercial ?? false
-		});
-
-		const isFree = metadata?.is_free === true;
-		const hasCard = organization?.has_payment_method ?? false;
-
-		// Stripe-managed (paid or trial) plan with no card on file → collect a
-		// card in-app via the Payment Element before creating the subscription.
-		if (!isFree && !hasCard) {
-			try {
-				const clientSecret = await createSetupIntentMutation.mutateAsync();
-				cardStep = { plan, clientSecret };
-			} catch {
-				// setup-intent error already surfaced by the mutation's toast
-			}
-			return;
-		}
-
-		// Free, or a card is already on file — activate directly.
+		// Only an immediate-payment selection (paid plan, no trial, no card on file)
+		// redirects to Stripe Checkout; trial signups / Free / plan changes activate
+		// in-app via a plain API call. Pre-open the tab synchronously (inside the
+		// click, so popup blockers allow it) only when a redirect is expected — so we
+		// don't flash a blank tab for the in-app cases. A misprediction (e.g. a
+		// returning customer who already used their trial) falls back to a same-tab
+		// redirect below. (No 'noopener' — that makes window.open return null.)
+		const expectsStripeCheckout =
+			plan.base_cents > 0 && plan.trial_days === 0 && !(organization?.has_payment_method ?? false);
+		const stripeTab = expectsStripeCheckout ? window.open('', '_blank') : null;
 		try {
-			await proceedCheckout(plan);
+			// New tab — this tab stays put, so track immediately rather than stashing
+			// the event for a post-redirect flush.
+			const metadata = billingPlanHelpers.getMetadata(plan.type);
+			trackEvent('plan_selected', {
+				plan: plan.type,
+				is_commercial: metadata?.is_commercial ?? false
+			});
+
+			// Backend decides: new subscriber → checkout URL, existing → plan change message
+			const result = await checkoutMutation.mutateAsync(plan);
+			if (result?.startsWith('http')) {
+				// First-time checkout: open Stripe in a new tab and close the modal. This
+				// tab converges once the checkout webhook activates the plan.
+				if (stripeTab) {
+					stripeTab.location.href = result;
+					upgradeContext.set(null);
+					onClose();
+					void waitForOrgUpdate(isBillingPlanActive);
+				} else {
+					// No pre-opened tab (redirect not anticipated, or popup blocked) —
+					// fall back to a same-tab redirect.
+					window.location.href = result;
+				}
+			} else {
+				// Direct activation needs no Stripe tab.
+				stripeTab?.close();
+				upgradeContext.set(null);
+				onClose();
+				// Plan activated directly (Free or trial) is still webhook-driven, so a
+				// single refetch races the webhook and reads stale state (e.g. plan_status
+				// still null, so NoPaymentMethodBanner never appears until a reload). Poll
+				// like the Stripe-redirect branch until the org reflects the activation.
+				// Closing first is safe: onClose sets planJustActivated, suppressing reopen.
+				void waitForOrgUpdate(isBillingPlanActive);
+			}
 		} catch {
-			// checkout error already surfaced by the mutation's toast
+			// Error handled by mutation
+			stripeTab?.close();
 		}
-	}
-
-	// Called by StripeCardForm once the card is confirmed: persist it as the
-	// default payment method, then create the subscription for the chosen plan.
-	async function handleCardConfirmed(setupIntentId: string) {
-		const plan = cardStep?.plan;
-		if (!plan) return;
-		// Both throw on failure (and toast); StripeCardForm catches and re-enables
-		// the form so the user can retry.
-		await finalizeMutation.mutateAsync(setupIntentId);
-		await proceedCheckout(plan);
-	}
-
-	async function proceedCheckout(plan: BillingPlan) {
-		// Backend decides: trial / paid-with-card-on-file / Free all activate
-		// in-app and return a message; only a no-card edge path returns a Stripe
-		// Checkout URL, handled here as a defensive same-tab fallback.
-		const result = await checkoutMutation.mutateAsync(plan);
-		if (result?.startsWith('http')) {
-			window.location.href = result;
-			return;
-		}
-		upgradeContext.set(null);
-		cardStep = null;
-		onClose();
-		// Activation is webhook-driven, so a single refetch races the webhook and
-		// reads stale state. Poll until the org reflects the active plan. Closing
-		// first is safe: onClose sets planJustActivated, suppressing reopen.
-		void waitForOrgUpdate(isBillingPlanActive);
 	}
 
 	// Plan inquiry modal state
@@ -199,14 +175,6 @@
 		selectedPlan = plan;
 		inquiryModalOpen = true;
 	}
-
-	// Free is hidden for paid orgs (can't "select" Free as an upgrade) and during
-	// the initial-signup gate (`requireCard`), where a card-backed plan is required.
-	let availablePlans = $derived(
-		billingPlanHelpers.getMetadata(organization?.plan?.type ?? null)?.is_free && !requireCard
-			? plansData
-			: plansData.filter((p) => billingPlanHelpers.getMetadata(p.type)?.is_free !== true)
-	);
 </script>
 
 <GenericModal
@@ -228,7 +196,9 @@
 >
 	<div class="flex min-h-0 flex-1 flex-col">
 		<BillingPlanForm
-			plans={availablePlans}
+			plans={billingPlanHelpers.getMetadata(organization?.plan?.type ?? null)?.is_free
+				? plansData
+				: plansData.filter((p) => billingPlanHelpers.getMetadata(p.type)?.is_free !== true)}
 			{billingPlanHelpers}
 			{featureHelpers}
 			onPlanSelect={handlePlanSelect}
@@ -239,24 +209,6 @@
 			currentPlanType={organization?.plan?.type ?? null}
 		/>
 	</div>
-
-	<!-- Card collection: a normal-chromed dialog stacked over the (borderless,
-	     full-screen) plan grid — mirrors the nested PlanInquiryModal pattern. -->
-	{#if cardStep}
-		<GenericModal
-			isOpen={true}
-			title={billing_cardStepTitle()}
-			size="md"
-			showCloseButton={true}
-			onClose={() => (cardStep = null)}
-		>
-			<StripeCardForm
-				clientSecret={cardStep.clientSecret}
-				onSuccess={handleCardConfirmed}
-				onCancel={() => (cardStep = null)}
-			/>
-		</GenericModal>
-	{/if}
 
 	<PlanInquiryModal
 		isOpen={inquiryModalOpen}

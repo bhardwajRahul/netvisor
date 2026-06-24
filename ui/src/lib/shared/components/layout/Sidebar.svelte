@@ -10,7 +10,6 @@
 	import { entityUIConfig, TAB_LABELS } from '$lib/shared/entity-ui-config';
 	import type { EntityDiscriminants } from '$lib/api/entities';
 	import { triggerUpgrade } from '$lib/features/billing/trigger-upgrade';
-	import { useSetupPaymentMethodMutation } from '$lib/features/billing/queries';
 	import { startSetupPayment } from '$lib/shared/billing/setup-payment';
 	import type { IconComponent } from '$lib/shared/utils/types';
 	import {
@@ -104,7 +103,6 @@
 
 	const organizationQuery = useOrganizationQuery();
 	let organization = $derived(organizationQuery.data);
-	const setupPaymentMutation = useSetupPaymentMethodMutation();
 
 	// Derived values from queries
 	let userPermissions = $derived(currentUser?.permissions);
@@ -807,7 +805,6 @@
 						label: trialPillLabel,
 						onclick: () =>
 							startSetupPayment({
-								mutation: setupPaymentMutation,
 								org: organization,
 								source: 'sidebar_trial_pill',
 								trialDaysLeft
