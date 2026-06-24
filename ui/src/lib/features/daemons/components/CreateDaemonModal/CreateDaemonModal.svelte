@@ -248,6 +248,12 @@
 	}
 
 	function handleSkipCredentials() {
+		trackEvent('daemon_wizard_step_completed', {
+			step: 'credentials',
+			skipped: true,
+			types_selected: selectedCredentialTypeIds.length,
+			credentials_attached: 0
+		});
 		activeTab = 'install';
 	}
 
@@ -300,6 +306,19 @@
 	$effect(() => {
 		if (isFirstDaemon && !selectedNetworkId && networksData.length > 0) {
 			selectedNetworkId = networksData[0].id;
+		}
+	});
+
+	// Per-step funnel analytics: fire once each time a step becomes the active step
+	let lastViewedStep = $state<string | null>(null);
+	$effect(() => {
+		if (!isOpen) {
+			lastViewedStep = null;
+			return;
+		}
+		if (activeTab !== lastViewedStep) {
+			lastViewedStep = activeTab;
+			trackEvent('daemon_wizard_step_viewed', { step: activeTab });
 		}
 	});
 
@@ -914,6 +933,12 @@
 								// No new credentials but some existing ones to add
 								credentialIds = [...new Set([...credentialIds, ...existingIds])];
 							}
+							trackEvent('daemon_wizard_step_completed', {
+								step: 'credentials',
+								skipped: false,
+								types_selected: selectedCredentialTypeIds.length,
+								credentials_attached: credentialIds.length
+							});
 							activeTab = 'install';
 						}}
 					>
