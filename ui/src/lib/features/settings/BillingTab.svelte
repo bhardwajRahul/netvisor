@@ -8,7 +8,6 @@
 	import { trackEvent, trackOncePerSession } from '$lib/shared/utils/analytics';
 	import {
 		useCustomerPortalMutation,
-		useSetupPaymentMethodMutation,
 		useResumeSubscriptionMutation,
 		useReactivateSubscriptionMutation,
 		useExtendTrialMutation
@@ -85,7 +84,6 @@
 
 	// Customer portal mutation
 	const customerPortalMutation = useCustomerPortalMutation();
-	const setupPaymentMutation = useSetupPaymentMethodMutation();
 	const resumeMutation = useResumeSubscriptionMutation();
 	const reactivateMutation = useReactivateSubscriptionMutation();
 	const extendTrialMutation = useExtendTrialMutation();
@@ -404,12 +402,7 @@
 	}
 
 	function handleSetupPayment() {
-		return startSetupPayment({
-			mutation: setupPaymentMutation,
-			org,
-			source: 'billing_tab',
-			trialDaysLeft
-		});
+		startSetupPayment({ org, source: 'billing_tab', trialDaysLeft });
 	}
 </script>
 

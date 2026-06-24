@@ -76,26 +76,6 @@ export function useCustomerPortalMutation() {
 }
 
 /**
- * Mutation hook for setting up payment method
- */
-export function useSetupPaymentMethodMutation() {
-	return createMutation(() => ({
-		mutationFn: async () => {
-			const { data } = await apiClient.POST('/api/billing/setup-payment-method', {
-				body: { url: window.location.origin }
-			});
-			if (!data?.success || !data.data) {
-				throw new Error(data?.error || 'Failed to get setup URL');
-			}
-			return data.data;
-		},
-		onError: (error: Error) => {
-			pushError(`Error setting up payment method: ${error.message}. Please try again.`);
-		}
-	}));
-}
-
-/**
  * Mutation hook to create a SetupIntent for in-app card collection.
  * Returns the client secret used to mount the Stripe Payment Element.
  */
