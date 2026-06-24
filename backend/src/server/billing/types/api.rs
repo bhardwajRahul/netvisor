@@ -52,11 +52,6 @@ pub struct CancelSubscriptionResponse {
     pub period_end: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct SetupPaymentMethodRequest {
-    pub url: String,
-}
-
 /// Response for creating a SetupIntent — the client secret the frontend
 /// Payment Element uses to collect and confirm a card in-app.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]

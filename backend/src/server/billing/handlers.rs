@@ -2,7 +2,7 @@ use crate::server::auth::middleware::permissions::{Authorized, Owner, RequireVer
 use crate::server::billing::types::api::{
     CancelSubscriptionRequest, CancelSubscriptionResponse, ChangePlanPreview, ChangePlanRequest,
     CreateCheckoutRequest, FinalizePaymentMethodRequest, PauseSubscriptionRequest, SaveOfferCoupon,
-    SetupIntentResponse, SetupPaymentMethodRequest,
+    SetupIntentResponse,
 };
 use crate::server::billing::types::base::BillingPlan;
 use crate::server::config::AppState;
@@ -49,7 +49,6 @@ pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
     OpenApiRouter::new()
         .routes(routes!(get_billing_plans))
         .routes(routes!(create_checkout_session))
-        .routes(routes!(setup_payment_method))
         .routes(routes!(create_payment_method_setup_intent))
         .routes(routes!(finalize_payment_method))
         .routes(routes!(change_plan))
@@ -217,46 +216,6 @@ async fn create_checkout_session(
                 Ok(Json(ApiResponse::success(session.url.unwrap())))
             }
         }
-    } else {
-        Err(ApiError::billing_setup_incomplete())
-    }
-}
-
-/// Setup payment method (collect card without charging)
-#[utoipa::path(
-    post,
-    path = "/setup-payment-method",
-    tags = ["billing", "internal"],
-    request_body = SetupPaymentMethodRequest,
-    responses(
-        (status = 200, description = "Setup session URL", body = ApiResponse<String>),
-        (status = 400, description = "Billing not enabled", body = ApiErrorResponse),
-    ),
-    security(("user_api_key" = []), ("session" = []))
-)]
-async fn setup_payment_method(
-    State(state): State<Arc<AppState>>,
-    auth: Authorized<Owner>,
-    Json(request): Json<SetupPaymentMethodRequest>,
-) -> ApiResult<Json<ApiResponse<String>>> {
-    let organization_id = auth
-        .organization_id()
-        .ok_or_else(ApiError::organization_required)?;
-
-    let success_url = format!("{}?billing_flow=payment_setup", request.url);
-    let cancel_url = request.url;
-
-    if let Some(billing_service) = state.services.billing_service.clone() {
-        let session = billing_service
-            .create_setup_payment_method_session(
-                organization_id,
-                success_url,
-                cancel_url,
-                auth.into_entity(),
-            )
-            .await?;
-
-        Ok(Json(ApiResponse::success(session.url.unwrap())))
     } else {
         Err(ApiError::billing_setup_incomplete())
     }

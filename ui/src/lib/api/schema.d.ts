@@ -535,23 +535,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/billing/setup-payment-method": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Setup payment method (collect card without charging) */
-        post: operations["setup_payment_method"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/billing/webhooks": {
         parameters: {
             query?: never;
@@ -7152,9 +7135,6 @@ export interface components {
         SetupIntentResponse: {
             client_secret: string;
         };
-        SetupPaymentMethodRequest: {
-            url: string;
-        };
         /** @description Setup request for pre-registration org/network configuration */
         SetupRequest: {
             network: components["schemas"]["NetworkSetup"];
@@ -8688,39 +8668,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_Option_SaveOfferCoupon"];
-                };
-            };
-            /** @description Billing not enabled */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiErrorResponse"];
-                };
-            };
-        };
-    };
-    setup_payment_method: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SetupPaymentMethodRequest"];
-            };
-        };
-        responses: {
-            /** @description Setup session URL */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_String"];
                 };
             };
             /** @description Billing not enabled */
