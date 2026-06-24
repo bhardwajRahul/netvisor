@@ -127,12 +127,8 @@ impl BillingService {
             .send(&self.stripe)
             .await?;
 
-        tracing::info!(
-            organization_id = %organization_id,
-            setup_intent_id = %setup_intent_id,
-            "Payment method finalized — default invoice PM set; emitting PaymentMethodAdded"
-        );
-
+        // The PaymentMethodAdded event below is logged by the logging
+        // subscriber; the org subscriber flips `has_payment_method`.
         self.event_bus
             .publish(Event::new(
                 OrgScope { organization_id },
@@ -426,12 +422,6 @@ impl BillingService {
             return Ok(());
         }
 
-        tracing::info!(
-            organization_id = %organization.id,
-            attempt_count = invoice.attempt_count,
-            "Invoice payment failed"
-        );
-
         self.event_bus
             .publish(Event::new(
                 OrgScope {
@@ -474,11 +464,6 @@ impl BillingService {
             tracing::info!(organization_id = %organization.id, "Skipping payment_action_required — no payment method (trial auto-cancel)");
             return Ok(());
         }
-
-        tracing::info!(
-            organization_id = %organization.id,
-            "Invoice payment action required (3D Secure / SCA)"
-        );
 
         self.event_bus
             .publish(Event::new(
