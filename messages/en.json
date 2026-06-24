@@ -86,6 +86,7 @@
 	"billing_trialPillToday": "Trial ends today",
 	"billing_welcomeBannerBody": "Welcome to {planName} — your subscription is now active.",
 	"billing_welcomeBannerBodyTrialSecured": "Payment method added — your {planName} subscription will continue after the trial ends.",
+	"billing_yourCurrentPlan": "Your current plan",
 	"common_account": "Account",
 	"common_active": "Active",
 	"common_advanced": "Advanced",
