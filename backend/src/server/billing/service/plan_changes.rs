@@ -75,11 +75,13 @@ impl BillingService {
     }
 
     /// Finalize a client-confirmed SetupIntent: verify it succeeded for this
-    /// org's customer, set the collected card as the customer's default invoice
-    /// payment method, and flip `has_payment_method` synchronously (so a
-    /// subsequent subscription creation doesn't race the
-    /// `payment_method.attached` webhook). The webhook remains an idempotent
-    /// backup — the `PaymentMethodAdded` subscriber is a no-op when already set.
+    /// org's customer and set the collected card as the customer's default
+    /// invoice payment method. Does NOT emit `PaymentMethodAdded` — that event
+    /// (which drives the `has_payment_method` mirror, the email, and analytics)
+    /// is owned solely by the `payment_method.attached` webhook, so it fires
+    /// exactly once. Callers that need an immediate, race-free "card on file?"
+    /// answer (the charge-vs-Checkout branch) read Stripe via
+    /// `customer_has_payment_method` rather than the event-sourced mirror.
     pub async fn finalize_payment_method(
         &self,
         organization_id: Uuid,
@@ -127,16 +129,10 @@ impl BillingService {
             .send(&self.stripe)
             .await?;
 
-        // The PaymentMethodAdded event below is logged by the logging
-        // subscriber; the org subscriber flips `has_payment_method`.
-        self.event_bus
-            .publish(Event::new(
-                OrgScope { organization_id },
-                BillingOperation::PaymentMethodAdded,
-                AuthenticatedEntity::System,
-            ))
-            .await?;
-
+        // No PaymentMethodAdded emission here — the `payment_method.attached`
+        // webhook is the sole emitter (one event → one mirror flip, one email,
+        // one analytics capture). Synchronous "card on file?" callers read
+        // Stripe via `customer_has_payment_method`.
         Ok(())
     }
 
@@ -198,6 +194,31 @@ impl BillingService {
             org.base.plan_status,
             Some(PlanStatus::Active) | Some(PlanStatus::Trialing) | Some(PlanStatus::PastDue)
         ))
+    }
+
+    /// Authoritative check (via Stripe, not the `has_payment_method` mirror) of
+    /// whether the org's Stripe customer has at least one payment method on
+    /// file. The mirror is event-sourced and lags the in-app SetupIntent flow
+    /// by an event-bus tick, so the synchronous charge-vs-Checkout branch in
+    /// `create_checkout_session` reads Stripe directly here — otherwise a user
+    /// who just added a card could be bounced to hosted Checkout to re-enter it.
+    /// Returns `false` when the org has no Stripe customer yet. Tenant-isolated:
+    /// the customer id comes from the org row, never request input.
+    pub async fn customer_has_payment_method(&self, organization_id: Uuid) -> Result<bool, Error> {
+        let Some(org) = self
+            .organization_service
+            .get_by_id(&organization_id)
+            .await?
+        else {
+            return Ok(false);
+        };
+        let Some(customer_id) = org.base.stripe_customer_id.clone() else {
+            return Ok(false);
+        };
+        let payment_methods = ListPaymentMethodsCustomer::new(CustomerId::from(customer_id))
+            .send(&self.stripe)
+            .await?;
+        Ok(!payment_methods.data.is_empty())
     }
 
     /// Schedule a downgrade to Free at the end of the billing cycle.

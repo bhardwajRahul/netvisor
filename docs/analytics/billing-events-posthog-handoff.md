@@ -98,14 +98,12 @@ fields under `metadata.*` (plus the common properties from §1 on every event).
 | `payment_failed` | `plan_changes.rs:430` (`invoice.payment_failed`) | `invoice_id`, `amount_cents`, `plan`, `attempt_count` |
 | `payment_action_required` | `plan_changes.rs:473` (`invoice.payment_action_required`, 3DS/SCA) | `invoice_id`, `hosted_invoice_url` |
 | `payment_recovered` | `lifecycle.rs:613` (`invoice.paid` while previously `past_due`) | `invoice_id`, `amount_cents`, `plan`, `attempt_count`, `next_renewal_at` |
-| `payment_method_added` | `webhooks.rs:613` (`payment_method.attached`), `plan_changes.rs:135` (in-app SetupIntent finalize) | *(none)* |
+| `payment_method_added` | `webhooks.rs:613` (`payment_method.attached`) — sole emitter | *(none)* |
 | `payment_method_removed` | `webhooks.rs:650` (last `payment_method.detached`) | *(none)* |
 
-> ⚠️ **`payment_method_added` can fire twice for one in-app add-card** (the
-> SetupIntent-finalize path and the `payment_method.attached` webhook both emit
-> it). De-dupe per `(organization_id, day)` if you count it as an action. This is
-> a known double-emission flagged for a code fix; until then, do not treat raw
-> counts as distinct add-card actions.
+> `payment_method_added` fires once per add-card action (the
+> `payment_method.attached` webhook is the single emitter), so it can be counted
+> as a distinct action without de-duping.
 
 ### Feature limits (gating telemetry, not subscription lifecycle)
 
@@ -203,15 +201,14 @@ For each: the events/properties to use and the funnel/cohort shape.
   §4.3/4.4/4.5 analyses are unblocked from this change forward (no backfill of
   historical events).
 - **`plan_type` person/group property on downgrade-to-Free.** On
-  `subscription_cancelled`, the person/group `plan_type` is currently set from
-  the *cancelled* (outgoing) plan, not `Free`. So immediately after churn a
-  person may still show `plan_type` = their old paid plan. **Prefer the org's
-  current plan / the event stream over the `plan_type` person property for
-  conversion-vs-downgrade cohorting.** (Flagged for a code fix.)
+  `subscription_cancelled` (and an unconverted `trial_ended`), the person/group
+  `plan_type` is set to the *resulting* plan — `Free` — not the outgoing paid
+  plan, so plan cohorts reflect the post-churn state correctly. (The event's
+  `metadata.plan` still carries the cancelled plan for revenue-churn analysis.)
 - **Attribution.** Webhook-driven events (most lifecycle events) are emitted by
   `system`/owner attribution; `user_id`/`email` may be absent. Use
   `organization_id` (and the `organization` group) as the stable join key, not
   `user_id`.
-- **Idempotency / duplicates.** `payment_method_added` may double-fire (§2). The
-  cancellation pair (`cancellation_initiated` + `cancellation_feedback_provided`)
+- **Idempotency / duplicates.** Billing events are single-emission per action.
+  The cancellation pair (`cancellation_initiated` + `cancellation_feedback_provided`)
   models Stripe's two-webhook reality and is expected, not a duplicate.

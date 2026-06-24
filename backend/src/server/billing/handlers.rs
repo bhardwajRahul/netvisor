@@ -152,6 +152,18 @@ async fn create_checkout_session(
                 let is_returning = has_non_free_plan || org.base.trial_end_date.is_some();
                 let is_trial_eligible = !is_returning && request.plan.config().trial_days > 0;
 
+                // Authoritative card-on-file check via Stripe (not the
+                // `has_payment_method` mirror, which lags the in-app SetupIntent
+                // flow by an event-bus tick). Only queried when we might route to
+                // a direct charge — trial-eligible orgs skip it.
+                let has_payment_method = if is_trial_eligible {
+                    false
+                } else {
+                    billing_service
+                        .customer_has_payment_method(organization_id)
+                        .await?
+                };
+
                 if is_trial_eligible {
                     // Trial-eligible — create subscription directly, skip Checkout
                     let result = billing_service
@@ -162,13 +174,13 @@ async fn create_checkout_session(
                         )
                         .await?;
                     Ok(Json(ApiResponse::success(result)))
-                } else if has_non_free_plan && org.base.has_payment_method {
+                } else if has_non_free_plan && has_payment_method {
                     // Live paid subscription + card on file — modify it in place.
                     let result = billing_service
                         .change_plan(organization_id, request.plan, auth.into_entity())
                         .await?;
                     Ok(Json(ApiResponse::success(result)))
-                } else if org.base.has_payment_method {
+                } else if has_payment_method {
                     // No live subscription to modify (e.g. currently on Free
                     // after a downgrade) but a card is on file — create a fresh
                     // paid subscription directly off the saved card, no Checkout
@@ -209,10 +221,14 @@ async fn create_checkout_session(
                     .create_trial_subscription(organization_id, request.plan, auth.into_entity())
                     .await?;
                 Ok(Json(ApiResponse::success(result)))
-            } else if org.base.has_payment_method {
+            } else if billing_service
+                .customer_has_payment_method(organization_id)
+                .await?
+            {
                 // No trial, but the card was already collected in-app via the
                 // SetupIntent flow (BillingPlanModal) — create the subscription
-                // directly off the saved card, no Checkout redirect.
+                // directly off the saved card, no Checkout redirect. Checked
+                // against Stripe (not the lagging `has_payment_method` mirror).
                 let result = billing_service
                     .create_paid_subscription(organization_id, request.plan, auth.into_entity())
                     .await?;
