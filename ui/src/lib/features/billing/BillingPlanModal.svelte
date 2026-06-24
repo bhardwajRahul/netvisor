@@ -14,7 +14,7 @@
 		useFinalizePaymentMethodMutation
 	} from '$lib/features/billing/queries';
 	import StripeCardForm from '$lib/features/billing/StripeCardForm.svelte';
-	import { billing_cardStepTitle, billing_cardStepSubtitle } from '$lib/paraglide/messages';
+	import { billing_cardStepTitle } from '$lib/paraglide/messages';
 	import { onboardingStore } from '$lib/features/auth/stores/onboarding';
 	import { useCurrentUserQuery } from '$lib/features/auth/queries';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
@@ -251,9 +251,6 @@
 		>
 			<StripeCardForm
 				clientSecret={cardStep.clientSecret}
-				description={billing_cardStepSubtitle({
-					planName: billingPlanHelpers.getName(cardStep.plan.type)
-				})}
 				onSuccess={handleCardConfirmed}
 				onCancel={() => (cardStep = null)}
 			/>
