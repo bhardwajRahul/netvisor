@@ -82,7 +82,7 @@
 				clientSecret,
 				appearance: { theme: isDark ? 'night' : 'stripe' }
 			});
-			const paymentElement = elements.create('payment');
+			const paymentElement = elements.create('payment', { layout: 'accordion' });
 			paymentElement.on('ready', () => (ready = true));
 			paymentElement.mount(node);
 		})();
