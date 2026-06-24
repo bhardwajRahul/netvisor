@@ -60,6 +60,7 @@
   "auth_youreInvitedTitle": "You're invited!",
   "billing_addPaymentMethod": "Add Payment Method",
   "billing_cardError": "We couldn't process your card. Please check your details and try again.",
+  "billing_cardLoadError": "Card payment couldn't be loaded. Please try again later.",
   "billing_cardStepSubtitle": "Enter your card details to start your {planName} plan.",
   "billing_cardStepTitle": "Add a payment method",
   "billing_everythingInPlanPlus": "Everything in {planName}, plus:",
