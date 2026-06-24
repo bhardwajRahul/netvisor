@@ -72,7 +72,13 @@
 				errorMessage = billing_cardLoadError();
 				return;
 			}
-			elements = stripe.elements({ clientSecret, appearance: { theme: 'night' } });
+			// Match Elements to the app's active theme (toggled via a `dark` class
+			// on <html>), so the card fields don't clash with a light/dark modal.
+			const isDark = document.documentElement.classList.contains('dark');
+			elements = stripe.elements({
+				clientSecret,
+				appearance: { theme: isDark ? 'night' : 'stripe' }
+			});
 			const paymentElement = elements.create('payment');
 			paymentElement.on('ready', () => (ready = true));
 			paymentElement.mount(node);

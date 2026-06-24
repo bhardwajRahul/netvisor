@@ -227,33 +227,40 @@
 	compactPadding={true}
 >
 	<div class="flex min-h-0 flex-1 flex-col">
-		{#if cardStep}
-			<div class="flex min-h-0 flex-1 items-center justify-center overflow-auto p-6">
-				<div class="w-full max-w-md">
-					<h2 class="text-primary mb-1 text-xl font-semibold">{billing_cardStepTitle()}</h2>
-					<p class="text-secondary mb-6 text-sm">
-						{billing_cardStepSubtitle({ planName: billingPlanHelpers.getName(cardStep.plan.type) })}
-					</p>
-					<StripeCardForm
-						clientSecret={cardStep.clientSecret}
-						onSuccess={handleCardConfirmed}
-						onCancel={() => (cardStep = null)}
-					/>
-				</div>
-			</div>
-		{:else}
-			<BillingPlanForm
-				plans={availablePlans}
-				{billingPlanHelpers}
-				{featureHelpers}
-				onPlanSelect={handlePlanSelect}
-				onPlanInquiry={handlePlanInquiry}
-				{recommendedPlan}
-				{isReturningCustomer}
-				{isCurrentlyTrialing}
-			/>
-		{/if}
+		<BillingPlanForm
+			plans={availablePlans}
+			{billingPlanHelpers}
+			{featureHelpers}
+			onPlanSelect={handlePlanSelect}
+			onPlanInquiry={handlePlanInquiry}
+			{recommendedPlan}
+			{isReturningCustomer}
+			{isCurrentlyTrialing}
+		/>
 	</div>
+
+	<!-- Card collection: a normal-chromed dialog stacked over the (borderless,
+	     full-screen) plan grid — mirrors the nested PlanInquiryModal pattern. -->
+	{#if cardStep}
+		<GenericModal
+			isOpen={true}
+			title={billing_cardStepTitle()}
+			size="md"
+			showCloseButton={true}
+			onClose={() => (cardStep = null)}
+		>
+			<div class="p-6">
+				<p class="text-secondary mb-6 text-sm">
+					{billing_cardStepSubtitle({ planName: billingPlanHelpers.getName(cardStep.plan.type) })}
+				</p>
+				<StripeCardForm
+					clientSecret={cardStep.clientSecret}
+					onSuccess={handleCardConfirmed}
+					onCancel={() => (cardStep = null)}
+				/>
+			</div>
+		</GenericModal>
+	{/if}
 
 	<PlanInquiryModal
 		isOpen={inquiryModalOpen}
