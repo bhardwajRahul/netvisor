@@ -535,23 +535,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/billing/setup-payment-method": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Setup payment method (collect card without charging) */
-        post: operations["setup_payment_method"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/billing/webhooks": {
         parameters: {
             query?: never;
@@ -3082,19 +3065,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-06-24T20:00:44.202010Z",
+             *       "created_at": "2026-06-24T21:31:19.413266Z",
              *       "first_discovery_id": null,
-             *       "id": "e083dea2-9144-49f7-a4dc-f832bf4751a8",
+             *       "id": "b44b7952-a7bd-41a8-881e-02990f0b82f9",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-06-24T20:00:44.202010Z",
+             *       "last_seen_at": "2026-06-24T21:31:19.413266Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-06-24T20:00:44.202010Z",
-             *       "valid_from": "2026-06-24T20:00:44.202010Z",
+             *       "updated_at": "2026-06-24T21:31:19.413266Z",
+             *       "valid_from": "2026-06-24T21:31:19.413266Z",
              *       "valid_to": null
              *     }
              */
@@ -3431,19 +3414,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-06-24T20:00:44.182143Z",
+             *               "created_at": "2026-06-24T21:31:19.396982Z",
              *               "first_discovery_id": null,
-             *               "id": "c706a4bc-e24c-4129-bb06-0ee4d84ede7f",
+             *               "id": "44ae390f-0a35-4f9a-ad20-97abe35df708",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-06-24T20:00:44.182143Z",
+             *               "last_seen_at": "2026-06-24T21:31:19.396982Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-06-24T20:00:44.182143Z",
-             *               "valid_from": "2026-06-24T20:00:44.182143Z",
+             *               "updated_at": "2026-06-24T21:31:19.396982Z",
+             *               "valid_from": "2026-06-24T21:31:19.396982Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3457,7 +3440,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Domoticz",
+             *           "service_definition": "NTP Server",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3820,19 +3803,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-06-24T20:00:44.195824Z",
+             *           "created_at": "2026-06-24T21:31:19.407949Z",
              *           "first_discovery_id": null,
-             *           "id": "569ee809-4e23-4a4c-a829-255de306c4ed",
+             *           "id": "639cb3b5-463e-4c88-80a9-1f5b2bebf799",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-06-24T20:00:44.195824Z",
+             *           "last_seen_at": "2026-06-24T21:31:19.407949Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-06-24T20:00:44.195824Z",
-             *           "valid_from": "2026-06-24T20:00:44.195824Z",
+             *           "updated_at": "2026-06-24T21:31:19.407949Z",
+             *           "valid_from": "2026-06-24T21:31:19.407949Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -3846,7 +3829,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Domoticz",
+             *       "service_definition": "NTP Server",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4333,19 +4316,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-06-24T20:00:44.182594Z",
+         *       "created_at": "2026-06-24T21:31:19.397319Z",
          *       "first_discovery_id": null,
-         *       "id": "3e308bee-c1a3-44c7-a4e3-0ab46c79b074",
+         *       "id": "21d42fd8-a608-4f61-a5ac-9f61d49f5dba",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-06-24T20:00:44.182594Z",
+         *       "last_seen_at": "2026-06-24T21:31:19.397319Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-06-24T20:00:44.182594Z",
-         *       "valid_from": "2026-06-24T20:00:44.182594Z",
+         *       "updated_at": "2026-06-24T21:31:19.397319Z",
+         *       "valid_from": "2026-06-24T21:31:19.397319Z",
          *       "valid_to": null
          *     }
          */
@@ -4560,7 +4543,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Domoticz",
+         *           "service_definition": "NTP Server",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -5570,19 +5553,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-06-24T20:00:44.181638Z",
+         *               "created_at": "2026-06-24T21:31:19.396590Z",
          *               "first_discovery_id": null,
-         *               "id": "9cd82fbe-4409-477d-bbe2-aadc8d51b782",
+         *               "id": "c4435fd4-fe34-4e49-990c-b0e40388232b",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-06-24T20:00:44.181638Z",
+         *               "last_seen_at": "2026-06-24T21:31:19.396590Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-06-24T20:00:44.181638Z",
-         *               "valid_from": "2026-06-24T20:00:44.181638Z",
+         *               "updated_at": "2026-06-24T21:31:19.396590Z",
+         *               "valid_from": "2026-06-24T21:31:19.396590Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -5596,7 +5579,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Domoticz",
+         *           "service_definition": "NTP Server",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -7021,19 +7004,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-06-24T20:00:44.182497Z",
+         *           "created_at": "2026-06-24T21:31:19.397242Z",
          *           "first_discovery_id": null,
-         *           "id": "96b9f98a-3eb1-48d8-9b54-1cd96f2df514",
+         *           "id": "7decaaa7-3e15-4c8b-93b1-02546b24fc26",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-06-24T20:00:44.182497Z",
+         *           "last_seen_at": "2026-06-24T21:31:19.397242Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-06-24T20:00:44.182497Z",
-         *           "valid_from": "2026-06-24T20:00:44.182497Z",
+         *           "updated_at": "2026-06-24T21:31:19.397242Z",
+         *           "valid_from": "2026-06-24T21:31:19.397242Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -7047,7 +7030,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Domoticz",
+         *       "service_definition": "NTP Server",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -7160,9 +7143,6 @@ export interface components {
          */
         SetupIntentResponse: {
             client_secret: string;
-        };
-        SetupPaymentMethodRequest: {
-            url: string;
         };
         /** @description Setup request for pre-registration org/network configuration */
         SetupRequest: {
@@ -7470,7 +7450,7 @@ export interface components {
              * @default {
              *       "Application": [
              *         {
-             *           "id": "a581113a-c363-4207-a40d-80985b660021",
+             *           "id": "ac254e05-1b30-4be1-a56c-7ab1efea5a1d",
              *           "rule": {
              *             "ByApplication": {
              *               "tag_ids": []
@@ -7480,23 +7460,23 @@ export interface components {
              *       ],
              *       "L2Physical": [
              *         {
-             *           "id": "9e18863b-a5df-4f28-8c8e-40c73e271ca8",
+             *           "id": "6c590a0c-be5a-4748-95f2-8efe34cf26df",
              *           "rule": "ByHost"
              *         }
              *       ],
              *       "L3Logical": [
              *         {
-             *           "id": "5824bf9d-26e6-47e5-a773-b5cc4d32bdcc",
+             *           "id": "2d0a4cac-85d4-4ab8-bd9e-8fb4922ce692",
              *           "rule": "BySubnet"
              *         },
              *         {
-             *           "id": "a0cece80-761b-4019-b577-2f2953f0fad9",
+             *           "id": "8de48685-c2b4-4fdb-9d03-56cf9d9a8d8d",
              *           "rule": "MergeDockerBridges"
              *         }
              *       ],
              *       "Workloads": [
              *         {
-             *           "id": "9e18863b-a5df-4f28-8c8e-40c73e271ca8",
+             *           "id": "6c590a0c-be5a-4748-95f2-8efe34cf26df",
              *           "rule": "ByHost"
              *         }
              *       ]
@@ -7508,19 +7488,19 @@ export interface components {
             /**
              * @default [
              *       {
-             *         "id": "63e92745-c32d-4270-a03e-13d15221dd30",
+             *         "id": "dcada258-aee4-46c9-b0d7-1596ef18e01a",
              *         "rule": "ByTrunkPort"
              *       },
              *       {
-             *         "id": "c235fd19-7c06-441c-97d2-25ba0e5df88e",
+             *         "id": "20c00c22-d7f1-443b-9404-dc7c3f52868b",
              *         "rule": "ByVLAN"
              *       },
              *       {
-             *         "id": "c554b0cf-98fb-47cb-8f62-0028c6b709b7",
+             *         "id": "35fedc6b-3df6-4bc0-aead-3306b28ab597",
              *         "rule": "ByPortOpStatus"
              *       },
              *       {
-             *         "id": "e9e53b4f-9d64-473a-86a7-0a0c5619a73c",
+             *         "id": "8f0a2ac6-f05f-4ba5-b4b8-8a81cd21a4b5",
              *         "rule": {
              *           "ByServiceCategory": {
              *             "categories": [
@@ -7538,7 +7518,7 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "97ec83ee-efee-41cd-874c-286b204298c0",
+             *         "id": "cd9c43bf-f25f-4790-a4cd-192113538669",
              *         "rule": {
              *           "ByTag": {
              *             "tag_ids": [],
@@ -7547,15 +7527,15 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "e1e10b76-9ffe-4d47-bada-4f0a1c22d658",
+             *         "id": "9e5a1e61-61ba-4b6d-b4e9-27acc2fb8ce0",
              *         "rule": "ByHypervisor"
              *       },
              *       {
-             *         "id": "9a3ce3a3-d3a9-4f80-a7ae-31fe306dc1b9",
+             *         "id": "274d63a6-3a20-4fc1-acb9-778fb68dc900",
              *         "rule": "ByContainerRuntime"
              *       },
              *       {
-             *         "id": "9d7f5219-132b-48a4-85f8-f06d4c34cc49",
+             *         "id": "c82fca3b-1bd0-49b9-8142-065c8ef45ca2",
              *         "rule": "ByStack"
              *       }
              *     ]
@@ -8834,39 +8814,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_Option_SaveOfferCoupon"];
-                };
-            };
-            /** @description Billing not enabled */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiErrorResponse"];
-                };
-            };
-        };
-    };
-    setup_payment_method: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SetupPaymentMethodRequest"];
-            };
-        };
-        responses: {
-            /** @description Setup session URL */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_String"];
                 };
             };
             /** @description Billing not enabled */

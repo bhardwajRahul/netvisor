@@ -10891,19 +10891,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-06-24T20:00:44.202Z",
+              "created_at": "2026-06-24T21:31:19.413278Z",
               "first_discovery_id": null,
-              "id": "8d6b3d6f-dac0-432b-a6c7-cc2c6f5419a8",
+              "id": "cd1a823a-b218-4f54-a7bf-17ec52738b93",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-24T20:00:44.202Z",
+              "last_seen_at": "2026-06-24T21:31:19.413278Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-24T20:00:44.202Z",
-              "valid_from": "2026-06-24T20:00:44.202Z",
+              "updated_at": "2026-06-24T21:31:19.413278Z",
+              "valid_from": "2026-06-24T21:31:19.413278Z",
               "valid_to": null
             }
           },
@@ -11889,19 +11889,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-06-24T20:00:44.182125Z",
+                      "created_at": "2026-06-24T21:31:19.397005Z",
                       "first_discovery_id": null,
-                      "id": "d513ad3a-c66a-4909-b4d4-bbaaa09c9be4",
+                      "id": "31844f61-8a1e-4c5c-a96d-80241c98d838",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-06-24T20:00:44.182125Z",
+                      "last_seen_at": "2026-06-24T21:31:19.397005Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-06-24T20:00:44.182125Z",
-                      "valid_from": "2026-06-24T20:00:44.182125Z",
+                      "updated_at": "2026-06-24T21:31:19.397005Z",
+                      "valid_from": "2026-06-24T21:31:19.397005Z",
                       "valid_to": null
                     }
                   ],
@@ -11915,7 +11915,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Domoticz",
+                  "service_definition": "NTP Server",
                   "source": {
                     "type": "Manual"
                   },
@@ -12913,19 +12913,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-06-24T20:00:44.195843Z",
+                  "created_at": "2026-06-24T21:31:19.407978Z",
                   "first_discovery_id": null,
-                  "id": "7f86b150-6d54-41e5-aaf3-d2062e9838f5",
+                  "id": "620eec69-199d-4246-be72-f84ad6ee189f",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-24T20:00:44.195843Z",
+                  "last_seen_at": "2026-06-24T21:31:19.407978Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-24T20:00:44.195843Z",
-                  "valid_from": "2026-06-24T20:00:44.195843Z",
+                  "updated_at": "2026-06-24T21:31:19.407978Z",
+                  "valid_from": "2026-06-24T21:31:19.407978Z",
                   "valid_to": null
                 }
               ],
@@ -12939,7 +12939,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Domoticz",
+              "service_definition": "NTP Server",
               "source": {
                 "type": "Manual"
               },
@@ -14718,19 +14718,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-06-24T20:00:44.182569Z",
+          "created_at": "2026-06-24T21:31:19.397346Z",
           "first_discovery_id": null,
-          "id": "bc8da9e1-fe84-44dd-be43-924bcc99318a",
+          "id": "d7239602-fc20-4d14-8bdd-c837ab728a8e",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-06-24T20:00:44.182569Z",
+          "last_seen_at": "2026-06-24T21:31:19.397346Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-06-24T20:00:44.182569Z",
-          "valid_from": "2026-06-24T20:00:44.182569Z",
+          "updated_at": "2026-06-24T21:31:19.397346Z",
+          "valid_from": "2026-06-24T21:31:19.397346Z",
           "valid_to": null
         }
       },
@@ -15320,7 +15320,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Domoticz",
+              "service_definition": "NTP Server",
               "tags": [],
               "virtualization": null
             }
@@ -18107,19 +18107,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-06-24T20:00:44.181622Z",
+                  "created_at": "2026-06-24T21:31:19.396602Z",
                   "first_discovery_id": null,
-                  "id": "c70f0243-aedd-45c0-a7dc-3d0a01ae5699",
+                  "id": "9b5fb497-282d-4543-90ee-672ace1112b0",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-24T20:00:44.181622Z",
+                  "last_seen_at": "2026-06-24T21:31:19.396602Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-24T20:00:44.181622Z",
-                  "valid_from": "2026-06-24T20:00:44.181622Z",
+                  "updated_at": "2026-06-24T21:31:19.396602Z",
+                  "valid_from": "2026-06-24T21:31:19.396602Z",
                   "valid_to": null
                 }
               ],
@@ -18133,7 +18133,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Domoticz",
+              "service_definition": "NTP Server",
               "source": {
                 "type": "Manual"
               },
@@ -20566,19 +20566,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-06-24T20:00:44.169774Z",
+                        "created_at": "2026-06-24T21:31:19.386475Z",
                         "first_discovery_id": null,
-                        "id": "f29089e6-6672-4c95-a57c-51f872653c32",
+                        "id": "5d695a7c-fef7-42b4-950d-10c16e783af4",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-06-24T20:00:44.169774Z",
+                        "last_seen_at": "2026-06-24T21:31:19.386475Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-06-24T20:00:44.169774Z",
-                        "valid_from": "2026-06-24T20:00:44.169774Z",
+                        "updated_at": "2026-06-24T21:31:19.386475Z",
+                        "valid_from": "2026-06-24T21:31:19.386475Z",
                         "valid_to": null
                       }
                     ],
@@ -20592,7 +20592,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Domoticz",
+                    "service_definition": "NTP Server",
                     "source": {
                       "type": "Manual"
                     },
@@ -20713,19 +20713,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-06-24T20:00:44.194605Z",
+                    "created_at": "2026-06-24T21:31:19.406915Z",
                     "first_discovery_id": null,
-                    "id": "85e44858-6f8a-45dd-b3a6-883bd8427910",
+                    "id": "eb1c4ca0-74b4-471d-bf61-26681ca4700f",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-06-24T20:00:44.194605Z",
+                    "last_seen_at": "2026-06-24T21:31:19.406915Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-06-24T20:00:44.194605Z",
-                    "valid_from": "2026-06-24T20:00:44.194605Z",
+                    "updated_at": "2026-06-24T21:31:19.406915Z",
+                    "valid_from": "2026-06-24T21:31:19.406915Z",
                     "valid_to": null
                   }
                 ],
@@ -20739,7 +20739,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Domoticz",
+                "service_definition": "NTP Server",
                 "source": {
                   "type": "Manual"
                 },
@@ -22377,19 +22377,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-06-24T20:00:44.182475Z",
+              "created_at": "2026-06-24T21:31:19.397270Z",
               "first_discovery_id": null,
-              "id": "074bfa53-fedb-4724-b6fd-6b8f7242c8fb",
+              "id": "d547fe6c-00b8-42d8-b842-8f07eec7d9f6",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-24T20:00:44.182475Z",
+              "last_seen_at": "2026-06-24T21:31:19.397270Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-24T20:00:44.182475Z",
-              "valid_from": "2026-06-24T20:00:44.182475Z",
+              "updated_at": "2026-06-24T21:31:19.397270Z",
+              "valid_from": "2026-06-24T21:31:19.397270Z",
               "valid_to": null
             }
           ],
@@ -22403,7 +22403,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Domoticz",
+          "service_definition": "NTP Server",
           "source": {
             "type": "Manual"
           },
@@ -22667,17 +22667,6 @@
         ],
         "properties": {
           "client_secret": {
-            "type": "string"
-          }
-        }
-      },
-      "SetupPaymentMethodRequest": {
-        "type": "object",
-        "required": [
-          "url"
-        ],
-        "properties": {
-          "url": {
             "type": "string"
           }
         }
@@ -23519,7 +23508,7 @@
             "default": {
               "Application": [
                 {
-                  "id": "df358df8-1172-4feb-8a7a-09a844d4d7fc",
+                  "id": "accb4571-8040-4416-95a4-170893dd14c2",
                   "rule": {
                     "ByApplication": {
                       "tag_ids": []
@@ -23529,23 +23518,23 @@
               ],
               "L2Physical": [
                 {
-                  "id": "44e11528-76aa-4a4b-b752-52d302de1e8c",
+                  "id": "3ca1eeb6-3be5-456d-a08d-6a28ed46ed36",
                   "rule": "ByHost"
                 }
               ],
               "L3Logical": [
                 {
-                  "id": "a0ed9da1-5835-4f72-a3c1-7a5f085ac6d7",
+                  "id": "fbbbbace-fbd3-42db-9400-64066efee762",
                   "rule": "BySubnet"
                 },
                 {
-                  "id": "8761e394-6ea0-4af7-ab36-fea068a92cc4",
+                  "id": "22092b97-7fc0-4a77-b677-415dab9d1cf8",
                   "rule": "MergeDockerBridges"
                 }
               ],
               "Workloads": [
                 {
-                  "id": "44e11528-76aa-4a4b-b752-52d302de1e8c",
+                  "id": "3ca1eeb6-3be5-456d-a08d-6a28ed46ed36",
                   "rule": "ByHost"
                 }
               ]
@@ -23574,19 +23563,19 @@
             },
             "default": [
               {
-                "id": "3d6b6b84-2e2a-407c-ba2c-565ae5f10742",
+                "id": "8fff7251-1cef-4e78-8482-f09b01c5a8ad",
                 "rule": "ByTrunkPort"
               },
               {
-                "id": "28cf45f7-71bc-44b6-9fea-2275e1de203c",
+                "id": "add0ea45-1fdc-4baf-9982-085b5b2213f3",
                 "rule": "ByVLAN"
               },
               {
-                "id": "646aa814-7799-4f2f-9a83-41265504ad1e",
+                "id": "2013eb9b-1431-46d2-acd8-747552ffa3ce",
                 "rule": "ByPortOpStatus"
               },
               {
-                "id": "f7921ccd-dc8a-419d-85aa-bd039c16863b",
+                "id": "e4d4fd85-11fd-4a8a-ade3-dca73b5196a2",
                 "rule": {
                   "ByServiceCategory": {
                     "categories": [
@@ -23604,7 +23593,7 @@
                 }
               },
               {
-                "id": "05dd0d2f-a533-474c-be8d-91d192ada710",
+                "id": "a86cd791-3884-40a1-a0a4-df2e363511c4",
                 "rule": {
                   "ByTag": {
                     "tag_ids": [],
@@ -23613,15 +23602,15 @@
                 }
               },
               {
-                "id": "d0825968-1b22-48a9-a721-051fe7200f42",
+                "id": "7223103c-5554-4e8f-b17a-5d074d2d86eb",
                 "rule": "ByHypervisor"
               },
               {
-                "id": "2733dcc0-1569-4f2d-b227-bbeacccac3bd",
+                "id": "21eb37dd-680f-4bb1-a313-569b85067d46",
                 "rule": "ByContainerRuntime"
               },
               {
-                "id": "6f001563-b5f5-41c9-b967-381311ec11ba",
+                "id": "ff463e8f-6a20-4879-9409-78ca609a05d0",
                 "rule": "ByStack"
               }
             ]
