@@ -48,8 +48,11 @@ pub enum SubnetType {
     Storage,
     Loopback,
 
+    // `other` makes any variant a newer server emits that this build doesn't
+    // know (the production `unknown variant 'Loopback'` failure) degrade to
+    // `Unknown` instead of hard-erroring. Subsumes the former `alias = "None"`.
     #[default]
-    #[serde(alias = "None")]
+    #[serde(other)]
     Unknown,
 }
 
@@ -339,5 +342,40 @@ impl TypeMetadataProvider for SubnetType {
             "show_label": show_label,
             "hide_from_subnet_list": self.hide_from_subnet_list()
         })
+    }
+}
+
+#[cfg(test)]
+mod forward_compat_tests {
+    use super::*;
+
+    #[test]
+    fn unknown_variant_degrades_to_unknown() {
+        // Reproduces the production `unknown variant 'Loopback'` failure class:
+        // a subnet type a newer server emits that this build doesn't know now
+        // degrades to `Unknown` instead of failing the whole subnets response.
+        let parsed: SubnetType = serde_json::from_str("\"SomeFutureType\"").unwrap();
+        assert_eq!(parsed, SubnetType::Unknown);
+    }
+
+    #[test]
+    fn none_still_parses_to_unknown() {
+        // The former `#[serde(alias = "None")]` is subsumed by `#[serde(other)]`.
+        let parsed: SubnetType = serde_json::from_str("\"None\"").unwrap();
+        assert_eq!(parsed, SubnetType::Unknown);
+    }
+
+    #[test]
+    fn known_variants_round_trip() {
+        for variant in [
+            SubnetType::Loopback,
+            SubnetType::Lan,
+            SubnetType::DockerBridge,
+            SubnetType::Unknown,
+        ] {
+            let json = serde_json::to_string(&variant).unwrap();
+            let back: SubnetType = serde_json::from_str(&json).unwrap();
+            assert_eq!(variant, back);
+        }
     }
 }

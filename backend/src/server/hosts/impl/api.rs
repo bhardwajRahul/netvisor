@@ -619,6 +619,10 @@ pub struct HostResponse {
     pub hostname: Option<String>,
     pub description: Option<String>,
     pub source: EntitySource,
+    #[serde(
+        default,
+        deserialize_with = "crate::server::shared::types::api::deserialize_lenient_option"
+    )]
     pub virtualization: Option<HostVirtualization>,
     pub hidden: bool,
     pub tags: Vec<Uuid>,
