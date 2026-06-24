@@ -236,6 +236,7 @@
 			{recommendedPlan}
 			{isReturningCustomer}
 			{isCurrentlyTrialing}
+			currentPlanType={organization?.plan?.type ?? null}
 		/>
 	</div>
 
