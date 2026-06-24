@@ -151,6 +151,18 @@ async fn create_checkout_session(
                 let is_returning = has_non_free_plan || org.base.trial_end_date.is_some();
                 let is_trial_eligible = !is_returning && request.plan.config().trial_days > 0;
 
+                // Authoritative card-on-file check via Stripe (not the
+                // `has_payment_method` mirror, which lags the in-app SetupIntent
+                // flow by an event-bus tick). Only queried when we might route to
+                // a direct charge — trial-eligible orgs skip it.
+                let has_payment_method = if is_trial_eligible {
+                    false
+                } else {
+                    billing_service
+                        .customer_has_payment_method(organization_id)
+                        .await?
+                };
+
                 if is_trial_eligible {
                     // Trial-eligible — create subscription directly, skip Checkout
                     let result = billing_service
@@ -161,7 +173,7 @@ async fn create_checkout_session(
                         )
                         .await?;
                     Ok(Json(ApiResponse::success(result)))
-                } else if has_non_free_plan && org.base.has_payment_method {
+                } else if has_non_free_plan && has_payment_method {
                     // Live paid subscription + card on file — modify it in place.
                     let result = billing_service
                         .change_plan(organization_id, request.plan, auth.into_entity())
