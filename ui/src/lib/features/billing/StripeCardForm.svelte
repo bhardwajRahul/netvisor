@@ -4,8 +4,10 @@
 	import {
 		common_cancel,
 		common_continue,
+		common_loading,
 		common_processing,
-		billing_cardError
+		billing_cardError,
+		billing_cardLoadError
 	} from '$lib/paraglide/messages';
 
 	let {
@@ -28,6 +30,9 @@
 
 	const configQuery = useConfigQuery();
 	let publishableKey = $derived(configQuery.data?.stripe_publishable_key ?? null);
+	// Distinguish "config still loading" from "config loaded but key absent" so
+	// we can surface a clear error instead of an indefinitely-blank element.
+	let configLoaded = $derived(configQuery.data != null);
 
 	let container = $state<HTMLDivElement | null>(null);
 	let stripe: Stripe | null = null;
@@ -35,21 +40,45 @@
 	let ready = $state(false);
 	let busy = $state(false);
 	let errorMessage = $state('');
+	let loadFailed = $state(false);
 	let initialized = false;
 
 	// Mount the Payment Element once we have the publishable key, a client
 	// secret, and the container node. loadStripe + element creation happen once.
 	$effect(() => {
-		if (initialized || !publishableKey || !clientSecret || !container) return;
+		if (initialized || !clientSecret || !container) return;
+
+		// Billing is enabled but no publishable key is configured on this
+		// deployment — Elements can't load. Fail loudly rather than rendering a
+		// blank box. (Operator fix: set SCANOPY_STRIPE_KEY / --stripe-key.)
+		if (configLoaded && !publishableKey) {
+			initialized = true;
+			loadFailed = true;
+			errorMessage = billing_cardLoadError();
+			console.error(
+				'StripeCardForm: stripe_publishable_key missing from /api/config — set SCANOPY_STRIPE_KEY (or --stripe-key) on the server.'
+			);
+			return;
+		}
+
+		if (!publishableKey) return; // config still loading
+
 		initialized = true;
 		const node = container;
 		void (async () => {
 			stripe = await loadStripe(publishableKey);
 			if (!stripe) {
-				errorMessage = billing_cardError();
+				loadFailed = true;
+				errorMessage = billing_cardLoadError();
 				return;
 			}
-			elements = stripe.elements({ clientSecret, appearance: { theme: 'night' } });
+			// Match Elements to the app's active theme (toggled via a `dark` class
+			// on <html>), so the card fields don't clash with a light/dark modal.
+			const isDark = document.documentElement.classList.contains('dark');
+			elements = stripe.elements({
+				clientSecret,
+				appearance: { theme: isDark ? 'night' : 'stripe' }
+			});
 			const paymentElement = elements.create('payment');
 			paymentElement.on('ready', () => (ready = true));
 			paymentElement.mount(node);
@@ -95,7 +124,16 @@
 	}}
 	class="flex flex-col gap-4"
 >
-	<div bind:this={container}></div>
+	<!-- Stripe mounts the Payment Element iframe here. Reserve height so the
+	     layout doesn't jump while it loads. -->
+	<div class="relative min-h-[3rem]">
+		<div bind:this={container}></div>
+		{#if !ready && !loadFailed}
+			<p class="text-secondary absolute inset-0 flex items-center justify-center text-sm">
+				{common_loading()}
+			</p>
+		{/if}
+	</div>
 
 	{#if errorMessage}
 		<p class="text-sm text-red-400">{errorMessage}</p>

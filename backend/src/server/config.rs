@@ -59,11 +59,15 @@ pub struct ServerCli {
     #[arg(long, num_args = 0..=1, default_missing_value = "true")]
     disable_password_login: Option<bool>,
 
-    /// OIDC redirect url
+    /// Stripe publishable key (exposed to the frontend for Stripe Elements)
+    #[arg(long)]
+    stripe_key: Option<String>,
+
+    /// Stripe secret key
     #[arg(long)]
     stripe_secret: Option<String>,
 
-    /// OIDC redirect url
+    /// Stripe webhook signing secret
     #[arg(long)]
     stripe_webhook_secret: Option<String>,
 
@@ -279,6 +283,9 @@ impl ServerConfig {
         }
         if let Some(use_secure_session_cookies) = cli_args.use_secure_session_cookies {
             figment = figment.merge(("use_secure_session_cookies", use_secure_session_cookies));
+        }
+        if let Some(stripe_key) = cli_args.stripe_key {
+            figment = figment.merge(("stripe_key", stripe_key));
         }
         if let Some(stripe_secret) = cli_args.stripe_secret {
             figment = figment.merge(("stripe_secret", stripe_secret));
