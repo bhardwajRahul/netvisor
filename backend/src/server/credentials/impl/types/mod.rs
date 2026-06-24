@@ -22,7 +22,7 @@ mod secrets;
 
 pub use fields::{FieldDefinition, FieldType, InlineFormat, PemTag, SelectOption};
 pub use metadata::{
-    CredentialAssignment, CredentialCategory, CredentialHostAssignment, ScopeModel,
+    CredentialAssignment, CredentialCategory, CredentialHostAssignment, ScopeModel, Target,
 };
 pub use secrets::{
     FileOrInline, REDACTED_SECRET_SENTINEL, SecretValue, StorageCredentialType,
@@ -205,6 +205,48 @@ impl CredentialType {
         }
     }
 
+    /// Where this credential type can be applied. Supersedes `scope_models()`
+    /// (Broadcast→Network, PerHost→Host) and adds the daemon's own host.
+    pub fn targets(&self) -> Vec<Target> {
+        match self {
+            // SNMP can target the daemon's own host too (a 127.0.0.1 IP-override),
+            // a specific host, or a whole network.
+            Self::SnmpV1 { .. } | Self::SnmpV2c { .. } | Self::SnmpV3 { .. } => {
+                vec![Target::DaemonHost, Target::Host, Target::Network]
+            }
+            // Docker proxy: on the daemon host (localhost proxy) or a remote host.
+            Self::DockerProxy { .. } => vec![Target::DaemonHost, Target::Host],
+            // Local socket: only the daemon's own host.
+            Self::DockerSocket {} => vec![Target::DaemonHost],
+        }
+    }
+
+    /// Whether the user must provide any configuration (fields) for this type.
+    /// Derived from `field_definitions()` — a type with no fields needs nothing.
+    pub fn requires_config(&self) -> bool {
+        !self.field_definitions().is_empty()
+    }
+
+    /// Whether this type is a zero-config local capability the daemon auto-detects
+    /// (e.g. the Docker socket): no config to provide and applicable to the daemon's
+    /// own host. Such types render as an on/off toggle and persist as daemon config,
+    /// not as a credential. Derived — never declared per-variant.
+    pub fn is_local_auto(&self) -> bool {
+        !self.requires_config() && self.targets().contains(&Target::DaemonHost)
+    }
+
+    /// Whether this integration is a single service instance per host, so its
+    /// access methods at a given target are mutually exclusive (e.g. a container
+    /// runtime is reached by exactly one of socket/proxy). `false` for try-many
+    /// auth integrations like SNMP (multiple credentials are attempted). All
+    /// credential types of the same integration agree.
+    pub fn single_endpoint_per_host(&self) -> bool {
+        match self {
+            Self::DockerProxy { .. } | Self::DockerSocket {} => true,
+            Self::SnmpV1 { .. } | Self::SnmpV2c { .. } | Self::SnmpV3 { .. } => false,
+        }
+    }
+
     /// Get the inline string value for a field by ID.
     /// Returns None for FilePath mode, None fields, or redacted sentinels.
     fn get_inline_value(&self, field_id: &str) -> Option<String> {
@@ -274,10 +316,11 @@ impl CredentialType {
         }
     }
 
-    /// Whether this credential type should be shown in the UI for user creation.
-    /// Some credential types are auto-managed by daemons and not user-selectable.
+    /// Whether this credential type is created as a user credential (vs. rendered
+    /// as a daemon auto-capability toggle). Auto-local types (e.g. the Docker
+    /// socket) are managed as daemon config, not created as credentials.
     pub fn is_user_selectable(&self) -> bool {
-        !matches!(self, Self::DockerSocket {})
+        !self.is_local_auto()
     }
 
     /// Convert to wire format payload for daemon transmission.

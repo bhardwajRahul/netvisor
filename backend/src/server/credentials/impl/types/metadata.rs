@@ -37,6 +37,19 @@ pub enum ScopeModel {
     PerHost,
 }
 
+/// Where a credential / integration applies. Supersedes `ScopeModel`:
+/// `Network` ⇔ Broadcast, `Host` ⇔ PerHost, plus `DaemonHost` for the daemon's
+/// own host (e.g. the local Docker socket, realized as a 127.0.0.1 IP-override).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, ToSchema, PartialEq, Eq, Hash)]
+pub enum Target {
+    /// The daemon's own host (local). Daemon-relative.
+    DaemonHost,
+    /// Specific discovered host(s), optionally limited to specific IP addresses.
+    Host,
+    /// All hosts on a network (broadcast default).
+    Network,
+}
+
 /// A credential assigned to a host, optionally limited to specific ip_addresses.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, ToSchema)]
 pub struct CredentialAssignment {
@@ -165,6 +178,10 @@ impl TypeMetadataProvider for CredentialTypeDiscriminants {
         serde_json::json!({
             "fields": ct.field_definitions(),
             "scope_models": ct.scope_models(),
+            "targets": ct.targets(),
+            "requires_config": ct.requires_config(),
+            "is_local_auto": ct.is_local_auto(),
+            "single_endpoint_per_host": ct.single_endpoint_per_host(),
             "associated_service": ServiceDefinition::name(&*service),
             "has_logo": service.has_logo(),
             "logo_ext": logo_ext,
