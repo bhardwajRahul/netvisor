@@ -402,6 +402,30 @@ mod tests {
     use super::*;
     use crate::server::credentials::r#impl::mapping::CredentialQueryPayload;
     use secrecy::SecretString;
+    use std::collections::HashMap;
+    use strum::IntoEnumIterator;
+
+    /// `single_endpoint_per_host()` is an integration-level property expressed
+    /// per credential type, so every credential type sharing an `associated_service`
+    /// must agree — otherwise the integration's exclusivity rule is incoherent.
+    #[test]
+    fn single_endpoint_per_host_agrees_within_integration() {
+        let mut by_service: HashMap<&'static str, bool> = HashMap::new();
+        for disc in CredentialTypeDiscriminants::iter() {
+            let ct = disc.to_credential_type();
+            let service = ct.associated_service().name();
+            let value = ct.single_endpoint_per_host();
+            match by_service.get(service) {
+                Some(&existing) => assert_eq!(
+                    existing, value,
+                    "credential types for integration '{service}' disagree on single_endpoint_per_host",
+                ),
+                None => {
+                    by_service.insert(service, value);
+                }
+            }
+        }
+    }
 
     fn snmp_cred(community: &str) -> CredentialType {
         CredentialType::SnmpV2c {

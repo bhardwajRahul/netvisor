@@ -30,7 +30,20 @@ impl DiscoveryRunner {
             .await?;
         let ops = DiscoveryOps::new(&self.service, DiscoveryType::from(&*self));
 
-        // Inject DockerSocket credential if local socket is accessible and enabled
+        // Inject DockerSocket credential if local socket is accessible and enabled.
+        //
+        // NOTE (future generalization): this is intentionally Docker-specific while
+        // Docker is the *only* auto-local integration (`CredentialType::is_local_auto()`
+        // is true only for `DockerSocket`). When a second auto-local integration is
+        // added (e.g. a local Podman socket), generalize this block: loop over the
+        // credential-type discriminants where `to_credential_type().is_local_auto()`,
+        // and for each — gated by a per-capability daemon flag (e.g. an
+        // `enabled_local_capabilities: HashMap<CredentialTypeDiscriminants, bool>`
+        // replacing the single `enable_local_docker_socket`) and its own connectivity
+        // probe — inject `to_credential_type().to_query_payload()` as a 127.0.0.1
+        // IP-override (keeping the dedupe check below). The exhaustive match the new
+        // variant forces will surface every spot that needs a probe. Kept specific for
+        // now to avoid a speculative probe/flag abstraction for a single integration.
         let enable_local = self
             .service
             .config_store
