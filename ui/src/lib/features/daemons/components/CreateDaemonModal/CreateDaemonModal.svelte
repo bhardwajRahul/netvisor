@@ -166,6 +166,8 @@
 	let credentialWizardRef: ReturnType<typeof CredentialWizardStep> | undefined = $state();
 	let credentialSubStep = $state<'typeSelect' | 'wizard'>('typeSelect');
 	let selectedCredentialTypeIds = $state<string[]>([]);
+	// Auto-local capability toggles (e.g. DockerSocket) — map to daemon install flags.
+	let localCapabilityEnabled = $state<Record<string, boolean>>({});
 	let pendingCredentials = $state<PendingCredential[]>([]);
 	let credentialIds = $state<string[]>([]);
 	let hasDockerProxyCredential = $derived(
@@ -350,7 +352,9 @@
 	let dockerConfig = $derived({
 		mode: dockerMode,
 		credentialId: null as string | null,
-		disableLocalSocket: hasDockerProxyCredential
+		// Local Docker socket is disabled when a localhost proxy is configured, or
+		// when the user turns off the "Scan local Docker" integration toggle.
+		disableLocalSocket: hasDockerProxyCredential || localCapabilityEnabled['DockerSocket'] === false
 	});
 	let allCredentialIds = $derived([...credentialIds]);
 	let runCommand = $derived(
@@ -716,6 +720,7 @@
 		showAdvanced = false;
 		credentialSubStep = 'typeSelect';
 		selectedCredentialTypeIds = [];
+		localCapabilityEnabled = {};
 		pendingCredentials = [];
 		credentialIds = [];
 		connectionStatus = 'idle';
@@ -742,6 +747,7 @@
 		showAdvanced = false;
 		credentialSubStep = 'typeSelect';
 		selectedCredentialTypeIds = [];
+		localCapabilityEnabled = {};
 		connectionStatus = 'idle';
 		startedAsFirstDaemon = isFirstDaemon;
 		serverPollReachable = null;
@@ -787,7 +793,10 @@
 		{:else if activeTab === 'credentials'}
 			{#if credentialSubStep === 'typeSelect'}
 				<div class="flex min-h-0 flex-1 flex-col">
-					<CredentialTypeSelectStep bind:selectedTypeIds={selectedCredentialTypeIds} />
+					<CredentialTypeSelectStep
+						bind:selectedTypeIds={selectedCredentialTypeIds}
+						bind:localCapabilityEnabled
+					/>
 				</div>
 			{:else}
 				<div class="flex min-h-0 flex-1 flex-col">
