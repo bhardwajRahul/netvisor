@@ -797,6 +797,22 @@ where
     Ok(opt.and_then(|vec| if vec.is_empty() { None } else { Some(vec) }))
 }
 
+/// Forward-compatible deserialization for an optional nested type whose variant
+/// set may grow on the server (e.g. a virtualization provider added in a newer
+/// release). A value the current build cannot parse degrades to `None` instead
+/// of failing the entire response — so an old daemon tolerates a newer server's
+/// payload. Pairs with `#[serde(default)]`. Only the field that holds the type
+/// becomes lenient; the type's own variants are untouched, so no exhaustive
+/// `match` or metadata impl needs a fallback variant.
+pub fn deserialize_lenient_option<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: DeserializeOwned,
+{
+    let value = Option::<serde_json::Value>::deserialize(deserializer)?;
+    Ok(value.and_then(|v| serde_json::from_value(v).ok()))
+}
+
 #[cfg(test)]
 mod metric_error_code_tests {
     use super::*;

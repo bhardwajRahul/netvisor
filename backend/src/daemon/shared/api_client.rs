@@ -1,8 +1,9 @@
 use crate::daemon::shared::config::ConfigStore;
+use crate::daemon::shared::forward_compat::DaemonResponse;
 use crate::server::shared::types::api::{ApiErrorResponse, ApiResponse};
 use anyhow::{Error, bail};
 use reqwest::{Client, Method, RequestBuilder};
-use serde::{Serialize, de::DeserializeOwned};
+use serde::Serialize;
 use std::error::Error as StdError;
 use std::sync::Arc;
 use std::time::Duration;
@@ -218,7 +219,7 @@ impl DaemonApiClient {
     }
 
     /// Execute request and parse ApiResponse, extracting data
-    async fn execute<T: DeserializeOwned>(
+    async fn execute<T: DaemonResponse>(
         &self,
         request: RequestBuilder,
         context: &str,
@@ -261,13 +262,13 @@ impl DaemonApiClient {
     }
 
     /// GET request
-    pub async fn get<T: DeserializeOwned>(&self, path: &str, context: &str) -> Result<T, Error> {
+    pub async fn get<T: DaemonResponse>(&self, path: &str, context: &str) -> Result<T, Error> {
         let request = self.build_request(Method::GET, path).await?;
         self.execute(request, context).await
     }
 
     /// POST request with JSON body
-    pub async fn post<B: Serialize, T: DeserializeOwned>(
+    pub async fn post<B: Serialize, T: DaemonResponse>(
         &self,
         path: &str,
         body: &B,
