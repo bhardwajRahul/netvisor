@@ -2,38 +2,6 @@
 use super::*;
 
 impl BillingService {
-    /// Create a checkout session in setup mode to collect payment method
-    pub async fn create_setup_payment_method_session(
-        &self,
-        organization_id: Uuid,
-        success_url: String,
-        cancel_url: String,
-        authentication: AuthenticatedEntity,
-    ) -> Result<CheckoutSession, Error> {
-        let customer_id = self
-            .get_or_create_customer(organization_id, authentication)
-            .await?;
-
-        let session = CreateCheckoutSession::new()
-            .customer(customer_id)
-            .success_url(success_url)
-            .cancel_url(cancel_url)
-            .mode(CheckoutSessionMode::Setup)
-            .currency(stripe_types::Currency::USD)
-            .metadata([("organization_id".to_string(), organization_id.to_string())])
-            .send(&self.stripe)
-            .await
-            .map_err(|e| anyhow!(e.to_string()))?;
-
-        tracing::info!(
-            organization_id = %organization_id,
-            session_id = %session.id,
-            "Setup payment method session created"
-        );
-
-        Ok(session)
-    }
-
     /// Create a SetupIntent for the org's Stripe customer, returning its
     /// `client_secret` for the frontend Payment Element. Ensures the customer
     /// exists first (created at card-collection time, per the signup flow).
