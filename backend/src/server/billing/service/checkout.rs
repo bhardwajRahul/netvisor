@@ -249,6 +249,64 @@ impl BillingService {
         Ok(format!("Your {} trial has started!", plan.name()))
     }
 
+    /// Create a paid (no-trial) subscription directly via the Stripe API,
+    /// skipping Checkout. Used when the card was already collected in-app via a
+    /// SetupIntent (BillingPlanModal), so the customer's default payment method
+    /// is on file and the first invoice charges immediately. Mirrors
+    /// `create_trial_subscription` without the trial period/settings.
+    pub async fn create_paid_subscription(
+        &self,
+        organization_id: Uuid,
+        plan: BillingPlan,
+        authentication: AuthenticatedEntity,
+    ) -> Result<String, Error> {
+        let auth_for_event = authentication.clone();
+
+        let customer_id = self
+            .get_or_create_customer(organization_id, authentication)
+            .await?;
+
+        let base_price = self
+            .get_price_from_lookup_key(plan.stripe_base_price_lookup_key())
+            .await?
+            .ok_or_else(|| anyhow!("Could not find base price for selected plan"))?;
+
+        let subscription = CreateSubscription::new(customer_id)
+            .items(vec![CreateSubscriptionItems {
+                price: Some(base_price.id.to_string()),
+                quantity: Some(1),
+                ..Default::default()
+            }])
+            .metadata([
+                ("organization_id".to_string(), organization_id.to_string()),
+                ("plan".to_string(), serde_json::to_string(&plan)?),
+            ])
+            .send(&self.stripe)
+            .await
+            .map_err(|e| anyhow!(e.to_string()))?;
+
+        tracing::info!(
+            organization_id = %organization_id,
+            plan = %plan.name(),
+            subscription_id = %subscription.id,
+            "Paid subscription created directly (skipped checkout)"
+        );
+
+        // Publish checkout_started event for email automation
+        self.event_bus
+            .publish(Event::new(
+                OrgScope { organization_id },
+                BillingOperation::CheckoutStarted {
+                    plan,
+                    has_trial: false,
+                },
+                auth_for_event,
+            ))
+            .await?;
+
+        Ok(format!("Your {} subscription is active!", plan.name()))
+    }
+
     pub async fn update_addon_prices(
         &self,
         organization: Organization,

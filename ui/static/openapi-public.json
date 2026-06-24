@@ -10891,19 +10891,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-06-23T22:01:20.033211Z",
+              "created_at": "2026-06-24T20:00:44.202Z",
               "first_discovery_id": null,
-              "id": "7c87985b-7558-4c0c-9bb1-551c8ec2e4b6",
+              "id": "8d6b3d6f-dac0-432b-a6c7-cc2c6f5419a8",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-23T22:01:20.033211Z",
+              "last_seen_at": "2026-06-24T20:00:44.202Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-23T22:01:20.033211Z",
-              "valid_from": "2026-06-23T22:01:20.033211Z",
+              "updated_at": "2026-06-24T20:00:44.202Z",
+              "valid_from": "2026-06-24T20:00:44.202Z",
               "valid_to": null
             }
           },
@@ -11889,19 +11889,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-06-23T22:01:20.013910Z",
+                      "created_at": "2026-06-24T20:00:44.182125Z",
                       "first_discovery_id": null,
-                      "id": "9bc0865a-35f9-4cbb-b615-87dbf2e27ee7",
+                      "id": "d513ad3a-c66a-4909-b4d4-bbaaa09c9be4",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-06-23T22:01:20.013910Z",
+                      "last_seen_at": "2026-06-24T20:00:44.182125Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-06-23T22:01:20.013910Z",
-                      "valid_from": "2026-06-23T22:01:20.013910Z",
+                      "updated_at": "2026-06-24T20:00:44.182125Z",
+                      "valid_from": "2026-06-24T20:00:44.182125Z",
                       "valid_to": null
                     }
                   ],
@@ -11915,7 +11915,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "JetDirect",
+                  "service_definition": "Domoticz",
                   "source": {
                     "type": "Manual"
                   },
@@ -12706,6 +12706,13 @@
                 "format": "int32",
                 "description": "`SCANOPY_SNAPSHOT_RETENTION_DAYS_OVERRIDE` if set on this instance.\nFrontend uses it inside the plan-comparison view to display the\neffective retention for this deployment rather than the per-plan\nfixture default.",
                 "minimum": 0
+              },
+              "stripe_publishable_key": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Stripe publishable key, exposed so the frontend can mount Stripe\nElements (Payment Element) for in-app card collection. `None` when\nbilling isn't configured. Publishable keys are safe to expose to the\nbrowser (same as `posthog_key`)."
               }
             }
           },
@@ -12906,19 +12913,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-06-23T22:01:20.027227Z",
+                  "created_at": "2026-06-24T20:00:44.195843Z",
                   "first_discovery_id": null,
-                  "id": "b1f6ec5a-9693-4131-93f8-421c73f9bd46",
+                  "id": "7f86b150-6d54-41e5-aaf3-d2062e9838f5",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-23T22:01:20.027227Z",
+                  "last_seen_at": "2026-06-24T20:00:44.195843Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-23T22:01:20.027227Z",
-                  "valid_from": "2026-06-23T22:01:20.027227Z",
+                  "updated_at": "2026-06-24T20:00:44.195843Z",
+                  "valid_from": "2026-06-24T20:00:44.195843Z",
                   "valid_to": null
                 }
               ],
@@ -12932,7 +12939,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "JetDirect",
+              "service_definition": "Domoticz",
               "source": {
                 "type": "Manual"
               },
@@ -12941,6 +12948,39 @@
               "valid_from": "2026-01-15T10:30:00Z",
               "valid_to": null,
               "virtualization": null
+            }
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ApiMeta"
+          },
+          "success": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ApiResponse_SetupIntentResponse": {
+        "type": "object",
+        "required": [
+          "success",
+          "meta"
+        ],
+        "properties": {
+          "data": {
+            "type": "object",
+            "description": "Response for creating a SetupIntent — the client secret the frontend\nPayment Element uses to collect and confirm a card in-app.",
+            "required": [
+              "client_secret"
+            ],
+            "properties": {
+              "client_secret": {
+                "type": "string"
+              }
             }
           },
           "error": {
@@ -14678,19 +14718,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-06-23T22:01:20.014362Z",
+          "created_at": "2026-06-24T20:00:44.182569Z",
           "first_discovery_id": null,
-          "id": "ae266804-6841-4cc9-855a-a07fa809ec50",
+          "id": "bc8da9e1-fe84-44dd-be43-924bcc99318a",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-06-23T22:01:20.014362Z",
+          "last_seen_at": "2026-06-24T20:00:44.182569Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-06-23T22:01:20.014362Z",
-          "valid_from": "2026-06-23T22:01:20.014362Z",
+          "updated_at": "2026-06-24T20:00:44.182569Z",
+          "valid_from": "2026-06-24T20:00:44.182569Z",
           "valid_to": null
         }
       },
@@ -15280,7 +15320,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "JetDirect",
+              "service_definition": "Domoticz",
               "tags": [],
               "virtualization": null
             }
@@ -17558,6 +17598,18 @@
         ],
         "description": "Non-secret value that can be inline content or a file path on daemon host."
       },
+      "FinalizePaymentMethodRequest": {
+        "type": "object",
+        "description": "Request to finalize a client-confirmed SetupIntent (set the collected card\nas the customer's default payment method).",
+        "required": [
+          "setup_intent_id"
+        ],
+        "properties": {
+          "setup_intent_id": {
+            "type": "string"
+          }
+        }
+      },
       "ForgotPasswordRequest": {
         "type": "object",
         "required": [
@@ -18055,19 +18107,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-06-23T22:01:20.013400Z",
+                  "created_at": "2026-06-24T20:00:44.181622Z",
                   "first_discovery_id": null,
-                  "id": "e7a87a5d-7991-47bf-8676-80aca1263cbb",
+                  "id": "c70f0243-aedd-45c0-a7dc-3d0a01ae5699",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-23T22:01:20.013400Z",
+                  "last_seen_at": "2026-06-24T20:00:44.181622Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-23T22:01:20.013400Z",
-                  "valid_from": "2026-06-23T22:01:20.013400Z",
+                  "updated_at": "2026-06-24T20:00:44.181622Z",
+                  "valid_from": "2026-06-24T20:00:44.181622Z",
                   "valid_to": null
                 }
               ],
@@ -18081,7 +18133,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "JetDirect",
+              "service_definition": "Domoticz",
               "source": {
                 "type": "Manual"
               },
@@ -20514,19 +20566,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-06-23T22:01:20.001335Z",
+                        "created_at": "2026-06-24T20:00:44.169774Z",
                         "first_discovery_id": null,
-                        "id": "ced1e8cd-1d1c-47ce-8e55-08646fbae0c5",
+                        "id": "f29089e6-6672-4c95-a57c-51f872653c32",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-06-23T22:01:20.001335Z",
+                        "last_seen_at": "2026-06-24T20:00:44.169774Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-06-23T22:01:20.001335Z",
-                        "valid_from": "2026-06-23T22:01:20.001335Z",
+                        "updated_at": "2026-06-24T20:00:44.169774Z",
+                        "valid_from": "2026-06-24T20:00:44.169774Z",
                         "valid_to": null
                       }
                     ],
@@ -20540,7 +20592,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "JetDirect",
+                    "service_definition": "Domoticz",
                     "source": {
                       "type": "Manual"
                     },
@@ -20661,19 +20713,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-06-23T22:01:20.025978Z",
+                    "created_at": "2026-06-24T20:00:44.194605Z",
                     "first_discovery_id": null,
-                    "id": "a85e3b96-4206-4f6d-a992-e302e16679be",
+                    "id": "85e44858-6f8a-45dd-b3a6-883bd8427910",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-06-23T22:01:20.025978Z",
+                    "last_seen_at": "2026-06-24T20:00:44.194605Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-06-23T22:01:20.025978Z",
-                    "valid_from": "2026-06-23T22:01:20.025978Z",
+                    "updated_at": "2026-06-24T20:00:44.194605Z",
+                    "valid_from": "2026-06-24T20:00:44.194605Z",
                     "valid_to": null
                   }
                 ],
@@ -20687,7 +20739,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "JetDirect",
+                "service_definition": "Domoticz",
                 "source": {
                   "type": "Manual"
                 },
@@ -21790,6 +21842,13 @@
             "format": "int32",
             "description": "`SCANOPY_SNAPSHOT_RETENTION_DAYS_OVERRIDE` if set on this instance.\nFrontend uses it inside the plan-comparison view to display the\neffective retention for this deployment rather than the per-plan\nfixture default.",
             "minimum": 0
+          },
+          "stripe_publishable_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Stripe publishable key, exposed so the frontend can mount Stripe\nElements (Payment Element) for in-app card collection. `None` when\nbilling isn't configured. Publishable keys are safe to expose to the\nbrowser (same as `posthog_key`)."
           }
         }
       },
@@ -22318,19 +22377,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-06-23T22:01:20.014263Z",
+              "created_at": "2026-06-24T20:00:44.182475Z",
               "first_discovery_id": null,
-              "id": "e92d7020-2690-4c33-b810-9b08f86e7b49",
+              "id": "074bfa53-fedb-4724-b6fd-6b8f7242c8fb",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-23T22:01:20.014263Z",
+              "last_seen_at": "2026-06-24T20:00:44.182475Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-23T22:01:20.014263Z",
-              "valid_from": "2026-06-23T22:01:20.014263Z",
+              "updated_at": "2026-06-24T20:00:44.182475Z",
+              "valid_from": "2026-06-24T20:00:44.182475Z",
               "valid_to": null
             }
           ],
@@ -22344,7 +22403,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "JetDirect",
+          "service_definition": "Domoticz",
           "source": {
             "type": "Manual"
           },
@@ -22597,6 +22656,18 @@
               "format": "uuid"
             },
             "description": "The new list of tag IDs"
+          }
+        }
+      },
+      "SetupIntentResponse": {
+        "type": "object",
+        "description": "Response for creating a SetupIntent — the client secret the frontend\nPayment Element uses to collect and confirm a card in-app.",
+        "required": [
+          "client_secret"
+        ],
+        "properties": {
+          "client_secret": {
+            "type": "string"
           }
         }
       },
@@ -23448,7 +23519,7 @@
             "default": {
               "Application": [
                 {
-                  "id": "23c412d5-0eec-4d0b-8e4f-8ac0aaccef98",
+                  "id": "df358df8-1172-4feb-8a7a-09a844d4d7fc",
                   "rule": {
                     "ByApplication": {
                       "tag_ids": []
@@ -23458,23 +23529,23 @@
               ],
               "L2Physical": [
                 {
-                  "id": "83bb2af1-f9e8-4d63-88f5-f8c02d3a7062",
+                  "id": "44e11528-76aa-4a4b-b752-52d302de1e8c",
                   "rule": "ByHost"
                 }
               ],
               "L3Logical": [
                 {
-                  "id": "f09ce4f1-6738-4d8b-b188-0e16e1313c88",
+                  "id": "a0ed9da1-5835-4f72-a3c1-7a5f085ac6d7",
                   "rule": "BySubnet"
                 },
                 {
-                  "id": "37d6d831-532a-4f6f-b9da-76fa4a3194a3",
+                  "id": "8761e394-6ea0-4af7-ab36-fea068a92cc4",
                   "rule": "MergeDockerBridges"
                 }
               ],
               "Workloads": [
                 {
-                  "id": "83bb2af1-f9e8-4d63-88f5-f8c02d3a7062",
+                  "id": "44e11528-76aa-4a4b-b752-52d302de1e8c",
                   "rule": "ByHost"
                 }
               ]
@@ -23503,19 +23574,19 @@
             },
             "default": [
               {
-                "id": "33c0b5f9-dd42-4d04-a61b-47f52354c500",
+                "id": "3d6b6b84-2e2a-407c-ba2c-565ae5f10742",
                 "rule": "ByTrunkPort"
               },
               {
-                "id": "e70213da-5601-42a0-95fc-b90316c436de",
+                "id": "28cf45f7-71bc-44b6-9fea-2275e1de203c",
                 "rule": "ByVLAN"
               },
               {
-                "id": "580f9fb8-3070-4127-9036-748ff5618c2f",
+                "id": "646aa814-7799-4f2f-9a83-41265504ad1e",
                 "rule": "ByPortOpStatus"
               },
               {
-                "id": "371e07e4-ee0f-490a-ae3f-1a755f7bc92a",
+                "id": "f7921ccd-dc8a-419d-85aa-bd039c16863b",
                 "rule": {
                   "ByServiceCategory": {
                     "categories": [
@@ -23533,7 +23604,7 @@
                 }
               },
               {
-                "id": "99c9d7eb-0ca5-41da-bfcc-7c25cc59bfa8",
+                "id": "05dd0d2f-a533-474c-be8d-91d192ada710",
                 "rule": {
                   "ByTag": {
                     "tag_ids": [],
@@ -23542,15 +23613,15 @@
                 }
               },
               {
-                "id": "7f6a5433-d11b-4821-98da-2adf16180e3b",
+                "id": "d0825968-1b22-48a9-a721-051fe7200f42",
                 "rule": "ByHypervisor"
               },
               {
-                "id": "306ec7d3-3bab-466e-934e-53d9fbd3e04c",
+                "id": "2733dcc0-1569-4f2d-b227-bbeacccac3bd",
                 "rule": "ByContainerRuntime"
               },
               {
-                "id": "78e33660-53c8-407e-b65e-b2ae8c1d06d5",
+                "id": "6f001563-b5f5-41c9-b967-381311ec11ba",
                 "rule": "ByStack"
               }
             ]

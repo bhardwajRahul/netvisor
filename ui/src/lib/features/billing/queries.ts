@@ -96,6 +96,46 @@ export function useSetupPaymentMethodMutation() {
 }
 
 /**
+ * Mutation hook to create a SetupIntent for in-app card collection.
+ * Returns the client secret used to mount the Stripe Payment Element.
+ */
+export function useCreateSetupIntentMutation() {
+	return createMutation(() => ({
+		mutationFn: async () => {
+			const { data } = await apiClient.POST('/api/billing/payment-method-setup-intent', {});
+			if (!data?.success || !data.data) {
+				throw new Error(data?.error || 'Failed to start card setup');
+			}
+			return data.data.client_secret;
+		},
+		onError: (error: Error) => {
+			pushError(`Error starting card setup: ${error.message}. Please try again.`);
+		}
+	}));
+}
+
+/**
+ * Mutation hook to finalize a client-confirmed SetupIntent — sets the collected
+ * card as the customer's default payment method and flips has_payment_method.
+ */
+export function useFinalizePaymentMethodMutation() {
+	return createMutation(() => ({
+		mutationFn: async (setupIntentId: string) => {
+			const { data } = await apiClient.POST('/api/billing/finalize-payment-method', {
+				body: { setup_intent_id: setupIntentId }
+			});
+			if (!data?.success) {
+				throw new Error(data?.error || 'Failed to save payment method');
+			}
+			return true;
+		},
+		onError: (error: Error) => {
+			pushError(`Error saving payment method: ${error.message}. Please try again.`);
+		}
+	}));
+}
+
+/**
  * Mutation hook for changing plan
  */
 export function useChangePlanMutation() {

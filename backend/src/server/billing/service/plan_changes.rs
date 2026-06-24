@@ -34,6 +34,116 @@ impl BillingService {
         Ok(session)
     }
 
+    /// Create a SetupIntent for the org's Stripe customer, returning its
+    /// `client_secret` for the frontend Payment Element. Ensures the customer
+    /// exists first (created at card-collection time, per the signup flow).
+    /// `usage = off_session` so the saved card can later be charged when a
+    /// trial converts or a paid subscription renews. Redirect-based payment
+    /// methods are disabled so `confirmSetup({ redirect: 'if_required' })`
+    /// never needs a return URL.
+    pub async fn create_setup_intent(
+        &self,
+        organization_id: Uuid,
+        authentication: AuthenticatedEntity,
+    ) -> Result<String, Error> {
+        let customer_id = self
+            .get_or_create_customer(organization_id, authentication)
+            .await?;
+
+        let mut automatic_payment_methods = CreateSetupIntentAutomaticPaymentMethods::new(true);
+        automatic_payment_methods.allow_redirects =
+            Some(CreateSetupIntentAutomaticPaymentMethodsAllowRedirects::Never);
+
+        let setup_intent = CreateSetupIntent::new()
+            .customer(customer_id.to_string())
+            .automatic_payment_methods(automatic_payment_methods)
+            .usage(CreateSetupIntentUsage::OffSession)
+            .metadata([("organization_id".to_string(), organization_id.to_string())])
+            .send(&self.stripe)
+            .await
+            .map_err(|e| anyhow!(e.to_string()))?;
+
+        tracing::info!(
+            organization_id = %organization_id,
+            setup_intent_id = %setup_intent.id,
+            "SetupIntent created for in-app card collection"
+        );
+
+        setup_intent
+            .client_secret
+            .ok_or_else(|| anyhow!("SetupIntent did not return a client_secret"))
+    }
+
+    /// Finalize a client-confirmed SetupIntent: verify it succeeded for this
+    /// org's customer, set the collected card as the customer's default invoice
+    /// payment method, and flip `has_payment_method` synchronously (so a
+    /// subsequent subscription creation doesn't race the
+    /// `payment_method.attached` webhook). The webhook remains an idempotent
+    /// backup — the `PaymentMethodAdded` subscriber is a no-op when already set.
+    pub async fn finalize_payment_method(
+        &self,
+        organization_id: Uuid,
+        setup_intent_id: String,
+        authentication: AuthenticatedEntity,
+    ) -> Result<(), Error> {
+        let setup_intent = RetrieveSetupIntent::new(setup_intent_id.clone())
+            .send(&self.stripe)
+            .await
+            .map_err(|e| anyhow!(e.to_string()))?;
+
+        if setup_intent.status != SetupIntentStatus::Succeeded {
+            return Err(anyhow!(
+                "SetupIntent {} is not in a succeeded state (status: {:?})",
+                setup_intent_id,
+                setup_intent.status
+            ));
+        }
+
+        let payment_method_id = setup_intent
+            .payment_method
+            .as_ref()
+            .map(|pm| pm.id().to_string())
+            .ok_or_else(|| anyhow!("SetupIntent {} has no payment method", setup_intent_id))?;
+
+        // Tenant isolation: the SetupIntent must belong to this org's customer.
+        let customer_id = self
+            .get_or_create_customer(organization_id, authentication)
+            .await?;
+        let setup_intent_customer = setup_intent.customer.as_ref().map(|c| c.id().to_string());
+        if setup_intent_customer.as_deref() != Some(customer_id.as_str()) {
+            return Err(anyhow!(
+                "SetupIntent {} does not belong to organization {}",
+                setup_intent_id,
+                organization_id
+            ));
+        }
+
+        // Set as default payment method for future invoices (matches the
+        // webhook path in webhooks.rs::handle_payment_method_attached).
+        let mut invoice_settings = UpdateCustomerInvoiceSettings::new();
+        invoice_settings.default_payment_method = Some(payment_method_id);
+        UpdateCustomer::new(customer_id)
+            .invoice_settings(invoice_settings)
+            .send(&self.stripe)
+            .await?;
+
+        tracing::info!(
+            organization_id = %organization_id,
+            setup_intent_id = %setup_intent_id,
+            "Payment method finalized — default invoice PM set; emitting PaymentMethodAdded"
+        );
+
+        self.event_bus
+            .publish(Event::new(
+                OrgScope { organization_id },
+                BillingOperation::PaymentMethodAdded,
+                AuthenticatedEntity::System,
+            ))
+            .await?;
+
+        Ok(())
+    }
+
     pub async fn create_portal_session(
         &self,
         organization_id: Uuid,

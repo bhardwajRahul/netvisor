@@ -357,6 +357,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/billing/finalize-payment-method": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Finalize a client-confirmed SetupIntent (set the card as default) */
+        post: operations["finalize_payment_method"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/billing/inquiry": {
         parameters: {
             query?: never;
@@ -394,6 +411,23 @@ export interface paths {
          *     cooldown anchored on the org's `last_paused_at`.
          */
         post: operations["pause_subscription"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/billing/payment-method-setup-intent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create a SetupIntent for in-app card collection (Stripe Payment Element) */
+        post: operations["create_payment_method_setup_intent"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3048,19 +3082,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-06-23T22:01:20.033216Z",
+             *       "created_at": "2026-06-24T20:00:44.202010Z",
              *       "first_discovery_id": null,
-             *       "id": "20544d84-8112-4eac-be71-534d3edaa5e1",
+             *       "id": "e083dea2-9144-49f7-a4dc-f832bf4751a8",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-06-23T22:01:20.033216Z",
+             *       "last_seen_at": "2026-06-24T20:00:44.202010Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-06-23T22:01:20.033216Z",
-             *       "valid_from": "2026-06-23T22:01:20.033216Z",
+             *       "updated_at": "2026-06-24T20:00:44.202010Z",
+             *       "valid_from": "2026-06-24T20:00:44.202010Z",
              *       "valid_to": null
              *     }
              */
@@ -3397,19 +3431,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-06-23T22:01:20.013927Z",
+             *               "created_at": "2026-06-24T20:00:44.182143Z",
              *               "first_discovery_id": null,
-             *               "id": "c4cec59b-aa1a-44fa-8126-47b117a7435f",
+             *               "id": "c706a4bc-e24c-4129-bb06-0ee4d84ede7f",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-06-23T22:01:20.013927Z",
+             *               "last_seen_at": "2026-06-24T20:00:44.182143Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-06-23T22:01:20.013927Z",
-             *               "valid_from": "2026-06-23T22:01:20.013927Z",
+             *               "updated_at": "2026-06-24T20:00:44.182143Z",
+             *               "valid_from": "2026-06-24T20:00:44.182143Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3423,7 +3457,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "JetDirect",
+             *           "service_definition": "Domoticz",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3736,6 +3770,13 @@ export interface components {
                  *     fixture default.
                  */
                 snapshot_retention_days_override?: number | null;
+                /**
+                 * @description Stripe publishable key, exposed so the frontend can mount Stripe
+                 *     Elements (Payment Element) for in-app card collection. `None` when
+                 *     billing isn't configured. Publishable keys are safe to expose to the
+                 *     browser (same as `posthog_key`).
+                 */
+                stripe_publishable_key?: string | null;
             };
             error?: string | null;
             meta: components["schemas"]["ApiMeta"];
@@ -3779,19 +3820,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-06-23T22:01:20.027211Z",
+             *           "created_at": "2026-06-24T20:00:44.195824Z",
              *           "first_discovery_id": null,
-             *           "id": "7c439c36-00e7-491e-a878-262d49797676",
+             *           "id": "569ee809-4e23-4a4c-a829-255de306c4ed",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-06-23T22:01:20.027211Z",
+             *           "last_seen_at": "2026-06-24T20:00:44.195824Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-06-23T22:01:20.027211Z",
-             *           "valid_from": "2026-06-23T22:01:20.027211Z",
+             *           "updated_at": "2026-06-24T20:00:44.195824Z",
+             *           "valid_from": "2026-06-24T20:00:44.195824Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -3805,7 +3846,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "JetDirect",
+             *       "service_definition": "Domoticz",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -3835,6 +3876,18 @@ export interface components {
                 readonly valid_from?: string;
                 /** Format: date-time */
                 readonly valid_to?: string | null;
+            };
+            error?: string | null;
+            meta: components["schemas"]["ApiMeta"];
+            success: boolean;
+        };
+        ApiResponse_SetupIntentResponse: {
+            /**
+             * @description Response for creating a SetupIntent — the client secret the frontend
+             *     Payment Element uses to collect and confirm a card in-app.
+             */
+            data?: {
+                client_secret: string;
             };
             error?: string | null;
             meta: components["schemas"]["ApiMeta"];
@@ -4280,19 +4333,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-06-23T22:01:20.014379Z",
+         *       "created_at": "2026-06-24T20:00:44.182594Z",
          *       "first_discovery_id": null,
-         *       "id": "9b85e8fb-ca2b-413d-bdc5-836c33d633d2",
+         *       "id": "3e308bee-c1a3-44c7-a4e3-0ab46c79b074",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-06-23T22:01:20.014379Z",
+         *       "last_seen_at": "2026-06-24T20:00:44.182594Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-06-23T22:01:20.014379Z",
-         *       "valid_from": "2026-06-23T22:01:20.014379Z",
+         *       "updated_at": "2026-06-24T20:00:44.182594Z",
+         *       "valid_from": "2026-06-24T20:00:44.182594Z",
          *       "valid_to": null
          *     }
          */
@@ -4507,7 +4560,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "JetDirect",
+         *           "service_definition": "Domoticz",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -5300,6 +5353,13 @@ export interface components {
             mode: "FilePath";
             path: string;
         };
+        /**
+         * @description Request to finalize a client-confirmed SetupIntent (set the collected card
+         *     as the customer's default payment method).
+         */
+        FinalizePaymentMethodRequest: {
+            setup_intent_id: string;
+        };
         ForgotPasswordRequest: {
             /** Format: email */
             email: string;
@@ -5510,19 +5570,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-06-23T22:01:20.013413Z",
+         *               "created_at": "2026-06-24T20:00:44.181638Z",
          *               "first_discovery_id": null,
-         *               "id": "ce2b94de-8bd2-496a-b76d-3ae6bcbe7524",
+         *               "id": "9cd82fbe-4409-477d-bbe2-aadc8d51b782",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-06-23T22:01:20.013413Z",
+         *               "last_seen_at": "2026-06-24T20:00:44.181638Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-06-23T22:01:20.013413Z",
-         *               "valid_from": "2026-06-23T22:01:20.013413Z",
+         *               "updated_at": "2026-06-24T20:00:44.181638Z",
+         *               "valid_from": "2026-06-24T20:00:44.181638Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -5536,7 +5596,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "JetDirect",
+         *           "service_definition": "Domoticz",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -6757,6 +6817,13 @@ export interface components {
              *     fixture default.
              */
             snapshot_retention_days_override?: number | null;
+            /**
+             * @description Stripe publishable key, exposed so the frontend can mount Stripe
+             *     Elements (Payment Element) for in-app card collection. `None` when
+             *     billing isn't configured. Publishable keys are safe to expose to the
+             *     browser (same as `posthog_key`).
+             */
+            stripe_publishable_key?: string | null;
         };
         /** @description Public share metadata (returned without authentication) */
         PublicShareMetadata: {
@@ -6954,19 +7021,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-06-23T22:01:20.014281Z",
+         *           "created_at": "2026-06-24T20:00:44.182497Z",
          *           "first_discovery_id": null,
-         *           "id": "7577c01f-db01-4cdf-a7c9-44642e715a00",
+         *           "id": "96b9f98a-3eb1-48d8-9b54-1cd96f2df514",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-06-23T22:01:20.014281Z",
+         *           "last_seen_at": "2026-06-24T20:00:44.182497Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-06-23T22:01:20.014281Z",
-         *           "valid_from": "2026-06-23T22:01:20.014281Z",
+         *           "updated_at": "2026-06-24T20:00:44.182497Z",
+         *           "valid_from": "2026-06-24T20:00:44.182497Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -6980,7 +7047,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "JetDirect",
+         *       "service_definition": "Domoticz",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -7086,6 +7153,13 @@ export interface components {
             entity_type: components["schemas"]["EntityDiscriminants"];
             /** @description The new list of tag IDs */
             tag_ids: string[];
+        };
+        /**
+         * @description Response for creating a SetupIntent — the client secret the frontend
+         *     Payment Element uses to collect and confirm a card in-app.
+         */
+        SetupIntentResponse: {
+            client_secret: string;
         };
         SetupPaymentMethodRequest: {
             url: string;
@@ -7396,7 +7470,7 @@ export interface components {
              * @default {
              *       "Application": [
              *         {
-             *           "id": "33a288e7-59d8-442c-bd3b-311f34a1c8d3",
+             *           "id": "a581113a-c363-4207-a40d-80985b660021",
              *           "rule": {
              *             "ByApplication": {
              *               "tag_ids": []
@@ -7406,23 +7480,23 @@ export interface components {
              *       ],
              *       "L2Physical": [
              *         {
-             *           "id": "5fc1a3ce-b303-4186-ad2e-011b64ea3dbe",
+             *           "id": "9e18863b-a5df-4f28-8c8e-40c73e271ca8",
              *           "rule": "ByHost"
              *         }
              *       ],
              *       "L3Logical": [
              *         {
-             *           "id": "3a13a280-8df3-4828-be7f-0acd475b8de0",
+             *           "id": "5824bf9d-26e6-47e5-a773-b5cc4d32bdcc",
              *           "rule": "BySubnet"
              *         },
              *         {
-             *           "id": "8b7bc902-2abe-4dac-adb8-a4d21007ca1f",
+             *           "id": "a0cece80-761b-4019-b577-2f2953f0fad9",
              *           "rule": "MergeDockerBridges"
              *         }
              *       ],
              *       "Workloads": [
              *         {
-             *           "id": "5fc1a3ce-b303-4186-ad2e-011b64ea3dbe",
+             *           "id": "9e18863b-a5df-4f28-8c8e-40c73e271ca8",
              *           "rule": "ByHost"
              *         }
              *       ]
@@ -7434,19 +7508,19 @@ export interface components {
             /**
              * @default [
              *       {
-             *         "id": "38ae299a-58fc-464a-ac7e-6b4e6872c8e2",
+             *         "id": "63e92745-c32d-4270-a03e-13d15221dd30",
              *         "rule": "ByTrunkPort"
              *       },
              *       {
-             *         "id": "5b6f2f2f-394f-4b8d-91b4-ae76e409028c",
+             *         "id": "c235fd19-7c06-441c-97d2-25ba0e5df88e",
              *         "rule": "ByVLAN"
              *       },
              *       {
-             *         "id": "06722a0b-3400-40e0-b100-dc3fdcc05031",
+             *         "id": "c554b0cf-98fb-47cb-8f62-0028c6b709b7",
              *         "rule": "ByPortOpStatus"
              *       },
              *       {
-             *         "id": "bf431df4-d31c-4fac-adcf-12b272ba0b09",
+             *         "id": "e9e53b4f-9d64-473a-86a7-0a0c5619a73c",
              *         "rule": {
              *           "ByServiceCategory": {
              *             "categories": [
@@ -7464,7 +7538,7 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "4d532c1a-17bd-48f6-ba5b-eaf3d4dc5b61",
+             *         "id": "97ec83ee-efee-41cd-874c-286b204298c0",
              *         "rule": {
              *           "ByTag": {
              *             "tag_ids": [],
@@ -7473,15 +7547,15 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "b5ac0366-2d82-4bd5-b711-d8f87179859b",
+             *         "id": "e1e10b76-9ffe-4d47-bada-4f0a1c22d658",
              *         "rule": "ByHypervisor"
              *       },
              *       {
-             *         "id": "f9084ba1-0170-4542-9083-c9c2592b709b",
+             *         "id": "9a3ce3a3-d3a9-4f80-a7ae-31fe306dc1b9",
              *         "rule": "ByContainerRuntime"
              *       },
              *       {
-             *         "id": "389a54c5-3475-424a-b795-1d50173623c9",
+             *         "id": "9d7f5219-132b-48a4-85f8-f06d4c34cc49",
              *         "rule": "ByStack"
              *       }
              *     ]
@@ -8487,6 +8561,39 @@ export interface operations {
             };
         };
     };
+    finalize_payment_method: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FinalizePaymentMethodRequest"];
+            };
+        };
+        responses: {
+            /** @description Payment method finalized */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse"];
+                };
+            };
+            /** @description Billing not enabled or SetupIntent invalid */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
     submit_enterprise_inquiry: {
         parameters: {
             query?: never;
@@ -8552,6 +8659,35 @@ export interface operations {
                 };
             };
             /** @description Ineligible or billing not enabled */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    create_payment_method_setup_intent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description SetupIntent client secret */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SetupIntentResponse"];
+                };
+            };
+            /** @description Billing not enabled */
             400: {
                 headers: {
                     [name: string]: unknown;
