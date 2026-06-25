@@ -68,7 +68,6 @@
 		common_install,
 		common_integrations,
 		common_next,
-		common_skip,
 		daemons_createDaemon,
 		daemons_credentialWizardReturn,
 		daemons_credentialWizardReturnToInstall,
@@ -181,28 +180,34 @@
 			.filter((t) => t.metadata?.is_local_auto)
 			.map((t) => t.id);
 	}
+	// Real new credentials being created (excludes existing ones and auto-local
+	// entries like the Docker socket, which persist nothing). Drives the CTA count.
 	let unsavedCredentialCount = $derived(
-		pendingCredentials.filter((p) => !p.isExisting && !credentialIds.includes(p.credential.id))
-			.length
+		pendingCredentials.filter(
+			(p) =>
+				!p.isExisting &&
+				!isLocalAuto(p.credential.credential_type.type) &&
+				!credentialIds.includes(p.credential.id)
+		).length
 	);
 
-	// Move from the Integrations grid into the wizard, seeding the chosen
-	// configurable types. Auto-local cards (Docker socket) carry no config — they
-	// drive the install flag, not the wizard.
+	// Continue from the Integrations grid: with nothing selected, go straight to
+	// Install; otherwise enter the wizard, seeding the chosen types (auto-local
+	// cards included — they show as info entries and drive the install flag).
 	async function handleContinueToWizard() {
+		if (selectedCredentialTypeIds.length === 0) {
+			trackEvent('daemon_wizard_step_completed', {
+				step: 'credentials',
+				skipped: true,
+				types_selected: 0,
+				credentials_attached: 0
+			});
+			activeTab = 'install';
+			return;
+		}
 		credentialSubStep = 'wizard';
 		await tick();
-		credentialWizardRef?.addTypes(selectedCredentialTypeIds.filter((id) => !isLocalAuto(id)));
-	}
-
-	function handleSkipCredentials() {
-		trackEvent('daemon_wizard_step_completed', {
-			step: 'credentials',
-			skipped: true,
-			types_selected: selectedCredentialTypeIds.length,
-			credentials_attached: 0
-		});
-		activeTab = 'install';
+		credentialWizardRef?.addTypes(selectedCredentialTypeIds);
 	}
 
 	// OS selection
@@ -297,9 +302,11 @@
 	// Derived commands
 	let dockerConfig = $derived({
 		credentialId: null as string | null,
-		// Local Docker socket is disabled when the user deselects the Docker socket
-		// integration card.
-		disableLocalSocket: !selectedCredentialTypeIds.includes('DockerSocket')
+		// Local Docker socket is enabled while a Docker socket entry is in the wizard
+		// list (seeded from the Integrations grid, removable in the wizard).
+		disableLocalSocket: !pendingCredentials.some(
+			(p) => p.credential.credential_type.type === 'DockerSocket'
+		)
 	});
 	let allCredentialIds = $derived([...credentialIds]);
 	let runCommand = $derived(
@@ -806,15 +813,7 @@
 		<div class="modal-footer">
 			<div class="flex flex-wrap items-center justify-end gap-3">
 				{#if activeTab === 'credentials' && credentialSubStep === 'typeSelect'}
-					<button type="button" class="btn-secondary" onclick={handleSkipCredentials}>
-						{common_skip()}
-					</button>
-					<button
-						type="button"
-						class="btn-primary"
-						disabled={selectedCredentialTypeIds.length === 0}
-						onclick={handleContinueToWizard}
-					>
+					<button type="button" class="btn-primary" onclick={handleContinueToWizard}>
 						{common_continue()}
 						<ArrowRight class="h-4 w-4" />
 					</button>

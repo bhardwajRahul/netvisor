@@ -147,7 +147,7 @@ impl TypeMetadataProvider for CredentialTypeDiscriminants {
                 "Reach the Docker API over the network — for Docker on another host, or exposed via a TLS proxy."
             }
             Self::DockerSocket => {
-                "Local Docker socket access. Auto-managed from daemon capabilities."
+                "Discovers Docker containers via the daemon's local socket. No credentials required."
             }
         }
     }
