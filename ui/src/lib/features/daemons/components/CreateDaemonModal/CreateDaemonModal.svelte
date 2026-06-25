@@ -741,7 +741,6 @@
 				<div class="flex min-h-0 flex-1 flex-col">
 					<CredentialWizardStep
 						bind:this={credentialWizardRef}
-						daemonName={formValues.name as string}
 						networkId={selectedNetworkId}
 						bind:pendingCredentials
 						onRemoveCredential={(credential) => {

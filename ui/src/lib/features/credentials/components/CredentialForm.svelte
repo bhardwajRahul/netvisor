@@ -112,6 +112,10 @@
 	let supportsDaemonHost = $derived(supportedTargets.includes('DaemonHost'));
 	let supportsRemoteHosts = $derived(supportedTargets.includes('Host'));
 	let supportsHosts = $derived(supportsDaemonHost || supportsRemoteHosts);
+	// Integration (associated service) name — used in the daemon-host-taken message.
+	let integrationName = $derived(
+		credentialTypes.getMetadata(selectedTypeId)?.associated_service ?? ''
+	);
 	// Show the Hosts | Networks toggle only when both modes are available.
 	let showTargetModeToggle = $derived(supportsHosts && supportsNetworks);
 	// Error flag for "Target Specific Hosts" with no host entered (set on validate).
@@ -662,7 +666,9 @@
 						<!-- Claimed by another credential: unselectable, reason on hover -->
 						<span
 							class="inline-block"
-							data-tooltip={daemons_credentialWizardDaemonHostUnavailable()}
+							data-tooltip={daemons_credentialWizardDaemonHostUnavailable({
+								integration: integrationName
+							})}
 							use:tooltip
 						>
 							<button
@@ -671,12 +677,13 @@
 								disabled>+ {daemons_credentialWizardAddDaemonHostTarget()}</button
 							>
 						</span>
+					{:else if hasDaemonHostTarget}
+						<!-- Already added: disabled, no hover state -->
+						<button type="button" class="text-muted cursor-not-allowed text-sm opacity-40" disabled
+							>+ {daemons_credentialWizardAddDaemonHostTarget()}</button
+						>
 					{:else}
-						<button
-							type="button"
-							class="text-link text-sm disabled:opacity-40"
-							disabled={hasDaemonHostTarget}
-							onclick={handleAddDaemonHostTarget}
+						<button type="button" class="text-link text-sm" onclick={handleAddDaemonHostTarget}
 							>+ {daemons_credentialWizardAddDaemonHostTarget()}</button
 						>
 					{/if}

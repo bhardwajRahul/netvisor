@@ -570,7 +570,6 @@
 				<div class="flex min-h-0 flex-1 flex-col" class:hidden={activeTab !== 'credentials'}>
 					<CredentialWizardStep
 						bind:this={credentialWizardRef}
-						daemonName={daemon?.name ?? 'scanopy-daemon'}
 						networkId={formData.network_id}
 						bind:pendingCredentials
 						description={discovery_credentialsDescription()}

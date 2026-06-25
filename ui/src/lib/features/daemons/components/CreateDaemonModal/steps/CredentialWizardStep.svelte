@@ -1,11 +1,15 @@
 <script lang="ts">
 	import { createForm } from '@tanstack/svelte-form';
+	import type { AnyFieldApi } from '@tanstack/svelte-form';
 	import { validateForm } from '$lib/shared/components/forms/form-context';
 	import ListConfigEditor from '$lib/shared/components/forms/selection/ListConfigEditor.svelte';
 	import ListManager from '$lib/shared/components/forms/selection/ListManager.svelte';
 	import { CredentialTypeDisplay } from '$lib/shared/components/forms/selection/display/CredentialTypeDisplay.svelte';
 	import { CredentialDisplay } from '$lib/shared/components/forms/selection/display/CredentialDisplay.svelte';
 	import CredentialForm from '$lib/features/credentials/components/CredentialForm.svelte';
+	import TextInput from '$lib/shared/components/forms/input/TextInput.svelte';
+	import { required } from '$lib/shared/components/forms/validators';
+	import { slugifyNetworkName } from '$lib/features/daemons/utils';
 	import EntityConfigEmpty from '$lib/shared/components/forms/EntityConfigEmpty.svelte';
 	import EntityTag from '$lib/shared/components/data/EntityTag.svelte';
 	import { credentialTypes, entities } from '$lib/shared/stores/metadata';
@@ -19,6 +23,7 @@
 	import DocsHint from '$lib/shared/components/feedback/DocsHint.svelte';
 	import InlineInfo from '$lib/shared/components/feedback/InlineInfo.svelte';
 	import {
+		common_name,
 		daemons_credentialWizardTitle,
 		daemons_credentialWizardDescription,
 		daemons_credentialWizardDescriptionLinkText,
@@ -45,7 +50,6 @@
 	}
 
 	interface Props {
-		daemonName?: string;
 		networkId?: string;
 		pendingCredentials: PendingCredential[];
 		onRemoveCredential?: (credential: Credential) => void;
@@ -57,7 +61,6 @@
 	}
 
 	let {
-		daemonName = 'scanopy-daemon',
 		networkId = '',
 		pendingCredentials = $bindable([]),
 		onRemoveCredential,
@@ -157,7 +160,11 @@
 				integrationOf(p.credential.credential_type.type) === type.metadata?.associated_service &&
 				claimsDaemonHost(p)
 		);
-		return claimed ? daemons_credentialWizardDaemonHostUnavailable() : null;
+		return claimed
+			? daemons_credentialWizardDaemonHostUnavailable({
+					integration: type.metadata?.associated_service ?? ''
+				})
+			: null;
 	}
 
 	// Available existing credentials (filter out already-added and network-level)
@@ -174,10 +181,17 @@
 	// Build form default values from pendingCredentials
 	function buildFormDefaults() {
 		const credentials: Record<string, unknown>[] = pendingCredentials.map((p) => ({
+			name: p.credential.name,
 			targetIps: [...p.targetIps],
 			fields: { ...p.fieldValues }
 		}));
 		return { credentials };
+	}
+
+	function handleNameChange(index: number, value: string) {
+		pendingCredentials = pendingCredentials.map((p, i) =>
+			i === index ? { ...p, credential: { ...p.credential, name: value } } : p
+		);
 	}
 
 	// TanStack form owns all credential field data
@@ -206,13 +220,26 @@
 		return values;
 	}
 
+	// Auto-generate a stable name: the type kebab-cased plus the next free number
+	// (e.g. docker-proxy-1, docker-proxy-2). Avoids collisions on remove/re-add.
+	function nextCredentialName(typeId: string): string {
+		const prefix = `${slugifyNetworkName(credentialTypes.getName(typeId) ?? typeId)}-`;
+		let max = 0;
+		for (const p of pendingCredentials) {
+			if (!p.credential.name.startsWith(prefix)) continue;
+			const n = parseInt(p.credential.name.slice(prefix.length), 10);
+			if (Number.isInteger(n)) max = Math.max(max, n);
+		}
+		return `${prefix}${max + 1}`;
+	}
+
 	function handleAddCredential(typeId: string) {
 		if (!organization) return;
 
 		const cred = {
 			...createDefaultCredential(organization.id),
 			id: uuidv4(),
-			name: credentialTypes.getName(typeId),
+			name: nextCredentialName(typeId),
 			credential_type: { type: typeId } as Credential['credential_type']
 		};
 
@@ -311,15 +338,6 @@
 			}
 			if (data.targetIps !== undefined) {
 				updated.targetIps = data.targetIps;
-			}
-			// Name new credentials after their first target IP — but not broadcast
-			// credentials, which have no target IP (keep the type-based name).
-			const scope = data.scope ?? updated.scope;
-			if (!p.isExisting && scope !== 'broadcast' && data.targetIps !== undefined) {
-				const ip = (data.targetIps[0] ?? '').trim();
-				const isLocalhost = ip === '127.0.0.1' || ip === '::1' || ip === 'localhost' || ip === '';
-				const name = isLocalhost ? daemonName : ip;
-				updated.credential = { ...p.credential, name };
 			}
 			if (data.fieldValues !== undefined) {
 				updated.fieldValues = data.fieldValues;
@@ -460,13 +478,25 @@
 								onChange={(data) => handleConfigChange(index, data)}
 							/>
 						{:else}
+							<div class="mb-4">
+								<form.Field
+									name={`credentials[${index}].name`}
+									validators={{ onBlur: ({ value }: { value: string }) => required(value) }}
+									listeners={{
+										onChange: ({ value }: { value: string }) => handleNameChange(index, value)
+									}}
+								>
+									{#snippet children(field: AnyFieldApi)}
+										<TextInput label={common_name()} id="cred-name-{index}" {field} />
+									{/snippet}
+								</form.Field>
+							</div>
 							<CredentialForm
 								bind:this={credentialFormRefs[index]}
 								{form}
 								compact={true}
 								fieldPrefix={`credentials[${index}].`}
 								fixedCredentialType={pending.credential.credential_type.type}
-								fixedName={pending.credential.name}
 								daemonHostUnavailable={daemonHostUnavailableFor(index)}
 								onChange={(data) => handleConfigChange(index, data)}
 							/>
