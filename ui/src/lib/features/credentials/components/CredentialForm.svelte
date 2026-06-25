@@ -34,13 +34,13 @@
 		credentials_docsDockerProxy,
 		credentials_docsDockerProxyLinkText,
 		daemons_credentialWizardTargetIpHelp,
-		daemons_credentialWizardAddIpTarget,
+		daemons_credentialWizardAddRemoteHostTarget,
+		daemons_credentialWizardAddDaemonHostTarget,
+		daemons_credentialWizardDaemonHostTargetLabel,
 		daemons_credentialWizardApplyTo,
 		daemons_credentialWizardBroadcastHelp,
-		daemons_credentialTargetDaemonHost,
-		daemons_credentialTargetHost,
-		daemons_credentialTargetDaemonHostHelp,
-		common_network
+		common_hosts,
+		common_networks
 	} from '$lib/paraglide/messages';
 
 	interface Props {
@@ -88,30 +88,24 @@
 	// Dynamic field values keyed by field ID
 	let fieldValues = $state<Record<string, string>>({});
 
-	// Unified target model — where the credential applies. Driven by the type's
-	// `targets()` metadata: 'DaemonHost' (the daemon's own host), 'Host' (specific
-	// IPs), or 'Network' (broadcast default).
-	type TargetKind = 'DaemonHost' | 'Host' | 'Network';
-	let targetMode = $state<TargetKind>('Host');
+	// Where the credential applies: 'per_host' (Hosts — the daemon's own host
+	// and/or remote hosts by IP) or 'broadcast' (Networks — all hosts on the
+	// network). The available modes and per-host buttons are gated by `targets()`.
+	let targetMode = $state<'per_host' | 'broadcast'>('per_host');
 
 	const DAEMON_HOST_IP = '127.0.0.1';
 	function isDaemonHostValue(value: string): boolean {
 		return value === '127.0.0.1' || value === '::1';
 	}
 
-	// Targets this type supports, ordered, from metadata.
-	let availableTargets = $derived.by<TargetKind[]>(() => {
-		const supported = (credentialTypes.getMetadata(selectedTypeId)?.targets ?? []) as TargetKind[];
-		return (['DaemonHost', 'Host', 'Network'] as TargetKind[]).filter((t) => supported.includes(t));
-	});
-
-	function targetLabel(t: TargetKind): string {
-		return t === 'DaemonHost'
-			? daemons_credentialTargetDaemonHost()
-			: t === 'Host'
-				? daemons_credentialTargetHost()
-				: common_network();
-	}
+	// Which targets the selected type supports (from metadata).
+	let supportedTargets = $derived(
+		(credentialTypes.getMetadata(selectedTypeId)?.targets ?? []) as string[]
+	);
+	let supportsNetworks = $derived(supportedTargets.includes('Network'));
+	let supportsDaemonHost = $derived(supportedTargets.includes('DaemonHost'));
+	let supportsRemoteHosts = $derived(supportedTargets.includes('Host'));
+	let supportsHosts = $derived(supportsDaemonHost || supportsRemoteHosts);
 
 	// Get field definitions for the currently selected type
 	let currentFields: FieldDefinition[] = $derived.by(() => {
@@ -152,6 +146,7 @@
 
 	// Track target IPs as local $state for reactivity (TanStack Form doesn't drive Svelte 5 reactivity)
 	let targetIpValues = $state<string[]>(['']);
+	let hasDaemonHostTarget = $derived(targetIpValues.some(isDaemonHostValue));
 
 	// --- Secret/file field mode tracking ---
 	let secretFieldModes = $state<Record<string, 'inline' | 'filepath'>>({});
@@ -234,7 +229,7 @@
 		secretFieldModes = {};
 		fileFieldModes = {};
 		secretFieldVisible = {};
-		targetMode = 'Host';
+		targetMode = 'per_host';
 
 		if (credential) {
 			selectedTypeId = credential.credential_type.type;
@@ -275,37 +270,20 @@
 		if (compact) {
 			targetIpValues = [];
 			const formTargetIps = form.getFieldValue?.(`${fieldPrefix}targetIps`) as string[] | undefined;
-			const explicitIps = (formTargetIps ?? []).filter((ip: string) => ip !== '');
-			// Targets the type supports — computed inline (not via the derived) to
-			// avoid init-time staleness.
-			const supported = (credentialTypes.getMetadata(selectedTypeId)?.targets ??
-				[]) as TargetKind[];
-			if (explicitIps.length > 0) {
-				// A single loopback IP round-trips to the DaemonHost target.
-				if (
-					explicitIps.length === 1 &&
-					isDaemonHostValue(explicitIps[0]) &&
-					supported.includes('DaemonHost')
-				) {
-					targetMode = 'DaemonHost';
-					targetIpValues = [];
-				} else {
-					targetMode = 'Host';
-					targetIpValues = [...explicitIps];
-				}
+			const hasExplicitIps =
+				!!formTargetIps &&
+				formTargetIps.length > 0 &&
+				formTargetIps.some((ip: string) => ip !== '');
+			if (hasExplicitIps) {
+				targetIpValues = [...formTargetIps];
+				targetMode = 'per_host';
 			} else {
-				// Default to the broadest supported target: Network (broadcast) if
-				// available (e.g. SNMP), else the daemon host (e.g. Docker Proxy).
-				targetMode = supported.includes('Network')
-					? 'Network'
-					: supported.includes('DaemonHost')
-						? 'DaemonHost'
-						: 'Host';
-				targetIpValues = targetMode === 'Host' ? [''] : [];
+				// Network-capable types (e.g. SNMP) default to Networks (broadcast),
+				// matching the wizard's handleAddCredential; others to Hosts. Computed
+				// inline (not via the derived) to avoid init-time staleness.
+				const supported = (credentialTypes.getMetadata(selectedTypeId)?.targets ?? []) as string[];
+				targetMode = supported.includes('Network') ? 'broadcast' : 'per_host';
 			}
-			// Sync the resolved target back to the shared form / parent so a credential
-			// left untouched still carries its default target.
-			emitTarget();
 		}
 	}
 
@@ -487,42 +465,41 @@
 		onChange?.({ fieldValues: { ...fieldValues } });
 	}
 
-	// Resolve the current target into (targetIps, scope) and push to the shared
-	// form + parent. Network → broadcast; DaemonHost → the 127.0.0.1 override;
-	// Host → the entered IPs.
-	function emitTarget() {
-		let next: string[];
-		if (targetMode === 'Network') next = [];
-		else if (targetMode === 'DaemonHost') next = [DAEMON_HOST_IP];
-		else next = [...targetIpValues];
-		form.setFieldValue?.(`${fieldPrefix}targetIps`, next);
-		onChange?.({ targetIps: next, scope: targetMode === 'Network' ? 'broadcast' : 'per_host' });
-	}
-
 	function syncTargets() {
-		emitTarget();
+		const next = [...targetIpValues];
+		form.setFieldValue?.(`${fieldPrefix}targetIps`, next);
+		onChange?.({ targetIps: next, scope: 'per_host' });
 	}
 
-	function handleTargetModeChange(mode: TargetKind) {
+	function handleTargetModeChange(mode: 'per_host' | 'broadcast') {
 		targetMode = mode;
-		if (mode === 'Host' && targetIpValues.every((ip) => ip === '' || isDaemonHostValue(ip))) {
-			// Entering Host mode from a non-host target — start with one empty row.
-			targetIpValues = [''];
+		if (mode === 'broadcast') {
+			targetIpValues = [];
+			form.setFieldValue?.(`${fieldPrefix}targetIps`, []);
+			onChange?.({ targetIps: [], scope: 'broadcast' });
+		} else {
+			// Hosts: leave the target list as-is (empty until the user adds one)
+			syncTargets();
 		}
-		emitTarget();
 	}
 
-	// Target-IP field validator. Only the Host target collects IPs, so other
-	// targets validate as valid — this prevents a stale (unmounted) targetIps
-	// field left in the shared TanStack form from blocking submission. Reads the
-	// live, reactive `targetMode`.
+	// Target-IP field validator. Returns valid for broadcast credentials so a
+	// stale (unmounted) targetIps field left in the shared TanStack form after
+	// toggling Hosts -> Networks can't block submission. Reads the live, reactive
+	// `targetMode`.
 	function validateTargetIp(value: string): string | undefined {
-		if (targetMode !== 'Host') return undefined;
+		if (targetMode === 'broadcast') return undefined;
 		return required(value) || ipAddressFormat(value);
 	}
 
 	function handleAddIpTarget() {
 		targetIpValues = [...targetIpValues, ''];
+		syncTargets();
+	}
+
+	function handleAddDaemonHostTarget() {
+		if (hasDaemonHostTarget) return;
+		targetIpValues = [...targetIpValues, DAEMON_HOST_IP];
 		syncTargets();
 	}
 
@@ -590,44 +567,53 @@
 				>{daemons_credentialWizardApplyTo()}</label
 			>
 			<SegmentedControl
-				options={availableTargets.map((t) => ({ value: t, label: targetLabel(t) }))}
+				options={[
+					...(supportsHosts ? [{ value: 'per_host', label: common_hosts() }] : []),
+					...(supportsNetworks ? [{ value: 'broadcast', label: common_networks() }] : [])
+				]}
 				selected={targetMode}
-				onchange={(v) => handleTargetModeChange(v as TargetKind)}
+				onchange={(v) => handleTargetModeChange(v as 'per_host' | 'broadcast')}
 				size="sm"
 			/>
 		</div>
 
-		{#if targetMode === 'Network'}
+		{#if targetMode === 'broadcast'}
 			<p class="text-muted text-xs">{daemons_credentialWizardBroadcastHelp()}</p>
-		{:else if targetMode === 'DaemonHost'}
-			<p class="text-muted text-xs">{daemons_credentialTargetDaemonHostHelp()}</p>
 		{:else}
-			<!-- eslint-disable-next-line @typescript-eslint/no-unused-vars -->
-			{#each targetIpValues as _ip, i (i)}
+			{#each targetIpValues as ip, i (i)}
 				<div class="flex items-center gap-2">
-					<div class="min-w-0 flex-1">
-						<form.Field
-							name={targetIpFieldName(i)}
-							validators={{
-								onBlur: ({ value }: { value: string }) => validateTargetIp(value),
-								onChange: ({ value }: { value: string }) => validateTargetIp(value),
-								onSubmit: ({ value }: { value: string }) => validateTargetIp(value)
-							}}
-							listeners={{
-								onChange: ({ value }: { value: string }) => handleTargetIpChange(i, value)
-							}}
-						>
-							{#snippet children(field: AnyFieldApi)}
-								<TextInput
-									label=""
-									id="target-ip-{fieldPrefix}{i}"
-									placeholder="e.g. 192.168.1.1"
-									required={true}
-									{field}
-								/>
-							{/snippet}
-						</form.Field>
-					</div>
+					{#if isDaemonHostValue(ip)}
+						<input
+							type="text"
+							class="input-field min-w-0 flex-1"
+							value={daemons_credentialWizardDaemonHostTargetLabel()}
+							disabled
+						/>
+					{:else}
+						<div class="min-w-0 flex-1">
+							<form.Field
+								name={targetIpFieldName(i)}
+								validators={{
+									onBlur: ({ value }: { value: string }) => validateTargetIp(value),
+									onChange: ({ value }: { value: string }) => validateTargetIp(value),
+									onSubmit: ({ value }: { value: string }) => validateTargetIp(value)
+								}}
+								listeners={{
+									onChange: ({ value }: { value: string }) => handleTargetIpChange(i, value)
+								}}
+							>
+								{#snippet children(field: AnyFieldApi)}
+									<TextInput
+										label=""
+										id="target-ip-{fieldPrefix}{i}"
+										placeholder="e.g. 192.168.1.1"
+										required={true}
+										{field}
+									/>
+								{/snippet}
+							</form.Field>
+						</div>
+					{/if}
 					<button
 						type="button"
 						class="text-muted hover:text-primary shrink-0 p-1 text-lg leading-none"
@@ -635,9 +621,22 @@
 					>
 				</div>
 			{/each}
-			<button type="button" class="text-link text-sm" onclick={handleAddIpTarget}
-				>+ {daemons_credentialWizardAddIpTarget()}</button
-			>
+			<div class="flex flex-wrap items-center gap-3">
+				{#if supportsDaemonHost}
+					<button
+						type="button"
+						class="text-link text-sm disabled:opacity-40"
+						disabled={hasDaemonHostTarget}
+						onclick={handleAddDaemonHostTarget}
+						>+ {daemons_credentialWizardAddDaemonHostTarget()}</button
+					>
+				{/if}
+				{#if supportsRemoteHosts}
+					<button type="button" class="text-link text-sm" onclick={handleAddIpTarget}
+						>+ {daemons_credentialWizardAddRemoteHostTarget()}</button
+					>
+				{/if}
+			</div>
 			<p class="text-muted text-xs">{daemons_credentialWizardTargetIpHelp()}</p>
 		{/if}
 

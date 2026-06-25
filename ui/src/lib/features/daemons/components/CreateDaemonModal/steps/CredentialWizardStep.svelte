@@ -28,8 +28,7 @@
 		daemons_credentialWizardAddExisting,
 		daemons_credentialWizardSelectExisting,
 		daemons_credentialWizardExistingDescription,
-		discovery_dockerSocketInfo,
-		discovery_dockerSocketInfoUnknown
+		discovery_dockerSocketInfo
 	} from '$lib/paraglide/messages';
 
 	export interface PendingCredential {
@@ -49,6 +48,8 @@
 		onRemoveCredential?: (credential: Credential) => void;
 		description?: string;
 		descriptionLinkText?: string;
+		/** Known whether the target daemon exposes a local Docker socket (discovery
+		 *  editing). null = unknown (daemon setup) — no socket/proxy note shown. */
 		daemonHasDockerSocket?: boolean | null;
 	}
 
@@ -83,8 +84,27 @@
 	// Local items array for ListConfigEditor display
 	let items = $derived(pendingCredentials.map((p) => p.credential));
 
+	// Type dropdown eligibility: a single-endpoint integration (e.g. Docker)
+	// resolves to one endpoint per host, so once one of its credentials is pending
+	// no other type of that integration can be added (UI mirror of the server
+	// single-endpoint check).
+	let blockedIntegrations = $derived(
+		new Set(
+			pendingCredentials
+				.map((p) => credentialTypes.getMetadata(p.credential.credential_type.type))
+				.filter((m) => m?.single_endpoint_per_host)
+				.map((m) => m?.associated_service)
+				.filter((name): name is string => !!name)
+		)
+	);
 	let typeOptions = $derived(
-		credentialTypes.getItems().filter((t) => t.metadata?.is_user_selectable !== false)
+		credentialTypes.getItems().filter((t) => {
+			if (t.metadata?.is_user_selectable === false) return false;
+			if (t.metadata?.single_endpoint_per_host && t.metadata?.associated_service) {
+				return !blockedIntegrations.has(t.metadata.associated_service);
+			}
+			return true;
+		})
 	);
 
 	// Available existing credentials (filter out already-added and network-level)
@@ -341,14 +361,9 @@
 			<!-- Render ALL config panels, hide non-selected (like InterfacesForm) -->
 			{#each pendingCredentials as pending, index (`${pending.credential.id}-${index}`)}
 				<div class:hidden={selectedIndex !== index}>
-					{#if daemonHasDockerSocket !== false && pending.credential.credential_type.type === 'DockerProxy' && isLocalhostTarget(pending.targetIps)}
+					{#if daemonHasDockerSocket === true && pending.credential.credential_type.type === 'DockerProxy' && isLocalhostTarget(pending.targetIps)}
 						<div class="mb-4">
-							<InlineInfo
-								title=""
-								body={daemonHasDockerSocket === true
-									? discovery_dockerSocketInfo()
-									: discovery_dockerSocketInfoUnknown()}
-							/>
+							<InlineInfo title="" body={discovery_dockerSocketInfo()} />
 						</div>
 					{/if}
 					{#if pending.isExisting}

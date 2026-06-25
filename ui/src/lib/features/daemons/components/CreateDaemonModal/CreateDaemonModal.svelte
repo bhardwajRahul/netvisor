@@ -64,9 +64,9 @@
 		common_close,
 		common_configure,
 		common_continue,
-		common_credentials,
 		common_failedGenerateApiKey,
 		common_install,
+		common_integrations,
 		common_next,
 		common_skip,
 		daemons_createDaemon,
@@ -85,9 +85,7 @@
 		daemons_installBackToInstall,
 		daemons_installReturnToCommands
 	} from '$lib/paraglide/messages';
-	import { createDefaultCredential } from '$lib/features/credentials/types/base';
 	import { credentialTypes } from '$lib/shared/stores/metadata';
-	import { v4 as uuidv4 } from 'uuid';
 
 	interface Props {
 		isOpen?: boolean;
@@ -158,9 +156,6 @@
 	// Auto-generation state (for first daemon flow)
 	let isAutoGenerating = $state(false);
 
-	// Docker config state
-	let dockerMode = $state<string>('local_socket');
-
 	// Credentials is its own stepper step (activeTab === 'credentials'); this
 	// tracks the sub-view within it: the type grid, then the wizard.
 	let credentialWizardRef: ReturnType<typeof CredentialWizardStep> | undefined = $state();
@@ -172,87 +167,32 @@
 		return (credentialsQuery.data?.length ?? 0) > 0 ? 'wizard' : 'typeSelect';
 	}
 	let selectedCredentialTypeIds = $state<string[]>([]);
-	// Auto-local capability toggles (e.g. DockerSocket) — map to daemon install flags.
-	let localCapabilityEnabled = $state<Record<string, boolean>>({});
 	let pendingCredentials = $state<PendingCredential[]>([]);
 	let credentialIds = $state<string[]>([]);
-	let hasDockerProxyCredential = $derived(
-		pendingCredentials.some(
-			(p) =>
-				p.credential.credential_type.type === 'DockerProxy' &&
-				p.targetIps.some((ip) => ip === '127.0.0.1' || ip === '::1')
-		)
-	);
+
+	// Auto-local integration cards (e.g. Docker socket) map to a daemon install
+	// flag rather than a created credential; they are selected by default.
+	function isLocalAuto(id: string): boolean {
+		return credentialTypes.getMetadata(id)?.is_local_auto === true;
+	}
+	function localAutoTypeIds(): string[] {
+		return credentialTypes
+			.getItems()
+			.filter((t) => t.metadata?.is_local_auto)
+			.map((t) => t.id);
+	}
 	let unsavedCredentialCount = $derived(
 		pendingCredentials.filter((p) => !p.isExisting && !credentialIds.includes(p.credential.id))
 			.length
 	);
 
-	function initDefaultFieldValues(typeId: string): Record<string, string> {
-		const meta = credentialTypes.getMetadata(typeId);
-		const fields = meta?.fields ?? [];
-		const values: Record<string, string> = {};
-		for (const field of fields) {
-			if (field.field_type === 'pathorinline') {
-				values[field.id] = JSON.stringify({ mode: 'Inline', value: '' });
-			} else {
-				values[field.id] = field.default_value ?? '';
-			}
-		}
-		return values;
-	}
-
-	function handleNavigateToCredentialWizard() {
-		// Add a DockerProxy pending credential if one doesn't already exist
-		if (!hasDockerProxyCredential && org) {
-			const cred = {
-				...createDefaultCredential(org.id),
-				id: uuidv4(),
-				name: (formValues.name as string) || 'scanopy-daemon',
-				credential_type: {
-					type: 'DockerProxy'
-				} as import('$lib/features/credentials/types/base').Credential['credential_type']
-			};
-			// Set defaults from fixture metadata
-			const meta = credentialTypes.getMetadata('DockerProxy');
-			if (meta?.fields) {
-				const ct = cred.credential_type as unknown as Record<string, unknown>;
-				for (const field of meta.fields) {
-					if (field.default_value != null && ct[field.id] === undefined) {
-						if (field.field_type === 'secretpathorinline' || field.field_type === 'pathorinline') {
-							ct[field.id] = { mode: 'Inline', value: field.default_value };
-						} else {
-							const num = Number(field.default_value);
-							ct[field.id] = !isNaN(num) ? num : field.default_value;
-						}
-					}
-				}
-			}
-			const fieldValues = initDefaultFieldValues('DockerProxy');
-			pendingCredentials = [
-				...pendingCredentials,
-				{ credential: cred, targetIps: ['127.0.0.1'], fieldValues }
-			];
-		}
-		showAdvanced = false;
-		if (furthestReached < 1) furthestReached = 1;
-		activeTab = 'credentials';
-		credentialSubStep = 'wizard';
-	}
-
-	// Open the Credentials step at the type-selection grid (from the Install CTA).
-	function openCredentialStep() {
-		if (furthestReached < 1) furthestReached = 1;
-		showAdvanced = false;
-		activeTab = 'credentials';
-		credentialSubStep = entryCredentialSubStep();
-	}
-
-	// Move from the type-selection grid into the wizard, seeding the chosen types.
+	// Move from the Integrations grid into the wizard, seeding the chosen
+	// configurable types. Auto-local cards (Docker socket) carry no config — they
+	// drive the install flag, not the wizard.
 	async function handleContinueToWizard() {
 		credentialSubStep = 'wizard';
 		await tick();
-		credentialWizardRef?.addTypes(selectedCredentialTypeIds);
+		credentialWizardRef?.addTypes(selectedCredentialTypeIds.filter((id) => !isLocalAuto(id)));
 	}
 
 	function handleSkipCredentials() {
@@ -356,11 +296,10 @@
 
 	// Derived commands
 	let dockerConfig = $derived({
-		mode: dockerMode,
 		credentialId: null as string | null,
-		// Local Docker socket is disabled when a localhost proxy is configured, or
-		// when the user turns off the "Scan local Docker" integration toggle.
-		disableLocalSocket: hasDockerProxyCredential || localCapabilityEnabled['DockerSocket'] === false
+		// Local Docker socket is disabled when the user deselects the Docker socket
+		// integration card.
+		disableLocalSocket: !selectedCredentialTypeIds.includes('DockerSocket')
 	});
 	let allCredentialIds = $derived([...credentialIds]);
 	let runCommand = $derived(
@@ -414,7 +353,7 @@
 		{ id: 'configure', label: common_configure(), icon: Settings },
 		{
 			id: 'credentials',
-			label: common_credentials(),
+			label: common_integrations(),
 			icon: KeyRound,
 			disabled: furthestReached < 1
 		},
@@ -726,14 +665,12 @@
 		showAdvanced = false;
 		credentialSubStep = 'typeSelect';
 		selectedCredentialTypeIds = [];
-		localCapabilityEnabled = {};
 		pendingCredentials = [];
 		credentialIds = [];
 		connectionStatus = 'idle';
 		serverPollReachable = null;
 		isTestingReachability = false;
 		serverPollReachabilityResult = null;
-		dockerMode = 'local_socket';
 		daemonIdsAtWaitStart = new Set();
 
 		// Reset form fields to defaults so advanced overrides don't persist
@@ -752,8 +689,8 @@
 		furthestReached = 0;
 		showAdvanced = false;
 		credentialSubStep = 'typeSelect';
-		selectedCredentialTypeIds = [];
-		localCapabilityEnabled = {};
+		// Local-auto integrations (Docker socket) are on by default.
+		selectedCredentialTypeIds = localAutoTypeIds();
 		connectionStatus = 'idle';
 		startedAsFirstDaemon = isFirstDaemon;
 		serverPollReachable = null;
@@ -786,23 +723,12 @@
 	<div class="flex min-h-0 flex-1 flex-col overflow-hidden">
 		{#if showAdvanced}
 			<div class="flex-1 overflow-auto p-4 sm:p-6">
-				<AdvancedStep
-					{form}
-					{formValues}
-					{selectedOS}
-					{linuxMethod}
-					bind:dockerMode
-					{hasDockerProxyCredential}
-					onNavigateToCredentialWizard={handleNavigateToCredentialWizard}
-				/>
+				<AdvancedStep {form} {formValues} {selectedOS} {linuxMethod} />
 			</div>
 		{:else if activeTab === 'credentials'}
 			{#if credentialSubStep === 'typeSelect'}
 				<div class="flex min-h-0 flex-1 flex-col">
-					<CredentialTypeSelectStep
-						bind:selectedTypeIds={selectedCredentialTypeIds}
-						bind:localCapabilityEnabled
-					/>
+					<CredentialTypeSelectStep bind:selectedTypeIds={selectedCredentialTypeIds} />
 				</div>
 			{:else}
 				<div class="flex min-h-0 flex-1 flex-col">
@@ -810,7 +736,6 @@
 						bind:this={credentialWizardRef}
 						daemonName={formValues.name as string}
 						networkId={selectedNetworkId}
-						daemonHasDockerSocket={null}
 						bind:pendingCredentials
 						onRemoveCredential={(credential) => {
 							// If credential was already created on server, delete it
@@ -855,7 +780,6 @@
 							onViewDiscovery={handleViewDiscovery}
 							{hasEmailSupport}
 							onAdvanced={() => (showAdvanced = true)}
-							onCredentialWizard={openCredentialStep}
 							daemonMode={String(formValues.mode ?? 'daemon_poll')}
 							daemonName={String(formValues.name ?? 'scanopy-daemon')}
 							logFilePath={String(formValues.logFile ?? '')}

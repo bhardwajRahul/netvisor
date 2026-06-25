@@ -144,7 +144,7 @@ impl TypeMetadataProvider for CredentialTypeDiscriminants {
                 "SNMPv3 with authentication and privacy (AuthPriv) for hardened devices"
             }
             Self::DockerProxy => {
-                "Reach the Docker API over the network — for Docker on another host, or exposed via a TLS proxy. Docker on the daemon's own host is scanned automatically."
+                "Reach the Docker API over the network — for Docker on another host, or exposed via a TLS proxy."
             }
             Self::DockerSocket => {
                 "Local Docker socket access. Auto-managed from daemon capabilities."
