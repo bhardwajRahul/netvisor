@@ -165,6 +165,12 @@
 	// tracks the sub-view within it: the type grid, then the wizard.
 	let credentialWizardRef: ReturnType<typeof CredentialWizardStep> | undefined = $state();
 	let credentialSubStep = $state<'typeSelect' | 'wizard'>('typeSelect');
+
+	// The integration type-select pre-step is a first-run aid; users who already
+	// have credentials go straight to the wizard (where they manage/add them).
+	function entryCredentialSubStep(): 'typeSelect' | 'wizard' {
+		return (credentialsQuery.data?.length ?? 0) > 0 ? 'wizard' : 'typeSelect';
+	}
 	let selectedCredentialTypeIds = $state<string[]>([]);
 	// Auto-local capability toggles (e.g. DockerSocket) — map to daemon install flags.
 	let localCapabilityEnabled = $state<Record<string, boolean>>({});
@@ -239,7 +245,7 @@
 		if (furthestReached < 1) furthestReached = 1;
 		showAdvanced = false;
 		activeTab = 'credentials';
-		credentialSubStep = 'typeSelect';
+		credentialSubStep = entryCredentialSubStep();
 	}
 
 	// Move from the type-selection grid into the wizard, seeding the chosen types.
@@ -557,7 +563,7 @@
 			// Advance to the Credentials step (step 2). It's optional — the user can
 			// Skip to Install (step 3), which is also unlocked.
 			activeTab = 'credentials';
-			credentialSubStep = 'typeSelect';
+			credentialSubStep = entryCredentialSubStep();
 		}
 	}
 
