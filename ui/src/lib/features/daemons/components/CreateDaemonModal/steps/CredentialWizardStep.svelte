@@ -1,14 +1,11 @@
 <script lang="ts">
 	import { createForm } from '@tanstack/svelte-form';
-	import type { AnyFieldApi } from '@tanstack/svelte-form';
 	import { validateForm } from '$lib/shared/components/forms/form-context';
 	import ListConfigEditor from '$lib/shared/components/forms/selection/ListConfigEditor.svelte';
 	import ListManager from '$lib/shared/components/forms/selection/ListManager.svelte';
 	import { CredentialTypeDisplay } from '$lib/shared/components/forms/selection/display/CredentialTypeDisplay.svelte';
 	import { CredentialDisplay } from '$lib/shared/components/forms/selection/display/CredentialDisplay.svelte';
 	import CredentialForm from '$lib/features/credentials/components/CredentialForm.svelte';
-	import TextInput from '$lib/shared/components/forms/input/TextInput.svelte';
-	import { required } from '$lib/shared/components/forms/validators';
 	import { slugifyNetworkName } from '$lib/features/daemons/utils';
 	import EntityConfigEmpty from '$lib/shared/components/forms/EntityConfigEmpty.svelte';
 	import EntityTag from '$lib/shared/components/data/EntityTag.svelte';
@@ -23,7 +20,6 @@
 	import DocsHint from '$lib/shared/components/feedback/DocsHint.svelte';
 	import InlineInfo from '$lib/shared/components/feedback/InlineInfo.svelte';
 	import {
-		common_name,
 		daemons_credentialWizardTitle,
 		daemons_credentialWizardDescription,
 		daemons_credentialWizardDescriptionLinkText,
@@ -188,12 +184,6 @@
 		return { credentials };
 	}
 
-	function handleNameChange(index: number, value: string) {
-		pendingCredentials = pendingCredentials.map((p, i) =>
-			i === index ? { ...p, credential: { ...p.credential, name: value } } : p
-		);
-	}
-
 	// TanStack form owns all credential field data
 	const form = createForm(() => ({
 		defaultValues: buildFormDefaults(),
@@ -328,6 +318,7 @@
 			targetIps?: string[];
 			fieldValues?: Record<string, string>;
 			scope?: 'broadcast' | 'per_host';
+			name?: string;
 		}
 	) {
 		pendingCredentials = pendingCredentials.map((p, i) => {
@@ -341,6 +332,9 @@
 			}
 			if (data.fieldValues !== undefined) {
 				updated.fieldValues = data.fieldValues;
+			}
+			if (data.name !== undefined) {
+				updated.credential = { ...p.credential, name: data.name };
 			}
 			return updated;
 		});
@@ -487,19 +481,6 @@
 								daemonHostUnavailable={daemonHostUnavailableFor(index)}
 								onChange={(data) => handleConfigChange(index, data)}
 							/>
-							<div class="mt-4">
-								<form.Field
-									name={`credentials[${index}].name`}
-									validators={{ onBlur: ({ value }: { value: string }) => required(value) }}
-									listeners={{
-										onChange: ({ value }: { value: string }) => handleNameChange(index, value)
-									}}
-								>
-									{#snippet children(field: AnyFieldApi)}
-										<TextInput label={common_name()} id="cred-name-{index}" {field} />
-									{/snippet}
-								</form.Field>
-							</div>
 						{/if}
 					{/if}
 				</div>

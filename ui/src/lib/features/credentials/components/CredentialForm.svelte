@@ -61,6 +61,7 @@
 			targetIps?: string[];
 			fieldValues?: Record<string, string>;
 			scope?: 'broadcast' | 'per_host';
+			name?: string;
 		}) => void;
 		onTypeChange?: (typeId: string) => void;
 	}
@@ -701,6 +702,22 @@
 			{:else}
 				<p class="text-muted text-xs">{daemons_credentialWizardTargetIpHelp()}</p>
 			{/if}
+		{/if}
+
+		<!-- Name (between targeting and fields, like the full editor) -->
+		{#if !hideFields}
+			<form.Field
+				name={nameFieldName}
+				validators={{
+					onBlur: ({ value }: { value: string }) => required(value) || max(100)(value),
+					onSubmit: ({ value }: { value: string }) => required(value) || max(100)(value)
+				}}
+				listeners={{ onChange: ({ value }: { value: string }) => onChange?.({ name: value }) }}
+			>
+				{#snippet children(field: AnyFieldApi)}
+					<TextInput label={common_name()} id="credential-name-{fieldPrefix}" {field} required />
+				{/snippet}
+			</form.Field>
 		{/if}
 
 		<!-- Credential fields -->
