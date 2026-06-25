@@ -165,7 +165,15 @@
 	// tracks the sub-view within it: the type grid, then the wizard.
 	let credentialWizardRef: ReturnType<typeof CredentialWizardStep> | undefined = $state();
 	let credentialSubStep = $state<'typeSelect' | 'wizard'>('typeSelect');
+
+	// The integration type-select pre-step is a first-run aid; users who already
+	// have credentials go straight to the wizard (where they manage/add them).
+	function entryCredentialSubStep(): 'typeSelect' | 'wizard' {
+		return (credentialsQuery.data?.length ?? 0) > 0 ? 'wizard' : 'typeSelect';
+	}
 	let selectedCredentialTypeIds = $state<string[]>([]);
+	// Auto-local capability toggles (e.g. DockerSocket) — map to daemon install flags.
+	let localCapabilityEnabled = $state<Record<string, boolean>>({});
 	let pendingCredentials = $state<PendingCredential[]>([]);
 	let credentialIds = $state<string[]>([]);
 	let hasDockerProxyCredential = $derived(
@@ -237,7 +245,7 @@
 		if (furthestReached < 1) furthestReached = 1;
 		showAdvanced = false;
 		activeTab = 'credentials';
-		credentialSubStep = 'typeSelect';
+		credentialSubStep = entryCredentialSubStep();
 	}
 
 	// Move from the type-selection grid into the wizard, seeding the chosen types.
@@ -350,7 +358,9 @@
 	let dockerConfig = $derived({
 		mode: dockerMode,
 		credentialId: null as string | null,
-		disableLocalSocket: hasDockerProxyCredential
+		// Local Docker socket is disabled when a localhost proxy is configured, or
+		// when the user turns off the "Scan local Docker" integration toggle.
+		disableLocalSocket: hasDockerProxyCredential || localCapabilityEnabled['DockerSocket'] === false
 	});
 	let allCredentialIds = $derived([...credentialIds]);
 	let runCommand = $derived(
@@ -553,7 +563,7 @@
 			// Advance to the Credentials step (step 2). It's optional — the user can
 			// Skip to Install (step 3), which is also unlocked.
 			activeTab = 'credentials';
-			credentialSubStep = 'typeSelect';
+			credentialSubStep = entryCredentialSubStep();
 		}
 	}
 
@@ -716,6 +726,7 @@
 		showAdvanced = false;
 		credentialSubStep = 'typeSelect';
 		selectedCredentialTypeIds = [];
+		localCapabilityEnabled = {};
 		pendingCredentials = [];
 		credentialIds = [];
 		connectionStatus = 'idle';
@@ -742,6 +753,7 @@
 		showAdvanced = false;
 		credentialSubStep = 'typeSelect';
 		selectedCredentialTypeIds = [];
+		localCapabilityEnabled = {};
 		connectionStatus = 'idle';
 		startedAsFirstDaemon = isFirstDaemon;
 		serverPollReachable = null;
@@ -787,7 +799,10 @@
 		{:else if activeTab === 'credentials'}
 			{#if credentialSubStep === 'typeSelect'}
 				<div class="flex min-h-0 flex-1 flex-col">
-					<CredentialTypeSelectStep bind:selectedTypeIds={selectedCredentialTypeIds} />
+					<CredentialTypeSelectStep
+						bind:selectedTypeIds={selectedCredentialTypeIds}
+						bind:localCapabilityEnabled
+					/>
 				</div>
 			{:else}
 				<div class="flex min-h-0 flex-1 flex-col">

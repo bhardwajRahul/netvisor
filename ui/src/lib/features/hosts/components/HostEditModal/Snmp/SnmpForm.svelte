@@ -66,11 +66,11 @@
 			.filter((c): c is Credential => c != null)
 	);
 
-	// Filter to PerHost-scoped credentials, then exclude already-assigned ones
+	// Filter to host-targetable credentials, then exclude already-assigned ones
 	let perHostCredentials = $derived(
 		allCredentials.filter((c) => {
 			const meta = credentialTypes.getMetadata(getCredentialTypeId(c));
-			return (meta?.scope_models ?? []).includes('PerHost');
+			return (meta?.targets ?? []).includes('Host');
 		})
 	);
 

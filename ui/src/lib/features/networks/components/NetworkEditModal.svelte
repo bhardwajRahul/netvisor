@@ -69,12 +69,12 @@
 	);
 	let isNonOwnerInDemo = $derived(isDemoOrg && currentUser?.permissions !== 'Owner');
 
-	// TanStack Query for credentials — filter to Broadcast-scoped types for network assignment
+	// TanStack Query for credentials — filter to Network-targetable types for network assignment
 	const credentialsQuery = useCredentialsQuery();
 	let allCredentials = $derived(
 		(credentialsQuery.data ?? []).filter((c) => {
 			const meta = credentialTypes.getMetadata(getCredentialTypeId(c));
-			return (meta?.scope_models ?? []).includes('Broadcast');
+			return (meta?.targets ?? []).includes('Network');
 		})
 	);
 

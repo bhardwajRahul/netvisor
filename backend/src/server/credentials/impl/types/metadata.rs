@@ -28,13 +28,18 @@ pub enum CredentialCategory {
     ContainerVirtualization,
 }
 
-/// How a credential is scoped to targets.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, ToSchema, PartialEq, Eq)]
-pub enum ScopeModel {
-    /// Network default — try on all hosts with matching open ports
-    Broadcast,
-    /// Assigned to specific hosts only
-    PerHost,
+/// Where a credential / integration applies. `Network` is a broadcast default
+/// (all hosts on a network), `Host` targets specific hosts, and `DaemonHost` is
+/// the daemon's own host (e.g. the local Docker socket, realized as a 127.0.0.1
+/// IP-override).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, ToSchema, PartialEq, Eq, Hash)]
+pub enum Target {
+    /// The daemon's own host (local). Daemon-relative.
+    DaemonHost,
+    /// Specific discovered host(s), optionally limited to specific IP addresses.
+    Host,
+    /// All hosts on a network (broadcast default).
+    Network,
 }
 
 /// A credential assigned to a host, optionally limited to specific ip_addresses.
@@ -138,7 +143,9 @@ impl TypeMetadataProvider for CredentialTypeDiscriminants {
             Self::SnmpV3 => {
                 "SNMPv3 with authentication and privacy (AuthPriv) for hardened devices"
             }
-            Self::DockerProxy => "Docker API proxy credentials. TLS is optional.",
+            Self::DockerProxy => {
+                "Reach the Docker API over the network — for Docker on another host, or exposed via a TLS proxy. Docker on the daemon's own host is scanned automatically."
+            }
             Self::DockerSocket => {
                 "Local Docker socket access. Auto-managed from daemon capabilities."
             }
@@ -164,7 +171,10 @@ impl TypeMetadataProvider for CredentialTypeDiscriminants {
         };
         serde_json::json!({
             "fields": ct.field_definitions(),
-            "scope_models": ct.scope_models(),
+            "targets": ct.targets(),
+            "requires_config": ct.requires_config(),
+            "is_local_auto": ct.is_local_auto(),
+            "single_endpoint_per_host": ct.single_endpoint_per_host(),
             "associated_service": ServiceDefinition::name(&*service),
             "has_logo": service.has_logo(),
             "logo_ext": logo_ext,

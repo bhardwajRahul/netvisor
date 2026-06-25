@@ -58,8 +58,14 @@ export interface FieldDefinition {
 
 export interface CredentialTypeMetadata {
 	fields: FieldDefinition[];
-	/** How this credential type can be scoped to targets */
-	scope_models?: string[];
+	/** Where this credential type can apply: 'DaemonHost' | 'Host' | 'Network' */
+	targets?: ('DaemonHost' | 'Host' | 'Network')[];
+	/** Whether the user must provide config/fields (false ⇒ rendered as a toggle, not a form) */
+	requires_config?: boolean;
+	/** Zero-config local capability the daemon auto-detects (e.g. the Docker socket) */
+	is_local_auto?: boolean;
+	/** Single service instance per host ⇒ access methods at a target are mutually exclusive */
+	single_endpoint_per_host?: boolean;
 	/** Name of the associated ServiceDefinition (e.g. "SNMP", "Docker") */
 	associated_service?: string;
 	/** Whether the associated service has a logo */

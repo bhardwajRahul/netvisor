@@ -15,11 +15,13 @@ export type IfOperStatus = components['schemas']['IfOperStatus'];
 import type { Color } from '$lib/shared/utils/styling';
 import type { TagProps } from '$lib/shared/components/data/types';
 import {
-	common_broadcast,
-	common_perHost,
+	common_network,
 	common_unknown,
-	credentials_scopeBroadcastTooltip,
-	credentials_scopePerHostTooltip,
+	credentials_targetNetworkTooltip,
+	credentials_targetDaemonHost,
+	credentials_targetDaemonHostTooltip,
+	credentials_targetHost,
+	credentials_targetHostTooltip,
 	snmp_adminStatusDown,
 	snmp_adminStatusTesting,
 	snmp_adminStatusUp,
@@ -110,20 +112,28 @@ export function getOperStatusLabels(): Record<IfOperStatus, string> {
 }
 
 /**
- * Single source of truth for scope model display properties (color, label, tooltip).
+ * Single source of truth for target display properties (color, label, tooltip).
+ * Targets are the unified replacement for scope models.
  */
-export function getScopeTagProps(scope: string): TagProps {
-	if (scope === 'Broadcast') {
+export function getTargetTagProps(target: string): TagProps {
+	if (target === 'Network') {
 		return {
-			label: common_broadcast(),
+			label: common_network(),
 			color: 'Cyan' as Color,
-			title: credentials_scopeBroadcastTooltip()
+			title: credentials_targetNetworkTooltip()
+		};
+	}
+	if (target === 'DaemonHost') {
+		return {
+			label: credentials_targetDaemonHost(),
+			color: 'Blue' as Color,
+			title: credentials_targetDaemonHostTooltip()
 		};
 	}
 	return {
-		label: common_perHost(),
+		label: credentials_targetHost(),
 		color: 'Purple' as Color,
-		title: credentials_scopePerHostTooltip()
+		title: credentials_targetHostTooltip()
 	};
 }
 
