@@ -9,6 +9,7 @@
 	import EntityConfigEmpty from '$lib/shared/components/forms/EntityConfigEmpty.svelte';
 	import EntityTag from '$lib/shared/components/data/EntityTag.svelte';
 	import { credentialTypes, entities } from '$lib/shared/stores/metadata';
+	import type { TypedTypeMetadata, CredentialTypeMetadata } from '$lib/shared/stores/metadata';
 	import type { Credential, CredentialType } from '$lib/features/credentials/types/base';
 	import { createDefaultCredential } from '$lib/features/credentials/types/base';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
@@ -29,6 +30,7 @@
 		daemons_credentialWizardSelectExisting,
 		daemons_credentialWizardExistingDescription,
 		daemons_credentialWizardLocalAutoNote,
+		daemons_credentialWizardDaemonHostUnavailable,
 		discovery_dockerSocketInfo
 	} from '$lib/paraglide/messages';
 
@@ -128,29 +130,35 @@
 
 	// Type dropdown eligibility: offer user-selectable types plus auto-local
 	// capabilities (e.g. the Docker socket). A local capability can only be added
-	// once, and not when its integration's daemon host is already claimed by another
-	// pending credential (the socket claims that slot). Configurable types (e.g.
-	// multiple Docker Proxies on different hosts) are never blanket-blocked.
+	// once (so an already-pending one is filtered out). When its integration's daemon
+	// host is already claimed by another pending credential it stays in the list but
+	// is shown disabled with a reason (see dropdownDisabledReason). Configurable types
+	// (e.g. multiple Docker Proxies on different hosts) are never blanket-blocked.
 	let typeOptions = $derived(
 		credentialTypes.getItems().filter((t) => {
 			if (t.metadata?.is_user_selectable === false && !t.metadata?.is_local_auto) return false;
-			if (t.metadata?.is_local_auto) {
-				if (pendingCredentials.some((p) => p.credential.credential_type.type === t.id)) {
-					return false;
-				}
-				if (
-					pendingCredentials.some(
-						(p) =>
-							integrationOf(p.credential.credential_type.type) === t.metadata?.associated_service &&
-							claimsDaemonHost(p)
-					)
-				) {
-					return false;
-				}
+			if (
+				t.metadata?.is_local_auto &&
+				pendingCredentials.some((p) => p.credential.credential_type.type === t.id)
+			) {
+				return false;
 			}
 			return true;
 		})
 	);
+
+	// Reason an option is unselectable in the add dropdown (null = selectable). An
+	// auto-local capability (Docker socket) is disabled when its integration's daemon
+	// host is already claimed by another pending credential (e.g. a daemon-host proxy).
+	function dropdownDisabledReason(type: TypedTypeMetadata<CredentialTypeMetadata>): string | null {
+		if (!type.metadata?.is_local_auto) return null;
+		const claimed = pendingCredentials.some(
+			(p) =>
+				integrationOf(p.credential.credential_type.type) === type.metadata?.associated_service &&
+				claimsDaemonHost(p)
+		);
+		return claimed ? daemons_credentialWizardDaemonHostUnavailable() : null;
+	}
 
 	// Available existing credentials (filter out already-added and network-level)
 	let availableExistingCredentials = $derived.by(() => {
@@ -395,6 +403,7 @@
 				placeholder={daemons_credentialWizardSelectType()}
 				emptyMessage={daemons_credentialWizardEmpty()}
 				options={typeOptions}
+				getOptionContext={(option) => ({ disabledReason: dropdownDisabledReason(option) })}
 				itemClickAction="edit"
 				allowReorder={false}
 				allowDuplicates={true}

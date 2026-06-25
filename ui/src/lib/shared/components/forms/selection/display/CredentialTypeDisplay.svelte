@@ -5,14 +5,23 @@
 
 	export type CredentialTypeOption = TypedTypeMetadata<CredentialTypeMetadata>;
 
-	export const CredentialTypeDisplay: EntityDisplayComponent<CredentialTypeOption, object> = {
+	/** Optional context for the dropdown: a non-null `disabledReason` renders the
+	 *  option as disabled (unselectable) with the reason as a hover tooltip. */
+	export type CredentialTypeDisplayContext = { disabledReason?: string | null };
+
+	export const CredentialTypeDisplay: EntityDisplayComponent<
+		CredentialTypeOption,
+		CredentialTypeDisplayContext
+	> = {
 		getId: (item) => item.id,
 		getLabel: (item) => item.name ?? item.id,
 		getDescription: (item) => item.description ?? '',
 		getIcon: (item) => credentialTypes.getIconComponent(item.id),
 		getIconColor: (item) => credentialTypes.getColorHelper(item.id).icon,
 		getCategory: (item) => item.category ?? null,
-		getTags: (item) => (item.metadata?.targets ?? []).map((t: string) => getTargetTagProps(t))
+		getTags: (item) => (item.metadata?.targets ?? []).map((t: string) => getTargetTagProps(t)),
+		getDisabled: (_item, context) => !!context?.disabledReason,
+		getDisabledReason: (_item, context) => context?.disabledReason ?? null
 	};
 </script>
 

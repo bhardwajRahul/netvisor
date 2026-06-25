@@ -10,6 +10,7 @@
 		ipAddressFormat
 	} from '$lib/shared/components/forms/validators';
 	import SegmentedControl from '$lib/shared/components/forms/SegmentedControl.svelte';
+	import { tooltip } from '$lib/shared/actions/tooltip';
 	import InfoCard from '$lib/shared/components/data/InfoCard.svelte';
 	import RichSelect from '$lib/shared/components/forms/selection/RichSelect.svelte';
 	import { CredentialTypeDisplay } from '$lib/shared/components/forms/selection/display/CredentialTypeDisplay.svelte';
@@ -657,13 +658,28 @@
 			{/each}
 			<div class="flex flex-wrap items-center gap-3">
 				{#if supportsDaemonHost}
-					<button
-						type="button"
-						class="text-link text-sm disabled:opacity-40"
-						disabled={hasDaemonHostTarget || daemonHostUnavailable}
-						onclick={handleAddDaemonHostTarget}
-						>+ {daemons_credentialWizardAddDaemonHostTarget()}</button
-					>
+					{#if daemonHostUnavailable && !hasDaemonHostTarget}
+						<!-- Claimed by another credential: unselectable, reason on hover -->
+						<span
+							class="inline-block"
+							data-tooltip={daemons_credentialWizardDaemonHostUnavailable()}
+							use:tooltip
+						>
+							<button
+								type="button"
+								class="text-muted cursor-not-allowed text-sm opacity-40"
+								disabled>+ {daemons_credentialWizardAddDaemonHostTarget()}</button
+							>
+						</span>
+					{:else}
+						<button
+							type="button"
+							class="text-link text-sm disabled:opacity-40"
+							disabled={hasDaemonHostTarget}
+							onclick={handleAddDaemonHostTarget}
+							>+ {daemons_credentialWizardAddDaemonHostTarget()}</button
+						>
+					{/if}
 				{/if}
 				{#if supportsRemoteHosts}
 					<button type="button" class="text-link text-sm" onclick={handleAddIpTarget}
@@ -671,9 +687,6 @@
 					>
 				{/if}
 			</div>
-			{#if supportsDaemonHost && daemonHostUnavailable && !hasDaemonHostTarget}
-				<p class="text-muted text-xs">{daemons_credentialWizardDaemonHostUnavailable()}</p>
-			{/if}
 			{#if targetError}
 				<p class="text-xs text-red-600 dark:text-red-400">
 					{daemons_credentialWizardTargetRequired()}
