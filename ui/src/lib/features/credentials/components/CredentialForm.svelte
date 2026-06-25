@@ -602,7 +602,8 @@
 		{:else if targetMode === 'DaemonHost'}
 			<p class="text-muted text-xs">{daemons_credentialTargetDaemonHostHelp()}</p>
 		{:else}
-			{#each targetIpValues as ip, i (i)}
+			<!-- eslint-disable-next-line @typescript-eslint/no-unused-vars -->
+			{#each targetIpValues as _ip, i (i)}
 				<div class="flex items-center gap-2">
 					<div class="min-w-0 flex-1">
 						<form.Field

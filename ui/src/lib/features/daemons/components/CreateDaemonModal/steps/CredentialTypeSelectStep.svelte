@@ -27,18 +27,19 @@
 	// split into auto-local capabilities (rendered as toggles) and configurable
 	// credentials (rendered as selectable tiles).
 	let integrations = $derived.by(() => {
-		const groups = new Map<string, { name: string; auto: CredType[]; config: CredType[] }>();
+		const order: string[] = [];
+		const groups: Record<string, { name: string; auto: CredType[]; config: CredType[] }> = {};
 		for (const t of credentialTypes.getItems()) {
 			const name = t.metadata?.associated_service ?? t.name ?? t.id;
-			let g = groups.get(name);
-			if (!g) {
-				g = { name, auto: [], config: [] };
-				groups.set(name, g);
+			if (!groups[name]) {
+				groups[name] = { name, auto: [], config: [] };
+				order.push(name);
 			}
+			const g = groups[name];
 			if (t.metadata?.is_local_auto) g.auto.push(t);
 			else if (t.metadata?.is_user_selectable !== false) g.config.push(t);
 		}
-		return [...groups.values()].filter((g) => g.auto.length > 0 || g.config.length > 0);
+		return order.map((n) => groups[n]).filter((g) => g.auto.length > 0 || g.config.length > 0);
 	});
 
 	function toggleType(id: string) {
