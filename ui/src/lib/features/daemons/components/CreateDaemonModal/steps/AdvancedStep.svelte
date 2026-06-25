@@ -6,23 +6,10 @@
 	import Checkbox from '$lib/shared/components/forms/input/Checkbox.svelte';
 	import DocsHint from '$lib/shared/components/feedback/DocsHint.svelte';
 	import InlineInfo from '$lib/shared/components/feedback/InlineInfo.svelte';
-	import InlineSuccess from '$lib/shared/components/feedback/InlineSuccess.svelte';
 	import CollapsibleCard from '$lib/shared/components/data/CollapsibleCard.svelte';
-	import SegmentedControl from '$lib/shared/components/forms/SegmentedControl.svelte';
 	import {
-		common_disabled,
-		common_docker,
-		common_proxy,
 		daemons_docsConfigOptions,
-		daemons_docsConfigOptionsLinkText,
-		daemons_dockerDescription,
-		daemons_dockerLocalSocket,
-		daemons_dockerProxyCreated,
-		daemons_dockerDisabledHelp,
-		daemons_dockerLocalSocketHelp,
-		// daemons_dockerProxyHelp,
-		daemons_dockerGoToScanCredentials,
-		daemons_dockerProxyWizardCta
+		daemons_docsConfigOptionsLinkText
 	} from '$lib/paraglide/messages';
 	import { fieldDefs, sectionDefs } from '../../../config';
 
@@ -32,20 +19,9 @@
 		formValues: Record<string, string | number | boolean>;
 		selectedOS?: string;
 		linuxMethod?: string;
-		dockerMode?: string;
-		hasDockerProxyCredential?: boolean;
-		onNavigateToCredentialWizard?: () => void;
 	}
 
-	let {
-		form,
-		formValues,
-		selectedOS = 'linux',
-		linuxMethod = 'binary',
-		dockerMode = $bindable('local_socket'),
-		hasDockerProxyCredential = false,
-		onNavigateToCredentialWizard
-	}: Props = $props();
+	let { form, formValues, selectedOS = 'linux', linuxMethod = 'binary' }: Props = $props();
 
 	// Dynamic placeholder for logFile field based on selected OS
 	let logFilePlaceholder = $derived.by(() => {
@@ -62,19 +38,6 @@
 				return `%ProgramData%\\scanopy\\${name}.log`;
 			default:
 				return `/var/log/scanopy/${name}.log`;
-		}
-	});
-
-	let dockerModeHelp = $derived.by(() => {
-		switch (dockerMode) {
-			case 'disabled':
-				return daemons_dockerDisabledHelp();
-			case 'local_socket':
-				return daemons_dockerLocalSocketHelp();
-			// case 'proxy':
-			// 	return daemons_dockerProxyHelp();
-			default:
-				return '';
 		}
 	});
 
@@ -120,42 +83,6 @@
 		href="https://scanopy.net/docs/reference/daemon-configuration/"
 		linkText={daemons_docsConfigOptionsLinkText()}
 	/>
-
-	<!-- Docker Section -->
-	<CollapsibleCard
-		title={common_docker()}
-		description={daemons_dockerDescription()}
-		expanded={false}
-	>
-		<div class="space-y-4">
-			<SegmentedControl
-				options={[
-					{ value: 'disabled', label: common_disabled() },
-					{ value: 'local_socket', label: daemons_dockerLocalSocket() },
-					{ value: 'proxy', label: common_proxy() }
-				]}
-				selected={hasDockerProxyCredential ? 'proxy' : dockerMode}
-				onchange={(v) => {
-					dockerMode = v;
-				}}
-				disabled={hasDockerProxyCredential}
-				size="md"
-			/>
-
-			<p class="text-muted text-xs">{dockerModeHelp}</p>
-
-			{#if hasDockerProxyCredential}
-				<InlineSuccess title={daemons_dockerProxyCreated()} />
-			{:else if dockerMode === 'proxy' && onNavigateToCredentialWizard}
-				<div class="space-y-2">
-					<p class="text-secondary text-sm">{daemons_dockerProxyWizardCta()}</p>
-					<button type="button" class="btn-primary text-sm" onclick={onNavigateToCredentialWizard}>
-						{daemons_dockerGoToScanCredentials()}
-					</button>
-				</div>
-			{/if}
-		</div>
-	</CollapsibleCard>
 
 	{#each advancedSections as section (section.name)}
 		{@const sectionName = section.name()}

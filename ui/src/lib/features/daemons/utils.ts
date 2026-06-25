@@ -84,7 +84,6 @@ export function buildDefaultValues(
 }
 
 export interface DockerConfig {
-	mode: string;
 	credentialId: string | null;
 	disableLocalSocket?: boolean;
 }
@@ -162,7 +161,7 @@ export function buildRunCommand(
 
 	// Docker config flags
 	if (dockerConfig) {
-		if (dockerConfig.mode === 'disabled' || dockerConfig.disableLocalSocket) {
+		if (dockerConfig.disableLocalSocket) {
 			cmd += ` --enable-local-docker-socket false`;
 		}
 	}
@@ -244,7 +243,7 @@ export function buildDockerCompose(
 
 	// Docker config env vars
 	if (dockerConfig) {
-		if (dockerConfig.mode === 'disabled' || dockerConfig.disableLocalSocket) {
+		if (dockerConfig.disableLocalSocket) {
 			envVars.push(`SCANOPY_ENABLE_LOCAL_DOCKER_SOCKET=false`);
 		}
 	}
