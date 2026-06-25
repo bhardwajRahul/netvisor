@@ -28,18 +28,10 @@ pub enum CredentialCategory {
     ContainerVirtualization,
 }
 
-/// How a credential is scoped to targets.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, ToSchema, PartialEq, Eq)]
-pub enum ScopeModel {
-    /// Network default — try on all hosts with matching open ports
-    Broadcast,
-    /// Assigned to specific hosts only
-    PerHost,
-}
-
-/// Where a credential / integration applies. Supersedes `ScopeModel`:
-/// `Network` ⇔ Broadcast, `Host` ⇔ PerHost, plus `DaemonHost` for the daemon's
-/// own host (e.g. the local Docker socket, realized as a 127.0.0.1 IP-override).
+/// Where a credential / integration applies. `Network` is a broadcast default
+/// (all hosts on a network), `Host` targets specific hosts, and `DaemonHost` is
+/// the daemon's own host (e.g. the local Docker socket, realized as a 127.0.0.1
+/// IP-override).
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, ToSchema, PartialEq, Eq, Hash)]
 pub enum Target {
     /// The daemon's own host (local). Daemon-relative.
@@ -179,7 +171,6 @@ impl TypeMetadataProvider for CredentialTypeDiscriminants {
         };
         serde_json::json!({
             "fields": ct.field_definitions(),
-            "scope_models": ct.scope_models(),
             "targets": ct.targets(),
             "requires_config": ct.requires_config(),
             "is_local_auto": ct.is_local_auto(),

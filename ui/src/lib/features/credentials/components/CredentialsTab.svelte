@@ -197,17 +197,17 @@
 				getValue: (item: Credential) => credentialTypes.getName(getCredentialTypeId(item))
 			},
 			{
-				key: 'scope_model',
+				key: 'target',
 				label: common_scope(),
 				type: 'array',
 				filterable: true,
 				groupable: true,
 				filterMode: 'include',
-				filterOptions: ['Broadcast', 'PerHost'],
+				filterOptions: ['Network', 'Host', 'DaemonHost'],
 				getValue: (item: Credential) => {
 					const typeId = getCredentialTypeId(item);
 					const meta = credentialTypes.getMetadata(typeId);
-					return meta?.scope_models ?? [];
+					return meta?.targets ?? [];
 				}
 			}
 		]

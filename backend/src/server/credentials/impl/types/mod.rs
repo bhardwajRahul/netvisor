@@ -21,9 +21,7 @@ mod metadata;
 mod secrets;
 
 pub use fields::{FieldDefinition, FieldType, InlineFormat, PemTag, SelectOption};
-pub use metadata::{
-    CredentialAssignment, CredentialCategory, CredentialHostAssignment, ScopeModel, Target,
-};
+pub use metadata::{CredentialAssignment, CredentialCategory, CredentialHostAssignment, Target};
 pub use secrets::{
     FileOrInline, REDACTED_SECRET_SENTINEL, SecretValue, StorageCredentialType,
     deserialize_optional_file_or_inline, deserialize_optional_secret_value,
@@ -195,18 +193,8 @@ impl CredentialType {
         }
     }
 
-    pub fn scope_models(&self) -> Vec<ScopeModel> {
-        match self {
-            Self::SnmpV1 { .. } | Self::SnmpV2c { .. } | Self::SnmpV3 { .. } => {
-                vec![ScopeModel::Broadcast, ScopeModel::PerHost]
-            }
-            Self::DockerProxy { .. } => vec![ScopeModel::PerHost],
-            Self::DockerSocket {} => vec![ScopeModel::PerHost],
-        }
-    }
-
-    /// Where this credential type can be applied. Supersedes `scope_models()`
-    /// (Broadcast→Network, PerHost→Host) and adds the daemon's own host.
+    /// Where this credential type can be applied: the daemon's own host, specific
+    /// hosts, and/or a whole network (broadcast).
     pub fn targets(&self) -> Vec<Target> {
         match self {
             // SNMP can target the daemon's own host too (a 127.0.0.1 IP-override),

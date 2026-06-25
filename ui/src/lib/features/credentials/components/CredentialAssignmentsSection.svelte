@@ -41,9 +41,11 @@
 		hostAssignments = $bindable([])
 	}: Props = $props();
 
-	let scopeModels = $derived(credentialTypes.getMetadata(credentialTypeId)?.scope_models ?? []);
-	let supportsBroadcast = $derived(scopeModels.includes('Broadcast'));
-	let supportsPerHost = $derived(scopeModels.includes('PerHost'));
+	// Global assignments cover the Network and Host targets; the daemon-relative
+	// DaemonHost target is configured per-daemon, not here.
+	let targets = $derived(credentialTypes.getMetadata(credentialTypeId)?.targets ?? []);
+	let supportsBroadcast = $derived(targets.includes('Network'));
+	let supportsPerHost = $derived(targets.includes('Host'));
 
 	const networksQuery = useNetworksQuery();
 	const hostsQuery = useHostsQuery({ limit: 0 });

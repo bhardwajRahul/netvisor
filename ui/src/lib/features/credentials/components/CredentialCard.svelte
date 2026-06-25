@@ -3,7 +3,7 @@
 	import GenericCard from '$lib/shared/components/data/GenericCard.svelte';
 	import TagPickerInline from '$lib/features/tags/components/TagPickerInline.svelte';
 	import type { Credential } from '../types/base';
-	import { getCredentialTypeId, getScopeTagProps } from '../types/base';
+	import { getCredentialTypeId, getTargetTagProps } from '../types/base';
 	import { entities } from '$lib/shared/stores/metadata';
 	import { credentialTypes } from '$lib/shared/stores/metadata';
 	import { useCurrentUserQuery } from '$lib/features/auth/queries';
@@ -48,7 +48,7 @@
 	let currentUser = $derived(currentUserQuery.data);
 
 	let typeId = $derived(getCredentialTypeId(credential));
-	let scopeModels = $derived(credentialTypes.getMetadata(typeId)?.scope_models ?? []);
+	let targets = $derived(credentialTypes.getMetadata(typeId)?.targets ?? []);
 
 	let canManage = $derived(
 		(currentUser && permissions.getMetadata(currentUser.permissions).manage_org_entities) || false
@@ -71,14 +71,14 @@
 			},
 			{
 				label: common_scope(),
-				value: scopeModels.map((s) => {
-					const props = getScopeTagProps(s);
-					return { id: s, ...props } as CardFieldItem;
+				value: targets.map((t) => {
+					const props = getTargetTagProps(t);
+					return { id: t, ...props } as CardFieldItem;
 				})
 			},
 			{
 				label: common_networks(),
-				value: scopeModels.includes('Broadcast')
+				value: targets.includes('Network')
 					? assignedNetworks.length > 0
 						? assignedNetworks.map((n) => ({
 								id: n.id,
@@ -91,7 +91,7 @@
 			},
 			{
 				label: common_hosts(),
-				value: scopeModels.includes('PerHost')
+				value: targets.includes('Host')
 					? assignedHosts.length > 0
 						? assignedHosts.map((h) => ({
 								id: h.id,

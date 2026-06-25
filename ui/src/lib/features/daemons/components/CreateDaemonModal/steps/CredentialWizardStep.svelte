@@ -160,10 +160,10 @@
 		}
 
 		const fieldValues = initDefaultFieldValues(typeId);
-		// Broadcast-capable types (e.g. SNMP) default to network-default scope,
-		// matching CredentialForm's initial mode.
-		const supportsBroadcast = (credentialTypes.getMetadata(typeId)?.scope_models ?? []).includes(
-			'Broadcast'
+		// Network-capable types (e.g. SNMP) default to broadcast scope, matching
+		// CredentialForm's initial target.
+		const supportsBroadcast = (credentialTypes.getMetadata(typeId)?.targets ?? []).includes(
+			'Network'
 		);
 		pendingCredentials = [
 			...pendingCredentials,

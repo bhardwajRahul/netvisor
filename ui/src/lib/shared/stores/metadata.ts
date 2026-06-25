@@ -58,8 +58,6 @@ export interface FieldDefinition {
 
 export interface CredentialTypeMetadata {
 	fields: FieldDefinition[];
-	/** How this credential type can be scoped to targets (legacy; superseded by `targets`) */
-	scope_models?: string[];
 	/** Where this credential type can apply: 'DaemonHost' | 'Host' | 'Network' */
 	targets?: ('DaemonHost' | 'Host' | 'Network')[];
 	/** Whether the user must provide config/fields (false ⇒ rendered as a toggle, not a form) */
