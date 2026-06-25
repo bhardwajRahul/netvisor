@@ -1,10 +1,10 @@
 <script lang="ts">
-	import { loadStripe, type Stripe, type StripeElements } from '@stripe/stripe-js';
+	import { loadStripe, type Stripe, type StripeElements, type Appearance } from '@stripe/stripe-js';
 	import { useConfigQuery } from '$lib/shared/stores/config-query';
+	import Loading from '$lib/shared/components/feedback/Loading.svelte';
 	import {
 		common_cancel,
 		common_continue,
-		common_loading,
 		common_processing,
 		billing_cardError,
 		billing_cardLoadError
@@ -13,6 +13,7 @@
 	let {
 		clientSecret,
 		description = undefined,
+		email = undefined,
 		submitLabel = common_continue(),
 		onSuccess,
 		onCancel = undefined
@@ -21,6 +22,8 @@
 		clientSecret: string;
 		/** Optional lead-in text rendered above the Payment Element. */
 		description?: string;
+		/** Prefills the Link email so returning users skip re-typing it. */
+		email?: string;
 		submitLabel?: string;
 		/**
 		 * Called with the confirmed SetupIntent id after the card is collected.
@@ -45,6 +48,55 @@
 	let errorMessage = $state('');
 	let loadFailed = $state(false);
 	let initialized = false;
+
+	// Stripe Elements lives in an iframe, so it can't inherit the app's CSS.
+	// Mirror Scanopy's design tokens (read live from :root, so it tracks the
+	// active light/dark theme) into the Elements appearance API.
+	function cssVar(name: string): string {
+		return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+	}
+
+	function buildAppearance(): Appearance {
+		const isDark = document.documentElement.classList.contains('dark');
+		const accent = '#3b82f6'; // blue-500, matches btn-primary / focus ring
+		const inputBg = cssVar('--color-bg-input');
+		const inputBorder = cssVar('--color-border-input');
+		const textPrimary = cssVar('--color-text-primary');
+		return {
+			theme: isDark ? 'night' : 'stripe',
+			variables: {
+				colorPrimary: accent,
+				colorBackground: inputBg,
+				colorText: textPrimary,
+				colorTextSecondary: cssVar('--color-text-secondary'),
+				colorTextPlaceholder: cssVar('--color-text-muted'),
+				colorDanger: '#ef4444', // red-500
+				fontFamily: getComputedStyle(document.body).fontFamily,
+				borderRadius: '6px'
+			},
+			rules: {
+				'.Input': {
+					backgroundColor: inputBg,
+					borderColor: inputBorder,
+					color: textPrimary
+				},
+				'.Input:focus': {
+					borderColor: accent,
+					boxShadow: '0 0 0 2px rgba(59, 130, 246, 0.5)'
+				},
+				'.Tab, .AccordionItem': {
+					backgroundColor: cssVar('--color-bg-elevated'),
+					borderColor: cssVar('--color-border')
+				},
+				'.Tab:hover, .AccordionItem:hover': {
+					backgroundColor: inputBg
+				},
+				'.Label': {
+					color: cssVar('--color-text-secondary')
+				}
+			}
+		};
+	}
 
 	// Mount the Payment Element once we have the publishable key, a client
 	// secret, and the container node. loadStripe + element creation happen once.
@@ -75,14 +127,18 @@
 				errorMessage = billing_cardLoadError();
 				return;
 			}
-			// Match Elements to the app's active theme (toggled via a `dark` class
-			// on <html>), so the card fields don't clash with a light/dark modal.
-			const isDark = document.documentElement.classList.contains('dark');
+			// `loader: 'never'` disables Stripe's optimistic skeleton so the user
+			// sees our native spinner until the element is fully ready (no flash
+			// of placeholder cards). Appearance mirrors the app theme.
 			elements = stripe.elements({
 				clientSecret,
-				appearance: { theme: isDark ? 'night' : 'stripe' }
+				appearance: buildAppearance(),
+				loader: 'never'
 			});
-			const paymentElement = elements.create('payment', { layout: 'accordion' });
+			const paymentElement = elements.create('payment', {
+				layout: 'accordion',
+				defaultValues: email ? { billingDetails: { email } } : undefined
+			});
 			paymentElement.on('ready', () => (ready = true));
 			paymentElement.mount(node);
 		})();
@@ -134,14 +190,15 @@
 			<p class="text-secondary text-sm">{description}</p>
 		{/if}
 
-		<!-- Stripe mounts the Payment Element iframe here. Reserve height so the
-		     layout doesn't jump while it loads. -->
-		<div class="relative min-h-[3rem]">
-			<div bind:this={container}></div>
+		<!-- Stripe mounts the Payment Element iframe here. Keep it mounted (so it
+		     loads) but hidden until `ready`, with our native spinner over it — no
+		     flash of Stripe's placeholder cards. -->
+		<div class="relative min-h-[8rem]">
+			<div bind:this={container} class:invisible={!ready}></div>
 			{#if !ready && !loadFailed}
-				<p class="text-secondary absolute inset-0 flex items-center justify-center text-sm">
-					{common_loading()}
-				</p>
+				<div class="absolute inset-0 flex items-center justify-center">
+					<Loading />
+				</div>
 			{/if}
 		</div>
 
