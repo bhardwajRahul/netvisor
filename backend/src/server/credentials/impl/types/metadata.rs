@@ -138,16 +138,20 @@ impl TypeMetadataProvider for CredentialTypeDiscriminants {
 
     fn description(&self) -> &'static str {
         match self {
-            Self::SnmpV1 => "SNMPv1 community string for legacy devices that only speak v1",
-            Self::SnmpV2c => "SNMPv2c community string for querying network devices",
+            Self::SnmpV1 => {
+                "Discover a host's interfaces, system details, and LLDP neighbors using SNMPv1 (legacy, unencrypted)."
+            }
+            Self::SnmpV2c => {
+                "Discover a host's interfaces, system details, and LLDP neighbors using SNMPv2c (unencrypted community string)."
+            }
             Self::SnmpV3 => {
-                "SNMPv3 with authentication and privacy (AuthPriv) for hardened devices"
+                "Discover a host's interfaces, system details, and LLDP neighbors using SNMPv3 (authenticated and encrypted)."
             }
             Self::DockerProxy => {
-                "Connect to the Docker API over TCP, optionally with TLS — on the daemon's own host or a remote host."
+                "Discover Docker containers and the services they expose over TCP, optionally with TLS."
             }
             Self::DockerSocket => {
-                "Discovers Docker containers via the daemon's local socket. No credentials required."
+                "Discover Docker containers and the services they expose via the daemon's local socket."
             }
         }
     }

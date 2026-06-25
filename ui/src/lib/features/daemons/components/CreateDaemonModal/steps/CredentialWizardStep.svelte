@@ -478,7 +478,16 @@
 								onChange={(data) => handleConfigChange(index, data)}
 							/>
 						{:else}
-							<div class="mb-4">
+							<CredentialForm
+								bind:this={credentialFormRefs[index]}
+								{form}
+								compact={true}
+								fieldPrefix={`credentials[${index}].`}
+								fixedCredentialType={pending.credential.credential_type.type}
+								daemonHostUnavailable={daemonHostUnavailableFor(index)}
+								onChange={(data) => handleConfigChange(index, data)}
+							/>
+							<div class="mt-4">
 								<form.Field
 									name={`credentials[${index}].name`}
 									validators={{ onBlur: ({ value }: { value: string }) => required(value) }}
@@ -491,15 +500,6 @@
 									{/snippet}
 								</form.Field>
 							</div>
-							<CredentialForm
-								bind:this={credentialFormRefs[index]}
-								{form}
-								compact={true}
-								fieldPrefix={`credentials[${index}].`}
-								fixedCredentialType={pending.credential.credential_type.type}
-								daemonHostUnavailable={daemonHostUnavailableFor(index)}
-								onChange={(data) => handleConfigChange(index, data)}
-							/>
 						{/if}
 					{/if}
 				</div>
