@@ -463,7 +463,7 @@
   "daemons_credentialWizardDescriptionLinkText": "Learn about credential types",
   "daemons_credentialWizardEmpty": "No credentials added yet",
   "daemons_credentialWizardExistingDescription": "You can modify this credential in the Credentials tab.",
-  "daemons_credentialWizardLocalAutoNote": "Available automatically on this daemon — no credential is created. Remove this entry to turn it off.",
+  "daemons_credentialWizardLocalAutoNote": "Enabled while it's listed here — remove this entry to turn it off.",
   "daemons_credentialWizardNetworkCredentials": "Will be used for all hosts:",
   "daemons_credentialWizardReturn": "Create {count} credential(s) and continue to install",
   "daemons_credentialWizardReturnToInstall": "Continue to install",

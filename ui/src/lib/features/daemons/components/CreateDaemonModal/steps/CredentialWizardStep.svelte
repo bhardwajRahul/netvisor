@@ -427,11 +427,14 @@
 				<div class:hidden={selectedIndex !== index}>
 					{#if isLocalAuto(pending.credential.credential_type.type)}
 						<!-- Auto-local capability (e.g. Docker socket): no fields, no targets,
-						     creates no credential. Explain why there's nothing to configure. -->
-						<p class="text-secondary mb-3 text-sm">
-							{credentialTypes.getDescription(pending.credential.credential_type.type)}
-						</p>
-						<InlineInfo title="" body={daemons_credentialWizardLocalAutoNote()} />
+						     creates no credential. One panel = the type's description (what it
+						     does) plus the generic enable-by-presence mechanic. -->
+						<InlineInfo
+							title=""
+							body={`${credentialTypes.getDescription(
+								pending.credential.credential_type.type
+							)} ${daemons_credentialWizardLocalAutoNote()}`}
+						/>
 					{:else}
 						{#if daemonHasDockerSocket === true && pending.credential.credential_type.type === 'DockerProxy' && isLocalhostTarget(pending.targetIps)}
 							<div class="mb-4">
