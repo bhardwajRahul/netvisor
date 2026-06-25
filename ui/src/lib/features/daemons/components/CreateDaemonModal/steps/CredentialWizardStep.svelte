@@ -17,9 +17,7 @@
 	import { v4 as uuidv4 } from 'uuid';
 	import DocsHint from '$lib/shared/components/feedback/DocsHint.svelte';
 	import InlineInfo from '$lib/shared/components/feedback/InlineInfo.svelte';
-	import InlineDanger from '$lib/shared/components/feedback/InlineDanger.svelte';
 	import {
-		daemons_credentialWizardSingleEndpointConflict,
 		daemons_credentialWizardTitle,
 		daemons_credentialWizardDescription,
 		daemons_credentialWizardDescriptionLinkText,
@@ -91,58 +89,64 @@
 		return credentialTypes.getMetadata(typeId)?.is_local_auto === true;
 	}
 
-	// Conflict message shown when two single-endpoint creds collide on a host.
-	let conflictMessage = $state<string | null>(null);
-
-	// Normalize a target to a comparison key; loopback variants and the daemon host
-	// collapse to one key.
-	function targetKey(ip: string): string {
+	function isLoopback(ip: string): boolean {
 		const t = ip.trim();
-		if (t === '127.0.0.1' || t === '::1' || t === 'localhost') return 'daemon-host';
-		return `ip:${t}`;
+		return t === '127.0.0.1' || t === '::1' || t === 'localhost';
 	}
 
 	/**
-	 * Generic single-endpoint conflict check: an integration whose type is
-	 * `single_endpoint_per_host` resolves to one endpoint per host, so two of its
-	 * pending creds must not target the same host. The auto-local socket counts as
-	 * targeting the daemon host — this is why the check runs client-side (the socket
-	 * isn't a persisted credential the server can see). Returns the integration name
-	 * of the first collision, or null.
+	 * Whether a pending credential claims its integration's daemon host: the
+	 * auto-local socket always does; a configurable cred does when it targets a
+	 * loopback. The daemon host is a single endpoint per `single_endpoint_per_host`
+	 * integration, so only one credential may hold it.
 	 */
-	function findSingleEndpointConflict(): string | null {
-		const seenByIntegration: Record<string, string[]> = {};
-		for (const p of pendingCredentials) {
-			if (p.isExisting) continue;
-			const meta = credentialTypes.getMetadata(p.credential.credential_type.type);
-			if (!meta?.single_endpoint_per_host || !meta.associated_service) continue;
-			const keys: string[] = [];
-			if (meta.is_local_auto) keys.push('daemon-host');
-			else if (p.scope === 'broadcast') keys.push('network');
-			else for (const ip of p.targetIps) if (ip.trim()) keys.push(targetKey(ip));
-			const seen = seenByIntegration[meta.associated_service] ?? [];
-			for (const k of keys) {
-				if (seen.includes(k)) return meta.associated_service;
-				seen.push(k);
-			}
-			seenByIntegration[meta.associated_service] = seen;
-		}
-		return null;
+	function claimsDaemonHost(p: PendingCredential): boolean {
+		if (p.isExisting) return false;
+		const meta = credentialTypes.getMetadata(p.credential.credential_type.type);
+		if (!meta?.single_endpoint_per_host) return false;
+		return meta.is_local_auto === true || p.targetIps.some(isLoopback);
+	}
+
+	function integrationOf(typeId: string): string | undefined {
+		return credentialTypes.getMetadata(typeId)?.associated_service;
+	}
+
+	/** True when another pending cred of the same single-endpoint integration already
+	 *  holds the daemon host — used to disable the "Add daemon host" action. */
+	function daemonHostUnavailableFor(index: number): boolean {
+		const p = pendingCredentials[index];
+		if (!p || p.isExisting) return false;
+		const meta = credentialTypes.getMetadata(p.credential.credential_type.type);
+		if (!meta?.single_endpoint_per_host || !meta.associated_service) return false;
+		return pendingCredentials.some(
+			(other, j) =>
+				j !== index &&
+				integrationOf(other.credential.credential_type.type) === meta.associated_service &&
+				claimsDaemonHost(other)
+		);
 	}
 
 	// Type dropdown eligibility: offer user-selectable types plus auto-local
 	// capabilities (e.g. the Docker socket). A local capability can only be added
-	// once (it's the same daemon flag); per-host conflicts are caught generically
-	// at submit, so configurable types (e.g. multiple Docker Proxies on different
-	// hosts) are never blanket-blocked here.
+	// once, and not when its integration's daemon host is already claimed by another
+	// pending credential (the socket claims that slot). Configurable types (e.g.
+	// multiple Docker Proxies on different hosts) are never blanket-blocked.
 	let typeOptions = $derived(
 		credentialTypes.getItems().filter((t) => {
 			if (t.metadata?.is_user_selectable === false && !t.metadata?.is_local_auto) return false;
-			if (
-				t.metadata?.is_local_auto &&
-				pendingCredentials.some((p) => p.credential.credential_type.type === t.id)
-			) {
-				return false;
+			if (t.metadata?.is_local_auto) {
+				if (pendingCredentials.some((p) => p.credential.credential_type.type === t.id)) {
+					return false;
+				}
+				if (
+					pendingCredentials.some(
+						(p) =>
+							integrationOf(p.credential.credential_type.type) === t.metadata?.associated_service &&
+							claimsDaemonHost(p)
+					)
+				) {
+					return false;
+				}
 			}
 			return true;
 		})
@@ -320,16 +324,11 @@
 	export async function validate(): Promise<boolean> {
 		let isValid = await validateForm(form);
 		// "Target Specific Hosts" requires at least one host. Auto-local items have no
-		// form ref (undefined) and are skipped.
+		// form ref (undefined) and are skipped. (Daemon-host conflicts are prevented
+		// proactively at input — the "Add daemon host" button is disabled.)
 		for (const ref of credentialFormRefs) {
 			if (ref && ref.validateTarget() === false) isValid = false;
 		}
-		// Generic single-endpoint conflict (e.g. Docker socket + a daemon-host proxy).
-		const conflict = findSingleEndpointConflict();
-		conflictMessage = conflict
-			? daemons_credentialWizardSingleEndpointConflict({ integration: conflict })
-			: null;
-		if (conflict) isValid = false;
 		return isValid;
 	}
 
@@ -388,11 +387,6 @@
 {/snippet}
 
 <div class="flex min-h-0 flex-1 flex-col">
-	{#if conflictMessage}
-		<div class="mb-3">
-			<InlineDanger title="" body={conflictMessage} />
-		</div>
-	{/if}
 	<ListConfigEditor {items} onChange={handleCredentialChange}>
 		<svelte:fragment slot="list" let:items let:onEdit let:highlightedIndex let:onItemSelect>
 			<ListManager
@@ -427,11 +421,14 @@
 				<div class:hidden={selectedIndex !== index}>
 					{#if isLocalAuto(pending.credential.credential_type.type)}
 						<!-- Auto-local capability (e.g. Docker socket): no fields, no targets,
-						     creates no credential. Explain why there's nothing to configure. -->
-						<p class="text-secondary mb-3 text-sm">
-							{credentialTypes.getDescription(pending.credential.credential_type.type)}
-						</p>
-						<InlineInfo title="" body={daemons_credentialWizardLocalAutoNote()} />
+						     creates no credential. One panel = the type's description (what it
+						     does) plus the generic enable-by-presence mechanic. -->
+						<InlineInfo
+							title=""
+							body={`${credentialTypes.getDescription(
+								pending.credential.credential_type.type
+							)} ${daemons_credentialWizardLocalAutoNote()}`}
+						/>
 					{:else}
 						{#if daemonHasDockerSocket === true && pending.credential.credential_type.type === 'DockerProxy' && isLocalhostTarget(pending.targetIps)}
 							<div class="mb-4">
@@ -450,6 +447,7 @@
 								fieldPrefix={`credentials[${index}].`}
 								fixedCredentialType={pending.credential.credential_type.type}
 								fixedName={pending.credential.name}
+								daemonHostUnavailable={daemonHostUnavailableFor(index)}
 								onChange={(data) => handleConfigChange(index, data)}
 							/>
 						{:else}
@@ -460,6 +458,7 @@
 								fieldPrefix={`credentials[${index}].`}
 								fixedCredentialType={pending.credential.credential_type.type}
 								fixedName={pending.credential.name}
+								daemonHostUnavailable={daemonHostUnavailableFor(index)}
 								onChange={(data) => handleConfigChange(index, data)}
 							/>
 						{/if}

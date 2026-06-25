@@ -37,6 +37,7 @@
 		daemons_credentialWizardTargetRequired,
 		daemons_credentialWizardAddRemoteHostTarget,
 		daemons_credentialWizardAddDaemonHostTarget,
+		daemons_credentialWizardDaemonHostUnavailable,
 		daemons_credentialWizardDaemonHostTargetLabel,
 		daemons_credentialWizardTargetSpecificHosts,
 		daemons_credentialWizardTargetAllHosts,
@@ -52,6 +53,9 @@
 		compact?: boolean;
 		hideFields?: boolean;
 		fieldPrefix?: string;
+		/** Disable the "Add daemon host" target when the daemon host is already
+		 *  claimed by another single-endpoint credential of the same integration. */
+		daemonHostUnavailable?: boolean;
 		onChange?: (data: {
 			targetIps?: string[];
 			fieldValues?: Record<string, string>;
@@ -68,6 +72,7 @@
 		compact = false,
 		hideFields = false,
 		fieldPrefix = '',
+		daemonHostUnavailable = false,
 		onChange,
 		onTypeChange
 	}: Props = $props();
@@ -655,7 +660,7 @@
 					<button
 						type="button"
 						class="text-link text-sm disabled:opacity-40"
-						disabled={hasDaemonHostTarget}
+						disabled={hasDaemonHostTarget || daemonHostUnavailable}
 						onclick={handleAddDaemonHostTarget}
 						>+ {daemons_credentialWizardAddDaemonHostTarget()}</button
 					>
@@ -666,6 +671,9 @@
 					>
 				{/if}
 			</div>
+			{#if supportsDaemonHost && daemonHostUnavailable && !hasDaemonHostTarget}
+				<p class="text-muted text-xs">{daemons_credentialWizardDaemonHostUnavailable()}</p>
+			{/if}
 			{#if targetError}
 				<p class="text-xs text-red-600 dark:text-red-400">
 					{daemons_credentialWizardTargetRequired()}

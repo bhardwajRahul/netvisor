@@ -42,7 +42,7 @@
 				type="button"
 				onclick={() => toggleType(type.id)}
 				aria-pressed={selected}
-				class="card p-3 text-left"
+				class="card rounded-lg border p-3 text-left"
 				class:card-selected={selected}
 			>
 				<ListSelectItem
