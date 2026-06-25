@@ -35,7 +35,6 @@
 		credentials_docsDockerProxy,
 		credentials_docsDockerProxyLinkText,
 		daemons_credentialWizardTargetIpHelp,
-		daemons_credentialWizardTargetRequired,
 		daemons_credentialWizardAddRemoteHostTarget,
 		daemons_credentialWizardAddDaemonHostTarget,
 		daemons_credentialWizardDaemonHostUnavailable,
@@ -119,8 +118,6 @@
 	);
 	// Show the Hosts | Networks toggle only when both modes are available.
 	let showTargetModeToggle = $derived(supportsHosts && supportsNetworks);
-	// Error flag for "Target Specific Hosts" with no host entered (set on validate).
-	let targetError = $state(false);
 
 	// Get field definitions for the currently selected type
 	let currentFields: FieldDefinition[] = $derived.by(() => {
@@ -284,7 +281,6 @@
 		// (not inherited from another credential in the shared form).
 		if (compact) {
 			targetIpValues = [];
-			targetError = false;
 			const formTargetIps = form.getFieldValue?.(`${fieldPrefix}targetIps`) as string[] | undefined;
 			const hasExplicitIps =
 				!!formTargetIps &&
@@ -494,14 +490,12 @@
 
 	function syncTargets() {
 		const next = [...targetIpValues];
-		if (next.some((ip) => ip.trim() !== '')) targetError = false;
 		form.setFieldValue?.(`${fieldPrefix}targetIps`, next);
 		onChange?.({ targetIps: next, scope: 'per_host' });
 	}
 
 	function handleTargetModeChange(mode: 'per_host' | 'broadcast') {
 		targetMode = mode;
-		targetError = false;
 		if (mode === 'broadcast') {
 			targetIpValues = [];
 			form.setFieldValue?.(`${fieldPrefix}targetIps`, []);
@@ -514,17 +508,12 @@
 
 	/**
 	 * Validate the target selection (compact wizard). "Target Specific Hosts"
-	 * requires at least one host (a remote IP or the daemon-host row). Sets the
-	 * inline error flag and returns validity. Broadcast is always valid.
+	 * requires at least one host (a remote IP or the daemon-host row). Broadcast is
+	 * always valid. The caller surfaces failures via a toast on advance.
 	 */
 	export function validateTarget(): boolean {
-		if (!compact || targetMode === 'broadcast') {
-			targetError = false;
-			return true;
-		}
-		const ok = targetIpValues.some((ip) => ip.trim() !== '');
-		targetError = !ok;
-		return ok;
+		if (!compact || targetMode === 'broadcast') return true;
+		return targetIpValues.some((ip) => ip.trim() !== '');
 	}
 
 	// Target-IP field validator. Returns valid for broadcast credentials so a
@@ -695,13 +684,7 @@
 					>
 				{/if}
 			</div>
-			{#if targetError}
-				<p class="text-xs text-red-600 dark:text-red-400">
-					{daemons_credentialWizardTargetRequired()}
-				</p>
-			{:else}
-				<p class="text-muted text-xs">{daemons_credentialWizardTargetIpHelp()}</p>
-			{/if}
+			<p class="text-muted text-xs">{daemons_credentialWizardTargetIpHelp()}</p>
 		{/if}
 
 		<!-- Name (between targeting and fields, like the full editor) -->

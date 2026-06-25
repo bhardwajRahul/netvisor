@@ -19,7 +19,9 @@
 	import { v4 as uuidv4 } from 'uuid';
 	import DocsHint from '$lib/shared/components/feedback/DocsHint.svelte';
 	import InlineInfo from '$lib/shared/components/feedback/InlineInfo.svelte';
+	import { pushError } from '$lib/shared/stores/feedback';
 	import {
+		daemons_credentialWizardTargetRequired,
 		daemons_credentialWizardTitle,
 		daemons_credentialWizardDescription,
 		daemons_credentialWizardDescriptionLinkText,
@@ -342,14 +344,17 @@
 
 	/** Validate all fields across all credentials. Returns true if valid. */
 	export async function validate(): Promise<boolean> {
-		let isValid = await validateForm(form);
+		// validateForm surfaces field errors as a toast itself.
+		const fieldsValid = await validateForm(form);
 		// "Target Specific Hosts" requires at least one host. Auto-local items have no
 		// form ref (undefined) and are skipped. (Daemon-host conflicts are prevented
-		// proactively at input — the "Add daemon host" button is disabled.)
-		for (const ref of credentialFormRefs) {
-			if (ref && ref.validateTarget() === false) isValid = false;
+		// proactively at input — the "Add daemon host" button is disabled.) Surface a
+		// toast on advance, consistent with the field validation, rather than inline.
+		const targetsValid = credentialFormRefs.every((ref) => !ref || ref.validateTarget());
+		if (fieldsValid && !targetsValid) {
+			pushError(daemons_credentialWizardTargetRequired());
 		}
-		return isValid;
+		return fieldsValid && targetsValid;
 	}
 
 	/** Get new credentials ready for bulk creation (with built credential_type from fieldValues). */
