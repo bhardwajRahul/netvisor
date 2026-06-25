@@ -1,3 +1,4 @@
+use crate::server::services::r#impl::definitions::ServiceDefinition;
 use crate::server::{
     auth::middleware::auth::AuthenticatedEntity,
     credentials::r#impl::{
@@ -29,9 +30,71 @@ use crate::server::{
 };
 use anyhow::Error;
 use async_trait::async_trait;
+use std::collections::HashSet;
+use std::net::IpAddr;
 use std::sync::{Arc, OnceLock};
 use strum::IntoDiscriminant;
 use uuid::Uuid;
+
+/// The set of things a credential targets, normalized across the three storage
+/// representations (network junction, host junction, bootstrap target IPs) so two
+/// credentials can be tested for overlap. Used to enforce the single-endpoint
+/// invariant — see [`CredentialService::find_single_endpoint_conflict`].
+#[derive(Debug, Default)]
+struct CredentialTargets {
+    networks: HashSet<Uuid>,
+    /// host_id → the IPs it is scoped to (`None` = the whole host).
+    hosts: Vec<(Uuid, Option<HashSet<Uuid>>)>,
+    ips: HashSet<IpAddr>,
+}
+
+impl CredentialTargets {
+    fn build(
+        networks: &[Uuid],
+        host_assignments: &[CredentialHostAssignment],
+        target_ips: Option<&[IpAddr]>,
+    ) -> Self {
+        Self {
+            networks: networks.iter().copied().collect(),
+            hosts: host_assignments
+                .iter()
+                .map(|h| {
+                    (
+                        h.host_id,
+                        h.ip_address_ids
+                            .as_ref()
+                            .map(|ids| ids.iter().copied().collect()),
+                    )
+                })
+                .collect(),
+            ips: target_ips
+                .map(|ips| ips.iter().copied().collect())
+                .unwrap_or_default(),
+        }
+    }
+
+    /// Two target sets overlap if they share a network, a target IP, or a host —
+    /// where a shared host overlaps when either side covers the whole host or
+    /// their IP scopes intersect.
+    fn overlaps(&self, other: &Self) -> bool {
+        if !self.networks.is_disjoint(&other.networks) {
+            return true;
+        }
+        if !self.ips.is_disjoint(&other.ips) {
+            return true;
+        }
+        self.hosts.iter().any(|(h1, s1)| {
+            other.hosts.iter().any(|(h2, s2)| {
+                h1 == h2
+                    && match (s1, s2) {
+                        // One side covers the whole host → always overlaps.
+                        (None, _) | (_, None) => true,
+                        (Some(a), Some(b)) => !a.is_disjoint(b),
+                    }
+            })
+        })
+    }
+}
 
 pub struct CredentialService {
     storage: Arc<GenericPostgresStorage<Credential>>,
@@ -276,6 +339,70 @@ impl CredentialService {
         self.host_credential_storage
             .save_host_assignments_for_credential(credential_id, assignments)
             .await
+    }
+
+    /// Enforce the single-endpoint-per-host invariant: integrations whose
+    /// credential type returns `single_endpoint_per_host()` (e.g. Docker) resolve
+    /// to exactly one endpoint per host, so two credentials of that integration
+    /// must not target an overlapping network, host, or IP (incl. the daemon host
+    /// at 127.0.0.1). Returns the name of the first conflicting credential, if any.
+    ///
+    /// `candidate` carries its intended assignments in `base` (network ids, host
+    /// assignments, target_ips) — call this before persisting. Try-many
+    /// integrations (e.g. SNMP, multiple communities per network) are unconstrained.
+    pub async fn find_single_endpoint_conflict(
+        &self,
+        candidate: &Credential,
+    ) -> Result<Option<String>, Error> {
+        let ct = &candidate.base.credential_type;
+        if !ct.single_endpoint_per_host() {
+            return Ok(None);
+        }
+        let integration = ServiceDefinition::name(&*ct.associated_service());
+        let org_id = candidate.base.organization_id;
+
+        // Other credentials of the same integration in this org.
+        let filter = StorableFilter::<Credential>::new_from_org_id(&org_id);
+        let others: Vec<Credential> = self
+            .get_all(filter)
+            .await?
+            .into_iter()
+            .filter(|c| c.id != candidate.id)
+            .filter(|c| {
+                ServiceDefinition::name(&*c.base.credential_type.associated_service())
+                    == integration
+            })
+            .collect();
+        if others.is_empty() {
+            return Ok(None);
+        }
+
+        // Hydrate the others' junction-backed assignments (target_ips is already
+        // loaded as a column on the credential rows).
+        let other_ids: Vec<Uuid> = others.iter().map(|c| c.id).collect();
+        let net_map = self.get_network_ids_for_credentials(&other_ids).await?;
+        let host_map = self
+            .get_host_assignments_for_credentials(&other_ids)
+            .await?;
+
+        let cand = CredentialTargets::build(
+            &candidate.base.assigned_network_ids,
+            &candidate.base.host_assignments,
+            candidate.base.target_ips.as_deref(),
+        );
+        for other in &others {
+            let empty_nets = Vec::new();
+            let empty_hosts = Vec::new();
+            let other_targets = CredentialTargets::build(
+                net_map.get(&other.id).unwrap_or(&empty_nets),
+                host_map.get(&other.id).unwrap_or(&empty_hosts),
+                other.base.target_ips.as_deref(),
+            );
+            if cand.overlaps(&other_targets) {
+                return Ok(Some(other.base.name.clone()));
+            }
+        }
+        Ok(None)
     }
 
     // ========================================================================
@@ -599,5 +726,83 @@ impl CredentialService {
             self.update(&mut cred, authentication).await?;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod single_endpoint_tests {
+    use super::*;
+    use crate::server::credentials::r#impl::types::CredentialHostAssignment;
+    use std::net::{IpAddr, Ipv4Addr};
+
+    fn ip(n: u8) -> IpAddr {
+        IpAddr::V4(Ipv4Addr::new(127, 0, 0, n))
+    }
+
+    fn host(id: Uuid, ips: Option<Vec<Uuid>>) -> CredentialHostAssignment {
+        CredentialHostAssignment {
+            host_id: id,
+            ip_address_ids: ips,
+        }
+    }
+
+    #[test]
+    fn disjoint_targets_do_not_overlap() {
+        let a = CredentialTargets::build(&[Uuid::nil()], &[], Some(&[ip(1)]));
+        let b = CredentialTargets::build(&[Uuid::from_u128(9)], &[], Some(&[ip(2)]));
+        assert!(!a.overlaps(&b));
+    }
+
+    #[test]
+    fn shared_network_overlaps() {
+        let net = Uuid::from_u128(1);
+        let a = CredentialTargets::build(&[net], &[], None);
+        let b = CredentialTargets::build(&[net], &[], None);
+        assert!(a.overlaps(&b));
+    }
+
+    #[test]
+    fn shared_target_ip_overlaps_including_daemon_host() {
+        // Two Docker credentials both pinned to the daemon host (127.0.0.1).
+        let a = CredentialTargets::build(&[], &[], Some(&[ip(1)]));
+        let b = CredentialTargets::build(&[], &[], Some(&[ip(1)]));
+        assert!(a.overlaps(&b));
+    }
+
+    #[test]
+    fn same_host_whole_host_overlaps() {
+        let h = Uuid::from_u128(5);
+        let a = CredentialTargets::build(&[], &[host(h, None)], None);
+        let b = CredentialTargets::build(&[], &[host(h, Some(vec![Uuid::from_u128(2)]))], None);
+        // One side covers the whole host → overlaps regardless of the other's scope.
+        assert!(a.overlaps(&b));
+    }
+
+    #[test]
+    fn same_host_disjoint_ip_scopes_do_not_overlap() {
+        let h = Uuid::from_u128(5);
+        let a = CredentialTargets::build(&[], &[host(h, Some(vec![Uuid::from_u128(1)]))], None);
+        let b = CredentialTargets::build(&[], &[host(h, Some(vec![Uuid::from_u128(2)]))], None);
+        assert!(!a.overlaps(&b));
+    }
+
+    #[test]
+    fn same_host_intersecting_ip_scopes_overlap() {
+        let h = Uuid::from_u128(5);
+        let shared = Uuid::from_u128(7);
+        let a = CredentialTargets::build(
+            &[],
+            &[host(h, Some(vec![shared, Uuid::from_u128(1)]))],
+            None,
+        );
+        let b = CredentialTargets::build(&[], &[host(h, Some(vec![shared]))], None);
+        assert!(a.overlaps(&b));
+    }
+
+    #[test]
+    fn different_hosts_do_not_overlap() {
+        let a = CredentialTargets::build(&[], &[host(Uuid::from_u128(1), None)], None);
+        let b = CredentialTargets::build(&[], &[host(Uuid::from_u128(2), None)], None);
+        assert!(!a.overlaps(&b));
     }
 }

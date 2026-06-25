@@ -1,6 +1,7 @@
 use crate::server::auth::middleware::permissions::{Admin, Authorized, Viewer};
 use crate::server::credentials::r#impl::base::Credential;
 use crate::server::credentials::service::CredentialService;
+use crate::server::services::r#impl::definitions::ServiceDefinition;
 use crate::server::shared::handlers::ordering::OrderField;
 use crate::server::shared::handlers::query::{
     FilterQueryExtractor, OrderDirection, PaginationParams,
@@ -175,6 +176,29 @@ async fn hydrate_assignments(
 
 /// Persist a credential's assignments to the junction tables and reflect them on
 /// the response entity.
+/// Reject a create/update that would give a single-endpoint integration (e.g.
+/// Docker) two credentials targeting the same host/network/IP. Call before
+/// persisting; `credential` must carry its intended assignments in `base`.
+async fn enforce_single_endpoint(
+    state: &AppState,
+    credential: &Credential,
+) -> Result<(), ApiError> {
+    if let Some(existing) = state
+        .services
+        .credential_service
+        .find_single_endpoint_conflict(credential)
+        .await
+        .map_err(|e| ApiError::internal_error(&e.to_string()))?
+    {
+        let integration =
+            ServiceDefinition::name(&*credential.base.credential_type.associated_service());
+        return Err(ApiError::bad_request(&format!(
+            "{integration} allows only one credential per host, but \"{existing}\" already targets an overlapping host, network, or IP. Remove or retarget it first."
+        )));
+    }
+    Ok(())
+}
+
 async fn save_assignments(
     state: &AppState,
     credential: &mut Credential,
@@ -255,6 +279,8 @@ async fn update_credential(
 
     let assigned_network_ids = entity.base.assigned_network_ids.clone();
     let host_assignments = entity.base.host_assignments.clone();
+
+    enforce_single_endpoint(&state, &entity).await?;
 
     let mut response = update_handler::<Credential>(
         State(state.clone()),
@@ -396,6 +422,8 @@ pub async fn create_credential(
     let assigned_network_ids = credential.base.assigned_network_ids.clone();
     let host_assignments = credential.base.host_assignments.clone();
 
+    enforce_single_endpoint(&state, &credential).await?;
+
     let mut response = create_handler::<Credential>(
         State(state.clone()),
         auth.into_permission::<crate::server::auth::middleware::permissions::Member>(),
@@ -449,6 +477,9 @@ async fn bulk_create_credentials(
     for credential in credentials {
         let assigned_network_ids = credential.base.assigned_network_ids.clone();
         let host_assignments = credential.base.host_assignments.clone();
+        // Checked sequentially, so each credential also sees earlier batch members
+        // (already persisted) — catching intra-batch conflicts too.
+        enforce_single_endpoint(&state, &credential).await?;
         let mut result = state
             .services
             .credential_service
