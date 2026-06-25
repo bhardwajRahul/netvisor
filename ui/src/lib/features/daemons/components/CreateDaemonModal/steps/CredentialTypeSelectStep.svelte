@@ -4,7 +4,7 @@
 	import type { TypedTypeMetadata, CredentialTypeMetadata } from '$lib/shared/stores/metadata';
 	import ListSelectItem from '$lib/shared/components/forms/selection/ListSelectItem.svelte';
 	import { CredentialTypeDisplay } from '$lib/shared/components/forms/selection/display/CredentialTypeDisplay.svelte';
-	import { common_integrations } from '$lib/paraglide/messages';
+	import { common_integrations, daemons_integrationsSubtitle } from '$lib/paraglide/messages';
 
 	type CredType = TypedTypeMetadata<CredentialTypeMetadata>;
 
@@ -34,7 +34,10 @@
 </script>
 
 <div class="flex min-h-0 flex-1 flex-col overflow-auto p-4 sm:p-6">
-	<h3 class="text-primary mb-4 text-lg font-medium">{common_integrations()}</h3>
+	<div class="mb-4">
+		<h3 class="text-primary text-lg font-medium">{common_integrations()}</h3>
+		<p class="text-secondary mt-1 text-sm">{daemons_integrationsSubtitle()}</p>
+	</div>
 
 	<div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
 		{#each cards as type (type.id)}
