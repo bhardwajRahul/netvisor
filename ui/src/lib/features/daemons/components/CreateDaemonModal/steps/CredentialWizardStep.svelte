@@ -17,7 +17,9 @@
 	import { v4 as uuidv4 } from 'uuid';
 	import DocsHint from '$lib/shared/components/feedback/DocsHint.svelte';
 	import InlineInfo from '$lib/shared/components/feedback/InlineInfo.svelte';
+	import InlineDanger from '$lib/shared/components/feedback/InlineDanger.svelte';
 	import {
+		daemons_credentialWizardSingleEndpointConflict,
 		daemons_credentialWizardTitle,
 		daemons_credentialWizardDescription,
 		daemons_credentialWizardDescriptionLinkText,
@@ -28,6 +30,7 @@
 		daemons_credentialWizardAddExisting,
 		daemons_credentialWizardSelectExisting,
 		daemons_credentialWizardExistingDescription,
+		daemons_credentialWizardLocalAutoNote,
 		discovery_dockerSocketInfo
 	} from '$lib/paraglide/messages';
 
@@ -84,24 +87,62 @@
 	// Local items array for ListConfigEditor display
 	let items = $derived(pendingCredentials.map((p) => p.credential));
 
-	// Type dropdown eligibility: a single-endpoint integration (e.g. Docker)
-	// resolves to one endpoint per host, so once one of its credentials is pending
-	// no other type of that integration can be added (UI mirror of the server
-	// single-endpoint check).
-	let blockedIntegrations = $derived(
-		new Set(
-			pendingCredentials
-				.map((p) => credentialTypes.getMetadata(p.credential.credential_type.type))
-				.filter((m) => m?.single_endpoint_per_host)
-				.map((m) => m?.associated_service)
-				.filter((name): name is string => !!name)
-		)
-	);
+	function isLocalAuto(typeId: string): boolean {
+		return credentialTypes.getMetadata(typeId)?.is_local_auto === true;
+	}
+
+	// Conflict message shown when two single-endpoint creds collide on a host.
+	let conflictMessage = $state<string | null>(null);
+
+	// Normalize a target to a comparison key; loopback variants and the daemon host
+	// collapse to one key.
+	function targetKey(ip: string): string {
+		const t = ip.trim();
+		if (t === '127.0.0.1' || t === '::1' || t === 'localhost') return 'daemon-host';
+		return `ip:${t}`;
+	}
+
+	/**
+	 * Generic single-endpoint conflict check: an integration whose type is
+	 * `single_endpoint_per_host` resolves to one endpoint per host, so two of its
+	 * pending creds must not target the same host. The auto-local socket counts as
+	 * targeting the daemon host — this is why the check runs client-side (the socket
+	 * isn't a persisted credential the server can see). Returns the integration name
+	 * of the first collision, or null.
+	 */
+	function findSingleEndpointConflict(): string | null {
+		const seenByIntegration: Record<string, string[]> = {};
+		for (const p of pendingCredentials) {
+			if (p.isExisting) continue;
+			const meta = credentialTypes.getMetadata(p.credential.credential_type.type);
+			if (!meta?.single_endpoint_per_host || !meta.associated_service) continue;
+			const keys: string[] = [];
+			if (meta.is_local_auto) keys.push('daemon-host');
+			else if (p.scope === 'broadcast') keys.push('network');
+			else for (const ip of p.targetIps) if (ip.trim()) keys.push(targetKey(ip));
+			const seen = seenByIntegration[meta.associated_service] ?? [];
+			for (const k of keys) {
+				if (seen.includes(k)) return meta.associated_service;
+				seen.push(k);
+			}
+			seenByIntegration[meta.associated_service] = seen;
+		}
+		return null;
+	}
+
+	// Type dropdown eligibility: offer user-selectable types plus auto-local
+	// capabilities (e.g. the Docker socket). A local capability can only be added
+	// once (it's the same daemon flag); per-host conflicts are caught generically
+	// at submit, so configurable types (e.g. multiple Docker Proxies on different
+	// hosts) are never blanket-blocked here.
 	let typeOptions = $derived(
 		credentialTypes.getItems().filter((t) => {
-			if (t.metadata?.is_user_selectable === false) return false;
-			if (t.metadata?.single_endpoint_per_host && t.metadata?.associated_service) {
-				return !blockedIntegrations.has(t.metadata.associated_service);
+			if (t.metadata?.is_user_selectable === false && !t.metadata?.is_local_auto) return false;
+			if (
+				t.metadata?.is_local_auto &&
+				pendingCredentials.some((p) => p.credential.credential_type.type === t.id)
+			) {
+				return false;
 			}
 			return true;
 		})
@@ -210,6 +251,13 @@
 			);
 			if (!alreadyPending) handleAddCredential(typeId);
 		}
+		// Reconcile auto-local entries (Docker socket) with the grid selection: drop
+		// any that were deselected. Configurable creds added in the wizard are kept.
+		pendingCredentials = pendingCredentials.filter(
+			(p) =>
+				!isLocalAuto(p.credential.credential_type.type) ||
+				typeIds.includes(p.credential.credential_type.type)
+		);
 	}
 
 	function handleAddExistingCredential(credentialId: string) {
@@ -270,7 +318,18 @@
 
 	/** Validate all fields across all credentials. Returns true if valid. */
 	export async function validate(): Promise<boolean> {
-		const isValid = await validateForm(form);
+		let isValid = await validateForm(form);
+		// "Target Specific Hosts" requires at least one host. Auto-local items have no
+		// form ref (undefined) and are skipped.
+		for (const ref of credentialFormRefs) {
+			if (ref && ref.validateTarget() === false) isValid = false;
+		}
+		// Generic single-endpoint conflict (e.g. Docker socket + a daemon-host proxy).
+		const conflict = findSingleEndpointConflict();
+		conflictMessage = conflict
+			? daemons_credentialWizardSingleEndpointConflict({ integration: conflict })
+			: null;
+		if (conflict) isValid = false;
 		return isValid;
 	}
 
@@ -278,7 +337,7 @@
 	export function getCredentialsForCreate(): { credential: Credential; targetIps: string[] }[] {
 		return pendingCredentials
 			.map((p, i) => ({ p, i }))
-			.filter(({ p }) => !p.isExisting)
+			.filter(({ p }) => !p.isExisting && !isLocalAuto(p.credential.credential_type.type))
 			.map(({ p, i }) => {
 				const ref = credentialFormRefs[i];
 				const credentialType =
@@ -329,6 +388,11 @@
 {/snippet}
 
 <div class="flex min-h-0 flex-1 flex-col">
+	{#if conflictMessage}
+		<div class="mb-3">
+			<InlineDanger title="" body={conflictMessage} />
+		</div>
+	{/if}
 	<ListConfigEditor {items} onChange={handleCredentialChange}>
 		<svelte:fragment slot="list" let:items let:onEdit let:highlightedIndex let:onItemSelect>
 			<ListManager
@@ -361,35 +425,44 @@
 			<!-- Render ALL config panels, hide non-selected (like InterfacesForm) -->
 			{#each pendingCredentials as pending, index (`${pending.credential.id}-${index}`)}
 				<div class:hidden={selectedIndex !== index}>
-					{#if daemonHasDockerSocket === true && pending.credential.credential_type.type === 'DockerProxy' && isLocalhostTarget(pending.targetIps)}
-						<div class="mb-4">
-							<InlineInfo title="" body={discovery_dockerSocketInfo()} />
-						</div>
-					{/if}
-					{#if pending.isExisting}
-						<p class="text-muted mb-4 text-xs">
-							{daemons_credentialWizardExistingDescription()}
+					{#if isLocalAuto(pending.credential.credential_type.type)}
+						<!-- Auto-local capability (e.g. Docker socket): no fields, no targets,
+						     creates no credential. Explain why there's nothing to configure. -->
+						<p class="text-secondary mb-3 text-sm">
+							{credentialTypes.getDescription(pending.credential.credential_type.type)}
 						</p>
-						<CredentialForm
-							bind:this={credentialFormRefs[index]}
-							{form}
-							compact={true}
-							hideFields={true}
-							fieldPrefix={`credentials[${index}].`}
-							fixedCredentialType={pending.credential.credential_type.type}
-							fixedName={pending.credential.name}
-							onChange={(data) => handleConfigChange(index, data)}
-						/>
+						<InlineInfo title="" body={daemons_credentialWizardLocalAutoNote()} />
 					{:else}
-						<CredentialForm
-							bind:this={credentialFormRefs[index]}
-							{form}
-							compact={true}
-							fieldPrefix={`credentials[${index}].`}
-							fixedCredentialType={pending.credential.credential_type.type}
-							fixedName={pending.credential.name}
-							onChange={(data) => handleConfigChange(index, data)}
-						/>
+						{#if daemonHasDockerSocket === true && pending.credential.credential_type.type === 'DockerProxy' && isLocalhostTarget(pending.targetIps)}
+							<div class="mb-4">
+								<InlineInfo title="" body={discovery_dockerSocketInfo()} />
+							</div>
+						{/if}
+						{#if pending.isExisting}
+							<p class="text-muted mb-4 text-xs">
+								{daemons_credentialWizardExistingDescription()}
+							</p>
+							<CredentialForm
+								bind:this={credentialFormRefs[index]}
+								{form}
+								compact={true}
+								hideFields={true}
+								fieldPrefix={`credentials[${index}].`}
+								fixedCredentialType={pending.credential.credential_type.type}
+								fixedName={pending.credential.name}
+								onChange={(data) => handleConfigChange(index, data)}
+							/>
+						{:else}
+							<CredentialForm
+								bind:this={credentialFormRefs[index]}
+								{form}
+								compact={true}
+								fieldPrefix={`credentials[${index}].`}
+								fixedCredentialType={pending.credential.credential_type.type}
+								fixedName={pending.credential.name}
+								onChange={(data) => handleConfigChange(index, data)}
+							/>
+						{/if}
 					{/if}
 				</div>
 			{/each}

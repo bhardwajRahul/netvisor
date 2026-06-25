@@ -34,13 +34,13 @@
 		credentials_docsDockerProxy,
 		credentials_docsDockerProxyLinkText,
 		daemons_credentialWizardTargetIpHelp,
+		daemons_credentialWizardTargetRequired,
 		daemons_credentialWizardAddRemoteHostTarget,
 		daemons_credentialWizardAddDaemonHostTarget,
 		daemons_credentialWizardDaemonHostTargetLabel,
-		daemons_credentialWizardApplyTo,
-		daemons_credentialWizardBroadcastHelp,
-		common_hosts,
-		common_networks
+		daemons_credentialWizardTargetSpecificHosts,
+		daemons_credentialWizardTargetAllHosts,
+		daemons_credentialWizardBroadcastHelp
 	} from '$lib/paraglide/messages';
 
 	interface Props {
@@ -106,6 +106,10 @@
 	let supportsDaemonHost = $derived(supportedTargets.includes('DaemonHost'));
 	let supportsRemoteHosts = $derived(supportedTargets.includes('Host'));
 	let supportsHosts = $derived(supportsDaemonHost || supportsRemoteHosts);
+	// Show the Hosts | Networks toggle only when both modes are available.
+	let showTargetModeToggle = $derived(supportsHosts && supportsNetworks);
+	// Error flag for "Target Specific Hosts" with no host entered (set on validate).
+	let targetError = $state(false);
 
 	// Get field definitions for the currently selected type
 	let currentFields: FieldDefinition[] = $derived.by(() => {
@@ -269,20 +273,32 @@
 		// (not inherited from another credential in the shared form).
 		if (compact) {
 			targetIpValues = [];
+			targetError = false;
 			const formTargetIps = form.getFieldValue?.(`${fieldPrefix}targetIps`) as string[] | undefined;
 			const hasExplicitIps =
 				!!formTargetIps &&
 				formTargetIps.length > 0 &&
 				formTargetIps.some((ip: string) => ip !== '');
+			// Targets the type supports — computed inline (not via the derived) to
+			// avoid init-time staleness.
+			const supported = (credentialTypes.getMetadata(selectedTypeId)?.targets ?? []) as string[];
+			const canNetwork = supported.includes('Network');
 			if (hasExplicitIps) {
 				targetIpValues = [...formTargetIps];
 				targetMode = 'per_host';
 			} else {
 				// Network-capable types (e.g. SNMP) default to Networks (broadcast),
-				// matching the wizard's handleAddCredential; others to Hosts. Computed
-				// inline (not via the derived) to avoid init-time staleness.
-				const supported = (credentialTypes.getMetadata(selectedTypeId)?.targets ?? []) as string[];
-				targetMode = supported.includes('Network') ? 'broadcast' : 'per_host';
+				// matching the wizard's handleAddCredential; host-only types to Hosts.
+				targetMode = canNetwork ? 'broadcast' : 'per_host';
+				// When the daemon host is the only per-host target, preselect it (the
+				// disabled 127.0.0.1 row) so there's nothing for the user to add.
+				if (
+					targetMode === 'per_host' &&
+					supported.includes('DaemonHost') &&
+					!supported.includes('Host')
+				) {
+					targetIpValues = [DAEMON_HOST_IP];
+				}
 			}
 		}
 	}
@@ -467,12 +483,14 @@
 
 	function syncTargets() {
 		const next = [...targetIpValues];
+		if (next.some((ip) => ip.trim() !== '')) targetError = false;
 		form.setFieldValue?.(`${fieldPrefix}targetIps`, next);
 		onChange?.({ targetIps: next, scope: 'per_host' });
 	}
 
 	function handleTargetModeChange(mode: 'per_host' | 'broadcast') {
 		targetMode = mode;
+		targetError = false;
 		if (mode === 'broadcast') {
 			targetIpValues = [];
 			form.setFieldValue?.(`${fieldPrefix}targetIps`, []);
@@ -481,6 +499,21 @@
 			// Hosts: leave the target list as-is (empty until the user adds one)
 			syncTargets();
 		}
+	}
+
+	/**
+	 * Validate the target selection (compact wizard). "Target Specific Hosts"
+	 * requires at least one host (a remote IP or the daemon-host row). Sets the
+	 * inline error flag and returns validity. Broadcast is always valid.
+	 */
+	export function validateTarget(): boolean {
+		if (!compact || targetMode === 'broadcast') {
+			targetError = false;
+			return true;
+		}
+		const ok = targetIpValues.some((ip) => ip.trim() !== '');
+		targetError = !ok;
+		return ok;
 	}
 
 	// Target-IP field validator. Returns valid for broadcast credentials so a
@@ -560,22 +593,18 @@
 
 {#if compact}
 	<div class="space-y-4">
-		<!-- Target mode selector (compact mode only) -->
-		<div class="space-y-2">
-			<!-- svelte-ignore a11y_label_has_associated_control -->
-			<label class="text-secondary block text-sm font-medium"
-				>{daemons_credentialWizardApplyTo()}</label
-			>
+		<!-- Target mode selector — only when the type supports both modes -->
+		{#if showTargetModeToggle}
 			<SegmentedControl
 				options={[
-					...(supportsHosts ? [{ value: 'per_host', label: common_hosts() }] : []),
-					...(supportsNetworks ? [{ value: 'broadcast', label: common_networks() }] : [])
+					{ value: 'per_host', label: daemons_credentialWizardTargetSpecificHosts() },
+					{ value: 'broadcast', label: daemons_credentialWizardTargetAllHosts() }
 				]}
 				selected={targetMode}
 				onchange={(v) => handleTargetModeChange(v as 'per_host' | 'broadcast')}
 				size="sm"
 			/>
-		</div>
+		{/if}
 
 		{#if targetMode === 'broadcast'}
 			<p class="text-muted text-xs">{daemons_credentialWizardBroadcastHelp()}</p>
@@ -637,7 +666,13 @@
 					>
 				{/if}
 			</div>
-			<p class="text-muted text-xs">{daemons_credentialWizardTargetIpHelp()}</p>
+			{#if targetError}
+				<p class="text-xs text-red-600 dark:text-red-400">
+					{daemons_credentialWizardTargetRequired()}
+				</p>
+			{:else}
+				<p class="text-muted text-xs">{daemons_credentialWizardTargetIpHelp()}</p>
+			{/if}
 		{/if}
 
 		<!-- Credential fields -->
