@@ -477,7 +477,7 @@
   "daemons_credentialWizardSelectType": "Select credential type to add",
   "daemons_credentialWizardTargetAllHosts": "Target All Hosts",
   "daemons_credentialWizardTargetIpHelp": "The daemon will use this credential to connect to the service at each target. If it succeeds, future scans will automatically reuse the credential for that host.",
-  "daemons_credentialWizardTargetRequired": "Add at least one host to target.",
+  "daemons_credentialWizardTargetRequired": "Add at least one target host for: {credentials}",
   "daemons_credentialWizardTargetSpecificHosts": "Target Specific Hosts",
   "daemons_credentialWizardTitle": "Integration Setup",
   "daemons_currentVersion": "Current version:",
