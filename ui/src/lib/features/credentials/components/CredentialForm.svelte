@@ -516,13 +516,15 @@
 		return targetIpValues.some((ip) => ip.trim() !== '');
 	}
 
-	// Target-IP field validator. Returns valid for broadcast credentials so a
-	// stale (unmounted) targetIps field left in the shared TanStack form after
-	// toggling Hosts -> Networks can't block submission. Reads the live, reactive
-	// `targetMode`.
+	// Target-IP field validator. Empty rows are valid at the field level — they're
+	// dropped on save, and the "at least one target" rule is enforced by
+	// `validateTarget()`. This avoids a stale empty row (e.g. added then removed)
+	// failing field validation. Only the IP format of non-empty rows is checked.
+	// Broadcast credentials always pass (stale targetIps fields left after toggling
+	// Hosts -> Networks can't block submission). Reads the live, reactive `targetMode`.
 	function validateTargetIp(value: string): string | undefined {
-		if (targetMode === 'broadcast') return undefined;
-		return required(value) || ipAddressFormat(value);
+		if (targetMode === 'broadcast' || !value.trim()) return undefined;
+		return ipAddressFormat(value);
 	}
 
 	function handleAddIpTarget() {
@@ -636,7 +638,6 @@
 										label=""
 										id="target-ip-{fieldPrefix}{i}"
 										placeholder="e.g. 192.168.1.1"
-										required={true}
 										{field}
 									/>
 								{/snippet}

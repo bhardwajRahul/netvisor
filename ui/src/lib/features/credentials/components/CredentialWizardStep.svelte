@@ -342,10 +342,21 @@
 		});
 	}
 
+	// Map a shared-form field path (e.g. `credentials[1].targetIps[0]`) to the
+	// failing credential's name for the validation toast, falling back to the index
+	// label when the name is blank.
+	function credentialFieldLabel(fieldPath: string): string {
+		const match = fieldPath.match(/^credentials\[(\d+)\]/);
+		if (!match) return fieldPath.replace(/_/g, ' ');
+		const idx = Number(match[1]);
+		const name = pendingCredentials[idx]?.credential.name?.trim();
+		return name || `credentials[${idx}]`;
+	}
+
 	/** Validate all fields across all credentials. Returns true if valid. */
 	export async function validate(): Promise<boolean> {
 		// validateForm surfaces field errors as a toast itself.
-		const fieldsValid = await validateForm(form);
+		const fieldsValid = await validateForm(form, undefined, credentialFieldLabel);
 		// "Target Specific Hosts" requires at least one host. Auto-local items have no
 		// form ref (undefined) and are skipped. (Daemon-host conflicts are prevented
 		// proactively at input — the "Add daemon host" button is disabled.) Surface a
