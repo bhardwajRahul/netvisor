@@ -24,11 +24,10 @@ use crate::server::ip_addresses::r#impl::base::{ALL_IP_ADDRESSES_IP, IPAddress, 
 use crate::server::ports::r#impl::base::{Port, PortType};
 use crate::server::services::r#impl::base::{Service, ServiceMatchBaselineParams};
 use crate::server::services::r#impl::endpoints::{Endpoint, EndpointResponse};
-use crate::server::services::r#impl::virtualization::{
-    DockerVirtualization, ServiceVirtualization,
-};
 use crate::server::subnets::r#impl::base::Subnet;
 use crate::server::subnets::r#impl::types::SubnetTypeDiscriminants;
+
+use super::ContainerRuntime;
 
 type IpPortHashMap = HashMap<IpAddr, Vec<PortType>>;
 
@@ -44,13 +43,17 @@ pub struct ProcessContainerParams<'a> {
     pub containers_interfaces_and_subnets: &'a HashMap<String, Vec<(IPAddress, Subnet)>>,
     pub container: &'a ContainerInspectResponse,
     pub container_summary: &'a ContainerSummary,
-    pub docker_service_id: &'a Uuid,
+    pub runtime_service_id: &'a Uuid,
     pub cancel: CancellationToken,
 }
 
-pub struct DockerScanner<'a> {
-    pub docker_client: &'a Docker,
-    pub docker_service_id: Uuid,
+/// Scans a container runtime (Docker or Podman) over its Docker-compatible API.
+/// `runtime` selects the virtualization variants stamped onto discovered
+/// services and subnets.
+pub struct ContainerScanner<'a> {
+    pub runtime: ContainerRuntime,
+    pub client: &'a Docker,
+    pub runtime_service_id: Uuid,
     pub host_ip: IpAddr,
     pub host_naming_fallback: HostNamingFallback,
     pub ops: &'a DiscoveryOps,
@@ -59,27 +62,28 @@ pub struct DockerScanner<'a> {
     pub utils: &'a PlatformDaemonUtils,
 }
 
-impl<'a> DockerScanner<'a> {
-    /// Create Docker bridge subnets from Docker networks.
-    /// Returns the created subnets (with server-assigned IDs) for use in container interface resolution.
-    pub async fn create_docker_bridge_subnets(&self) -> Result<Vec<Subnet>, Error> {
+impl<'a> ContainerScanner<'a> {
+    /// Create bridge subnets from the runtime's networks.
+    /// Returns the bridge subnets locally for use in container interface resolution.
+    pub async fn create_bridge_subnets(&self) -> Result<Vec<Subnet>, Error> {
         let network_id = self.ops.network_id().await?;
 
-        let docker_subnets = self
+        let subnets = self
             .utils
             .get_subnets_from_docker_networks(
                 network_id,
-                self.docker_client,
-                self.docker_service_id,
+                self.client,
+                self.runtime,
+                self.runtime_service_id,
             )
             .await
             .unwrap_or_default();
 
         // Return bridge subnets locally — they'll be created on the server
         // during create_host after service dedup (so service_id can be patched)
-        Ok(docker_subnets
+        Ok(subnets
             .into_iter()
-            .filter(|s| s.is_docker_bridge_subnet())
+            .filter(|s| s.is_container_bridge_subnet())
             .collect())
     }
 
@@ -102,7 +106,7 @@ impl<'a> DockerScanner<'a> {
                         containers_interfaces_and_subnets,
                         container: &container,
                         container_summary: &container_summary,
-                        docker_service_id: &self.docker_service_id,
+                        runtime_service_id: &self.runtime_service_id,
                         cancel,
                     })
                     .await
@@ -195,7 +199,7 @@ impl<'a> DockerScanner<'a> {
             containers_interfaces_and_subnets,
             container,
             cancel,
-            docker_service_id,
+            runtime_service_id,
             ..
         } = params;
 
@@ -253,15 +257,17 @@ impl<'a> DockerScanner<'a> {
                 ip_address,
                 all_ports: &open_ports,
                 endpoint_responses: &endpoint_responses,
-                virtualization: &Some(ServiceVirtualization::Docker(DockerVirtualization {
-                    container_name: container
-                        .name
-                        .clone()
-                        .map(|n| n.trim_start_matches("/").to_string()),
-                    container_id: container.id.clone(),
-                    service_id: **docker_service_id,
-                    compose_project: Self::extract_compose_project(container),
-                })),
+                virtualization: &Some(
+                    self.runtime.service_virtualization(
+                        container
+                            .name
+                            .clone()
+                            .map(|n| n.trim_start_matches("/").to_string()),
+                        container.id.clone(),
+                        **runtime_service_id,
+                        Self::extract_compose_project(container),
+                    ),
+                ),
                 client_responses: &empty_client_responses,
             };
 
@@ -290,7 +296,7 @@ impl<'a> DockerScanner<'a> {
             container,
             container_summary,
             cancel,
-            docker_service_id,
+            runtime_service_id,
             ..
         } = params;
 
@@ -383,17 +389,17 @@ impl<'a> DockerScanner<'a> {
                         ip_address,
                         all_ports: container_ports_on_ip_address,
                         endpoint_responses: &endpoint_responses,
-                        virtualization: &Some(ServiceVirtualization::Docker(
-                            DockerVirtualization {
-                                container_name: container
+                        virtualization: &Some(
+                            self.runtime.service_virtualization(
+                                container
                                     .name
                                     .clone()
                                     .map(|n| n.trim_start_matches("/").to_string()),
-                                container_id: container.id.clone(),
-                                service_id: **docker_service_id,
-                                compose_project: Self::extract_compose_project(container),
-                            },
-                        )),
+                                container.id.clone(),
+                                **runtime_service_id,
+                                Self::extract_compose_project(container),
+                            ),
+                        ),
                         client_responses: &empty_client_responses,
                     },
                     None,
@@ -592,7 +598,7 @@ impl<'a> DockerScanner<'a> {
                 .push((*host_ip, *host_port));
         }
 
-        let docker = self.docker_client;
+        let docker = self.client;
 
         let all_endpoints = Service::all_discovery_endpoints();
 
@@ -1133,7 +1139,7 @@ impl<'a> DockerScanner<'a> {
         &self,
     ) -> Result<Vec<(ContainerInspectResponse, ContainerSummary)>, Error> {
         let container_summaries = self
-            .docker_client
+            .client
             .list_containers(None::<ListContainersOptions>)
             .await
             .map_err(|e| anyhow!(e))?;
@@ -1143,7 +1149,7 @@ impl<'a> DockerScanner<'a> {
             .filter_map(|c| {
                 if let Some(id) = &c.id {
                     return Some(
-                        self.docker_client
+                        self.client
                             .inspect_container(id, None::<InspectContainerOptions>),
                     );
                 }

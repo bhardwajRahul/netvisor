@@ -8,8 +8,10 @@
 //! The pipeline dispatches integrations generically based on credential mappings
 //! and service matches — no integration-specific code in the orchestrator.
 
+pub mod container;
 pub mod dispatch;
 pub mod docker;
+pub mod podman;
 pub mod snmp;
 
 use std::any::Any;
@@ -153,7 +155,11 @@ impl IntegrationRegistry {
             CredentialQueryPayloadDiscriminants::Snmp => Box::new(snmp::SnmpIntegration),
             CredentialQueryPayloadDiscriminants::DockerProxy => Box::new(docker::DockerIntegration),
             CredentialQueryPayloadDiscriminants::DockerSocket => {
-                Box::new(docker::socket::DockerSocketIntegration)
+                Box::new(docker::DockerSocketIntegration)
+            }
+            CredentialQueryPayloadDiscriminants::PodmanProxy => Box::new(podman::PodmanIntegration),
+            CredentialQueryPayloadDiscriminants::PodmanSocket => {
+                Box::new(podman::PodmanSocketIntegration)
             }
         }
     }

@@ -117,8 +117,9 @@ pub struct Subnet {
 }
 
 impl Subnet {
-    pub fn is_docker_bridge_subnet(&self) -> bool {
-        self.base.subnet_type == SubnetType::DockerBridge
+    /// Whether this subnet is a container-runtime bridge network (Docker or Podman).
+    pub fn is_container_bridge_subnet(&self) -> bool {
+        self.base.subnet_type.is_container_bridge()
     }
 
     pub fn is_vpn_subnet(&self) -> bool {

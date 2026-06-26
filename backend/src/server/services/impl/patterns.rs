@@ -149,6 +149,7 @@ impl MatchConfidence {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ClientProbe {
     Docker,
+    Podman,
     Snmp,
 }
 

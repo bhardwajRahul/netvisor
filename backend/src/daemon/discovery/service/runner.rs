@@ -1,3 +1,4 @@
+use crate::daemon::discovery::integration::container::ContainerRuntime;
 use crate::daemon::discovery::service::base::DiscoveryRunner;
 use crate::daemon::discovery::service::ops::DiscoveryOps;
 use crate::daemon::utils::base::{DaemonUtils, merge_host_and_docker_subnets};
@@ -77,13 +78,60 @@ impl DiscoveryRunner {
                                 crate::server::credentials::r#impl::mapping::IpOverride {
                                     ip: std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
                                     credential: CredentialQueryPayload::DockerSocket(
-                                        crate::server::credentials::r#impl::mapping::DockerSocketQueryCredential {},
+                                        crate::server::credentials::r#impl::mapping::ContainerSocketQueryCredential {},
                                     ),
                                     credential_id: Uuid::nil(),
                                 },
                             ],
                         },
                     );
+                }
+            }
+        }
+
+        // Inject PodmanSocket credential if enabled and a local Podman socket is
+        // present and accessible. Gated on the socket path actually existing
+        // (rootful `/run/podman/podman.sock` or rootless `$XDG_RUNTIME_DIR/...`)
+        // so we never fall back to the Docker socket. Mirrors the Docker block above.
+        let enable_local_podman = self
+            .service
+            .config_store
+            .get_enable_local_podman_socket()
+            .await
+            .unwrap_or(true);
+        if let Some(socket_path) = enable_local_podman
+            .then(crate::daemon::discovery::integration::podman::resolve_podman_socket_path)
+            .flatten()
+        {
+            let can_connect = self
+                .service
+                .utils
+                .new_container_socket_client(Some(socket_path))
+                .await
+                .is_ok();
+            if can_connect {
+                let already_has = self.credential_mappings.iter().any(|m| {
+                    m.default_credential
+                        .as_ref()
+                        .is_some_and(|c| matches!(c, CredentialQueryPayload::PodmanSocket(_)))
+                        || m.ip_overrides.iter().any(|o| {
+                            matches!(o.credential, CredentialQueryPayload::PodmanSocket(_))
+                        })
+                });
+                if !already_has {
+                    tracing::debug!("Injecting PodmanSocket credential for local socket access");
+                    self.credential_mappings.push(CredentialMapping {
+                        default_credential: None,
+                        ip_overrides: vec![
+                            crate::server::credentials::r#impl::mapping::IpOverride {
+                                ip: std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+                                credential: CredentialQueryPayload::PodmanSocket(
+                                    crate::server::credentials::r#impl::mapping::ContainerSocketQueryCredential {},
+                                ),
+                                credential_id: Uuid::nil(),
+                            },
+                        ],
+                    });
                 }
             }
         }
@@ -153,7 +201,7 @@ impl DiscoveryRunner {
 
         // Get docker subnets for merging
         let (docker_proxy, docker_proxy_ssl_info, _ssl_temp_handles, _, _) =
-            crate::daemon::discovery::integration::docker::proxy::resolve_docker_proxy(
+            crate::daemon::discovery::integration::docker::resolve_docker_proxy(
                 &self.credential_mappings,
                 &self.service.config_store,
             )
@@ -171,7 +219,12 @@ impl DiscoveryRunner {
         {
             self.service
                 .utils
-                .get_subnets_from_docker_networks(network_id, &docker_client, Uuid::nil())
+                .get_subnets_from_docker_networks(
+                    network_id,
+                    &docker_client,
+                    ContainerRuntime::Docker,
+                    Uuid::nil(),
+                )
                 .await
                 .unwrap_or_default()
         } else {
@@ -181,10 +234,11 @@ impl DiscoveryRunner {
         // Merge host and Docker subnets — host subnets always win on CIDR overlap
         let merged = merge_host_and_docker_subnets(subnets, docker_subnets);
 
-        // Filter out DockerBridge subnets — those are handled by Docker phase
+        // Filter out container-runtime bridge subnets (Docker/Podman) — those
+        // are handled by the container integration phase.
         let subnets_to_create: Vec<Subnet> = merged
             .into_iter()
-            .filter(|s| !s.is_docker_bridge_subnet())
+            .filter(|s| !s.is_container_bridge_subnet())
             .collect();
 
         tracing::info!(

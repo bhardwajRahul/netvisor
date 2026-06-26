@@ -86,6 +86,7 @@ export function buildDefaultValues(
 export interface DockerConfig {
 	credentialId: string | null;
 	disableLocalSocket?: boolean;
+	disableLocalPodmanSocket?: boolean;
 }
 
 export function buildRunCommand(
@@ -163,6 +164,9 @@ export function buildRunCommand(
 	if (dockerConfig) {
 		if (dockerConfig.disableLocalSocket) {
 			cmd += ` --enable-local-docker-socket false`;
+		}
+		if (dockerConfig.disableLocalPodmanSocket) {
+			cmd += ` --enable-local-podman-socket false`;
 		}
 	}
 
@@ -245,6 +249,9 @@ export function buildDockerCompose(
 	if (dockerConfig) {
 		if (dockerConfig.disableLocalSocket) {
 			envVars.push(`SCANOPY_ENABLE_LOCAL_DOCKER_SOCKET=false`);
+		}
+		if (dockerConfig.disableLocalPodmanSocket) {
+			envVars.push(`SCANOPY_ENABLE_LOCAL_PODMAN_SOCKET=false`);
 		}
 	}
 

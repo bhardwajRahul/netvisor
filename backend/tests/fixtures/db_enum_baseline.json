@@ -42,7 +42,9 @@
     "DockerProxy",
     "DockerSocket",
     "SnmpV1",
-    "SnmpV3"
+    "SnmpV3",
+    "PodmanProxy",
+    "PodmanSocket"
   ],
   "DaemonMode": [
     "ServerPoll",
@@ -147,7 +149,8 @@
     "Podman"
   ],
   "SubnetVirtualization": [
-    "Docker"
+    "Docker",
+    "Podman"
   ],
   "TopologyView": [
     "L2Physical",

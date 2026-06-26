@@ -157,24 +157,65 @@ impl Serialize for StorageCredentialType<'_> {
                 ssl_cert,
                 ssl_key,
                 ssl_chain,
-            } => {
-                let mut map = serializer.serialize_map(Some(6))?;
-                map.serialize_entry("type", "DockerProxy")?;
-                map.serialize_entry("port", port)?;
-                map.serialize_entry("path", path)?;
-                map.serialize_entry("ssl_cert", ssl_cert)?;
-                match ssl_key {
-                    Some(sv) => map.serialize_entry("ssl_key", &StorageSecretValue(sv))?,
-                    None => map.serialize_entry("ssl_key", &None::<()>)?,
-                }
-                map.serialize_entry("ssl_chain", ssl_chain)?;
-                map.end()
-            }
+            } => serialize_proxy(
+                serializer,
+                "DockerProxy",
+                port,
+                path,
+                ssl_cert,
+                ssl_key,
+                ssl_chain,
+            ),
+            CredentialType::PodmanProxy {
+                port,
+                path,
+                ssl_cert,
+                ssl_key,
+                ssl_chain,
+            } => serialize_proxy(
+                serializer,
+                "PodmanProxy",
+                port,
+                path,
+                ssl_cert,
+                ssl_key,
+                ssl_chain,
+            ),
             CredentialType::DockerSocket {} => {
                 let mut map = serializer.serialize_map(Some(1))?;
                 map.serialize_entry("type", "DockerSocket")?;
                 map.end()
             }
+            CredentialType::PodmanSocket {} => {
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry("type", "PodmanSocket")?;
+                map.end()
+            }
         }
     }
+}
+
+/// Serialize a container-runtime proxy credential (Docker/Podman) for storage,
+/// exposing the SSL key secret. `type_tag` is the variant's serde tag — the only
+/// thing that differs between the two runtimes.
+fn serialize_proxy<S: Serializer>(
+    serializer: S,
+    type_tag: &str,
+    port: &u16,
+    path: &Option<String>,
+    ssl_cert: &Option<FileOrInline>,
+    ssl_key: &Option<SecretValue>,
+    ssl_chain: &Option<FileOrInline>,
+) -> Result<S::Ok, S::Error> {
+    let mut map = serializer.serialize_map(Some(6))?;
+    map.serialize_entry("type", type_tag)?;
+    map.serialize_entry("port", port)?;
+    map.serialize_entry("path", path)?;
+    map.serialize_entry("ssl_cert", ssl_cert)?;
+    match ssl_key {
+        Some(sv) => map.serialize_entry("ssl_key", &StorageSecretValue(sv))?,
+        None => map.serialize_entry("ssl_key", &None::<()>)?,
+    }
+    map.serialize_entry("ssl_chain", ssl_chain)?;
+    map.end()
 }

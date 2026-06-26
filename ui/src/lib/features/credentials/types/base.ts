@@ -70,6 +70,7 @@ export function getCredentialSummary(credential: Credential): string {
 		case 'SnmpV2c':
 			return '161/udp';
 		case 'DockerProxy':
+		case 'PodmanProxy':
 			return `Port ${ct.port ?? 2376}`;
 		default:
 			return '';
