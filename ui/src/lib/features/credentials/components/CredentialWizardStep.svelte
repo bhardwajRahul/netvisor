@@ -21,6 +21,8 @@
 	import InlineInfo from '$lib/shared/components/feedback/InlineInfo.svelte';
 	import { pushError } from '$lib/shared/stores/feedback';
 	import {
+		common_name,
+		common_ipAddress,
 		daemons_credentialWizardTargetRequired,
 		daemons_credentialWizardTitle,
 		daemons_credentialWizardDescription,
@@ -342,15 +344,31 @@
 		});
 	}
 
-	// Map a shared-form field path (e.g. `credentials[1].targetIps[0]`) to the
-	// failing credential's name for the validation toast, falling back to the index
-	// label when the name is blank.
+	// Map a shared-form field path (e.g. `credentials[1].fields.community`) to a
+	// "<credential name>: <field label>" string for the validation toast. Falls back
+	// to the index label when the credential name is blank, and to the raw subfield
+	// when no friendly label is known.
 	function credentialFieldLabel(fieldPath: string): string {
-		const match = fieldPath.match(/^credentials\[(\d+)\]/);
+		const match = fieldPath.match(/^credentials\[(\d+)\]\.(.+)$/);
 		if (!match) return fieldPath.replace(/_/g, ' ');
 		const idx = Number(match[1]);
-		const name = pendingCredentials[idx]?.credential.name?.trim();
-		return name || `credentials[${idx}]`;
+		const sub = match[2];
+		const pending = pendingCredentials[idx];
+		const credName = pending?.credential.name?.trim() || `credentials[${idx}]`;
+
+		let fieldLabel: string;
+		if (sub === 'name') {
+			fieldLabel = common_name();
+		} else if (sub.startsWith('targetIps')) {
+			fieldLabel = common_ipAddress();
+		} else if (sub.startsWith('fields.')) {
+			const fieldId = sub.slice('fields.'.length);
+			const fields = credentialTypes.getMetadata(pending?.credential.credential_type.type)?.fields;
+			fieldLabel = fields?.find((f) => f.id === fieldId)?.label ?? fieldId.replace(/_/g, ' ');
+		} else {
+			fieldLabel = sub.replace(/_/g, ' ');
+		}
+		return `${credName}: ${fieldLabel}`;
 	}
 
 	/** Validate all fields across all credentials. Returns true if valid. */
