@@ -400,8 +400,13 @@
 					isExisting: true
 				}));
 		}
-		// Existing assignments → open on the wizard; a fresh session → the grid.
-		credentialSubStep = pendingCredentials.length > 0 ? 'wizard' : 'typeSelect';
+		// Show the Integrations grid only as a first-run aid (no credentials exist
+		// yet); otherwise — existing assignments on this session, or the org already
+		// has credentials — open straight on the wizard. Mirrors the daemon modal.
+		credentialSubStep =
+			pendingCredentials.length > 0 || (allCredentialsQuery.data?.length ?? 0) > 0
+				? 'wizard'
+				: 'typeSelect';
 
 		// Parse schedule fields from cron
 		let scheduleDaysOfWeek = '0';
