@@ -33,8 +33,7 @@
 		daemons_credentialWizardSelectExisting,
 		daemons_credentialWizardExistingDescription,
 		daemons_credentialWizardLocalAutoNote,
-		daemons_credentialWizardDaemonHostUnavailable,
-		discovery_dockerSocketInfo
+		daemons_credentialWizardDaemonHostUnavailable
 	} from '$lib/paraglide/messages';
 
 	export interface PendingCredential {
@@ -53,9 +52,11 @@
 		onRemoveCredential?: (credential: Credential) => void;
 		description?: string;
 		descriptionLinkText?: string;
-		/** Known whether the target daemon exposes a local Docker socket (discovery
-		 *  editing). null = unknown (daemon setup) — no socket/proxy note shown. */
-		daemonHasDockerSocket?: boolean | null;
+		/** Integrations whose daemon-host endpoint is already occupied by a fixed
+		 *  daemon capability (e.g. an installed daemon's local Docker socket). These
+		 *  count as claiming the daemon host, so a single-endpoint credential of the
+		 *  same integration can't also target it. */
+		claimedDaemonHostIntegrations?: string[];
 	}
 
 	let {
@@ -64,12 +65,8 @@
 		onRemoveCredential,
 		description,
 		descriptionLinkText,
-		daemonHasDockerSocket = null
+		claimedDaemonHostIntegrations = []
 	}: Props = $props();
-
-	function isLocalhostTarget(targetIps: string[]): boolean {
-		return targetIps.some((ip) => ip === '127.0.0.1' || ip === '::1' || ip === 'localhost');
-	}
 
 	// Query network and credential data for network-level credential display
 	const networksQuery = useNetworksQuery();
@@ -114,19 +111,27 @@
 		return credentialTypes.getMetadata(typeId)?.associated_service;
 	}
 
-	/** True when another pending cred of the same single-endpoint integration already
-	 *  holds the daemon host — used to disable the "Add daemon host" action. */
+	/** Whether an integration's daemon host is already claimed — by a fixed daemon
+	 *  capability (`claimedDaemonHostIntegrations`) or by a pending credential other
+	 *  than the one at `exceptIndex`. */
+	function integrationClaimsDaemonHost(integration: string, exceptIndex?: number): boolean {
+		if (claimedDaemonHostIntegrations.includes(integration)) return true;
+		return pendingCredentials.some(
+			(other, j) =>
+				j !== exceptIndex &&
+				integrationOf(other.credential.credential_type.type) === integration &&
+				claimsDaemonHost(other)
+		);
+	}
+
+	/** True when the daemon host of this credential's single-endpoint integration is
+	 *  already claimed elsewhere — used to disable the "Add daemon host" action. */
 	function daemonHostUnavailableFor(index: number): boolean {
 		const p = pendingCredentials[index];
 		if (!p || p.isExisting) return false;
 		const meta = credentialTypes.getMetadata(p.credential.credential_type.type);
 		if (!meta?.single_endpoint_per_host || !meta.associated_service) return false;
-		return pendingCredentials.some(
-			(other, j) =>
-				j !== index &&
-				integrationOf(other.credential.credential_type.type) === meta.associated_service &&
-				claimsDaemonHost(other)
-		);
+		return integrationClaimsDaemonHost(meta.associated_service, index);
 	}
 
 	// Type dropdown eligibility: offer user-selectable types plus auto-local
@@ -152,15 +157,10 @@
 	// auto-local capability (Docker socket) is disabled when its integration's daemon
 	// host is already claimed by another pending credential (e.g. a daemon-host proxy).
 	function dropdownDisabledReason(type: TypedTypeMetadata<CredentialTypeMetadata>): string | null {
-		if (!type.metadata?.is_local_auto) return null;
-		const claimed = pendingCredentials.some(
-			(p) =>
-				integrationOf(p.credential.credential_type.type) === type.metadata?.associated_service &&
-				claimsDaemonHost(p)
-		);
-		return claimed
+		if (!type.metadata?.is_local_auto || !type.metadata.associated_service) return null;
+		return integrationClaimsDaemonHost(type.metadata.associated_service)
 			? daemons_credentialWizardDaemonHostUnavailable({
-					integration: type.metadata?.associated_service ?? ''
+					integration: type.metadata.associated_service
 				})
 			: null;
 	}
@@ -455,38 +455,31 @@
 								pending.credential.credential_type.type
 							)} ${daemons_credentialWizardLocalAutoNote()}`}
 						/>
+					{:else if pending.isExisting}
+						<p class="text-muted mb-4 text-xs">
+							{daemons_credentialWizardExistingDescription()}
+						</p>
+						<CredentialForm
+							bind:this={credentialFormRefs[index]}
+							{form}
+							compact={true}
+							hideFields={true}
+							fieldPrefix={`credentials[${index}].`}
+							fixedCredentialType={pending.credential.credential_type.type}
+							fixedName={pending.credential.name}
+							daemonHostUnavailable={daemonHostUnavailableFor(index)}
+							onChange={(data) => handleConfigChange(index, data)}
+						/>
 					{:else}
-						{#if daemonHasDockerSocket === true && pending.credential.credential_type.type === 'DockerProxy' && isLocalhostTarget(pending.targetIps)}
-							<div class="mb-4">
-								<InlineInfo title="" body={discovery_dockerSocketInfo()} />
-							</div>
-						{/if}
-						{#if pending.isExisting}
-							<p class="text-muted mb-4 text-xs">
-								{daemons_credentialWizardExistingDescription()}
-							</p>
-							<CredentialForm
-								bind:this={credentialFormRefs[index]}
-								{form}
-								compact={true}
-								hideFields={true}
-								fieldPrefix={`credentials[${index}].`}
-								fixedCredentialType={pending.credential.credential_type.type}
-								fixedName={pending.credential.name}
-								daemonHostUnavailable={daemonHostUnavailableFor(index)}
-								onChange={(data) => handleConfigChange(index, data)}
-							/>
-						{:else}
-							<CredentialForm
-								bind:this={credentialFormRefs[index]}
-								{form}
-								compact={true}
-								fieldPrefix={`credentials[${index}].`}
-								fixedCredentialType={pending.credential.credential_type.type}
-								daemonHostUnavailable={daemonHostUnavailableFor(index)}
-								onChange={(data) => handleConfigChange(index, data)}
-							/>
-						{/if}
+						<CredentialForm
+							bind:this={credentialFormRefs[index]}
+							{form}
+							compact={true}
+							fieldPrefix={`credentials[${index}].`}
+							fixedCredentialType={pending.credential.credential_type.type}
+							daemonHostUnavailable={daemonHostUnavailableFor(index)}
+							onChange={(data) => handleConfigChange(index, data)}
+						/>
 					{/if}
 				</div>
 			{/each}
