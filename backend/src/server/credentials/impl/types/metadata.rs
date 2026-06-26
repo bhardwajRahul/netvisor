@@ -139,13 +139,13 @@ impl TypeMetadataProvider for CredentialTypeDiscriminants {
     fn description(&self) -> &'static str {
         match self {
             Self::SnmpV1 => {
-                "Discover a host's interfaces, system details, and LLDP neighbors using SNMPv1 (legacy, unencrypted)."
+                "Discover a host's interfaces, system details, and CDP/LLDP neighbors using SNMPv1."
             }
             Self::SnmpV2c => {
-                "Discover a host's interfaces, system details, and LLDP neighbors using SNMPv2c (unencrypted community string)."
+                "Discover a host's interfaces, system details, and CDP/LLDP neighbors using SNMPv2c."
             }
             Self::SnmpV3 => {
-                "Discover a host's interfaces, system details, and LLDP neighbors using SNMPv3 (authenticated and encrypted)."
+                "Discover a host's interfaces, system details, and CDP/LLDP neighbors using SNMPv3."
             }
             Self::DockerProxy => {
                 "Discover Docker containers and the services they expose over TCP, optionally with TLS."
