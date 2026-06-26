@@ -348,13 +348,17 @@
 	// "<credential name>: <field label>" string for the validation toast. Falls back
 	// to the index label when the credential name is blank, and to the raw subfield
 	// when no friendly label is known.
+	function credentialName(idx: number): string {
+		return pendingCredentials[idx]?.credential.name?.trim() || `credentials[${idx}]`;
+	}
+
 	function credentialFieldLabel(fieldPath: string): string {
 		const match = fieldPath.match(/^credentials\[(\d+)\]\.(.+)$/);
 		if (!match) return fieldPath.replace(/_/g, ' ');
 		const idx = Number(match[1]);
 		const sub = match[2];
 		const pending = pendingCredentials[idx];
-		const credName = pending?.credential.name?.trim() || `credentials[${idx}]`;
+		const credName = credentialName(idx);
 
 		let fieldLabel: string;
 		if (sub === 'name') {
@@ -378,12 +382,14 @@
 		// "Target Specific Hosts" requires at least one host. Auto-local items have no
 		// form ref (undefined) and are skipped. (Daemon-host conflicts are prevented
 		// proactively at input — the "Add daemon host" button is disabled.) Surface a
-		// toast on advance, consistent with the field validation, rather than inline.
-		const targetsValid = credentialFormRefs.every((ref) => !ref || ref.validateTarget());
-		if (fieldsValid && !targetsValid) {
-			pushError(daemons_credentialWizardTargetRequired());
+		// toast on advance, naming the credentials that need a target.
+		const missingTargets = credentialFormRefs
+			.map((ref, i) => (ref && !ref.validateTarget() ? credentialName(i) : null))
+			.filter((n): n is string => n !== null);
+		if (fieldsValid && missingTargets.length > 0) {
+			pushError(daemons_credentialWizardTargetRequired({ credentials: missingTargets.join(', ') }));
 		}
-		return fieldsValid && targetsValid;
+		return fieldsValid && missingTargets.length === 0;
 	}
 
 	/** Get new credentials ready for bulk creation (with built credential_type from fieldValues). */
