@@ -508,7 +508,7 @@
 								</button>
 							{:else if hosting === 'Cloud'}
 								{#if plan.type === currentPlanType}
-									<InlineInfo title={billing_yourCurrentPlan()} />
+									<InlineInfo title="" body={billing_yourCurrentPlan()} />
 								{:else}
 									<button
 										type="button"
