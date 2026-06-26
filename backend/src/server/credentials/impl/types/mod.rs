@@ -23,7 +23,7 @@ mod secrets;
 pub use fields::{FieldDefinition, FieldType, InlineFormat, PemTag, SelectOption};
 pub use metadata::{CredentialAssignment, CredentialCategory, CredentialHostAssignment, Target};
 pub use secrets::{
-    FileOrInline, REDACTED_SECRET_SENTINEL, SecretValue, StorageCredentialType,
+    ExposeSecretsGuard, FileOrInline, REDACTED_SECRET_SENTINEL, SecretValue,
     deserialize_optional_file_or_inline, deserialize_optional_secret_value,
 };
 
@@ -725,11 +725,28 @@ mod tests {
 
     #[test]
     fn snmpv3_storage_serialization_exposes_passwords() {
-        // StorageCredentialType is used only for DB writes and must expose secrets.
+        // Under an ExposeSecretsGuard (the DB-write path), secrets are exposed.
         let cred = snmpv3_cred("auth-xyz-plain", "priv-xyz-plain");
-        let json = serde_json::to_string(&StorageCredentialType(&cred)).expect("serialize");
+        let json = {
+            let _expose = ExposeSecretsGuard::new();
+            serde_json::to_string(&cred).expect("serialize")
+        };
         assert!(json.contains("auth-xyz-plain"));
         assert!(json.contains("priv-xyz-plain"));
+    }
+
+    #[test]
+    fn secret_exposure_resets_after_guard_drops() {
+        // After the guard scope, serialization must redact again — the storage
+        // exposure must not leak into subsequent default serializations.
+        let cred = snmpv3_cred("leak-check-auth", "leak-check-priv");
+        {
+            let _expose = ExposeSecretsGuard::new();
+            let _ = serde_json::to_string(&cred);
+        }
+        let json = serde_json::to_string(&cred).expect("serialize");
+        assert!(!json.contains("leak-check-auth"));
+        assert!(json.contains(REDACTED_SECRET_SENTINEL));
     }
 
     #[test]
@@ -809,6 +826,26 @@ mod tests {
                 .field_definitions()
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn storage_serialization_tag_round_trips_for_every_variant() {
+        // The stored form is the credential's own derived serialization (under an
+        // exposure guard). This guards that every variant's "type" tag round-trips
+        // through Deserialize — so storage can't silently desync from how it reads.
+        for disc in CredentialTypeDiscriminants::iter() {
+            let ct = disc.to_credential_type();
+            let json = {
+                let _expose = ExposeSecretsGuard::new();
+                serde_json::to_string(&ct).expect("serialize")
+            };
+            let back: CredentialType = serde_json::from_str(&json).expect("deserialize");
+            assert_eq!(
+                CredentialTypeDiscriminants::from(&back),
+                disc,
+                "storage tag did not round-trip for {disc:?}: {json}"
+            );
+        }
     }
 
     #[test]

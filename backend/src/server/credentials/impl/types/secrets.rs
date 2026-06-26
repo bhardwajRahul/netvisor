@@ -1,19 +1,59 @@
+use std::cell::Cell;
+
 use secrecy::{ExposeSecret, SecretString};
-use serde::{Deserialize, Deserializer, Serialize, Serializer, ser::SerializeMap};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use utoipa::ToSchema;
 
-use super::CredentialType;
-
-/// Sentinel value used by the `redact_secret` serializer.
+/// Sentinel emitted in place of a secret when secret-exposure is off.
 /// The frontend also hardcodes this value for show/hide toggle logic.
 pub const REDACTED_SECRET_SENTINEL: &str = "********";
 
-/// Serializer that redacts the secret value
-fn redact_secret<S>(_secret: &SecretString, serializer: S) -> Result<S::Ok, S::Error>
+thread_local! {
+    /// When set, secret-bearing serializers emit the real value instead of the
+    /// redacted sentinel. Off by default so any stray serialization — API
+    /// responses, logs, events — is redacted; the storage layer opts in via
+    /// [`ExposeSecretsGuard`] for the duration of a single DB write.
+    static EXPOSE_SECRETS: Cell<bool> = const { Cell::new(false) };
+}
+
+/// RAII guard that exposes secrets on the current thread until dropped. Wrap it
+/// around a synchronous serialize call only (never hold it across `.await`).
+/// Restores the prior state on drop, so nesting is safe.
+pub struct ExposeSecretsGuard {
+    prev: bool,
+}
+
+impl ExposeSecretsGuard {
+    pub fn new() -> Self {
+        let prev = EXPOSE_SECRETS.with(|e| e.replace(true));
+        Self { prev }
+    }
+}
+
+impl Default for ExposeSecretsGuard {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Drop for ExposeSecretsGuard {
+    fn drop(&mut self) {
+        EXPOSE_SECRETS.with(|e| e.set(self.prev));
+    }
+}
+
+/// Serialize a secret: the real value when secret-exposure is active (storage
+/// writes, via [`ExposeSecretsGuard`]), otherwise the redacted sentinel — the
+/// default for API responses and logs.
+fn serialize_secret_value<S>(secret: &SecretString, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {
-    serializer.serialize_str(REDACTED_SECRET_SENTINEL)
+    if EXPOSE_SECRETS.with(Cell::get) {
+        serializer.serialize_str(secret.expose_secret())
+    } else {
+        serializer.serialize_str(REDACTED_SECRET_SENTINEL)
+    }
 }
 
 /// Secret value that can be either inline content or a file path on the daemon host.
@@ -21,7 +61,7 @@ where
 #[serde(tag = "mode")]
 pub enum SecretValue {
     Inline {
-        #[serde(serialize_with = "redact_secret")]
+        #[serde(serialize_with = "serialize_secret_value")]
         #[schema(value_type = String)]
         value: SecretString,
     },
@@ -63,26 +103,6 @@ pub enum FileOrInline {
     FilePath { path: String },
 }
 
-/// Wrapper that serializes `SecretValue` with secrets exposed (for DB storage).
-struct StorageSecretValue<'a>(&'a SecretValue);
-
-impl Serialize for StorageSecretValue<'_> {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let mut map = serializer.serialize_map(Some(2))?;
-        match self.0 {
-            SecretValue::Inline { value } => {
-                map.serialize_entry("mode", "Inline")?;
-                map.serialize_entry("value", value.expose_secret())?;
-            }
-            SecretValue::FilePath { path } => {
-                map.serialize_entry("mode", "FilePath")?;
-                map.serialize_entry("path", path)?;
-            }
-        }
-        map.end()
-    }
-}
-
 /// Deserialize `Option<FileOrInline>`, normalizing empty inline/path values to `None`.
 /// Prevents empty-string values (e.g. `{"mode":"Inline","value":""}`) from being treated as present.
 pub fn deserialize_optional_file_or_inline<'de, D>(
@@ -112,110 +132,4 @@ where
         SecretValue::FilePath { path } if path.trim().is_empty() => None,
         _ => Some(v),
     }))
-}
-
-/// Newtype that serializes `CredentialType` with all secret fields exposed.
-/// Use this for database storage only — the default `Serialize` impl redacts secrets.
-pub struct StorageCredentialType<'a>(pub &'a CredentialType);
-
-impl Serialize for StorageCredentialType<'_> {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        match self.0 {
-            CredentialType::SnmpV1 { community } => {
-                let mut map = serializer.serialize_map(Some(2))?;
-                map.serialize_entry("type", "SnmpV1")?;
-                map.serialize_entry("community", &StorageSecretValue(community))?;
-                map.end()
-            }
-            CredentialType::SnmpV2c { community } => {
-                let mut map = serializer.serialize_map(Some(2))?;
-                map.serialize_entry("type", "SnmpV2c")?;
-                map.serialize_entry("community", &StorageSecretValue(community))?;
-                map.end()
-            }
-            CredentialType::SnmpV3 {
-                security_name,
-                auth_protocol,
-                auth_password,
-                priv_protocol,
-                priv_password,
-                context_name,
-            } => {
-                let mut map = serializer.serialize_map(Some(7))?;
-                map.serialize_entry("type", "SnmpV3")?;
-                map.serialize_entry("security_name", security_name)?;
-                map.serialize_entry("auth_protocol", auth_protocol)?;
-                map.serialize_entry("auth_password", &StorageSecretValue(auth_password))?;
-                map.serialize_entry("priv_protocol", priv_protocol)?;
-                map.serialize_entry("priv_password", &StorageSecretValue(priv_password))?;
-                map.serialize_entry("context_name", context_name)?;
-                map.end()
-            }
-            CredentialType::DockerProxy {
-                port,
-                path,
-                ssl_cert,
-                ssl_key,
-                ssl_chain,
-            } => serialize_proxy(
-                serializer,
-                "DockerProxy",
-                port,
-                path,
-                ssl_cert,
-                ssl_key,
-                ssl_chain,
-            ),
-            CredentialType::PodmanProxy {
-                port,
-                path,
-                ssl_cert,
-                ssl_key,
-                ssl_chain,
-            } => serialize_proxy(
-                serializer,
-                "PodmanProxy",
-                port,
-                path,
-                ssl_cert,
-                ssl_key,
-                ssl_chain,
-            ),
-            CredentialType::DockerSocket {} => {
-                let mut map = serializer.serialize_map(Some(1))?;
-                map.serialize_entry("type", "DockerSocket")?;
-                map.end()
-            }
-            CredentialType::PodmanSocket {} => {
-                let mut map = serializer.serialize_map(Some(1))?;
-                map.serialize_entry("type", "PodmanSocket")?;
-                map.end()
-            }
-        }
-    }
-}
-
-/// Serialize a container-runtime proxy credential (Docker/Podman) for storage,
-/// exposing the SSL key secret. `type_tag` is the variant's serde tag — the only
-/// thing that differs between the two runtimes.
-fn serialize_proxy<S: Serializer>(
-    serializer: S,
-    type_tag: &str,
-    port: &u16,
-    path: &Option<String>,
-    ssl_cert: &Option<FileOrInline>,
-    ssl_key: &Option<SecretValue>,
-    ssl_chain: &Option<FileOrInline>,
-) -> Result<S::Ok, S::Error> {
-    let mut map = serializer.serialize_map(Some(6))?;
-    map.serialize_entry("type", type_tag)?;
-    map.serialize_entry("port", port)?;
-    map.serialize_entry("path", path)?;
-    map.serialize_entry("ssl_cert", ssl_cert)?;
-    match ssl_key {
-        Some(sv) => map.serialize_entry("ssl_key", &StorageSecretValue(sv))?,
-        None => map.serialize_entry("ssl_key", &None::<()>)?,
-    }
-    map.serialize_entry("ssl_chain", ssl_chain)?;
-    map.end()
 }
