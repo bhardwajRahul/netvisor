@@ -198,19 +198,6 @@ jobs:
         env:
           DATABASE_URL: ${{ steps.create_branch.outputs.db_url }}
 
-      - name: Warm Neon compute before compat container boots
-        if: steps.deploy_mode.outputs.mode != 'downtime'
-        env:
-          DATABASE_URL: ${{ steps.create_branch.outputs.db_url }}
-        run: |
-          # Neon branches autosuspend their compute when idle. Earlier steps
-          # (pg_dump + sqlx migrate) woke it, but several seconds may elapse
-          # before the compat container starts. A single SELECT here ensures
-          # compute is hot when the prior-release binary's pool tries to
-          # acquire its first connection — its acquire_timeout is much
-          # shorter than a cold-start wakeup.
-          psql "$DATABASE_URL" -c 'SELECT 1' >/dev/null
-
       - name: Log in to GHCR for compat-check image pull
         if: steps.deploy_mode.outputs.mode != 'downtime'
         uses: docker/login-action@v3
@@ -218,6 +205,31 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pre-pull previous release image (before warming Neon)
+        if: steps.deploy_mode.outputs.mode != 'downtime'
+        run: |
+          # Pull the slow image layers BEFORE warming Neon so the pull can't
+          # sit between the warmup and the container boot. compat-check.sh's
+          # own `docker pull` then becomes a cache hit, and the container
+          # starts immediately while the compute is still hot. (Without this,
+          # the pull re-suspends the Neon branch and the prior-release binary's
+          # short pool acquire_timeout dies on the cold-start wakeup.)
+          docker pull "ghcr.io/${{ github.repository }}/server:latest"
+
+      - name: Warm Neon compute before compat container boots
+        if: steps.deploy_mode.outputs.mode != 'downtime'
+        env:
+          DATABASE_URL: ${{ steps.create_branch.outputs.db_url }}
+        run: |
+          # Neon branches autosuspend their compute when idle. Earlier steps
+          # (pg_dump + sqlx migrate) woke it, but several seconds may elapse
+          # before the compat container starts. The image is already pulled
+          # above, so this SELECT is the last step before boot, ensuring
+          # compute is hot when the prior-release binary's pool tries to
+          # acquire its first connection — its acquire_timeout is much
+          # shorter than a cold-start wakeup.
+          psql "$DATABASE_URL" -c 'SELECT 1' >/dev/null
 
       - name: Backward-compat container harness (prev release vs migrated schema)
         if: steps.deploy_mode.outputs.mode != 'downtime'
