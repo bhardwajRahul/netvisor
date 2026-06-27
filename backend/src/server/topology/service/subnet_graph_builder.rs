@@ -311,7 +311,7 @@ impl SubnetGraphBuilder {
                     .subnets
                     .iter()
                     .find(|s| s.id == _subnet_id)
-                    .map(|s| s.base.subnet_type.is_docker_network())
+                    .map(|s| s.base.subnet_type.is_container_network())
                     .unwrap_or(false);
                 let compose_project = if !is_docker_subnet {
                     None

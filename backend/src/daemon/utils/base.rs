@@ -1,11 +1,9 @@
+use crate::daemon::discovery::integration::container::ContainerRuntime;
 use crate::server::ip_addresses::r#impl::base::{IPAddress, IPAddressBase};
 use crate::server::shared::storage::traits::Storable;
 use crate::server::shared::types::entities::EntitySource;
 use crate::server::subnets::r#impl::base::{Subnet, SubnetBase};
 use crate::server::subnets::r#impl::types::SubnetType;
-use crate::server::subnets::r#impl::virtualization::{
-    DockerSubnetVirtualization, SubnetVirtualization,
-};
 use anyhow::Error;
 use anyhow::anyhow;
 use async_trait::async_trait;
@@ -295,12 +293,72 @@ pub trait DaemonUtils {
         ))
     }
 
+    /// Connect to a container runtime's local Unix socket via bollard's
+    /// Docker-compatible client. `socket_path` of `None` uses bollard's Docker
+    /// defaults (`DOCKER_HOST` / `/var/run/docker.sock`); `Some(path)` connects
+    /// to an explicit socket (e.g. the Podman socket). Pings to verify before
+    /// returning.
+    async fn new_container_socket_client(
+        &self,
+        socket_path: Option<String>,
+    ) -> Result<Docker, Error> {
+        use tokio::time::timeout;
+
+        const DOCKER_CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
+        const MAX_PING_ATTEMPTS: u32 = 3;
+
+        let start = std::time::Instant::now();
+        let client = match &socket_path {
+            Some(path) => {
+                tracing::debug!(socket = %path, "Connecting to container socket");
+                Docker::connect_with_socket(path, 120, API_DEFAULT_VERSION).map_err(|e| {
+                    anyhow::anyhow!("Failed to connect to container socket {}: {}", path, e)
+                })?
+            }
+            None => {
+                tracing::debug!("Using Docker local defaults");
+                Docker::connect_with_local_defaults()
+                    .map_err(|e| anyhow::anyhow!("Failed to connect to Docker: {}", e))?
+            }
+        };
+
+        let mut last_error = None;
+        for attempt in 1..=MAX_PING_ATTEMPTS {
+            match timeout(DOCKER_CONNECT_TIMEOUT, client.ping()).await {
+                Ok(Ok(_)) => return Ok(client),
+                Ok(Err(e)) => {
+                    last_error = Some(format!("Container socket ping failed: {}", e));
+                }
+                Err(_) => {
+                    last_error = Some(format!(
+                        "Container socket connection timed out after {:?}",
+                        DOCKER_CONNECT_TIMEOUT
+                    ));
+                }
+            }
+            if attempt < MAX_PING_ATTEMPTS {
+                let backoff = Duration::from_millis(500 * 2u64.pow(attempt - 1));
+                tokio::time::sleep(backoff).await;
+            }
+        }
+        tracing::debug!(
+            elapsed_ms = start.elapsed().as_millis(),
+            "Container socket ping failed after {} attempts",
+            MAX_PING_ATTEMPTS
+        );
+        Err(anyhow::anyhow!(last_error.unwrap_or_else(|| {
+            "Container socket connection failed".to_string()
+        })))
+    }
+
     async fn get_subnets_from_docker_networks(
         &self,
         network_id: Uuid,
         client: &Docker,
-        docker_service_id: Uuid,
+        runtime: ContainerRuntime,
+        runtime_service_id: Uuid,
     ) -> Result<Vec<Subnet>, Error> {
+        let bridge_subnet_type = runtime.bridge_subnet_type();
         let subnets: Vec<Subnet> = client
             .list_networks(None::<ListNetworksOptions>)
             .await?
@@ -308,17 +366,17 @@ pub trait DaemonUtils {
             .filter_map(|n| {
                 let driver = n.driver.as_deref().unwrap_or("bridge");
 
-                // Include Docker networks that can be scanned
+                // Include container networks that can be scanned
                 // Skip: host (no separate CIDR), none (no networking), null (invalid)
                 let subnet_type = match driver {
-                    "bridge" | "overlay" => SubnetType::DockerBridge,
+                    "bridge" | "overlay" => bridge_subnet_type,
                     "macvlan" => SubnetType::MacVlan,
                     "ipvlan" => SubnetType::IpVlan,
                     _ => {
                         tracing::trace!(
                             network_name = ?n.name,
                             driver = driver,
-                            "Skipping unsupported Docker network driver"
+                            "Skipping unsupported container network driver"
                         );
                         return None;
                     }
@@ -336,10 +394,8 @@ pub trait DaemonUtils {
                     .iter()
                     .filter_map(|c| {
                         if let Some(cidr) = &c.subnet {
-                            let virtualization = if subnet_type == SubnetType::DockerBridge {
-                                Some(SubnetVirtualization::Docker(DockerSubnetVirtualization {
-                                    service_id: docker_service_id,
-                                }))
+                            let virtualization = if subnet_type == bridge_subnet_type {
+                                Some(runtime.subnet_virtualization(runtime_service_id))
                             } else {
                                 None
                             };

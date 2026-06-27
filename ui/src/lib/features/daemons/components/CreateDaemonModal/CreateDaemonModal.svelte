@@ -290,10 +290,13 @@
 	// Derived commands
 	let dockerConfig = $derived({
 		credentialId: null as string | null,
-		// Local Docker socket is enabled while a Docker socket entry is in the wizard
-		// list (seeded from the Integrations grid, removable in the wizard).
+		// Local Docker/Podman socket is enabled while a matching socket entry is in
+		// the wizard list (seeded from the Integrations grid, removable in the wizard).
 		disableLocalSocket: !pendingCredentials.some(
 			(p) => p.credential.credential_type.type === 'DockerSocket'
+		),
+		disableLocalPodmanSocket: !pendingCredentials.some(
+			(p) => p.credential.credential_type.type === 'PodmanSocket'
 		)
 	});
 	let allCredentialIds = $derived([...credentialIds]);

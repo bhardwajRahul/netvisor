@@ -1,4 +1,4 @@
-.PHONY: help build test test-unit clean format lint lint-migrations generate-schema generate-messages generate-fixtures update-oui seed-dev set-plan-community set-plan-starter set-plan-pro set-plan-team set-plan-business set-plan-enterprise test-plan test-merge test-results install-dev-mac install-dev-linux install-dev-windows snmp-verify snmp-status docker-proxy-up docker-proxy-up-tls docker-proxy-down docker-proxy-status issue-license
+.PHONY: help build test test-unit clean format lint lint-migrations generate-schema generate-messages generate-fixtures update-oui seed-dev set-plan-community set-plan-starter set-plan-pro set-plan-team set-plan-business set-plan-enterprise test-plan test-merge test-results install-dev-mac install-dev-linux install-dev-windows snmp-verify snmp-status docker-proxy-up docker-proxy-up-tls docker-proxy-down docker-proxy-status podman-proxy-up podman-proxy-up-tls podman-proxy-down podman-proxy-status podman-workload-up podman-workload-down issue-license
 
 DAYS ?= 365
 
@@ -50,6 +50,12 @@ help:
 	@echo "  make docker-proxy-up-tls - Start Docker proxy with TLS"
 	@echo "  make docker-proxy-down   - Stop Docker proxy test environment"
 	@echo "  make docker-proxy-status - Show Docker proxy status"
+	@echo "  make podman-proxy-up - Start Podman proxy test environment (HTTP)"
+	@echo "  make podman-proxy-up-tls - Start Podman proxy with TLS"
+	@echo "  make podman-proxy-down   - Stop Podman proxy test environment"
+	@echo "  make podman-proxy-status - Show Podman proxy status"
+	@echo "  make podman-workload-up  - Seed a discoverable Podman pod + containers"
+	@echo "  make podman-workload-down - Remove the Podman test workload"
 
 fresh-db:
 	make clean-db
@@ -412,3 +418,21 @@ docker-proxy-down:
 
 docker-proxy-status:
 	tools/docker-proxy/docker-proxy-test-env.sh status
+
+podman-proxy-up:
+	tools/podman-proxy/podman-proxy-test-env.sh up
+
+podman-proxy-up-tls:
+	tools/podman-proxy/podman-proxy-test-env.sh up --tls
+
+podman-proxy-down:
+	tools/podman-proxy/podman-proxy-test-env.sh down
+
+podman-proxy-status:
+	tools/podman-proxy/podman-proxy-test-env.sh status
+
+podman-workload-up:
+	tools/podman-proxy/podman-proxy-test-env.sh workload up
+
+podman-workload-down:
+	tools/podman-proxy/podman-proxy-test-env.sh workload down

@@ -99,6 +99,14 @@ impl CredentialTypeDiscriminants {
                 ssl_chain: None,
             },
             Self::DockerSocket => CredentialType::DockerSocket {},
+            Self::PodmanProxy => CredentialType::PodmanProxy {
+                port: default_docker_port(),
+                path: None,
+                ssl_cert: None,
+                ssl_key: None,
+                ssl_chain: None,
+            },
+            Self::PodmanSocket => CredentialType::PodmanSocket {},
         }
     }
 }
@@ -119,8 +127,9 @@ impl EntityMetadataProvider for CredentialTypeDiscriminants {
         // Fallback icon when the service logo is unavailable
         match self {
             Self::SnmpV1 | Self::SnmpV2c | Self::SnmpV3 => Concept::SNMP.icon(),
-            Self::DockerProxy => Concept::Containerization.icon(),
-            Self::DockerSocket => Concept::Containerization.icon(),
+            Self::DockerProxy | Self::DockerSocket | Self::PodmanProxy | Self::PodmanSocket => {
+                Concept::Containerization.icon()
+            }
         }
     }
 }
@@ -133,6 +142,8 @@ impl TypeMetadataProvider for CredentialTypeDiscriminants {
             Self::SnmpV3 => "SNMP v3",
             Self::DockerProxy => "Docker Proxy",
             Self::DockerSocket => "Docker Socket",
+            Self::PodmanProxy => "Podman Proxy",
+            Self::PodmanSocket => "Podman Socket",
         }
     }
 
@@ -152,6 +163,12 @@ impl TypeMetadataProvider for CredentialTypeDiscriminants {
             }
             Self::DockerSocket => {
                 "Discover Docker containers and the services they expose via the daemon's local socket."
+            }
+            Self::PodmanProxy => {
+                "Discover Podman containers and the services they expose over TCP, optionally with TLS."
+            }
+            Self::PodmanSocket => {
+                "Discover Podman containers and the services they expose via the daemon's local socket."
             }
         }
     }

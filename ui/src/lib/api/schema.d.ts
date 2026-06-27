@@ -3065,19 +3065,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-06-24T21:31:19.413266Z",
+             *       "created_at": "2026-06-26T21:27:04.891895Z",
              *       "first_discovery_id": null,
-             *       "id": "b44b7952-a7bd-41a8-881e-02990f0b82f9",
+             *       "id": "ef826a1b-4efa-4f5f-b023-f6620c30deed",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-06-24T21:31:19.413266Z",
+             *       "last_seen_at": "2026-06-26T21:27:04.891895Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-06-24T21:31:19.413266Z",
-             *       "valid_from": "2026-06-24T21:31:19.413266Z",
+             *       "updated_at": "2026-06-26T21:27:04.891895Z",
+             *       "valid_from": "2026-06-26T21:27:04.891895Z",
              *       "valid_to": null
              *     }
              */
@@ -3414,19 +3414,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-06-24T21:31:19.396982Z",
+             *               "created_at": "2026-06-26T21:27:04.875021Z",
              *               "first_discovery_id": null,
-             *               "id": "44ae390f-0a35-4f9a-ad20-97abe35df708",
+             *               "id": "4adf76c0-91d1-44ae-b297-142adcd58bf6",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-06-24T21:31:19.396982Z",
+             *               "last_seen_at": "2026-06-26T21:27:04.875021Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-06-24T21:31:19.396982Z",
-             *               "valid_from": "2026-06-24T21:31:19.396982Z",
+             *               "updated_at": "2026-06-26T21:27:04.875021Z",
+             *               "valid_from": "2026-06-26T21:27:04.875021Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3440,7 +3440,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "NTP Server",
+             *           "service_definition": "Tasmota",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3803,19 +3803,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-06-24T21:31:19.407949Z",
+             *           "created_at": "2026-06-26T21:27:04.886428Z",
              *           "first_discovery_id": null,
-             *           "id": "639cb3b5-463e-4c88-80a9-1f5b2bebf799",
+             *           "id": "5fe73423-91dc-45e0-a110-95b48af24c59",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-06-24T21:31:19.407949Z",
+             *           "last_seen_at": "2026-06-26T21:27:04.886428Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-06-24T21:31:19.407949Z",
-             *           "valid_from": "2026-06-24T21:31:19.407949Z",
+             *           "updated_at": "2026-06-26T21:27:04.886428Z",
+             *           "valid_from": "2026-06-26T21:27:04.886428Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -3829,7 +3829,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "NTP Server",
+             *       "service_definition": "Tasmota",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4316,19 +4316,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-06-24T21:31:19.397319Z",
+         *       "created_at": "2026-06-26T21:27:04.875370Z",
          *       "first_discovery_id": null,
-         *       "id": "21d42fd8-a608-4f61-a5ac-9f61d49f5dba",
+         *       "id": "d5a70fae-8765-42ef-be12-1dcb1bb6a59e",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-06-24T21:31:19.397319Z",
+         *       "last_seen_at": "2026-06-26T21:27:04.875370Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-06-24T21:31:19.397319Z",
-         *       "valid_from": "2026-06-24T21:31:19.397319Z",
+         *       "updated_at": "2026-06-26T21:27:04.875370Z",
+         *       "valid_from": "2026-06-26T21:27:04.875370Z",
          *       "valid_to": null
          *     }
          */
@@ -4543,7 +4543,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "NTP Server",
+         *           "service_definition": "Tasmota",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -4699,6 +4699,22 @@ export interface components {
         } | {
             /** @enum {string} */
             type: "DockerSocket";
+        } | {
+            /** @description Optional URL path prefix (e.g. "/v1.43") */
+            path?: string | null;
+            /**
+             * Format: int32
+             * @description Port for the Podman API proxy (default 2375)
+             */
+            port?: number;
+            ssl_cert?: null | components["schemas"]["FileOrInline"];
+            ssl_chain?: null | components["schemas"]["FileOrInline"];
+            ssl_key?: null | components["schemas"]["SecretValue"];
+            /** @enum {string} */
+            type: "PodmanProxy";
+        } | {
+            /** @enum {string} */
+            type: "PodmanSocket";
         };
         Daemon: components["schemas"]["DaemonBase"] & {
             /** Format: date-time */
@@ -5553,19 +5569,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-06-24T21:31:19.396590Z",
+         *               "created_at": "2026-06-26T21:27:04.874626Z",
          *               "first_discovery_id": null,
-         *               "id": "c4435fd4-fe34-4e49-990c-b0e40388232b",
+         *               "id": "036ceeb9-4746-4c0a-9d00-9f00d6838fc0",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-06-24T21:31:19.396590Z",
+         *               "last_seen_at": "2026-06-26T21:27:04.874626Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-06-24T21:31:19.396590Z",
-         *               "valid_from": "2026-06-24T21:31:19.396590Z",
+         *               "updated_at": "2026-06-26T21:27:04.874626Z",
+         *               "valid_from": "2026-06-26T21:27:04.874626Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -5579,7 +5595,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "NTP Server",
+         *           "service_definition": "Tasmota",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -6636,6 +6652,14 @@ export interface components {
             /** Format: int64 */
             seat_limit?: number | null;
         };
+        PodmanSubnetVirtualization: {
+            /**
+             * Format: uuid
+             * @description The Podman daemon service that owns this bridge network.
+             *     Different Podman daemons on different hosts = distinct bridge subnets.
+             */
+            service_id: string;
+        };
         PodmanVirtualization: {
             compose_project?: string | null;
             container_id?: string | null;
@@ -7004,19 +7028,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-06-24T21:31:19.397242Z",
+         *           "created_at": "2026-06-26T21:27:04.875297Z",
          *           "first_discovery_id": null,
-         *           "id": "7decaaa7-3e15-4c8b-93b1-02546b24fc26",
+         *           "id": "a783e2fd-88cd-40ce-8bf9-5d640c7bccd1",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-06-24T21:31:19.397242Z",
+         *           "last_seen_at": "2026-06-26T21:27:04.875297Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-06-24T21:31:19.397242Z",
-         *           "valid_from": "2026-06-24T21:31:19.397242Z",
+         *           "updated_at": "2026-06-26T21:27:04.875297Z",
+         *           "valid_from": "2026-06-26T21:27:04.875297Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -7030,7 +7054,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "NTP Server",
+         *       "service_definition": "Tasmota",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -7296,16 +7320,19 @@ export interface components {
          */
         SubnetOrderField: "created_at" | "name" | "cidr" | "subnet_type" | "updated_at" | "network_id";
         /** @enum {string} */
-        SubnetType: "Internet" | "Remote" | "Gateway" | "VpnTunnel" | "Dmz" | "Lan" | "WiFi" | "IoT" | "Guest" | "DockerBridge" | "MacVlan" | "IpVlan" | "Management" | "Storage" | "Loopback" | "Unknown";
+        SubnetType: "Internet" | "Remote" | "Gateway" | "VpnTunnel" | "Dmz" | "Lan" | "WiFi" | "IoT" | "Guest" | "DockerBridge" | "PodmanBridge" | "MacVlan" | "IpVlan" | "Management" | "Storage" | "Loopback" | "Unknown";
         /**
          * @description Virtualization metadata for subnets that belong to a virtual infrastructure.
          *     Consistent with HostVirtualization and ServiceVirtualization patterns.
          *     Points to the service that provides the virtualization (e.g., Docker daemon).
          */
-        SubnetVirtualization: components["schemas"]["DockerSubnetVirtualization"] & {
+        SubnetVirtualization: (components["schemas"]["DockerSubnetVirtualization"] & {
             /** @enum {string} */
             type: "Docker";
-        };
+        }) | (components["schemas"]["PodmanSubnetVirtualization"] & {
+            /** @enum {string} */
+            type: "Podman";
+        });
         /**
          * @example {
          *       "color": "Green",
@@ -7450,7 +7477,7 @@ export interface components {
              * @default {
              *       "Application": [
              *         {
-             *           "id": "ac254e05-1b30-4be1-a56c-7ab1efea5a1d",
+             *           "id": "48fad76a-ef02-483e-a553-6d8f093d3927",
              *           "rule": {
              *             "ByApplication": {
              *               "tag_ids": []
@@ -7460,23 +7487,23 @@ export interface components {
              *       ],
              *       "L2Physical": [
              *         {
-             *           "id": "6c590a0c-be5a-4748-95f2-8efe34cf26df",
+             *           "id": "bcd25d23-507b-4ae4-a9a8-614b2c85cd83",
              *           "rule": "ByHost"
              *         }
              *       ],
              *       "L3Logical": [
              *         {
-             *           "id": "2d0a4cac-85d4-4ab8-bd9e-8fb4922ce692",
+             *           "id": "6ca8dc49-724e-4ac1-9411-a8926f568547",
              *           "rule": "BySubnet"
              *         },
              *         {
-             *           "id": "8de48685-c2b4-4fdb-9d03-56cf9d9a8d8d",
+             *           "id": "9142aed0-1de0-45a6-a0de-0174c7def09f",
              *           "rule": "MergeDockerBridges"
              *         }
              *       ],
              *       "Workloads": [
              *         {
-             *           "id": "6c590a0c-be5a-4748-95f2-8efe34cf26df",
+             *           "id": "bcd25d23-507b-4ae4-a9a8-614b2c85cd83",
              *           "rule": "ByHost"
              *         }
              *       ]
@@ -7488,19 +7515,19 @@ export interface components {
             /**
              * @default [
              *       {
-             *         "id": "dcada258-aee4-46c9-b0d7-1596ef18e01a",
+             *         "id": "5fdb0e6c-e22f-4bab-9073-d38bf362e2da",
              *         "rule": "ByTrunkPort"
              *       },
              *       {
-             *         "id": "20c00c22-d7f1-443b-9404-dc7c3f52868b",
+             *         "id": "a24a0148-bf47-418f-ac19-89dfc90e7d01",
              *         "rule": "ByVLAN"
              *       },
              *       {
-             *         "id": "35fedc6b-3df6-4bc0-aead-3306b28ab597",
+             *         "id": "07d87869-61cf-4855-a5f8-295310ad3c1b",
              *         "rule": "ByPortOpStatus"
              *       },
              *       {
-             *         "id": "8f0a2ac6-f05f-4ba5-b4b8-8a81cd21a4b5",
+             *         "id": "00945b77-5ed1-4c69-863c-41349e73f37a",
              *         "rule": {
              *           "ByServiceCategory": {
              *             "categories": [
@@ -7518,7 +7545,7 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "cd9c43bf-f25f-4790-a4cd-192113538669",
+             *         "id": "2e7da389-f6e5-4b20-ab39-541dba09d020",
              *         "rule": {
              *           "ByTag": {
              *             "tag_ids": [],
@@ -7527,15 +7554,15 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "9e5a1e61-61ba-4b6d-b4e9-27acc2fb8ce0",
+             *         "id": "3e9dd2a8-1f4a-4c2b-be95-de721f5e3d38",
              *         "rule": "ByHypervisor"
              *       },
              *       {
-             *         "id": "274d63a6-3a20-4fc1-acb9-778fb68dc900",
+             *         "id": "9d973751-0a83-4a03-b128-c3350f7ed59a",
              *         "rule": "ByContainerRuntime"
              *       },
              *       {
-             *         "id": "c82fca3b-1bd0-49b9-8142-065c8ef45ca2",
+             *         "id": "a0440ef7-fbdf-4b1c-ab93-e63408c561f5",
              *         "rule": "ByStack"
              *       }
              *     ]

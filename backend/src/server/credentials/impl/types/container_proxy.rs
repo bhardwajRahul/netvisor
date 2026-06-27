@@ -1,4 +1,7 @@
-//! Docker proxy credential types for discovery dispatch.
+//! Container-runtime (Docker/Podman) proxy credential types for discovery dispatch.
+//!
+//! Docker and Podman both expose a Docker-compatible REST API, so their proxy
+//! credentials are structurally identical and share this query type.
 
 use crate::server::credentials::r#impl::mapping::{
     BannerField, BannerFieldValue, ResolvableSecret, ResolvableValue,
@@ -6,7 +9,7 @@ use crate::server::credentials::r#impl::mapping::{
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Hash)]
-pub struct DockerProxyQueryCredential {
+pub struct ContainerProxyQueryCredential {
     pub port: u16,
     pub path: Option<String>,
     pub ssl_cert: Option<ResolvableValue>,
@@ -14,8 +17,8 @@ pub struct DockerProxyQueryCredential {
     pub ssl_chain: Option<ResolvableValue>,
 }
 
-/// Banner lines for Docker proxy credentials
-impl DockerProxyQueryCredential {
+/// Banner lines for container-runtime proxy credentials
+impl ContainerProxyQueryCredential {
     pub fn banner_lines(&self) -> Vec<BannerField> {
         let mut lines = vec![BannerField {
             label: "Port",
@@ -55,8 +58,8 @@ mod tests {
     use crate::server::credentials::r#impl::mapping::CredentialQueryPayload;
 
     #[test]
-    fn banner_lines_docker_proxy() {
-        let payload = CredentialQueryPayload::DockerProxy(DockerProxyQueryCredential {
+    fn banner_lines_container_proxy() {
+        let payload = CredentialQueryPayload::DockerProxy(ContainerProxyQueryCredential {
             port: 2376,
             path: Some("/".to_string()),
             ssl_cert: Some(ResolvableValue::Value {

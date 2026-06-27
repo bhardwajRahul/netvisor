@@ -89,6 +89,10 @@ pub struct DaemonCli {
     #[arg(long)]
     enable_local_docker_socket: Option<bool>,
 
+    /// Disable local Podman socket detection. When false, the daemon skips the local Podman socket regardless of socket presence.
+    #[arg(long)]
+    enable_local_podman_socket: Option<bool>,
+
     /// Credential IDs to assign to this daemon's host during registration (repeatable)
     #[arg(long = "credential-id")]
     credential_ids: Option<Vec<Uuid>>,
@@ -188,6 +192,10 @@ pub struct AppConfig {
     /// When false, daemon reports has_docker_socket: false regardless of socket presence.
     #[serde(default = "default_enable_local_docker_socket")]
     pub enable_local_docker_socket: bool,
+    /// Whether to detect and use the local Podman socket.
+    /// When false, the daemon skips the local Podman socket regardless of socket presence.
+    #[serde(default = "default_enable_local_docker_socket")]
+    pub enable_local_podman_socket: bool,
     /// Credential IDs to assign to this daemon's host during registration.
     #[serde(default)]
     pub credential_ids: Vec<Uuid>,
@@ -258,6 +266,7 @@ impl Default for AppConfig {
             port_scan_batch_size: default_port_scan_batch_size(),
             capabilities: DaemonCapabilities::default(),
             enable_local_docker_socket: default_enable_local_docker_socket(),
+            enable_local_podman_socket: default_enable_local_docker_socket(),
             credential_ids: Vec::new(),
             has_self_reported: false,
         }
@@ -412,6 +421,9 @@ impl AppConfig {
         }
         if let Some(enable_local_docker_socket) = cli_args.enable_local_docker_socket {
             figment = figment.merge(("enable_local_docker_socket", enable_local_docker_socket));
+        }
+        if let Some(enable_local_podman_socket) = cli_args.enable_local_podman_socket {
+            figment = figment.merge(("enable_local_podman_socket", enable_local_podman_socket));
         }
         if let Some(credential_ids) = cli_args.credential_ids {
             figment = figment.merge(("credential_ids", credential_ids));
@@ -710,6 +722,11 @@ impl ConfigStore {
         Ok(config.enable_local_docker_socket)
     }
 
+    pub async fn get_enable_local_podman_socket(&self) -> Result<bool> {
+        let config = self.config.read().await;
+        Ok(config.enable_local_podman_socket)
+    }
+
     pub async fn get_credential_ids(&self) -> Result<Vec<Uuid>> {
         let config = self.config.read().await;
         Ok(config.credential_ids.clone())
@@ -791,7 +808,7 @@ mod tests {
         help_text: String,
     }
 
-    const EXCLUDED_FIELDS: [&str; 17] = [
+    const EXCLUDED_FIELDS: [&str; 18] = [
         "daemon_api_key",
         "network_id",
         "server_url",
@@ -807,6 +824,7 @@ mod tests {
         "docker_proxy_ssl_key",
         "docker_proxy_ssl_chain",
         "enable_local_docker_socket",
+        "enable_local_podman_socket",
         // Deprecated: scan settings are now per-discovery via ScanSettings
         "use_npcap_arp",
         "arp_retries",

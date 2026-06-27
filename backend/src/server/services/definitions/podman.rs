@@ -1,7 +1,7 @@
 use crate::server::services::definitions::{ServiceDefinitionFactory, create_service};
 use crate::server::services::r#impl::categories::ServiceCategory;
 use crate::server::services::r#impl::definitions::ServiceDefinition;
-use crate::server::services::r#impl::patterns::Pattern;
+use crate::server::services::r#impl::patterns::{ClientProbe, Pattern};
 
 #[derive(Default, Clone, Eq, PartialEq, Hash)]
 pub struct Podman;
@@ -17,12 +17,12 @@ impl ServiceDefinition for Podman {
         ServiceCategory::ContainerRuntime
     }
 
-    // Podman exposes only a local unix socket by default (no network port), so
-    // there is no reliable network signature to auto-detect. Like Docker, real
-    // detection requires a credentialed socket probe (deferred). Until then it
-    // is manually addable and participates as a container-runtime virtualizer.
+    // Podman exposes a Docker-compatible API over a local unix socket (and,
+    // when configured, a TCP proxy). Like Docker, there is no passive network
+    // signature — detection is the credentialed socket/proxy probe, surfaced
+    // here as a Podman client-probe response.
     fn discovery_pattern(&self) -> Pattern<'_> {
-        Pattern::None
+        Pattern::ClientResponse(ClientProbe::Podman)
     }
 
     fn logo_url(&self) -> &'static str {

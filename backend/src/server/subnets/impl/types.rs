@@ -42,6 +42,7 @@ pub enum SubnetType {
     Guest,
 
     DockerBridge,
+    PodmanBridge,
     MacVlan,
     IpVlan,
     Management,
@@ -71,6 +72,7 @@ impl FromStr for SubnetType {
             "IoT" => Ok(SubnetType::IoT),
             "Guest" => Ok(SubnetType::Guest),
             "DockerBridge" => Ok(SubnetType::DockerBridge),
+            "PodmanBridge" => Ok(SubnetType::PodmanBridge),
             "MacVlan" => Ok(SubnetType::MacVlan),
             "IpVlan" => Ok(SubnetType::IpVlan),
             "Management" => Ok(SubnetType::Management),
@@ -83,11 +85,15 @@ impl FromStr for SubnetType {
 }
 
 impl SubnetType {
-    /// Whether this subnet type represents a Docker/container network
-    pub fn is_docker_network(&self) -> bool {
+    /// Whether this subnet type represents a container-runtime network
+    /// (Docker/Podman bridge, MacVLAN, IpVLAN).
+    pub fn is_container_network(&self) -> bool {
         matches!(
             self,
-            SubnetType::DockerBridge | SubnetType::MacVlan | SubnetType::IpVlan
+            SubnetType::DockerBridge
+                | SubnetType::PodmanBridge
+                | SubnetType::MacVlan
+                | SubnetType::IpVlan
         )
     }
 
@@ -100,6 +106,11 @@ impl SubnetType {
         // Docker containers
         if Self::match_interface_names(&["docker", "br-", "docker"], interface_name) {
             return SubnetType::DockerBridge;
+        }
+
+        // Podman containers (default bridge is `podman0`, CNI uses `cni-podman0`)
+        if Self::match_interface_names(&["podman", "cni-podman"], interface_name) {
+            return SubnetType::PodmanBridge;
         }
 
         // VPN tunnels
@@ -184,8 +195,10 @@ impl SubnetType {
         })
     }
 
-    pub fn is_docker_bridge(&self) -> bool {
-        matches!(self, SubnetType::DockerBridge)
+    /// Whether this subnet is a container-runtime bridge network
+    /// (Docker or Podman). MacVLAN/IpVLAN are container networks but not bridges.
+    pub fn is_container_bridge(&self) -> bool {
+        matches!(self, SubnetType::DockerBridge | SubnetType::PodmanBridge)
     }
 
     pub fn is_loopback(&self) -> bool {
@@ -235,6 +248,7 @@ impl EntityMetadataProvider for SubnetType {
 
             SubnetType::Management => Color::Gray,
             SubnetType::DockerBridge => Concept::Containerization.color(),
+            SubnetType::PodmanBridge => Concept::Containerization.color(),
             SubnetType::MacVlan => Concept::Containerization.color(),
             SubnetType::IpVlan => Concept::Containerization.color(),
             SubnetType::Storage => Concept::Storage.color(),
@@ -259,6 +273,7 @@ impl EntityMetadataProvider for SubnetType {
 
             SubnetType::Management => Icon::ServerCog,
             SubnetType::DockerBridge => Icon::Box,
+            SubnetType::PodmanBridge => Icon::Box,
             SubnetType::MacVlan => Icon::Network,
             SubnetType::IpVlan => Icon::Network,
             SubnetType::Storage => Concept::Storage.icon(),
@@ -286,6 +301,7 @@ impl TypeMetadataProvider for SubnetType {
 
             SubnetType::Management => "Management",
             SubnetType::DockerBridge => "Docker Bridge",
+            SubnetType::PodmanBridge => "Podman Bridge",
             SubnetType::MacVlan => "MacVLAN",
             SubnetType::IpVlan => "IpVLAN",
             SubnetType::Storage => "Storage",
@@ -311,6 +327,7 @@ impl TypeMetadataProvider for SubnetType {
 
             SubnetType::Management => "Management network",
             SubnetType::DockerBridge => "Docker bridge network",
+            SubnetType::PodmanBridge => "Podman bridge network",
             SubnetType::MacVlan => "MacVLAN network",
             SubnetType::IpVlan => "IpVLAN network",
             SubnetType::Storage => "Storage network",
@@ -326,12 +343,16 @@ impl TypeMetadataProvider for SubnetType {
             SubnetType::Remote
                 | SubnetType::Internet
                 | SubnetType::DockerBridge
+                | SubnetType::PodmanBridge
                 | SubnetType::Loopback
         );
 
         let is_for_containers = matches!(
             self,
-            SubnetType::DockerBridge | SubnetType::MacVlan | SubnetType::IpVlan
+            SubnetType::DockerBridge
+                | SubnetType::PodmanBridge
+                | SubnetType::MacVlan
+                | SubnetType::IpVlan
         );
 
         let show_label = !matches!(self, SubnetType::Unknown | SubnetType::Loopback);

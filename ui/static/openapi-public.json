@@ -10891,19 +10891,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-06-24T21:31:19.413278Z",
+              "created_at": "2026-06-26T21:27:04.891900Z",
               "first_discovery_id": null,
-              "id": "cd1a823a-b218-4f54-a7bf-17ec52738b93",
+              "id": "561e75ba-2007-42f9-b434-b580721511fa",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-24T21:31:19.413278Z",
+              "last_seen_at": "2026-06-26T21:27:04.891900Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-24T21:31:19.413278Z",
-              "valid_from": "2026-06-24T21:31:19.413278Z",
+              "updated_at": "2026-06-26T21:27:04.891900Z",
+              "valid_from": "2026-06-26T21:27:04.891900Z",
               "valid_to": null
             }
           },
@@ -11889,19 +11889,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-06-24T21:31:19.397005Z",
+                      "created_at": "2026-06-26T21:27:04.875049Z",
                       "first_discovery_id": null,
-                      "id": "31844f61-8a1e-4c5c-a96d-80241c98d838",
+                      "id": "98bfb7e7-d911-4e6d-ae38-a680706b2624",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-06-24T21:31:19.397005Z",
+                      "last_seen_at": "2026-06-26T21:27:04.875049Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-06-24T21:31:19.397005Z",
-                      "valid_from": "2026-06-24T21:31:19.397005Z",
+                      "updated_at": "2026-06-26T21:27:04.875049Z",
+                      "valid_from": "2026-06-26T21:27:04.875049Z",
                       "valid_to": null
                     }
                   ],
@@ -11915,7 +11915,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "NTP Server",
+                  "service_definition": "Tasmota",
                   "source": {
                     "type": "Manual"
                   },
@@ -12913,19 +12913,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-06-24T21:31:19.407978Z",
+                  "created_at": "2026-06-26T21:27:04.886433Z",
                   "first_discovery_id": null,
-                  "id": "620eec69-199d-4246-be72-f84ad6ee189f",
+                  "id": "55c75bc1-d599-4ae1-8b48-f2b842d8ae05",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-24T21:31:19.407978Z",
+                  "last_seen_at": "2026-06-26T21:27:04.886433Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-24T21:31:19.407978Z",
-                  "valid_from": "2026-06-24T21:31:19.407978Z",
+                  "updated_at": "2026-06-26T21:27:04.886433Z",
+                  "valid_from": "2026-06-26T21:27:04.886433Z",
                   "valid_to": null
                 }
               ],
@@ -12939,7 +12939,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "NTP Server",
+              "service_definition": "Tasmota",
               "source": {
                 "type": "Manual"
               },
@@ -14718,19 +14718,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-06-24T21:31:19.397346Z",
+          "created_at": "2026-06-26T21:27:04.875405Z",
           "first_discovery_id": null,
-          "id": "d7239602-fc20-4d14-8bdd-c837ab728a8e",
+          "id": "a9179523-320b-4b20-806c-0c0a16e4cf2c",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-06-24T21:31:19.397346Z",
+          "last_seen_at": "2026-06-26T21:27:04.875405Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-06-24T21:31:19.397346Z",
-          "valid_from": "2026-06-24T21:31:19.397346Z",
+          "updated_at": "2026-06-26T21:27:04.875405Z",
+          "valid_from": "2026-06-26T21:27:04.875405Z",
           "valid_to": null
         }
       },
@@ -15320,7 +15320,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "NTP Server",
+              "service_definition": "Tasmota",
               "tags": [],
               "virtualization": null
             }
@@ -15734,6 +15734,82 @@
                 "type": "string",
                 "enum": [
                   "DockerSocket"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Podman API proxy credentials. Podman exposes a Docker-compatible REST API,\nso the fields mirror `DockerProxy`. Target IP determined from host\nip_addresses at scan time.",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "path": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Optional URL path prefix (e.g. \"/v1.43\")"
+              },
+              "port": {
+                "type": "integer",
+                "format": "int32",
+                "description": "Port for the Podman API proxy (default 2375)",
+                "minimum": 0
+              },
+              "ssl_cert": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/FileOrInline",
+                    "description": "PEM-encoded public certificate — inline or file path on daemon host"
+                  }
+                ]
+              },
+              "ssl_chain": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/FileOrInline",
+                    "description": "PEM-encoded CA chain — inline or file path on daemon host"
+                  }
+                ]
+              },
+              "ssl_key": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SecretValue",
+                    "description": "Private key — inline PEM content or file path on daemon host"
+                  }
+                ]
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "PodmanProxy"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Local Podman socket access (`/run/podman/podman.sock` or the rootless\n`$XDG_RUNTIME_DIR/podman/podman.sock`). Auto-injected by daemon when\nthe socket is available. Not user-selectable.",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "PodmanSocket"
                 ]
               }
             }
@@ -18107,19 +18183,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-06-24T21:31:19.396602Z",
+                  "created_at": "2026-06-26T21:27:04.874629Z",
                   "first_discovery_id": null,
-                  "id": "9b5fb497-282d-4543-90ee-672ace1112b0",
+                  "id": "5ea418e3-85e0-450d-8b6d-79118a371e23",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-24T21:31:19.396602Z",
+                  "last_seen_at": "2026-06-26T21:27:04.874629Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-24T21:31:19.396602Z",
-                  "valid_from": "2026-06-24T21:31:19.396602Z",
+                  "updated_at": "2026-06-26T21:27:04.874629Z",
+                  "valid_from": "2026-06-26T21:27:04.874629Z",
                   "valid_to": null
                 }
               ],
@@ -18133,7 +18209,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "NTP Server",
+              "service_definition": "Tasmota",
               "source": {
                 "type": "Manual"
               },
@@ -20566,19 +20642,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-06-24T21:31:19.386475Z",
+                        "created_at": "2026-06-26T21:27:04.864888Z",
                         "first_discovery_id": null,
-                        "id": "5d695a7c-fef7-42b4-950d-10c16e783af4",
+                        "id": "c3897ab8-64c5-4db2-ac17-885512f8f9c1",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-06-24T21:31:19.386475Z",
+                        "last_seen_at": "2026-06-26T21:27:04.864888Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-06-24T21:31:19.386475Z",
-                        "valid_from": "2026-06-24T21:31:19.386475Z",
+                        "updated_at": "2026-06-26T21:27:04.864888Z",
+                        "valid_from": "2026-06-26T21:27:04.864888Z",
                         "valid_to": null
                       }
                     ],
@@ -20592,7 +20668,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "NTP Server",
+                    "service_definition": "Tasmota",
                     "source": {
                       "type": "Manual"
                     },
@@ -20713,19 +20789,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-06-24T21:31:19.406915Z",
+                    "created_at": "2026-06-26T21:27:04.885349Z",
                     "first_discovery_id": null,
-                    "id": "eb1c4ca0-74b4-471d-bf61-26681ca4700f",
+                    "id": "93a3f56b-06eb-49ec-a546-1d6c0e3be286",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-06-24T21:31:19.406915Z",
+                    "last_seen_at": "2026-06-26T21:27:04.885349Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-06-24T21:31:19.406915Z",
-                    "valid_from": "2026-06-24T21:31:19.406915Z",
+                    "updated_at": "2026-06-26T21:27:04.885349Z",
+                    "valid_from": "2026-06-26T21:27:04.885349Z",
                     "valid_to": null
                   }
                 ],
@@ -20739,7 +20815,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "NTP Server",
+                "service_definition": "Tasmota",
                 "source": {
                   "type": "Manual"
                 },
@@ -21461,6 +21537,19 @@
             ],
             "format": "int64",
             "minimum": 0
+          }
+        }
+      },
+      "PodmanSubnetVirtualization": {
+        "type": "object",
+        "required": [
+          "service_id"
+        ],
+        "properties": {
+          "service_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The Podman daemon service that owns this bridge network.\nDifferent Podman daemons on different hosts = distinct bridge subnets."
           }
         }
       },
@@ -22377,19 +22466,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-06-24T21:31:19.397270Z",
+              "created_at": "2026-06-26T21:27:04.875329Z",
               "first_discovery_id": null,
-              "id": "d547fe6c-00b8-42d8-b842-8f07eec7d9f6",
+              "id": "985dfc08-6078-4b7f-ae48-47c9da6061fb",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-24T21:31:19.397270Z",
+              "last_seen_at": "2026-06-26T21:27:04.875329Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-24T21:31:19.397270Z",
-              "valid_from": "2026-06-24T21:31:19.397270Z",
+              "updated_at": "2026-06-26T21:27:04.875329Z",
+              "valid_from": "2026-06-26T21:27:04.875329Z",
               "valid_to": null
             }
           ],
@@ -22403,7 +22492,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "NTP Server",
+          "service_definition": "Tasmota",
           "source": {
             "type": "Manual"
           },
@@ -23088,6 +23177,7 @@
           "IoT",
           "Guest",
           "DockerBridge",
+          "PodmanBridge",
           "MacVlan",
           "IpVlan",
           "Management",
@@ -23121,6 +23211,30 @@
             ],
             "title": "Docker",
             "description": "Docker bridge network — host-scoped, same CIDR on different hosts are distinct subnets."
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PodmanSubnetVirtualization",
+                "description": "Podman bridge network — host-scoped like Docker; same CIDR on different daemons are distinct subnets."
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "Podman"
+                    ]
+                  }
+                }
+              }
+            ],
+            "title": "Podman",
+            "description": "Podman bridge network — host-scoped like Docker; same CIDR on different daemons are distinct subnets."
           }
         ],
         "description": "Virtualization metadata for subnets that belong to a virtual infrastructure.\nConsistent with HostVirtualization and ServiceVirtualization patterns.\nPoints to the service that provides the virtualization (e.g., Docker daemon)."
@@ -23508,7 +23622,7 @@
             "default": {
               "Application": [
                 {
-                  "id": "accb4571-8040-4416-95a4-170893dd14c2",
+                  "id": "de6927f7-3bd2-49cb-b593-9724e73894d6",
                   "rule": {
                     "ByApplication": {
                       "tag_ids": []
@@ -23518,23 +23632,23 @@
               ],
               "L2Physical": [
                 {
-                  "id": "3ca1eeb6-3be5-456d-a08d-6a28ed46ed36",
+                  "id": "00ebb3e0-5fee-404c-9f9f-3630c7a76d31",
                   "rule": "ByHost"
                 }
               ],
               "L3Logical": [
                 {
-                  "id": "fbbbbace-fbd3-42db-9400-64066efee762",
+                  "id": "469721f0-0da9-4249-a67d-f83c28f741ac",
                   "rule": "BySubnet"
                 },
                 {
-                  "id": "22092b97-7fc0-4a77-b677-415dab9d1cf8",
+                  "id": "91dde1e1-f51f-43ce-961e-5997ccee0613",
                   "rule": "MergeDockerBridges"
                 }
               ],
               "Workloads": [
                 {
-                  "id": "3ca1eeb6-3be5-456d-a08d-6a28ed46ed36",
+                  "id": "00ebb3e0-5fee-404c-9f9f-3630c7a76d31",
                   "rule": "ByHost"
                 }
               ]
@@ -23563,19 +23677,19 @@
             },
             "default": [
               {
-                "id": "8fff7251-1cef-4e78-8482-f09b01c5a8ad",
+                "id": "d8b8b385-df3f-4a66-9d5f-e298ef73965d",
                 "rule": "ByTrunkPort"
               },
               {
-                "id": "add0ea45-1fdc-4baf-9982-085b5b2213f3",
+                "id": "6825d593-0737-46c4-91c9-520eab227fe1",
                 "rule": "ByVLAN"
               },
               {
-                "id": "2013eb9b-1431-46d2-acd8-747552ffa3ce",
+                "id": "476f403a-6ca7-4bc1-bb2a-c5b9a478a91f",
                 "rule": "ByPortOpStatus"
               },
               {
-                "id": "e4d4fd85-11fd-4a8a-ade3-dca73b5196a2",
+                "id": "bd525123-d1c2-49b4-9cf4-37a0f35871d5",
                 "rule": {
                   "ByServiceCategory": {
                     "categories": [
@@ -23593,7 +23707,7 @@
                 }
               },
               {
-                "id": "a86cd791-3884-40a1-a0a4-df2e363511c4",
+                "id": "0edf1cdc-d616-45bc-90d3-eb419c52fa76",
                 "rule": {
                   "ByTag": {
                     "tag_ids": [],
@@ -23602,15 +23716,15 @@
                 }
               },
               {
-                "id": "7223103c-5554-4e8f-b17a-5d074d2d86eb",
+                "id": "78247f16-601e-4cb7-9322-e7d78004c5ee",
                 "rule": "ByHypervisor"
               },
               {
-                "id": "21eb37dd-680f-4bb1-a313-569b85067d46",
+                "id": "6c306b46-4dfe-4ad4-b0ee-956bbd7b3522",
                 "rule": "ByContainerRuntime"
               },
               {
-                "id": "ff463e8f-6a20-4879-9409-78ca609a05d0",
+                "id": "77240f31-aff0-4b67-a00f-216268ffe598",
                 "rule": "ByStack"
               }
             ]
