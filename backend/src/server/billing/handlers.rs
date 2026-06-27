@@ -1,7 +1,8 @@
 use crate::server::auth::middleware::permissions::{Authorized, Owner, RequireVerified, Viewer};
 use crate::server::billing::types::api::{
     CancelSubscriptionRequest, CancelSubscriptionResponse, ChangePlanPreview, ChangePlanRequest,
-    CreateCheckoutRequest, PauseSubscriptionRequest, SaveOfferCoupon, SetupPaymentMethodRequest,
+    CreateCheckoutRequest, FinalizePaymentMethodRequest, PauseSubscriptionRequest, SaveOfferCoupon,
+    SetupIntentResponse,
 };
 use crate::server::billing::types::base::BillingPlan;
 use crate::server::config::AppState;
@@ -48,7 +49,8 @@ pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
     OpenApiRouter::new()
         .routes(routes!(get_billing_plans))
         .routes(routes!(create_checkout_session))
-        .routes(routes!(setup_payment_method))
+        .routes(routes!(create_payment_method_setup_intent))
+        .routes(routes!(finalize_payment_method))
         .routes(routes!(change_plan))
         .routes(routes!(preview_plan_change))
         .routes(routes!(handle_webhook))
@@ -149,6 +151,18 @@ async fn create_checkout_session(
                 let is_returning = has_non_free_plan || org.base.trial_end_date.is_some();
                 let is_trial_eligible = !is_returning && request.plan.config().trial_days > 0;
 
+                // Authoritative card-on-file check via Stripe (not the
+                // `has_payment_method` mirror, which lags the in-app SetupIntent
+                // flow by an event-bus tick). Only queried when we might route to
+                // a direct charge — trial-eligible orgs skip it.
+                let has_payment_method = if is_trial_eligible {
+                    false
+                } else {
+                    billing_service
+                        .customer_has_payment_method(organization_id)
+                        .await?
+                };
+
                 if is_trial_eligible {
                     // Trial-eligible — create subscription directly, skip Checkout
                     let result = billing_service
@@ -159,7 +173,7 @@ async fn create_checkout_session(
                         )
                         .await?;
                     Ok(Json(ApiResponse::success(result)))
-                } else if has_non_free_plan && org.base.has_payment_method {
+                } else if has_non_free_plan && has_payment_method {
                     // Live paid subscription + card on file — modify it in place.
                     let result = billing_service
                         .change_plan(organization_id, request.plan, auth.into_entity())
@@ -219,41 +233,63 @@ async fn create_checkout_session(
     }
 }
 
-/// Setup payment method (collect card without charging)
+/// Create a SetupIntent for in-app card collection (Stripe Payment Element)
 #[utoipa::path(
     post,
-    path = "/setup-payment-method",
+    path = "/payment-method-setup-intent",
     tags = ["billing", "internal"],
-    request_body = SetupPaymentMethodRequest,
     responses(
-        (status = 200, description = "Setup session URL", body = ApiResponse<String>),
+        (status = 200, description = "SetupIntent client secret", body = ApiResponse<SetupIntentResponse>),
         (status = 400, description = "Billing not enabled", body = ApiErrorResponse),
     ),
     security(("user_api_key" = []), ("session" = []))
 )]
-async fn setup_payment_method(
+async fn create_payment_method_setup_intent(
     State(state): State<Arc<AppState>>,
     auth: Authorized<Owner>,
-    Json(request): Json<SetupPaymentMethodRequest>,
-) -> ApiResult<Json<ApiResponse<String>>> {
+) -> ApiResult<Json<ApiResponse<SetupIntentResponse>>> {
     let organization_id = auth
         .organization_id()
         .ok_or_else(ApiError::organization_required)?;
 
-    let success_url = format!("{}?billing_flow=payment_setup", request.url);
-    let cancel_url = request.url;
+    if let Some(billing_service) = state.services.billing_service.clone() {
+        let client_secret = billing_service
+            .create_setup_intent(organization_id, auth.into_entity())
+            .await?;
+        Ok(Json(ApiResponse::success(SetupIntentResponse {
+            client_secret,
+        })))
+    } else {
+        Err(ApiError::billing_setup_incomplete())
+    }
+}
+
+/// Finalize a client-confirmed SetupIntent (set the card as default)
+#[utoipa::path(
+    post,
+    path = "/finalize-payment-method",
+    tags = ["billing", "internal"],
+    request_body = FinalizePaymentMethodRequest,
+    responses(
+        (status = 200, description = "Payment method finalized", body = EmptyApiResponse),
+        (status = 400, description = "Billing not enabled or SetupIntent invalid", body = ApiErrorResponse),
+    ),
+    security(("user_api_key" = []), ("session" = []))
+)]
+async fn finalize_payment_method(
+    State(state): State<Arc<AppState>>,
+    auth: Authorized<Owner>,
+    Json(request): Json<FinalizePaymentMethodRequest>,
+) -> ApiResult<Json<EmptyApiResponse>> {
+    let organization_id = auth
+        .organization_id()
+        .ok_or_else(ApiError::organization_required)?;
 
     if let Some(billing_service) = state.services.billing_service.clone() {
-        let session = billing_service
-            .create_setup_payment_method_session(
-                organization_id,
-                success_url,
-                cancel_url,
-                auth.into_entity(),
-            )
+        billing_service
+            .finalize_payment_method(organization_id, request.setup_intent_id, auth.into_entity())
             .await?;
-
-        Ok(Json(ApiResponse::success(session.url.unwrap())))
+        Ok(Json(ApiResponse::success(())))
     } else {
         Err(ApiError::billing_setup_incomplete())
     }

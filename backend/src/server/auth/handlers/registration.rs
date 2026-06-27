@@ -1,5 +1,6 @@
 //! Email check, registration, onboarding setup, and pending-setup application.
 use super::*;
+use crate::server::auth::email_domain::{DomainCheck, check_email_domain};
 
 #[utoipa::path(
     post,
@@ -115,6 +116,17 @@ pub(crate) async fn register(
     {
         return Err(ApiError::conflict(
             "Email address uses a disposable domain. Please register with a non-disposable email address.",
+        ));
+    }
+
+    // DNS deliverability gate (cloud only): reject domains that definitively
+    // cannot receive mail (no MX/A/AAAA). Transient DNS failures fail open.
+    if get_deployment_type(&state.config) == DeploymentType::Cloud
+        && check_email_domain(request.email.domain()).await == DomainCheck::Undeliverable
+    {
+        return Err(ApiError::coded(
+            StatusCode::CONFLICT,
+            ErrorCode::ValidationEmailDomainUndeliverable,
         ));
     }
 
@@ -237,34 +249,10 @@ pub(crate) async fn setup(
         ));
     }
 
-    // Validate SNMP configuration
-    if request.network.snmp_enabled {
-        if request
-            .network
-            .snmp_community
-            .as_ref()
-            .is_none_or(|c| c.is_empty())
-        {
-            return Err(ApiError::bad_request(
-                "SNMP community string is required when SNMP is enabled",
-            ));
-        }
-        if let Some(ref community) = request.network.snmp_community
-            && community.len() > 256
-        {
-            return Err(ApiError::bad_request(
-                "SNMP community string must be 256 characters or less",
-            ));
-        }
-    }
-
     let network_id = Uuid::new_v4();
     let network = PendingNetworkSetup {
         name: name.to_string(),
         network_id,
-        snmp_enabled: request.network.snmp_enabled,
-        snmp_version: request.network.snmp_version.clone(),
-        snmp_community: request.network.snmp_community.clone(),
     };
 
     // Store setup data in session. `use_case` is read fresh from session at
@@ -348,9 +336,6 @@ pub(crate) async fn onboarding_state(
         let network = OnboardingNetworkState {
             id: Some(n.network_id),
             name: n.name.clone(),
-            snmp_enabled: n.snmp_enabled,
-            snmp_version: n.snmp_version.clone(),
-            snmp_community: n.snmp_community.clone(),
         };
         (
             Some(pending_setup.org_name),
@@ -409,43 +394,6 @@ pub(crate) async fn apply_pending_setup(
         .create(topology, auth_entity.clone())
         .await
         .map_err(|e| ApiError::internal_error(&format!("Failed to create topology: {}", e)))?;
-
-    // Create SNMP credential if enabled
-    if pending_network.snmp_enabled
-        && let Some(ref community) = pending_network.snmp_community
-    {
-        let credential_name = format!("{} SNMP Credential", pending_network.name);
-        let credential = Credential::new(CredentialBase {
-            organization_id,
-            name: credential_name,
-            credential_type: CredentialType::SnmpV2c {
-                community: SecretValue::Inline {
-                    value: SecretString::new(community.clone().into()),
-                },
-            },
-            target_ips: None,
-            tags: Vec::new(),
-        });
-
-        let created_credential = state
-            .services
-            .credential_service
-            .create(credential, auth_entity.clone())
-            .await
-            .map_err(|e| {
-                ApiError::internal_error(&format!("Failed to create credential: {}", e))
-            })?;
-
-        // Link credential to network via junction table
-        state
-            .services
-            .credential_service
-            .set_network_credentials(&network.id, &[created_credential.id])
-            .await
-            .map_err(|e| {
-                ApiError::internal_error(&format!("Failed to link credential to network: {}", e))
-            })?;
-    }
 
     // Handle integrated daemon if configured
     if let Some(integrated_daemon_url) = &state.config.integrated_daemon_url {

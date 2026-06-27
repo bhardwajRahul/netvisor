@@ -14,7 +14,6 @@ The output is supporting evidence for a Section 889 compliance attestation.
 | `tools/889/889-vendors.txt` | Maintained prohibited-vendor pattern list (single source of truth). |
 | `tools/889/889-allow.txt` | Reviewed false-positive exceptions (only subtracts, never broadens). |
 | `.github/workflows/889-check.yml` | PR gate — analyze-only source SBOM, blocks merge on a hit. |
-| `.github/workflows/889-check-test.yml` | `workflow_dispatch` end-to-end exercise (source + image). |
 | `.github/workflows/889-evidence.yml` | Refreshes `compliance/ndaa-889/` (the published evidence) and commits it to `main`. |
 | `.github/workflows/889-vendors-refresh.yml` | Quarterly cron — opens a vendor-list review issue. |
 | `.github/workflows/release.yml` (`supply-chain-889` job) | Release gate — scans source + all images, fails the release on a hit. |

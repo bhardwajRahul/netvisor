@@ -33,6 +33,10 @@ pub struct ServiceBase {
     #[validate(length(min = 0, max = 100))]
     pub name: String,
     pub bindings: Vec<Binding>,
+    #[serde(
+        default,
+        deserialize_with = "crate::server::shared::types::api::deserialize_lenient_option"
+    )]
     pub virtualization: Option<ServiceVirtualization>,
     #[schema(read_only)]
     /// Will be automatically set to Manual for creation through API

@@ -61,9 +61,13 @@ export async function validateForm(
 		.map(([name]) => name);
 
 	if (errorFields.length > 0) {
-		const fieldNames = errorFields
-			.map((f) => (entityNameResolver ? entityNameResolver(f) : f.replace(/_/g, ' ')))
-			.join(', ');
+		// Dedupe: a resolver can map several field paths to one label (e.g. multiple
+		// fields of the same credential → its name).
+		const fieldNames = [
+			...new Set(
+				errorFields.map((f) => (entityNameResolver ? entityNameResolver(f) : f.replace(/_/g, ' ')))
+			)
+		].join(', ');
 		pushError(common_validation_fixFields({ fields: fieldNames }));
 		return false;
 	}

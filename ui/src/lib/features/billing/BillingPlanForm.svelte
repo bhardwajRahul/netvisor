@@ -14,8 +14,10 @@
 		billing_firstInvoiceOn,
 		billing_showFeatures,
 		billing_hideFeatures,
-		billing_startTrialNoCreditCard
+		billing_startTrialNoCreditCard,
+		billing_yourCurrentPlan
 	} from '$lib/paraglide/messages';
+	import InlineInfo from '$lib/shared/components/feedback/InlineInfo.svelte';
 	import Tag from '$lib/shared/components/data/Tag.svelte';
 	import ToggleGroup from './ToggleGroup.svelte';
 	import type { BillingPlan } from './types';
@@ -58,6 +60,8 @@
 		isReturningCustomer?: boolean;
 		/** If true, user is currently on an active trial */
 		isCurrentlyTrialing?: boolean;
+		/** The org's current plan type — shown as non-selectable "Your current plan". */
+		currentPlanType?: string | null;
 	}
 
 	// eslint-disable-next-line svelte/no-unused-props
@@ -72,7 +76,8 @@
 		showHosting = false,
 		recommendedPlan = null,
 		isReturningCustomer = false,
-		isCurrentlyTrialing = false
+		isCurrentlyTrialing = false,
+		currentPlanType = null
 	}: Props = $props();
 
 	let loadingPlanType = $state<string | null>(null);
@@ -502,24 +507,28 @@
 									Request Information
 								</button>
 							{:else if hosting === 'Cloud'}
-								<button
-									type="button"
-									onclick={() => handlePlanSelect(plan)}
-									disabled={loadingPlanType !== null}
-									class="btn-primary w-full text-sm"
-								>
-									{#if loadingPlanType === plan.type}
-										<Loader2 class="mx-auto h-4 w-4 animate-spin" />
-									{:else if isCurrentlyTrialing}
-										Switch plan
-									{:else}
-										{trial ? billing_startTrialNoCreditCard() : 'Get Started'}
+								{#if plan.type === currentPlanType}
+									<InlineInfo title="" body={billing_yourCurrentPlan()} />
+								{:else}
+									<button
+										type="button"
+										onclick={() => handlePlanSelect(plan)}
+										disabled={loadingPlanType !== null}
+										class="btn-primary w-full text-sm"
+									>
+										{#if loadingPlanType === plan.type}
+											<Loader2 class="mx-auto h-4 w-4 animate-spin" />
+										{:else if isCurrentlyTrialing}
+											Switch plan
+										{:else}
+											{trial ? billing_startTrialNoCreditCard() : 'Get Started'}
+										{/if}
+									</button>
+									{#if trial && !isCurrentlyTrialing}
+										<div class="text-tertiary pt-2 text-center text-xs">
+											{firstInvoiceCaption(plan)}
+										</div>
 									{/if}
-								</button>
-								{#if trial && !isCurrentlyTrialing}
-									<div class="text-tertiary pt-2 text-center text-xs">
-										{firstInvoiceCaption(plan)}
-									</div>
 								{/if}
 							{:else if hosting === 'SelfHosted'}
 								{#if commercial && onPlanInquiry}

@@ -17,8 +17,8 @@ use crate::{
                 traits::{EntityEventFilter, Event, EventFilter, Subscriber},
                 types::{
                     AnalyticsOperation, AnalyticsOperationDiscriminants, AuthOperation,
-                    AuthOperationDiscriminants, BillingOperation, BillingOperationDiscriminants,
-                    EntityOperation, EntityOperationDiscriminants, OnboardingOperation,
+                    AuthOperationDiscriminants, BillingOperation, EntityOperation,
+                    EntityOperationDiscriminants, OnboardingOperation,
                     OnboardingOperationDiscriminants,
                 },
             },
@@ -227,22 +227,13 @@ inventory::submit!(SubscriberRegistration::new::<PosthogService, AuthOperation>(
 #[async_trait]
 impl Subscriber<BillingOperation> for PosthogService {
     fn filter(&self) -> EventFilter<BillingOperation> {
-        EventFilter::ops(vec![
-            BillingOperationDiscriminants::CheckoutStarted,
-            BillingOperationDiscriminants::CheckoutCompleted,
-            BillingOperationDiscriminants::TrialStarted,
-            BillingOperationDiscriminants::TrialEnded,
-            BillingOperationDiscriminants::TrialWillEnd,
-            BillingOperationDiscriminants::SubscriptionCancelled,
-            BillingOperationDiscriminants::CancellationInitiated,
-            BillingOperationDiscriminants::CancellationFeedbackProvided,
-            BillingOperationDiscriminants::PlanChanged,
-            BillingOperationDiscriminants::PaymentFailed,
-            BillingOperationDiscriminants::PaymentActionRequired,
-            BillingOperationDiscriminants::PaymentRecovered,
-            BillingOperationDiscriminants::FeatureLimitHit,
-            BillingOperationDiscriminants::StripeCustomerCreated,
-        ])
+        // Forward every billing event. `handle()` is fully generic over the
+        // variant (event name from `to_string()`, full payload serialized into
+        // `metadata`, plan from `plan()`), so there is no per-variant work to
+        // maintain. Matching all (rather than an allowlist of discriminants)
+        // means a newly added `BillingOperation` variant can never be silently
+        // dropped from analytics — the gap an explicit list invites.
+        EventFilter::all()
     }
 
     async fn handle(&self, events: Vec<Event<BillingOperation>>) -> Result<(), Error> {
@@ -274,11 +265,14 @@ impl Subscriber<BillingOperation> for PosthogService {
             inject_org_group(&mut props);
             self.capture(&event_name, &distinct_id, props).await;
 
-            // Update person and group properties.
+            // Update person and group properties. Use the *resulting* plan so a
+            // downgrade-to-Free (cancellation / unconverted trial) labels the
+            // person/org as Free, not the outgoing paid plan that `plan()`
+            // carries.
             let plan_name: serde_json::Value = event
                 .operation
-                .plan()
-                .map(|p| json!(p.name()))
+                .resulting_plan_name()
+                .map(|n| json!(n))
                 .unwrap_or(json!(null));
 
             self.identify(

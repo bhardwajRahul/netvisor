@@ -4,10 +4,25 @@
  * Provides query and mutation hooks for managing universal credentials.
  */
 
-import { createQuery, createMutation, useQueryClient } from '@tanstack/svelte-query';
+import {
+	createQuery,
+	createMutation,
+	useQueryClient,
+	type QueryClient
+} from '@tanstack/svelte-query';
 import { queryKeys } from '$lib/api/query-client';
 import { apiClient } from '$lib/api/client';
 import type { Credential } from './types/base';
+
+/**
+ * A credential's assignments live in the network/host junction tables, so any
+ * credential mutation can change `Network.credential_ids` / `Host.credential_assignments`.
+ * Invalidate those caches so the Networks/Hosts views reflect changes without a reload.
+ */
+function invalidateAssignmentTargets(queryClient: QueryClient): void {
+	queryClient.invalidateQueries({ queryKey: queryKeys.networks.all });
+	queryClient.invalidateQueries({ queryKey: queryKeys.hosts.all });
+}
 
 /**
  * Query hook for fetching all credentials
@@ -64,6 +79,8 @@ export function useCreateCredentialMutation() {
 			queryClient.setQueryData<Credential[]>(queryKeys.credentials.all, (old) =>
 				old ? [...old, newCredential] : [newCredential]
 			);
+			// Assignments are written server-side to the network/host junctions
+			invalidateAssignmentTargets(queryClient);
 		}
 	}));
 }
@@ -94,6 +111,7 @@ export function useUpdateCredentialMutation() {
 				queryKeys.credentials.detail(updatedCredential.id),
 				updatedCredential
 			);
+			invalidateAssignmentTargets(queryClient);
 		}
 	}));
 }
@@ -120,6 +138,7 @@ export function useDeleteCredentialMutation() {
 				(old) => old?.filter((c) => c.id !== id) ?? []
 			);
 			queryClient.removeQueries({ queryKey: queryKeys.credentials.detail(id) });
+			invalidateAssignmentTargets(queryClient);
 		}
 	}));
 }
@@ -148,6 +167,7 @@ export function useBulkCreateCredentialsMutation() {
 			queryClient.setQueryData<Credential[]>(queryKeys.credentials.all, (old) =>
 				old ? [...old, ...newCredentials] : newCredentials
 			);
+			invalidateAssignmentTargets(queryClient);
 		}
 	}));
 }
@@ -174,6 +194,7 @@ export function useBulkDeleteCredentialsMutation() {
 			ids.forEach((id) => {
 				queryClient.removeQueries({ queryKey: queryKeys.credentials.detail(id) });
 			});
+			invalidateAssignmentTargets(queryClient);
 		}
 	}));
 }

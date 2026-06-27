@@ -357,6 +357,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/billing/finalize-payment-method": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Finalize a client-confirmed SetupIntent (set the card as default) */
+        post: operations["finalize_payment_method"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/billing/inquiry": {
         parameters: {
             query?: never;
@@ -394,6 +411,23 @@ export interface paths {
          *     cooldown anchored on the org's `last_paused_at`.
          */
         post: operations["pause_subscription"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/billing/payment-method-setup-intent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create a SetupIntent for in-app card collection (Stripe Payment Element) */
+        post: operations["create_payment_method_setup_intent"];
         delete?: never;
         options?: never;
         head?: never;
@@ -495,23 +529,6 @@ export interface paths {
         get: operations["get_save_offer_coupon"];
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/billing/setup-payment-method": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Setup payment method (collect card without charging) */
-        post: operations["setup_payment_method"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1064,8 +1081,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Credential by ID */
-        get: operations["get_credential_by_id"];
+        /** Get a Credential by ID */
+        get: operations["get_by_id_credential"];
         /** Update Credential */
         put: operations["update_credential"];
         post?: never;
@@ -3023,7 +3040,7 @@ export interface components {
          * @description API metadata included in all responses
          * @example {
          *       "api_version": 1,
-         *       "server_version": "0.16.2"
+         *       "server_version": "0.17.0"
          *     }
          */
         ApiMeta: {
@@ -3034,7 +3051,7 @@ export interface components {
             api_version: number;
             /**
              * @description Server version (semver)
-             * @example 0.16.2
+             * @example 0.17.0
              */
             server_version: string;
         };
@@ -3048,19 +3065,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-06-21T20:42:25.865980Z",
+             *       "created_at": "2026-06-24T21:31:19.413266Z",
              *       "first_discovery_id": null,
-             *       "id": "48768037-990a-4fef-854e-0d3540f8108e",
+             *       "id": "b44b7952-a7bd-41a8-881e-02990f0b82f9",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-06-21T20:42:25.865980Z",
+             *       "last_seen_at": "2026-06-24T21:31:19.413266Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-06-21T20:42:25.865980Z",
-             *       "valid_from": "2026-06-21T20:42:25.865980Z",
+             *       "updated_at": "2026-06-24T21:31:19.413266Z",
+             *       "valid_from": "2026-06-24T21:31:19.413266Z",
              *       "valid_to": null
              *     }
              */
@@ -3397,19 +3414,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-06-21T20:42:25.847097Z",
+             *               "created_at": "2026-06-24T21:31:19.396982Z",
              *               "first_discovery_id": null,
-             *               "id": "f8a9f4b1-38af-4b24-979c-e3e5a0251b88",
+             *               "id": "44ae390f-0a35-4f9a-ad20-97abe35df708",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-06-21T20:42:25.847097Z",
+             *               "last_seen_at": "2026-06-24T21:31:19.396982Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-06-21T20:42:25.847097Z",
-             *               "valid_from": "2026-06-21T20:42:25.847097Z",
+             *               "updated_at": "2026-06-24T21:31:19.396982Z",
+             *               "valid_from": "2026-06-24T21:31:19.396982Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3423,7 +3440,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Dockge",
+             *           "service_definition": "NTP Server",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3736,6 +3753,13 @@ export interface components {
                  *     fixture default.
                  */
                 snapshot_retention_days_override?: number | null;
+                /**
+                 * @description Stripe publishable key, exposed so the frontend can mount Stripe
+                 *     Elements (Payment Element) for in-app card collection. `None` when
+                 *     billing isn't configured. Publishable keys are safe to expose to the
+                 *     browser (same as `posthog_key`).
+                 */
+                stripe_publishable_key?: string | null;
             };
             error?: string | null;
             meta: components["schemas"]["ApiMeta"];
@@ -3779,19 +3803,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-06-21T20:42:25.859782Z",
+             *           "created_at": "2026-06-24T21:31:19.407949Z",
              *           "first_discovery_id": null,
-             *           "id": "640caf04-3bbc-48fc-a248-0b75685d980e",
+             *           "id": "639cb3b5-463e-4c88-80a9-1f5b2bebf799",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-06-21T20:42:25.859782Z",
+             *           "last_seen_at": "2026-06-24T21:31:19.407949Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-06-21T20:42:25.859782Z",
-             *           "valid_from": "2026-06-21T20:42:25.859782Z",
+             *           "updated_at": "2026-06-24T21:31:19.407949Z",
+             *           "valid_from": "2026-06-24T21:31:19.407949Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -3805,7 +3829,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Dockge",
+             *       "service_definition": "NTP Server",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -3835,6 +3859,18 @@ export interface components {
                 readonly valid_from?: string;
                 /** Format: date-time */
                 readonly valid_to?: string | null;
+            };
+            error?: string | null;
+            meta: components["schemas"]["ApiMeta"];
+            success: boolean;
+        };
+        ApiResponse_SetupIntentResponse: {
+            /**
+             * @description Response for creating a SetupIntent — the client secret the frontend
+             *     Payment Element uses to collect and confirm a card in-app.
+             */
+            data?: {
+                client_secret: string;
             };
             error?: string | null;
             meta: components["schemas"]["ApiMeta"];
@@ -4280,19 +4316,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-06-21T20:42:25.847562Z",
+         *       "created_at": "2026-06-24T21:31:19.397319Z",
          *       "first_discovery_id": null,
-         *       "id": "f42c5580-fc1e-4e10-b511-0e2e5878bbf2",
+         *       "id": "21d42fd8-a608-4f61-a5ac-9f61d49f5dba",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-06-21T20:42:25.847562Z",
+         *       "last_seen_at": "2026-06-24T21:31:19.397319Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-06-21T20:42:25.847562Z",
-         *       "valid_from": "2026-06-21T20:42:25.847562Z",
+         *       "updated_at": "2026-06-24T21:31:19.397319Z",
+         *       "valid_from": "2026-06-24T21:31:19.397319Z",
          *       "valid_to": null
          *     }
          */
@@ -4507,7 +4543,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Dockge",
+         *           "service_definition": "NTP Server",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -4591,7 +4627,17 @@ export interface components {
             ip_address_ids: string[] | null;
         };
         CredentialBase: {
+            /**
+             * @description Networks this credential is assigned to (Broadcast scope).
+             *     Hydrated from the `network_credentials` junction table.
+             */
+            assigned_network_ids: string[];
             credential_type: components["schemas"]["CredentialType"];
+            /**
+             * @description Hosts this credential is assigned to (PerHost scope), with optional IP scoping.
+             *     Hydrated from the `host_credentials` junction table.
+             */
+            host_assignments: components["schemas"]["CredentialHostAssignment"][];
             name: string;
             /** Format: uuid */
             organization_id: string;
@@ -4601,6 +4647,17 @@ export interface components {
              *     Cleared automatically when the next scan dispatches.
              */
             target_ips?: string[] | null;
+        };
+        /**
+         * @description Host-keyed mirror of [`CredentialAssignment`]: a host this credential is
+         *     assigned to, optionally limited to specific ip_addresses. Hydrated onto a
+         *     credential from the `host_credentials` junction (PerHost scope).
+         */
+        CredentialHostAssignment: {
+            /** Format: uuid */
+            host_id: string;
+            /** @description IP address IDs to limit this credential to on the host. None = all host ip_addresses. */
+            ip_address_ids: string[] | null;
         };
         /** @enum {string} */
         CredentialOrderField: "created_at" | "name" | "updated_at";
@@ -5279,6 +5336,13 @@ export interface components {
             mode: "FilePath";
             path: string;
         };
+        /**
+         * @description Request to finalize a client-confirmed SetupIntent (set the collected card
+         *     as the customer's default payment method).
+         */
+        FinalizePaymentMethodRequest: {
+            setup_intent_id: string;
+        };
         ForgotPasswordRequest: {
             /** Format: email */
             email: string;
@@ -5489,19 +5553,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-06-21T20:42:25.846585Z",
+         *               "created_at": "2026-06-24T21:31:19.396590Z",
          *               "first_discovery_id": null,
-         *               "id": "5750a714-e29b-4b2b-aaff-f1cdcc074824",
+         *               "id": "c4435fd4-fe34-4e49-990c-b0e40388232b",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-06-21T20:42:25.846585Z",
+         *               "last_seen_at": "2026-06-24T21:31:19.396590Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-06-21T20:42:25.846585Z",
-         *               "valid_from": "2026-06-21T20:42:25.846585Z",
+         *               "updated_at": "2026-06-24T21:31:19.396590Z",
+         *               "valid_from": "2026-06-24T21:31:19.396590Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -5515,7 +5579,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Dockge",
+         *           "service_definition": "NTP Server",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -6037,12 +6101,6 @@ export interface components {
         /** @description Network configuration for setup */
         NetworkSetup: {
             name: string;
-            /** @description SNMP community string (for V2c) */
-            snmp_community?: string | null;
-            /** @description Whether SNMP is enabled for this network */
-            snmp_enabled?: boolean;
-            /** @description SNMP version ("V2c" or "V3") */
-            snmp_version?: string | null;
         };
         /** @description Per-network summary of entity counts */
         NetworkSummary: {
@@ -6125,12 +6183,6 @@ export interface components {
             id?: string | null;
             /** @description Network name */
             name: string;
-            /** @description SNMP community string */
-            snmp_community?: string | null;
-            /** @description Whether SNMP is enabled */
-            snmp_enabled?: boolean;
-            /** @description SNMP version */
-            snmp_version?: string | null;
         };
         /** @enum {string} */
         OnboardingOperationDiscriminants: "OrgCreated" | "OnboardingModalCompleted" | "PlanSelected" | "DaemonPromptDismissed" | "DaemonPromptAccepted" | "FirstDaemonRegistered" | "FirstTopologyRebuild" | "FirstDiscoveryCompleted" | "FirstHostDiscovered" | "SecondNetworkCreated" | "FirstTagCreated" | "FirstDependencyCreated" | "FirstUserApiKeyCreated" | "FirstSnmpCredentialCreated" | "FirstApplicationTagCreated" | "FirstCredentialCreated" | "FirstSnapshotCreated" | "InviteSent" | "InviteAccepted" | "ProfileCompleted" | "ReferralSourceCompleted";
@@ -6234,7 +6286,7 @@ export interface components {
          *         "offset": 0,
          *         "total_count": 142
          *       },
-         *       "server_version": "0.16.2"
+         *       "server_version": "0.17.0"
          *     }
          */
         PaginatedApiMeta: {
@@ -6247,7 +6299,7 @@ export interface components {
             pagination: components["schemas"]["PaginationMeta"];
             /**
              * @description Server version (semver)
-             * @example 0.16.2
+             * @example 0.17.0
              */
             server_version: string;
         };
@@ -6748,6 +6800,13 @@ export interface components {
              *     fixture default.
              */
             snapshot_retention_days_override?: number | null;
+            /**
+             * @description Stripe publishable key, exposed so the frontend can mount Stripe
+             *     Elements (Payment Element) for in-app card collection. `None` when
+             *     billing isn't configured. Publishable keys are safe to expose to the
+             *     browser (same as `posthog_key`).
+             */
+            stripe_publishable_key?: string | null;
         };
         /** @description Public share metadata (returned without authentication) */
         PublicShareMetadata: {
@@ -6945,19 +7004,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-06-21T20:42:25.847465Z",
+         *           "created_at": "2026-06-24T21:31:19.397242Z",
          *           "first_discovery_id": null,
-         *           "id": "b41cc89d-37a5-4fdf-89f0-a7d6ae6fa787",
+         *           "id": "7decaaa7-3e15-4c8b-93b1-02546b24fc26",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-06-21T20:42:25.847465Z",
+         *           "last_seen_at": "2026-06-24T21:31:19.397242Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-06-21T20:42:25.847465Z",
-         *           "valid_from": "2026-06-21T20:42:25.847465Z",
+         *           "updated_at": "2026-06-24T21:31:19.397242Z",
+         *           "valid_from": "2026-06-24T21:31:19.397242Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -6971,7 +7030,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Dockge",
+         *       "service_definition": "NTP Server",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -7078,8 +7137,12 @@ export interface components {
             /** @description The new list of tag IDs */
             tag_ids: string[];
         };
-        SetupPaymentMethodRequest: {
-            url: string;
+        /**
+         * @description Response for creating a SetupIntent — the client secret the frontend
+         *     Payment Element uses to collect and confirm a card in-app.
+         */
+        SetupIntentResponse: {
+            client_secret: string;
         };
         /** @description Setup request for pre-registration org/network configuration */
         SetupRequest: {
@@ -7357,29 +7420,136 @@ export interface components {
             vlans: components["schemas"]["Vlan"][];
         };
         TopologyLocalOptions: {
-            bundle_edges?: boolean;
+            /** @default true */
+            bundle_edges: boolean;
+            /**
+             * @default [
+             *       "Hypervisor"
+             *     ]
+             */
             hide_edge_types: components["schemas"]["EdgeTypeDiscriminants"][];
+            /** @default false */
             no_fade_edges: boolean;
-            show_minimap?: boolean;
-            tag_filter?: components["schemas"]["TopologyTagFilter"];
+            /** @default true */
+            show_minimap: boolean;
+            /**
+             * @default {
+             *       "hidden_host_tag_ids": [],
+             *       "hidden_service_tag_ids": [],
+             *       "hidden_subnet_tag_ids": []
+             *     }
+             */
+            tag_filter: components["schemas"]["TopologyTagFilter"];
         };
         TopologyOptions: {
             local: components["schemas"]["TopologyLocalOptions"];
             request: components["schemas"]["TopologyRequestOptions"];
         };
         TopologyRequestOptions: {
-            container_rules?: {
+            /**
+             * @default {
+             *       "Application": [
+             *         {
+             *           "id": "ac254e05-1b30-4be1-a56c-7ab1efea5a1d",
+             *           "rule": {
+             *             "ByApplication": {
+             *               "tag_ids": []
+             *             }
+             *           }
+             *         }
+             *       ],
+             *       "L2Physical": [
+             *         {
+             *           "id": "6c590a0c-be5a-4748-95f2-8efe34cf26df",
+             *           "rule": "ByHost"
+             *         }
+             *       ],
+             *       "L3Logical": [
+             *         {
+             *           "id": "2d0a4cac-85d4-4ab8-bd9e-8fb4922ce692",
+             *           "rule": "BySubnet"
+             *         },
+             *         {
+             *           "id": "8de48685-c2b4-4fdb-9d03-56cf9d9a8d8d",
+             *           "rule": "MergeDockerBridges"
+             *         }
+             *       ],
+             *       "Workloads": [
+             *         {
+             *           "id": "6c590a0c-be5a-4748-95f2-8efe34cf26df",
+             *           "rule": "ByHost"
+             *         }
+             *       ]
+             *     }
+             */
+            container_rules: {
                 [key: string]: components["schemas"]["IdentifiedRule_ContainerRule"][];
             };
-            element_rules?: components["schemas"]["IdentifiedRule_ElementRule"][];
+            /**
+             * @default [
+             *       {
+             *         "id": "dcada258-aee4-46c9-b0d7-1596ef18e01a",
+             *         "rule": "ByTrunkPort"
+             *       },
+             *       {
+             *         "id": "20c00c22-d7f1-443b-9404-dc7c3f52868b",
+             *         "rule": "ByVLAN"
+             *       },
+             *       {
+             *         "id": "35fedc6b-3df6-4bc0-aead-3306b28ab597",
+             *         "rule": "ByPortOpStatus"
+             *       },
+             *       {
+             *         "id": "8f0a2ac6-f05f-4ba5-b4b8-8a81cd21a4b5",
+             *         "rule": {
+             *           "ByServiceCategory": {
+             *             "categories": [
+             *               "NetworkCore",
+             *               "NetworkAccess",
+             *               "RemoteAccess",
+             *               "Workstation",
+             *               "Mobile",
+             *               "Printer",
+             *               "OpenPorts"
+             *             ],
+             *             "is_infra_rule": true,
+             *             "title": "Infrastructure"
+             *           }
+             *         }
+             *       },
+             *       {
+             *         "id": "cd9c43bf-f25f-4790-a4cd-192113538669",
+             *         "rule": {
+             *           "ByTag": {
+             *             "tag_ids": [],
+             *             "title": null
+             *           }
+             *         }
+             *       },
+             *       {
+             *         "id": "9e5a1e61-61ba-4b6d-b4e9-27acc2fb8ce0",
+             *         "rule": "ByHypervisor"
+             *       },
+             *       {
+             *         "id": "274d63a6-3a20-4fc1-acb9-778fb68dc900",
+             *         "rule": "ByContainerRuntime"
+             *       },
+             *       {
+             *         "id": "c82fca3b-1bd0-49b9-8142-065c8ef45ca2",
+             *         "rule": "ByStack"
+             *       }
+             *     ]
+             */
+            element_rules: components["schemas"]["IdentifiedRule_ElementRule"][];
             /**
              * @description Entity types hidden per view. Keyed by TopologyView, values are entity
              *     types (matching those declared as container/element/inline in the
              *     view's element_config). Hides every manifestation of the entity in
              *     that view — element nodes, container nodes, and inline rows on
              *     element cards. Supersedes the old `hide_ports` (L3-only, inline-only).
+             * @default {}
              */
-            hide_entities?: {
+            hide_entities: {
                 [key: string]: components["schemas"]["EntityDiscriminants"][];
             };
             /**
@@ -7387,8 +7557,38 @@ export interface components {
              *     (Category, Virtualization, etc). Supersedes the old
              *     `hide_service_categories`; nested so JSON keys are strings all the
              *     way down.
+             * @default {
+             *       "Application": {
+             *         "Service": {
+             *           "Category": [
+             *             "OpenPorts"
+             *           ]
+             *         }
+             *       },
+             *       "L2Physical": {
+             *         "Service": {
+             *           "Category": [
+             *             "OpenPorts"
+             *           ]
+             *         }
+             *       },
+             *       "L3Logical": {
+             *         "Service": {
+             *           "Category": [
+             *             "OpenPorts"
+             *           ]
+             *         }
+             *       },
+             *       "Workloads": {
+             *         "Service": {
+             *           "Category": [
+             *             "OpenPorts"
+             *           ]
+             *         }
+             *       }
+             *     }
              */
-            hide_metadata_values?: {
+            hide_metadata_values: {
                 [key: string]: {
                     [key: string]: {
                         [key: string]: string[];
@@ -8341,6 +8541,39 @@ export interface operations {
             };
         };
     };
+    finalize_payment_method: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FinalizePaymentMethodRequest"];
+            };
+        };
+        responses: {
+            /** @description Payment method finalized */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse"];
+                };
+            };
+            /** @description Billing not enabled or SetupIntent invalid */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
     submit_enterprise_inquiry: {
         parameters: {
             query?: never;
@@ -8406,6 +8639,35 @@ export interface operations {
                 };
             };
             /** @description Ineligible or billing not enabled */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    create_payment_method_setup_intent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description SetupIntent client secret */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SetupIntentResponse"];
+                };
+            };
+            /** @description Billing not enabled */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -8552,39 +8814,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_Option_SaveOfferCoupon"];
-                };
-            };
-            /** @description Billing not enabled */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiErrorResponse"];
-                };
-            };
-        };
-    };
-    setup_payment_method: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SetupPaymentMethodRequest"];
-            };
-        };
-        responses: {
-            /** @description Setup session URL */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_String"];
                 };
             };
             /** @description Billing not enabled */
@@ -9847,7 +10076,7 @@ export interface operations {
             };
         };
     };
-    get_credential_by_id: {
+    get_by_id_credential: {
         parameters: {
             query?: never;
             header?: never;

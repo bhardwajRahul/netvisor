@@ -230,10 +230,6 @@ impl BillingService {
                             .await?;
                     }
                 }
-                tracing::info!(
-                    organization_id = %org_id,
-                    "Subscription marked as pending cancellation"
-                );
             } else if has_user_feedback {
                 // Follow-up webhook with user input — emit only the feedback
                 // event. The cancellation itself was already announced.
@@ -253,10 +249,6 @@ impl BillingService {
                         ))
                         .await?;
                 }
-                tracing::info!(
-                    organization_id = %org_id,
-                    "Cancellation feedback provided",
-                );
             }
             // Otherwise: already initiated, no user feedback on this webhook
             // — nothing to emit.
@@ -538,17 +530,16 @@ impl BillingService {
             return Ok(());
         }
 
-        let org_id = sub
-            .metadata
-            .get("organization_id")
+        // Recover identification fields via the typed metadata view (the
+        // stringly-typed `metadata.get` form is the documented anti-pattern;
+        // `StripeSubscriptionMetadata` is the source of truth).
+        let meta = StripeSubscriptionMetadata::from_stripe(&sub.metadata);
+        let org_id = meta
+            .organization_id
             .ok_or_else(|| anyhow!("No organization_id in subscription metadata"))?;
-        let org_id = Uuid::parse_str(org_id)?;
-
-        let plan_str = sub
-            .metadata
-            .get("plan")
+        let plan = meta
+            .plan
             .ok_or_else(|| anyhow!("No plan in subscription metadata"))?;
-        let plan: BillingPlan = serde_json::from_str(plan_str)?;
 
         let Some(organization) = self.organization_service.get_by_id(&org_id).await? else {
             tracing::warn!(
@@ -612,11 +603,8 @@ impl BillingService {
             .send(&self.stripe)
             .await?;
 
-        tracing::info!(
-            organization_id = %organization.id,
-            "Payment method attached — default invoice payment method updated; emitting PaymentMethodAdded so subscriber flips has_payment_method"
-        );
-
+        // The PaymentMethodAdded event below is logged by the logging
+        // subscriber; the org subscriber flips `has_payment_method`.
         self.event_bus
             .publish(Event::new(
                 OrgScope {
@@ -654,11 +642,6 @@ impl BillingService {
             return Ok(());
         }
 
-        tracing::info!(
-            organization_id = %organization.id,
-            "Last payment method detached — emitting PaymentMethodRemoved so subscriber flips has_payment_method"
-        );
-
         self.event_bus
             .publish(Event::new(
                 OrgScope {
@@ -692,20 +675,6 @@ impl BillingService {
             return Ok(());
         }
 
-        // Guard 1: Skip auto-Free if this cancellation was triggered by an upgrade
-        let is_upgrade = sub
-            .metadata
-            .get("cancel_reason")
-            .is_some_and(|r| r == "upgrade");
-        if is_upgrade {
-            tracing::info!(
-                organization_id = %org_id,
-                subscription_id = %sub.id,
-                "Subscription cancelled for upgrade — skipping auto-Free"
-            );
-            return Ok(());
-        }
-
         // --- Snapshot prior subscription state, then publish the cancellation
         // event. The org's plan/status/has_payment_method downgrade to Free is
         // owned by the `SubscriptionCancelled` arm of the org billing subscriber
@@ -733,17 +702,16 @@ impl BillingService {
         let had_active_discount = organization.base.discount_save_offer_active_until.is_some();
         let (stripe_feedback, cancel_comment, stripe_reason) =
             extract_cancellation_details(sub.cancellation_details.as_ref());
-        let internal_reason = sub.metadata.get("cancel_reason").cloned();
+        // `internal_reason` has no producer today (it would carry a free-form
+        // reason for a system-initiated cancellation). It used to read the
+        // untyped `cancel_reason` metadata key, which nothing in the codebase
+        // ever writes — so the read was dead. Leave it `None` until a typed
+        // producer exists.
+        let internal_reason: Option<String> = None;
         let mrr_amount_cents = mrr_from_subscription(&sub);
         let tenure_days = (Utc::now() - organization.created_at).num_days().max(0) as u32;
 
         let free_plan = get_free_plan();
-
-        tracing::info!(
-            organization_id = %org_id,
-            subscription_id = %sub.id,
-            "Subscription canceled — publishing SubscriptionCancelled (subscriber downgrades to Free)"
-        );
 
         // --- Async phase: side effects that don't need to block the webhook response ---
 
@@ -892,10 +860,6 @@ impl BillingService {
                 .await?;
         }
 
-        tracing::info!(
-            organization_id = %org_id,
-            "Subscription deletion side effects completed: invites revoked, events published"
-        );
         Ok(())
     }
 }

@@ -1,13 +1,14 @@
 use crate::server::auth::middleware::permissions::{Admin, Authorized, Viewer};
 use crate::server::credentials::r#impl::base::Credential;
 use crate::server::credentials::service::CredentialService;
+use crate::server::services::r#impl::definitions::ServiceDefinition;
 use crate::server::shared::handlers::ordering::OrderField;
 use crate::server::shared::handlers::query::{
     FilterQueryExtractor, OrderDirection, PaginationParams,
 };
 use crate::server::shared::handlers::traits::{
     BulkDeleteResponse, CrudHandlers, bulk_delete_handler, create_handler, delete_handler,
-    update_handler,
+    get_by_id_handler, update_handler,
 };
 use crate::server::shared::services::traits::CrudService;
 use crate::server::shared::storage::filter::StorableFilter;
@@ -19,7 +20,10 @@ use crate::server::{
     config::AppState,
     shared::types::api::{ApiResponse, ApiResult},
 };
-use axum::{extract::State, response::Json};
+use axum::{
+    extract::{Path, State},
+    response::Json,
+};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::IntoParams;
@@ -120,7 +124,7 @@ impl FilterQueryExtractor for CredentialFilterQuery {
 // Generated handler for read-only operations
 mod generated {
     use super::*;
-    crate::crud_get_by_id_handler!(Credential);
+    // get_by_id is custom (below) to hydrate assignments
     crate::crud_export_csv_handler!(Credential);
 }
 
@@ -129,12 +133,120 @@ pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
         .routes(routes!(get_all_credentials, create_credential))
         .routes(routes!(generated::export_csv))
         .routes(routes!(
-            generated::get_by_id,
+            get_by_id_credential,
             update_credential,
             delete_credential
         ))
         .routes(routes!(bulk_delete_credentials))
         .routes(routes!(bulk_create_credentials))
+}
+
+/// Hydrate `assigned_network_ids` + `host_assignments` onto credentials from the
+/// junction tables (batch).
+async fn hydrate_assignments(
+    state: &AppState,
+    credentials: &mut [Credential],
+) -> Result<(), ApiError> {
+    if credentials.is_empty() {
+        return Ok(());
+    }
+    let ids: Vec<Uuid> = credentials.iter().map(|c| c.id).collect();
+    let network_map = state
+        .services
+        .credential_service
+        .get_network_ids_for_credentials(&ids)
+        .await
+        .map_err(|e| ApiError::internal_error(&e.to_string()))?;
+    let host_map = state
+        .services
+        .credential_service
+        .get_host_assignments_for_credentials(&ids)
+        .await
+        .map_err(|e| ApiError::internal_error(&e.to_string()))?;
+    for credential in credentials.iter_mut() {
+        if let Some(network_ids) = network_map.get(&credential.id) {
+            credential.base.assigned_network_ids = network_ids.clone();
+        }
+        if let Some(assignments) = host_map.get(&credential.id) {
+            credential.base.host_assignments = assignments.clone();
+        }
+    }
+    Ok(())
+}
+
+/// Persist a credential's assignments to the junction tables and reflect them on
+/// the response entity.
+/// Reject a create/update that would give a single-endpoint integration (e.g.
+/// Docker) two credentials targeting the same host/network/IP. Call before
+/// persisting; `credential` must carry its intended assignments in `base`.
+async fn enforce_single_endpoint(
+    state: &AppState,
+    credential: &Credential,
+) -> Result<(), ApiError> {
+    if let Some(existing) = state
+        .services
+        .credential_service
+        .find_single_endpoint_conflict(credential)
+        .await
+        .map_err(|e| ApiError::internal_error(&e.to_string()))?
+    {
+        let integration =
+            ServiceDefinition::name(&*credential.base.credential_type.associated_service());
+        return Err(ApiError::bad_request(&format!(
+            "{integration} allows only one credential per host, but \"{existing}\" already targets an overlapping host, network, or IP. Remove or retarget it first."
+        )));
+    }
+    Ok(())
+}
+
+async fn save_assignments(
+    state: &AppState,
+    credential: &mut Credential,
+    assigned_network_ids: Vec<Uuid>,
+    host_assignments: Vec<crate::server::credentials::r#impl::types::CredentialHostAssignment>,
+) -> Result<(), ApiError> {
+    state
+        .services
+        .credential_service
+        .set_credential_networks(&credential.id, &assigned_network_ids)
+        .await
+        .map_err(|e| ApiError::internal_error(&e.to_string()))?;
+    state
+        .services
+        .credential_service
+        .set_credential_host_assignments(&credential.id, &host_assignments)
+        .await
+        .map_err(|e| ApiError::internal_error(&e.to_string()))?;
+    credential.base.assigned_network_ids = assigned_network_ids;
+    credential.base.host_assignments = host_assignments;
+    Ok(())
+}
+
+/// Get a Credential by ID
+#[utoipa::path(
+    get,
+    path = "/{id}",
+    tag = Credential::ENTITY_NAME_PLURAL,
+    params(("id" = Uuid, Path, description = "Credential ID")),
+    responses(
+        (status = 200, description = "Credential found", body = ApiResponse<Credential>),
+        (status = 404, description = "Credential not found", body = ApiErrorResponse),
+    ),
+    security(("user_api_key" = []), ("session" = []))
+)]
+async fn get_by_id_credential(
+    State(state): State<Arc<AppState>>,
+    auth: Authorized<Viewer>,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Json<ApiResponse<Credential>>> {
+    let mut response =
+        get_by_id_handler::<Credential>(State(state.clone()), auth, Path(id)).await?;
+
+    if let Some(ref mut credential) = response.data {
+        hydrate_assignments(&state, std::slice::from_mut(credential)).await?;
+    }
+
+    Ok(response)
 }
 
 /// Update Credential
@@ -154,10 +266,10 @@ pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
     security(("user_api_key" = []), ("session" = []))
 )]
 async fn update_credential(
-    state: State<Arc<AppState>>,
+    State(state): State<Arc<AppState>>,
     auth: Authorized<Admin>,
-    id: axum::extract::Path<Uuid>,
-    entity: Json<Credential>,
+    Path(id): Path<Uuid>,
+    Json(entity): Json<Credential>,
 ) -> ApiResult<Json<ApiResponse<Credential>>> {
     entity
         .base
@@ -165,13 +277,24 @@ async fn update_credential(
         .validate()
         .map_err(|e| ApiError::bad_request(&e.to_string()))?;
 
-    update_handler::<Credential>(
-        state,
+    let assigned_network_ids = entity.base.assigned_network_ids.clone();
+    let host_assignments = entity.base.host_assignments.clone();
+
+    enforce_single_endpoint(&state, &entity).await?;
+
+    let mut response = update_handler::<Credential>(
+        State(state.clone()),
         auth.into_permission::<crate::server::auth::middleware::permissions::Member>(),
-        id,
-        entity,
+        Path(id),
+        Json(entity),
     )
-    .await
+    .await?;
+
+    if let Some(ref mut credential) = response.data {
+        save_assignments(&state, credential, assigned_network_ids, host_assignments).await?;
+    }
+
+    Ok(response)
 }
 
 /// Delete Credential
@@ -258,11 +381,13 @@ async fn get_all_credentials(
     let filter = query.apply_to_filter(filter, &auth.network_ids(), organization_id);
     let (filter, order_by) = query.apply_ordering(filter);
 
-    let result = state
+    let mut result = state
         .services
         .credential_service
         .get_paginated_ordered(filter, &order_by)
         .await?;
+
+    hydrate_assignments(&state, &mut result.items).await?;
 
     let limit = pagination.effective_limit().unwrap_or(0);
     let offset = pagination.effective_offset();
@@ -294,12 +419,23 @@ pub async fn create_credential(
     auth: Authorized<Admin>,
     Json(credential): Json<Credential>,
 ) -> ApiResult<Json<ApiResponse<Credential>>> {
-    create_handler::<Credential>(
-        State(state),
+    let assigned_network_ids = credential.base.assigned_network_ids.clone();
+    let host_assignments = credential.base.host_assignments.clone();
+
+    enforce_single_endpoint(&state, &credential).await?;
+
+    let mut response = create_handler::<Credential>(
+        State(state.clone()),
         auth.into_permission::<crate::server::auth::middleware::permissions::Member>(),
         Json(credential),
     )
-    .await
+    .await?;
+
+    if let Some(ref mut created) = response.data {
+        save_assignments(&state, created, assigned_network_ids, host_assignments).await?;
+    }
+
+    Ok(response)
 }
 
 /// Bulk create Credentials
@@ -339,11 +475,17 @@ async fn bulk_create_credentials(
     let auth_entity = auth.into_entity();
     let mut created = Vec::with_capacity(credentials.len());
     for credential in credentials {
-        let result = state
+        let assigned_network_ids = credential.base.assigned_network_ids.clone();
+        let host_assignments = credential.base.host_assignments.clone();
+        // Checked sequentially, so each credential also sees earlier batch members
+        // (already persisted) — catching intra-batch conflicts too.
+        enforce_single_endpoint(&state, &credential).await?;
+        let mut result = state
             .services
             .credential_service
             .create(credential, auth_entity.clone())
             .await?;
+        save_assignments(&state, &mut result, assigned_network_ids, host_assignments).await?;
         created.push(result);
     }
 

@@ -50,15 +50,6 @@ pub struct ProvisionUserParams {
 pub struct PendingNetworkSetup {
     pub name: String,
     pub network_id: Uuid,
-    /// Whether SNMP is enabled for this network
-    #[serde(default)]
-    pub snmp_enabled: bool,
-    /// SNMP version ("V2c" or "V3")
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub snmp_version: Option<String>,
-    /// SNMP community string (for V2c)
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub snmp_community: Option<String>,
 }
 
 /// Setup data collected before registration (org name, network, seed preference)

@@ -16,7 +16,8 @@
 		ArrowLeft,
 		Mail,
 		Copy,
-		Check
+		Check,
+		KeyRound
 	} from 'lucide-svelte';
 	import confetti from 'canvas-confetti';
 	import {
@@ -45,24 +46,21 @@
 		type DaemonOS
 	} from '../../utils';
 	import { useNetworksQuery } from '$lib/features/networks/queries';
-	import {
-		useBulkCreateCredentialsMutation,
-		useDeleteCredentialMutation,
-		useUpdateCredentialMutation,
-		useCredentialsQuery
-	} from '$lib/features/credentials/queries';
+	import { useCredentialsQuery } from '$lib/features/credentials/queries';
 	import { daemonSetupState, type DaemonConnectionStatus } from '../../stores/daemon-setup';
 	import ConfigureStep from './steps/ConfigureStep.svelte';
 	import InstallStep from './steps/InstallStep.svelte';
 	import AdvancedStep from './steps/AdvancedStep.svelte';
-	import CredentialWizardStep, {
+	import CredentialsStep, {
 		type PendingCredential
-	} from './steps/CredentialWizardStep.svelte';
+	} from '$lib/features/credentials/components/CredentialsStep.svelte';
 	import {
 		common_close,
 		common_configure,
+		common_continue,
 		common_failedGenerateApiKey,
 		common_install,
+		common_integrations,
 		common_next,
 		daemons_createDaemon,
 		daemons_credentialWizardReturn,
@@ -80,9 +78,7 @@
 		daemons_installBackToInstall,
 		daemons_installReturnToCommands
 	} from '$lib/paraglide/messages';
-	import { createDefaultCredential } from '$lib/features/credentials/types/base';
 	import { credentialTypes } from '$lib/shared/stores/metadata';
-	import { v4 as uuidv4 } from 'uuid';
 
 	interface Props {
 		isOpen?: boolean;
@@ -99,9 +95,6 @@
 	const organizationQuery = useOrganizationQuery();
 	const createApiKeyMutation = useCreateApiKeyMutation();
 	const provisionDaemonMutation = useProvisionDaemonMutation();
-	const bulkCreateCredentialsMutation = useBulkCreateCredentialsMutation();
-	const deleteCredentialMutation = useDeleteCredentialMutation();
-	const updateCredentialMutation = useUpdateCredentialMutation();
 	const credentialsQuery = useCredentialsQuery();
 
 	// Derived data
@@ -153,74 +146,56 @@
 	// Auto-generation state (for first daemon flow)
 	let isAutoGenerating = $state(false);
 
-	// Docker config state
-	let dockerMode = $state<string>('local_socket');
-
-	// Credential wizard state
-	let credentialWizardRef: ReturnType<typeof CredentialWizardStep> | undefined = $state();
-	let showCredentialWizard = $state(false);
+	// Credentials is its own stepper step (activeTab === 'credentials'); the shared
+	// CredentialsStep owns the type-grid → wizard sub-flow and persistence.
+	let credentialsStep: ReturnType<typeof CredentialsStep> | undefined = $state();
+	let credentialSubStep = $state<'typeSelect' | 'wizard'>('typeSelect');
+	let selectedCredentialTypeIds = $state<string[]>([]);
 	let pendingCredentials = $state<PendingCredential[]>([]);
 	let credentialIds = $state<string[]>([]);
-	let hasDockerProxyCredential = $derived(
-		pendingCredentials.some(
-			(p) =>
-				p.credential.credential_type.type === 'DockerProxy' &&
-				p.targetIps.some((ip) => ip === '127.0.0.1' || ip === '::1')
-		)
-	);
-	let unsavedCredentialCount = $derived(
-		pendingCredentials.filter((p) => !p.isExisting && !credentialIds.includes(p.credential.id))
-			.length
+
+	// The integration type-select pre-step is a first-run aid; users who already
+	// have credentials go straight to the wizard (where they manage/add them).
+	let credentialEntrySubStep = $derived<'typeSelect' | 'wizard'>(
+		(credentialsQuery.data?.length ?? 0) > 0 ? 'wizard' : 'typeSelect'
 	);
 
-	function initDefaultFieldValues(typeId: string): Record<string, string> {
-		const meta = credentialTypes.getMetadata(typeId);
-		const fields = meta?.fields ?? [];
-		const values: Record<string, string> = {};
-		for (const field of fields) {
-			if (field.field_type === 'pathorinline') {
-				values[field.id] = JSON.stringify({ mode: 'Inline', value: '' });
-			} else {
-				values[field.id] = field.default_value ?? '';
-			}
-		}
-		return values;
+	function isLocalAuto(id: string): boolean {
+		return credentialTypes.getMetadata(id)?.is_local_auto === true;
 	}
+	// Auto-local integrations (e.g. Docker socket) are selected by default in the
+	// Integrations grid; selecting one drives the daemon install flag.
+	function localAutoTypeIds(): string[] {
+		return credentialTypes
+			.getItems()
+			.filter((t) => t.metadata?.is_local_auto)
+			.map((t) => t.id);
+	}
+	// Real new credentials being created (excludes existing ones and auto-local
+	// entries like the Docker socket, which persist nothing). Drives the CTA count.
+	let unsavedCredentialCount = $derived(
+		pendingCredentials.filter(
+			(p) =>
+				!p.isExisting &&
+				!isLocalAuto(p.credential.credential_type.type) &&
+				!credentialIds.includes(p.credential.id)
+		).length
+	);
 
-	function handleNavigateToCredentialWizard() {
-		// Add a DockerProxy pending credential if one doesn't already exist
-		if (!hasDockerProxyCredential && org) {
-			const cred = {
-				...createDefaultCredential(org.id),
-				id: uuidv4(),
-				name: (formValues.name as string) || 'scanopy-daemon',
-				credential_type: {
-					type: 'DockerProxy'
-				} as import('$lib/features/credentials/types/base').Credential['credential_type']
-			};
-			// Set defaults from fixture metadata
-			const meta = credentialTypes.getMetadata('DockerProxy');
-			if (meta?.fields) {
-				const ct = cred.credential_type as unknown as Record<string, unknown>;
-				for (const field of meta.fields) {
-					if (field.default_value != null && ct[field.id] === undefined) {
-						if (field.field_type === 'secretpathorinline' || field.field_type === 'pathorinline') {
-							ct[field.id] = { mode: 'Inline', value: field.default_value };
-						} else {
-							const num = Number(field.default_value);
-							ct[field.id] = !isNaN(num) ? num : field.default_value;
-						}
-					}
-				}
-			}
-			const fieldValues = initDefaultFieldValues('DockerProxy');
-			pendingCredentials = [
-				...pendingCredentials,
-				{ credential: cred, targetIps: ['127.0.0.1'], fieldValues }
-			];
+	// Continue from the Integrations grid: with nothing selected, go straight to
+	// Install; otherwise enter the wizard.
+	async function handleContinueToWizard() {
+		if (selectedCredentialTypeIds.length === 0) {
+			trackEvent('daemon_wizard_step_completed', {
+				step: 'credentials',
+				skipped: true,
+				types_selected: 0,
+				credentials_attached: 0
+			});
+			activeTab = 'install';
+			return;
 		}
-		showAdvanced = false;
-		showCredentialWizard = true;
+		await credentialsStep?.continueToWizard();
 	}
 
 	// OS selection
@@ -275,6 +250,19 @@
 		}
 	});
 
+	// Per-step funnel analytics: fire once each time a step becomes the active step
+	let lastViewedStep = $state<string | null>(null);
+	$effect(() => {
+		if (!isOpen) {
+			lastViewedStep = null;
+			return;
+		}
+		if (activeTab !== lastViewedStep) {
+			lastViewedStep = activeTab;
+			trackEvent('daemon_wizard_step_viewed', { step: activeTab });
+		}
+	});
+
 	$effect(() => {
 		if (selectedNetworkId && !nameManuallyEdited) {
 			const defaultName = getDefaultDaemonName(selectedNetworkId);
@@ -301,9 +289,12 @@
 
 	// Derived commands
 	let dockerConfig = $derived({
-		mode: dockerMode,
 		credentialId: null as string | null,
-		disableLocalSocket: hasDockerProxyCredential
+		// Local Docker socket is enabled while a Docker socket entry is in the wizard
+		// list (seeded from the Integrations grid, removable in the wizard).
+		disableLocalSocket: !pendingCredentials.some(
+			(p) => p.credential.credential_type.type === 'DockerSocket'
+		)
 	});
 	let allCredentialIds = $derived([...credentialIds]);
 	let runCommand = $derived(
@@ -347,9 +338,8 @@
 		return false;
 	});
 
-	// --- Tab / wizard state ---
-	const mainFlow = ['configure', 'install'] as const;
-
+	// --- Tab / step state ---
+	// Steps: Configure -> Credentials (optional) -> Install
 	let activeTab = $state('configure');
 	let furthestReached = $state(0);
 	let showAdvanced = $state(false);
@@ -357,19 +347,18 @@
 	let tabs: ModalTab[] = $derived([
 		{ id: 'configure', label: common_configure(), icon: Settings },
 		{
+			id: 'credentials',
+			label: common_integrations(),
+			icon: KeyRound,
+			disabled: furthestReached < 1
+		},
+		{
 			id: 'install',
 			label: common_install(),
 			icon: Terminal,
 			disabled: furthestReached < 1
 		}
 	]);
-
-	function nextTab() {
-		const idx = (mainFlow as readonly string[]).indexOf(activeTab);
-		if (idx >= 0 && idx < mainFlow.length - 1) {
-			activeTab = mainFlow[idx + 1];
-		}
-	}
 
 	function handleTabChange(tabId: string) {
 		showAdvanced = false;
@@ -505,7 +494,10 @@
 			}
 
 			if (furthestReached < 1) furthestReached = 1;
-			nextTab();
+			// Advance to the Credentials step (step 2). It's optional — the user can
+			// Skip to Install (step 3), which is also unlocked.
+			activeTab = 'credentials';
+			credentialSubStep = credentialEntrySubStep;
 		}
 	}
 
@@ -666,14 +658,14 @@
 		activeTab = 'configure';
 		furthestReached = 0;
 		showAdvanced = false;
-		showCredentialWizard = false;
+		credentialSubStep = 'typeSelect';
+		selectedCredentialTypeIds = [];
 		pendingCredentials = [];
 		credentialIds = [];
 		connectionStatus = 'idle';
 		serverPollReachable = null;
 		isTestingReachability = false;
 		serverPollReachabilityResult = null;
-		dockerMode = 'local_socket';
 		daemonIdsAtWaitStart = new Set();
 
 		// Reset form fields to defaults so advanced overrides don't persist
@@ -691,6 +683,9 @@
 		activeTab = 'configure';
 		furthestReached = 0;
 		showAdvanced = false;
+		credentialSubStep = 'typeSelect';
+		// Local-auto integrations (Docker socket) are on by default.
+		selectedCredentialTypeIds = localAutoTypeIds();
 		connectionStatus = 'idle';
 		startedAsFirstDaemon = isFirstDaemon;
 		serverPollReachable = null;
@@ -721,37 +716,23 @@
 	{/snippet}
 
 	<div class="flex min-h-0 flex-1 flex-col overflow-hidden">
-		{#if showCredentialWizard}
-			<div class="flex min-h-0 flex-1 flex-col">
-				<CredentialWizardStep
-					bind:this={credentialWizardRef}
-					daemonName={formValues.name as string}
-					networkId={selectedNetworkId}
-					daemonHasDockerSocket={null}
-					bind:pendingCredentials
-					onRemoveCredential={(credential) => {
-						// If credential was already created on server, delete it
-						if (credentialIds.includes(credential.id)) {
-							deleteCredentialMutation.mutate(credential.id);
-							credentialIds = credentialIds.filter((id) => id !== credential.id);
-						}
-					}}
-				/>
+		{#if showAdvanced}
+			<div class="flex-1 overflow-auto p-4 sm:p-6">
+				<AdvancedStep {form} {formValues} {selectedOS} {linuxMethod} />
 			</div>
+		{:else if activeTab === 'credentials'}
+			<CredentialsStep
+				bind:this={credentialsStep}
+				networkId={selectedNetworkId}
+				bind:pendingCredentials
+				bind:credentialIds
+				bind:subStep={credentialSubStep}
+				bind:selectedTypeIds={selectedCredentialTypeIds}
+			/>
 		{:else}
 			<div class="flex-1 overflow-auto p-4 sm:p-6">
 				{#key activeTab}
-					{#if showAdvanced}
-						<AdvancedStep
-							{form}
-							{formValues}
-							{selectedOS}
-							{linuxMethod}
-							bind:dockerMode
-							{hasDockerProxyCredential}
-							onNavigateToCredentialWizard={handleNavigateToCredentialWizard}
-						/>
-					{:else if activeTab === 'configure'}
+					{#if activeTab === 'configure'}
 						<ConfigureStep
 							{form}
 							{formValues}
@@ -781,7 +762,6 @@
 							onViewDiscovery={handleViewDiscovery}
 							{hasEmailSupport}
 							onAdvanced={() => (showAdvanced = true)}
-							onCredentialWizard={() => (showCredentialWizard = true)}
 							daemonMode={String(formValues.mode ?? 'daemon_poll')}
 							daemonName={String(formValues.name ?? 'scanopy-daemon')}
 							logFilePath={String(formValues.logFile ?? '')}
@@ -807,69 +787,34 @@
 		<!-- Footer -->
 		<div class="modal-footer">
 			<div class="flex flex-wrap items-center justify-end gap-3">
-				{#if showCredentialWizard}
+				{#if activeTab === 'credentials' && credentialSubStep === 'typeSelect'}
+					<button type="button" class="btn-primary" onclick={handleContinueToWizard}>
+						{common_continue()}
+						<ArrowRight class="h-4 w-4" />
+					</button>
+				{:else if activeTab === 'credentials' && credentialSubStep === 'wizard'}
 					<button
 						type="button"
 						class="btn-primary"
-						disabled={bulkCreateCredentialsMutation.isPending}
+						disabled={credentialsStep?.busy}
 						onclick={async () => {
-							// Collect existing credential IDs and set target_ips on them
-							const existingCreds = credentialWizardRef?.getExistingCredentials() ?? [];
-							for (const ec of existingCreds) {
-								const ips = ec.targetIps.map((s) => s.trim()).filter(Boolean);
-								if (ips.length > 0) {
-									const cred = credentialsQuery.data?.find((c) => c.id === ec.credentialId);
-									if (cred) {
-										await updateCredentialMutation.mutateAsync({
-											...cred,
-											target_ips: ips
-										});
-									}
-								}
-							}
-							const existingIds = existingCreds.map((c) => c.credentialId);
-
-							const unsaved = pendingCredentials.filter(
-								(p) => !p.isExisting && !credentialIds.includes(p.credential.id)
-							);
-							if (unsaved.length > 0) {
-								// Validate all fields before creating
-								if (credentialWizardRef) {
-									const isValid = await credentialWizardRef.validate();
-									if (!isValid) return;
-								}
-								try {
-									const prepared = credentialWizardRef?.getCredentialsForCreate() ?? [];
-									const unsavedPrepared = prepared.filter(
-										(p) => !credentialIds.includes(p.credential.id)
-									);
-									const toCreate = unsavedPrepared.map((p) => {
-										const ips = p.targetIps.map((s) => s.trim()).filter(Boolean);
-										return {
-											...p.credential,
-											target_ips: ips.length > 0 ? ips : undefined
-										};
-									});
-									const created = await bulkCreateCredentialsMutation.mutateAsync(toCreate);
-									credentialIds = [
-										...new Set([...credentialIds, ...created.map((c) => c.id), ...existingIds])
-									];
-								} catch {
-									return;
-								}
-							} else if (existingIds.length > 0) {
-								// No new credentials but some existing ones to add
-								credentialIds = [...new Set([...credentialIds, ...existingIds])];
-							}
-							showCredentialWizard = false;
+							const ids = await credentialsStep?.collectCredentialIds();
+							if (ids === null || ids === undefined) return; // validation failed
+							trackEvent('daemon_wizard_step_completed', {
+								step: 'credentials',
+								skipped: false,
+								types_selected: selectedCredentialTypeIds.length,
+								credentials_attached: ids.length
+							});
+							activeTab = 'install';
 						}}
 					>
-						<ArrowLeft class="h-4 w-4" />
 						{#if unsavedCredentialCount > 0}
 							{daemons_credentialWizardReturn({ count: unsavedCredentialCount })}
 						{:else}
 							{daemons_credentialWizardReturnToInstall()}
 						{/if}
+						<ArrowRight class="h-4 w-4" />
 					</button>
 				{:else if showAdvanced}
 					<button type="button" class="btn-primary" onclick={() => (showAdvanced = false)}>

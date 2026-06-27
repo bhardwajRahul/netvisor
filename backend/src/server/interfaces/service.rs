@@ -1,5 +1,8 @@
 use anyhow::Result;
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 use uuid::Uuid;
 use validator::ValidationError;
 
@@ -166,22 +169,6 @@ impl InterfaceService {
         Ok(())
     }
 
-    /// Lookup an interface by (host_id, if_name). Returns None if no match.
-    /// Used as tier-1 dedup during discovery — if_name (ifXTable.ifName) is the
-    /// most stable SNMP port identifier, surviving reboots and if_index shifts.
-    pub async fn get_by_host_and_name(
-        &self,
-        host_id: &Uuid,
-        if_name: &str,
-    ) -> Result<Option<Interface>> {
-        // SCD2: only live rows participate in natural-key match.
-        let filter = StorableFilter::<Interface>::new_from_host_ids(&[*host_id])
-            .if_name(if_name)
-            .live();
-        let mut rows = self.storage.get_all(filter).await?;
-        Ok(rows.pop())
-    }
-
     /// Lookup interfaces whose ip_address_id is in the given set.
     /// Used by subnet_vlans reconciliation to aggregate native_vlan_id observations.
     pub async fn get_by_ip_address_ids(&self, ids: &[Uuid]) -> Result<Vec<Interface>> {
@@ -208,12 +195,21 @@ impl InterfaceService {
     /// On match, preserves id + created_at + mac_address + if_name (via
     /// `preserve_immutable_fields`) and overwrites the rest with the incoming payload.
     /// Skips relationship validation (data from trusted SNMP source).
+    ///
+    /// `claimed` holds the ids of existing rows already matched (or created) by
+    /// earlier interfaces in the *same* discovery batch. A row may be claimed by
+    /// at most one incoming interface per scan — without this, a host that
+    /// reports many ifTable entries sharing one weak identity (e.g. an L2 switch
+    /// whose IP-less ports all carry the chassis MAC and no ifName) would see
+    /// every port re-match and overwrite the first row via tier-3, collapsing the
+    /// whole ifTable onto a single interface (issue #614).
     pub async fn create_or_update_from_discovery(
         &self,
         entry: Interface,
+        claimed: &HashSet<Uuid>,
         authentication: AuthenticatedEntity,
     ) -> Result<Interface> {
-        let existing = self.find_matching_existing(&entry).await?;
+        let existing = self.find_matching_existing(&entry, claimed).await?;
 
         if let Some(existing_entry) = existing {
             let mut updated = entry;
@@ -233,7 +229,13 @@ impl InterfaceService {
     }
 
     /// Tiered lookup: if_name → if_index → mac_address with single-MAC guard.
-    async fn find_matching_existing(&self, entry: &Interface) -> Result<Option<Interface>> {
+    /// Loads the host's live interfaces once, then delegates the decision to the
+    /// pure [`match_existing_interface`] so the tier logic stays unit-testable.
+    async fn find_matching_existing(
+        &self,
+        entry: &Interface,
+        claimed: &HashSet<Uuid>,
+    ) -> Result<Option<Interface>> {
         let host_id = entry.base.host_id;
 
         tracing::debug!(
@@ -244,67 +246,211 @@ impl InterfaceService {
             "InterfaceService::find_matching_existing: start"
         );
 
-        // Tier 1: (host_id, if_name) — strong identifier when present
-        if let Some(ref if_name) = entry.base.if_name {
-            let found = self.get_by_host_and_name(&host_id, if_name).await?;
-            tracing::debug!(
-                host_id = %host_id,
-                incoming_if_name = %if_name,
-                matched = found.is_some(),
-                matched_id = ?found.as_ref().map(|f| f.id),
-                matched_if_index = ?found.as_ref().map(|f| f.base.if_index),
-                "InterfaceService tier-1 lookup (host, if_name)"
-            );
-            if let Some(found) = found {
-                return Ok(Some(found));
-            }
-        } else {
-            tracing::debug!(
-                host_id = %host_id,
-                "InterfaceService tier-1 skipped: incoming if_name is None"
-            );
-        }
-
-        // Load host's interfaces once for tiers 2 + 3
+        // Load host's interfaces once for all three tiers. `claimed` excludes rows
+        // already matched/created earlier in this batch so siblings sharing a weak
+        // identity (chassis MAC, NULL if_name) can't collapse onto one row.
         let existing = self.get_for_host(&host_id).await?;
 
-        // Tier 2: (host_id, if_index)
-        if let Some(found) = existing
-            .iter()
-            .find(|e| e.base.if_index == entry.base.if_index)
-        {
-            tracing::debug!(
-                host_id = %host_id,
-                incoming_if_index = entry.base.if_index,
-                matched_id = %found.id,
-                "InterfaceService tier-2 matched on if_index"
-            );
-            return Ok(Some(found.clone()));
-        }
-
-        // Tier 3: (host_id, mac_address) with single-MAC guard. A MAC shared by
-        // multiple existing rows indicates VLAN sub-interfaces or bond members and
-        // must not collapse into a single match — only accept a 1:1 MAC pairing.
-        if let Some(mac) = entry.base.mac_address {
-            let mut candidates = existing.iter().filter(|e| e.base.mac_address == Some(mac));
-            if let Some(first) = candidates.next()
-                && candidates.next().is_none()
-            {
-                tracing::debug!(
-                    host_id = %host_id,
-                    matched_id = %first.id,
-                    "InterfaceService tier-3 matched on mac_address"
-                );
-                return Ok(Some(first.clone()));
-            }
-        }
+        let matched_id = match_existing_interface(entry, &existing, claimed);
 
         tracing::debug!(
             host_id = %host_id,
             incoming_if_index = entry.base.if_index,
             incoming_if_name = ?entry.base.if_name,
-            "InterfaceService: no tier match, will create new row"
+            matched = matched_id.is_some(),
+            matched_id = ?matched_id,
+            "InterfaceService::find_matching_existing: tiered match result"
         );
-        Ok(None)
+
+        Ok(matched_id.and_then(|id| existing.into_iter().find(|e| e.id == id)))
+    }
+}
+
+/// Pure tiered identity match used by discovery dedup.
+///
+/// Returns the id of the existing row the incoming `entry` should update, or
+/// `None` to insert a new row. Tiers, in order:
+/// 1. `(host_id, if_name)` when incoming `if_name` is present — strongest, from
+///    ifXTable; survives reboots/config reloads.
+/// 2. `(host_id, if_index)` — legacy devices without ifXTable and pre-`if_name`
+///    rows.
+/// 3. `(host_id, mac_address)` with single-MAC guard — last resort for a port
+///    that was both renamed and renumbered but kept its NIC.
+///
+/// Any row whose id is in `claimed` (already matched/created by an earlier
+/// interface in the same batch) is skipped at every tier, so two distinct
+/// ifTable entries can never collapse onto one row (issue #614). The single-MAC
+/// guard is applied after the `claimed` filter: a MAC shared by more than one
+/// *unclaimed* existing row stays ambiguous (VLAN sub-interfaces / bond members)
+/// and yields no match.
+fn match_existing_interface(
+    entry: &Interface,
+    existing: &[Interface],
+    claimed: &HashSet<Uuid>,
+) -> Option<Uuid> {
+    let available = |e: &&Interface| !claimed.contains(&e.id);
+
+    // Tier 1: (host_id, if_name) — strong identifier when present
+    if let Some(ref if_name) = entry.base.if_name
+        && let Some(found) = existing
+            .iter()
+            .filter(available)
+            .find(|e| e.base.if_name.as_deref() == Some(if_name.as_str()))
+    {
+        return Some(found.id);
+    }
+
+    // Tier 2: (host_id, if_index)
+    if let Some(found) = existing
+        .iter()
+        .filter(available)
+        .find(|e| e.base.if_index == entry.base.if_index)
+    {
+        return Some(found.id);
+    }
+
+    // Tier 3: (host_id, mac_address) with single-MAC guard. A MAC shared by
+    // multiple unclaimed existing rows indicates VLAN sub-interfaces or bond
+    // members and must not collapse into a single match — only accept a 1:1
+    // MAC pairing.
+    if let Some(mac) = entry.base.mac_address {
+        let mut candidates = existing
+            .iter()
+            .filter(available)
+            .filter(|e| e.base.mac_address == Some(mac));
+        if let Some(first) = candidates.next()
+            && candidates.next().is_none()
+        {
+            return Some(first.id);
+        }
+    }
+
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::server::interfaces::r#impl::base::InterfaceBase;
+    use mac_address::MacAddress;
+
+    fn make_iface(if_index: i32, if_name: Option<&str>, mac: Option<&str>) -> Interface {
+        let mut base = InterfaceBase::default();
+        base.host_id = Uuid::nil();
+        base.if_index = if_index;
+        base.if_descr = format!("ifIndex {if_index}");
+        base.if_name = if_name.map(String::from);
+        base.mac_address = mac.map(|s| s.parse::<MacAddress>().unwrap());
+        Interface::new(base)
+    }
+
+    /// Replay a discovery batch through the real tiered matcher, mirroring
+    /// `create_or_update_from_discovery` + the `create_with_children` loop:
+    /// a `None` match inserts a new row, a `Some(id)` match overwrites that row
+    /// in place (preserving immutable fields, exactly like the update path).
+    /// When `batch_aware` is false the `claimed` set is never consulted,
+    /// reproducing the pre-fix behaviour.
+    fn run_batch_from(
+        mut persisted: Vec<Interface>,
+        incoming: Vec<Interface>,
+        batch_aware: bool,
+    ) -> Vec<Interface> {
+        let mut claimed: HashSet<Uuid> = HashSet::new();
+        let empty: HashSet<Uuid> = HashSet::new();
+        for entry in incoming {
+            let claim_set = if batch_aware { &claimed } else { &empty };
+            match match_existing_interface(&entry, &persisted, claim_set) {
+                Some(id) => {
+                    let pos = persisted.iter().position(|e| e.id == id).unwrap();
+                    let mut updated = entry;
+                    updated.id = id;
+                    updated.preserve_immutable_fields(&persisted[pos]);
+                    persisted[pos] = updated;
+                    claimed.insert(id);
+                }
+                None => {
+                    claimed.insert(entry.id);
+                    persisted.push(entry);
+                }
+            }
+        }
+        persisted
+    }
+
+    fn omada_iftable() -> Vec<Interface> {
+        // ifIndex 1: management interface (has ifName + chassis MAC + an IP).
+        // ifIndex 49153..=49168: 16 physical switch ports — no ifName (device
+        // omits ifXTable) and all reporting the same chassis ifPhysAddress, no IP.
+        let chassis_mac = "00:11:22:33:44:55";
+        let mut ifaces = vec![make_iface(1, Some("Vlan-interface1"), Some(chassis_mac))];
+        for if_index in 49153..=49168 {
+            ifaces.push(make_iface(if_index, None, Some(chassis_mac)));
+        }
+        assert_eq!(ifaces.len(), 17);
+        ifaces
+    }
+
+    /// Issue #614 characterization: all 17 ifTable entries must persist as
+    /// distinct rows on first discovery.
+    #[test]
+    fn omada_switch_all_17_interfaces_persist() {
+        let persisted = run_batch_from(Vec::new(), omada_iftable(), true);
+        assert_eq!(persisted.len(), 17, "all 17 interfaces must persist");
+
+        let mut indexes: Vec<i32> = persisted.iter().map(|e| e.base.if_index).collect();
+        indexes.sort();
+        let mut expected: Vec<i32> = std::iter::once(1).chain(49153..=49168).collect();
+        expected.sort();
+        assert_eq!(indexes, expected, "every ifIndex must be represented once");
+    }
+
+    /// Regression witness: WITHOUT the batch-aware `claimed` exclusion the 16
+    /// IP-less ports collapse via tier-3 onto the management interface (which
+    /// keeps its original ifName via `preserve_immutable_fields`), leaving a
+    /// single row — the exact "17 collected → 1 persisted" defect.
+    #[test]
+    fn pre_fix_behaviour_collapses_to_one() {
+        let collapsed = run_batch_from(Vec::new(), omada_iftable(), false);
+        assert_eq!(collapsed.len(), 1, "demonstrates the issue #614 collapse");
+        assert_eq!(
+            collapsed[0].base.if_name.as_deref(),
+            Some("Vlan-interface1"),
+            "the lone survivor retains the management interface's name"
+        );
+    }
+
+    /// Re-scanning the same device updates the existing 17 rows in place rather
+    /// than duplicating or collapsing them — tier-2 (if_index) handles the
+    /// nameless ports, tier-1 (if_name) the management interface.
+    #[test]
+    fn rescan_updates_existing_rows_without_duplication() {
+        let first = run_batch_from(Vec::new(), omada_iftable(), true);
+        assert_eq!(first.len(), 17);
+
+        let second = run_batch_from(first.clone(), omada_iftable(), true);
+        assert_eq!(second.len(), 17, "re-scan must not create duplicates");
+
+        let first_ids: HashSet<Uuid> = first.iter().map(|e| e.id).collect();
+        let second_ids: HashSet<Uuid> = second.iter().map(|e| e.id).collect();
+        assert_eq!(first_ids, second_ids, "re-scan must reuse the same row ids");
+    }
+
+    /// Two existing rows sharing one MAC (VLAN sub-interfaces / bond members)
+    /// stay ambiguous: the single-MAC guard refuses to match, so a nameless
+    /// incoming port with that MAC and a new if_index inserts rather than
+    /// hijacking either sibling.
+    #[test]
+    fn shared_mac_across_multiple_rows_does_not_match() {
+        let mac = "aa:bb:cc:dd:ee:ff";
+        let persisted = vec![
+            make_iface(10, Some("bond0.10"), Some(mac)),
+            make_iface(11, Some("bond0.11"), Some(mac)),
+        ];
+        let incoming = make_iface(12, None, Some(mac));
+        assert_eq!(
+            match_existing_interface(&incoming, &persisted, &HashSet::new()),
+            None,
+            "ambiguous shared MAC must not collapse onto a sibling"
+        );
     }
 }

@@ -60,7 +60,9 @@ impl Storable for Credential {
                     name,
                     credential_type,
                     target_ips,
-                    tags: _, // Stored in entity_tags junction table
+                    tags: _,                 // Stored in entity_tags junction table
+                    assigned_network_ids: _, // Stored in network_credentials junction table
+                    host_assignments: _,     // Stored in host_credentials junction table
                 },
         } = self.clone();
 
@@ -104,6 +106,8 @@ impl Storable for Credential {
                 credential_type,
                 target_ips,
                 tags: Vec::new(), // Hydrated from entity_tags junction table
+                assigned_network_ids: Vec::new(), // Hydrated from network_credentials junction table
+                host_assignments: Vec::new(),     // Hydrated from host_credentials junction table
             },
         })
     }

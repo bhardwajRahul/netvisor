@@ -1,52 +1,47 @@
 var TEST_PLANS = [
 {
-  "branch": "fix/snapshot-and-live-topology-bootstrap",
+  "branch": "fix/snmp-interfaces-dropped-614",
   "tests": [
     {
-      "id": "snapshot-renders-element-nodes",
-      "category": "Topology Snapshots",
-      "description": "A snapshot converted from a v0.16.2 lock renders with element nodes (hosts/services/IPs), not just empty containers, across all four views.",
+      "id": "snmp-switch-all-ports-persist",
+      "category": "SNMP Discovery",
+      "description": "An SNMP switch whose physical ports are IP-less, share the chassis MAC, and have no ifName must show every ifTable interface, not just the management interface.",
       "steps": [
-        "Open the app and select the network whose v0.16.2 topology was locked.",
-        "Open the Topology tab and switch to the snapshot (snapshot picker / converted lock).",
-        "Cycle through all four perspectives: L3 Logical, L2 Physical, Workloads, Application.",
-        "Confirm each view shows element nodes inside containers (not empty container boxes)."
+        "Run an SNMP (v2c) discovery scan against a multi-port L2 switch (e.g. TP-Link Omada TL-SG3216) whose access ports have no IP, share the chassis MAC, and report no ifName.",
+        "Open the discovered host's detail page and view its Interfaces list."
       ],
-      "setup": "Load /tmp/scanopy-v0.16.2-populated.sql into a fresh DB, lock two topologies on different networks (existing fixture-edit pattern), run `make migrate-db`, then boot the server once (this triggers the one-shot rebuild).",
-      "expected": "Every view renders populated graphs: containers contain element nodes; dependency edges appear in the Application view; physical-link/neighbor edges appear in L2 Physical.",
+      "setup": "Requires a real (or simulated) SNMP agent presenting an ifTable with one IP-bearing management interface (low ifIndex, has ifName + MAC) plus N physical ports at high ifIndex that all share the management interface's MAC, have no IP, and no ifName. If hardware is unavailable, point the SNMP credential at an snmpsim instance loaded with the reporter's walk from issue #614.",
+      "expected": "All interfaces appear (1 management/Vlan interface + every physical port). Previously only the single 'Vlan-interface1' row appeared.",
       "flow": "setup",
       "sequence": 1,
       "status": null,
       "feedback": null
     },
     {
-      "id": "empty-live-row-populates",
-      "category": "Topology Live",
-      "description": "A network whose legacy live topology row was empty/locked shows a populated live topology after the upgrade boot, without needing a new discovery.",
+      "id": "snmp-switch-rescan-no-duplicates",
+      "category": "SNMP Discovery",
+      "description": "Re-scanning the same switch updates the existing interface rows in place rather than duplicating or re-collapsing them.",
       "steps": [
-        "Select a network that had no usable live topology row pre-upgrade (or whose live row was the locked one).",
-        "Open the Topology tab on the live (non-snapshot) view.",
-        "Confirm the graph is populated for all four perspectives immediately (no discovery run triggered)."
+        "After the first scan from the previous test, trigger a second discovery scan of the same switch.",
+        "Re-open the host's Interfaces list and compare counts/identities to the first scan."
       ],
-      "setup": "Same upgraded DB as the previous test, booted once.",
-      "expected": "The live topology renders current entity data across all four views right after boot.",
+      "setup": "Same SNMP target as snmp-switch-all-ports-persist; just run discovery a second time.",
+      "expected": "Interface count is unchanged (no duplicates), each port retains its identity, and no interface is collapsed onto another.",
       "flow": "setup",
       "sequence": 2,
       "status": null,
       "feedback": null
     },
     {
-      "id": "snapshot-grouping-and-layout-usable",
-      "category": "Topology Snapshots",
-      "description": "Converted-snapshot graphs are visually coherent: grouping (subnets, hosts, application tags) and edges look sensible even though saved layout/options were reset to defaults during the upgrade.",
+      "id": "snmp-host-with-ip-interfaces-unaffected",
+      "category": "SNMP Discovery",
+      "description": "Hosts whose interfaces DO have IPs / distinct MACs / ifNames still dedup and display correctly (no regression from the fix).",
       "steps": [
-        "Open a converted snapshot's Application view.",
-        "Confirm application-tag groups contain the expected services.",
-        "Switch to L3 Logical and confirm hosts group under their subnets.",
-        "Confirm there are no overlapping/garbled nodes that make the graph unreadable."
+        "Run an SNMP discovery scan against a router or server with per-interface IPs and distinct MACs (and ifNames if available).",
+        "View the host's Interfaces list and confirm each interface is present once with correct IP/MAC linkage."
       ],
-      "setup": "Same upgraded DB as the previous tests.",
-      "expected": "Default grouping rules apply and the graph is legible; no crashes or blank panels.",
+      "setup": "Any SNMP-capable host with multiple IP-bearing interfaces having distinct MAC addresses (e.g. a Linux server with several NICs, or a layer-3 router).",
+      "expected": "Every interface is present exactly once; IP↔interface MAC links are intact. No duplication and no collapse.",
       "flow": "setup",
       "sequence": 3,
       "status": null,
@@ -56,165 +51,93 @@ var TEST_PLANS = [
 }
 ,
 {
-  "branch": "refactor/topology-build-on-request",
+  "branch": "feat/email-dns-verification",
+  "tests": []
+}
+,
+{
+  "branch": "feat/billing-events-audit",
+  "tests": []
+}
+,
+{
+  "branch": "feat/credentials-mgmt",
   "tests": [
     {
-      "id": "live-topology-renders",
-      "category": "Rendering",
-      "description": "Live topology renders with correct structure + grouping after the build-on-request change",
+      "id": "daemon-flow-regression",
+      "category": "Daemon setup — shared CredentialsStep regression",
+      "description": "The daemon modal's credentials flow is unchanged after extracting the shared component",
+      "setup": "Fresh org with no credentials.",
       "steps": [
-        "Open the Topology tab and select a network with discovered hosts/services",
-        "Confirm nodes, containers, grouping (subnets/apps/etc.) and edges render as before",
-        "Switch between L3 Logical / Workloads / L2 Physical / Application views"
+        "Open Add Daemon, complete Configure, advance to the Integrations step",
+        "Confirm the flat Integrations grid shows with the Docker Socket card selected by default",
+        "Deselect the Docker Socket, continue to Install, and inspect the run command",
+        "Re-open, this time keep the socket + add a Docker Proxy, continue to the wizard, configure it, and submit ('Create N credentials and continue to install')",
+        "With the socket present, on the Docker Proxy confirm 'Add daemon host' is disabled with the integration-named tooltip"
       ],
-      "setup": "Ensure the selected network has hosts, services, subnets and at least one dependency. If empty, run a discovery (or create entities via the API) so the graph has content.",
-      "expected": "Graph renders identically to prior behavior; view switching is instant (client-side slice) with no flicker or refetch spinner.",
+      "expected": "Identical to before the refactor: socket default-selected; deselecting adds --enable-local-docker-socket false; wizard creates credentials and advances to Install; the 'Add daemon host' conflict prevention still works.",
       "flow": "setup",
       "sequence": 1,
       "status": null,
       "feedback": null
     },
     {
-      "id": "entity-change-reflects",
-      "category": "Live updates",
-      "description": "Entity changes reflect on next request via SSE ping (no subscriber rebuild)",
+      "id": "discovery-integrations-flow",
+      "category": "Discovery modal — unified credentials flow",
+      "description": "A new Unified discovery shows the Integrations grid → wizard like the daemon modal",
+      "setup": "Create a new Unified discovery against a daemon. Use a daemon WITHOUT local Docker socket for this run.",
       "steps": [
-        "With the Topology tab open on a network, add or remove a host/service (or run a discovery)",
-        "Watch the canvas without manually reloading the page"
+        "Open the Create Discovery modal, set type to Unified, pick the daemon, and advance to the Credentials step",
+        "Confirm the Integrations grid appears (subtitle + cards), not the bare wizard",
+        "Select an SNMP type and an integration, click Next",
+        "Confirm it advances to the wizard (still on the Credentials tab) seeded with the chosen types; configure them",
+        "Click Back and confirm it returns to the Integrations grid (not the previous tab); Next again returns to the wizard",
+        "Finish the remaining tabs and Save; confirm the credentials are created and attached"
       ],
-      "setup": "Trigger an entity change on the open network: run a discovery, or create/delete a host or service via the API for that network.",
-      "expected": "Within a couple seconds the topology refetches and re-renders to include/exclude the changed entity (driven by the SSE live-update ping).",
-      "flow": "setup",
-      "sequence": 2,
+      "expected": "Discovery's Credentials step mirrors the daemon flow: Integrations grid → wizard, with Next/Back stepping through the sub-flow. Saving creates/updates credentials and sets pending_credential_ids.",
       "status": null,
       "feedback": null
     },
     {
-      "id": "options-persist-reload",
-      "category": "Options",
-      "description": "Grouping/options edits persist across reload (built graph reflects them)",
+      "id": "discovery-socket-readonly",
+      "category": "Discovery modal — read-only socket",
+      "description": "The Docker socket card is read-only in discovery, reflecting the daemon's capability, and prevents a daemon-host proxy",
+      "setup": "Two daemons: one WITH local Docker socket (has_docker_socket true) and one WITHOUT.",
       "steps": [
-        "Open the options panel and change a grouping rule, a hide filter, and a visual toggle",
-        "Confirm the graph updates to reflect the new grouping",
-        "Reload the page and reopen the topology"
+        "New Unified discovery against the daemon WITH the socket → Credentials → Integrations grid",
+        "Confirm the Docker Socket card is shown checked but disabled (read-only); hover it and read the tooltip",
+        "Continue to the wizard, add a Docker Proxy, and check its 'Add daemon host' button",
+        "Repeat against the daemon WITHOUT the socket: the Docker Socket card is shown unchecked + disabled"
       ],
-      "expected": "After reload the same grouping/options are applied and the graph rebuilds to match (options persisted on the topology row).",
-      "flow": "setup",
-      "sequence": 3,
+      "expected": "Socket card is non-toggleable, checked iff the daemon has the socket. Tooltip reads 'Local Docker access is set when the daemon is installed. Reinstall the daemon to enable or disable it.' On the socket-enabled daemon, a Docker Proxy's 'Add daemon host' is disabled with the integration-named tooltip (no 'proxy will take priority' note anywhere).",
       "status": null,
       "feedback": null
     },
     {
-      "id": "snapshot-renders",
-      "category": "Snapshots",
-      "description": "Snapshot view builds on request from closed copies (no stored snapshot graph)",
+      "id": "discovery-edit-existing-creds",
+      "category": "Discovery modal — edit existing",
+      "description": "Editing a discovery with existing credentials lands on the wizard",
+      "setup": "An existing Unified discovery that already has pending_credential_ids attached.",
       "steps": [
-        "Take a snapshot (Camera button) on a populated network",
-        "Select the snapshot from the snapshot dropdown",
-        "Confirm the graph renders, then switch views within the snapshot",
-        "Change live entities (discovery/API), then re-select the snapshot"
+        "Open it for editing and go to the Credentials step",
+        "Observe whether it opens on the Integrations grid or the wizard",
+        "Adjust a credential's target and save"
       ],
-      "setup": "Network must have hosts/services and snapshots enabled on the plan. Take the snapshot via the UI Camera button (or POST /api/v1/snapshots).",
-      "expected": "Snapshot renders the as-of-capture graph; available views are restricted to what the snapshot captured; the snapshot is unaffected by later live entity changes.",
-      "flow": "setup",
-      "sequence": 4,
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "share-embed-renders",
-      "category": "Shares",
-      "description": "Public share / embed renders via the unified toRenderableTopology path",
-      "steps": [
-        "Create a share for a populated live topology (Share button)",
-        "Open the public share URL in a logged-out browser/incognito window",
-        "Switch views in the share viewer",
-        "Repeat with embed mode (and with a password-protected share)"
-      ],
-      "setup": "Create a share via the UI for a network with rendered topology. For the password case, set a password on the share.",
-      "expected": "Share/embed renders the same graph + entities as the app; view switching works; password gate works. (Backend now returns the slim row + bundle and the viewer composes them client-side.)",
-      "flow": "setup",
-      "sequence": 5,
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "exports-match",
-      "category": "Export",
-      "description": "Mermaid/Confluence exports match the rendered graph (built on request)",
-      "steps": [
-        "Open the Export modal on a live topology",
-        "Export Mermaid and Confluence for the current view",
-        "Compare node/edge content against the on-screen graph"
-      ],
-      "expected": "Exported Mermaid/Confluence content matches the rendered nodes/edges for the selected view.",
-      "flow": "setup",
-      "sequence": 6,
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "overrides-disabled",
-      "category": "Disabled overrides",
-      "description": "Node drag / container resize / edge reconnect do not persist (feature disabled)",
-      "steps": [
-        "On a live topology, confirm there is no enabled edit-mode affordance to move/resize nodes",
-        "If any drag/resize is possible, perform it, then reload the page"
-      ],
-      "expected": "No way to persist layout changes; after reload the layout is the freshly-computed ELK layout (no saved positions/sizes/handles).",
-      "flow": "setup",
-      "sequence": 7,
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "bytag-pill-name",
-      "category": "Grouping labels",
-      "description": "ByTag grouping pill shows the tag name even for a tag applied to no entity",
-      "steps": [
-        "Open the topology options → Group tab on a populated network",
-        "Edit the ByTag element rule and add a tag that is NOT applied to any host/service/subnet (in demo data, add 'Development' to the 'Critical' rule)",
-        "Inspect the resulting grouping subgroup's tag pills"
-      ],
-      "setup": "Use a network with the demo grouping data (a ByTag rule with the 'Critical' tag). Ensure a second tag (e.g. 'Development') exists but is applied to no entity.",
-      "expected": "The added tag's pill renders its name + color (e.g. 'Development'), not the raw UUID. Selecting a snapshot also shows resolved names.",
-      "flow": "setup",
-      "sequence": 8,
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "snapshot-grouping-readonly",
-      "category": "Snapshots",
-      "description": "Grouping-rule editor is fully read-only while viewing a snapshot",
-      "steps": [
-        "On a populated network, take a snapshot and select it",
-        "Open the topology options → Group tab",
-        "Inspect the container + element grouping rules"
-      ],
-      "setup": "Network with hosts/services and snapshots enabled; take the snapshot via the Camera button.",
-      "expected": "An info banner says grouping rules are read-only while viewing a snapshot; no edit (pencil), add, remove, or reorder controls are available. Returning to the live view restores full editing.",
-      "flow": "setup",
-      "sequence": 9,
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "share-on-snapshot-notice",
-      "category": "Shares",
-      "description": "Share modal is available on a snapshot with a live-view notice",
-      "steps": [
-        "Select a snapshot on a populated network",
-        "Click the Share button and open the share modal",
-        "Read the inline notice; create a share and open its public URL"
-      ],
-      "setup": "Network with topology + snapshots; email-verified user on a plan with share_views.",
-      "expected": "The Share button is visible in snapshot view; the modal shows an inline info that the share reflects the live view (not the snapshot); the created share renders the live topology.",
-      "flow": "setup",
-      "sequence": 10,
+      "expected": "The Credentials step opens directly on the wizard showing the existing credentials (not the empty grid). Saving updates their target_ips and preserves the attachment.",
       "status": null,
       "feedback": null
     }
   ]
+}
+,
+{
+  "branch": "fix/subnet-metadata-deser",
+  "tests": [],
+  "notes": "No human/UI tests. This is a backend serde forward-compatibility change with no UI surface. Everything is verified programmatically and runs in `cd backend && cargo test --lib`: (1) `daemon::shared::forward_compat::tests::registered_daemon_responses_are_forward_compatible` deserializes a simulated newer-server payload for every daemon-consumed response type; (2) SubnetType/EntitySource characterization tests cover both production errors plus a reproduction of the original `missing field 'metadata'` failure. A manual test is not feasible: reproducing the failure needs an OLD daemon binary, and the fix by design cannot help an already-deployed old daemon (it only takes effect once the daemon runs this build), so there is no by-hand action that demonstrates the fix."
+}
+,
+{
+  "branch": "feat/card-required-signup",
+  "tests": []
 }
 ];

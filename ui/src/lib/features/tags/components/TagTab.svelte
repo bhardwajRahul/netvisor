@@ -16,7 +16,8 @@
 	import { defineFields } from '$lib/shared/components/data/types';
 	import { Plus } from 'lucide-svelte';
 	import { useCurrentUserQuery } from '$lib/features/auth/queries';
-	import { permissions } from '$lib/shared/stores/metadata';
+	import { useOrganizationQuery } from '$lib/features/organizations/queries';
+	import { permissions, billingPlans } from '$lib/shared/stores/metadata';
 	import type { TabProps } from '$lib/shared/types';
 	import type { components } from '$lib/api/schema';
 	import { downloadCsv } from '$lib/shared/utils/csvExport';
@@ -63,6 +64,15 @@
 	const currentUserQuery = useCurrentUserQuery();
 	let currentUser = $derived(currentUserQuery.data);
 
+	const organizationQuery = useOrganizationQuery();
+	let organization = $derived(organizationQuery.data);
+
+	// Demo orgs are read-only for non-owners (mirrors the credentials tab)
+	let isDemoOrg = $derived(
+		billingPlans.getMetadata(organization?.plan?.type ?? null).is_demo === true
+	);
+	let isNonOwnerInDemo = $derived(isDemoOrg && currentUser?.permissions !== 'Owner');
+
 	const tagsQuery = useTagsQuery();
 	const createTagMutation = useCreateTagMutation();
 	const updateTagMutation = useUpdateTagMutation();
@@ -73,14 +83,15 @@
 	let tags = $derived(tagsQuery.data ?? []);
 	let isLoading = $derived(tagsQuery.isLoading);
 
-	let canManageNetworks = $derived(
+	let canManage = $derived(
 		!isReadOnly &&
+			!isNonOwnerInDemo &&
 			currentUser &&
 			permissions.getMetadata(currentUser.permissions).manage_org_entities
 	);
 
 	let allowBulkDelete = $derived(
-		!isReadOnly && currentUser
+		!isReadOnly && !isNonOwnerInDemo && currentUser
 			? permissions.getMetadata(currentUser.permissions).manage_org_entities
 			: false
 	);
@@ -151,7 +162,7 @@
 <div class="space-y-6">
 	<TabHeader title={common_tags()} subtitle={tags_subtitle()}>
 		<svelte:fragment slot="actions">
-			{#if canManageNetworks}
+			{#if canManage}
 				<button class="btn-primary flex items-center" onclick={handleCreateTag}>
 					<Plus class="h-5 w-5" />{common_create()}
 				</button>
@@ -165,8 +176,8 @@
 		<EmptyState
 			title={tags_noTagsYet()}
 			subtitle={tags_noTagsHelp()}
-			onClick={handleCreateTag}
-			cta={common_create()}
+			onClick={canManage ? handleCreateTag : undefined}
+			cta={canManage ? common_create() : ''}
 		/>
 	{:else}
 		<DataControls

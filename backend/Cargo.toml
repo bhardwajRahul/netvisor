@@ -1,6 +1,6 @@
 [package]
 name = "scanopy-server"
-version = "0.17.0"
+version = "0.17.1"
 edition = "2024"
 description = "Scanopy HTTP API server"
 
@@ -184,7 +184,7 @@ libc = "0.2.177"
 async-stripe = { version = "1.0.0-alpha.2", default-features = false, features = ["rustls-tls-webpki-roots"] }
 async-stripe-client-core = { version = "1.0.0-alpha.2", default-features = false }
 async-stripe-shared = { version = "1.0.0-alpha.2", default-features = false }
-async-stripe-core = { version = "1.0.0-alpha.2", default-features = false,features = ["customer", "customer_balance_transaction"] }
+async-stripe-core = { version = "1.0.0-alpha.2", default-features = false,features = ["customer", "customer_balance_transaction", "setup_intent"] }
 async-stripe-product = { version = "1.0.0-alpha.2", default-features = false,features = ["product", "price", "coupon"] }
 async-stripe-billing = { version = "1.0.0-alpha.2", default-features = false,features = ["plan", "subscription", "deserialize", "serialize", "billing_portal_session"] }
 async-stripe-checkout = { version = "1.0.0-alpha.2", default-features = false,features = ["checkout_session"] }

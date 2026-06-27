@@ -28,13 +28,18 @@ pub enum CredentialCategory {
     ContainerVirtualization,
 }
 
-/// How a credential is scoped to targets.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, ToSchema, PartialEq, Eq)]
-pub enum ScopeModel {
-    /// Network default — try on all hosts with matching open ports
-    Broadcast,
-    /// Assigned to specific hosts only
-    PerHost,
+/// Where a credential / integration applies. `Network` is a broadcast default
+/// (all hosts on a network), `Host` targets specific hosts, and `DaemonHost` is
+/// the daemon's own host (e.g. the local Docker socket, realized as a 127.0.0.1
+/// IP-override).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, ToSchema, PartialEq, Eq, Hash)]
+pub enum Target {
+    /// The daemon's own host (local). Daemon-relative.
+    DaemonHost,
+    /// Specific discovered host(s), optionally limited to specific IP addresses.
+    Host,
+    /// All hosts on a network (broadcast default).
+    Network,
 }
 
 /// A credential assigned to a host, optionally limited to specific ip_addresses.
@@ -43,6 +48,18 @@ pub struct CredentialAssignment {
     pub credential_id: Uuid,
     /// Interface IDs to limit this credential to. None = all host ip_addresses.
     #[serde(default, alias = "interface_ids")]
+    #[schema(required)]
+    pub ip_address_ids: Option<Vec<Uuid>>,
+}
+
+/// Host-keyed mirror of [`CredentialAssignment`]: a host this credential is
+/// assigned to, optionally limited to specific ip_addresses. Hydrated onto a
+/// credential from the `host_credentials` junction (PerHost scope).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, ToSchema)]
+pub struct CredentialHostAssignment {
+    pub host_id: Uuid,
+    /// IP address IDs to limit this credential to on the host. None = all host ip_addresses.
+    #[serde(default)]
     #[schema(required)]
     pub ip_address_ids: Option<Vec<Uuid>>,
 }
@@ -121,14 +138,20 @@ impl TypeMetadataProvider for CredentialTypeDiscriminants {
 
     fn description(&self) -> &'static str {
         match self {
-            Self::SnmpV1 => "SNMPv1 community string for legacy devices that only speak v1",
-            Self::SnmpV2c => "SNMPv2c community string for querying network devices",
-            Self::SnmpV3 => {
-                "SNMPv3 with authentication and privacy (AuthPriv) for hardened devices"
+            Self::SnmpV1 => {
+                "Discover a host's interfaces, system details, and CDP/LLDP neighbors using SNMPv1."
             }
-            Self::DockerProxy => "Docker API proxy credentials. TLS is optional.",
+            Self::SnmpV2c => {
+                "Discover a host's interfaces, system details, and CDP/LLDP neighbors using SNMPv2c."
+            }
+            Self::SnmpV3 => {
+                "Discover a host's interfaces, system details, and CDP/LLDP neighbors using SNMPv3."
+            }
+            Self::DockerProxy => {
+                "Discover Docker containers and the services they expose over TCP, optionally with TLS."
+            }
             Self::DockerSocket => {
-                "Local Docker socket access. Auto-managed from daemon capabilities."
+                "Discover Docker containers and the services they expose via the daemon's local socket."
             }
         }
     }
@@ -152,7 +175,10 @@ impl TypeMetadataProvider for CredentialTypeDiscriminants {
         };
         serde_json::json!({
             "fields": ct.field_definitions(),
-            "scope_models": ct.scope_models(),
+            "targets": ct.targets(),
+            "requires_config": ct.requires_config(),
+            "is_local_auto": ct.is_local_auto(),
+            "single_endpoint_per_host": ct.single_endpoint_per_host(),
             "associated_service": ServiceDefinition::name(&*service),
             "has_logo": service.has_logo(),
             "logo_ext": logo_ext,

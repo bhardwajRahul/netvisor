@@ -32,14 +32,11 @@
 		ArrowRight,
 		KeyRound
 	} from 'lucide-svelte';
-	import CredentialWizardStep from '$lib/features/daemons/components/CreateDaemonModal/steps/CredentialWizardStep.svelte';
-	import type { PendingCredential } from '$lib/features/daemons/components/CreateDaemonModal/steps/CredentialWizardStep.svelte';
+	import CredentialsStep, {
+		type PendingCredential
+	} from '$lib/features/credentials/components/CredentialsStep.svelte';
 	import type { Credential } from '$lib/features/credentials/types/base';
-	import {
-		useBulkCreateCredentialsMutation,
-		useUpdateCredentialMutation,
-		useCredentialsQuery
-	} from '$lib/features/credentials/queries';
+	import { useCredentialsQuery } from '$lib/features/credentials/queries';
 	import {
 		common_back,
 		common_cancel,
@@ -108,9 +105,9 @@
 	let activeTab = $state('details');
 	let furthestReached = $state(0);
 	let pendingCredentials = $state<PendingCredential[]>([]);
-	let credentialWizardRef = $state<ReturnType<typeof CredentialWizardStep> | undefined>();
-	const bulkCreateCredentialsMutation = useBulkCreateCredentialsMutation();
-	const updateCredentialMutation = useUpdateCredentialMutation();
+	let credentialsStep: ReturnType<typeof CredentialsStep> | undefined = $state();
+	let credentialSubStep = $state<'typeSelect' | 'wizard'>('typeSelect');
+	let credentialIds = $state<string[]>([]);
 	const allCredentialsQuery = useCredentialsQuery();
 
 	// Mutable form data that sub-components can update
@@ -132,6 +129,16 @@
 	let daemonHostId = $derived(
 		(daemon ? hosts.find((h) => h.id === daemon.host_id)?.id : null) || null
 	);
+
+	// Auto-local capability type ids the target daemon actually has. The one
+	// capability↔type coupling (a generic backend capability list would remove it):
+	// `has_docker_socket` ⇔ the DockerSocket credential type.
+	let socketCapabilityTypeIds = $derived(
+		daemon?.capabilities?.has_docker_socket ? ['DockerSocket'] : []
+	);
+	// User-chosen configurable integrations (the fixed socket card is shown checked
+	// via the step's read-only handling, not via this selection).
+	let selectedCredentialTypeIds = $state<string[]>([]);
 
 	let hasTargetsTab = $derived(
 		formData.discovery_type.type === 'Network' || formData.discovery_type.type === 'Unified'
@@ -264,6 +271,12 @@
 	}
 
 	function previousTab() {
+		// Step back within the credentials sub-flow (wizard → Integrations grid)
+		// before leaving the tab.
+		if (activeTab === 'credentials' && credentialSubStep === 'wizard') {
+			credentialsStep?.backToTypeSelect();
+			return;
+		}
 		const flow = getFlow();
 		const idx = flow.indexOf(activeTab);
 		if (idx > 0) {
@@ -282,6 +295,12 @@
 			if (furthestReached < 2) furthestReached = 2;
 			nextTab();
 		} else if (activeTab === 'credentials') {
+			// Credentials has a sub-flow: the Integrations grid → the wizard. Advance
+			// within it before moving on to the next tab.
+			if (credentialSubStep === 'typeSelect') {
+				await credentialsStep?.continueToWizard();
+				return;
+			}
 			if (furthestReached < 3) furthestReached = 3;
 			nextTab();
 		} else if (activeTab === 'detection') {
@@ -338,38 +357,14 @@
 
 			if (daemon) {
 				loading = true;
+				// Persist credentials via the shared step (validate + create/update).
+				const ids = await credentialsStep?.collectCredentialIds();
+				if (ids === null) {
+					loading = false;
+					return; // validation failed — stay on the form
+				}
 				try {
-					// Create pending credentials from the credential wizard
-					const allCredentialIds: string[] = [];
-					if (pendingCredentials.length > 0 && credentialWizardRef) {
-						const prepared = credentialWizardRef.getCredentialsForCreate();
-						if (prepared.length > 0) {
-							const toCreate = prepared.map((p) => {
-								const ips = p.targetIps.map((s) => s.trim()).filter(Boolean);
-								return {
-									...p.credential,
-									target_ips: ips.length > 0 ? ips : undefined
-								};
-							});
-							const created = await bulkCreateCredentialsMutation.mutateAsync(toCreate);
-							allCredentialIds.push(...created.map((c: { id: string }) => c.id));
-						}
-						const existing = credentialWizardRef.getExistingCredentials();
-						for (const ec of existing) {
-							const ips = ec.targetIps.map((s) => s.trim()).filter(Boolean);
-							if (ips.length > 0) {
-								const cred = allCredentialsQuery.data?.find((c) => c.id === ec.credentialId);
-								if (cred) {
-									await updateCredentialMutation.mutateAsync({
-										...cred,
-										target_ips: ips
-									});
-								}
-							}
-						}
-						allCredentialIds.push(...existing.map((e) => e.credentialId));
-					}
-					formData.pending_credential_ids = allCredentialIds;
+					formData.pending_credential_ids = ids ?? [];
 					if (isEditing && discovery) {
 						await onUpdate(discovery.id, formData);
 					} else {
@@ -392,6 +387,7 @@
 		furthestReached = discovery ? Infinity : 0;
 		formData = getDefaultFormData();
 		pendingCredentials = [];
+		credentialIds = [];
 		if (discovery?.pending_credential_ids?.length && allCredentialsQuery.data) {
 			const credMap = new Map(allCredentialsQuery.data.map((c) => [c.id, c]));
 			pendingCredentials = discovery.pending_credential_ids
@@ -404,6 +400,13 @@
 					isExisting: true
 				}));
 		}
+		// Show the Integrations grid only as a first-run aid (no credentials exist
+		// yet); otherwise — existing assignments on this session, or the org already
+		// has credentials — open straight on the wizard. Mirrors the daemon modal.
+		credentialSubStep =
+			pendingCredentials.length > 0 || (allCredentialsQuery.data?.length ?? 0) > 0
+				? 'wizard'
+				: 'typeSelect';
 
 		// Parse schedule fields from cron
 		let scheduleDaysOfWeek = '0';
@@ -568,13 +571,16 @@
 			{/if}
 			{#if hasCredentialsTab}
 				<div class="flex min-h-0 flex-1 flex-col" class:hidden={activeTab !== 'credentials'}>
-					<CredentialWizardStep
-						bind:this={credentialWizardRef}
-						daemonName={daemon?.name ?? 'scanopy-daemon'}
+					<CredentialsStep
+						bind:this={credentialsStep}
 						networkId={formData.network_id}
-						bind:pendingCredentials
 						description={discovery_credentialsDescription()}
-						daemonHasDockerSocket={daemon?.capabilities?.has_docker_socket ?? false}
+						bind:pendingCredentials
+						bind:credentialIds
+						bind:subStep={credentialSubStep}
+						bind:selectedTypeIds={selectedCredentialTypeIds}
+						localAutoMode="fixed"
+						fixedCapabilityTypeIds={socketCapabilityTypeIds}
 					/>
 				</div>
 			{/if}

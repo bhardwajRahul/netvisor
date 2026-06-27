@@ -12,13 +12,11 @@
 	import AnimatedProgressBar from '$lib/features/discovery/components/cards/AnimatedProgressBar.svelte';
 	import ProgressTrack from '$lib/shared/components/data/ProgressTrack.svelte';
 	import OsSelector from '../../OsSelector.svelte';
-	import { Loader2, CheckCircle2, AlertTriangle, SlidersHorizontal, KeyRound } from 'lucide-svelte';
+	import { Loader2, CheckCircle2, AlertTriangle, SlidersHorizontal } from 'lucide-svelte';
 	import type { DaemonConnectionStatus } from '../../../stores/daemon-setup';
 	import { tooltip } from '$lib/shared/actions/tooltip';
 	import {
 		common_advanced,
-		daemons_credentialWizardButton,
-		daemons_credentialWizardTooltip,
 		daemons_advancedTooltip,
 		daemons_docsMacvlan,
 		daemons_docsMacvlanLinkText,
@@ -60,7 +58,6 @@
 		onViewDiscovery?: () => void;
 		hasEmailSupport?: boolean;
 		onAdvanced?: (() => void) | null;
-		onCredentialWizard?: (() => void) | null;
 		daemonMode?: string;
 		daemonName?: string;
 		logFilePath?: string;
@@ -86,7 +83,6 @@
 		onViewDiscovery,
 		hasEmailSupport = false,
 		onAdvanced = null,
-		onCredentialWizard = null,
 		daemonMode = 'daemon_poll',
 		daemonName = 'scanopy-daemon',
 		logFilePath = '',
@@ -358,18 +354,6 @@
 				{/snippet}
 				{#snippet afterButtons()}
 					<div class="flex items-center gap-2">
-						{#if onCredentialWizard}
-							<button
-								type="button"
-								class="btn-secondary h-10 shrink-0 text-sm"
-								data-tooltip={daemons_credentialWizardTooltip()}
-								use:tooltip
-								onclick={onCredentialWizard}
-							>
-								<KeyRound class="h-4 w-4" />
-								<span class="hidden sm:inline">{daemons_credentialWizardButton()}</span>
-							</button>
-						{/if}
 						{#if onAdvanced}
 							<button
 								type="button"

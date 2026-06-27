@@ -33,6 +33,8 @@ pub enum ErrorCode {
     ValidationEmpty { field: String },
     /// Email address format is invalid
     ValidationInvalidEmail,
+    /// Email domain cannot receive mail (no MX/A/AAAA DNS records)
+    ValidationEmailDomainUndeliverable,
     /// IP address format is invalid
     ValidationInvalidIp,
     /// Field value is too short
@@ -217,6 +219,9 @@ impl ErrorCode {
             Self::ValidationRequired { .. } => "Field '{field}' is required",
             Self::ValidationEmpty { .. } => "Field '{field}' cannot be empty",
             Self::ValidationInvalidEmail => "Invalid email address",
+            Self::ValidationEmailDomainUndeliverable => {
+                "This email domain can't receive mail. Please use a valid email address."
+            }
             Self::ValidationInvalidIp => "Invalid IP address format",
             Self::ValidationMinLength { .. } => "Field '{field}' must be at least {min} characters",
             Self::ValidationMaxLength { .. } => "Field '{field}' must be at most {max} characters",
@@ -347,6 +352,7 @@ impl ErrorCode {
         match self {
             // No params
             Self::ValidationInvalidEmail
+            | Self::ValidationEmailDomainUndeliverable
             | Self::ValidationInvalidIp
             | Self::ValidationBulkEmpty
             | Self::AuthInvalidCredentials

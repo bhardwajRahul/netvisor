@@ -1,0 +1,189 @@
+<script lang="ts" module>
+	export type { PendingCredential } from './CredentialWizardStep.svelte';
+</script>
+
+<script lang="ts">
+	import { tick } from 'svelte';
+	import { credentialTypes } from '$lib/shared/stores/metadata';
+	import {
+		useBulkCreateCredentialsMutation,
+		useUpdateCredentialMutation,
+		useDeleteCredentialMutation,
+		useCredentialsQuery
+	} from '$lib/features/credentials/queries';
+	import type { Credential } from '$lib/features/credentials/types/base';
+	import CredentialTypeSelectStep from './CredentialTypeSelectStep.svelte';
+	import CredentialWizardStep, {
+		type PendingCredential as PendingCredentialType
+	} from './CredentialWizardStep.svelte';
+
+	interface Props {
+		networkId?: string;
+		description?: string;
+		/** New credentials being configured (bindable so parents can seed from
+		 *  existing assignments and read back, e.g. to derive an install flag). */
+		pendingCredentials: PendingCredentialType[];
+		/** Server-side ids of credentials created/attached this session (bindable). */
+		credentialIds?: string[];
+		/** Current sub-step (bindable so parent footers can switch their buttons). */
+		subStep?: 'typeSelect' | 'wizard';
+		/** Selected integration cards (bindable, e.g. for analytics counts). */
+		selectedTypeIds?: string[];
+		/**
+		 * How auto-local capabilities (e.g. the Docker socket) behave:
+		 * - `interactive` (daemon setup): selectable + default-selected; selecting one
+		 *   seeds a wizard entry and drives the daemon install flag.
+		 * - `fixed` (editing an installed daemon): read-only, reflecting the daemon's
+		 *   actual capabilities; they don't seed wizard entries but do claim the
+		 *   daemon host for conflict prevention.
+		 */
+		localAutoMode?: 'interactive' | 'fixed';
+		/** In `fixed` mode, the auto-local type ids the target daemon actually has. */
+		fixedCapabilityTypeIds?: string[];
+	}
+
+	let {
+		networkId = '',
+		description,
+		pendingCredentials = $bindable([]),
+		credentialIds = $bindable([]),
+		subStep = $bindable('typeSelect'),
+		selectedTypeIds = $bindable([]),
+		localAutoMode = 'interactive',
+		fixedCapabilityTypeIds = []
+	}: Props = $props();
+
+	const bulkCreateCredentialsMutation = useBulkCreateCredentialsMutation();
+	const updateCredentialMutation = useUpdateCredentialMutation();
+	const deleteCredentialMutation = useDeleteCredentialMutation();
+	const credentialsQuery = useCredentialsQuery();
+
+	let credentialWizardRef: ReturnType<typeof CredentialWizardStep> | undefined = $state();
+
+	function isLocalAuto(id: string): boolean {
+		return credentialTypes.getMetadata(id)?.is_local_auto === true;
+	}
+	function localAutoTypeIds(): string[] {
+		return credentialTypes
+			.getItems()
+			.filter((t) => t.metadata?.is_local_auto)
+			.map((t) => t.id);
+	}
+
+	// Auto-local cards are read-only in `fixed` mode (an installed daemon's
+	// capabilities can't be toggled from here).
+	let lockedTypeIds = $derived(localAutoMode === 'fixed' ? localAutoTypeIds() : []);
+
+	// In `fixed` mode the daemon's existing capabilities claim their integration's
+	// daemon host, so a single-endpoint credential can't also target it.
+	let claimedDaemonHostIntegrations = $derived(
+		localAutoMode === 'fixed'
+			? fixedCapabilityTypeIds
+					.map((id) => credentialTypes.getMetadata(id)?.associated_service)
+					.filter((s): s is string => !!s)
+			: []
+	);
+
+	// Move from the Integrations grid to the wizard, seeding configurable selections.
+	// In `interactive` mode, selected local-auto ids are seeded too (they show as
+	// info entries and drive the install flag). In `fixed` mode they never enter the
+	// wizard (the daemon already has them).
+	async function continueToWizard() {
+		subStep = 'wizard';
+		await tick();
+		const seed =
+			localAutoMode === 'fixed'
+				? selectedTypeIds.filter((id) => !isLocalAuto(id))
+				: selectedTypeIds;
+		credentialWizardRef?.addTypes(seed);
+	}
+
+	function backToTypeSelect() {
+		subStep = 'typeSelect';
+	}
+
+	function handleRemoveCredential(credential: Credential) {
+		// Delete credentials created this session when removed; leave others.
+		if (credentialIds.includes(credential.id)) {
+			deleteCredentialMutation.mutate(credential.id);
+			credentialIds = credentialIds.filter((id) => id !== credential.id);
+		}
+	}
+
+	/**
+	 * Persist the wizard's credentials: update target_ips on attached existing
+	 * credentials, validate + bulk-create new ones (idempotent — already-created
+	 * ones are skipped), and return the accumulated credential ids. Returns `null`
+	 * if validation fails (caller should not advance).
+	 */
+	async function collectCredentialIds(): Promise<string[] | null> {
+		if (!credentialWizardRef) return [...credentialIds];
+
+		const existingCreds = credentialWizardRef.getExistingCredentials();
+		for (const ec of existingCreds) {
+			const ips = ec.targetIps.map((s) => s.trim()).filter(Boolean);
+			if (ips.length > 0) {
+				const cred = credentialsQuery.data?.find((c) => c.id === ec.credentialId);
+				if (cred) {
+					await updateCredentialMutation.mutateAsync({ ...cred, target_ips: ips });
+				}
+			}
+		}
+		const existingIds = existingCreds.map((c) => c.credentialId);
+
+		const unsaved = pendingCredentials.filter(
+			(p) => !p.isExisting && !credentialIds.includes(p.credential.id)
+		);
+		if (unsaved.length > 0) {
+			const isValid = await credentialWizardRef.validate();
+			if (!isValid) return null;
+			try {
+				const prepared = credentialWizardRef
+					.getCredentialsForCreate()
+					.filter((p) => !credentialIds.includes(p.credential.id));
+				const toCreate = prepared.map((p) => {
+					const ips = p.targetIps.map((s) => s.trim()).filter(Boolean);
+					return { ...p.credential, target_ips: ips.length > 0 ? ips : undefined };
+				});
+				const created = await bulkCreateCredentialsMutation.mutateAsync(toCreate);
+				credentialIds = [
+					...new Set([...credentialIds, ...created.map((c) => c.id), ...existingIds])
+				];
+			} catch {
+				return null;
+			}
+		} else if (existingIds.length > 0) {
+			credentialIds = [...new Set([...credentialIds, ...existingIds])];
+		}
+		return [...credentialIds];
+	}
+
+	// Exposed (read `credentialsStep.busy`) so a parent can disable its submit button
+	// while a create/update is in flight.
+	let busy = $derived(
+		bulkCreateCredentialsMutation.isPending || updateCredentialMutation.isPending
+	);
+
+	export { busy, continueToWizard, backToTypeSelect, collectCredentialIds };
+</script>
+
+{#if subStep === 'typeSelect'}
+	<div class="flex min-h-0 flex-1 flex-col">
+		<CredentialTypeSelectStep
+			bind:selectedTypeIds
+			{lockedTypeIds}
+			forceCheckedTypeIds={localAutoMode === 'fixed' ? fixedCapabilityTypeIds : []}
+		/>
+	</div>
+{:else}
+	<div class="flex min-h-0 flex-1 flex-col">
+		<CredentialWizardStep
+			bind:this={credentialWizardRef}
+			{networkId}
+			{description}
+			bind:pendingCredentials
+			{claimedDaemonHostIntegrations}
+			onRemoveCredential={handleRemoveCredential}
+		/>
+	</div>
+{/if}

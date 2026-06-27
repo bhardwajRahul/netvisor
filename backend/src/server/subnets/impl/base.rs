@@ -51,7 +51,11 @@ pub struct SubnetBase {
     pub subnet_type: SubnetType,
     /// Virtualization provider that owns this subnet.
     /// Docker bridge subnets use this for per-host dedup (same CIDR on different hosts = distinct).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::server::shared::types::api::deserialize_lenient_option"
+    )]
     pub virtualization: Option<SubnetVirtualization>,
     #[serde(default)]
     #[schema(required)]

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Scanopy API",
-    "description": "\nNetwork topology discovery and visualization API.\n\n## Authentication\n\nTwo authentication methods are supported:\n\n| Method | Header | Use Case |\n|--------|--------|----------|\n| User API key | `Authorization: Bearer scp_u_...` | Programmatic access, integrations |\n| Session cookie | `Cookie: session_id=...` | Web UI (via `/api/auth/login`) |\n\nUser API keys require your organization to have API access enabled. Create keys at **Platform > API Keys**.\n\n## Rate Limiting\n\nLimit: 300 requests/minute\n\nBurst: 150\n\nResponse headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`\n\nWhen rate limited, you'll receive HTTP `429 Too Many Requests` with a `Retry-After` header.\n\n## Pagination\n\nList endpoints support pagination via query parameters:\n\n| Parameter | Type | Default | Description |\n|-----------|------|---------|-------------|\n| `limit` | integer | 50 | Maximum results to return (1-1000). Use 0 for no limit. |\n| `offset` | integer | 0 | Number of results to skip |\n\nExample: `GET /api/v1/hosts?limit=10&offset=20`\n\n## Response Format\n\nAll responses use a standard envelope:\n\n```json\n{\n  \"success\": true,\n  \"data\": { ... },\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.16.2\"\n  }\n}\n```\n\n**Paginated list responses** include pagination metadata:\n\n```json\n{\n  \"success\": true,\n  \"data\": [ ... ],\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.16.2\",\n    \"pagination\": {\n      \"total_count\": 142,\n      \"limit\": 50,\n      \"offset\": 0,\n      \"has_more\": true\n    }\n  }\n}\n```\n\n| Field | Description |\n|-------|-------------|\n| `total_count` | Total items matching your query (ignoring pagination) |\n| `limit` | Applied limit (your request or default) |\n| `offset` | Applied offset |\n| `has_more` | `true` if more results exist beyond this page |\n\n**Error responses** include an `error` field instead of `data`:\n\n```json\n{\n  \"success\": false,\n  \"error\": \"Resource not found\",\n  \"meta\": { ... }\n}\n```\n\n**Common status codes:** `400` validation error, `401` unauthorized, `403` forbidden, `404` not found, `409` conflict, `429` rate limited.\n\n## Versioning\n\nEndpoints are prefixed with `/api/v1/`. The API version is an integer (`api_version: 1`) returned in every response, versioned independently from the application. Check `GET /api/version` for current versions.\n\n**While Scanopy is pre-v1.0 (current: 0.16.2)**, the API should be considered unstable. Breaking changes may be introduced in any release without incrementing the API version. We recommend pinning to a specific Scanopy release if you depend on API stability, and reviewing the [changelog](/changelog) before upgrading. After Scanopy reaches v1.0, breaking API changes will only occur with an API version increment.\n\n## Multi-Tenancy\n\nResources are scoped to your **organization** and **network(s)**:\n\n- You can only access entities within your organization\n- Network-level entities (hosts, services, etc.) are filtered to networks you have access to\n- Use `?network_id=<UUID>` to filter list endpoints to a specific network\n- API keys can be scoped to a subset of your accessible networks\n",
+    "description": "\nNetwork topology discovery and visualization API.\n\n## Authentication\n\nTwo authentication methods are supported:\n\n| Method | Header | Use Case |\n|--------|--------|----------|\n| User API key | `Authorization: Bearer scp_u_...` | Programmatic access, integrations |\n| Session cookie | `Cookie: session_id=...` | Web UI (via `/api/auth/login`) |\n\nUser API keys require your organization to have API access enabled. Create keys at **Platform > API Keys**.\n\n## Rate Limiting\n\nLimit: 300 requests/minute\n\nBurst: 150\n\nResponse headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`\n\nWhen rate limited, you'll receive HTTP `429 Too Many Requests` with a `Retry-After` header.\n\n## Pagination\n\nList endpoints support pagination via query parameters:\n\n| Parameter | Type | Default | Description |\n|-----------|------|---------|-------------|\n| `limit` | integer | 50 | Maximum results to return (1-1000). Use 0 for no limit. |\n| `offset` | integer | 0 | Number of results to skip |\n\nExample: `GET /api/v1/hosts?limit=10&offset=20`\n\n## Response Format\n\nAll responses use a standard envelope:\n\n```json\n{\n  \"success\": true,\n  \"data\": { ... },\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.17.0\"\n  }\n}\n```\n\n**Paginated list responses** include pagination metadata:\n\n```json\n{\n  \"success\": true,\n  \"data\": [ ... ],\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.17.0\",\n    \"pagination\": {\n      \"total_count\": 142,\n      \"limit\": 50,\n      \"offset\": 0,\n      \"has_more\": true\n    }\n  }\n}\n```\n\n| Field | Description |\n|-------|-------------|\n| `total_count` | Total items matching your query (ignoring pagination) |\n| `limit` | Applied limit (your request or default) |\n| `offset` | Applied offset |\n| `has_more` | `true` if more results exist beyond this page |\n\n**Error responses** include an `error` field instead of `data`:\n\n```json\n{\n  \"success\": false,\n  \"error\": \"Resource not found\",\n  \"meta\": { ... }\n}\n```\n\n**Common status codes:** `400` validation error, `401` unauthorized, `403` forbidden, `404` not found, `409` conflict, `429` rate limited.\n\n## Versioning\n\nEndpoints are prefixed with `/api/v1/`. The API version is an integer (`api_version: 1`) returned in every response, versioned independently from the application. Check `GET /api/version` for current versions.\n\n**While Scanopy is pre-v1.0 (current: 0.17.0)**, the API should be considered unstable. Breaking changes may be introduced in any release without incrementing the API version. We recommend pinning to a specific Scanopy release if you depend on API stability, and reviewing the [changelog](/changelog) before upgrading. After Scanopy reaches v1.0, breaking API changes will only occur with an API version increment.\n\n## Multi-Tenancy\n\nResources are scoped to your **organization** and **network(s)**:\n\n- You can only access entities within your organization\n- Network-level entities (hosts, services, etc.) are filtered to networks you have access to\n- Use `?network_id=<UUID>` to filter list endpoints to a specific network\n- API keys can be scoped to a subset of your accessible networks\n",
     "license": {
       "name": "Dual (AGPL3.0, Commercial License Available)"
     },
@@ -1952,8 +1952,8 @@
         "tags": [
           "Credentials"
         ],
-        "summary": "Get Credential by ID",
-        "operationId": "get_credential_by_id",
+        "summary": "Get a Credential by ID",
+        "operationId": "get_by_id_credential",
         "parameters": [
           {
             "name": "id",
@@ -10770,12 +10770,12 @@
           "server_version": {
             "type": "string",
             "description": "Server version (semver)",
-            "example": "0.16.2"
+            "example": "0.17.0"
           }
         },
         "example": {
           "api_version": 1,
-          "server_version": "0.16.2"
+          "server_version": "0.17.0"
         }
       },
       "ApiResponse": {
@@ -10891,19 +10891,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-06-21T20:42:25.865984Z",
+              "created_at": "2026-06-24T21:31:19.413278Z",
               "first_discovery_id": null,
-              "id": "42fd6df4-e52e-4ed1-afb3-c0ef1e3ddaa2",
+              "id": "cd1a823a-b218-4f54-a7bf-17ec52738b93",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-21T20:42:25.865984Z",
+              "last_seen_at": "2026-06-24T21:31:19.413278Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-21T20:42:25.865984Z",
-              "valid_from": "2026-06-21T20:42:25.865984Z",
+              "updated_at": "2026-06-24T21:31:19.413278Z",
+              "valid_from": "2026-06-24T21:31:19.413278Z",
               "valid_to": null
             }
           },
@@ -11889,19 +11889,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-06-21T20:42:25.847086Z",
+                      "created_at": "2026-06-24T21:31:19.397005Z",
                       "first_discovery_id": null,
-                      "id": "a8bff4bc-e0a3-4256-8e5a-26d10710fb36",
+                      "id": "31844f61-8a1e-4c5c-a96d-80241c98d838",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-06-21T20:42:25.847086Z",
+                      "last_seen_at": "2026-06-24T21:31:19.397005Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-06-21T20:42:25.847086Z",
-                      "valid_from": "2026-06-21T20:42:25.847086Z",
+                      "updated_at": "2026-06-24T21:31:19.397005Z",
+                      "valid_from": "2026-06-24T21:31:19.397005Z",
                       "valid_to": null
                     }
                   ],
@@ -11915,7 +11915,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Dockge",
+                  "service_definition": "NTP Server",
                   "source": {
                     "type": "Manual"
                   },
@@ -12706,6 +12706,13 @@
                 "format": "int32",
                 "description": "`SCANOPY_SNAPSHOT_RETENTION_DAYS_OVERRIDE` if set on this instance.\nFrontend uses it inside the plan-comparison view to display the\neffective retention for this deployment rather than the per-plan\nfixture default.",
                 "minimum": 0
+              },
+              "stripe_publishable_key": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Stripe publishable key, exposed so the frontend can mount Stripe\nElements (Payment Element) for in-app card collection. `None` when\nbilling isn't configured. Publishable keys are safe to expose to the\nbrowser (same as `posthog_key`)."
               }
             }
           },
@@ -12906,19 +12913,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-06-21T20:42:25.859806Z",
+                  "created_at": "2026-06-24T21:31:19.407978Z",
                   "first_discovery_id": null,
-                  "id": "aa59518d-fcec-4ad3-926d-adb8c1bcf15a",
+                  "id": "620eec69-199d-4246-be72-f84ad6ee189f",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-21T20:42:25.859806Z",
+                  "last_seen_at": "2026-06-24T21:31:19.407978Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-21T20:42:25.859806Z",
-                  "valid_from": "2026-06-21T20:42:25.859806Z",
+                  "updated_at": "2026-06-24T21:31:19.407978Z",
+                  "valid_from": "2026-06-24T21:31:19.407978Z",
                   "valid_to": null
                 }
               ],
@@ -12932,7 +12939,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Dockge",
+              "service_definition": "NTP Server",
               "source": {
                 "type": "Manual"
               },
@@ -12941,6 +12948,39 @@
               "valid_from": "2026-01-15T10:30:00Z",
               "valid_to": null,
               "virtualization": null
+            }
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ApiMeta"
+          },
+          "success": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ApiResponse_SetupIntentResponse": {
+        "type": "object",
+        "required": [
+          "success",
+          "meta"
+        ],
+        "properties": {
+          "data": {
+            "type": "object",
+            "description": "Response for creating a SetupIntent — the client secret the frontend\nPayment Element uses to collect and confirm a card in-app.",
+            "required": [
+              "client_secret"
+            ],
+            "properties": {
+              "client_secret": {
+                "type": "string"
+              }
             }
           },
           "error": {
@@ -14678,19 +14718,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-06-21T20:42:25.847535Z",
+          "created_at": "2026-06-24T21:31:19.397346Z",
           "first_discovery_id": null,
-          "id": "359ec7a0-9eb2-4205-9743-b3186f3ed000",
+          "id": "d7239602-fc20-4d14-8bdd-c837ab728a8e",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-06-21T20:42:25.847535Z",
+          "last_seen_at": "2026-06-24T21:31:19.397346Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-06-21T20:42:25.847535Z",
-          "valid_from": "2026-06-21T20:42:25.847535Z",
+          "updated_at": "2026-06-24T21:31:19.397346Z",
+          "valid_from": "2026-06-24T21:31:19.397346Z",
           "valid_to": null
         }
       },
@@ -15280,7 +15320,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Dockge",
+              "service_definition": "NTP Server",
               "tags": [],
               "virtualization": null
             }
@@ -15458,11 +15498,28 @@
           "organization_id",
           "name",
           "credential_type",
-          "tags"
+          "tags",
+          "assigned_network_ids",
+          "host_assignments"
         ],
         "properties": {
+          "assigned_network_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Networks this credential is assigned to (Broadcast scope).\nHydrated from the `network_credentials` junction table."
+          },
           "credential_type": {
             "$ref": "#/components/schemas/CredentialType"
+          },
+          "host_assignments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CredentialHostAssignment"
+            },
+            "description": "Hosts this credential is assigned to (PerHost scope), with optional IP scoping.\nHydrated from the `host_credentials` junction table."
           },
           "name": {
             "type": "string"
@@ -15487,6 +15544,31 @@
               "type": "string"
             },
             "description": "Ephemeral bootstrap IPs for pre-discovery credential resolution.\nCleared automatically when the next scan dispatches."
+          }
+        }
+      },
+      "CredentialHostAssignment": {
+        "type": "object",
+        "description": "Host-keyed mirror of [`CredentialAssignment`]: a host this credential is\nassigned to, optionally limited to specific ip_addresses. Hydrated onto a\ncredential from the `host_credentials` junction (PerHost scope).",
+        "required": [
+          "host_id",
+          "ip_address_ids"
+        ],
+        "properties": {
+          "host_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "ip_address_ids": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "IP address IDs to limit this credential to on the host. None = all host ip_addresses."
           }
         }
       },
@@ -17516,6 +17598,18 @@
         ],
         "description": "Non-secret value that can be inline content or a file path on daemon host."
       },
+      "FinalizePaymentMethodRequest": {
+        "type": "object",
+        "description": "Request to finalize a client-confirmed SetupIntent (set the collected card\nas the customer's default payment method).",
+        "required": [
+          "setup_intent_id"
+        ],
+        "properties": {
+          "setup_intent_id": {
+            "type": "string"
+          }
+        }
+      },
       "ForgotPasswordRequest": {
         "type": "object",
         "required": [
@@ -18013,19 +18107,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-06-21T20:42:25.846579Z",
+                  "created_at": "2026-06-24T21:31:19.396602Z",
                   "first_discovery_id": null,
-                  "id": "77267696-7fe9-4003-aa6f-bd9e7b16be73",
+                  "id": "9b5fb497-282d-4543-90ee-672ace1112b0",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-21T20:42:25.846579Z",
+                  "last_seen_at": "2026-06-24T21:31:19.396602Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-21T20:42:25.846579Z",
-                  "valid_from": "2026-06-21T20:42:25.846579Z",
+                  "updated_at": "2026-06-24T21:31:19.396602Z",
+                  "valid_from": "2026-06-24T21:31:19.396602Z",
                   "valid_to": null
                 }
               ],
@@ -18039,7 +18133,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Dockge",
+              "service_definition": "NTP Server",
               "source": {
                 "type": "Manual"
               },
@@ -19481,24 +19575,6 @@
         "properties": {
           "name": {
             "type": "string"
-          },
-          "snmp_community": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "SNMP community string (for V2c)"
-          },
-          "snmp_enabled": {
-            "type": "boolean",
-            "description": "Whether SNMP is enabled for this network"
-          },
-          "snmp_version": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "SNMP version (\"V2c\" or \"V3\")"
           }
         }
       },
@@ -19728,24 +19804,6 @@
           "name": {
             "type": "string",
             "description": "Network name"
-          },
-          "snmp_community": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "SNMP community string"
-          },
-          "snmp_enabled": {
-            "type": "boolean",
-            "description": "Whether SNMP is enabled"
-          },
-          "snmp_version": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "SNMP version"
           }
         }
       },
@@ -20036,7 +20094,7 @@
           "server_version": {
             "type": "string",
             "description": "Server version (semver)",
-            "example": "0.16.2"
+            "example": "0.17.0"
           }
         },
         "example": {
@@ -20047,7 +20105,7 @@
             "offset": 0,
             "total_count": 142
           },
-          "server_version": "0.16.2"
+          "server_version": "0.17.0"
         }
       },
       "PaginatedApiResponse_Credential": {
@@ -20508,19 +20566,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-06-21T20:42:25.834787Z",
+                        "created_at": "2026-06-24T21:31:19.386475Z",
                         "first_discovery_id": null,
-                        "id": "58bcaa48-9060-47a0-bf7b-368fa83f51ed",
+                        "id": "5d695a7c-fef7-42b4-950d-10c16e783af4",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-06-21T20:42:25.834787Z",
+                        "last_seen_at": "2026-06-24T21:31:19.386475Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-06-21T20:42:25.834787Z",
-                        "valid_from": "2026-06-21T20:42:25.834787Z",
+                        "updated_at": "2026-06-24T21:31:19.386475Z",
+                        "valid_from": "2026-06-24T21:31:19.386475Z",
                         "valid_to": null
                       }
                     ],
@@ -20534,7 +20592,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Dockge",
+                    "service_definition": "NTP Server",
                     "source": {
                       "type": "Manual"
                     },
@@ -20655,19 +20713,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-06-21T20:42:25.858602Z",
+                    "created_at": "2026-06-24T21:31:19.406915Z",
                     "first_discovery_id": null,
-                    "id": "df157949-0538-4a65-b1c9-27b71f8b46dd",
+                    "id": "eb1c4ca0-74b4-471d-bf61-26681ca4700f",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-06-21T20:42:25.858602Z",
+                    "last_seen_at": "2026-06-24T21:31:19.406915Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-06-21T20:42:25.858602Z",
-                    "valid_from": "2026-06-21T20:42:25.858602Z",
+                    "updated_at": "2026-06-24T21:31:19.406915Z",
+                    "valid_from": "2026-06-24T21:31:19.406915Z",
                     "valid_to": null
                   }
                 ],
@@ -20681,7 +20739,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Dockge",
+                "service_definition": "NTP Server",
                 "source": {
                   "type": "Manual"
                 },
@@ -21784,6 +21842,13 @@
             "format": "int32",
             "description": "`SCANOPY_SNAPSHOT_RETENTION_DAYS_OVERRIDE` if set on this instance.\nFrontend uses it inside the plan-comparison view to display the\neffective retention for this deployment rather than the per-plan\nfixture default.",
             "minimum": 0
+          },
+          "stripe_publishable_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Stripe publishable key, exposed so the frontend can mount Stripe\nElements (Payment Element) for in-app card collection. `None` when\nbilling isn't configured. Publishable keys are safe to expose to the\nbrowser (same as `posthog_key`)."
           }
         }
       },
@@ -22312,19 +22377,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-06-21T20:42:25.847443Z",
+              "created_at": "2026-06-24T21:31:19.397270Z",
               "first_discovery_id": null,
-              "id": "7b36c496-af11-42ff-ab0a-4784dfe2104e",
+              "id": "d547fe6c-00b8-42d8-b842-8f07eec7d9f6",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-21T20:42:25.847443Z",
+              "last_seen_at": "2026-06-24T21:31:19.397270Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-21T20:42:25.847443Z",
-              "valid_from": "2026-06-21T20:42:25.847443Z",
+              "updated_at": "2026-06-24T21:31:19.397270Z",
+              "valid_from": "2026-06-24T21:31:19.397270Z",
               "valid_to": null
             }
           ],
@@ -22338,7 +22403,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Dockge",
+          "service_definition": "NTP Server",
           "source": {
             "type": "Manual"
           },
@@ -22594,13 +22659,14 @@
           }
         }
       },
-      "SetupPaymentMethodRequest": {
+      "SetupIntentResponse": {
         "type": "object",
+        "description": "Response for creating a SetupIntent — the client secret the frontend\nPayment Element uses to collect and confirm a card in-app.",
         "required": [
-          "url"
+          "client_secret"
         ],
         "properties": {
-          "url": {
+          "client_secret": {
             "type": "string"
           }
         }
@@ -23383,28 +23449,39 @@
       },
       "TopologyLocalOptions": {
         "type": "object",
-        "required": [
-          "no_fade_edges",
-          "hide_edge_types"
-        ],
         "properties": {
           "bundle_edges": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true
           },
           "hide_edge_types": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/EdgeTypeDiscriminants"
-            }
+            },
+            "default": [
+              "Hypervisor"
+            ]
           },
           "no_fade_edges": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false
           },
           "show_minimap": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true
           },
           "tag_filter": {
-            "$ref": "#/components/schemas/TopologyTagFilter"
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TopologyTagFilter"
+              }
+            ],
+            "default": {
+              "hidden_host_tag_ids": [],
+              "hidden_service_tag_ids": [],
+              "hidden_subnet_tag_ids": []
+            }
           }
         }
       },
@@ -23428,6 +23505,40 @@
         "properties": {
           "container_rules": {
             "type": "object",
+            "default": {
+              "Application": [
+                {
+                  "id": "accb4571-8040-4416-95a4-170893dd14c2",
+                  "rule": {
+                    "ByApplication": {
+                      "tag_ids": []
+                    }
+                  }
+                }
+              ],
+              "L2Physical": [
+                {
+                  "id": "3ca1eeb6-3be5-456d-a08d-6a28ed46ed36",
+                  "rule": "ByHost"
+                }
+              ],
+              "L3Logical": [
+                {
+                  "id": "fbbbbace-fbd3-42db-9400-64066efee762",
+                  "rule": "BySubnet"
+                },
+                {
+                  "id": "22092b97-7fc0-4a77-b677-415dab9d1cf8",
+                  "rule": "MergeDockerBridges"
+                }
+              ],
+              "Workloads": [
+                {
+                  "id": "3ca1eeb6-3be5-456d-a08d-6a28ed46ed36",
+                  "rule": "ByHost"
+                }
+              ]
+            },
             "additionalProperties": {
               "type": "array",
               "items": {
@@ -23449,11 +23560,65 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/IdentifiedRule_ElementRule"
-            }
+            },
+            "default": [
+              {
+                "id": "8fff7251-1cef-4e78-8482-f09b01c5a8ad",
+                "rule": "ByTrunkPort"
+              },
+              {
+                "id": "add0ea45-1fdc-4baf-9982-085b5b2213f3",
+                "rule": "ByVLAN"
+              },
+              {
+                "id": "2013eb9b-1431-46d2-acd8-747552ffa3ce",
+                "rule": "ByPortOpStatus"
+              },
+              {
+                "id": "e4d4fd85-11fd-4a8a-ade3-dca73b5196a2",
+                "rule": {
+                  "ByServiceCategory": {
+                    "categories": [
+                      "NetworkCore",
+                      "NetworkAccess",
+                      "RemoteAccess",
+                      "Workstation",
+                      "Mobile",
+                      "Printer",
+                      "OpenPorts"
+                    ],
+                    "is_infra_rule": true,
+                    "title": "Infrastructure"
+                  }
+                }
+              },
+              {
+                "id": "a86cd791-3884-40a1-a0a4-df2e363511c4",
+                "rule": {
+                  "ByTag": {
+                    "tag_ids": [],
+                    "title": null
+                  }
+                }
+              },
+              {
+                "id": "7223103c-5554-4e8f-b17a-5d074d2d86eb",
+                "rule": "ByHypervisor"
+              },
+              {
+                "id": "21eb37dd-680f-4bb1-a313-569b85067d46",
+                "rule": "ByContainerRuntime"
+              },
+              {
+                "id": "ff463e8f-6a20-4879-9409-78ca609a05d0",
+                "rule": "ByStack"
+              }
+            ]
           },
           "hide_entities": {
             "type": "object",
             "description": "Entity types hidden per view. Keyed by TopologyView, values are entity\ntypes (matching those declared as container/element/inline in the\nview's element_config). Hides every manifestation of the entity in\nthat view — element nodes, container nodes, and inline rows on\nelement cards. Supersedes the old `hide_ports` (L3-only, inline-only).",
+            "default": {},
             "additionalProperties": {
               "type": "array",
               "items": {
@@ -23474,6 +23639,36 @@
           "hide_metadata_values": {
             "type": "object",
             "description": "Generic per-(view, entity, filter) hide-set for metadata filters\n(Category, Virtualization, etc). Supersedes the old\n`hide_service_categories`; nested so JSON keys are strings all the\nway down.",
+            "default": {
+              "Application": {
+                "Service": {
+                  "Category": [
+                    "OpenPorts"
+                  ]
+                }
+              },
+              "L2Physical": {
+                "Service": {
+                  "Category": [
+                    "OpenPorts"
+                  ]
+                }
+              },
+              "L3Logical": {
+                "Service": {
+                  "Category": [
+                    "OpenPorts"
+                  ]
+                }
+              },
+              "Workloads": {
+                "Service": {
+                  "Category": [
+                    "OpenPorts"
+                  ]
+                }
+              }
+            },
             "additionalProperties": {
               "type": "object",
               "additionalProperties": {

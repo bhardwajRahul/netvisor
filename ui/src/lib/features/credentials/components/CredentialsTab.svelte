@@ -197,17 +197,17 @@
 				getValue: (item: Credential) => credentialTypes.getName(getCredentialTypeId(item))
 			},
 			{
-				key: 'scope_model',
+				key: 'target',
 				label: common_scope(),
 				type: 'array',
 				filterable: true,
 				groupable: true,
 				filterMode: 'include',
-				filterOptions: ['Broadcast', 'PerHost'],
+				filterOptions: ['Network', 'Host', 'DaemonHost'],
 				getValue: (item: Credential) => {
 					const typeId = getCredentialTypeId(item);
 					const meta = credentialTypes.getMetadata(typeId);
-					return meta?.scope_models ?? [];
+					return meta?.targets ?? [];
 				}
 			}
 		]
@@ -231,8 +231,8 @@
 		<EmptyState
 			title="No credentials yet"
 			subtitle="Create credentials to authenticate with network devices and services."
-			onClick={handleCreateCredential}
-			cta={common_create()}
+			onClick={canManage ? handleCreateCredential : undefined}
+			cta={canManage ? common_create() : ''}
 		/>
 	{:else}
 		<DataControls

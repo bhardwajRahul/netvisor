@@ -10,6 +10,7 @@
 		ipAddressFormat
 	} from '$lib/shared/components/forms/validators';
 	import SegmentedControl from '$lib/shared/components/forms/SegmentedControl.svelte';
+	import { tooltip } from '$lib/shared/actions/tooltip';
 	import InfoCard from '$lib/shared/components/data/InfoCard.svelte';
 	import RichSelect from '$lib/shared/components/forms/selection/RichSelect.svelte';
 	import { CredentialTypeDisplay } from '$lib/shared/components/forms/selection/display/CredentialTypeDisplay.svelte';
@@ -33,13 +34,14 @@
 		credentials_docsSnmpLinkText,
 		credentials_docsDockerProxy,
 		credentials_docsDockerProxyLinkText,
-		daemons_credentialWizardTargetIp,
 		daemons_credentialWizardTargetIpHelp,
-		daemons_credentialWizardAddTarget,
-		daemons_credentialWizardTargetDaemonHost,
-		daemons_credentialWizardDaemonHostHelp,
-		common_ipAddress,
-		common_target
+		daemons_credentialWizardAddRemoteHostTarget,
+		daemons_credentialWizardAddDaemonHostTarget,
+		daemons_credentialWizardDaemonHostUnavailable,
+		daemons_credentialWizardDaemonHostTargetLabel,
+		daemons_credentialWizardTargetSpecificHosts,
+		daemons_credentialWizardTargetAllHosts,
+		daemons_credentialWizardBroadcastHelp
 	} from '$lib/paraglide/messages';
 
 	interface Props {
@@ -51,7 +53,16 @@
 		compact?: boolean;
 		hideFields?: boolean;
 		fieldPrefix?: string;
-		onChange?: (data: { targetIps?: string[]; fieldValues?: Record<string, string> }) => void;
+		/** Disable the "Add daemon host" target when the daemon host is already
+		 *  claimed by another single-endpoint credential of the same integration. */
+		daemonHostUnavailable?: boolean;
+		onChange?: (data: {
+			targetIps?: string[];
+			fieldValues?: Record<string, string>;
+			scope?: 'broadcast' | 'per_host';
+			name?: string;
+		}) => void;
+		onTypeChange?: (typeId: string) => void;
 	}
 
 	let {
@@ -62,7 +73,9 @@
 		compact = false,
 		hideFields = false,
 		fieldPrefix = '',
-		onChange
+		daemonHostUnavailable = false,
+		onChange,
+		onTypeChange
 	}: Props = $props();
 
 	const organizationQuery = useOrganizationQuery();
@@ -73,11 +86,38 @@
 	// Selected credential type ID for dynamic form rendering
 	let selectedTypeId = $state<string>('SnmpV2c');
 
+	// Notify the parent when the selected type changes (drives the assignments surface)
+	$effect(() => {
+		onTypeChange?.(selectedTypeId);
+	});
+
 	// Dynamic field values keyed by field ID
 	let fieldValues = $state<Record<string, string>>({});
 
-	// Target mode: 'ip' for manual IP entry, 'daemon_host' for localhost
-	let targetMode = $state<'ip' | 'daemon_host'>('ip');
+	// Where the credential applies: 'per_host' (Hosts — the daemon's own host
+	// and/or remote hosts by IP) or 'broadcast' (Networks — all hosts on the
+	// network). The available modes and per-host buttons are gated by `targets()`.
+	let targetMode = $state<'per_host' | 'broadcast'>('per_host');
+
+	const DAEMON_HOST_IP = '127.0.0.1';
+	function isDaemonHostValue(value: string): boolean {
+		return value === '127.0.0.1' || value === '::1';
+	}
+
+	// Which targets the selected type supports (from metadata).
+	let supportedTargets = $derived(
+		(credentialTypes.getMetadata(selectedTypeId)?.targets ?? []) as string[]
+	);
+	let supportsNetworks = $derived(supportedTargets.includes('Network'));
+	let supportsDaemonHost = $derived(supportedTargets.includes('DaemonHost'));
+	let supportsRemoteHosts = $derived(supportedTargets.includes('Host'));
+	let supportsHosts = $derived(supportsDaemonHost || supportsRemoteHosts);
+	// Integration (associated service) name — used in the daemon-host-taken message.
+	let integrationName = $derived(
+		credentialTypes.getMetadata(selectedTypeId)?.associated_service ?? ''
+	);
+	// Show the Hosts | Networks toggle only when both modes are available.
+	let showTargetModeToggle = $derived(supportsHosts && supportsNetworks);
 
 	// Get field definitions for the currently selected type
 	let currentFields: FieldDefinition[] = $derived.by(() => {
@@ -118,6 +158,7 @@
 
 	// Track target IPs as local $state for reactivity (TanStack Form doesn't drive Svelte 5 reactivity)
 	let targetIpValues = $state<string[]>(['']);
+	let hasDaemonHostTarget = $derived(targetIpValues.some(isDaemonHostValue));
 
 	// --- Secret/file field mode tracking ---
 	let secretFieldModes = $state<Record<string, 'inline' | 'filepath'>>({});
@@ -200,7 +241,7 @@
 		secretFieldModes = {};
 		fileFieldModes = {};
 		secretFieldVisible = {};
-		targetMode = 'ip';
+		targetMode = 'per_host';
 
 		if (credential) {
 			selectedTypeId = credential.credential_type.type;
@@ -239,18 +280,31 @@
 		// Only read from form if this credential's prefix has an explicitly set value
 		// (not inherited from another credential in the shared form).
 		if (compact) {
-			targetIpValues = [''];
-			targetMode = 'ip';
+			targetIpValues = [];
 			const formTargetIps = form.getFieldValue?.(`${fieldPrefix}targetIps`) as string[] | undefined;
-			if (
-				formTargetIps &&
+			const hasExplicitIps =
+				!!formTargetIps &&
 				formTargetIps.length > 0 &&
-				formTargetIps.some((ip: string) => ip !== '')
-			) {
+				formTargetIps.some((ip: string) => ip !== '');
+			// Targets the type supports — computed inline (not via the derived) to
+			// avoid init-time staleness.
+			const supported = (credentialTypes.getMetadata(selectedTypeId)?.targets ?? []) as string[];
+			const canNetwork = supported.includes('Network');
+			if (hasExplicitIps) {
 				targetIpValues = [...formTargetIps];
-				const firstIp = formTargetIps[0];
-				if (firstIp === '127.0.0.1' || firstIp === '::1') {
-					targetMode = 'daemon_host';
+				targetMode = 'per_host';
+			} else {
+				// Network-capable types (e.g. SNMP) default to Networks (broadcast),
+				// matching the wizard's handleAddCredential; host-only types to Hosts.
+				targetMode = canNetwork ? 'broadcast' : 'per_host';
+				// When the daemon host is the only per-host target, preselect it (the
+				// disabled 127.0.0.1 row) so there's nothing for the user to add.
+				if (
+					targetMode === 'per_host' &&
+					supported.includes('DaemonHost') &&
+					!supported.includes('Host')
+				) {
+					targetIpValues = [DAEMON_HOST_IP];
 				}
 			}
 		}
@@ -434,17 +488,54 @@
 		onChange?.({ fieldValues: { ...fieldValues } });
 	}
 
-	function handleTargetModeChange(mode: 'ip' | 'daemon_host') {
+	function syncTargets() {
+		const next = [...targetIpValues];
+		form.setFieldValue?.(`${fieldPrefix}targetIps`, next);
+		onChange?.({ targetIps: next, scope: 'per_host' });
+	}
+
+	function handleTargetModeChange(mode: 'per_host' | 'broadcast') {
 		targetMode = mode;
-		if (mode === 'daemon_host') {
-			targetIpValues = ['127.0.0.1'];
-			form.setFieldValue?.(`${fieldPrefix}targetIps`, ['127.0.0.1']);
-			onChange?.({ targetIps: ['127.0.0.1'] });
+		if (mode === 'broadcast') {
+			targetIpValues = [];
+			form.setFieldValue?.(`${fieldPrefix}targetIps`, []);
+			onChange?.({ targetIps: [], scope: 'broadcast' });
 		} else {
-			targetIpValues = [''];
-			form.setFieldValue?.(`${fieldPrefix}targetIps`, ['']);
-			onChange?.({ targetIps: [''] });
+			// Hosts: leave the target list as-is (empty until the user adds one)
+			syncTargets();
 		}
+	}
+
+	/**
+	 * Validate the target selection (compact wizard). "Target Specific Hosts"
+	 * requires at least one host (a remote IP or the daemon-host row). Broadcast is
+	 * always valid. The caller surfaces failures via a toast on advance.
+	 */
+	export function validateTarget(): boolean {
+		if (!compact || targetMode === 'broadcast') return true;
+		return targetIpValues.some((ip) => ip.trim() !== '');
+	}
+
+	// Target-IP field validator. Empty rows are valid at the field level — they're
+	// dropped on save, and the "at least one target" rule is enforced by
+	// `validateTarget()`. This avoids a stale empty row (e.g. added then removed)
+	// failing field validation. Only the IP format of non-empty rows is checked.
+	// Broadcast credentials always pass (stale targetIps fields left after toggling
+	// Hosts -> Networks can't block submission). Reads the live, reactive `targetMode`.
+	function validateTargetIp(value: string): string | undefined {
+		if (targetMode === 'broadcast' || !value.trim()) return undefined;
+		return ipAddressFormat(value);
+	}
+
+	function handleAddIpTarget() {
+		targetIpValues = [...targetIpValues, ''];
+		syncTargets();
+	}
+
+	function handleAddDaemonHostTarget() {
+		if (hasDaemonHostTarget) return;
+		targetIpValues = [...targetIpValues, DAEMON_HOST_IP];
+		syncTargets();
 	}
 
 	function handleFieldValueChange(fieldId: string, value: string) {
@@ -460,17 +551,9 @@
 		onChange?.({ targetIps: formValues });
 	}
 
-	function handleAddTarget() {
-		targetIpValues = [...targetIpValues, ''];
-		form.setFieldValue?.(`${fieldPrefix}targetIps`, [...targetIpValues]);
-		onChange?.({ targetIps: [...targetIpValues] });
-	}
-
 	function handleRemoveTarget(index: number) {
-		if (targetIpValues.length <= 1) return;
 		targetIpValues = targetIpValues.filter((_, i) => i !== index);
-		form.setFieldValue?.(`${fieldPrefix}targetIps`, [...targetIpValues]);
-		onChange?.({ targetIps: [...targetIpValues] });
+		syncTargets();
 	}
 
 	// Build validators for a credential field based on its definition
@@ -512,75 +595,113 @@
 
 {#if compact}
 	<div class="space-y-4">
-		<!-- Target mode selector (compact mode only) -->
-		<div class="space-y-2">
-			<!-- svelte-ignore a11y_label_has_associated_control -->
-			<label class="text-secondary block text-sm font-medium">{common_target()}</label>
+		<!-- Target mode selector — only when the type supports both modes -->
+		{#if showTargetModeToggle}
 			<SegmentedControl
 				options={[
-					{ value: 'ip', label: common_ipAddress() },
-					{ value: 'daemon_host', label: daemons_credentialWizardTargetDaemonHost() }
+					{ value: 'per_host', label: daemons_credentialWizardTargetSpecificHosts() },
+					{ value: 'broadcast', label: daemons_credentialWizardTargetAllHosts() }
 				]}
 				selected={targetMode}
-				onchange={(v) => handleTargetModeChange(v as 'ip' | 'daemon_host')}
+				onchange={(v) => handleTargetModeChange(v as 'per_host' | 'broadcast')}
 				size="sm"
 			/>
-		</div>
+		{/if}
 
-		{#if targetMode === 'ip'}
-			<!-- eslint-disable-next-line @typescript-eslint/no-unused-vars -->
-			{#each targetIpValues as _ip, i (i)}
+		{#if targetMode === 'broadcast'}
+			<p class="text-muted text-xs">{daemons_credentialWizardBroadcastHelp()}</p>
+		{:else}
+			{#each targetIpValues as ip, i (i)}
 				<div class="flex items-center gap-2">
-					<div class="min-w-0 flex-1">
-						<form.Field
-							name={targetIpFieldName(i)}
-							validators={{
-								onBlur: ({ value }: { value: string }) => required(value) || ipAddressFormat(value),
-								onChange: ({ value }: { value: string }) =>
-									required(value) || ipAddressFormat(value),
-								onSubmit: ({ value }: { value: string }) =>
-									required(value) || ipAddressFormat(value)
-							}}
-							listeners={{
-								onChange: ({ value }: { value: string }) => handleTargetIpChange(i, value)
-							}}
-						>
-							{#snippet children(field: AnyFieldApi)}
-								<TextInput
-									label={i === 0 ? daemons_credentialWizardTargetIp() : ''}
-									id="target-ip-{fieldPrefix}{i}"
-									placeholder="e.g. 192.168.1.1"
-									helpText={i === 0 ? daemons_credentialWizardTargetIpHelp() : ''}
-									required={true}
-									{field}
-								/>
-							{/snippet}
-						</form.Field>
-					</div>
-					{#if i > 0}
-						<button
-							type="button"
-							class="text-muted hover:text-primary {i === 0
-								? 'mt-7'
-								: ''} shrink-0 p-1 text-lg leading-none"
-							onclick={() => handleRemoveTarget(i)}>&times;</button
-						>
+					{#if isDaemonHostValue(ip)}
+						<input
+							type="text"
+							class="input-field min-w-0 flex-1"
+							value={daemons_credentialWizardDaemonHostTargetLabel()}
+							disabled
+						/>
+					{:else}
+						<div class="min-w-0 flex-1">
+							<form.Field
+								name={targetIpFieldName(i)}
+								validators={{
+									onBlur: ({ value }: { value: string }) => validateTargetIp(value),
+									onChange: ({ value }: { value: string }) => validateTargetIp(value),
+									onSubmit: ({ value }: { value: string }) => validateTargetIp(value)
+								}}
+								listeners={{
+									onChange: ({ value }: { value: string }) => handleTargetIpChange(i, value)
+								}}
+							>
+								{#snippet children(field: AnyFieldApi)}
+									<TextInput
+										label=""
+										id="target-ip-{fieldPrefix}{i}"
+										placeholder="e.g. 192.168.1.1"
+										{field}
+									/>
+								{/snippet}
+							</form.Field>
+						</div>
 					{/if}
+					<button
+						type="button"
+						class="text-muted hover:text-primary shrink-0 p-1 text-lg leading-none"
+						onclick={() => handleRemoveTarget(i)}>&times;</button
+					>
 				</div>
 			{/each}
-			<button type="button" class="text-link text-sm" onclick={handleAddTarget}
-				>+ {daemons_credentialWizardAddTarget()}</button
+			<div class="flex flex-wrap items-center gap-3">
+				{#if supportsDaemonHost}
+					{#if daemonHostUnavailable && !hasDaemonHostTarget}
+						<!-- Claimed by another credential: unselectable, reason on hover -->
+						<span
+							class="inline-block"
+							data-tooltip={daemons_credentialWizardDaemonHostUnavailable({
+								integration: integrationName
+							})}
+							use:tooltip
+						>
+							<button
+								type="button"
+								class="text-muted cursor-not-allowed text-sm opacity-40"
+								disabled>+ {daemons_credentialWizardAddDaemonHostTarget()}</button
+							>
+						</span>
+					{:else if hasDaemonHostTarget}
+						<!-- Already added: disabled, no hover state -->
+						<button type="button" class="text-muted cursor-not-allowed text-sm opacity-40" disabled
+							>+ {daemons_credentialWizardAddDaemonHostTarget()}</button
+						>
+					{:else}
+						<button type="button" class="text-link text-sm" onclick={handleAddDaemonHostTarget}
+							>+ {daemons_credentialWizardAddDaemonHostTarget()}</button
+						>
+					{/if}
+				{/if}
+				{#if supportsRemoteHosts}
+					<button type="button" class="text-link text-sm" onclick={handleAddIpTarget}
+						>+ {daemons_credentialWizardAddRemoteHostTarget()}</button
+					>
+				{/if}
+			</div>
+			<p class="text-muted text-xs">{daemons_credentialWizardTargetIpHelp()}</p>
+		{/if}
+
+		<!-- Name (between targeting and fields, like the full editor) -->
+		{#if !hideFields}
+			<form.Field
+				name={nameFieldName}
+				validators={{
+					onBlur: ({ value }: { value: string }) => required(value) || max(100)(value),
+					onSubmit: ({ value }: { value: string }) => required(value) || max(100)(value)
+				}}
+				listeners={{ onChange: ({ value }: { value: string }) => onChange?.({ name: value }) }}
 			>
-		{:else}
-			<p class="text-muted text-xs">{daemons_credentialWizardDaemonHostHelp()}</p>
-			<button
-				type="button"
-				class="text-link text-sm"
-				onclick={() => {
-					targetMode = 'ip';
-					handleAddTarget();
-				}}>+ {daemons_credentialWizardAddTarget()}</button
-			>
+				{#snippet children(field: AnyFieldApi)}
+					<TextInput label={common_name()} id="credential-name-{fieldPrefix}" {field} required />
+				{/snippet}
+			</form.Field>
 		{/if}
 
 		<!-- Credential fields -->

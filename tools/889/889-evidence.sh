@@ -38,7 +38,8 @@
 set -eu
 
 SCRIPT_DIR=$(unset CDPATH; cd -- "$(dirname -- "$0")" && pwd)
-REPO_ROOT=$(unset CDPATH; cd -- "$SCRIPT_DIR/.." && pwd)
+# The repo root is two levels up: this script lives at tools/889/.
+REPO_ROOT=$(unset CDPATH; cd -- "$SCRIPT_DIR/../.." && pwd)
 CHECK="$SCRIPT_DIR/check-889.sh"
 VENDORS="$SCRIPT_DIR/889-vendors.txt"
 ALLOW="$SCRIPT_DIR/889-allow.txt"

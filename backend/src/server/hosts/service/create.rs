@@ -861,15 +861,22 @@ impl HostService {
         // Create interfaces with correct host_id
         // Uses create_or_update_from_discovery for tiered dedup on
         // (host_id, if_name) → (host_id, if_index) → (host_id, mac_address).
+        //
+        // `claimed` tracks rows already matched/created in this batch so two
+        // incoming ifTable entries can't collapse onto one existing row — e.g. an
+        // L2 switch whose IP-less ports all share the chassis MAC and lack ifName
+        // would otherwise all tier-3 onto the management interface (issue #614).
         let mut created_interfaces = Vec::new();
+        let mut claimed: HashSet<Uuid> = HashSet::new();
         for mut entry in interfaces {
             entry.base.host_id = created_host.id;
             entry.base.network_id = created_host.base.network_id;
 
             let created = self
                 .interface_service
-                .create_or_update_from_discovery(entry, authentication.clone())
+                .create_or_update_from_discovery(entry, &claimed, authentication.clone())
                 .await?;
+            claimed.insert(created.id);
             created_interfaces.push(created);
         }
 

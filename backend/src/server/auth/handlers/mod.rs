@@ -18,10 +18,6 @@ use crate::server::{
         oidc::{OidcRegisterResult, OidcService},
     },
     config::{AppState, DeploymentType, get_deployment_type},
-    credentials::r#impl::{
-        base::{Credential, CredentialBase},
-        types::{CredentialType, SecretValue},
-    },
     daemon_api_keys::r#impl::base::{DaemonApiKey, DaemonApiKeyBase},
     invites::handlers::process_pending_invite,
     networks::r#impl::{Network, NetworkBase},
@@ -51,7 +47,6 @@ use axum::{
 use axum_client_ip::ClientIp;
 use axum_extra::{TypedHeader, extract::Host, headers::UserAgent};
 use chrono::{DateTime, Utc};
-use secrecy::SecretString;
 use std::{net::IpAddr, sync::Arc};
 use tower_sessions::Session;
 use url::Url;

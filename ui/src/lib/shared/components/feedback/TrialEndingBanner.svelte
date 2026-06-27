@@ -2,7 +2,6 @@
 	import { AlertTriangle } from 'lucide-svelte';
 	import AppBanner from './AppBanner.svelte';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
-	import { useSetupPaymentMethodMutation } from '$lib/features/billing/queries';
 	import { startSetupPayment } from '$lib/shared/billing/setup-payment';
 	import { getTrialDaysLeft, isTrialingWithoutPayment } from '$lib/shared/utils/trial';
 	import { trackOncePerSession } from '$lib/shared/utils/analytics';
@@ -14,7 +13,6 @@
 	} from '$lib/paraglide/messages';
 
 	const organizationQuery = useOrganizationQuery();
-	const setupPaymentMutation = useSetupPaymentMethodMutation();
 
 	let org = $derived(organizationQuery.data);
 	let trialDaysLeft = $derived(getTrialDaysLeft(org));
@@ -37,13 +35,8 @@
 		}
 	});
 
-	async function handleCta() {
-		await startSetupPayment({
-			mutation: setupPaymentMutation,
-			org,
-			source: 'trial_banner',
-			trialDaysLeft
-		});
+	function handleCta() {
+		startSetupPayment({ org, source: 'trial_banner', trialDaysLeft });
 	}
 </script>
 
@@ -52,7 +45,6 @@
 		{#snippet actions()}
 			<button
 				onclick={handleCta}
-				disabled={setupPaymentMutation.isPending}
 				class="ml-2 rounded px-2 py-0.5 text-xs font-medium underline hover:no-underline disabled:opacity-50"
 			>
 				{billing_addPaymentMethod()}
