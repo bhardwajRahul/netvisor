@@ -47,7 +47,15 @@ fn default_docker_port() -> u16 {
     IntoStaticStr,
     VariantNames,
 )]
-#[strum_discriminants(derive(Display, Hash, Serialize, Deserialize, IntoStaticStr, EnumIter))]
+#[strum_discriminants(derive(
+    Display,
+    Hash,
+    Serialize,
+    Deserialize,
+    IntoStaticStr,
+    EnumIter,
+    utoipa::ToSchema
+))]
 #[serde(tag = "type")]
 pub enum CredentialType {
     /// SNMPv1 community string — for legacy devices that only speak v1.

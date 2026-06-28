@@ -287,19 +287,24 @@
 		});
 	});
 
-	// Derived commands
-	let dockerConfig = $derived({
-		credentialId: null as string | null,
-		// Local Docker/Podman socket is enabled while a matching socket entry is in
-		// the wizard list (seeded from the Integrations grid, removable in the wizard).
-		disableLocalSocket: !pendingCredentials.some(
-			(p) => p.credential.credential_type.type === 'DockerSocket'
-		),
-		disableLocalPodmanSocket: !pendingCredentials.some(
-			(p) => p.credential.credential_type.type === 'PodmanSocket'
-		)
-	});
-	let allCredentialIds = $derived([...credentialIds]);
+	// Derived commands.
+	//
+	// Build per-daemon integration-target tokens for the init command (see daemon `config.rs`
+	// grammar): credential-less local sockets become `docker-socket` / `podman-socket`; a
+	// credential with target IPs becomes `<uuid>@<ip>[+<ip>]`; a credential with no target IPs
+	// becomes a bare `<uuid>` (network-level default). Target IPs come from the wizard's per-
+	// credential input (they are no longer written to `credential.target_ips`).
+	let integrationTokens = $derived(
+		pendingCredentials.flatMap((p) => {
+			const type = p.credential.credential_type.type;
+			if (type === 'DockerSocket') return ['docker-socket'];
+			if (type === 'PodmanSocket') return ['podman-socket'];
+			// Only persisted credentials get a targeting token.
+			if (!credentialIds.includes(p.credential.id)) return [];
+			const ips = p.targetIps.map((s) => s.trim()).filter(Boolean);
+			return ips.length > 0 ? [`${p.credential.id}@${ips.join('+')}`] : [p.credential.id];
+		})
+	);
 	let runCommand = $derived(
 		buildRunCommand(
 			serverUrl,
@@ -309,8 +314,7 @@
 			null,
 			currentUserId,
 			selectedOS,
-			dockerConfig,
-			allCredentialIds
+			integrationTokens
 		)
 	);
 	let dockerCompose = $derived(
@@ -321,8 +325,7 @@
 					key,
 					formValues,
 					currentUserId,
-					dockerConfig,
-					allCredentialIds
+					integrationTokens
 				)
 			: ''
 	);

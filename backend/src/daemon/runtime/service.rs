@@ -73,17 +73,6 @@ impl DaemonRuntimeService {
     /// Check Docker availability and return a detailed description of the connection method.
     /// Returns (is_available, description) where description explains how Docker is being accessed.
     pub async fn check_docker_availability(&self) -> (bool, String) {
-        if !self
-            .config
-            .get_enable_local_docker_socket()
-            .await
-            .unwrap_or(true)
-        {
-            return (
-                false,
-                "Local Docker socket scanning disabled by configuration".to_string(),
-            );
-        }
         let docker_proxy = self.config.get_docker_proxy().await;
         let docker_proxy_ssl_info = self.config.get_docker_proxy_ssl_info().await;
 
@@ -360,15 +349,9 @@ impl DaemonRuntimeService {
     }
 
     /// Check if Docker socket is available (local socket or proxy).
+    /// Informational capability probe only — whether local sockets are actually scanned is now
+    /// driven by per-daemon integration targeting, not a daemon-config flag.
     async fn detect_docker_socket(&self) -> bool {
-        if !self
-            .config
-            .get_enable_local_docker_socket()
-            .await
-            .unwrap_or(true)
-        {
-            return false;
-        }
         let docker_proxy = self.config.get_docker_proxy().await;
         let docker_proxy_ssl_info = self.config.get_docker_proxy_ssl_info().await;
 
@@ -460,7 +443,7 @@ impl DaemonRuntimeService {
 
         let user_id = config.get_user_id().await?.unwrap_or(Uuid::nil());
 
-        let credential_ids = config.get_credential_ids().await?;
+        let integration_targets = config.get_integration_targets().await?;
 
         let registration_request = DaemonRegistrationRequest {
             daemon_id,
@@ -476,7 +459,7 @@ impl DaemonRuntimeService {
             },
             user_id,
             version: Some(version.to_string()),
-            credential_ids,
+            integration_targets,
         };
 
         tracing::info!(target: LOG_TARGET, "Registering with server:");

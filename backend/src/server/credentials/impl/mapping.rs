@@ -86,13 +86,42 @@ impl<T> CredentialMapping<T> {
 }
 
 /// A credential payload paired with its server-side ID (if host-assignable).
-/// `credential_id` is Some for host-scoped credentials (IP overrides from host assignments
-/// or target_ips). None for network-level defaults and fallbacks — those don't get auto-assigned
+/// `credential_id` is Some for host-scoped credentials (IP overrides from host assignments).
+/// None for network-level defaults and fallbacks — those don't get auto-assigned
 /// to discovered hosts because they're already available network-wide.
 #[derive(Debug, Clone)]
 pub struct ResolvedCredential<T> {
     pub credential: T,
     pub credential_id: Option<Uuid>,
+}
+
+/// Per-daemon integration targeting, stored on the `Discovery` entity and delivered via the
+/// init command at registration. Each entry says "run this integration here on this daemon."
+/// This is the single home for both credentialed and credential-less integration targeting —
+/// it replaces the global, race-prone `credential.target_ips` and the per-integration
+/// `enable_local_*_socket` daemon flags.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, ToSchema)]
+#[serde(tag = "type")]
+pub enum IntegrationTarget {
+    /// A stored credential applied to specific IP(s) on this daemon.
+    Credentialed {
+        credential_id: Uuid,
+        /// IPs this credential targets. Empty = network-level default (no IP override).
+        #[serde(default)]
+        #[schema(value_type = Vec<String>)]
+        ips: Vec<IpAddr>,
+    },
+    /// A credential-less integration that runs on the daemon host (127.0.0.1).
+    ///
+    /// Credential-less ⟺ local: credentials are how you authenticate to a *remote* party, and
+    /// local proximity replaces that, so these never need a stored credential. Every remote
+    /// integration (any `CredentialType` that hits a remote API/host) needs a credential;
+    /// remote-but-credential-less discovery (mDNS/ARP/port sweeps) isn't a `CredentialType` and
+    /// never appears here. Not named after a transport — today's members are the Docker/Podman
+    /// local sockets, but a future non-socket local integration fits too.
+    Local {
+        integration: super::types::CredentialTypeDiscriminants,
+    },
 }
 
 // ============================================================================

@@ -7,6 +7,7 @@ use uuid::Uuid;
 use validator::Validate;
 
 use crate::server::{
+    credentials::r#impl::mapping::IntegrationTarget,
     discovery::r#impl::types::{DiscoveryType, RunType},
     shared::entities::ChangeTriggersTopologyStaleness,
 };
@@ -48,10 +49,15 @@ pub struct Discovery {
     /// When true, the next scan will be a full port scan regardless of interval
     #[serde(default)]
     pub force_full_scan: bool,
-    /// Credential IDs to include in the next scan's credential_mappings.
-    /// Set by the discovery edit modal, cleared after each scan completes.
+    /// Per-daemon integration targeting: which integrations (credentialed or credential-less
+    /// local) run on this daemon, and on which IPs. Delivered via the init command at
+    /// registration and editable via the discovery modal. Persistent — re-applied every scan.
+    /// This is the single home for cred↔IP targeting; it replaces the global
+    /// `credential.target_ips` (race-prone, consumed once) and the discovery modal's old
+    /// one-shot `pending_credential_ids`.
     #[serde(default)]
-    pub pending_credential_ids: Vec<Uuid>,
+    #[schema(required)]
+    pub integration_targets: Vec<IntegrationTarget>,
 }
 
 impl Discovery {

@@ -98,6 +98,10 @@
     "VCenter",
     "ESXi"
   ],
+  "IntegrationTarget": [
+    "Credentialed",
+    "Local"
+  ],
   "LldpChassisId": [
     "ChassisComponent",
     "InterfaceAlias",

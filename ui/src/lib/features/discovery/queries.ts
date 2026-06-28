@@ -161,7 +161,8 @@ export function createEmptyDiscoveryFormData(daemon: Daemon | null): Discovery {
 		},
 		name: '',
 		daemon_id: daemon ? daemon.id : uuidv4Sentinel,
-		network_id: daemon ? daemon.network_id : uuidv4Sentinel
+		network_id: daemon ? daemon.network_id : uuidv4Sentinel,
+		integration_targets: []
 	};
 }
 

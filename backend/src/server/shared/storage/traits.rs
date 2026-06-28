@@ -2,6 +2,7 @@ use std::net::IpAddr;
 
 use crate::server::auth::middleware::auth::AuthenticatedEntity;
 use crate::server::bindings::r#impl::base::Binding;
+use crate::server::credentials::r#impl::mapping::IntegrationTarget;
 use crate::server::credentials::r#impl::types::CredentialType;
 use crate::server::dependencies::r#impl::base::Dependency;
 use crate::server::services::r#impl::base::Service;
@@ -275,6 +276,7 @@ pub enum SqlValue {
     PlanLimitNotifications(PlanLimitNotifications),
     OptionalIpAddrArray(Option<Vec<IpAddr>>),
     OptionalUuidVec(Option<Vec<Uuid>>),
+    IntegrationTargets(Vec<IntegrationTarget>),
 }
 
 // ============================================================================
@@ -438,6 +440,21 @@ impl_db_enum_contributor_via_variant_names!(
     OnboardingOperationDiscriminants,
 );
 
+// IntegrationTarget is a tagged sum with struct variants (confuses
+// strum::VariantNames). The `type` tag persists in JSONB; list it explicitly.
+// The `Local.integration` field persists a CredentialType discriminant name,
+// already tracked via CredentialType — delegate so coverage survives even if
+// the SqlValue::CredentialType variant is ever removed.
+impl DbEnumContributor for IntegrationTarget {
+    fn contribute(out: &mut std::collections::BTreeMap<&'static str, Vec<String>>) {
+        out.insert(
+            db_enum_key_for::<IntegrationTarget>(),
+            vec!["Credentialed".to_string(), "Local".to_string()],
+        );
+        CredentialType::contribute(out);
+    }
+}
+
 // BillingOperation is a typed sum with payload-bearing variants. Its
 // `Discriminants` enum carries the variant names; we contribute via that.
 impl DbEnumContributor for BillingOperation {
@@ -577,6 +594,7 @@ impl SqlValue {
             SqlValueDiscriminants::PlanLimitNotifications => {
                 PlanLimitNotifications::contribute(out)
             }
+            SqlValueDiscriminants::IntegrationTargets => IntegrationTarget::contribute(out),
         }
     }
 
