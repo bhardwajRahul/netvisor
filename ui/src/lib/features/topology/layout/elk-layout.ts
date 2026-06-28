@@ -813,6 +813,7 @@ function buildElkGraph(
 	// Uses topology.services and topology.hosts (always full data, independent
 	// of collapse level) instead of input.nodes (which only has visible nodes).
 	const isWorkloads = view === 'Workloads';
+	const isApplication = view === 'Application';
 	if (isWorkloads && input.topology) {
 		const irrelevantCategories = getIrrelevantServiceCategories(getOrgUseCase());
 
@@ -901,7 +902,21 @@ function buildElkGraph(
 					'elk.layered.considerModelOrder.strategy': 'NODES_AND_EDGES',
 					'elk.layered.considerModelOrder.components': 'MODEL_ORDER'
 				}
-			: ROOT_LAYOUT_OPTIONS;
+			: isApplication
+				? {
+						// Application includes HubAndSpoke + RequestPath as layout-affecting
+						// edges; in DOWN these cross-container dependencies promote to
+						// container-level layers and stack the groups into a tall portrait
+						// with large vertical gaps. Flow layers horizontally (RIGHT) for a
+						// compact, landscape arrangement, and tighten inter-layer/component
+						// spacing to close the gaps between container groups.
+						...ROOT_LAYOUT_OPTIONS,
+						'elk.direction': 'RIGHT',
+						'elk.aspectRatio': '2.0',
+						'elk.layered.spacing.nodeNodeBetweenLayers': '40',
+						'elk.spacing.componentComponent': '50'
+					}
+				: ROOT_LAYOUT_OPTIONS;
 
 	const graph: ElkNode = {
 		id: 'root',
