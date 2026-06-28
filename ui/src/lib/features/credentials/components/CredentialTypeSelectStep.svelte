@@ -39,9 +39,20 @@
 			)
 	);
 
+	// Rank a type by how far its applicable targets reach: daemon-only first (0), host (1),
+	// network-applicable last (2). Drives the daemon→network ordering below.
+	function targetRank(card: CredType): number {
+		const targets = card.metadata?.targets ?? [];
+		if (targets.includes('Network')) return 2;
+		if (targets.includes('Host')) return 1;
+		return 0;
+	}
+
 	// Group cards by their integration (the backend `associated_service`, e.g. SNMP / Docker /
-	// Podman), preserving first-appearance order, so the grid breaks between integrations for
-	// legibility. No section headers — just a clear gap between groups.
+	// Podman) so the grid breaks between integrations for legibility — no section headers, just a
+	// clear gap. Then order by applicable targets: daemon-only integrations first, any that apply
+	// to the network last. Within a group, daemon-only types precede network-applicable ones.
+	// Sorts are stable, so original order is preserved on ties.
 	let cardGroups = $derived.by(() => {
 		const groups: { key: string; cards: CredType[] }[] = [];
 		for (const card of cards) {
@@ -53,6 +64,11 @@
 			}
 			group.cards.push(card);
 		}
+		for (const group of groups) {
+			group.cards.sort((a, b) => targetRank(a) - targetRank(b));
+		}
+		const groupRank = (g: { cards: CredType[] }) => Math.min(...g.cards.map(targetRank));
+		groups.sort((a, b) => groupRank(a) - groupRank(b));
 		return groups;
 	});
 
