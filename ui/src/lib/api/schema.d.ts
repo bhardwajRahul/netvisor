@@ -3040,7 +3040,7 @@ export interface components {
          * @description API metadata included in all responses
          * @example {
          *       "api_version": 1,
-         *       "server_version": "0.17.0"
+         *       "server_version": "0.17.1"
          *     }
          */
         ApiMeta: {
@@ -3051,7 +3051,7 @@ export interface components {
             api_version: number;
             /**
              * @description Server version (semver)
-             * @example 0.17.0
+             * @example 0.17.1
              */
             server_version: string;
         };
@@ -3065,19 +3065,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-06-26T21:27:04.891895Z",
+             *       "created_at": "2026-06-28T02:30:25.216639Z",
              *       "first_discovery_id": null,
-             *       "id": "ef826a1b-4efa-4f5f-b023-f6620c30deed",
+             *       "id": "8672b378-7973-48d7-90b9-c5eb4440a459",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-06-26T21:27:04.891895Z",
+             *       "last_seen_at": "2026-06-28T02:30:25.216639Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-06-26T21:27:04.891895Z",
-             *       "valid_from": "2026-06-26T21:27:04.891895Z",
+             *       "updated_at": "2026-06-28T02:30:25.216639Z",
+             *       "valid_from": "2026-06-28T02:30:25.216639Z",
              *       "valid_to": null
              *     }
              */
@@ -3273,10 +3273,14 @@ export interface components {
                 /** Format: uuid */
                 readonly id: string;
                 /**
-                 * @description Credential IDs to include in the next scan's credential_mappings.
-                 *     Set by the discovery edit modal, cleared after each scan completes.
+                 * @description Per-daemon integration targeting: which integrations (credentialed or credential-less
+                 *     local) run on this daemon, and on which IPs. Delivered via the init command at
+                 *     registration and editable via the discovery modal. Persistent — re-applied every scan.
+                 *     This is the single home for cred↔IP targeting; it replaces the global
+                 *     `credential.target_ips` (race-prone, consumed once) and the discovery modal's old
+                 *     one-shot `pending_credential_ids`.
                  */
-                pending_credential_ids?: string[];
+                integration_targets: components["schemas"]["IntegrationTarget"][];
                 /**
                  * Format: int32
                  * @description Number of completed scans (incremented by server on session completion)
@@ -3414,19 +3418,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-06-26T21:27:04.875021Z",
+             *               "created_at": "2026-06-28T02:30:25.196749Z",
              *               "first_discovery_id": null,
-             *               "id": "4adf76c0-91d1-44ae-b297-142adcd58bf6",
+             *               "id": "d2c15ffb-8cd4-4d8a-80ce-466b3e4b4feb",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-06-26T21:27:04.875021Z",
+             *               "last_seen_at": "2026-06-28T02:30:25.196749Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-06-26T21:27:04.875021Z",
-             *               "valid_from": "2026-06-26T21:27:04.875021Z",
+             *               "updated_at": "2026-06-28T02:30:25.196749Z",
+             *               "valid_from": "2026-06-28T02:30:25.196749Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3440,7 +3444,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Tasmota",
+             *           "service_definition": "Gitea",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3803,19 +3807,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-06-26T21:27:04.886428Z",
+             *           "created_at": "2026-06-28T02:30:25.210393Z",
              *           "first_discovery_id": null,
-             *           "id": "5fe73423-91dc-45e0-a110-95b48af24c59",
+             *           "id": "9a1e8ad6-a8b4-4048-bcd3-09d6add17188",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-06-26T21:27:04.886428Z",
+             *           "last_seen_at": "2026-06-28T02:30:25.210393Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-06-26T21:27:04.886428Z",
-             *           "valid_from": "2026-06-26T21:27:04.886428Z",
+             *           "updated_at": "2026-06-28T02:30:25.210393Z",
+             *           "valid_from": "2026-06-28T02:30:25.210393Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -3829,7 +3833,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Tasmota",
+             *       "service_definition": "Gitea",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4316,19 +4320,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-06-26T21:27:04.875370Z",
+         *       "created_at": "2026-06-28T02:30:25.197194Z",
          *       "first_discovery_id": null,
-         *       "id": "d5a70fae-8765-42ef-be12-1dcb1bb6a59e",
+         *       "id": "9ebfce22-a63b-4dc3-8f99-9d5ac62c3a6a",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-06-26T21:27:04.875370Z",
+         *       "last_seen_at": "2026-06-28T02:30:25.197194Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-06-26T21:27:04.875370Z",
-         *       "valid_from": "2026-06-26T21:27:04.875370Z",
+         *       "updated_at": "2026-06-28T02:30:25.197194Z",
+         *       "valid_from": "2026-06-28T02:30:25.197194Z",
          *       "valid_to": null
          *     }
          */
@@ -4543,7 +4547,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Tasmota",
+         *           "service_definition": "Gitea",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -4716,6 +4720,8 @@ export interface components {
             /** @enum {string} */
             type: "PodmanSocket";
         };
+        /** @enum {string} */
+        CredentialTypeDiscriminants: "SnmpV1" | "SnmpV2c" | "SnmpV3" | "DockerProxy" | "DockerSocket" | "PodmanProxy" | "PodmanSocket";
         Daemon: components["schemas"]["DaemonBase"] & {
             /** Format: date-time */
             readonly created_at: string;
@@ -4838,10 +4844,16 @@ export interface components {
         /** @description Daemon registration request from daemon to server */
         DaemonRegistrationRequest: {
             capabilities: components["schemas"]["DaemonCapabilities"];
-            /** @description Credential IDs to assign to daemon's host during registration. */
-            credential_ids?: string[];
             /** Format: uuid */
             daemon_id: string;
+            /**
+             * @description Per-daemon integration targeting from the init command (credentialed cred↔IP and
+             *     credential-less local sockets). Written to this daemon's Discovery at registration so
+             *     it's present before the first session dispatches. Registration assumes new-daemon →
+             *     new-server, so there is no legacy bare-`credential_ids` field — bare-uuid env back-compat
+             *     is handled in the daemon's env parser, never on the wire.
+             */
+            integration_targets?: components["schemas"]["IntegrationTarget"][];
             mode: components["schemas"]["DaemonMode"];
             name: string;
             /** Format: uuid */
@@ -5019,10 +5031,14 @@ export interface components {
             /** Format: uuid */
             readonly id: string;
             /**
-             * @description Credential IDs to include in the next scan's credential_mappings.
-             *     Set by the discovery edit modal, cleared after each scan completes.
+             * @description Per-daemon integration targeting: which integrations (credentialed or credential-less
+             *     local) run on this daemon, and on which IPs. Delivered via the init command at
+             *     registration and editable via the discovery modal. Persistent — re-applied every scan.
+             *     This is the single home for cred↔IP targeting; it replaces the global
+             *     `credential.target_ips` (race-prone, consumed once) and the discovery modal's old
+             *     one-shot `pending_credential_ids`.
              */
-            pending_credential_ids?: string[];
+            integration_targets: components["schemas"]["IntegrationTarget"][];
             /**
              * Format: int32
              * @description Number of completed scans (incremented by server on session completion)
@@ -5569,19 +5585,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-06-26T21:27:04.874626Z",
+         *               "created_at": "2026-06-28T02:30:25.196244Z",
          *               "first_discovery_id": null,
-         *               "id": "036ceeb9-4746-4c0a-9d00-9f00d6838fc0",
+         *               "id": "01fbeb5d-882a-48d0-b96c-33de1c8dfc0b",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-06-26T21:27:04.874626Z",
+         *               "last_seen_at": "2026-06-28T02:30:25.196244Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-06-26T21:27:04.874626Z",
-         *               "valid_from": "2026-06-26T21:27:04.874626Z",
+         *               "updated_at": "2026-06-28T02:30:25.196244Z",
+         *               "valid_from": "2026-06-28T02:30:25.196244Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -5595,7 +5611,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Tasmota",
+         *           "service_definition": "Gitea",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -5807,6 +5823,25 @@ export interface components {
          * @enum {string}
          */
         InlineGroupRole: "Header" | "Member";
+        /**
+         * @description Per-daemon integration targeting, stored on the `Discovery` entity and delivered via the
+         *     init command at registration. Each entry says "run this integration here on this daemon."
+         *     This is the single home for both credentialed and credential-less integration targeting —
+         *     it replaces the global, race-prone `credential.target_ips` and the per-integration
+         *     `enable_local_*_socket` daemon flags.
+         */
+        IntegrationTarget: {
+            /** Format: uuid */
+            credential_id: string;
+            /** @description IPs this credential targets. Empty = network-level default (no IP override). */
+            ips?: string[];
+            /** @enum {string} */
+            type: "Credentialed";
+        } | {
+            integration: components["schemas"]["CredentialTypeDiscriminants"];
+            /** @enum {string} */
+            type: "Local";
+        };
         Interface: components["schemas"]["InterfaceBase"] & {
             /** Format: date-time */
             readonly created_at: string;
@@ -6302,7 +6337,7 @@ export interface components {
          *         "offset": 0,
          *         "total_count": 142
          *       },
-         *       "server_version": "0.17.0"
+         *       "server_version": "0.17.1"
          *     }
          */
         PaginatedApiMeta: {
@@ -6315,7 +6350,7 @@ export interface components {
             pagination: components["schemas"]["PaginationMeta"];
             /**
              * @description Server version (semver)
-             * @example 0.17.0
+             * @example 0.17.1
              */
             server_version: string;
         };
@@ -7028,19 +7063,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-06-26T21:27:04.875297Z",
+         *           "created_at": "2026-06-28T02:30:25.197101Z",
          *           "first_discovery_id": null,
-         *           "id": "a783e2fd-88cd-40ce-8bf9-5d640c7bccd1",
+         *           "id": "8a5416a9-4937-44e2-ba3b-40f069ea7fdd",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-06-26T21:27:04.875297Z",
+         *           "last_seen_at": "2026-06-28T02:30:25.197101Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-06-26T21:27:04.875297Z",
-         *           "valid_from": "2026-06-26T21:27:04.875297Z",
+         *           "updated_at": "2026-06-28T02:30:25.197101Z",
+         *           "valid_from": "2026-06-28T02:30:25.197101Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -7054,7 +7089,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Tasmota",
+         *       "service_definition": "Gitea",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -7477,7 +7512,7 @@ export interface components {
              * @default {
              *       "Application": [
              *         {
-             *           "id": "48fad76a-ef02-483e-a553-6d8f093d3927",
+             *           "id": "72ff60ed-57e6-42c2-a67c-7cfe92cac6c1",
              *           "rule": {
              *             "ByApplication": {
              *               "tag_ids": []
@@ -7487,23 +7522,23 @@ export interface components {
              *       ],
              *       "L2Physical": [
              *         {
-             *           "id": "bcd25d23-507b-4ae4-a9a8-614b2c85cd83",
+             *           "id": "97d29901-b602-4044-8bf6-d38f81f9fdb9",
              *           "rule": "ByHost"
              *         }
              *       ],
              *       "L3Logical": [
              *         {
-             *           "id": "6ca8dc49-724e-4ac1-9411-a8926f568547",
+             *           "id": "563e3c5b-0c3a-4acd-8d13-4e8951d7865a",
              *           "rule": "BySubnet"
              *         },
              *         {
-             *           "id": "9142aed0-1de0-45a6-a0de-0174c7def09f",
+             *           "id": "6b122265-850a-4b8a-85f2-e322ca55b3e4",
              *           "rule": "MergeDockerBridges"
              *         }
              *       ],
              *       "Workloads": [
              *         {
-             *           "id": "bcd25d23-507b-4ae4-a9a8-614b2c85cd83",
+             *           "id": "97d29901-b602-4044-8bf6-d38f81f9fdb9",
              *           "rule": "ByHost"
              *         }
              *       ]
@@ -7515,19 +7550,19 @@ export interface components {
             /**
              * @default [
              *       {
-             *         "id": "5fdb0e6c-e22f-4bab-9073-d38bf362e2da",
+             *         "id": "33d37c73-3cbb-4219-961e-a23a2dd642a4",
              *         "rule": "ByTrunkPort"
              *       },
              *       {
-             *         "id": "a24a0148-bf47-418f-ac19-89dfc90e7d01",
+             *         "id": "49ef4391-8734-43d0-b952-992528b64234",
              *         "rule": "ByVLAN"
              *       },
              *       {
-             *         "id": "07d87869-61cf-4855-a5f8-295310ad3c1b",
+             *         "id": "9a770151-af17-4bb4-a4d4-fbf663bb4d44",
              *         "rule": "ByPortOpStatus"
              *       },
              *       {
-             *         "id": "00945b77-5ed1-4c69-863c-41349e73f37a",
+             *         "id": "20bdf586-3ebc-438b-9497-00b82c5e80d8",
              *         "rule": {
              *           "ByServiceCategory": {
              *             "categories": [
@@ -7545,7 +7580,7 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "2e7da389-f6e5-4b20-ab39-541dba09d020",
+             *         "id": "3f249e97-be2e-4f0d-9f07-4b93ec423e03",
              *         "rule": {
              *           "ByTag": {
              *             "tag_ids": [],
@@ -7554,15 +7589,15 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "3e9dd2a8-1f4a-4c2b-be95-de721f5e3d38",
+             *         "id": "c3da4afd-a9aa-497f-99ba-84d29699d9ef",
              *         "rule": "ByHypervisor"
              *       },
              *       {
-             *         "id": "9d973751-0a83-4a03-b128-c3350f7ed59a",
+             *         "id": "2343f9dc-4ffb-4a96-9272-5825625a56c9",
              *         "rule": "ByContainerRuntime"
              *       },
              *       {
-             *         "id": "a0440ef7-fbdf-4b1c-ab93-e63408c561f5",
+             *         "id": "6e178237-fa9f-4fa9-81cc-92ada67345c7",
              *         "rule": "ByStack"
              *       }
              *     ]

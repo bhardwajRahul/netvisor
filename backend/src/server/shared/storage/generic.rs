@@ -180,6 +180,7 @@ where
                 query.bind(serde_json::to_value(&rt_for_storage)?)
             }
             SqlValue::DiscoveryType(v) => query.bind(serde_json::to_value(v)?),
+            SqlValue::IntegrationTargets(v) => query.bind(serde_json::to_value(v)?),
             SqlValue::Email(v) => query.bind(v.as_str()),
             SqlValue::UserOrgPermissions(v) => query.bind(v.as_str()),
             SqlValue::EmailSettings(v) => query.bind(serde_json::to_value(v)?),

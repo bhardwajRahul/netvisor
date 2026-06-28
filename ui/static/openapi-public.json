@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Scanopy API",
-    "description": "\nNetwork topology discovery and visualization API.\n\n## Authentication\n\nTwo authentication methods are supported:\n\n| Method | Header | Use Case |\n|--------|--------|----------|\n| User API key | `Authorization: Bearer scp_u_...` | Programmatic access, integrations |\n| Session cookie | `Cookie: session_id=...` | Web UI (via `/api/auth/login`) |\n\nUser API keys require your organization to have API access enabled. Create keys at **Platform > API Keys**.\n\n## Rate Limiting\n\nLimit: 300 requests/minute\n\nBurst: 150\n\nResponse headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`\n\nWhen rate limited, you'll receive HTTP `429 Too Many Requests` with a `Retry-After` header.\n\n## Pagination\n\nList endpoints support pagination via query parameters:\n\n| Parameter | Type | Default | Description |\n|-----------|------|---------|-------------|\n| `limit` | integer | 50 | Maximum results to return (1-1000). Use 0 for no limit. |\n| `offset` | integer | 0 | Number of results to skip |\n\nExample: `GET /api/v1/hosts?limit=10&offset=20`\n\n## Response Format\n\nAll responses use a standard envelope:\n\n```json\n{\n  \"success\": true,\n  \"data\": { ... },\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.17.0\"\n  }\n}\n```\n\n**Paginated list responses** include pagination metadata:\n\n```json\n{\n  \"success\": true,\n  \"data\": [ ... ],\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.17.0\",\n    \"pagination\": {\n      \"total_count\": 142,\n      \"limit\": 50,\n      \"offset\": 0,\n      \"has_more\": true\n    }\n  }\n}\n```\n\n| Field | Description |\n|-------|-------------|\n| `total_count` | Total items matching your query (ignoring pagination) |\n| `limit` | Applied limit (your request or default) |\n| `offset` | Applied offset |\n| `has_more` | `true` if more results exist beyond this page |\n\n**Error responses** include an `error` field instead of `data`:\n\n```json\n{\n  \"success\": false,\n  \"error\": \"Resource not found\",\n  \"meta\": { ... }\n}\n```\n\n**Common status codes:** `400` validation error, `401` unauthorized, `403` forbidden, `404` not found, `409` conflict, `429` rate limited.\n\n## Versioning\n\nEndpoints are prefixed with `/api/v1/`. The API version is an integer (`api_version: 1`) returned in every response, versioned independently from the application. Check `GET /api/version` for current versions.\n\n**While Scanopy is pre-v1.0 (current: 0.17.0)**, the API should be considered unstable. Breaking changes may be introduced in any release without incrementing the API version. We recommend pinning to a specific Scanopy release if you depend on API stability, and reviewing the [changelog](/changelog) before upgrading. After Scanopy reaches v1.0, breaking API changes will only occur with an API version increment.\n\n## Multi-Tenancy\n\nResources are scoped to your **organization** and **network(s)**:\n\n- You can only access entities within your organization\n- Network-level entities (hosts, services, etc.) are filtered to networks you have access to\n- Use `?network_id=<UUID>` to filter list endpoints to a specific network\n- API keys can be scoped to a subset of your accessible networks\n",
+    "description": "\nNetwork topology discovery and visualization API.\n\n## Authentication\n\nTwo authentication methods are supported:\n\n| Method | Header | Use Case |\n|--------|--------|----------|\n| User API key | `Authorization: Bearer scp_u_...` | Programmatic access, integrations |\n| Session cookie | `Cookie: session_id=...` | Web UI (via `/api/auth/login`) |\n\nUser API keys require your organization to have API access enabled. Create keys at **Platform > API Keys**.\n\n## Rate Limiting\n\nLimit: 300 requests/minute\n\nBurst: 150\n\nResponse headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`\n\nWhen rate limited, you'll receive HTTP `429 Too Many Requests` with a `Retry-After` header.\n\n## Pagination\n\nList endpoints support pagination via query parameters:\n\n| Parameter | Type | Default | Description |\n|-----------|------|---------|-------------|\n| `limit` | integer | 50 | Maximum results to return (1-1000). Use 0 for no limit. |\n| `offset` | integer | 0 | Number of results to skip |\n\nExample: `GET /api/v1/hosts?limit=10&offset=20`\n\n## Response Format\n\nAll responses use a standard envelope:\n\n```json\n{\n  \"success\": true,\n  \"data\": { ... },\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.17.1\"\n  }\n}\n```\n\n**Paginated list responses** include pagination metadata:\n\n```json\n{\n  \"success\": true,\n  \"data\": [ ... ],\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.17.1\",\n    \"pagination\": {\n      \"total_count\": 142,\n      \"limit\": 50,\n      \"offset\": 0,\n      \"has_more\": true\n    }\n  }\n}\n```\n\n| Field | Description |\n|-------|-------------|\n| `total_count` | Total items matching your query (ignoring pagination) |\n| `limit` | Applied limit (your request or default) |\n| `offset` | Applied offset |\n| `has_more` | `true` if more results exist beyond this page |\n\n**Error responses** include an `error` field instead of `data`:\n\n```json\n{\n  \"success\": false,\n  \"error\": \"Resource not found\",\n  \"meta\": { ... }\n}\n```\n\n**Common status codes:** `400` validation error, `401` unauthorized, `403` forbidden, `404` not found, `409` conflict, `429` rate limited.\n\n## Versioning\n\nEndpoints are prefixed with `/api/v1/`. The API version is an integer (`api_version: 1`) returned in every response, versioned independently from the application. Check `GET /api/version` for current versions.\n\n**While Scanopy is pre-v1.0 (current: 0.17.1)**, the API should be considered unstable. Breaking changes may be introduced in any release without incrementing the API version. We recommend pinning to a specific Scanopy release if you depend on API stability, and reviewing the [changelog](/changelog) before upgrading. After Scanopy reaches v1.0, breaking API changes will only occur with an API version increment.\n\n## Multi-Tenancy\n\nResources are scoped to your **organization** and **network(s)**:\n\n- You can only access entities within your organization\n- Network-level entities (hosts, services, etc.) are filtered to networks you have access to\n- Use `?network_id=<UUID>` to filter list endpoints to a specific network\n- API keys can be scoped to a subset of your accessible networks\n",
     "license": {
       "name": "Dual (AGPL3.0, Commercial License Available)"
     },
@@ -10770,12 +10770,12 @@
           "server_version": {
             "type": "string",
             "description": "Server version (semver)",
-            "example": "0.17.0"
+            "example": "0.17.1"
           }
         },
         "example": {
           "api_version": 1,
-          "server_version": "0.17.0"
+          "server_version": "0.17.1"
         }
       },
       "ApiResponse": {
@@ -10891,19 +10891,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-06-26T21:27:04.891900Z",
+              "created_at": "2026-06-28T02:30:25.216652Z",
               "first_discovery_id": null,
-              "id": "561e75ba-2007-42f9-b434-b580721511fa",
+              "id": "40ce1efd-08f6-4299-ac31-78293cf5fb44",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-26T21:27:04.891900Z",
+              "last_seen_at": "2026-06-28T02:30:25.216652Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-26T21:27:04.891900Z",
-              "valid_from": "2026-06-26T21:27:04.891900Z",
+              "updated_at": "2026-06-28T02:30:25.216652Z",
+              "valid_from": "2026-06-28T02:30:25.216652Z",
               "valid_to": null
             }
           },
@@ -11487,7 +11487,8 @@
                 "required": [
                   "id",
                   "created_at",
-                  "updated_at"
+                  "updated_at",
+                  "integration_targets"
                 ],
                 "properties": {
                   "created_at": {
@@ -11504,13 +11505,12 @@
                     "format": "uuid",
                     "readOnly": true
                   },
-                  "pending_credential_ids": {
+                  "integration_targets": {
                     "type": "array",
                     "items": {
-                      "type": "string",
-                      "format": "uuid"
+                      "$ref": "#/components/schemas/IntegrationTarget"
                     },
-                    "description": "Credential IDs to include in the next scan's credential_mappings.\nSet by the discovery edit modal, cleared after each scan completes."
+                    "description": "Per-daemon integration targeting: which integrations (credentialed or credential-less\nlocal) run on this daemon, and on which IPs. Delivered via the init command at\nregistration and editable via the discovery modal. Persistent — re-applied every scan.\nThis is the single home for cred↔IP targeting; it replaces the global\n`credential.target_ips` (race-prone, consumed once) and the discovery modal's old\none-shot `pending_credential_ids`."
                   },
                   "scan_count": {
                     "type": "integer",
@@ -11889,19 +11889,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-06-26T21:27:04.875049Z",
+                      "created_at": "2026-06-28T02:30:25.196756Z",
                       "first_discovery_id": null,
-                      "id": "98bfb7e7-d911-4e6d-ae38-a680706b2624",
+                      "id": "88aa1aa6-61c1-4509-91e6-e668b1513122",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-06-26T21:27:04.875049Z",
+                      "last_seen_at": "2026-06-28T02:30:25.196756Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-06-26T21:27:04.875049Z",
-                      "valid_from": "2026-06-26T21:27:04.875049Z",
+                      "updated_at": "2026-06-28T02:30:25.196756Z",
+                      "valid_from": "2026-06-28T02:30:25.196756Z",
                       "valid_to": null
                     }
                   ],
@@ -11915,7 +11915,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Tasmota",
+                  "service_definition": "Gitea",
                   "source": {
                     "type": "Manual"
                   },
@@ -12913,19 +12913,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-06-26T21:27:04.886433Z",
+                  "created_at": "2026-06-28T02:30:25.210577Z",
                   "first_discovery_id": null,
-                  "id": "55c75bc1-d599-4ae1-8b48-f2b842d8ae05",
+                  "id": "1fcee5f7-d780-4f4a-b1c9-92d1d6ae1308",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-26T21:27:04.886433Z",
+                  "last_seen_at": "2026-06-28T02:30:25.210577Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-26T21:27:04.886433Z",
-                  "valid_from": "2026-06-26T21:27:04.886433Z",
+                  "updated_at": "2026-06-28T02:30:25.210577Z",
+                  "valid_from": "2026-06-28T02:30:25.210577Z",
                   "valid_to": null
                 }
               ],
@@ -12939,7 +12939,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Tasmota",
+              "service_definition": "Gitea",
               "source": {
                 "type": "Manual"
               },
@@ -14718,19 +14718,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-06-26T21:27:04.875405Z",
+          "created_at": "2026-06-28T02:30:25.197213Z",
           "first_discovery_id": null,
-          "id": "a9179523-320b-4b20-806c-0c0a16e4cf2c",
+          "id": "bbfa66da-2e9c-4e92-9597-f5cbce6f9dae",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-06-26T21:27:04.875405Z",
+          "last_seen_at": "2026-06-28T02:30:25.197213Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-06-26T21:27:04.875405Z",
-          "valid_from": "2026-06-26T21:27:04.875405Z",
+          "updated_at": "2026-06-28T02:30:25.197213Z",
+          "valid_from": "2026-06-28T02:30:25.197213Z",
           "valid_to": null
         }
       },
@@ -15320,7 +15320,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Tasmota",
+              "service_definition": "Gitea",
               "tags": [],
               "virtualization": null
             }
@@ -15817,6 +15817,18 @@
         ],
         "description": "Universal credential type — tagged enum stored as JSONB.\nEach variant represents a different credential protocol/method."
       },
+      "CredentialTypeDiscriminants": {
+        "type": "string",
+        "enum": [
+          "SnmpV1",
+          "SnmpV2c",
+          "SnmpV3",
+          "DockerProxy",
+          "DockerSocket",
+          "PodmanProxy",
+          "PodmanSocket"
+        ]
+      },
       "Daemon": {
         "allOf": [
           {
@@ -16126,17 +16138,16 @@
           "capabilities": {
             "$ref": "#/components/schemas/DaemonCapabilities"
           },
-          "credential_ids": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "description": "Credential IDs to assign to daemon's host during registration."
-          },
           "daemon_id": {
             "type": "string",
             "format": "uuid"
+          },
+          "integration_targets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IntegrationTarget"
+            },
+            "description": "Per-daemon integration targeting from the init command (credentialed cred↔IP and\ncredential-less local sockets). Written to this daemon's Discovery at registration so\nit's present before the first session dispatches. Registration assumes new-daemon →\nnew-server, so there is no legacy bare-`credential_ids` field — bare-uuid env back-compat\nis handled in the daemon's env parser, never on the wire."
           },
           "mode": {
             "$ref": "#/components/schemas/DaemonMode"
@@ -16601,7 +16612,8 @@
             "required": [
               "id",
               "created_at",
-              "updated_at"
+              "updated_at",
+              "integration_targets"
             ],
             "properties": {
               "created_at": {
@@ -16618,13 +16630,12 @@
                 "format": "uuid",
                 "readOnly": true
               },
-              "pending_credential_ids": {
+              "integration_targets": {
                 "type": "array",
                 "items": {
-                  "type": "string",
-                  "format": "uuid"
+                  "$ref": "#/components/schemas/IntegrationTarget"
                 },
-                "description": "Credential IDs to include in the next scan's credential_mappings.\nSet by the discovery edit modal, cleared after each scan completes."
+                "description": "Per-daemon integration targeting: which integrations (credentialed or credential-less\nlocal) run on this daemon, and on which IPs. Delivered via the init command at\nregistration and editable via the discovery modal. Persistent — re-applied every scan.\nThis is the single home for cred↔IP targeting; it replaces the global\n`credential.target_ips` (race-prone, consumed once) and the discovery modal's old\none-shot `pending_credential_ids`."
               },
               "scan_count": {
                 "type": "integer",
@@ -18183,19 +18194,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-06-26T21:27:04.874629Z",
+                  "created_at": "2026-06-28T02:30:25.196241Z",
                   "first_discovery_id": null,
-                  "id": "5ea418e3-85e0-450d-8b6d-79118a371e23",
+                  "id": "1fd756b5-1cee-45a2-ad67-7f17090921d4",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-26T21:27:04.874629Z",
+                  "last_seen_at": "2026-06-28T02:30:25.196241Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-26T21:27:04.874629Z",
-                  "valid_from": "2026-06-26T21:27:04.874629Z",
+                  "updated_at": "2026-06-28T02:30:25.196241Z",
+                  "valid_from": "2026-06-28T02:30:25.196241Z",
                   "valid_to": null
                 }
               ],
@@ -18209,7 +18220,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Tasmota",
+              "service_definition": "Gitea",
               "source": {
                 "type": "Manual"
               },
@@ -18700,6 +18711,57 @@
           "Header",
           "Member"
         ]
+      },
+      "IntegrationTarget": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "A stored credential applied to specific IP(s) on this daemon.",
+            "required": [
+              "credential_id",
+              "type"
+            ],
+            "properties": {
+              "credential_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "ips": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "IPs this credential targets. Empty = network-level default (no IP override)."
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "Credentialed"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "A credential-less integration that runs on the daemon host (127.0.0.1).\n\nCredential-less ⟺ local: credentials are how you authenticate to a *remote* party, and\nlocal proximity replaces that, so these never need a stored credential. Every remote\nintegration (any `CredentialType` that hits a remote API/host) needs a credential;\nremote-but-credential-less discovery (mDNS/ARP/port sweeps) isn't a `CredentialType` and\nnever appears here. Not named after a transport — today's members are the Docker/Podman\nlocal sockets, but a future non-socket local integration fits too.",
+            "required": [
+              "integration",
+              "type"
+            ],
+            "properties": {
+              "integration": {
+                "$ref": "#/components/schemas/CredentialTypeDiscriminants"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "Local"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "Per-daemon integration targeting, stored on the `Discovery` entity and delivered via the\ninit command at registration. Each entry says \"run this integration here on this daemon.\"\nThis is the single home for both credentialed and credential-less integration targeting —\nit replaces the global, race-prone `credential.target_ips` and the per-integration\n`enable_local_*_socket` daemon flags."
       },
       "Interface": {
         "allOf": [
@@ -20170,7 +20232,7 @@
           "server_version": {
             "type": "string",
             "description": "Server version (semver)",
-            "example": "0.17.0"
+            "example": "0.17.1"
           }
         },
         "example": {
@@ -20181,7 +20243,7 @@
             "offset": 0,
             "total_count": 142
           },
-          "server_version": "0.17.0"
+          "server_version": "0.17.1"
         }
       },
       "PaginatedApiResponse_Credential": {
@@ -20642,19 +20704,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-06-26T21:27:04.864888Z",
+                        "created_at": "2026-06-28T02:30:25.184030Z",
                         "first_discovery_id": null,
-                        "id": "c3897ab8-64c5-4db2-ac17-885512f8f9c1",
+                        "id": "677f6377-a315-4f6b-9f8b-837e11f66df0",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-06-26T21:27:04.864888Z",
+                        "last_seen_at": "2026-06-28T02:30:25.184030Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-06-26T21:27:04.864888Z",
-                        "valid_from": "2026-06-26T21:27:04.864888Z",
+                        "updated_at": "2026-06-28T02:30:25.184030Z",
+                        "valid_from": "2026-06-28T02:30:25.184030Z",
                         "valid_to": null
                       }
                     ],
@@ -20668,7 +20730,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Tasmota",
+                    "service_definition": "Gitea",
                     "source": {
                       "type": "Manual"
                     },
@@ -20789,19 +20851,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-06-26T21:27:04.885349Z",
+                    "created_at": "2026-06-28T02:30:25.209227Z",
                     "first_discovery_id": null,
-                    "id": "93a3f56b-06eb-49ec-a546-1d6c0e3be286",
+                    "id": "cbd2b03c-328f-406e-af30-ebd5fc4f2f65",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-06-26T21:27:04.885349Z",
+                    "last_seen_at": "2026-06-28T02:30:25.209227Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-06-26T21:27:04.885349Z",
-                    "valid_from": "2026-06-26T21:27:04.885349Z",
+                    "updated_at": "2026-06-28T02:30:25.209227Z",
+                    "valid_from": "2026-06-28T02:30:25.209227Z",
                     "valid_to": null
                   }
                 ],
@@ -20815,7 +20877,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Tasmota",
+                "service_definition": "Gitea",
                 "source": {
                   "type": "Manual"
                 },
@@ -22466,19 +22528,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-06-26T21:27:04.875329Z",
+              "created_at": "2026-06-28T02:30:25.197119Z",
               "first_discovery_id": null,
-              "id": "985dfc08-6078-4b7f-ae48-47c9da6061fb",
+              "id": "b47f60b7-8b0b-4588-9926-e6cc16db5b06",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-26T21:27:04.875329Z",
+              "last_seen_at": "2026-06-28T02:30:25.197119Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-26T21:27:04.875329Z",
-              "valid_from": "2026-06-26T21:27:04.875329Z",
+              "updated_at": "2026-06-28T02:30:25.197119Z",
+              "valid_from": "2026-06-28T02:30:25.197119Z",
               "valid_to": null
             }
           ],
@@ -22492,7 +22554,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Tasmota",
+          "service_definition": "Gitea",
           "source": {
             "type": "Manual"
           },
@@ -23622,7 +23684,7 @@
             "default": {
               "Application": [
                 {
-                  "id": "de6927f7-3bd2-49cb-b593-9724e73894d6",
+                  "id": "ecc3cef1-6a45-49d2-b1b4-841162b449a3",
                   "rule": {
                     "ByApplication": {
                       "tag_ids": []
@@ -23632,23 +23694,23 @@
               ],
               "L2Physical": [
                 {
-                  "id": "00ebb3e0-5fee-404c-9f9f-3630c7a76d31",
+                  "id": "46a065f8-0f51-4fea-bd93-1054f81c6be0",
                   "rule": "ByHost"
                 }
               ],
               "L3Logical": [
                 {
-                  "id": "469721f0-0da9-4249-a67d-f83c28f741ac",
+                  "id": "dd2d71b6-00ad-4259-b92f-8057b173ef66",
                   "rule": "BySubnet"
                 },
                 {
-                  "id": "91dde1e1-f51f-43ce-961e-5997ccee0613",
+                  "id": "6450bf1e-0e8f-4158-8250-21c05709f677",
                   "rule": "MergeDockerBridges"
                 }
               ],
               "Workloads": [
                 {
-                  "id": "00ebb3e0-5fee-404c-9f9f-3630c7a76d31",
+                  "id": "46a065f8-0f51-4fea-bd93-1054f81c6be0",
                   "rule": "ByHost"
                 }
               ]
@@ -23677,19 +23739,19 @@
             },
             "default": [
               {
-                "id": "d8b8b385-df3f-4a66-9d5f-e298ef73965d",
+                "id": "1ea1c27b-ecad-41fe-9fd6-81da49a8fa12",
                 "rule": "ByTrunkPort"
               },
               {
-                "id": "6825d593-0737-46c4-91c9-520eab227fe1",
+                "id": "5de1c41e-6b6a-4238-9668-97e616b7385d",
                 "rule": "ByVLAN"
               },
               {
-                "id": "476f403a-6ca7-4bc1-bb2a-c5b9a478a91f",
+                "id": "d549a894-4c90-4992-9703-0c9c9e9c9ee1",
                 "rule": "ByPortOpStatus"
               },
               {
-                "id": "bd525123-d1c2-49b4-9cf4-37a0f35871d5",
+                "id": "df2b8374-0aec-4a98-ad83-4f3f7b57a837",
                 "rule": {
                   "ByServiceCategory": {
                     "categories": [
@@ -23707,7 +23769,7 @@
                 }
               },
               {
-                "id": "0edf1cdc-d616-45bc-90d3-eb419c52fa76",
+                "id": "2495af1f-c4c0-46e9-a68c-b564a9f763b8",
                 "rule": {
                   "ByTag": {
                     "tag_ids": [],
@@ -23716,15 +23778,15 @@
                 }
               },
               {
-                "id": "78247f16-601e-4cb7-9322-e7d78004c5ee",
+                "id": "afdc2284-9565-46d8-b32e-8c1e0ee498e1",
                 "rule": "ByHypervisor"
               },
               {
-                "id": "6c306b46-4dfe-4ad4-b0ee-956bbd7b3522",
+                "id": "4b7f1de2-5952-4c37-8612-e6393b3152f5",
                 "rule": "ByContainerRuntime"
               },
               {
-                "id": "77240f31-aff0-4b67-a00f-216268ffe598",
+                "id": "37367a88-6ed9-4c6e-a498-587dc950fe94",
                 "rule": "ByStack"
               }
             ]

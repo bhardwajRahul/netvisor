@@ -4778,7 +4778,7 @@ fn generate_discoveries(
             },
             scan_count: 0,
             force_full_scan: false,
-            pending_credential_ids: vec![],
+            integration_targets: vec![],
         });
 
         // Historical — completed 3 weeks ago
@@ -4814,7 +4814,7 @@ fn generate_discoveries(
             },
             scan_count: 0,
             force_full_scan: false,
-            pending_credential_ids: vec![],
+            integration_targets: vec![],
         });
 
         // Historical — completed 1 week ago
@@ -4849,7 +4849,7 @@ fn generate_discoveries(
             },
             scan_count: 0,
             force_full_scan: false,
-            pending_credential_ids: vec![],
+            integration_targets: vec![],
         });
     }
 
@@ -4873,7 +4873,7 @@ fn generate_discoveries(
             },
             scan_count: 0,
             force_full_scan: false,
-            pending_credential_ids: vec![],
+            integration_targets: vec![],
         });
 
         // Historical — failed 2 weeks ago
@@ -4909,7 +4909,7 @@ fn generate_discoveries(
             },
             scan_count: 0,
             force_full_scan: false,
-            pending_credential_ids: vec![],
+            integration_targets: vec![],
         });
     }
 

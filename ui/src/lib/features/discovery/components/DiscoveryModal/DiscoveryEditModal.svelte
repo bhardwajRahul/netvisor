@@ -35,7 +35,6 @@
 	import CredentialsStep, {
 		type PendingCredential
 	} from '$lib/features/credentials/components/CredentialsStep.svelte';
-	import type { Credential } from '$lib/features/credentials/types/base';
 	import { useCredentialsQuery } from '$lib/features/credentials/queries';
 	import {
 		common_back,
@@ -364,7 +363,18 @@
 					return; // validation failed — stay on the form
 				}
 				try {
-					formData.pending_credential_ids = ids ?? [];
+					// Per-credential target IPs come from the wizard and are delivered as
+					// per-daemon integration targets (Credentialed) on the Discovery — replacing
+					// the old one-shot pending_credential_ids + credential.target_ips. The discovery
+					// modal only handles persisted credentials (sockets are daemon-level, fixed).
+					const persisted = new Set(ids ?? []);
+					formData.integration_targets = pendingCredentials
+						.filter((p) => persisted.has(p.credential.id))
+						.map((p) => ({
+							type: 'Credentialed' as const,
+							credential_id: p.credential.id,
+							ips: p.targetIps.map((s) => s.trim()).filter(Boolean)
+						}));
 					if (isEditing && discovery) {
 						await onUpdate(discovery.id, formData);
 					} else {
@@ -388,17 +398,24 @@
 		formData = getDefaultFormData();
 		pendingCredentials = [];
 		credentialIds = [];
-		if (discovery?.pending_credential_ids?.length && allCredentialsQuery.data) {
+		if (discovery?.integration_targets?.length && allCredentialsQuery.data) {
 			const credMap = new Map(allCredentialsQuery.data.map((c) => [c.id, c]));
-			pendingCredentials = discovery.pending_credential_ids
-				.map((id) => credMap.get(id))
-				.filter((c): c is Credential => c != null)
-				.map((c) => ({
-					credential: c,
-					targetIps: c.target_ips?.length ? c.target_ips : [''],
-					fieldValues: {},
-					isExisting: true
-				}));
+			// The discovery modal only deals with credentialed targets (sockets are
+			// daemon-level). Reconstruct each as a wizard entry with its target IPs.
+			pendingCredentials = discovery.integration_targets.flatMap((t) => {
+				if (t.type !== 'Credentialed') return [];
+				const c = credMap.get(t.credential_id);
+				if (!c) return [];
+				const ips = t.ips ?? [];
+				return [
+					{
+						credential: c,
+						targetIps: ips.length ? ips : [''],
+						fieldValues: {},
+						isExisting: true
+					}
+				];
+			});
 		}
 		// Show the Integrations grid only as a first-run aid (no credentials exist
 		// yet); otherwise — existing assignments on this session, or the org already

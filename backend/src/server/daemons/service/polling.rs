@@ -297,7 +297,9 @@ impl DaemonService {
                 false
             };
 
-            // Create default discovery jobs
+            // Create default discovery jobs. ServerPoll first-contact carries no init-command
+            // targeting (admin-provisioned via status, not the register endpoint), so targeting
+            // is empty here — a future server-held daemon config would populate it.
             if let Err(e) = self
                 .create_default_discovery_jobs(
                     daemon.id,
@@ -305,6 +307,7 @@ impl DaemonService {
                     daemon.base.host_id,
                     status.has_docker_socket,
                     is_free_plan,
+                    &[],
                 )
                 .await
             {
@@ -386,13 +389,13 @@ impl DaemonService {
         if status.ready_for_work
             && let Some(work) = self.get_pending_work(daemon.id).await
         {
-            let pending = self
+            let integration_targets = self
                 .discovery_service
-                .get_pending_credential_ids_for_session(&work.session_id)
+                .get_integration_targets_for_session(&work.session_id)
                 .await;
             let request = self
                 .discovery_service
-                .build_daemon_request(&work, work.network_id, &pending)
+                .build_daemon_request(&work, work.network_id, &integration_targets)
                 .await
                 .unwrap_or_else(|e| {
                     tracing::error!("Failed to build daemon request: {}", e);

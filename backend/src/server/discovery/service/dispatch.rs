@@ -2,8 +2,12 @@
 use super::*;
 
 impl DiscoveryService {
-    /// Get pending_credential_ids for a session by reverse-looking up the discovery entity.
-    pub async fn get_pending_credential_ids_for_session(&self, session_id: &Uuid) -> Vec<Uuid> {
+    /// Get the per-daemon integration targets for a session by reverse-looking up the
+    /// discovery entity. These drive credential mappings for the scan (init-command targeting).
+    pub async fn get_integration_targets_for_session(
+        &self,
+        session_id: &Uuid,
+    ) -> Vec<IntegrationTarget> {
         let discovery_id = self
             .discovery_sessions
             .read()
@@ -15,7 +19,7 @@ impl DiscoveryService {
         if let Some(discovery_id) = discovery_id
             && let Ok(Some(discovery)) = self.discovery_storage.get_by_id(&discovery_id).await
         {
-            return discovery.pending_credential_ids;
+            return discovery.integration_targets;
         }
         vec![]
     }
@@ -56,12 +60,12 @@ impl DiscoveryService {
         &self,
         session: &DiscoveryUpdatePayload,
         network_id: Uuid,
-        pending_credential_ids: &[Uuid],
+        integration_targets: &[IntegrationTarget],
     ) -> Result<DaemonDiscoveryRequest, anyhow::Error> {
         let credential_mappings = if matches!(session.discovery_type, DiscoveryType::Unified { .. })
         {
             self.credential_service
-                .build_all_credential_mappings(network_id, pending_credential_ids)
+                .build_all_credential_mappings(network_id, integration_targets)
                 .await
                 .unwrap_or_default()
         } else {
@@ -374,7 +378,7 @@ impl DiscoveryService {
                 },
                 scan_count: 0,
                 force_full_scan: false,
-                pending_credential_ids: vec![],
+                integration_targets: vec![],
             };
 
             // Increment scan_count and clear ephemeral fields only on successful completion.
@@ -395,7 +399,9 @@ impl DiscoveryService {
                 {
                     parent_discovery.scan_count += 1;
                     parent_discovery.force_full_scan = false;
-                    parent_discovery.pending_credential_ids = vec![];
+                    // integration_targets persist across scans (per-daemon init-command
+                    // targeting), so they are intentionally NOT cleared here — unlike the
+                    // old one-shot pending_credential_ids.
                     parent_discovery.updated_at = Utc::now();
                     if let Err(e) = self.discovery_storage.update(&mut parent_discovery).await {
                         tracing::error!(

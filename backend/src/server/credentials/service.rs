@@ -5,8 +5,8 @@ use crate::server::{
         base::Credential,
         junction::{HostCredentialStorage, NetworkCredentialStorage},
         mapping::{
-            CredentialMapping, CredentialQueryPayload, IpOverride, SnmpCredentialMapping,
-            SnmpQueryCredential,
+            CredentialMapping, CredentialQueryPayload, IntegrationTarget, IpOverride,
+            SnmpCredentialMapping, SnmpQueryCredential,
         },
         types::{
             CredentialAssignment, CredentialHostAssignment, CredentialType,
@@ -508,13 +508,17 @@ impl CredentialService {
 
     /// Build generic credential mappings for unified discovery dispatch.
     /// Returns one `CredentialMapping<CredentialQueryPayload>` per credential type discriminant.
-    /// Build all credential mappings for a discovery session.
-    /// Combines: network-level credentials, host-level overrides, org-level target_ips,
-    /// and pending credentials from the discovery edit modal.
+    ///
+    /// Combines: network-level credentials (broadcast defaults), host-level credential
+    /// assignments (IP overrides on discovered hosts), and the per-daemon `integration_targets`
+    /// from the daemon's `Discovery` (init-command targeting — both credentialed cred↔IP and
+    /// credential-less local sockets). The `integration_targets` source replaces the old global
+    /// `credential.target_ips` org-wide bootstrap (which was consumed/cleared once, racing across
+    /// daemons — #637) and the discovery modal's one-shot `pending_credential_ids`.
     pub async fn build_all_credential_mappings(
         &self,
         network_id: Uuid,
-        pending_credential_ids: &[Uuid],
+        integration_targets: &[IntegrationTarget],
     ) -> Result<Vec<CredentialMapping<CredentialQueryPayload>>, Error> {
         let host_service = self
             .host_service
@@ -592,140 +596,114 @@ impl CredentialService {
                                 credential: payload.clone(),
                                 credential_id: cred.id,
                             }));
+                    }
+                }
+            }
+        }
 
-                        // Add target IP overrides (bootstrap IPs for new daemon hosts without ip_addresses)
-                        if let Some(target_ips) = &cred.base.target_ips {
-                            for ip in target_ips {
-                                mapping.ip_overrides.push(IpOverride {
-                                    ip: *ip,
-                                    credential: payload.clone(),
-                                    credential_id: cred.id,
-                                });
-                            }
+        // Per-daemon integration targets from this daemon's Discovery (init-command targeting).
+        // This is the single home for cred↔IP and credential-less local-socket targeting —
+        // it replaces the old org-wide target_ips bootstrap and the modal's pending_credential_ids.
+        // Resolving a credential is the only I/O here; the actual override-building is delegated to
+        // the pure `apply_integration_target` so it can be unit-tested without a database.
+        for target in integration_targets {
+            let resolved = match target {
+                IntegrationTarget::Credentialed { credential_id, .. } => {
+                    match self.get_by_id(credential_id).await? {
+                        Some(cred) => Some(cred.base.credential_type),
+                        None => {
+                            tracing::warn!(
+                                credential_id = %credential_id,
+                                "Integration target references unknown credential; skipping"
+                            );
+                            continue;
                         }
                     }
                 }
-            }
-        }
-
-        // Fetch org credentials with target_ips that aren't already included via host/network
-        // assignment. These are bootstrap credentials for hosts that don't exist yet.
-        let org_id = self
-            .network_service
-            .get_by_id(&network_id)
-            .await?
-            .map(|n| n.base.organization_id);
-
-        if let Some(org_id) = org_id {
-            let target_ip_filter =
-                StorableFilter::<Credential>::new_from_org_id(&org_id).with_target_ips();
-            let target_ip_creds = self.get_all(target_ip_filter).await?;
-
-            // Track which credential IDs are already included
-            let existing_cred_ids: std::collections::HashSet<Uuid> = mappings_by_type
-                .values()
-                .flat_map(|m| m.ip_overrides.iter().map(|o| o.credential_id))
-                .collect();
-
-            let mut creds_to_clear = Vec::new();
-
-            for cred in &target_ip_creds {
-                // Always clear target_ips — even if this credential is already assigned
-                // to a host. The host-level section above adds the credential to mappings
-                // but doesn't clear target_ips, so we must do it here.
-                creds_to_clear.push(cred.id);
-
-                if existing_cred_ids.contains(&cred.id) {
-                    continue; // Already in mappings via host assignment
-                }
-
-                let cred_type = &cred.base.credential_type;
-                let discriminant = cred_type.discriminant();
-                let payload = cred_type.to_query_payload();
-                let mapping =
-                    mappings_by_type
-                        .entry(discriminant)
-                        .or_insert_with(|| CredentialMapping {
-                            default_credential: None,
-                            ip_overrides: vec![],
-                        });
-
-                if let Some(target_ips) = &cred.base.target_ips {
-                    for ip in target_ips {
-                        mapping.ip_overrides.push(IpOverride {
-                            ip: *ip,
-                            credential: payload.clone(),
-                            credential_id: cred.id,
-                        });
-                    }
-                }
-            }
-
-            // Clear target_ips immediately to prevent other daemons from picking them up
-            for cred_id in &creds_to_clear {
-                if let Err(e) = self
-                    .clear_target_ips(cred_id, AuthenticatedEntity::System)
-                    .await
-                {
-                    tracing::warn!(
-                        credential_id = %cred_id,
-                        error = ?e,
-                        "Failed to clear target_ips after loading into credential mappings"
-                    );
-                }
-            }
-        }
-
-        // Pending credentials from the discovery edit modal.
-        // Skip any already included by network-level, host-level, or target_ips sections above.
-        let already_included: std::collections::HashSet<Uuid> = mappings_by_type
-            .values()
-            .flat_map(|m| m.ip_overrides.iter().map(|o| o.credential_id))
-            .collect();
-        for cred_id in pending_credential_ids {
-            if already_included.contains(cred_id) {
-                continue;
-            }
-            if let Some(cred) = self.get_by_id(cred_id).await? {
-                let cred_type = &cred.base.credential_type;
-                let discriminant = cred_type.discriminant();
-                let payload = cred_type.to_query_payload();
-                let mapping =
-                    mappings_by_type
-                        .entry(discriminant)
-                        .or_insert_with(|| CredentialMapping {
-                            default_credential: None,
-                            ip_overrides: vec![],
-                        });
-
-                if let Some(target_ips) = &cred.base.target_ips {
-                    for ip in target_ips {
-                        mapping.ip_overrides.push(IpOverride {
-                            ip: *ip,
-                            credential: payload.clone(),
-                            credential_id: cred.id,
-                        });
-                    }
-                } else if mapping.default_credential.is_none() {
-                    mapping.default_credential = Some(payload);
-                }
-            }
+                IntegrationTarget::Local { .. } => None,
+            };
+            apply_integration_target(&mut mappings_by_type, target, resolved.as_ref());
         }
 
         Ok(mappings_by_type.into_values().collect())
     }
+}
 
-    /// Clear target_ips on a credential by loading and updating through CrudService.
-    pub async fn clear_target_ips(
-        &self,
-        credential_id: &Uuid,
-        authentication: AuthenticatedEntity,
-    ) -> Result<(), Error> {
-        if let Some(mut cred) = self.get_by_id(credential_id).await? {
-            cred.base.target_ips = None;
-            self.update(&mut cred, authentication).await?;
+/// Apply one [`IntegrationTarget`] to the per-credential-type mapping accumulator.
+///
+/// Pure (no I/O): the caller resolves the credential. `resolved_credential` is `Some` for a
+/// `Credentialed` target whose credential was found, `None` for a `Local` target (credential-less)
+/// or a `Credentialed` target whose credential is missing (no-op).
+///
+/// Idempotent — applying the same target twice (e.g. across scans) does not duplicate overrides,
+/// which is core to the #637 fix: targeting lives per-daemon on the `Discovery` and is re-applied
+/// every scan rather than consumed once.
+pub(crate) fn apply_integration_target(
+    mappings_by_type: &mut std::collections::HashMap<
+        CredentialTypeDiscriminants,
+        CredentialMapping<CredentialQueryPayload>,
+    >,
+    target: &IntegrationTarget,
+    resolved_credential: Option<&CredentialType>,
+) {
+    match target {
+        IntegrationTarget::Credentialed { credential_id, ips } => {
+            let Some(cred_type) = resolved_credential else {
+                return;
+            };
+            let discriminant = cred_type.discriminant();
+            let payload = cred_type.to_query_payload();
+            let mapping =
+                mappings_by_type
+                    .entry(discriminant)
+                    .or_insert_with(|| CredentialMapping {
+                        default_credential: None,
+                        ip_overrides: vec![],
+                    });
+
+            if ips.is_empty() {
+                // No explicit IP → network-level default (back-compat for bare-uuid tokens).
+                if mapping.default_credential.is_none() {
+                    mapping.default_credential = Some(payload);
+                }
+            } else {
+                for ip in ips {
+                    // De-dup against host-assignment overrides for the same (ip, cred).
+                    if mapping
+                        .ip_overrides
+                        .iter()
+                        .any(|o| o.ip == *ip && o.credential_id == *credential_id)
+                    {
+                        continue;
+                    }
+                    mapping.ip_overrides.push(IpOverride {
+                        ip: *ip,
+                        credential: payload.clone(),
+                        credential_id: *credential_id,
+                    });
+                }
+            }
         }
-        Ok(())
+        IntegrationTarget::Local { integration } => {
+            // Credential-less local integration: runs on the daemon host (127.0.0.1),
+            // no stored credential (credential_id nil).
+            let payload = integration.to_credential_type().to_query_payload();
+            let mapping =
+                mappings_by_type
+                    .entry(*integration)
+                    .or_insert_with(|| CredentialMapping {
+                        default_credential: None,
+                        ip_overrides: vec![],
+                    });
+            let localhost = IpAddr::V4(std::net::Ipv4Addr::LOCALHOST);
+            if !mapping.ip_overrides.iter().any(|o| o.ip == localhost) {
+                mapping.ip_overrides.push(IpOverride {
+                    ip: localhost,
+                    credential: payload,
+                    credential_id: Uuid::nil(),
+                });
+            }
+        }
     }
 }
 
@@ -804,5 +782,158 @@ mod single_endpoint_tests {
         let a = CredentialTargets::build(&[], &[host(Uuid::from_u128(1), None)], None);
         let b = CredentialTargets::build(&[], &[host(Uuid::from_u128(2), None)], None);
         assert!(!a.overlaps(&b));
+    }
+}
+
+/// Characterization tests for #637 (per-daemon credential↔IP targeting via `IntegrationTarget`).
+/// These exercise the pure `apply_integration_target` transformation — the heart of the fix —
+/// without a database.
+#[cfg(test)]
+mod integration_target_tests {
+    use super::*;
+    use std::collections::HashMap;
+    use std::net::{IpAddr, Ipv4Addr};
+
+    type Mappings = HashMap<CredentialTypeDiscriminants, CredentialMapping<CredentialQueryPayload>>;
+
+    fn localhost() -> IpAddr {
+        IpAddr::V4(Ipv4Addr::LOCALHOST)
+    }
+
+    /// #637 core: two daemons reusing ONE credential each target their own daemon host
+    /// (127.0.0.1) independently. With targeting living per-daemon on the `Discovery` (not on a
+    /// shared, consumed credential field), building daemon A's mappings neither mutates the shared
+    /// target nor affects daemon B — so both daemons get the credential, on first scan and every
+    /// scan after.
+    #[test]
+    fn two_daemons_share_one_credential_independently() {
+        let cred_id = Uuid::new_v4();
+        let cred_type = CredentialTypeDiscriminants::DockerProxy.to_credential_type();
+        let target = IntegrationTarget::Credentialed {
+            credential_id: cred_id,
+            ips: vec![localhost()],
+        };
+
+        // Two separate Discovery rows → two separate accumulators.
+        let mut daemon_a: Mappings = HashMap::new();
+        let mut daemon_b: Mappings = HashMap::new();
+        apply_integration_target(&mut daemon_a, &target, Some(&cred_type));
+        apply_integration_target(&mut daemon_b, &target, Some(&cred_type));
+
+        for map in [&daemon_a, &daemon_b] {
+            let mapping = map
+                .get(&CredentialTypeDiscriminants::DockerProxy)
+                .expect("each daemon gets the docker mapping");
+            assert_eq!(mapping.ip_overrides.len(), 1);
+            assert_eq!(mapping.ip_overrides[0].ip, localhost());
+            assert_eq!(mapping.ip_overrides[0].credential_id, cred_id);
+        }
+
+        // No consumption/clear: the shared target is untouched and still usable.
+        assert_eq!(
+            target,
+            IntegrationTarget::Credentialed {
+                credential_id: cred_id,
+                ips: vec![localhost()],
+            }
+        );
+    }
+
+    /// Re-applying the same target (i.e. a subsequent scan re-reading the persistent
+    /// `integration_targets`) must not duplicate overrides.
+    #[test]
+    fn reapplying_same_target_is_idempotent() {
+        let cred_id = Uuid::new_v4();
+        let cred_type = CredentialTypeDiscriminants::DockerProxy.to_credential_type();
+        let target = IntegrationTarget::Credentialed {
+            credential_id: cred_id,
+            ips: vec![localhost()],
+        };
+        let mut map: Mappings = HashMap::new();
+        apply_integration_target(&mut map, &target, Some(&cred_type));
+        apply_integration_target(&mut map, &target, Some(&cred_type));
+        let mapping = map.get(&CredentialTypeDiscriminants::DockerProxy).unwrap();
+        assert_eq!(
+            mapping.ip_overrides.len(),
+            1,
+            "subsequent scans must not duplicate the override"
+        );
+    }
+
+    /// A credential-less `Local` target maps to a 127.0.0.1 override with a nil credential id.
+    #[test]
+    fn local_socket_target_maps_to_localhost_nil_credential() {
+        let target = IntegrationTarget::Local {
+            integration: CredentialTypeDiscriminants::DockerSocket,
+        };
+        let mut map: Mappings = HashMap::new();
+        apply_integration_target(&mut map, &target, None);
+        let mapping = map.get(&CredentialTypeDiscriminants::DockerSocket).unwrap();
+        assert_eq!(mapping.ip_overrides.len(), 1);
+        assert_eq!(mapping.ip_overrides[0].ip, localhost());
+        assert_eq!(mapping.ip_overrides[0].credential_id, Uuid::nil());
+        assert!(matches!(
+            mapping.ip_overrides[0].credential,
+            CredentialQueryPayload::DockerSocket(_)
+        ));
+    }
+
+    /// A credentialed target whose credential can't be resolved is skipped (no panic, no entry).
+    #[test]
+    fn missing_credential_is_skipped() {
+        let target = IntegrationTarget::Credentialed {
+            credential_id: Uuid::new_v4(),
+            ips: vec![localhost()],
+        };
+        let mut map: Mappings = HashMap::new();
+        apply_integration_target(&mut map, &target, None);
+        assert!(map.is_empty());
+    }
+
+    /// A credentialed target with no explicit IP becomes a network-level default, not an override
+    /// (back-compat for bare-uuid tokens).
+    #[test]
+    fn empty_ips_sets_network_default_not_override() {
+        let cred_type = CredentialTypeDiscriminants::SnmpV2c.to_credential_type();
+        let target = IntegrationTarget::Credentialed {
+            credential_id: Uuid::new_v4(),
+            ips: vec![],
+        };
+        let mut map: Mappings = HashMap::new();
+        apply_integration_target(&mut map, &target, Some(&cred_type));
+        let mapping = map.get(&CredentialTypeDiscriminants::SnmpV2c).unwrap();
+        assert!(mapping.ip_overrides.is_empty());
+        assert!(mapping.default_credential.is_some());
+    }
+
+    /// The wire/storage format of `IntegrationTarget` is an internally-tagged enum; lock it so the
+    /// JSONB column and registration request stay stable across daemon/server versions.
+    #[test]
+    fn integration_target_serde_is_tagged() {
+        let cred_id = Uuid::nil();
+        let credentialed = IntegrationTarget::Credentialed {
+            credential_id: cred_id,
+            ips: vec![localhost()],
+        };
+        let json = serde_json::to_value(&credentialed).unwrap();
+        assert_eq!(json["type"], "Credentialed");
+        assert_eq!(json["credential_id"], cred_id.to_string());
+
+        let local = IntegrationTarget::Local {
+            integration: CredentialTypeDiscriminants::PodmanSocket,
+        };
+        let json = serde_json::to_value(&local).unwrap();
+        assert_eq!(json["type"], "Local");
+        assert_eq!(json["integration"], "PodmanSocket");
+
+        // Round-trip.
+        assert_eq!(
+            credentialed,
+            serde_json::from_value(serde_json::to_value(&credentialed).unwrap()).unwrap()
+        );
+        assert_eq!(
+            local,
+            serde_json::from_value(serde_json::to_value(&local).unwrap()).unwrap()
+        );
     }
 }
