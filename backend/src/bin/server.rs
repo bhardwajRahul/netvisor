@@ -294,12 +294,12 @@ async fn main() -> anyhow::Result<()> {
 
     let csp_value = format!(
         "default-src 'self'; \
-        script-src 'self' 'unsafe-inline' https://ph.scanopy.net; \
+        script-src 'self' 'unsafe-inline' https://ph.scanopy.net https://js.stripe.com; \
         style-src 'self' 'unsafe-inline'; \
         img-src 'self' data: blob: {oidc_logo_sources}; \
         font-src 'self'; \
-        connect-src 'self' https://ph.scanopy.net; \
-        frame-src 'self' https://demo.scanopy.net; \
+        connect-src 'self' https://ph.scanopy.net https://api.stripe.com; \
+        frame-src 'self' https://demo.scanopy.net https://js.stripe.com https://hooks.stripe.com; \
         frame-ancestors 'self'; \
         base-uri 'self'; \
         form-action 'self'",
