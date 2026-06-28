@@ -65,11 +65,33 @@ if ! docker pull "$IMAGE_REF" 2>&1; then
 fi
 
 echo
+echo "=== Connectivity probe: can a bridge-network container reach the DB? (diagnostic) ==="
+# The host runner already reached the DB (the warm-compute SELECT 1 in
+# release.yml succeeded). This probes whether a *container* on the default
+# bridge network can too — if not, that's why the prior-release server
+# container's pool acquire times out. Non-fatal: prints a signal, never fails.
+set +e
+timeout 25 docker run --rm postgres:16-alpine \
+    psql "$DB_URL" -c 'SELECT 1' >/dev/null 2>&1
+probe_rc=$?
+set -e
+if [ "$probe_rc" -eq 0 ]; then
+    echo "  bridge-network container reached the DB OK"
+else
+    echo "  bridge-network container FAILED to reach the DB (rc=$probe_rc) — points to container egress/DNS; server now runs with --network host below"
+fi
+
+echo
 echo "=== Starting container against migrated database ==="
+# Share the runner's network stack (host networking) instead of the default
+# bridge: the runner can reach the DB (warmup succeeded) but a bridge-network
+# container may not, which surfaces as a pool acquire timeout at startup.
+# Under --network host the -p mapping is ignored, so the server binds 60072
+# directly on the host and the localhost polls below still work.
 docker run -d \
     --name "$CONTAINER_NAME" \
+    --network host \
     -e DATABASE_URL="$DB_URL" \
-    -p "${HOST_PORT}:60072" \
     "$IMAGE_REF" >/dev/null
 
 echo "  container: $CONTAINER_NAME"

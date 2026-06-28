@@ -5,8 +5,8 @@
       "method": "POST",
       "path": "/api/initialize",
       "request_body": {
-        "api_key": "scp_d_vye0Ec1ApVUHtl3JQITgHXNQiqWMiTyM",
-        "network_id": "83aaf57f-611a-4c05-ba82-d6d3a8e89bfc"
+        "api_key": "scp_d_4vjLy3M9oJrtkVP8Y7TbhpOTBTydClex",
+        "network_id": "2a563fba-5a83-4d58-af68-f10385f288d2"
       },
       "response_status": 200,
       "response_body": {
@@ -22,7 +22,7 @@
       "method": "POST",
       "path": "/api/first-contact",
       "request_body": {
-        "daemon_id": "67c58519-038c-4c07-95d4-9d8dc53df9df",
+        "daemon_id": "77d692c8-9299-4cfc-8e08-0850dc317e2c",
         "server_capabilities": {
           "minimum_daemon_version": "0.12.0",
           "server_version": "0.17.1"
@@ -38,43 +38,43 @@
           "has_docker_socket": false,
           "interfaced_subnets": [
             {
-              "cidr": "127.0.0.0/8",
-              "created_at": "2026-06-26T22:17:13.751463605Z",
-              "description": null,
-              "first_discovery_id": null,
-              "id": "be5e7588-463f-49a3-947b-191d60771a87",
-              "last_discovery_id": null,
-              "last_seen_at": "2026-06-26T22:17:13.751463605Z",
-              "lineage_id": null,
-              "name": "127.0.0.0/8",
-              "network_id": "83aaf57f-611a-4c05-ba82-d6d3a8e89bfc",
-              "source": {
-                "type": "Discovery"
-              },
-              "subnet_type": "Loopback",
-              "tags": [],
-              "updated_at": "2026-06-26T22:17:13.751463605Z",
-              "valid_from": "2026-06-26T22:17:13.751463605Z",
-              "valid_to": null
-            },
-            {
               "cidr": "172.25.0.0/28",
-              "created_at": "2026-06-26T22:17:13.751503861Z",
+              "created_at": "2026-06-27T16:21:31.376115503Z",
               "description": null,
               "first_discovery_id": null,
-              "id": "4bf1dd19-98e6-4cdd-bac3-4a04458a3d47",
+              "id": "2f87906f-83e5-4c74-95fd-49d694ee0e70",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-26T22:17:13.751503861Z",
+              "last_seen_at": "2026-06-27T16:21:31.376115503Z",
               "lineage_id": null,
               "name": "172.25.0.0/28",
-              "network_id": "83aaf57f-611a-4c05-ba82-d6d3a8e89bfc",
+              "network_id": "2a563fba-5a83-4d58-af68-f10385f288d2",
               "source": {
                 "type": "Discovery"
               },
               "subnet_type": "Lan",
               "tags": [],
-              "updated_at": "2026-06-26T22:17:13.751503861Z",
-              "valid_from": "2026-06-26T22:17:13.751503861Z",
+              "updated_at": "2026-06-27T16:21:31.376115503Z",
+              "valid_from": "2026-06-27T16:21:31.376115503Z",
+              "valid_to": null
+            },
+            {
+              "cidr": "127.0.0.0/8",
+              "created_at": "2026-06-27T16:21:31.376080217Z",
+              "description": null,
+              "first_discovery_id": null,
+              "id": "78cc6567-d9f0-4a44-a0af-baf509ab993f",
+              "last_discovery_id": null,
+              "last_seen_at": "2026-06-27T16:21:31.376080217Z",
+              "lineage_id": null,
+              "name": "127.0.0.0/8",
+              "network_id": "2a563fba-5a83-4d58-af68-f10385f288d2",
+              "source": {
+                "type": "Discovery"
+              },
+              "subnet_type": "Loopback",
+              "tags": [],
+              "updated_at": "2026-06-27T16:21:31.376080217Z",
+              "valid_from": "2026-06-27T16:21:31.376080217Z",
               "valid_to": null
             }
           ],
@@ -115,9 +115,9 @@
       "path": "/api/discovery/initiate",
       "request_body": {
         "credential_mappings": [],
-        "discovery_id": "e68480f0-0ed4-4164-98ef-a4a3d6b79f21",
+        "discovery_id": "b6a2e160-33c2-45fa-b827-25b3af3a92b7",
         "discovery_type": {
-          "host_id": "98831453-e0ac-4b60-8631-48b64b8f1e6d",
+          "host_id": "9cde946b-a2f2-42af-bcb1-d69c9b994736",
           "host_naming_fallback": "BestService",
           "scan_settings": {
             "arp_rate_pps": null,
@@ -133,12 +133,12 @@
           "subnet_ids": null,
           "type": "Unified"
         },
-        "session_id": "dd9c7a5a-3cb8-4dac-b3e1-110206ed4fb1"
+        "session_id": "4c014a88-9771-4c9e-87ae-99b7bc763009"
       },
       "response_status": 200,
       "response_body": {
         "data": {
-          "session_id": "dd9c7a5a-3cb8-4dac-b3e1-110206ed4fb1"
+          "session_id": "4c014a88-9771-4c9e-87ae-99b7bc763009"
         },
         "meta": {
           "api_version": 1,
@@ -161,43 +161,43 @@
           "has_docker_socket": false,
           "interfaced_subnets": [
             {
-              "cidr": "127.0.0.0/8",
-              "created_at": "2026-06-26T22:17:43.749315213Z",
-              "description": null,
-              "first_discovery_id": null,
-              "id": "6fe88864-116c-4995-a5bd-09516554af65",
-              "last_discovery_id": null,
-              "last_seen_at": "2026-06-26T22:17:43.749315213Z",
-              "lineage_id": null,
-              "name": "127.0.0.0/8",
-              "network_id": "83aaf57f-611a-4c05-ba82-d6d3a8e89bfc",
-              "source": {
-                "type": "Discovery"
-              },
-              "subnet_type": "Loopback",
-              "tags": [],
-              "updated_at": "2026-06-26T22:17:43.749315213Z",
-              "valid_from": "2026-06-26T22:17:43.749315213Z",
-              "valid_to": null
-            },
-            {
               "cidr": "172.25.0.0/28",
-              "created_at": "2026-06-26T22:17:43.749344919Z",
+              "created_at": "2026-06-27T16:22:01.374181371Z",
               "description": null,
               "first_discovery_id": null,
-              "id": "51e9bb82-2804-4cde-8d6e-49c129ad3878",
+              "id": "b93129cd-e8a5-443c-a6b2-bfadd0b52dbd",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-26T22:17:43.749344919Z",
+              "last_seen_at": "2026-06-27T16:22:01.374181371Z",
               "lineage_id": null,
               "name": "172.25.0.0/28",
-              "network_id": "83aaf57f-611a-4c05-ba82-d6d3a8e89bfc",
+              "network_id": "2a563fba-5a83-4d58-af68-f10385f288d2",
               "source": {
                 "type": "Discovery"
               },
               "subnet_type": "Lan",
               "tags": [],
-              "updated_at": "2026-06-26T22:17:43.749344919Z",
-              "valid_from": "2026-06-26T22:17:43.749344919Z",
+              "updated_at": "2026-06-27T16:22:01.374181371Z",
+              "valid_from": "2026-06-27T16:22:01.374181371Z",
+              "valid_to": null
+            },
+            {
+              "cidr": "127.0.0.0/8",
+              "created_at": "2026-06-27T16:22:01.374150673Z",
+              "description": null,
+              "first_discovery_id": null,
+              "id": "4b142ded-c60d-45b1-80a2-ba8f1b25e756",
+              "last_discovery_id": null,
+              "last_seen_at": "2026-06-27T16:22:01.374150673Z",
+              "lineage_id": null,
+              "name": "127.0.0.0/8",
+              "network_id": "2a563fba-5a83-4d58-af68-f10385f288d2",
+              "source": {
+                "type": "Discovery"
+              },
+              "subnet_type": "Loopback",
+              "tags": [],
+              "updated_at": "2026-06-27T16:22:01.374150673Z",
+              "valid_from": "2026-06-27T16:22:01.374150673Z",
               "valid_to": null
             }
           ],
@@ -220,48 +220,48 @@
         "hosts": [],
         "subnets": [
           [
-            "4ca10f29-42bd-4c76-a43b-6bf4ee9434d9",
+            "b7cadaad-9972-41b4-9ad6-8c9ff4f114ae",
             {
               "cidr": "127.0.0.0/8",
-              "created_at": "2026-06-26T22:16:55.548843Z",
+              "created_at": "2026-06-27T16:21:13.013648Z",
               "description": null,
               "first_discovery_id": null,
-              "id": "84b96be5-0453-4324-a55f-2cb1e92a1063",
+              "id": "842a7026-8678-40c1-9e84-78f08b45f305",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-26T22:17:13.779470179Z",
+              "last_seen_at": "2026-06-27T16:21:31.405724092Z",
               "lineage_id": null,
               "name": "127.0.0.0/8",
-              "network_id": "83aaf57f-611a-4c05-ba82-d6d3a8e89bfc",
+              "network_id": "2a563fba-5a83-4d58-af68-f10385f288d2",
               "source": {
                 "type": "Discovery"
               },
               "subnet_type": "Loopback",
               "tags": [],
-              "updated_at": "2026-06-26T22:16:55.548843Z",
-              "valid_from": "2026-06-26T22:16:55.548843Z",
+              "updated_at": "2026-06-27T16:21:13.013648Z",
+              "valid_from": "2026-06-27T16:21:13.013648Z",
               "valid_to": null
             }
           ],
           [
-            "10fc2ec1-59c0-498a-95fd-6e42747d4e14",
+            "aad7eab7-d38c-4683-b592-5118b2e6f03c",
             {
               "cidr": "172.25.0.0/28",
-              "created_at": "2026-06-26T22:16:55.548882Z",
+              "created_at": "2026-06-27T16:21:13.013695Z",
               "description": null,
               "first_discovery_id": null,
-              "id": "2a401a1f-166d-4d81-bc9e-646063297853",
+              "id": "3e586393-5d3b-4bb8-9852-688077321b85",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-26T22:17:13.779495516Z",
+              "last_seen_at": "2026-06-27T16:21:31.405758126Z",
               "lineage_id": null,
               "name": "172.25.0.0/28",
-              "network_id": "83aaf57f-611a-4c05-ba82-d6d3a8e89bfc",
+              "network_id": "2a563fba-5a83-4d58-af68-f10385f288d2",
               "source": {
                 "type": "Discovery"
               },
               "subnet_type": "Lan",
               "tags": [],
-              "updated_at": "2026-06-26T22:16:55.548882Z",
-              "valid_from": "2026-06-26T22:16:55.548882Z",
+              "updated_at": "2026-06-27T16:21:13.013695Z",
+              "valid_from": "2026-06-27T16:21:13.013695Z",
               "valid_to": null
             }
           ]
