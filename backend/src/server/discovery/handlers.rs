@@ -241,6 +241,26 @@ pub async fn update_discovery(
         ));
     }
 
+    // Single-endpoint guard: a daemon host can't run two credentials of the same
+    // integration (e.g. a Docker socket + a Docker proxy, or the Podman pair). All
+    // of this discovery's daemon-host targets resolve to its daemon's host, so check
+    // them against each other before persisting.
+    if let Some(daemon) = state
+        .services
+        .daemon_service
+        .get_by_id(&discovery.base.daemon_id)
+        .await?
+        && let Some((a, b)) = state
+            .services
+            .credential_service
+            .find_daemon_host_target_conflict(daemon.base.host_id, &discovery.integration_targets)
+            .await?
+    {
+        return Err(ApiError::bad_request(&format!(
+            "\"{a}\" and \"{b}\" both target this daemon's host for the same integration, which allows only one credential per host. Remove one."
+        )));
+    }
+
     update_handler::<Discovery>(state, auth, id, discovery).await
 }
 
