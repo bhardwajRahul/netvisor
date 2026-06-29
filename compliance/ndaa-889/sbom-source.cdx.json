@@ -2,10 +2,10 @@
   "$schema": "http://cyclonedx.org/schema/bom-1.6.schema.json",
   "bomFormat": "CycloneDX",
   "specVersion": "1.6",
-  "serialNumber": "urn:uuid:d0573272-43a9-4591-8aec-0074d4e5df90",
+  "serialNumber": "urn:uuid:0bd9ef44-15f5-42e4-8d5e-ddfd8106c476",
   "version": 1,
   "metadata": {
-    "timestamp": "2026-06-19T02:17:30Z",
+    "timestamp": "2026-06-28T17:13:23Z",
     "tools": {
       "components": [
         {
@@ -6100,6 +6100,63 @@
       ]
     },
     {
+      "bom-ref": "pkg:npm/%40stripe/stripe-js@9.8.0?package-id=5416ab84066791dc",
+      "type": "library",
+      "name": "@stripe/stripe-js",
+      "version": "9.8.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "cpe": "cpe:2.3:a:\\@stripe\\/stripe-js:\\@stripe\\/stripe-js:9.8.0:*:*:*:*:*:*:*",
+      "purl": "pkg:npm/%40stripe/stripe-js@9.8.0",
+      "properties": [
+        {
+          "name": "syft:package:foundBy",
+          "value": "javascript-lock-cataloger"
+        },
+        {
+          "name": "syft:package:language",
+          "value": "javascript"
+        },
+        {
+          "name": "syft:package:type",
+          "value": "npm"
+        },
+        {
+          "name": "syft:package:metadataType",
+          "value": "javascript-npm-package-lock-entry"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@stripe\\/stripe-js:\\@stripe\\/stripe_js:9.8.0:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@stripe\\/stripe_js:\\@stripe\\/stripe-js:9.8.0:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@stripe\\/stripe_js:\\@stripe\\/stripe_js:9.8.0:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@stripe\\/stripe:\\@stripe\\/stripe-js:9.8.0:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@stripe\\/stripe:\\@stripe\\/stripe_js:9.8.0:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:location:0:path",
+          "value": "/ui/package-lock.json"
+        }
+      ]
+    },
+    {
       "bom-ref": "pkg:npm/%40svelte-put/shortcut@4.1.0?package-id=21259c08d12e91e7",
       "type": "library",
       "name": "@svelte-put/shortcut",
@@ -7777,12 +7834,12 @@
       ]
     },
     {
-      "bom-ref": "pkg:github/actions/checkout@v4?package-id=3c31ee4fb9ba74bd",
+      "bom-ref": "pkg:github/actions/checkout@v3?package-id=8d1f8f0c165fb72e",
       "type": "library",
       "name": "actions/checkout",
-      "version": "v4",
-      "cpe": "cpe:2.3:a:actions\\/checkout:actions\\/checkout:v4:*:*:*:*:*:*:*",
-      "purl": "pkg:github/actions/checkout@v4",
+      "version": "v3",
+      "cpe": "cpe:2.3:a:actions\\/checkout:actions\\/checkout:v3:*:*:*:*:*:*:*",
+      "purl": "pkg:github/actions/checkout@v3",
       "properties": [
         {
           "name": "syft:package:foundBy",
@@ -7798,7 +7855,7 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "/.github/workflows/889-check-test.yml"
+          "value": "/backend/vendor/snmp2/.github/workflows/ci.yml"
         }
       ]
     },
@@ -8309,52 +8366,6 @@
         {
           "name": "syft:location:0:path",
           "value": "/.github/workflows/close-stale.yml"
-        }
-      ]
-    },
-    {
-      "bom-ref": "pkg:github/actions/upload-artifact@v4?package-id=2565a7c6030f64ee",
-      "type": "library",
-      "name": "actions/upload-artifact",
-      "version": "v4",
-      "cpe": "cpe:2.3:a:actions\\/upload-artifact:actions\\/upload-artifact:v4:*:*:*:*:*:*:*",
-      "purl": "pkg:github/actions/upload-artifact@v4",
-      "properties": [
-        {
-          "name": "syft:package:foundBy",
-          "value": "github-actions-usage-cataloger"
-        },
-        {
-          "name": "syft:package:type",
-          "value": "github-action"
-        },
-        {
-          "name": "syft:package:metadataType",
-          "value": "github-actions-use-statement"
-        },
-        {
-          "name": "syft:cpe23",
-          "value": "cpe:2.3:a:actions\\/upload-artifact:actions\\/upload_artifact:v4:*:*:*:*:*:*:*"
-        },
-        {
-          "name": "syft:cpe23",
-          "value": "cpe:2.3:a:actions\\/upload_artifact:actions\\/upload-artifact:v4:*:*:*:*:*:*:*"
-        },
-        {
-          "name": "syft:cpe23",
-          "value": "cpe:2.3:a:actions\\/upload_artifact:actions\\/upload_artifact:v4:*:*:*:*:*:*:*"
-        },
-        {
-          "name": "syft:cpe23",
-          "value": "cpe:2.3:a:actions\\/upload:actions\\/upload-artifact:v4:*:*:*:*:*:*:*"
-        },
-        {
-          "name": "syft:cpe23",
-          "value": "cpe:2.3:a:actions\\/upload:actions\\/upload_artifact:v4:*:*:*:*:*:*:*"
-        },
-        {
-          "name": "syft:location:0:path",
-          "value": "/.github/workflows/889-check-test.yml"
         }
       ]
     },
@@ -12134,6 +12145,62 @@
       ]
     },
     {
+      "bom-ref": "pkg:cargo/block-padding@0.3.3?package-id=ee4567e1a716ad2c",
+      "type": "library",
+      "name": "block-padding",
+      "version": "0.3.3",
+      "cpe": "cpe:2.3:a:block-padding:block-padding:0.3.3:*:*:*:*:*:*:*",
+      "purl": "pkg:cargo/block-padding@0.3.3",
+      "externalReferences": [
+        {
+          "url": "registry+https://github.com/rust-lang/crates.io-index",
+          "type": "distribution"
+        }
+      ],
+      "properties": [
+        {
+          "name": "syft:package:foundBy",
+          "value": "rust-cargo-lock-cataloger"
+        },
+        {
+          "name": "syft:package:language",
+          "value": "rust"
+        },
+        {
+          "name": "syft:package:type",
+          "value": "rust-crate"
+        },
+        {
+          "name": "syft:package:metadataType",
+          "value": "rust-cargo-lock-entry"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:block-padding:block_padding:0.3.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:block_padding:block-padding:0.3.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:block_padding:block_padding:0.3.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:block:block-padding:0.3.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:block:block_padding:0.3.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:location:0:path",
+          "value": "/backend/Cargo.lock"
+        }
+      ]
+    },
+    {
       "bom-ref": "pkg:cargo/blocking@1.6.2?package-id=92eb93ee3321511d",
       "type": "library",
       "name": "blocking",
@@ -13034,6 +13101,42 @@
       ]
     },
     {
+      "bom-ref": "pkg:cargo/cbc@0.1.2?package-id=f806df5658797925",
+      "type": "library",
+      "name": "cbc",
+      "version": "0.1.2",
+      "cpe": "cpe:2.3:a:cbc:cbc:0.1.2:*:*:*:*:*:*:*",
+      "purl": "pkg:cargo/cbc@0.1.2",
+      "externalReferences": [
+        {
+          "url": "registry+https://github.com/rust-lang/crates.io-index",
+          "type": "distribution"
+        }
+      ],
+      "properties": [
+        {
+          "name": "syft:package:foundBy",
+          "value": "rust-cargo-lock-cataloger"
+        },
+        {
+          "name": "syft:package:language",
+          "value": "rust"
+        },
+        {
+          "name": "syft:package:type",
+          "value": "rust-crate"
+        },
+        {
+          "name": "syft:package:metadataType",
+          "value": "rust-cargo-lock-entry"
+        },
+        {
+          "name": "syft:location:0:path",
+          "value": "/backend/Cargo.lock"
+        }
+      ]
+    },
+    {
       "bom-ref": "pkg:cargo/cc@1.2.46?package-id=5ca5412b7580a69e",
       "type": "library",
       "name": "cc",
@@ -13098,6 +13201,62 @@
         {
           "name": "syft:package:metadataType",
           "value": "rust-cargo-lock-entry"
+        },
+        {
+          "name": "syft:location:0:path",
+          "value": "/backend/Cargo.lock"
+        }
+      ]
+    },
+    {
+      "bom-ref": "pkg:cargo/cfb-mode@0.8.2?package-id=5fb1fb4c7a75d75f",
+      "type": "library",
+      "name": "cfb-mode",
+      "version": "0.8.2",
+      "cpe": "cpe:2.3:a:cfb-mode:cfb-mode:0.8.2:*:*:*:*:*:*:*",
+      "purl": "pkg:cargo/cfb-mode@0.8.2",
+      "externalReferences": [
+        {
+          "url": "registry+https://github.com/rust-lang/crates.io-index",
+          "type": "distribution"
+        }
+      ],
+      "properties": [
+        {
+          "name": "syft:package:foundBy",
+          "value": "rust-cargo-lock-cataloger"
+        },
+        {
+          "name": "syft:package:language",
+          "value": "rust"
+        },
+        {
+          "name": "syft:package:type",
+          "value": "rust-crate"
+        },
+        {
+          "name": "syft:package:metadataType",
+          "value": "rust-cargo-lock-entry"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:cfb-mode:cfb_mode:0.8.2:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:cfb_mode:cfb-mode:0.8.2:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:cfb_mode:cfb_mode:0.8.2:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:cfb:cfb-mode:0.8.2:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:cfb:cfb_mode:0.8.2:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:location:0:path",
@@ -17560,6 +17719,42 @@
       ]
     },
     {
+      "bom-ref": "pkg:cargo/des@0.8.1?package-id=acf74b3d7cf09026",
+      "type": "library",
+      "name": "des",
+      "version": "0.8.1",
+      "cpe": "cpe:2.3:a:des:des:0.8.1:*:*:*:*:*:*:*",
+      "purl": "pkg:cargo/des@0.8.1",
+      "externalReferences": [
+        {
+          "url": "registry+https://github.com/rust-lang/crates.io-index",
+          "type": "distribution"
+        }
+      ],
+      "properties": [
+        {
+          "name": "syft:package:foundBy",
+          "value": "rust-cargo-lock-cataloger"
+        },
+        {
+          "name": "syft:package:language",
+          "value": "rust"
+        },
+        {
+          "name": "syft:package:type",
+          "value": "rust-crate"
+        },
+        {
+          "name": "syft:package:metadataType",
+          "value": "rust-cargo-lock-entry"
+        },
+        {
+          "name": "syft:location:0:path",
+          "value": "/backend/Cargo.lock"
+        }
+      ]
+    },
+    {
       "bom-ref": "pkg:npm/devalue@5.8.1?package-id=c4e27152bd1338fd",
       "type": "library",
       "name": "devalue",
@@ -18133,52 +18328,6 @@
         {
           "name": "syft:location:0:path",
           "value": "/.github/workflows/release.yml"
-        }
-      ]
-    },
-    {
-      "bom-ref": "pkg:github/docker/login-action@v3?package-id=20525889606d30fc",
-      "type": "library",
-      "name": "docker/login-action",
-      "version": "v3",
-      "cpe": "cpe:2.3:a:docker\\/login-action:docker\\/login-action:v3:*:*:*:*:*:*:*",
-      "purl": "pkg:github/docker/login-action@v3",
-      "properties": [
-        {
-          "name": "syft:package:foundBy",
-          "value": "github-actions-usage-cataloger"
-        },
-        {
-          "name": "syft:package:type",
-          "value": "github-action"
-        },
-        {
-          "name": "syft:package:metadataType",
-          "value": "github-actions-use-statement"
-        },
-        {
-          "name": "syft:cpe23",
-          "value": "cpe:2.3:a:docker\\/login-action:docker\\/login_action:v3:*:*:*:*:*:*:*"
-        },
-        {
-          "name": "syft:cpe23",
-          "value": "cpe:2.3:a:docker\\/login_action:docker\\/login-action:v3:*:*:*:*:*:*:*"
-        },
-        {
-          "name": "syft:cpe23",
-          "value": "cpe:2.3:a:docker\\/login_action:docker\\/login_action:v3:*:*:*:*:*:*:*"
-        },
-        {
-          "name": "syft:cpe23",
-          "value": "cpe:2.3:a:docker\\/login:docker\\/login-action:v3:*:*:*:*:*:*:*"
-        },
-        {
-          "name": "syft:cpe23",
-          "value": "cpe:2.3:a:docker\\/login:docker\\/login_action:v3:*:*:*:*:*:*:*"
-        },
-        {
-          "name": "syft:location:0:path",
-          "value": "/.github/workflows/889-check-test.yml"
         }
       ]
     },
@@ -25566,7 +25715,7 @@
       ]
     },
     {
-      "bom-ref": "pkg:cargo/inout@0.1.4?package-id=138fece7e8f84359",
+      "bom-ref": "pkg:cargo/inout@0.1.4?package-id=81938e09d6f10b4e",
       "type": "library",
       "name": "inout",
       "version": "0.1.4",
@@ -40358,12 +40507,12 @@
       ]
     },
     {
-      "bom-ref": "pkg:cargo/scanopy-server@0.16.2?package-id=9f87c76d1479742f",
+      "bom-ref": "pkg:cargo/scanopy-server@0.17.1?package-id=56a6816e279e3f4e",
       "type": "library",
       "name": "scanopy-server",
-      "version": "0.16.2",
-      "cpe": "cpe:2.3:a:scanopy-server:scanopy-server:0.16.2:*:*:*:*:*:*:*",
-      "purl": "pkg:cargo/scanopy-server@0.16.2",
+      "version": "0.17.1",
+      "cpe": "cpe:2.3:a:scanopy-server:scanopy-server:0.17.1:*:*:*:*:*:*:*",
+      "purl": "pkg:cargo/scanopy-server@0.17.1",
       "properties": [
         {
           "name": "syft:package:foundBy",
@@ -40383,23 +40532,23 @@
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:scanopy-server:scanopy_server:0.16.2:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:scanopy-server:scanopy_server:0.17.1:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:scanopy_server:scanopy-server:0.16.2:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:scanopy_server:scanopy-server:0.17.1:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:scanopy_server:scanopy_server:0.16.2:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:scanopy_server:scanopy_server:0.17.1:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:scanopy:scanopy-server:0.16.2:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:scanopy:scanopy-server:0.17.1:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:scanopy:scanopy_server:0.16.2:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:scanopy:scanopy_server:0.17.1:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:location:0:path",
@@ -40408,12 +40557,12 @@
       ]
     },
     {
-      "bom-ref": "pkg:npm/scanopy-ui@0.16.2?package-id=5c33981f3715f322",
+      "bom-ref": "pkg:npm/scanopy-ui@0.17.1?package-id=1f35353a4a320dee",
       "type": "library",
       "name": "scanopy-ui",
-      "version": "0.16.2",
-      "cpe": "cpe:2.3:a:scanopy-ui:scanopy-ui:0.16.2:*:*:*:*:*:*:*",
-      "purl": "pkg:npm/scanopy-ui@0.16.2",
+      "version": "0.17.1",
+      "cpe": "cpe:2.3:a:scanopy-ui:scanopy-ui:0.17.1:*:*:*:*:*:*:*",
+      "purl": "pkg:npm/scanopy-ui@0.17.1",
       "properties": [
         {
           "name": "syft:package:foundBy",
@@ -40433,23 +40582,23 @@
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:scanopy-ui:scanopy_ui:0.16.2:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:scanopy-ui:scanopy_ui:0.17.1:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:scanopy_ui:scanopy-ui:0.16.2:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:scanopy_ui:scanopy-ui:0.17.1:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:scanopy_ui:scanopy_ui:0.16.2:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:scanopy_ui:scanopy_ui:0.17.1:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:scanopy:scanopy-ui:0.16.2:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:scanopy:scanopy-ui:0.17.1:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:scanopy:scanopy_ui:0.16.2:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:scanopy:scanopy_ui:0.17.1:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:location:0:path",
@@ -42804,18 +42953,12 @@
       ]
     },
     {
-      "bom-ref": "pkg:cargo/snmp2@0.4.10?package-id=d6f57727d7eed200",
+      "bom-ref": "pkg:cargo/snmp2@0.5.0?package-id=8a8af51892dfb416",
       "type": "library",
       "name": "snmp2",
-      "version": "0.4.10",
-      "cpe": "cpe:2.3:a:snmp2:snmp2:0.4.10:*:*:*:*:*:*:*",
-      "purl": "pkg:cargo/snmp2@0.4.10",
-      "externalReferences": [
-        {
-          "url": "registry+https://github.com/rust-lang/crates.io-index",
-          "type": "distribution"
-        }
-      ],
+      "version": "0.5.0",
+      "cpe": "cpe:2.3:a:snmp2:snmp2:0.5.0:*:*:*:*:*:*:*",
+      "purl": "pkg:cargo/snmp2@0.5.0",
       "properties": [
         {
           "name": "syft:package:foundBy",
@@ -45084,68 +45227,6 @@
         {
           "name": "syft:cpe23",
           "value": "cpe:2.3:a:taiki:taiki_e\\/install_action:cross:*:*:*:*:*:*:*"
-        },
-        {
-          "name": "syft:location:0:path",
-          "value": "/.github/workflows/release.yml"
-        }
-      ]
-    },
-    {
-      "bom-ref": "pkg:github/taiki-e/install-action@v2?package-id=1a4bb4d3ed26ea07",
-      "type": "library",
-      "name": "taiki-e/install-action",
-      "version": "v2",
-      "cpe": "cpe:2.3:a:taiki-e\\/install-action:taiki-e\\/install-action:v2:*:*:*:*:*:*:*",
-      "purl": "pkg:github/taiki-e/install-action@v2",
-      "properties": [
-        {
-          "name": "syft:package:foundBy",
-          "value": "github-actions-usage-cataloger"
-        },
-        {
-          "name": "syft:package:type",
-          "value": "github-action"
-        },
-        {
-          "name": "syft:package:metadataType",
-          "value": "github-actions-use-statement"
-        },
-        {
-          "name": "syft:cpe23",
-          "value": "cpe:2.3:a:taiki-e\\/install-action:taiki_e\\/install_action:v2:*:*:*:*:*:*:*"
-        },
-        {
-          "name": "syft:cpe23",
-          "value": "cpe:2.3:a:taiki_e\\/install_action:taiki-e\\/install-action:v2:*:*:*:*:*:*:*"
-        },
-        {
-          "name": "syft:cpe23",
-          "value": "cpe:2.3:a:taiki_e\\/install_action:taiki_e\\/install_action:v2:*:*:*:*:*:*:*"
-        },
-        {
-          "name": "syft:cpe23",
-          "value": "cpe:2.3:a:taiki-e\\/install:taiki-e\\/install-action:v2:*:*:*:*:*:*:*"
-        },
-        {
-          "name": "syft:cpe23",
-          "value": "cpe:2.3:a:taiki-e\\/install:taiki_e\\/install_action:v2:*:*:*:*:*:*:*"
-        },
-        {
-          "name": "syft:cpe23",
-          "value": "cpe:2.3:a:taiki_e\\/install:taiki-e\\/install-action:v2:*:*:*:*:*:*:*"
-        },
-        {
-          "name": "syft:cpe23",
-          "value": "cpe:2.3:a:taiki_e\\/install:taiki_e\\/install_action:v2:*:*:*:*:*:*:*"
-        },
-        {
-          "name": "syft:cpe23",
-          "value": "cpe:2.3:a:taiki:taiki-e\\/install-action:v2:*:*:*:*:*:*:*"
-        },
-        {
-          "name": "syft:cpe23",
-          "value": "cpe:2.3:a:taiki:taiki_e\\/install_action:v2:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:location:0:path",
@@ -55518,32 +55599,17 @@
       ]
     },
     {
-      "bom-ref": "13c74a7e6a7573fb",
-      "type": "file",
-      "name": "/home/runner/work/scanopy/scanopy/.github/workflows/889-check-test.yml",
-      "hashes": [
-        {
-          "alg": "SHA-1",
-          "content": "83294994de9def8d380df26865f391b1487ea2e0"
-        },
-        {
-          "alg": "SHA-256",
-          "content": "bf32692052b987b9da75042a36ee673f745fac69775296916295b9c833201084"
-        }
-      ]
-    },
-    {
       "bom-ref": "7c9235d667be3048",
       "type": "file",
       "name": "/home/runner/work/scanopy/scanopy/.github/workflows/889-check.yml",
       "hashes": [
         {
           "alg": "SHA-1",
-          "content": "8bf572aa615c020b2e4b7e4e135f193982521902"
+          "content": "eb92b9ea524299d9c8264b54e231826ac1c1b9df"
         },
         {
           "alg": "SHA-256",
-          "content": "87119377facf8043de6f893245268f963c74d411c089f6c37d7e58fa4e0b9a24"
+          "content": "04c7ac6ea99a5175816c79f73e881858c6b01ce360a8b1f267afa2eb89a7bad6"
         }
       ]
     },
@@ -55554,11 +55620,11 @@
       "hashes": [
         {
           "alg": "SHA-1",
-          "content": "21b6740dc60880f8eedb62c32782047a12dddf55"
+          "content": "959171293d65f71eba54c7b2b92ea93a59da1fa3"
         },
         {
           "alg": "SHA-256",
-          "content": "1491b3b6c2c17ea29cf716f623236667f017bbb79ee4082fc58554edb9512610"
+          "content": "6c9ef3f8b9ea96d264e243ca42031db859b81229ee392078224af7127bd5944a"
         }
       ]
     },
@@ -55569,11 +55635,11 @@
       "hashes": [
         {
           "alg": "SHA-1",
-          "content": "9d920936a511a45ad13a6ec9e3c23e38bc434695"
+          "content": "c93933c2e9700fb512906c2bc017d8b7435ee6fd"
         },
         {
           "alg": "SHA-256",
-          "content": "0ee3469a0d55dd940d3260b3cc6e708dc6b84334e5799885cf8d07f8636ead3d"
+          "content": "4107d1e6a9ca5fddba08b439f5a80d069936659fb4d1c5d7f840eae685f39de4"
         }
       ]
     },
@@ -55629,11 +55695,11 @@
       "hashes": [
         {
           "alg": "SHA-1",
-          "content": "1aa8b949fed34553de2a1189b2dc774730c4e7c4"
+          "content": "825e5160aa37384e39308edb0941c64f22957555"
         },
         {
           "alg": "SHA-256",
-          "content": "e5a7cd3ce3f5cde358550b050684e556aa77c4f81158991381d939e69f60eba2"
+          "content": "ae24f024dd4c934fdb01b7bcebc5027f5157e84760cb4f965cb21fdec2392e2c"
         }
       ]
     },
@@ -55644,11 +55710,11 @@
       "hashes": [
         {
           "alg": "SHA-1",
-          "content": "fceb1dc7ef4b32552fe9d21fd41086f70a642b61"
+          "content": "061e275a43ad98a49d54e6cfa3f773e07d6086eb"
         },
         {
           "alg": "SHA-256",
-          "content": "9c9b238edd55fd71c759d2a474219c9810f6223f31a18fe2c2c14621d577cbf8"
+          "content": "860408dd33205de7cc7899254acc4b92fff345106d47a98f4f348b09a7aee351"
         }
       ]
     },
@@ -55719,11 +55785,26 @@
       "hashes": [
         {
           "alg": "SHA-1",
-          "content": "e2bc34379ffabe9796569fd0a448914ed1ab7524"
+          "content": "148d3e21a28e29867b43b1a1951c85670e374111"
         },
         {
           "alg": "SHA-256",
-          "content": "5ee4061c93969e20633bf5fc4020f07402355a0e9eec1f9a439d0551709f18d4"
+          "content": "cc740a662a81c2119c4ab3f5fbbd838782e2bad9401255c56aaf29f7f084eb60"
+        }
+      ]
+    },
+    {
+      "bom-ref": "da3caaa456b379fc",
+      "type": "file",
+      "name": "/home/runner/work/scanopy/scanopy/backend/vendor/snmp2/.github/workflows/ci.yml",
+      "hashes": [
+        {
+          "alg": "SHA-1",
+          "content": "4ac7568d18f91b358fc0d3c54554d73bd849d916"
+        },
+        {
+          "alg": "SHA-256",
+          "content": "16bf933cff09ece083b30135ff06d97c29018180d779238c81d14091d60b8397"
         }
       ]
     },
@@ -55734,11 +55815,11 @@
       "hashes": [
         {
           "alg": "SHA-1",
-          "content": "d2dd6ff9f74079d3ce026df881aae679625dbea5"
+          "content": "045d4d0ebad7152f247ecfc83a39ff5398c97e30"
         },
         {
           "alg": "SHA-256",
-          "content": "df3212af859992572dcae7a0e6d76aa40758a191e2f4f70a23ef3fbfb64b30cd"
+          "content": "9dc37ac5a1ee25b46453098177cb761f65c7cb2402d75fded094ccd160ea510f"
         }
       ]
     }
@@ -56190,6 +56271,12 @@
       ]
     },
     {
+      "ref": "pkg:cargo/block-padding@0.3.3?package-id=ee4567e1a716ad2c",
+      "dependsOn": [
+        "pkg:cargo/generic-array@0.14.9?package-id=02122a73f6f9d436"
+      ]
+    },
+    {
       "ref": "pkg:cargo/blocking@1.6.2?package-id=92eb93ee3321511d",
       "dependsOn": [
         "pkg:cargo/async-channel@2.5.0?package-id=672598ce2923a45d",
@@ -56309,6 +56396,12 @@
       ]
     },
     {
+      "ref": "pkg:cargo/cbc@0.1.2?package-id=f806df5658797925",
+      "dependsOn": [
+        "pkg:cargo/cipher@0.4.4?package-id=4bb6f4fe914f0026"
+      ]
+    },
+    {
       "ref": "pkg:cargo/cc@1.2.46?package-id=5ca5412b7580a69e",
       "dependsOn": [
         "pkg:cargo/find-msvc-tools@0.1.5?package-id=035812ea7896723b",
@@ -56321,6 +56414,12 @@
       "ref": "pkg:cargo/cexpr@0.6.0?package-id=b3ce55d184b6505f",
       "dependsOn": [
         "pkg:cargo/nom@7.1.3?package-id=df73a38866b5afa8"
+      ]
+    },
+    {
+      "ref": "pkg:cargo/cfb-mode@0.8.2?package-id=5fb1fb4c7a75d75f",
+      "dependsOn": [
+        "pkg:cargo/cipher@0.4.4?package-id=4bb6f4fe914f0026"
       ]
     },
     {
@@ -56366,7 +56465,7 @@
       "ref": "pkg:cargo/cipher@0.4.4?package-id=4bb6f4fe914f0026",
       "dependsOn": [
         "pkg:cargo/crypto-common@0.1.6?package-id=0a00d9ea90fef213",
-        "pkg:cargo/inout@0.1.4?package-id=138fece7e8f84359"
+        "pkg:cargo/inout@0.1.4?package-id=81938e09d6f10b4e"
       ]
     },
     {
@@ -56742,6 +56841,12 @@
       "dependsOn": [
         "pkg:cargo/derive_builder_core@0.20.2?package-id=b47ab467f34ec303",
         "pkg:cargo/syn@2.0.110?package-id=8b37ec211f9ed2e0"
+      ]
+    },
+    {
+      "ref": "pkg:cargo/des@0.8.1?package-id=acf74b3d7cf09026",
+      "dependsOn": [
+        "pkg:cargo/cipher@0.4.4?package-id=4bb6f4fe914f0026"
       ]
     },
     {
@@ -57658,8 +57763,9 @@
       ]
     },
     {
-      "ref": "pkg:cargo/inout@0.1.4?package-id=138fece7e8f84359",
+      "ref": "pkg:cargo/inout@0.1.4?package-id=81938e09d6f10b4e",
       "dependsOn": [
+        "pkg:cargo/block-padding@0.3.3?package-id=ee4567e1a716ad2c",
         "pkg:cargo/generic-array@0.14.9?package-id=02122a73f6f9d436"
       ]
     },
@@ -59301,7 +59407,7 @@
       ]
     },
     {
-      "ref": "pkg:cargo/scanopy-server@0.16.2?package-id=9f87c76d1479742f",
+      "ref": "pkg:cargo/scanopy-server@0.17.1?package-id=56a6816e279e3f4e",
       "dependsOn": [
         "pkg:cargo/anyhow@1.0.100?package-id=8aa40f001acfde40",
         "pkg:cargo/argon2@0.5.3?package-id=1d04dc9f0c8de45c",
@@ -59395,7 +59501,7 @@
         "pkg:cargo/serde_with@3.16.0?package-id=2a954e6c4304fe03",
         "pkg:cargo/serial_test@3.2.0?package-id=354b4edb1420c4fe",
         "pkg:cargo/sha2@0.10.9?package-id=8bcde39728461694",
-        "pkg:cargo/snmp2@0.4.10?package-id=d6f57727d7eed200",
+        "pkg:cargo/snmp2@0.5.0?package-id=8a8af51892dfb416",
         "pkg:cargo/sqlx@0.8.6?package-id=238ae5835b3e0071",
         "pkg:cargo/strum@0.27.2?package-id=9d7f1526d877686a",
         "pkg:cargo/strum_macros@0.27.2?package-id=32a3bed38b5c72dc",
@@ -59710,9 +59816,20 @@
       ]
     },
     {
-      "ref": "pkg:cargo/snmp2@0.4.10?package-id=d6f57727d7eed200",
+      "ref": "pkg:cargo/snmp2@0.5.0?package-id=8a8af51892dfb416",
       "dependsOn": [
+        "pkg:cargo/aes@0.8.4?package-id=129eab6fbabfc09e",
         "pkg:cargo/asn1-rs@0.6.2?package-id=0668c5ddf135b3e5",
+        "pkg:cargo/cbc@0.1.2?package-id=f806df5658797925",
+        "pkg:cargo/cfb-mode@0.8.2?package-id=5fb1fb4c7a75d75f",
+        "pkg:cargo/cipher@0.4.4?package-id=4bb6f4fe914f0026",
+        "pkg:cargo/des@0.8.1?package-id=acf74b3d7cf09026",
+        "pkg:cargo/digest@0.10.7?package-id=1205c79d6b48c7d3",
+        "pkg:cargo/hmac@0.12.1?package-id=1cc874142ec3a28d",
+        "pkg:cargo/md-5@0.10.6?package-id=995d48b136b19b00",
+        "pkg:cargo/rand@0.9.3?package-id=ad3fd1dc077d7f67",
+        "pkg:cargo/sha1@0.10.6?package-id=5e0ae4c30b75aa59",
+        "pkg:cargo/sha2@0.10.9?package-id=8bcde39728461694",
         "pkg:cargo/tokio@1.48.0?package-id=84f7fbd5e2f3c1d8"
       ]
     },
@@ -61832,10 +61949,11 @@
       ]
     },
     {
-      "ref": "pkg:npm/scanopy-ui@0.16.2?package-id=5c33981f3715f322",
+      "ref": "pkg:npm/scanopy-ui@0.17.1?package-id=1f35353a4a320dee",
       "dependsOn": [
         "pkg:npm/%40beyonk/gdpr-cookie-consent-banner@16.0.2?package-id=cd6aef3707be3a0f",
         "pkg:npm/%40peculiar/x509@1.14.3?package-id=f9f09aa6bd0dd2b7",
+        "pkg:npm/%40stripe/stripe-js@9.8.0?package-id=5416ab84066791dc",
         "pkg:npm/%40tailwindcss/forms@0.5.11?package-id=c4e06eaa1fd86e52",
         "pkg:npm/%40tanstack/svelte-form@1.28.3?package-id=ed03a61a54a62e31",
         "pkg:npm/%40tanstack/svelte-query@6.0.18?package-id=23ebc66d3d1f7fcd",

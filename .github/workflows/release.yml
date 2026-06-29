@@ -266,10 +266,11 @@ jobs:
           DATABASE_URL: ${{ steps.create_branch.outputs.db_url }}
         working-directory: backend
         run: |
-          cargo test --lib \
-            test_current_reads_previous_release_variants \
-            test_current_writes_subset_of_previous_release \
-            -- --ignored
+          # cargo test takes a single [TESTNAME] filter, so run each ignored
+          # coexistence test in its own invocation (two positionals errors out
+          # with "unexpected argument"). The second is a cache hit.
+          cargo test --lib test_current_reads_previous_release_variants -- --ignored
+          cargo test --lib test_current_writes_subset_of_previous_release -- --ignored
 
       - name: Delete Neon branch
         if: always()
