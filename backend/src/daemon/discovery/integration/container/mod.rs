@@ -242,7 +242,7 @@ pub async fn probe_socket(
 ) -> Result<ProbeSuccess, ProbeFailure> {
     match ctx
         .utils
-        .new_container_socket_client(socket_path.clone())
+        .new_container_socket_client(runtime, socket_path.clone())
         .await
     {
         Ok(client) => {
