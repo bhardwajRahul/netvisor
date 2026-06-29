@@ -294,12 +294,15 @@ pub trait DaemonUtils {
     }
 
     /// Connect to a container runtime's local Unix socket via bollard's
-    /// Docker-compatible client. `socket_path` of `None` uses bollard's Docker
-    /// defaults (`DOCKER_HOST` / `/var/run/docker.sock`); `Some(path)` connects
-    /// to an explicit socket (e.g. the Podman socket). Pings to verify before
-    /// returning.
+    /// Docker-compatible client. `Some(path)` connects to an explicit socket.
+    /// `None` falls back to bollard's Docker defaults (`DOCKER_HOST` /
+    /// `/var/run/docker.sock`) — valid ONLY for `ContainerRuntime::Docker`. For
+    /// `Podman`, a `None` path is an error: Podman must never silently connect to
+    /// the Docker socket (which would discover Docker containers as Podman). Pings
+    /// to verify before returning.
     async fn new_container_socket_client(
         &self,
+        runtime: ContainerRuntime,
         socket_path: Option<String>,
     ) -> Result<Docker, Error> {
         use tokio::time::timeout;
@@ -308,17 +311,27 @@ pub trait DaemonUtils {
         const MAX_PING_ATTEMPTS: u32 = 3;
 
         let start = std::time::Instant::now();
-        let client = match &socket_path {
-            Some(path) => {
-                tracing::debug!(socket = %path, "Connecting to container socket");
+        let client = match (&socket_path, runtime) {
+            (Some(path), _) => {
+                tracing::debug!(socket = %path, runtime = runtime.label(), "Connecting to container socket");
                 Docker::connect_with_socket(path, 120, API_DEFAULT_VERSION).map_err(|e| {
                     anyhow::anyhow!("Failed to connect to container socket {}: {}", path, e)
                 })?
             }
-            None => {
+            // No explicit path: only Docker may use bollard's local defaults.
+            (None, ContainerRuntime::Docker) => {
                 tracing::debug!("Using Docker local defaults");
                 Docker::connect_with_local_defaults()
                     .map_err(|e| anyhow::anyhow!("Failed to connect to Docker: {}", e))?
+            }
+            // Podman with no resolved socket: fail cleanly rather than fall back to
+            // the Docker default socket.
+            (None, ContainerRuntime::Podman) => {
+                return Err(anyhow::anyhow!(
+                    "No Podman socket found — checked CONTAINER_HOST, /run/podman/podman.sock, \
+                     and $XDG_RUNTIME_DIR/podman/podman.sock. Set the credential's socket_path \
+                     or CONTAINER_HOST to the Podman socket."
+                ));
             }
         };
 
@@ -542,6 +555,24 @@ mod tests {
 
         let result = merge_host_and_docker_subnets(host, docker);
         assert_eq!(result.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn podman_socket_without_path_errors_never_uses_docker_defaults() {
+        // Regression: a Podman socket credential with no resolvable socket path must
+        // fail cleanly rather than fall back to Docker's local socket (which would
+        // discover Docker containers stamped as Podman). The None+Podman arm returns
+        // before any connection attempt, so this is deterministic with no I/O.
+        let utils = create_system_utils();
+        let result = utils
+            .new_container_socket_client(ContainerRuntime::Podman, None)
+            .await;
+        assert!(result.is_err(), "Podman + no socket path must error");
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("Podman socket"),
+            "error should name the missing Podman socket, got: {msg}"
+        );
     }
 
     #[test]

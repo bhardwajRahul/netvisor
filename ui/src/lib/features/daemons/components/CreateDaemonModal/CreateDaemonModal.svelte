@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
+	import { untrack, tick } from 'svelte';
 	import { createForm } from '@tanstack/svelte-form';
 	import { validateForm } from '$lib/shared/components/forms/form-context';
 	import GenericModal from '$lib/shared/components/layout/GenericModal.svelte';
@@ -172,15 +172,12 @@
 			.filter((t) => isDaemonHostOnlyTargets(t.metadata?.targets))
 			.map((t) => t.id);
 	}
-	// Real new credentials being created (excludes existing ones and zero-config daemon-host
-	// sockets). Drives the CTA count.
+	// Real new credentials being created. Drives the CTA count. Local sockets are
+	// ordinary credentials now, so they're created and must be counted too — this
+	// matches the creation filter (see getCredentialsForCreate / collectCredentialIds).
 	let unsavedCredentialCount = $derived(
-		pendingCredentials.filter(
-			(p) =>
-				!p.isExisting &&
-				!isDaemonHostOnly(p.credential.credential_type.type) &&
-				!credentialIds.includes(p.credential.id)
-		).length
+		pendingCredentials.filter((p) => !p.isExisting && !credentialIds.includes(p.credential.id))
+			.length
 	);
 
 	// Continue from the Integrations grid: with nothing selected, go straight to
@@ -505,6 +502,13 @@
 			// Skip to Install (step 3), which is also unlocked.
 			activeTab = 'credentials';
 			credentialSubStep = credentialEntrySubStep;
+			// When the org already has credentials we skip the type picker and land
+			// straight in the wizard; seed the default daemon-host sockets as pending
+			// entries here too (the type-picker path does this via continueToWizard).
+			if (credentialEntrySubStep === 'wizard') {
+				await tick();
+				await credentialsStep?.continueToWizard();
+			}
 		}
 	}
 
