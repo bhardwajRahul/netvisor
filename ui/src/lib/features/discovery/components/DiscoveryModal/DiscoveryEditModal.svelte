@@ -367,14 +367,22 @@
 					// per-daemon integration targets (Credentialed) on the Discovery — replacing
 					// the old one-shot pending_credential_ids + credential.target_ips. The discovery
 					// modal only handles persisted credentials (sockets are daemon-level, fixed).
+					// Manages only network/host credentialed targets: empty IPs → Network scope,
+					// explicit IPs → Hosts scope. Daemon-host (socket) targets are daemon-level —
+					// pass them through untouched so editing a discovery doesn't drop them.
 					const persisted = new Set(ids ?? []);
-					formData.integration_targets = pendingCredentials
+					const daemonHostTargets = (discovery?.integration_targets ?? []).filter(
+						(t) => t.scope === 'DaemonHost'
+					);
+					const rebuilt = pendingCredentials
 						.filter((p) => persisted.has(p.credential.id))
-						.map((p) => ({
-							type: 'Credentialed' as const,
-							credential_id: p.credential.id,
-							ips: p.targetIps.map((s) => s.trim()).filter(Boolean)
-						}));
+						.map((p) => {
+							const ips = p.targetIps.map((s) => s.trim()).filter(Boolean);
+							return ips.length > 0
+								? { scope: 'Hosts' as const, credential_id: p.credential.id, ips }
+								: { scope: 'Network' as const, credential_id: p.credential.id };
+						});
+					formData.integration_targets = [...daemonHostTargets, ...rebuilt];
 					if (isEditing && discovery) {
 						await onUpdate(discovery.id, formData);
 					} else {
@@ -400,13 +408,13 @@
 		credentialIds = [];
 		if (discovery?.integration_targets?.length && allCredentialsQuery.data) {
 			const credMap = new Map(allCredentialsQuery.data.map((c) => [c.id, c]));
-			// The discovery modal only deals with credentialed targets (sockets are
-			// daemon-level). Reconstruct each as a wizard entry with its target IPs.
+			// Reconstruct network/host credentialed targets as wizard entries. DaemonHost
+			// (socket) targets are daemon-level and shown via fixed capabilities, not edited here.
 			pendingCredentials = discovery.integration_targets.flatMap((t) => {
-				if (t.type !== 'Credentialed') return [];
+				if (t.scope === 'DaemonHost') return [];
 				const c = credMap.get(t.credential_id);
 				if (!c) return [];
-				const ips = t.ips ?? [];
+				const ips = t.scope === 'Hosts' ? t.ips : [];
 				return [
 					{
 						credential: c,

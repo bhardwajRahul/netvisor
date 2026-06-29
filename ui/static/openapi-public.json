@@ -10891,19 +10891,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-06-28T02:30:25.216652Z",
+              "created_at": "2026-06-29T15:15:28.345334Z",
               "first_discovery_id": null,
-              "id": "40ce1efd-08f6-4299-ac31-78293cf5fb44",
+              "id": "db2357cc-7a96-409d-a930-39660765debe",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-28T02:30:25.216652Z",
+              "last_seen_at": "2026-06-29T15:15:28.345334Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-28T02:30:25.216652Z",
-              "valid_from": "2026-06-28T02:30:25.216652Z",
+              "updated_at": "2026-06-29T15:15:28.345334Z",
+              "valid_from": "2026-06-29T15:15:28.345334Z",
               "valid_to": null
             }
           },
@@ -11889,19 +11889,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-06-28T02:30:25.196756Z",
+                      "created_at": "2026-06-29T15:15:28.325374Z",
                       "first_discovery_id": null,
-                      "id": "88aa1aa6-61c1-4509-91e6-e668b1513122",
+                      "id": "f6da90d1-e5dc-4778-8881-f85997200d6f",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-06-28T02:30:25.196756Z",
+                      "last_seen_at": "2026-06-29T15:15:28.325374Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-06-28T02:30:25.196756Z",
-                      "valid_from": "2026-06-28T02:30:25.196756Z",
+                      "updated_at": "2026-06-29T15:15:28.325374Z",
+                      "valid_from": "2026-06-29T15:15:28.325374Z",
                       "valid_to": null
                     }
                   ],
@@ -11915,7 +11915,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Gitea",
+                  "service_definition": "Frigate",
                   "source": {
                     "type": "Manual"
                   },
@@ -12913,19 +12913,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-06-28T02:30:25.210577Z",
+                  "created_at": "2026-06-29T15:15:28.339150Z",
                   "first_discovery_id": null,
-                  "id": "1fcee5f7-d780-4f4a-b1c9-92d1d6ae1308",
+                  "id": "d3e893e7-4fb3-46d7-8618-d964b89ce301",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-28T02:30:25.210577Z",
+                  "last_seen_at": "2026-06-29T15:15:28.339150Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-28T02:30:25.210577Z",
-                  "valid_from": "2026-06-28T02:30:25.210577Z",
+                  "updated_at": "2026-06-29T15:15:28.339150Z",
+                  "valid_from": "2026-06-29T15:15:28.339150Z",
                   "valid_to": null
                 }
               ],
@@ -12939,7 +12939,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Gitea",
+              "service_definition": "Frigate",
               "source": {
                 "type": "Manual"
               },
@@ -14718,19 +14718,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-06-28T02:30:25.197213Z",
+          "created_at": "2026-06-29T15:15:28.325774Z",
           "first_discovery_id": null,
-          "id": "bbfa66da-2e9c-4e92-9597-f5cbce6f9dae",
+          "id": "36e21825-a52b-4351-9429-716eb5bf230c",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-06-28T02:30:25.197213Z",
+          "last_seen_at": "2026-06-29T15:15:28.325774Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-06-28T02:30:25.197213Z",
-          "valid_from": "2026-06-28T02:30:25.197213Z",
+          "updated_at": "2026-06-29T15:15:28.325774Z",
+          "valid_from": "2026-06-29T15:15:28.325774Z",
           "valid_to": null
         }
       },
@@ -15320,7 +15320,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Gitea",
+              "service_definition": "Frigate",
               "tags": [],
               "virtualization": null
             }
@@ -15725,11 +15725,17 @@
           },
           {
             "type": "object",
-            "description": "Local Docker socket access. Auto-injected by daemon when socket is available.\nNot user-selectable — managed automatically from daemon capabilities.",
+            "description": "Local Docker socket access on the daemon host. `socket_path` optionally repoints the\nsocket (non-default `DOCKER_HOST`); blank ⇒ the daemon auto-detects (bollard defaults).",
             "required": [
               "type"
             ],
             "properties": {
+              "socket_path": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "type": {
                 "type": "string",
                 "enum": [
@@ -15801,11 +15807,17 @@
           },
           {
             "type": "object",
-            "description": "Local Podman socket access (`/run/podman/podman.sock` or the rootless\n`$XDG_RUNTIME_DIR/podman/podman.sock`). Auto-injected by daemon when\nthe socket is available. Not user-selectable.",
+            "description": "Local Podman socket access on the daemon host. `socket_path` optionally repoints the\nsocket (e.g. rootful `/run/podman/podman.sock` vs rootless\n`$XDG_RUNTIME_DIR/podman/podman.sock`); blank ⇒ the daemon auto-detects via\n`resolve_podman_socket_path()`.",
             "required": [
               "type"
             ],
             "properties": {
+              "socket_path": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "type": {
                 "type": "string",
                 "enum": [
@@ -15816,18 +15828,6 @@
           }
         ],
         "description": "Universal credential type — tagged enum stored as JSONB.\nEach variant represents a different credential protocol/method."
-      },
-      "CredentialTypeDiscriminants": {
-        "type": "string",
-        "enum": [
-          "SnmpV1",
-          "SnmpV2c",
-          "SnmpV3",
-          "DockerProxy",
-          "DockerSocket",
-          "PodmanProxy",
-          "PodmanSocket"
-        ]
       },
       "Daemon": {
         "allOf": [
@@ -18194,19 +18194,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-06-28T02:30:25.196241Z",
+                  "created_at": "2026-06-29T15:15:28.324884Z",
                   "first_discovery_id": null,
-                  "id": "1fd756b5-1cee-45a2-ad67-7f17090921d4",
+                  "id": "8eb63fda-2f37-4d02-bc25-afb13de36f49",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-28T02:30:25.196241Z",
+                  "last_seen_at": "2026-06-29T15:15:28.324884Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-28T02:30:25.196241Z",
-                  "valid_from": "2026-06-28T02:30:25.196241Z",
+                  "updated_at": "2026-06-29T15:15:28.324884Z",
+                  "valid_from": "2026-06-29T15:15:28.324884Z",
                   "valid_to": null
                 }
               ],
@@ -18220,7 +18220,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Gitea",
+              "service_definition": "Frigate",
               "source": {
                 "type": "Manual"
               },
@@ -18716,10 +18716,51 @@
         "oneOf": [
           {
             "type": "object",
-            "description": "A stored credential applied to specific IP(s) on this daemon.",
+            "description": "The daemon's own host — realized as a 127.0.0.1 IP-override (e.g. a local Docker/Podman\nsocket, or any credential the user pins to the daemon host without naming its IP).",
             "required": [
               "credential_id",
-              "type"
+              "scope"
+            ],
+            "properties": {
+              "credential_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "DaemonHost"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "All hosts on the network — a broadcast default credential.",
+            "required": [
+              "credential_id",
+              "scope"
+            ],
+            "properties": {
+              "credential_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "Network"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Specific host IPs — one IP-override per address.",
+            "required": [
+              "credential_id",
+              "ips",
+              "scope"
             ],
             "properties": {
               "credential_id": {
@@ -18730,38 +18771,18 @@
                 "type": "array",
                 "items": {
                   "type": "string"
-                },
-                "description": "IPs this credential targets. Empty = network-level default (no IP override)."
+                }
               },
-              "type": {
+              "scope": {
                 "type": "string",
                 "enum": [
-                  "Credentialed"
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "description": "A credential-less integration that runs on the daemon host (127.0.0.1).\n\nCredential-less ⟺ local: credentials are how you authenticate to a *remote* party, and\nlocal proximity replaces that, so these never need a stored credential. Every remote\nintegration (any `CredentialType` that hits a remote API/host) needs a credential;\nremote-but-credential-less discovery (mDNS/ARP/port sweeps) isn't a `CredentialType` and\nnever appears here. Not named after a transport — today's members are the Docker/Podman\nlocal sockets, but a future non-socket local integration fits too.",
-            "required": [
-              "integration",
-              "type"
-            ],
-            "properties": {
-              "integration": {
-                "$ref": "#/components/schemas/CredentialTypeDiscriminants"
-              },
-              "type": {
-                "type": "string",
-                "enum": [
-                  "Local"
+                  "Hosts"
                 ]
               }
             }
           }
         ],
-        "description": "Per-daemon integration targeting, stored on the `Discovery` entity and delivered via the\ninit command at registration. Each entry says \"run this integration here on this daemon.\"\nThis is the single home for both credentialed and credential-less integration targeting —\nit replaces the global, race-prone `credential.target_ips` and the per-integration\n`enable_local_*_socket` daemon flags."
+        "description": "Per-daemon integration targeting, stored on the `Discovery` entity and delivered via the\ninit command at registration. Each entry references exactly one stored credential and says\nwhere it applies on this daemon. This is the single home for cred↔IP targeting — it replaces\nthe global, race-prone `credential.target_ips`.\n\nThe variants ARE the scopes; their strum [`Target`] discriminants are the capability enum that\n`CredentialType::targets()` returns and validates against (single source of truth). Every\ntarget carries a real `credential_id` — there is no credential-less branch and no nil\nsentinel; a local socket is just a credential whose type targets only the daemon host."
       },
       "Interface": {
         "allOf": [
@@ -20704,19 +20725,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-06-28T02:30:25.184030Z",
+                        "created_at": "2026-06-29T15:15:28.313465Z",
                         "first_discovery_id": null,
-                        "id": "677f6377-a315-4f6b-9f8b-837e11f66df0",
+                        "id": "8ede0ce0-3fe6-4262-8f5c-146e44612f24",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-06-28T02:30:25.184030Z",
+                        "last_seen_at": "2026-06-29T15:15:28.313465Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-06-28T02:30:25.184030Z",
-                        "valid_from": "2026-06-28T02:30:25.184030Z",
+                        "updated_at": "2026-06-29T15:15:28.313465Z",
+                        "valid_from": "2026-06-29T15:15:28.313465Z",
                         "valid_to": null
                       }
                     ],
@@ -20730,7 +20751,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Gitea",
+                    "service_definition": "Frigate",
                     "source": {
                       "type": "Manual"
                     },
@@ -20851,19 +20872,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-06-28T02:30:25.209227Z",
+                    "created_at": "2026-06-29T15:15:28.337775Z",
                     "first_discovery_id": null,
-                    "id": "cbd2b03c-328f-406e-af30-ebd5fc4f2f65",
+                    "id": "34979eca-7a36-4798-b418-7dc5d5186850",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-06-28T02:30:25.209227Z",
+                    "last_seen_at": "2026-06-29T15:15:28.337775Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-06-28T02:30:25.209227Z",
-                    "valid_from": "2026-06-28T02:30:25.209227Z",
+                    "updated_at": "2026-06-29T15:15:28.337775Z",
+                    "valid_from": "2026-06-29T15:15:28.337775Z",
                     "valid_to": null
                   }
                 ],
@@ -20877,7 +20898,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Gitea",
+                "service_definition": "Frigate",
                 "source": {
                   "type": "Manual"
                 },
@@ -22528,19 +22549,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-06-28T02:30:25.197119Z",
+              "created_at": "2026-06-29T15:15:28.325679Z",
               "first_discovery_id": null,
-              "id": "b47f60b7-8b0b-4588-9926-e6cc16db5b06",
+              "id": "c16ed68a-d79b-4a10-877a-7394139d363b",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-28T02:30:25.197119Z",
+              "last_seen_at": "2026-06-29T15:15:28.325679Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-28T02:30:25.197119Z",
-              "valid_from": "2026-06-28T02:30:25.197119Z",
+              "updated_at": "2026-06-29T15:15:28.325679Z",
+              "valid_from": "2026-06-29T15:15:28.325679Z",
               "valid_to": null
             }
           ],
@@ -22554,7 +22575,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Gitea",
+          "service_definition": "Frigate",
           "source": {
             "type": "Manual"
           },
@@ -23684,7 +23705,7 @@
             "default": {
               "Application": [
                 {
-                  "id": "ecc3cef1-6a45-49d2-b1b4-841162b449a3",
+                  "id": "6b4c4172-7fa2-42f0-9d2b-02e682eafb92",
                   "rule": {
                     "ByApplication": {
                       "tag_ids": []
@@ -23694,23 +23715,23 @@
               ],
               "L2Physical": [
                 {
-                  "id": "46a065f8-0f51-4fea-bd93-1054f81c6be0",
+                  "id": "f5686c82-6d2c-47b6-bec1-06e5943db773",
                   "rule": "ByHost"
                 }
               ],
               "L3Logical": [
                 {
-                  "id": "dd2d71b6-00ad-4259-b92f-8057b173ef66",
+                  "id": "436bf1f7-fcbb-4e9d-a89d-c454669f18bf",
                   "rule": "BySubnet"
                 },
                 {
-                  "id": "6450bf1e-0e8f-4158-8250-21c05709f677",
+                  "id": "7079ad5e-5a37-44d7-ae00-3ec324ae6f7b",
                   "rule": "MergeDockerBridges"
                 }
               ],
               "Workloads": [
                 {
-                  "id": "46a065f8-0f51-4fea-bd93-1054f81c6be0",
+                  "id": "f5686c82-6d2c-47b6-bec1-06e5943db773",
                   "rule": "ByHost"
                 }
               ]
@@ -23739,19 +23760,19 @@
             },
             "default": [
               {
-                "id": "1ea1c27b-ecad-41fe-9fd6-81da49a8fa12",
+                "id": "c108a992-c3ee-49ac-b6de-eab2f14c4146",
                 "rule": "ByTrunkPort"
               },
               {
-                "id": "5de1c41e-6b6a-4238-9668-97e616b7385d",
+                "id": "829e9195-3c4a-4529-aa37-a53f98301dcc",
                 "rule": "ByVLAN"
               },
               {
-                "id": "d549a894-4c90-4992-9703-0c9c9e9c9ee1",
+                "id": "a8bb475c-f215-4338-a905-722f2ba31aaf",
                 "rule": "ByPortOpStatus"
               },
               {
-                "id": "df2b8374-0aec-4a98-ad83-4f3f7b57a837",
+                "id": "4a254791-8a66-4196-b201-86cc819564e8",
                 "rule": {
                   "ByServiceCategory": {
                     "categories": [
@@ -23769,7 +23790,7 @@
                 }
               },
               {
-                "id": "2495af1f-c4c0-46e9-a68c-b564a9f763b8",
+                "id": "fc4054d8-ec3e-4cd2-a8e0-f778f7bbd2d2",
                 "rule": {
                   "ByTag": {
                     "tag_ids": [],
@@ -23778,15 +23799,15 @@
                 }
               },
               {
-                "id": "afdc2284-9565-46d8-b32e-8c1e0ee498e1",
+                "id": "ae369740-1ce1-4a0a-8db2-38246c63c753",
                 "rule": "ByHypervisor"
               },
               {
-                "id": "4b7f1de2-5952-4c37-8612-e6393b3152f5",
+                "id": "6d97f089-93f9-47fd-be6e-af2b8f91664b",
                 "rule": "ByContainerRuntime"
               },
               {
-                "id": "37367a88-6ed9-4c6e-a498-587dc950fe94",
+                "id": "84a18a68-41a8-41b5-9415-870962b59c0a",
                 "rule": "ByStack"
               }
             ]

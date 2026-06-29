@@ -392,11 +392,13 @@
 		return fieldsValid && missingTargets.length === 0;
 	}
 
-	/** Get new credentials ready for bulk creation (with built credential_type from fieldValues). */
+	/** Get new credentials ready for bulk creation (with built credential_type from fieldValues).
+	 *  Includes local-auto socket types — they are ordinary credentials now (referenced by a
+	 *  `<uuid>@daemon` target), created with their default (auto-detect) config. */
 	export function getCredentialsForCreate(): { credential: Credential; targetIps: string[] }[] {
 		return pendingCredentials
 			.map((p, i) => ({ p, i }))
-			.filter(({ p }) => !p.isExisting && !isLocalAuto(p.credential.credential_type.type))
+			.filter(({ p }) => !p.isExisting)
 			.map(({ p, i }) => {
 				const ref = credentialFormRefs[i];
 				const credentialType =

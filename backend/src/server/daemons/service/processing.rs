@@ -320,23 +320,23 @@ impl DaemonService {
             )
             .await?;
 
-        // Assign credentials explicitly targeted at the daemon host (127.0.0.1) to this daemon's
-        // host now, so they appear in the credential's assignments immediately (#637 Symptom A).
-        // Remote-IP credentials are auto-assigned to their target hosts during discovery;
-        // credential-less Local targets have no stored credential to assign.
+        // Assign credentials targeted at the daemon host to this daemon's host now, so they appear
+        // in the credential's assignments immediately (#637 Symptom A). That's any DaemonHost-scoped
+        // target (e.g. a local socket credential) or a Hosts target naming a loopback IP. Remote-IP
+        // and Network credentials are auto-assigned to their hosts during discovery.
         let assignments: Vec<CredentialAssignment> = request
             .integration_targets
             .iter()
-            .filter_map(|target| match target {
-                IntegrationTarget::Credentialed { credential_id, ips }
-                    if ips.iter().any(|ip| ip.is_loopback()) =>
-                {
-                    Some(CredentialAssignment {
-                        credential_id: *credential_id,
-                        ip_address_ids: None,
-                    })
-                }
-                _ => None,
+            .filter_map(|target| {
+                let hits_daemon_host = match target {
+                    IntegrationTarget::DaemonHost { .. } => true,
+                    IntegrationTarget::Hosts { ips, .. } => ips.iter().any(|ip| ip.is_loopback()),
+                    IntegrationTarget::Network { .. } => false,
+                };
+                hits_daemon_host.then(|| CredentialAssignment {
+                    credential_id: target.credential_id(),
+                    ip_address_ids: None,
+                })
             })
             .collect();
         if !assignments.is_empty()

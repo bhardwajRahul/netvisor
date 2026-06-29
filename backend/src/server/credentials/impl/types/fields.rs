@@ -264,8 +264,34 @@ impl CredentialType {
                 "Podman API Port",
                 "Podman API port. Point at a TCP-exposed Podman service (e.g. `podman system service tcp:`) directly or behind a TLS proxy.",
             ),
-            Self::DockerSocket {} | Self::PodmanSocket {} => vec![],
+            Self::DockerSocket { .. } => vec![socket_path_field(
+                "/var/run/docker.sock",
+                "Path to the Docker Unix socket. Leave blank to auto-detect (DOCKER_HOST or /var/run/docker.sock).",
+            )],
+            Self::PodmanSocket { .. } => vec![socket_path_field(
+                "/run/podman/podman.sock",
+                "Path to the Podman Unix socket. Leave blank to auto-detect (rootful /run/podman/podman.sock or the rootless $XDG_RUNTIME_DIR/podman/podman.sock).",
+            )],
         }
+    }
+}
+
+/// Optional, non-secret socket-path field for local container-socket credentials. The
+/// `placeholder` shows the runtime's default socket so it differs for Docker vs Podman. Blank ⇒
+/// the daemon auto-detects, so the type stays a zero-config toggle (`is_local_auto`).
+fn socket_path_field(placeholder: &'static str, help: &'static str) -> FieldDefinition {
+    FieldDefinition {
+        id: "socket_path",
+        label: "Socket Path",
+        field_type: FieldType::String,
+        placeholder: Some(placeholder),
+        secret: false,
+        optional: true,
+        help_text: Some(help),
+        options: None,
+        default_value: None,
+        inline_format: None,
+        group: Some("Connection"),
     }
 }
 

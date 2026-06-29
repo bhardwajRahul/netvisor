@@ -45,7 +45,7 @@
 	// DaemonHost target is configured per-daemon, not here.
 	let targets = $derived(credentialTypes.getMetadata(credentialTypeId)?.targets ?? []);
 	let supportsBroadcast = $derived(targets.includes('Network'));
-	let supportsPerHost = $derived(targets.includes('Host'));
+	let supportsPerHost = $derived(targets.includes('Hosts'));
 
 	const networksQuery = useNetworksQuery();
 	const hostsQuery = useHostsQuery({ limit: 0 });

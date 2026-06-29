@@ -91,7 +91,7 @@
 			},
 			{
 				label: common_hosts(),
-				value: targets.includes('Host')
+				value: targets.includes('Hosts')
 					? assignedHosts.length > 0
 						? assignedHosts.map((h) => ({
 								id: h.id,

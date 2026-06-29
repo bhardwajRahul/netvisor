@@ -14,17 +14,17 @@ use uuid::Uuid;
 use std::net::IpAddr;
 
 use crate::server::credentials::r#impl::mapping::IntegrationTarget;
-use crate::server::credentials::r#impl::types::CredentialTypeDiscriminants;
 use crate::server::daemons::r#impl::{api::DaemonCapabilities, base::DaemonMode};
 
-/// Parse the `SCANOPY_CREDENTIAL_IDS` / `--credential-id` compact token grammar into
-/// per-daemon [`IntegrationTarget`]s:
-/// - `docker-socket` / `podman-socket` → credential-less local socket integration
-/// - `<uuid>` → credential targeted at no specific IP (network-level default)
-/// - `<uuid>@<ip>[+<ip>...]` → credential pinned to the given IP(s)
+/// Parse the `SCANOPY_CREDENTIAL_IDS` / `--credential-id` compact token grammar into per-daemon
+/// [`IntegrationTarget`]s. Every token references a stored credential by id; the suffix encodes
+/// the scope:
+/// - `<uuid>` → `Network` (broadcast default)
+/// - `<uuid>@daemon` → `DaemonHost` (the daemon's own host, e.g. a local Docker/Podman socket
+///   credential)
+/// - `<uuid>@<ip>[+<ip>...]` → `Hosts` (specific host IP overrides)
 ///
-/// Bare-uuid tokens are the legacy env format and stay supported here (env back-compat lives in
-/// the daemon, never on the registration wire).
+/// Sockets are ordinary credentials now — create one (UI/API) and reference it with `@daemon`.
 pub fn parse_integration_target_tokens(
     tokens: &[String],
 ) -> anyhow::Result<Vec<IntegrationTarget>> {
@@ -37,44 +37,50 @@ pub fn parse_integration_target_tokens(
 }
 
 fn parse_integration_target_token(token: &str) -> anyhow::Result<IntegrationTarget> {
-    match token {
-        "docker-socket" => Ok(IntegrationTarget::Local {
-            integration: CredentialTypeDiscriminants::DockerSocket,
+    match token.split_once('@') {
+        // `<uuid>@daemon` → the daemon's own host.
+        Some((uuid_part, "daemon")) => Ok(IntegrationTarget::DaemonHost {
+            credential_id: parse_credential_id(uuid_part, token)?,
         }),
-        "podman-socket" => Ok(IntegrationTarget::Local {
-            integration: CredentialTypeDiscriminants::PodmanSocket,
-        }),
-        _ => {
-            let (uuid_part, ips) = match token.split_once('@') {
-                Some((uuid_part, ip_list)) => {
-                    let ips = ip_list
-                        .split('+')
-                        .map(|s| s.trim())
-                        .filter(|s| !s.is_empty())
-                        .map(|s| {
-                            s.parse::<IpAddr>().map_err(|_| {
-                                anyhow::anyhow!(
-                                    "Invalid IP '{}' in credential token '{}'",
-                                    s,
-                                    token
-                                )
-                            })
-                        })
-                        .collect::<anyhow::Result<Vec<_>>>()?;
-                    (uuid_part, ips)
-                }
-                None => (token, Vec::new()),
-            };
-            let credential_id = Uuid::parse_str(uuid_part.trim()).map_err(|_| {
-                anyhow::anyhow!(
-                    "Invalid credential token '{}' (expected a UUID, 'uuid@ip', \
-                     'docker-socket', or 'podman-socket')",
+        // `<uuid>@<ip>[+<ip>...]` → specific host IP overrides.
+        Some((uuid_part, ip_list)) => {
+            let ips = ip_list
+                .split('+')
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+                .map(|s| {
+                    s.parse::<IpAddr>().map_err(|_| {
+                        anyhow::anyhow!("Invalid IP '{}' in credential token '{}'", s, token)
+                    })
+                })
+                .collect::<anyhow::Result<Vec<_>>>()?;
+            if ips.is_empty() {
+                anyhow::bail!(
+                    "Credential token '{}' has '@' but no IPs (use '<uuid>@daemon' or \
+                     '<uuid>@<ip>[+<ip>]')",
                     token
-                )
-            })?;
-            Ok(IntegrationTarget::Credentialed { credential_id, ips })
+                );
+            }
+            Ok(IntegrationTarget::Hosts {
+                credential_id: parse_credential_id(uuid_part, token)?,
+                ips,
+            })
         }
+        // `<uuid>` → network-level default.
+        None => Ok(IntegrationTarget::Network {
+            credential_id: parse_credential_id(token, token)?,
+        }),
     }
+}
+
+fn parse_credential_id(value: &str, token: &str) -> anyhow::Result<Uuid> {
+    Uuid::parse_str(value.trim()).map_err(|_| {
+        anyhow::anyhow!(
+            "Invalid credential token '{}' (expected '<uuid>', '<uuid>@daemon', or \
+             '<uuid>@<ip>[+<ip>]')",
+            token
+        )
+    })
 }
 
 #[derive(Parser)]
@@ -794,7 +800,6 @@ mod tests {
 
     use crate::daemon::shared::config::{DaemonCli, parse_integration_target_tokens};
     use crate::server::credentials::r#impl::mapping::IntegrationTarget;
-    use crate::server::credentials::r#impl::types::CredentialTypeDiscriminants;
     use crate::{daemon::shared::config::AppConfig, tests::DAEMON_CONFIG_FIXTURE};
     use clap::{CommandFactory, Parser};
     use std::collections::HashMap;
@@ -1015,7 +1020,7 @@ mod tests {
         unsafe {
             std::env::set_var(
                 "SCANOPY_CREDENTIAL_IDS",
-                format!("docker-socket,{id1},{id2}@127.0.0.1+10.0.0.5"),
+                format!("{id1}@daemon,{id1},{id2}@127.0.0.1+10.0.0.5"),
             )
         };
 
@@ -1036,14 +1041,9 @@ mod tests {
         assert_eq!(
             config.integration_targets,
             vec![
-                IntegrationTarget::Local {
-                    integration: CredentialTypeDiscriminants::DockerSocket,
-                },
-                IntegrationTarget::Credentialed {
-                    credential_id: id1,
-                    ips: vec![],
-                },
-                IntegrationTarget::Credentialed {
+                IntegrationTarget::DaemonHost { credential_id: id1 },
+                IntegrationTarget::Network { credential_id: id1 },
+                IntegrationTarget::Hosts {
                     credential_id: id2,
                     ips: vec!["127.0.0.1".parse().unwrap(), "10.0.0.5".parse().unwrap()],
                 },
@@ -1056,9 +1056,8 @@ mod tests {
     fn test_parse_integration_target_tokens_grammar() {
         let id = Uuid::new_v4();
         let tokens = vec![
-            "docker-socket".to_string(),
-            "podman-socket".to_string(),
             id.to_string(),
+            format!("{id}@daemon"),
             format!("{id}@127.0.0.1"),
             format!("{id}@127.0.0.1+10.0.0.5"),
         ];
@@ -1066,21 +1065,13 @@ mod tests {
         assert_eq!(
             parsed,
             vec![
-                IntegrationTarget::Local {
-                    integration: CredentialTypeDiscriminants::DockerSocket,
-                },
-                IntegrationTarget::Local {
-                    integration: CredentialTypeDiscriminants::PodmanSocket,
-                },
-                IntegrationTarget::Credentialed {
-                    credential_id: id,
-                    ips: vec![],
-                },
-                IntegrationTarget::Credentialed {
+                IntegrationTarget::Network { credential_id: id },
+                IntegrationTarget::DaemonHost { credential_id: id },
+                IntegrationTarget::Hosts {
                     credential_id: id,
                     ips: vec!["127.0.0.1".parse().unwrap()],
                 },
-                IntegrationTarget::Credentialed {
+                IntegrationTarget::Hosts {
                     credential_id: id,
                     ips: vec!["127.0.0.1".parse().unwrap(), "10.0.0.5".parse().unwrap()],
                 },
@@ -1092,6 +1083,10 @@ mod tests {
         assert!(
             parse_integration_target_tokens(&[format!("{id}@not-an-ip")]).is_err(),
             "invalid IP should error"
+        );
+        assert!(
+            parse_integration_target_tokens(&[format!("{id}@")]).is_err(),
+            "trailing @ with no IPs should error"
         );
     }
 }

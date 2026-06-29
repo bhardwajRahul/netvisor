@@ -70,7 +70,7 @@
 	let perHostCredentials = $derived(
 		allCredentials.filter((c) => {
 			const meta = credentialTypes.getMetadata(getCredentialTypeId(c));
-			return (meta?.targets ?? []).includes('Host');
+			return (meta?.targets ?? []).includes('Hosts');
 		})
 	);
 
