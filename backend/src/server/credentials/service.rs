@@ -493,6 +493,56 @@ impl CredentialService {
         Ok(None)
     }
 
+    /// Re-sync the single-endpoint (container socket/proxy) portion of a daemon
+    /// host's credential assignments to match its Discovery `integration_targets`
+    /// — the authoritative source post-#637. Called when the discovery modal edits
+    /// targeting so the junction (UI + `find_single_endpoint_conflict`) reflects
+    /// reality and a removed socket is cleared. Non-single-endpoint assignments
+    /// (SNMP, discovery-auto-assigned creds) are preserved.
+    pub async fn resync_daemon_host_assignments(
+        &self,
+        host_id: &Uuid,
+        integration_targets: &[IntegrationTarget],
+    ) -> Result<(), Error> {
+        // New daemon-host single-endpoint creds from the targets.
+        let mut desired: Vec<CredentialAssignment> = Vec::new();
+        for target in integration_targets {
+            let hits_daemon_host = match target {
+                IntegrationTarget::DaemonHost { .. } => true,
+                IntegrationTarget::Hosts { ips, .. } => ips.iter().any(|ip| ip.is_loopback()),
+                IntegrationTarget::Network { .. } => false,
+            };
+            if !hits_daemon_host {
+                continue;
+            }
+            let cred_id = target.credential_id();
+            if let Some(cred) = self.get_by_id(&cred_id).await?
+                && cred.base.credential_type.single_endpoint_per_host()
+                && !desired.iter().any(|a| a.credential_id == cred_id)
+            {
+                desired.push(CredentialAssignment {
+                    credential_id: cred_id,
+                    ip_address_ids: None,
+                });
+            }
+        }
+
+        // Preserve existing non-single-endpoint assignments (drop the old
+        // single-endpoint ones — they're replaced by `desired`; drop stale creds).
+        for existing in self.get_credential_assignments_for_host(host_id).await? {
+            if let Some(cred) = self.get_by_id(&existing.credential_id).await?
+                && !cred.base.credential_type.single_endpoint_per_host()
+                && !desired
+                    .iter()
+                    .any(|a| a.credential_id == existing.credential_id)
+            {
+                desired.push(existing);
+            }
+        }
+
+        self.set_host_credentials(host_id, &desired).await
+    }
+
     // ========================================================================
     // Discovery credential building
     // ========================================================================
@@ -656,6 +706,15 @@ impl CredentialService {
                 for assignment in assignments {
                     if let Some(cred) = self.get_by_id(&assignment.credential_id).await? {
                         let cred_type = &cred.base.credential_type;
+                        // Single-endpoint container integrations (Docker/Podman socket+proxy)
+                        // are daemon-host-targeted exclusively via `integration_targets` (the
+                        // #637 single source). The host-assignment junction is only a UI/conflict
+                        // mirror for them; sourcing the scan from it too would double-apply (and
+                        // re-inject a stale socket assignment). Skip them here — they come from
+                        // `integration_targets` below.
+                        if cred_type.single_endpoint_per_host() {
+                            continue;
+                        }
                         let discriminant = cred_type.discriminant();
                         let payload = cred_type.to_query_payload();
                         let mapping = mappings_by_type.entry(discriminant).or_insert_with(|| {

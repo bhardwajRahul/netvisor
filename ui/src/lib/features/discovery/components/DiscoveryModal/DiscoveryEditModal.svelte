@@ -31,7 +31,8 @@
 		Gauge,
 		Calendar,
 		ArrowRight,
-		KeyRound
+		KeyRound,
+		X
 	} from 'lucide-svelte';
 	import CredentialsStep, {
 		type PendingCredential
@@ -42,6 +43,7 @@
 		common_back,
 		common_cancel,
 		common_close,
+		common_remove,
 		common_credentials,
 		common_delete,
 		common_deleting,
@@ -141,7 +143,9 @@
 	let daemonHostCredentialTypeIds = $derived.by(() => {
 		const credMap = new Map((allCredentialsQuery.data ?? []).map((c) => [c.id, c]));
 		const types = (discovery?.integration_targets ?? [])
-			.filter((t) => t.scope === 'DaemonHost')
+			.filter(
+				(t) => t.scope === 'DaemonHost' && !removedDaemonHostCredIds.includes(t.credential_id)
+			)
 			.map((t) => credMap.get(t.credential_id)?.credential_type.type)
 			.filter((t): t is NonNullable<typeof t> => t != null);
 		return types.filter((t, i) => types.indexOf(t) === i);
@@ -164,10 +168,17 @@
 					(t.scope === 'Hosts' && t.ips.length > 0 && t.ips.every(ipIsLoopback))
 			)
 			.map((t) => t.credential_id);
-		const items: { id: string; name: string; integration: string; isNew: boolean }[] = [];
+		const items: {
+			id: string;
+			name: string;
+			integration: string;
+			isNew: boolean;
+			removable: boolean;
+		}[] = [];
 		const push = (
 			cred: { id: string; name: string; credential_type: { type: string } } | undefined,
-			isNew: boolean
+			isNew: boolean,
+			removable: boolean
 		) => {
 			if (!cred || items.some((i) => i.id === cred.id)) return;
 			items.push({
@@ -176,20 +187,32 @@
 				integration:
 					credentialTypes.getMetadata(cred.credential_type.type)?.associated_service ??
 					cred.credential_type.type,
-				isNew
+				isNew,
+				removable
 			});
 		};
-		// Persisted daemon-host (socket) targets — always already-assigned.
+		// Persisted daemon-host (socket) targets — already-assigned, removable here.
 		for (const t of discovery?.integration_targets ?? []) {
-			if (t.scope === 'DaemonHost') push(credMap.get(t.credential_id), false);
+			if (t.scope === 'DaemonHost' && !removedDaemonHostCredIds.includes(t.credential_id))
+				push(credMap.get(t.credential_id), false, true);
 		}
-		// Pending credentials pointed at the daemon host (loopback) — new unless persisted.
+		// Pending credentials pointed at the daemon host (loopback) — new unless persisted;
+		// removed via the wizard, not here.
 		for (const p of pendingCredentials) {
 			if ((p.targetIps ?? []).some(ipIsLoopback))
-				push(p.credential, !persistedDaemonHostIds.includes(p.credential.id));
+				push(p.credential, !persistedDaemonHostIds.includes(p.credential.id), false);
 		}
 		return items;
 	});
+
+	// Persisted daemon-host targets the user has staged for removal this session.
+	// Applied on save (dropped from the submitted integration_targets) and excluded
+	// from the claimed set so a freed integration can be re-targeted.
+	let removedDaemonHostCredIds = $state<string[]>([]);
+	function removeDaemonHostTarget(credId: string) {
+		if (!removedDaemonHostCredIds.includes(credId))
+			removedDaemonHostCredIds = [...removedDaemonHostCredIds, credId];
+	}
 	// User-chosen configurable integrations (the fixed socket card is shown checked
 	// via the step's read-only handling, not via this selection).
 	let selectedCredentialTypeIds = $state<string[]>([]);
@@ -426,8 +449,10 @@
 					// explicit IPs → Hosts scope. Daemon-host (socket) targets are daemon-level —
 					// pass them through untouched so editing a discovery doesn't drop them.
 					const persisted = new Set(ids ?? []);
+					// Daemon-host (socket) targets pass through untouched, EXCEPT any the
+					// user removed this session (the discovery modal is authoritative now).
 					const daemonHostTargets = (discovery?.integration_targets ?? []).filter(
-						(t) => t.scope === 'DaemonHost'
+						(t) => t.scope === 'DaemonHost' && !removedDaemonHostCredIds.includes(t.credential_id)
 					);
 					const rebuilt = pendingCredentials
 						.filter((p) => persisted.has(p.credential.id))
@@ -461,6 +486,7 @@
 		formData = getDefaultFormData();
 		pendingCredentials = [];
 		credentialIds = [];
+		removedDaemonHostCredIds = [];
 		if (discovery?.integration_targets?.length && allCredentialsQuery.data) {
 			const credMap = new Map(allCredentialsQuery.data.map((c) => [c.id, c]));
 			// Reconstruct network/host credentialed targets as wizard entries. DaemonHost
@@ -665,6 +691,17 @@
 											color={item.isNew ? 'Blue' : 'Gray'}
 											label={item.isNew ? discovery_daemonHostNewThisScan() : common_assigned()}
 										/>
+										{#if item.removable && !readOnly}
+											<button
+												type="button"
+												class="text-secondary hover:text-primary ml-auto"
+												title={common_remove()}
+												aria-label={common_remove()}
+												onclick={() => removeDaemonHostTarget(item.id)}
+											>
+												<X class="h-4 w-4" />
+											</button>
+										{/if}
 									</li>
 								{/each}
 							</ul>

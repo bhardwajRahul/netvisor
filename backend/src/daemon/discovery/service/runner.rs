@@ -264,7 +264,8 @@ impl DiscoveryRunner {
         let probe_results = dispatch::probe_integrations(
             localhost_ip,
             &localhost_mappings,
-            &[], // No port scan for localhost — integrations do their own probing
+            &[],  // No port scan for localhost — integrations do their own probing
+            true, // skip the probe-gate: daemon-host integrations (e.g. a proxy) always self-probe here
             cancel,
             &self.service.utils,
         )

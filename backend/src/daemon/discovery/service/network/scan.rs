@@ -1030,9 +1030,15 @@ impl NetworkScan {
 
         // Integration probes — each checks connectivity and returns a ClientProbe for service matching
         use crate::daemon::discovery::integration::dispatch;
-        let probe_results =
-            dispatch::probe_integrations(ip, credential_mappings, &open_ports, &cancel, utils)
-                .await?;
+        let probe_results = dispatch::probe_integrations(
+            ip,
+            credential_mappings,
+            &open_ports,
+            false, // network scan: keep the probe-gate (cheap broad scan)
+            &cancel,
+            utils,
+        )
+        .await?;
         open_ports.extend(probe_results.additional_ports.iter());
         // Mark integration probe costs as completed
         if let Some(counter) = completed_cost {

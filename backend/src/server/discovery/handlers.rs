@@ -241,19 +241,24 @@ pub async fn update_discovery(
         ));
     }
 
-    // Single-endpoint guard: a daemon host can't run two credentials of the same
-    // integration (e.g. a Docker socket + a Docker proxy, or the Podman pair). All
-    // of this discovery's daemon-host targets resolve to its daemon's host, so check
-    // them against each other before persisting.
-    if let Some(daemon) = state
+    // Resolve the daemon's own host once (used for the conflict guard and the
+    // post-update assignment re-sync).
+    let daemon_host_id = state
         .services
         .daemon_service
         .get_by_id(&discovery.base.daemon_id)
         .await?
+        .map(|d| d.base.host_id);
+
+    // Single-endpoint guard: a daemon host can't run two credentials of the same
+    // integration (e.g. a Docker socket + a Docker proxy, or the Podman pair). All
+    // of this discovery's daemon-host targets resolve to its daemon's host, so check
+    // them against each other before persisting.
+    if let Some(host_id) = daemon_host_id
         && let Some((a, b)) = state
             .services
             .credential_service
-            .find_daemon_host_target_conflict(daemon.base.host_id, &discovery.integration_targets)
+            .find_daemon_host_target_conflict(host_id, &discovery.integration_targets)
             .await?
     {
         return Err(ApiError::bad_request(&format!(
@@ -261,7 +266,21 @@ pub async fn update_discovery(
         )));
     }
 
-    update_handler::<Discovery>(state, auth, id, discovery).await
+    // Keep the daemon host's credential assignments (UI + conflict checks) in sync
+    // with the now-authoritative integration_targets, clearing a removed socket.
+    let app = state.0.clone();
+    let targets = discovery.integration_targets.clone();
+    let response = update_handler::<Discovery>(state, auth, id, discovery).await?;
+    if let Some(host_id) = daemon_host_id
+        && let Err(e) = app
+            .services
+            .credential_service
+            .resync_daemon_host_assignments(&host_id, &targets)
+            .await
+    {
+        tracing::warn!(error = ?e, host_id = %host_id, "Failed to re-sync daemon-host credential assignments after discovery update");
+    }
+    Ok(response)
 }
 
 /// Receive discovery progress update from daemon
