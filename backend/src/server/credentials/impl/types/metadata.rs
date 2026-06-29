@@ -28,20 +28,6 @@ pub enum CredentialCategory {
     ContainerVirtualization,
 }
 
-/// Where a credential / integration applies. `Network` is a broadcast default
-/// (all hosts on a network), `Host` targets specific hosts, and `DaemonHost` is
-/// the daemon's own host (e.g. the local Docker socket, realized as a 127.0.0.1
-/// IP-override).
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, ToSchema, PartialEq, Eq, Hash)]
-pub enum Target {
-    /// The daemon's own host (local). Daemon-relative.
-    DaemonHost,
-    /// Specific discovered host(s), optionally limited to specific IP addresses.
-    Host,
-    /// All hosts on a network (broadcast default).
-    Network,
-}
-
 /// A credential assigned to a host, optionally limited to specific ip_addresses.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, ToSchema)]
 pub struct CredentialAssignment {
@@ -98,7 +84,7 @@ impl CredentialTypeDiscriminants {
                 ssl_key: None,
                 ssl_chain: None,
             },
-            Self::DockerSocket => CredentialType::DockerSocket {},
+            Self::DockerSocket => CredentialType::DockerSocket { socket_path: None },
             Self::PodmanProxy => CredentialType::PodmanProxy {
                 port: default_docker_port(),
                 path: None,
@@ -106,7 +92,7 @@ impl CredentialTypeDiscriminants {
                 ssl_key: None,
                 ssl_chain: None,
             },
-            Self::PodmanSocket => CredentialType::PodmanSocket {},
+            Self::PodmanSocket => CredentialType::PodmanSocket { socket_path: None },
         }
     }
 }

@@ -99,7 +99,14 @@ impl DiscoveryIntegration for PodmanSocketIntegration {
     // No probe_gate_ports — Unix socket, no TCP port needed.
 
     async fn probe(&self, ctx: &ProbeContext<'_>) -> Result<ProbeSuccess, ProbeFailure> {
-        container::probe_socket(ctx, ContainerRuntime::Podman, resolve_podman_socket_path()).await
+        // Explicit socket_path from the credential wins; otherwise auto-detect the rootful /
+        // rootless Podman socket.
+        let socket_path = match ctx.credential {
+            CredentialQueryPayload::PodmanSocket(c) => c.socket_path.clone(),
+            _ => None,
+        }
+        .or_else(resolve_podman_socket_path);
+        container::probe_socket(ctx, ContainerRuntime::Podman, socket_path).await
     }
 
     async fn execute(

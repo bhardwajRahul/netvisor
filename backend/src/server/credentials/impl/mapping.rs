@@ -16,10 +16,15 @@ use uuid::Uuid;
 // Re-export type-specific types so external imports don't break
 pub use super::types::container_proxy::ContainerProxyQueryCredential;
 
-/// Container-runtime (Docker/Podman) socket query credential — no fields needed.
-/// The daemon connects via the local Unix socket.
+/// Container-runtime (Docker/Podman) socket query credential. The daemon connects via a local
+/// Unix socket; `socket_path` optionally repoints it (e.g. rootless Podman at
+/// `$XDG_RUNTIME_DIR/podman/podman.sock`, a non-default `DOCKER_HOST`). Blank ⇒ the daemon
+/// auto-detects (bollard defaults for Docker, `resolve_podman_socket_path()` for Podman).
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Hash, Default)]
-pub struct ContainerSocketQueryCredential {}
+pub struct ContainerSocketQueryCredential {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub socket_path: Option<String>,
+}
 pub use super::types::snmp::{
     SnmpCredentialMapping, SnmpCredentialMappingExposed, SnmpIpOverrideExposed,
     SnmpQueryCredential, SnmpQueryCredentialExposed, SnmpV3AuthProtocol, SnmpV3Params,
@@ -96,32 +101,47 @@ pub struct ResolvedCredential<T> {
 }
 
 /// Per-daemon integration targeting, stored on the `Discovery` entity and delivered via the
-/// init command at registration. Each entry says "run this integration here on this daemon."
-/// This is the single home for both credentialed and credential-less integration targeting —
-/// it replaces the global, race-prone `credential.target_ips` and the per-integration
-/// `enable_local_*_socket` daemon flags.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, ToSchema)]
-#[serde(tag = "type")]
+/// init command at registration. Each entry references exactly one stored credential and says
+/// where it applies on this daemon. This is the single home for cred↔IP targeting — it replaces
+/// the global, race-prone `credential.target_ips`.
+///
+/// The variants ARE the scopes; their strum [`Target`] discriminants are the capability enum that
+/// `CredentialType::targets()` returns and validates against (single source of truth). Every
+/// target carries a real `credential_id` — there is no credential-less branch and no nil
+/// sentinel; a local socket is just a credential whose type targets only the daemon host.
+#[derive(
+    Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, ToSchema, EnumDiscriminants,
+)]
+// `Target` is the capability enum returned by `CredentialType::targets()`: where a credential
+// can apply (DaemonHost / Network / Hosts). It's the strum discriminant of `IntegrationTarget`.
+#[strum_discriminants(
+    name(Target),
+    derive(Serialize, Deserialize, Hash, ToSchema, strum::VariantNames)
+)]
+#[serde(tag = "scope")]
 pub enum IntegrationTarget {
-    /// A stored credential applied to specific IP(s) on this daemon.
-    Credentialed {
+    /// The daemon's own host — realized as a 127.0.0.1 IP-override (e.g. a local Docker/Podman
+    /// socket, or any credential the user pins to the daemon host without naming its IP).
+    DaemonHost { credential_id: Uuid },
+    /// All hosts on the network — a broadcast default credential.
+    Network { credential_id: Uuid },
+    /// Specific host IPs — one IP-override per address.
+    Hosts {
         credential_id: Uuid,
-        /// IPs this credential targets. Empty = network-level default (no IP override).
-        #[serde(default)]
         #[schema(value_type = Vec<String>)]
         ips: Vec<IpAddr>,
     },
-    /// A credential-less integration that runs on the daemon host (127.0.0.1).
-    ///
-    /// Credential-less ⟺ local: credentials are how you authenticate to a *remote* party, and
-    /// local proximity replaces that, so these never need a stored credential. Every remote
-    /// integration (any `CredentialType` that hits a remote API/host) needs a credential;
-    /// remote-but-credential-less discovery (mDNS/ARP/port sweeps) isn't a `CredentialType` and
-    /// never appears here. Not named after a transport — today's members are the Docker/Podman
-    /// local sockets, but a future non-socket local integration fits too.
-    Local {
-        integration: super::types::CredentialTypeDiscriminants,
-    },
+}
+
+impl IntegrationTarget {
+    /// The stored credential this target references (present in every variant).
+    pub fn credential_id(&self) -> Uuid {
+        match self {
+            Self::DaemonHost { credential_id }
+            | Self::Network { credential_id }
+            | Self::Hosts { credential_id, .. } => *credential_id,
+        }
+    }
 }
 
 // ============================================================================

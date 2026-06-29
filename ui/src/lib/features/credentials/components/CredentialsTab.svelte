@@ -203,7 +203,7 @@
 				filterable: true,
 				groupable: true,
 				filterMode: 'include',
-				filterOptions: ['Network', 'Host', 'DaemonHost'],
+				filterOptions: ['Network', 'Hosts', 'DaemonHost'],
 				getValue: (item: Credential) => {
 					const typeId = getCredentialTypeId(item);
 					const meta = credentialTypes.getMetadata(typeId);

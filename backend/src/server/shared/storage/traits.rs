@@ -2,7 +2,7 @@ use std::net::IpAddr;
 
 use crate::server::auth::middleware::auth::AuthenticatedEntity;
 use crate::server::bindings::r#impl::base::Binding;
-use crate::server::credentials::r#impl::mapping::IntegrationTarget;
+use crate::server::credentials::r#impl::mapping::{IntegrationTarget, Target};
 use crate::server::credentials::r#impl::types::CredentialType;
 use crate::server::dependencies::r#impl::base::Dependency;
 use crate::server::services::r#impl::base::Service;
@@ -440,18 +440,18 @@ impl_db_enum_contributor_via_variant_names!(
     OnboardingOperationDiscriminants,
 );
 
-// IntegrationTarget is a tagged sum with struct variants (confuses
-// strum::VariantNames). The `type` tag persists in JSONB; list it explicitly.
-// The `Local.integration` field persists a CredentialType discriminant name,
-// already tracked via CredentialType — delegate so coverage survives even if
-// the SqlValue::CredentialType variant is ever removed.
+// IntegrationTarget is a tagged sum with struct variants (confuses strum::VariantNames on the
+// enum itself). The persisted `scope` tag values are its `Target` discriminant's variant names,
+// so source them from `Target::VARIANTS` rather than hand-typed strings.
 impl DbEnumContributor for IntegrationTarget {
     fn contribute(out: &mut std::collections::BTreeMap<&'static str, Vec<String>>) {
         out.insert(
             db_enum_key_for::<IntegrationTarget>(),
-            vec!["Credentialed".to_string(), "Local".to_string()],
+            <Target as ::strum::VariantNames>::VARIANTS
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
         );
-        CredentialType::contribute(out);
     }
 }
 

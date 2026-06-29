@@ -99,8 +99,9 @@
     "ESXi"
   ],
   "IntegrationTarget": [
-    "Credentialed",
-    "Local"
+    "DaemonHost",
+    "Network",
+    "Hosts"
   ],
   "LldpChassisId": [
     "ChassisComponent",

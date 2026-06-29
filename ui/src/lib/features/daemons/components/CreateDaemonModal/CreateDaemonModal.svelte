@@ -290,17 +290,17 @@
 	// Derived commands.
 	//
 	// Build per-daemon integration-target tokens for the init command (see daemon `config.rs`
-	// grammar): credential-less local sockets become `docker-socket` / `podman-socket`; a
-	// credential with target IPs becomes `<uuid>@<ip>[+<ip>]`; a credential with no target IPs
-	// becomes a bare `<uuid>` (network-level default). Target IPs come from the wizard's per-
-	// credential input (they are no longer written to `credential.target_ips`).
+	// grammar). Every token references a created credential by id; the suffix encodes the scope:
+	// local-socket credentials (daemon-host only) become `<uuid>@daemon`; a credential with
+	// target IPs becomes `<uuid>@<ip>[+<ip>]`; one with no target IPs becomes a bare `<uuid>`
+	// (network default). Target IPs come from the wizard's per-credential input.
 	let integrationTokens = $derived(
 		pendingCredentials.flatMap((p) => {
-			const type = p.credential.credential_type.type;
-			if (type === 'DockerSocket') return ['docker-socket'];
-			if (type === 'PodmanSocket') return ['podman-socket'];
-			// Only persisted credentials get a targeting token.
+			// Only persisted credentials get a targeting token (sockets are created too now).
 			if (!credentialIds.includes(p.credential.id)) return [];
+			if (isLocalAuto(p.credential.credential_type.type)) {
+				return [`${p.credential.id}@daemon`];
+			}
 			const ips = p.targetIps.map((s) => s.trim()).filter(Boolean);
 			return ips.length > 0 ? [`${p.credential.id}@${ips.join('+')}`] : [p.credential.id];
 		})

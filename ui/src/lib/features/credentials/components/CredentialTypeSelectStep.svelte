@@ -44,7 +44,7 @@
 	function targetRank(card: CredType): number {
 		const targets = card.metadata?.targets ?? [];
 		if (targets.includes('Network')) return 2;
-		if (targets.includes('Host')) return 1;
+		if (targets.includes('Hosts')) return 1;
 		return 0;
 	}
 

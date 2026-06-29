@@ -110,7 +110,7 @@
 	);
 	let supportsNetworks = $derived(supportedTargets.includes('Network'));
 	let supportsDaemonHost = $derived(supportedTargets.includes('DaemonHost'));
-	let supportsRemoteHosts = $derived(supportedTargets.includes('Host'));
+	let supportsRemoteHosts = $derived(supportedTargets.includes('Hosts'));
 	let supportsHosts = $derived(supportsDaemonHost || supportsRemoteHosts);
 	// Integration (associated service) name — used in the daemon-host-taken message.
 	let integrationName = $derived(
@@ -302,7 +302,7 @@
 				if (
 					targetMode === 'per_host' &&
 					supported.includes('DaemonHost') &&
-					!supported.includes('Host')
+					!supported.includes('Hosts')
 				) {
 					targetIpValues = [DAEMON_HOST_IP];
 				}

@@ -58,8 +58,8 @@ export interface FieldDefinition {
 
 export interface CredentialTypeMetadata {
 	fields: FieldDefinition[];
-	/** Where this credential type can apply: 'DaemonHost' | 'Host' | 'Network' */
-	targets?: ('DaemonHost' | 'Host' | 'Network')[];
+	/** Where this credential type can apply: 'DaemonHost' | 'Hosts' | 'Network' */
+	targets?: ('DaemonHost' | 'Hosts' | 'Network')[];
 	/** Whether the user must provide config/fields (false ⇒ rendered as a toggle, not a form) */
 	requires_config?: boolean;
 	/** Zero-config local capability the daemon auto-detects (e.g. the Docker socket) */

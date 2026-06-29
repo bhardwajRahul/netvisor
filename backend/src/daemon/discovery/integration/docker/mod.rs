@@ -82,8 +82,13 @@ impl DiscoveryIntegration for DockerSocketIntegration {
     // No probe_gate_ports — Unix socket, no TCP port needed.
 
     async fn probe(&self, ctx: &ProbeContext<'_>) -> Result<ProbeSuccess, ProbeFailure> {
-        // None → bollard Docker defaults (DOCKER_HOST / /var/run/docker.sock).
-        container::probe_socket(ctx, ContainerRuntime::Docker, None).await
+        // Explicit socket_path from the credential repoints the socket; None → bollard Docker
+        // defaults (DOCKER_HOST / /var/run/docker.sock).
+        let socket_path = match ctx.credential {
+            CredentialQueryPayload::DockerSocket(c) => c.socket_path.clone(),
+            _ => None,
+        };
+        container::probe_socket(ctx, ContainerRuntime::Docker, socket_path).await
     }
 
     async fn execute(
