@@ -280,15 +280,6 @@ impl CredentialType {
         !self.field_definitions().is_empty()
     }
 
-    /// Whether this type is a local-only capability the daemon auto-detects (e.g. the
-    /// Docker/Podman socket): it applies *solely* to the daemon's own host. Rendered as an
-    /// on/off toggle. Defined by the target scheme — a type is local-auto iff its only target
-    /// is `DaemonHost`. An optional config field (e.g. `socket_path`) doesn't change this, so it
-    /// is independent of `requires_config()`.
-    pub fn is_local_auto(&self) -> bool {
-        matches!(self.targets().as_slice(), [Target::DaemonHost])
-    }
-
     /// Whether this integration is a single service instance per host, so its
     /// access methods at a given target are mutually exclusive (e.g. a container
     /// runtime is reached by exactly one of socket/proxy). `false` for try-many
@@ -377,13 +368,6 @@ impl CredentialType {
                 Box::new(crate::server::services::definitions::podman::Podman)
             }
         }
-    }
-
-    /// Whether this credential type is created as a user credential (vs. rendered
-    /// as a daemon auto-capability toggle). Auto-local types (e.g. the Docker
-    /// socket) are managed as daemon config, not created as credentials.
-    pub fn is_user_selectable(&self) -> bool {
-        !self.is_local_auto()
     }
 
     /// Convert to wire format payload for daemon transmission.
@@ -846,13 +830,17 @@ mod tests {
             ids,
             vec!["port", "path", "ssl_cert", "ssl_key", "ssl_chain"]
         );
-        // Socket types expose a single optional, non-secret socket_path field — so the type
-        // stays a zero-config toggle (`is_local_auto`) while remaining repointable.
+        // Socket types expose a single optional, non-secret socket_path field (repointable) and
+        // target only the daemon host — the property the UI derives in place of the old
+        // `is_local_auto` flag.
         let socket_fields = CredentialType::PodmanSocket { socket_path: None }.field_definitions();
         assert_eq!(socket_fields.len(), 1);
         assert_eq!(socket_fields[0].id, "socket_path");
         assert!(socket_fields[0].optional && !socket_fields[0].secret);
-        assert!(CredentialType::PodmanSocket { socket_path: None }.is_local_auto());
+        assert_eq!(
+            CredentialType::PodmanSocket { socket_path: None }.targets(),
+            vec![Target::DaemonHost]
+        );
     }
 
     #[test]

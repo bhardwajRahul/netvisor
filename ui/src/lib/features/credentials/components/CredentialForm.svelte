@@ -52,6 +52,9 @@
 		fixedName?: string;
 		compact?: boolean;
 		hideFields?: boolean;
+		/** Hide the target (scope/IP) section — for daemon-host-only types (e.g. the local
+		 *  socket) whose target is implicit (127.0.0.1). Shows fields, no target picker. */
+		hideTargets?: boolean;
 		fieldPrefix?: string;
 		/** Disable the "Add daemon host" target when the daemon host is already
 		 *  claimed by another single-endpoint credential of the same integration. */
@@ -72,6 +75,7 @@
 		fixedName,
 		compact = false,
 		hideFields = false,
+		hideTargets = false,
 		fieldPrefix = '',
 		daemonHostUnavailable = false,
 		onChange,
@@ -368,9 +372,8 @@
 		return typeObj as unknown as CredentialType;
 	}
 
-	let typeOptions = $derived(
-		credentialTypes.getItems().filter((t) => t.metadata?.is_user_selectable !== false)
-	);
+	// All credential types are user-selectable (sockets included, created like any other).
+	let typeOptions = $derived(credentialTypes.getItems());
 
 	// Whether to show type selector and name field
 	let showTypeSelector = $derived(!fixedCredentialType);
@@ -595,97 +598,101 @@
 
 {#if compact}
 	<div class="space-y-4">
-		<!-- Target mode selector — only when the type supports both modes -->
-		{#if showTargetModeToggle}
-			<SegmentedControl
-				options={[
-					{ value: 'per_host', label: daemons_credentialWizardTargetSpecificHosts() },
-					{ value: 'broadcast', label: daemons_credentialWizardTargetAllHosts() }
-				]}
-				selected={targetMode}
-				onchange={(v) => handleTargetModeChange(v as 'per_host' | 'broadcast')}
-				size="sm"
-			/>
-		{/if}
+		{#if !hideTargets}
+			<!-- Target mode selector — only when the type supports both modes -->
+			{#if showTargetModeToggle}
+				<SegmentedControl
+					options={[
+						{ value: 'per_host', label: daemons_credentialWizardTargetSpecificHosts() },
+						{ value: 'broadcast', label: daemons_credentialWizardTargetAllHosts() }
+					]}
+					selected={targetMode}
+					onchange={(v) => handleTargetModeChange(v as 'per_host' | 'broadcast')}
+					size="sm"
+				/>
+			{/if}
 
-		{#if targetMode === 'broadcast'}
-			<p class="text-muted text-xs">{daemons_credentialWizardBroadcastHelp()}</p>
-		{:else}
-			{#each targetIpValues as ip, i (i)}
-				<div class="flex items-center gap-2">
-					{#if isDaemonHostValue(ip)}
-						<input
-							type="text"
-							class="input-field min-w-0 flex-1"
-							value={daemons_credentialWizardDaemonHostTargetLabel()}
-							disabled
-						/>
-					{:else}
-						<div class="min-w-0 flex-1">
-							<form.Field
-								name={targetIpFieldName(i)}
-								validators={{
-									onBlur: ({ value }: { value: string }) => validateTargetIp(value),
-									onChange: ({ value }: { value: string }) => validateTargetIp(value),
-									onSubmit: ({ value }: { value: string }) => validateTargetIp(value)
-								}}
-								listeners={{
-									onChange: ({ value }: { value: string }) => handleTargetIpChange(i, value)
-								}}
-							>
-								{#snippet children(field: AnyFieldApi)}
-									<TextInput
-										label=""
-										id="target-ip-{fieldPrefix}{i}"
-										placeholder="e.g. 192.168.1.1"
-										{field}
-									/>
-								{/snippet}
-							</form.Field>
-						</div>
-					{/if}
-					<button
-						type="button"
-						class="text-muted hover:text-primary shrink-0 p-1 text-lg leading-none"
-						onclick={() => handleRemoveTarget(i)}>&times;</button
-					>
-				</div>
-			{/each}
-			<div class="flex flex-wrap items-center gap-3">
-				{#if supportsDaemonHost}
-					{#if daemonHostUnavailable && !hasDaemonHostTarget}
-						<!-- Claimed by another credential: unselectable, reason on hover -->
-						<span
-							class="inline-block"
-							data-tooltip={daemons_credentialWizardDaemonHostUnavailable({
-								integration: integrationName
-							})}
-							use:tooltip
+			{#if targetMode === 'broadcast'}
+				<p class="text-muted text-xs">{daemons_credentialWizardBroadcastHelp()}</p>
+			{:else}
+				{#each targetIpValues as ip, i (i)}
+					<div class="flex items-center gap-2">
+						{#if isDaemonHostValue(ip)}
+							<input
+								type="text"
+								class="input-field min-w-0 flex-1"
+								value={daemons_credentialWizardDaemonHostTargetLabel()}
+								disabled
+							/>
+						{:else}
+							<div class="min-w-0 flex-1">
+								<form.Field
+									name={targetIpFieldName(i)}
+									validators={{
+										onBlur: ({ value }: { value: string }) => validateTargetIp(value),
+										onChange: ({ value }: { value: string }) => validateTargetIp(value),
+										onSubmit: ({ value }: { value: string }) => validateTargetIp(value)
+									}}
+									listeners={{
+										onChange: ({ value }: { value: string }) => handleTargetIpChange(i, value)
+									}}
+								>
+									{#snippet children(field: AnyFieldApi)}
+										<TextInput
+											label=""
+											id="target-ip-{fieldPrefix}{i}"
+											placeholder="e.g. 192.168.1.1"
+											{field}
+										/>
+									{/snippet}
+								</form.Field>
+							</div>
+						{/if}
+						<button
+							type="button"
+							class="text-muted hover:text-primary shrink-0 p-1 text-lg leading-none"
+							onclick={() => handleRemoveTarget(i)}>&times;</button
 						>
+					</div>
+				{/each}
+				<div class="flex flex-wrap items-center gap-3">
+					{#if supportsDaemonHost}
+						{#if daemonHostUnavailable && !hasDaemonHostTarget}
+							<!-- Claimed by another credential: unselectable, reason on hover -->
+							<span
+								class="inline-block"
+								data-tooltip={daemons_credentialWizardDaemonHostUnavailable({
+									integration: integrationName
+								})}
+								use:tooltip
+							>
+								<button
+									type="button"
+									class="text-muted cursor-not-allowed text-sm opacity-40"
+									disabled>+ {daemons_credentialWizardAddDaemonHostTarget()}</button
+								>
+							</span>
+						{:else if hasDaemonHostTarget}
+							<!-- Already added: disabled, no hover state -->
 							<button
 								type="button"
 								class="text-muted cursor-not-allowed text-sm opacity-40"
 								disabled>+ {daemons_credentialWizardAddDaemonHostTarget()}</button
 							>
-						</span>
-					{:else if hasDaemonHostTarget}
-						<!-- Already added: disabled, no hover state -->
-						<button type="button" class="text-muted cursor-not-allowed text-sm opacity-40" disabled
-							>+ {daemons_credentialWizardAddDaemonHostTarget()}</button
-						>
-					{:else}
-						<button type="button" class="text-link text-sm" onclick={handleAddDaemonHostTarget}
-							>+ {daemons_credentialWizardAddDaemonHostTarget()}</button
+						{:else}
+							<button type="button" class="text-link text-sm" onclick={handleAddDaemonHostTarget}
+								>+ {daemons_credentialWizardAddDaemonHostTarget()}</button
+							>
+						{/if}
+					{/if}
+					{#if supportsRemoteHosts}
+						<button type="button" class="text-link text-sm" onclick={handleAddIpTarget}
+							>+ {daemons_credentialWizardAddRemoteHostTarget()}</button
 						>
 					{/if}
-				{/if}
-				{#if supportsRemoteHosts}
-					<button type="button" class="text-link text-sm" onclick={handleAddIpTarget}
-						>+ {daemons_credentialWizardAddRemoteHostTarget()}</button
-					>
-				{/if}
-			</div>
-			<p class="text-muted text-xs">{daemons_credentialWizardTargetIpHelp()}</p>
+				</div>
+				<p class="text-muted text-xs">{daemons_credentialWizardTargetIpHelp()}</p>
+			{/if}
 		{/if}
 
 		<!-- Name (between targeting and fields, like the full editor) -->

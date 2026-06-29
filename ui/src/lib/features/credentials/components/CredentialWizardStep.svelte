@@ -12,7 +12,10 @@
 	import { credentialTypes, entities } from '$lib/shared/stores/metadata';
 	import type { TypedTypeMetadata, CredentialTypeMetadata } from '$lib/shared/stores/metadata';
 	import type { Credential, CredentialType } from '$lib/features/credentials/types/base';
-	import { createDefaultCredential } from '$lib/features/credentials/types/base';
+	import {
+		createDefaultCredential,
+		isDaemonHostOnly as isDaemonHostOnlyTargets
+	} from '$lib/features/credentials/types/base';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
 	import { useNetworksQuery } from '$lib/features/networks/queries';
 	import { useCredentialsQuery } from '$lib/features/credentials/queries';
@@ -87,8 +90,8 @@
 	// Local items array for ListConfigEditor display
 	let items = $derived(pendingCredentials.map((p) => p.credential));
 
-	function isLocalAuto(typeId: string): boolean {
-		return credentialTypes.getMetadata(typeId)?.is_local_auto === true;
+	function isDaemonHostOnly(typeId: string): boolean {
+		return isDaemonHostOnlyTargets(credentialTypes.getMetadata(typeId)?.targets);
 	}
 
 	function isLoopback(ip: string): boolean {
@@ -97,16 +100,16 @@
 	}
 
 	/**
-	 * Whether a pending credential claims its integration's daemon host: the
-	 * auto-local socket always does; a configurable cred does when it targets a
-	 * loopback. The daemon host is a single endpoint per `single_endpoint_per_host`
-	 * integration, so only one credential may hold it.
+	 * Whether a pending credential claims its integration's daemon host: a daemon-host-only
+	 * type (the local socket) always does; a configurable cred does when it targets a loopback.
+	 * The daemon host is a single endpoint per `single_endpoint_per_host` integration, so only
+	 * one credential may hold it.
 	 */
 	function claimsDaemonHost(p: PendingCredential): boolean {
 		if (p.isExisting) return false;
 		const meta = credentialTypes.getMetadata(p.credential.credential_type.type);
 		if (!meta?.single_endpoint_per_host) return false;
-		return meta.is_local_auto === true || p.targetIps.some(isLoopback);
+		return isDaemonHostOnlyTargets(meta.targets) || p.targetIps.some(isLoopback);
 	}
 
 	function integrationOf(typeId: string): string | undefined {
@@ -144,9 +147,9 @@
 	// (e.g. multiple Docker Proxies on different hosts) are never blanket-blocked.
 	let typeOptions = $derived(
 		credentialTypes.getItems().filter((t) => {
-			if (t.metadata?.is_user_selectable === false && !t.metadata?.is_local_auto) return false;
+			// A daemon-host-only type (the local socket) can only be added once (one daemon host).
 			if (
-				t.metadata?.is_local_auto &&
+				isDaemonHostOnlyTargets(t.metadata?.targets) &&
 				pendingCredentials.some((p) => p.credential.credential_type.type === t.id)
 			) {
 				return false;
@@ -159,7 +162,8 @@
 	// auto-local capability (Docker socket) is disabled when its integration's daemon
 	// host is already claimed by another pending credential (e.g. a daemon-host proxy).
 	function dropdownDisabledReason(type: TypedTypeMetadata<CredentialTypeMetadata>): string | null {
-		if (!type.metadata?.is_local_auto || !type.metadata.associated_service) return null;
+		if (!isDaemonHostOnlyTargets(type.metadata?.targets) || !type.metadata.associated_service)
+			return null;
 		return integrationClaimsDaemonHost(type.metadata.associated_service)
 			? daemons_credentialWizardDaemonHostUnavailable({
 					integration: type.metadata.associated_service
@@ -284,11 +288,11 @@
 			);
 			if (!alreadyPending) handleAddCredential(typeId);
 		}
-		// Reconcile auto-local entries (Docker socket) with the grid selection: drop
+		// Reconcile daemon-host-only entries (the local socket) with the grid selection: drop
 		// any that were deselected. Configurable creds added in the wizard are kept.
 		pendingCredentials = pendingCredentials.filter(
 			(p) =>
-				!isLocalAuto(p.credential.credential_type.type) ||
+				!isDaemonHostOnly(p.credential.credential_type.type) ||
 				typeIds.includes(p.credential.credential_type.type)
 		);
 	}
@@ -394,7 +398,7 @@
 
 	/** Get new credentials ready for bulk creation (with built credential_type from fieldValues).
 	 *  Includes local-auto socket types — they are ordinary credentials now (referenced by a
-	 *  `<uuid>@daemon` target), created with their default (auto-detect) config. */
+	 *  `<uuid>@127.0.0.1` target), created with their default (auto-detect) config. */
 	export function getCredentialsForCreate(): { credential: Credential; targetIps: string[] }[] {
 		return pendingCredentials
 			.map((p, i) => ({ p, i }))
@@ -482,15 +486,24 @@
 			<!-- Render ALL config panels, hide non-selected (like InterfacesForm) -->
 			{#each pendingCredentials as pending, index (`${pending.credential.id}-${index}`)}
 				<div class:hidden={selectedIndex !== index}>
-					{#if isLocalAuto(pending.credential.credential_type.type)}
-						<!-- Auto-local capability (e.g. Docker socket): no fields, no targets,
-						     creates no credential. One panel = the type's description (what it
-						     does) plus the generic enable-by-presence mechanic. -->
+					{#if isDaemonHostOnly(pending.credential.credential_type.type)}
+						<!-- Daemon-host-only credential (e.g. the local Docker/Podman socket): its
+						     target is implicitly the daemon host (127.0.0.1), so no target picker —
+						     but it's a real credential with optional config (e.g. socket_path). -->
 						<InlineInfo
 							title=""
 							body={`${credentialTypes.getDescription(
 								pending.credential.credential_type.type
 							)} ${daemons_credentialWizardLocalAutoNote()}`}
+						/>
+						<CredentialForm
+							bind:this={credentialFormRefs[index]}
+							{form}
+							compact={true}
+							hideTargets={true}
+							fieldPrefix={`credentials[${index}].`}
+							fixedCredentialType={pending.credential.credential_type.type}
+							onChange={(data) => handleConfigChange(index, data)}
 						/>
 					{:else if pending.isExisting}
 						<p class="text-muted mb-4 text-xs">

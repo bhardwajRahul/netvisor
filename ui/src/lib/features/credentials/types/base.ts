@@ -139,6 +139,15 @@ export function getTargetTagProps(target: string): TagProps {
 }
 
 /**
+ * A credential type that applies *only* to the daemon's own host (e.g. the Docker/Podman
+ * socket). Derived from the target scheme — this replaces the former `is_local_auto` flag.
+ * Such types target only the daemon host (a `<uuid>@127.0.0.1` token) — no remote/network scope.
+ */
+export function isDaemonHostOnly(targets: string[] | undefined): boolean {
+	return targets?.length === 1 && targets[0] === 'DaemonHost';
+}
+
+/**
  * Human-readable labels for SNMP admin status
  * @deprecated Use getAdminStatusLabels() instead for proper i18n support
  */

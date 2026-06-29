@@ -62,8 +62,6 @@ export interface CredentialTypeMetadata {
 	targets?: ('DaemonHost' | 'Hosts' | 'Network')[];
 	/** Whether the user must provide config/fields (false ⇒ rendered as a toggle, not a form) */
 	requires_config?: boolean;
-	/** Zero-config local capability the daemon auto-detects (e.g. the Docker socket) */
-	is_local_auto?: boolean;
 	/** Single service instance per host ⇒ access methods at a target are mutually exclusive */
 	single_endpoint_per_host?: boolean;
 	/** Name of the associated ServiceDefinition (e.g. "SNMP", "Docker") */
@@ -72,9 +70,6 @@ export interface CredentialTypeMetadata {
 	has_logo?: boolean;
 	/** Whether the logo needs a white background */
 	logo_needs_white_background?: boolean;
-	/** Whether this credential type is selectable by users in the UI.
-	 * Auto-managed types (e.g. DockerSocket) are injected by daemons, not user-created. */
-	is_user_selectable?: boolean;
 }
 
 export interface MetadataRegistry {

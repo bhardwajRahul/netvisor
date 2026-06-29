@@ -54,6 +54,7 @@
 	import CredentialsStep, {
 		type PendingCredential
 	} from '$lib/features/credentials/components/CredentialsStep.svelte';
+	import { isDaemonHostOnly as isDaemonHostOnlyTargets } from '$lib/features/credentials/types/base';
 	import {
 		common_close,
 		common_configure,
@@ -160,24 +161,24 @@
 		(credentialsQuery.data?.length ?? 0) > 0 ? 'wizard' : 'typeSelect'
 	);
 
-	function isLocalAuto(id: string): boolean {
-		return credentialTypes.getMetadata(id)?.is_local_auto === true;
+	function isDaemonHostOnly(id: string): boolean {
+		return isDaemonHostOnlyTargets(credentialTypes.getMetadata(id)?.targets);
 	}
-	// Auto-local integrations (e.g. Docker socket) are selected by default in the
-	// Integrations grid; selecting one drives the daemon install flag.
-	function localAutoTypeIds(): string[] {
+	// Daemon-host-only integrations (e.g. the Docker/Podman socket) are selected by default in
+	// the Integrations grid; they target only the daemon host (a `<uuid>@127.0.0.1` token).
+	function daemonHostOnlyTypeIds(): string[] {
 		return credentialTypes
 			.getItems()
-			.filter((t) => t.metadata?.is_local_auto)
+			.filter((t) => isDaemonHostOnlyTargets(t.metadata?.targets))
 			.map((t) => t.id);
 	}
-	// Real new credentials being created (excludes existing ones and auto-local
-	// entries like the Docker socket, which persist nothing). Drives the CTA count.
+	// Real new credentials being created (excludes existing ones and zero-config daemon-host
+	// sockets). Drives the CTA count.
 	let unsavedCredentialCount = $derived(
 		pendingCredentials.filter(
 			(p) =>
 				!p.isExisting &&
-				!isLocalAuto(p.credential.credential_type.type) &&
+				!isDaemonHostOnly(p.credential.credential_type.type) &&
 				!credentialIds.includes(p.credential.id)
 		).length
 	);
@@ -290,16 +291,16 @@
 	// Derived commands.
 	//
 	// Build per-daemon integration-target tokens for the init command (see daemon `config.rs`
-	// grammar). Every token references a created credential by id; the suffix encodes the scope:
-	// local-socket credentials (daemon-host only) become `<uuid>@daemon`; a credential with
-	// target IPs becomes `<uuid>@<ip>[+<ip>]`; one with no target IPs becomes a bare `<uuid>`
-	// (network default). Target IPs come from the wizard's per-credential input.
+	// grammar). Every token references a created credential by id; the suffix is the target IP(s):
+	// daemon-host-only credentials (local sockets) target 127.0.0.1 like any other IP target;
+	// a credential with target IPs becomes `<uuid>@<ip>[+<ip>]`; one with no target IPs becomes a
+	// bare `<uuid>` (network default). The daemon maps a sole-loopback IP to the DaemonHost scope.
 	let integrationTokens = $derived(
 		pendingCredentials.flatMap((p) => {
 			// Only persisted credentials get a targeting token (sockets are created too now).
 			if (!credentialIds.includes(p.credential.id)) return [];
-			if (isLocalAuto(p.credential.credential_type.type)) {
-				return [`${p.credential.id}@daemon`];
+			if (isDaemonHostOnly(p.credential.credential_type.type)) {
+				return [`${p.credential.id}@127.0.0.1`];
 			}
 			const ips = p.targetIps.map((s) => s.trim()).filter(Boolean);
 			return ips.length > 0 ? [`${p.credential.id}@${ips.join('+')}`] : [p.credential.id];
@@ -690,8 +691,8 @@
 		furthestReached = 0;
 		showAdvanced = false;
 		credentialSubStep = 'typeSelect';
-		// Local-auto integrations (Docker socket) are on by default.
-		selectedCredentialTypeIds = localAutoTypeIds();
+		// Daemon-host-only integrations (the local Docker/Podman socket) are on by default.
+		selectedCredentialTypeIds = daemonHostOnlyTypeIds();
 		connectionStatus = 'idle';
 		startedAsFirstDaemon = isFirstDaemon;
 		serverPollReachable = null;

@@ -178,15 +178,14 @@ impl TypeMetadataProvider for CredentialTypeDiscriminants {
         };
         serde_json::json!({
             "fields": ct.field_definitions(),
+            // The frontend derives "daemon-host-only" (former `is_local_auto`) from `targets`.
             "targets": ct.targets(),
             "requires_config": ct.requires_config(),
-            "is_local_auto": ct.is_local_auto(),
             "single_endpoint_per_host": ct.single_endpoint_per_host(),
             "associated_service": ServiceDefinition::name(&*service),
             "has_logo": service.has_logo(),
             "logo_ext": logo_ext,
             "logo_needs_white_background": service.logo_needs_white_background(),
-            "is_user_selectable": ct.is_user_selectable(),
         })
     }
 }
