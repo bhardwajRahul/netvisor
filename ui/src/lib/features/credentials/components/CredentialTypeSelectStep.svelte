@@ -31,13 +31,8 @@
 
 	// One flat list of cards: every user-selectable type plus the auto-local
 	// capabilities (Docker socket), so all integration options look the same.
-	let cards = $derived(
-		credentialTypes
-			.getItems()
-			.filter(
-				(t: CredType) => t.metadata?.is_user_selectable !== false || t.metadata?.is_local_auto
-			)
-	);
+	// Every credential type is user-selectable now (sockets included), so no filtering.
+	let cards = $derived(credentialTypes.getItems());
 
 	// Rank a type by how far its applicable targets reach: daemon-only first (0), host (1),
 	// network-applicable last (2). Drives the daemon→network ordering below.

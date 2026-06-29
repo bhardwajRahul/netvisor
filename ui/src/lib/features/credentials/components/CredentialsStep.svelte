@@ -9,7 +9,10 @@
 		useBulkCreateCredentialsMutation,
 		useDeleteCredentialMutation
 	} from '$lib/features/credentials/queries';
-	import type { Credential } from '$lib/features/credentials/types/base';
+	import {
+		type Credential,
+		isDaemonHostOnly as isDaemonHostOnlyTargets
+	} from '$lib/features/credentials/types/base';
 	import CredentialTypeSelectStep from './CredentialTypeSelectStep.svelte';
 	import CredentialWizardStep, {
 		type PendingCredential as PendingCredentialType
@@ -56,19 +59,19 @@
 
 	let credentialWizardRef: ReturnType<typeof CredentialWizardStep> | undefined = $state();
 
-	function isLocalAuto(id: string): boolean {
-		return credentialTypes.getMetadata(id)?.is_local_auto === true;
+	function isDaemonHostOnly(id: string): boolean {
+		return isDaemonHostOnlyTargets(credentialTypes.getMetadata(id)?.targets);
 	}
-	function localAutoTypeIds(): string[] {
+	function daemonHostOnlyTypeIds(): string[] {
 		return credentialTypes
 			.getItems()
-			.filter((t) => t.metadata?.is_local_auto)
+			.filter((t) => isDaemonHostOnlyTargets(t.metadata?.targets))
 			.map((t) => t.id);
 	}
 
-	// Auto-local cards are read-only in `fixed` mode (an installed daemon's
-	// capabilities can't be toggled from here).
-	let lockedTypeIds = $derived(localAutoMode === 'fixed' ? localAutoTypeIds() : []);
+	// Daemon-host-only cards (the local socket) are read-only in `fixed` mode (an installed
+	// daemon's capabilities can't be toggled from here).
+	let lockedTypeIds = $derived(localAutoMode === 'fixed' ? daemonHostOnlyTypeIds() : []);
 
 	// In `fixed` mode the daemon's existing capabilities claim their integration's
 	// daemon host, so a single-endpoint credential can't also target it.
@@ -89,7 +92,7 @@
 		await tick();
 		const seed =
 			localAutoMode === 'fixed'
-				? selectedTypeIds.filter((id) => !isLocalAuto(id))
+				? selectedTypeIds.filter((id) => !isDaemonHostOnly(id))
 				: selectedTypeIds;
 		credentialWizardRef?.addTypes(seed);
 	}

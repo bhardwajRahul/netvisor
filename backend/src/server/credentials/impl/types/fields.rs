@@ -278,7 +278,7 @@ impl CredentialType {
 
 /// Optional, non-secret socket-path field for local container-socket credentials. The
 /// `placeholder` shows the runtime's default socket so it differs for Docker vs Podman. Blank ⇒
-/// the daemon auto-detects, so the type stays a zero-config toggle (`is_local_auto`).
+/// the daemon auto-detects, so a socket credential needs no required config.
 fn socket_path_field(placeholder: &'static str, help: &'static str) -> FieldDefinition {
     FieldDefinition {
         id: "socket_path",
