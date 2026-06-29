@@ -48,10 +48,14 @@ pub struct IntegrationProbeResults {
 /// For each credential mapping, resolves the credential for this IP,
 /// checks probe gate ports, then tries probe until one succeeds.
 /// Returns aggregated probe results for subsequent service matching and execution.
+/// `skip_gate` bypasses `probe_gate_ports` — used for the daemon's own host
+/// (localhost) phase, which does no port scan and lets integrations self-probe.
+/// The network-scan phase passes `false` so the gate keeps the broad scan cheap.
 pub async fn probe_integrations(
     ip: IpAddr,
     credential_mappings: &[CredentialMapping<CredentialQueryPayload>],
     open_ports: &[PortType],
+    skip_gate: bool,
     cancel: &CancellationToken,
     utils: &PlatformDaemonUtils,
 ) -> Result<IntegrationProbeResults, Error> {
@@ -90,10 +94,13 @@ pub async fn probe_integrations(
 
         tracing::debug!(ip = %ip, integration = ?discriminant, credentials = credentials.len(), "Probing integration");
 
-        // Check probe gate ports
-        let gate_ports = integration.probe_gate_ports(credentials[0].0);
-        if !gate_ports.is_empty() && !gate_ports.iter().all(|gp| all_open_ports.contains(gp)) {
-            continue;
+        // Check probe gate ports (skipped on the daemon's own host, where there's
+        // no port scan and integrations probe directly).
+        if !skip_gate {
+            let gate_ports = integration.probe_gate_ports(credentials[0].0);
+            if !gate_ports.is_empty() && !gate_ports.iter().all(|gp| all_open_ports.contains(gp)) {
+                continue;
+            }
         }
 
         // Try each credential until probe succeeds

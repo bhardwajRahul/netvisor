@@ -73,6 +73,14 @@ impl CredentialTargets {
         }
     }
 
+    /// A credential targeting exactly one whole host (e.g. a daemon-host target).
+    fn for_host(host_id: Uuid) -> Self {
+        Self {
+            hosts: vec![(host_id, None)],
+            ..Default::default()
+        }
+    }
+
     /// Two target sets overlap if they share a network, a target IP, or a host —
     /// where a shared host overlaps when either side covers the whole host or
     /// their IP scopes intersect.
@@ -94,6 +102,25 @@ impl CredentialTargets {
             })
         })
     }
+}
+
+/// The single-endpoint rule between two credentials: they conflict when both
+/// belong to the same single-endpoint integration (e.g. both Docker, or both
+/// Podman) and their targets overlap. This is the one rule shared by the
+/// credential-write check ([`CredentialService::find_single_endpoint_conflict`])
+/// and the discovery-update check ([`CredentialService::find_daemon_host_target_conflict`]);
+/// the two callers differ only in the targets they feed in.
+fn single_endpoint_targets_conflict(
+    a_type: &CredentialType,
+    a_targets: &CredentialTargets,
+    b_type: &CredentialType,
+    b_targets: &CredentialTargets,
+) -> bool {
+    a_type.single_endpoint_per_host()
+        && b_type.single_endpoint_per_host()
+        && ServiceDefinition::name(&*a_type.associated_service())
+            == ServiceDefinition::name(&*b_type.associated_service())
+        && a_targets.overlaps(b_targets)
 }
 
 pub struct CredentialService {
@@ -398,11 +425,122 @@ impl CredentialService {
                 host_map.get(&other.id).unwrap_or(&empty_hosts),
                 other.base.target_ips.as_deref(),
             );
-            if cand.overlaps(&other_targets) {
+            if single_endpoint_targets_conflict(
+                ct,
+                &cand,
+                &other.base.credential_type,
+                &other_targets,
+            ) {
                 return Ok(Some(other.base.name.clone()));
             }
         }
         Ok(None)
+    }
+
+    /// Discovery-update counterpart to [`Self::find_single_endpoint_conflict`]: a
+    /// daemon's `Discovery.integration_targets` all target that one daemon host, so
+    /// two single-endpoint credentials of the same integration both targeting the
+    /// daemon host (e.g. a Docker socket and a Docker proxy, or the Podman pair)
+    /// conflict. Returns the first conflicting pair of credential names.
+    ///
+    /// Feeds the same [`single_endpoint_targets_conflict`] rule the credential-write
+    /// path uses — only the targets differ (here, each daemon-host credential is
+    /// modeled as targeting `daemon_host_id`).
+    pub async fn find_daemon_host_target_conflict(
+        &self,
+        daemon_host_id: Uuid,
+        integration_targets: &[IntegrationTarget],
+    ) -> Result<Option<(String, String)>, Error> {
+        // Credentials that target the daemon's own host: an explicit DaemonHost
+        // scope, or a Hosts scope whose IPs are all loopback.
+        let host_cred_ids: Vec<Uuid> = integration_targets
+            .iter()
+            .filter_map(|t| match t {
+                IntegrationTarget::DaemonHost { credential_id } => Some(*credential_id),
+                IntegrationTarget::Hosts { credential_id, ips }
+                    if !ips.is_empty() && ips.iter().all(|ip| ip.is_loopback()) =>
+                {
+                    Some(*credential_id)
+                }
+                _ => None,
+            })
+            .collect();
+
+        // Resolve each to (name, type), modeled as targeting the daemon host.
+        let mut items: Vec<(String, CredentialType, CredentialTargets)> = Vec::new();
+        for cred_id in host_cred_ids {
+            if let Some(cred) = self.get_by_id(&cred_id).await? {
+                items.push((
+                    cred.base.name,
+                    cred.base.credential_type,
+                    CredentialTargets::for_host(daemon_host_id),
+                ));
+            }
+        }
+
+        for i in 0..items.len() {
+            for j in (i + 1)..items.len() {
+                if single_endpoint_targets_conflict(
+                    &items[i].1,
+                    &items[i].2,
+                    &items[j].1,
+                    &items[j].2,
+                ) {
+                    return Ok(Some((items[i].0.clone(), items[j].0.clone())));
+                }
+            }
+        }
+        Ok(None)
+    }
+
+    /// Re-sync the single-endpoint (container socket/proxy) portion of a daemon
+    /// host's credential assignments to match its Discovery `integration_targets`
+    /// — the authoritative source post-#637. Called when the discovery modal edits
+    /// targeting so the junction (UI + `find_single_endpoint_conflict`) reflects
+    /// reality and a removed socket is cleared. Non-single-endpoint assignments
+    /// (SNMP, discovery-auto-assigned creds) are preserved.
+    pub async fn resync_daemon_host_assignments(
+        &self,
+        host_id: &Uuid,
+        integration_targets: &[IntegrationTarget],
+    ) -> Result<(), Error> {
+        // New daemon-host single-endpoint creds from the targets.
+        let mut desired: Vec<CredentialAssignment> = Vec::new();
+        for target in integration_targets {
+            let hits_daemon_host = match target {
+                IntegrationTarget::DaemonHost { .. } => true,
+                IntegrationTarget::Hosts { ips, .. } => ips.iter().any(|ip| ip.is_loopback()),
+                IntegrationTarget::Network { .. } => false,
+            };
+            if !hits_daemon_host {
+                continue;
+            }
+            let cred_id = target.credential_id();
+            if let Some(cred) = self.get_by_id(&cred_id).await?
+                && cred.base.credential_type.single_endpoint_per_host()
+                && !desired.iter().any(|a| a.credential_id == cred_id)
+            {
+                desired.push(CredentialAssignment {
+                    credential_id: cred_id,
+                    ip_address_ids: None,
+                });
+            }
+        }
+
+        // Preserve existing non-single-endpoint assignments (drop the old
+        // single-endpoint ones — they're replaced by `desired`; drop stale creds).
+        for existing in self.get_credential_assignments_for_host(host_id).await? {
+            if let Some(cred) = self.get_by_id(&existing.credential_id).await?
+                && !cred.base.credential_type.single_endpoint_per_host()
+                && !desired
+                    .iter()
+                    .any(|a| a.credential_id == existing.credential_id)
+            {
+                desired.push(existing);
+            }
+        }
+
+        self.set_host_credentials(host_id, &desired).await
     }
 
     // ========================================================================
@@ -568,6 +706,15 @@ impl CredentialService {
                 for assignment in assignments {
                     if let Some(cred) = self.get_by_id(&assignment.credential_id).await? {
                         let cred_type = &cred.base.credential_type;
+                        // Single-endpoint container integrations (Docker/Podman socket+proxy)
+                        // are daemon-host-targeted exclusively via `integration_targets` (the
+                        // #637 single source). The host-assignment junction is only a UI/conflict
+                        // mirror for them; sourcing the scan from it too would double-apply (and
+                        // re-inject a stale socket assignment). Skip them here — they come from
+                        // `integration_targets` below.
+                        if cred_type.single_endpoint_per_host() {
+                            continue;
+                        }
                         let discriminant = cred_type.discriminant();
                         let payload = cred_type.to_query_payload();
                         let mapping = mappings_by_type.entry(discriminant).or_insert_with(|| {
@@ -775,6 +922,63 @@ mod single_endpoint_tests {
         let a = CredentialTargets::build(&[], &[host(Uuid::from_u128(1), None)], None);
         let b = CredentialTargets::build(&[], &[host(Uuid::from_u128(2), None)], None);
         assert!(!a.overlaps(&b));
+    }
+
+    // --- single_endpoint_targets_conflict (the shared rule both write paths use) ---
+
+    use crate::server::credentials::r#impl::types::CredentialTypeDiscriminants;
+
+    fn cred_type(d: CredentialTypeDiscriminants) -> CredentialType {
+        d.to_credential_type()
+    }
+
+    #[test]
+    fn socket_and_proxy_same_integration_same_host_conflict() {
+        // A Docker socket and a Docker proxy both targeting the daemon host conflict
+        // — bidirectionally (order doesn't matter).
+        let h = Uuid::from_u128(42);
+        let socket = cred_type(CredentialTypeDiscriminants::DockerSocket);
+        let proxy = cred_type(CredentialTypeDiscriminants::DockerProxy);
+        let t = CredentialTargets::for_host(h);
+        assert!(single_endpoint_targets_conflict(&socket, &t, &proxy, &t));
+        assert!(single_endpoint_targets_conflict(&proxy, &t, &socket, &t));
+    }
+
+    #[test]
+    fn podman_socket_and_proxy_same_host_conflict() {
+        let h = Uuid::from_u128(42);
+        let socket = cred_type(CredentialTypeDiscriminants::PodmanSocket);
+        let proxy = cred_type(CredentialTypeDiscriminants::PodmanProxy);
+        let t = CredentialTargets::for_host(h);
+        assert!(single_endpoint_targets_conflict(&socket, &t, &proxy, &t));
+    }
+
+    #[test]
+    fn different_integrations_same_host_do_not_conflict() {
+        // Docker and Podman are distinct integrations — both may target one host.
+        let h = Uuid::from_u128(42);
+        let docker = cred_type(CredentialTypeDiscriminants::DockerSocket);
+        let podman = cred_type(CredentialTypeDiscriminants::PodmanSocket);
+        let t = CredentialTargets::for_host(h);
+        assert!(!single_endpoint_targets_conflict(&docker, &t, &podman, &t));
+    }
+
+    #[test]
+    fn same_integration_different_hosts_do_not_conflict() {
+        let socket = cred_type(CredentialTypeDiscriminants::DockerSocket);
+        let proxy = cred_type(CredentialTypeDiscriminants::DockerProxy);
+        let a = CredentialTargets::for_host(Uuid::from_u128(1));
+        let b = CredentialTargets::for_host(Uuid::from_u128(2));
+        assert!(!single_endpoint_targets_conflict(&socket, &a, &proxy, &b));
+    }
+
+    #[test]
+    fn non_single_endpoint_integration_never_conflicts() {
+        // SNMP is try-many, not single-endpoint per host.
+        let h = Uuid::from_u128(42);
+        let snmp = cred_type(CredentialTypeDiscriminants::SnmpV2c);
+        let t = CredentialTargets::for_host(h);
+        assert!(!single_endpoint_targets_conflict(&snmp, &t, &snmp, &t));
     }
 }
 
