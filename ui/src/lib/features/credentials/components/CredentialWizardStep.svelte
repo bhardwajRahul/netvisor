@@ -21,7 +21,6 @@
 	import { useCredentialsQuery } from '$lib/features/credentials/queries';
 	import { v4 as uuidv4 } from 'uuid';
 	import DocsHint from '$lib/shared/components/feedback/DocsHint.svelte';
-	import InlineInfo from '$lib/shared/components/feedback/InlineInfo.svelte';
 	import { pushError } from '$lib/shared/stores/feedback';
 	import {
 		common_name,
@@ -37,7 +36,6 @@
 		daemons_credentialWizardAddExisting,
 		daemons_credentialWizardSelectExisting,
 		daemons_credentialWizardExistingDescription,
-		daemons_credentialWizardLocalAutoNote,
 		daemons_credentialWizardDaemonHostUnavailable
 	} from '$lib/paraglide/messages';
 
@@ -490,12 +488,6 @@
 						<!-- Daemon-host-only credential (e.g. the local Docker/Podman socket): its
 						     target is implicitly the daemon host (127.0.0.1), so no target picker —
 						     but it's a real credential with optional config (e.g. socket_path). -->
-						<InlineInfo
-							title=""
-							body={`${credentialTypes.getDescription(
-								pending.credential.credential_type.type
-							)} ${daemons_credentialWizardLocalAutoNote()}`}
-						/>
 						<CredentialForm
 							bind:this={credentialFormRefs[index]}
 							{form}
