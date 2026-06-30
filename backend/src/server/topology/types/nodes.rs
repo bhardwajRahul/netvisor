@@ -71,6 +71,10 @@ pub enum ContainerType {
     Subnet,
     ServiceCategory,
     Application,
+    /// Application-view container for services with no application tag. Same
+    /// display/layout as `Application` but collapsed by default (it tends to be
+    /// large and noisy). See `metadata()` `collapsed_by_default`.
+    ApplicationUngrouped,
     /// Generic root container for perspectives without structural container rules.
     Root,
 
@@ -99,7 +103,9 @@ impl EntityMetadataProvider for ContainerType {
         match self {
             ContainerType::Subnet => Color::Blue,
             ContainerType::ServiceCategory => EntityDiscriminants::Service.color(),
-            ContainerType::Application => Concept::Application.color(),
+            ContainerType::Application | ContainerType::ApplicationUngrouped => {
+                Concept::Application.color()
+            }
             ContainerType::Root => Color::Gray,
             ContainerType::Host => EntityDiscriminants::Host.color(),
             ContainerType::NestedTag => Color::Orange,
@@ -117,7 +123,9 @@ impl EntityMetadataProvider for ContainerType {
         match self {
             ContainerType::Subnet => Icon::Network,
             ContainerType::ServiceCategory => EntityDiscriminants::Service.icon(),
-            ContainerType::Application => Concept::Application.icon(),
+            ContainerType::Application | ContainerType::ApplicationUngrouped => {
+                Concept::Application.icon()
+            }
             ContainerType::Root => Icon::Layers,
             ContainerType::Host => Concept::L2.icon(),
             ContainerType::NestedTag => Icon::Tag,
@@ -138,6 +146,7 @@ impl TypeMetadataProvider for ContainerType {
             ContainerType::Subnet => "Subnet",
             ContainerType::ServiceCategory => "Service category",
             ContainerType::Application => "Application",
+            ContainerType::ApplicationUngrouped => "Ungrouped",
             ContainerType::Root => "Root",
             ContainerType::Host => "Host",
             ContainerType::NestedTag => "Tag container",
@@ -156,6 +165,7 @@ impl TypeMetadataProvider for ContainerType {
             ContainerType::Subnet => "Network subnet container",
             ContainerType::ServiceCategory => "Services grouped by category",
             ContainerType::Application => "Services grouped by application tag",
+            ContainerType::ApplicationUngrouped => "Services not assigned to an application",
             ContainerType::Root => "Root container",
             ContainerType::Host => "Physical network device",
             ContainerType::NestedTag => "Elements grouped by tag",
@@ -193,7 +203,10 @@ impl TypeMetadataProvider for ContainerType {
             (200, 80)
         };
         let fill_icon = matches!(self, ContainerType::PortOpStatus);
-        let collapsed_by_default = matches!(self, ContainerType::PortOpStatus);
+        let collapsed_by_default = matches!(
+            self,
+            ContainerType::PortOpStatus | ContainerType::ApplicationUngrouped
+        );
         serde_json::json!({
             "title_style": title_style,
             "is_subcontainer": is_subcontainer,
@@ -301,6 +314,20 @@ pub enum NodeType {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_application_ungrouped_is_collapsed_by_default() {
+        // Ungrouped tiles/renders like a top-level Application container but
+        // starts collapsed; the rest of its metadata must match Application.
+        let meta = ContainerType::ApplicationUngrouped.metadata();
+        assert_eq!(meta["collapsed_by_default"], true);
+        assert_eq!(meta["is_subcontainer"], false);
+        let app = ContainerType::Application.metadata();
+        assert_eq!(meta["padding"], app["padding"]);
+        assert_eq!(meta["collapsed_size"], app["collapsed_size"]);
+        // Application stays expandable-by-default — only the Ungrouped variant flips.
+        assert_eq!(app["collapsed_by_default"], false);
+    }
 
     #[test]
     fn test_container_round_trip() {
