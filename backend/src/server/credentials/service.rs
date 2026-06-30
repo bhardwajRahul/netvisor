@@ -335,6 +335,49 @@ impl CredentialService {
         self.set_host_credentials(host_id, &merged).await
     }
 
+    /// Whether an integration target addresses the daemon's own host — a `DaemonHost`-scoped
+    /// target, or a `Hosts` target naming a loopback IP. Such targets are junction-managed.
+    fn targets_daemon_host(target: &IntegrationTarget) -> bool {
+        match target {
+            IntegrationTarget::DaemonHost { .. } => true,
+            IntegrationTarget::Hosts { ips, .. } => ips.iter().any(|ip| ip.is_loopback()),
+            IntegrationTarget::Network { .. } => false,
+        }
+    }
+
+    /// Apply a discovery's integration targets, returning the targets that remain on the Discovery.
+    ///
+    /// Daemon-host targets (see [`Self::targets_daemon_host`]) are MERGED into the daemon host's
+    /// `host_credentials` junction (additive — a no-op update can't wipe an existing assignment),
+    /// because the scan-time mapping builder (`apply_integration_target`) is junction-sourced for
+    /// them. The remaining Network / non-loopback Hosts targets are returned to persist on the
+    /// Discovery row. Shared by daemon registration and the discovery-update handler so both apply
+    /// credential targeting through identical logic.
+    pub async fn apply_integration_targets(
+        &self,
+        daemon_host_id: Uuid,
+        targets: Vec<IntegrationTarget>,
+    ) -> Result<Vec<IntegrationTarget>, Error> {
+        let assignments: Vec<CredentialAssignment> = targets
+            .iter()
+            .filter(|t| Self::targets_daemon_host(t))
+            .map(|t| CredentialAssignment {
+                credential_id: t.credential_id(),
+                ip_address_ids: None,
+            })
+            .collect();
+
+        if !assignments.is_empty() {
+            self.merge_host_credentials(&daemon_host_id, &assignments)
+                .await?;
+        }
+
+        Ok(targets
+            .into_iter()
+            .filter(|t| !Self::targets_daemon_host(t))
+            .collect())
+    }
+
     /// Get the network IDs a credential is assigned to (reverse lookup).
     pub async fn get_network_ids_for_credential(
         &self,

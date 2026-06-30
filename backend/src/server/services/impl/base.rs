@@ -163,6 +163,22 @@ impl PartialEq for Service {
         // For non-generic services: same host + definition = same service
         // Handles: Plex discovered on multiple ip_addresses (different port UUIDs)
         if !ServiceDefinitionExt::is_generic(&self.base.service_definition) {
+            // Distinct containers can legitimately run the same service (e.g. two pod members):
+            // when both carry a container_id, keep them distinct by it. Non-container services
+            // (virtualization = None) are unaffected and stay "same host + definition = same".
+            if let (Some(self_cid), Some(other_cid)) = (
+                self.base
+                    .virtualization
+                    .as_ref()
+                    .and_then(|v| v.container_id()),
+                other
+                    .base
+                    .virtualization
+                    .as_ref()
+                    .and_then(|v| v.container_id()),
+            ) {
+                return self_cid == other_cid;
+            }
             return true;
         }
 
