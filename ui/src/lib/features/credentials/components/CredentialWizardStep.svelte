@@ -502,7 +502,7 @@
 						<CredentialForm
 							{form}
 							compact={true}
-							hideFields={true}
+							disabled={true}
 							hideTargets={true}
 							fieldPrefix={`credentials[${index}].`}
 							fixedCredentialType={pending.credential.credential_type.type}
@@ -510,8 +510,8 @@
 						/>
 					{:else if pending.isExisting}
 						<!-- Existing credential added by reference (incl. daemon-host-only sockets):
-						     read-only here. Checked before isDaemonHostOnly so an existing socket cred
-						     renders as a reference card, not an editable new-credential form. -->
+						     read-only here (fields shown disabled). Checked before isDaemonHostOnly so an
+						     existing socket cred renders as a reference card, not an editable new form. -->
 						<p class="text-muted mb-4 text-xs">
 							{daemons_credentialWizardExistingDescription()}
 						</p>
@@ -519,7 +519,7 @@
 							bind:this={credentialFormRefs[index]}
 							{form}
 							compact={true}
-							hideFields={true}
+							disabled={true}
 							fieldPrefix={`credentials[${index}].`}
 							fixedCredentialType={pending.credential.credential_type.type}
 							fixedName={pending.credential.name}

@@ -48,7 +48,6 @@ use crate::{
                 },
                 definitions::{ServiceDefinition, ServiceDefinitionExt},
                 patterns::MatchConfidence,
-                virtualization::{DockerVirtualization, ServiceVirtualization},
             },
         },
         shared::{
@@ -815,6 +814,7 @@ impl DiscoveryOps {
     ) -> Result<(Vec<Service>, Vec<Port>), Error> {
         use crate::server::services::definitions::{
             docker_container::DockerContainer, open_ports::OpenPorts,
+            podman_container::PodmanContainer,
         };
 
         let ServiceMatchBaselineParams { all_ports, .. } = baseline_params;
@@ -834,7 +834,10 @@ impl DiscoveryOps {
                 0
             } else if s.id() == OpenPorts.id() {
                 3
-            } else if s.id() == DockerContainer.id() || s.id() == Gateway.id() {
+            } else if s.id() == DockerContainer.id()
+                || s.id() == PodmanContainer.id()
+                || s.id() == Gateway.id()
+            {
                 2
             } else {
                 1
@@ -862,10 +865,13 @@ impl DiscoveryOps {
             if let Some((service, mut ports, _endpoint)) = Service::from_discovery(params)
                 && !container_matched
             {
-                if let Some(ServiceVirtualization::Docker(DockerVirtualization {
-                    container_id: Some(_),
-                    ..
-                })) = &service.base.virtualization
+                // A container (Docker or Podman) was matched as a service this round.
+                if service
+                    .base
+                    .virtualization
+                    .as_ref()
+                    .and_then(|v| v.container_id())
+                    .is_some()
                 {
                     container_matched = true
                 }

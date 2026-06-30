@@ -52,6 +52,10 @@
 		fixedName?: string;
 		compact?: boolean;
 		hideFields?: boolean;
+		/** Show the name + field inputs but render them disabled (read-only), instead of hiding
+		 *  them with `hideFields`. Used for referenced/managed credentials (e.g. a daemon-host
+		 *  socket) so the user can see values like socket_path but cannot edit them here. */
+		disabled?: boolean;
 		/** Hide the target (scope/IP) section — for daemon-host-only types (e.g. the local
 		 *  socket) whose target is implicit (127.0.0.1). Shows fields, no target picker. */
 		hideTargets?: boolean;
@@ -75,6 +79,7 @@
 		fixedName,
 		compact = false,
 		hideFields = false,
+		disabled = false,
 		hideTargets = false,
 		fieldPrefix = '',
 		daemonHostUnavailable = false,
@@ -695,39 +700,45 @@
 			{/if}
 		{/if}
 
-		<!-- Name (between targeting and fields, like the full editor) -->
+		<!-- Name + fields. `disabled` shows them read-only (vs `hideFields` which hides them);
+		     a disabled <fieldset> disables every descendant control, including SegmentedControls. -->
 		{#if !hideFields}
-			<form.Field
-				name={nameFieldName}
-				validators={{
-					onBlur: ({ value }: { value: string }) => required(value) || max(100)(value),
-					onSubmit: ({ value }: { value: string }) => required(value) || max(100)(value)
-				}}
-				listeners={{ onChange: ({ value }: { value: string }) => onChange?.({ name: value }) }}
-			>
-				{#snippet children(field: AnyFieldApi)}
-					<TextInput label={common_name()} id="credential-name-{fieldPrefix}" {field} required />
-				{/snippet}
-			</form.Field>
-		{/if}
+			<fieldset {disabled} class="m-0 min-w-0 space-y-4 border-0 p-0">
+				<form.Field
+					name={nameFieldName}
+					validators={{
+						onBlur: ({ value }: { value: string }) => required(value) || max(100)(value),
+						onSubmit: ({ value }: { value: string }) => required(value) || max(100)(value)
+					}}
+					listeners={{ onChange: ({ value }: { value: string }) => onChange?.({ name: value }) }}
+				>
+					{#snippet children(field: AnyFieldApi)}
+						<TextInput
+							label={common_name()}
+							id="credential-name-{fieldPrefix}"
+							{field}
+							{disabled}
+							required
+						/>
+					{/snippet}
+				</form.Field>
 
-		<!-- Credential fields -->
-		{#if !hideFields}
-			{#each fieldGroups as group (group.name ?? '_ungrouped')}
-				{#if group.name}
-					<InfoCard title={group.name}>
-						{#each group.fields as field (field.id)}
-							{@render fieldRenderer(field, field.secret)}
-						{/each}
-					</InfoCard>
-				{:else if group.fields.length > 0}
-					<InfoCard title={null}>
-						{#each group.fields as field (field.id)}
-							{@render fieldRenderer(field, field.secret)}
-						{/each}
-					</InfoCard>
-				{/if}
-			{/each}
+				{#each fieldGroups as group (group.name ?? '_ungrouped')}
+					{#if group.name}
+						<InfoCard title={group.name}>
+							{#each group.fields as field (field.id)}
+								{@render fieldRenderer(field, field.secret)}
+							{/each}
+						</InfoCard>
+					{:else if group.fields.length > 0}
+						<InfoCard title={null}>
+							{#each group.fields as field (field.id)}
+								{@render fieldRenderer(field, field.secret)}
+							{/each}
+						</InfoCard>
+					{/if}
+				{/each}
+			</fieldset>
 		{/if}
 	</div>
 {:else}

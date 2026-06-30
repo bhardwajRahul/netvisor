@@ -183,6 +183,7 @@
 		{#if activeTab === 'assignments'}
 			<CredentialAssignmentsSection
 				credentialTypeId={selectedTypeId}
+				credentialId={credential?.id}
 				bind:assignedNetworkIds
 				bind:hostAssignments
 			/>

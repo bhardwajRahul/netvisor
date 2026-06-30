@@ -238,6 +238,18 @@ impl DaemonService {
                 "Daemon already registered, updating registration"
             );
 
+            // Init-command credentials (`--credential-id`) are applied to the daemon host only at
+            // first registration. On a restart/re-registration they're ignored — warn so the user
+            // knows to manage credentials in the UI rather than expecting the flag to take effect.
+            if !request.integration_targets.is_empty() {
+                tracing::warn!(
+                    daemon_id = %request.daemon_id,
+                    target_count = request.integration_targets.len(),
+                    "Ignoring init-command credentials on re-registration: they apply only at first \
+                     launch. Assign or change this daemon's credentials in the Scanopy UI."
+                );
+            }
+
             // Update daemon with current info
             // NOTE: We do NOT update URL from registration request.
             // URL is only set via admin provisioning for ServerPoll daemons.
