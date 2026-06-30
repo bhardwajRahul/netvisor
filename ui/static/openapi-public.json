@@ -16053,9 +16053,6 @@
           "interfaced_subnet_ids"
         ],
         "properties": {
-          "has_docker_socket": {
-            "type": "boolean"
-          },
           "interfaced_subnet_ids": {
             "type": "array",
             "items": {
@@ -16267,10 +16264,6 @@
           "capabilities": {
             "$ref": "#/components/schemas/DaemonCapabilities",
             "description": "Backwards compat: pre-v0.15.0 daemons send capabilities instead of interfaced_subnets."
-          },
-          "has_docker_socket": {
-            "type": "boolean",
-            "description": "Whether the daemon has access to a Docker socket."
           },
           "interfaced_subnets": {
             "type": "array",

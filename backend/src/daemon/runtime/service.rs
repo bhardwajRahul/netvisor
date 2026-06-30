@@ -70,57 +70,6 @@ impl DaemonRuntimeService {
         }
     }
 
-    /// Check Docker availability and return a detailed description of the connection method.
-    /// Returns (is_available, description) where description explains how Docker is being accessed.
-    pub async fn check_docker_availability(&self) -> (bool, String) {
-        let docker_proxy = self.config.get_docker_proxy().await;
-        let docker_proxy_ssl_info = self.config.get_docker_proxy_ssl_info().await;
-
-        // Determine connection method description
-        let connection_method = match &docker_proxy {
-            Ok(Some(proxy_url)) => {
-                if proxy_url.starts_with("https://") {
-                    format!("via SSL proxy at {}", proxy_url)
-                } else {
-                    format!("via HTTP proxy at {}", proxy_url)
-                }
-            }
-            _ => {
-                #[cfg(target_family = "unix")]
-                {
-                    "via local socket (/var/run/docker.sock)".to_string()
-                }
-                #[cfg(target_family = "windows")]
-                {
-                    "via named pipe (//./pipe/docker_engine)".to_string()
-                }
-            }
-        };
-
-        match self
-            .utils
-            .new_docker_client(docker_proxy, docker_proxy_ssl_info)
-            .await
-        {
-            Ok(_) => (true, format!("Available {}", connection_method)),
-            Err(e) => {
-                let error_hint = if e.to_string().contains("No such file") {
-                    " (socket not found - is Docker running?)"
-                } else if e.to_string().contains("permission denied") {
-                    " (permission denied - check user is in docker group)"
-                } else if e.to_string().contains("connection refused") {
-                    " (connection refused - is Docker daemon running?)"
-                } else {
-                    ""
-                };
-                (
-                    false,
-                    format!("Not available{} - container discovery disabled", error_hint),
-                )
-            }
-        }
-    }
-
     /// Check if an error indicates the API key is no longer valid (rotated/revoked).
     /// Returns Some(error) if authorization failed and the daemon should stop, None otherwise.
     fn check_authorization_error(error: &anyhow::Error, daemon_id: &Uuid) -> Option<anyhow::Error> {
@@ -194,8 +143,6 @@ impl DaemonRuntimeService {
             let path = format!("/api/daemons/{}/request-work", daemon_id);
             // Detect ip_addresses fresh — cheap NIC enumeration
             let interfaced_subnets = self.detect_interfaced_subnets().await.unwrap_or_default();
-            // Detect Docker socket — cheap local socket check
-            let has_docker_socket = self.detect_docker_socket().await;
 
             let status_payload = DaemonStatus {
                 // URL not sent - server manages this via provisioning
@@ -205,7 +152,6 @@ impl DaemonRuntimeService {
                 version: Some(semver::Version::parse(env!("CARGO_PKG_VERSION")).unwrap()),
                 capabilities: DaemonCapabilities::default(),
                 interfaced_subnets,
-                has_docker_socket,
                 ready_for_work: !self.discovery_manager.is_discovery_running().await,
             };
 
@@ -348,19 +294,6 @@ impl DaemonRuntimeService {
         Ok(subnets)
     }
 
-    /// Check if Docker socket is available (local socket or proxy).
-    /// Informational capability probe only — whether local sockets are actually scanned is now
-    /// driven by per-daemon integration targeting, not a daemon-config flag.
-    async fn detect_docker_socket(&self) -> bool {
-        let docker_proxy = self.config.get_docker_proxy().await;
-        let docker_proxy_ssl_info = self.config.get_docker_proxy_ssl_info().await;
-
-        self.utils
-            .new_docker_client(docker_proxy, docker_proxy_ssl_info)
-            .await
-            .is_ok()
-    }
-
     pub async fn initialize_services(
         &self,
         network_id: Uuid,
@@ -371,12 +304,26 @@ impl DaemonRuntimeService {
 
         let daemon_id = self.config.get_id().await?;
 
-        // Check Docker availability (logged once by caller, not on retries)
-        let (has_docker_client, _) = self.check_docker_availability().await;
-
         match self.announce_startup(daemon_id).await {
             Ok(_) => {
                 tracing::info!(target: LOG_TARGET, "  Status:          Connected");
+                // A successful startup announcement means this daemon is already registered (i.e.
+                // a restart, not first launch). Init-command credentials (`--credential-id`) are
+                // applied only at first registration, so warn if they were passed again.
+                if self
+                    .config
+                    .get_integration_targets()
+                    .await
+                    .map(|t| !t.is_empty())
+                    .unwrap_or(false)
+                {
+                    tracing::warn!(
+                        target: LOG_TARGET,
+                        "Init-command credentials (--credential-id) are applied only at first \
+                         registration; this daemon is already registered. Manage its credentials \
+                         in the Scanopy UI instead."
+                    );
+                }
                 return Ok(StartupOutcome::Ok);
             }
             Err(e) if Self::is_daemon_not_found_error(&e, &daemon_id) => {
@@ -404,10 +351,7 @@ impl DaemonRuntimeService {
             return Ok(StartupOutcome::Ok);
         }
 
-        match self
-            .register_with_server(daemon_id, network_id, has_docker_client)
-            .await
-        {
+        match self.register_with_server(daemon_id, network_id).await {
             Ok(()) => Ok(StartupOutcome::Ok),
             Err(e) => Ok(StartupOutcome::ConnectionFailed(e)),
         }
@@ -430,12 +374,7 @@ impl DaemonRuntimeService {
     }
 
     /// Maximum number of registration retries (about 5 minutes with backoff)
-    pub async fn register_with_server(
-        &self,
-        daemon_id: Uuid,
-        network_id: Uuid,
-        has_docker_socket: bool,
-    ) -> Result<()> {
+    pub async fn register_with_server(&self, daemon_id: Uuid, network_id: Uuid) -> Result<()> {
         let config = self.api_client.config();
         let mode = config.get_mode().await?;
         let name = config.get_name().await?;
@@ -454,7 +393,6 @@ impl DaemonRuntimeService {
             name: name.clone(),
             mode,
             capabilities: DaemonCapabilities {
-                has_docker_socket,
                 interfaced_subnet_ids: Vec::new(),
             },
             user_id,
@@ -466,11 +404,6 @@ impl DaemonRuntimeService {
         tracing::info!(target: LOG_TARGET, "  Daemon ID:       {}", daemon_id);
         tracing::info!(target: LOG_TARGET, "  Network ID:      {}", network_id);
         tracing::info!(target: LOG_TARGET, "  Version:         {}", version);
-        tracing::info!(
-            target: LOG_TARGET,
-            "  Capabilities:    docker={}, subnets=0 (updated after self-discovery)",
-            if has_docker_socket { "yes" } else { "no" }
-        );
 
         let result = self
             .api_client

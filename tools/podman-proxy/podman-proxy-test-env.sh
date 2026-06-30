@@ -395,13 +395,18 @@ cmd_workload() {
     case "${1:-up}" in
         up)
             echo "Creating test workload..."
-            podman pod create --name scanopy-test-pod -p 8088:80 >/dev/null 2>&1 || true
+            # Pod publishes nginx (80) and a fingerprintable Grafana (3000). Both run as pod
+            # members (shared netns) so discovery must resolve their interfaces from the pod's
+            # infra container, and Grafana exercises HTTP service detection via an existing def.
+            podman pod create --name scanopy-test-pod -p 8088:80 -p 8090:3000 >/dev/null 2>&1 || true
             podman run -d --pod scanopy-test-pod --name scanopy-test-web \
                 docker.io/library/nginx:alpine >/dev/null
+            podman run -d --pod scanopy-test-pod --name scanopy-test-grafana \
+                docker.io/grafana/grafana >/dev/null
             podman run -d --name scanopy-test-standalone -p 8089:80 \
                 docker.io/library/nginx:alpine >/dev/null
             echo ""
-            printf "  ${GREEN}✓${NC} pod 'scanopy-test-pod' (nginx on host port 8088)\n"
+            printf "  ${GREEN}✓${NC} pod 'scanopy-test-pod' (nginx on host port 8088, Grafana on host port 8090)\n"
             printf "  ${GREEN}✓${NC} container 'scanopy-test-standalone' (nginx on host port 8089)\n"
             echo ""
             podman ps --filter "name=scanopy-test" --format "table {{.Names}}\t{{.Ports}}\t{{.Status}}"

@@ -19,7 +19,6 @@
 			const host = hostsData.find((h) => h.id === daemon.host_id);
 			const parts = [];
 			if (host?.description) parts.push(host.description);
-			parts.push('Docker Socket ' + (daemon.capabilities.has_docker_socket ? '✓' : '✘'));
 			return parts.join(' · ');
 		},
 		getIcon: () => entities.getIconComponent('Daemon'),

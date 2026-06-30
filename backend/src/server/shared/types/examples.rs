@@ -317,7 +317,6 @@ pub fn daemon() -> Daemon {
             url: "http://192.168.1.100:8080".to_string(),
             mode: DaemonMode::DaemonPoll,
             capabilities: DaemonCapabilities {
-                has_docker_socket: true,
                 interfaced_subnet_ids: vec![ids::SUBNET],
             },
             last_seen: Some(example_timestamp()),

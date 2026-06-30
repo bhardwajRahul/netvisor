@@ -1064,7 +1064,7 @@ impl<'a> ContainerScanner<'a> {
             .collect::<Vec<(IPAddress, Subnet)>>();
 
         // Collect ip_addresses from containers
-        containers
+        let mut interfaces_by_id: HashMap<String, Vec<(IPAddress, Subnet)>> = containers
             .iter()
             .filter_map(|(container, _)| {
                 let host_networking_mode = container
@@ -1137,7 +1137,39 @@ impl<'a> ContainerScanner<'a> {
                     .as_ref()
                     .map(|id| (id.clone(), ip_addresses_and_subnets))
             })
-            .collect()
+            .collect();
+
+        // Pod / shared-netns members run with NetworkMode "container:<id>" — they share the
+        // referenced container's network namespace and report no networks of their own (so the
+        // pass above leaves them with empty interfaces and they'd be dropped). Inherit the
+        // referenced container's interfaces so the member is still discovered (e.g. a pod's
+        // nginx member sharing the infra container's IP). The reference may be a short or full id.
+        let shared_netns_members: Vec<(String, String)> = containers
+            .iter()
+            .filter_map(|(container, _)| {
+                let mode = container
+                    .host_config
+                    .as_ref()
+                    .and_then(|c| c.network_mode.clone())
+                    .unwrap_or_default();
+                let reference = mode.strip_prefix("container:")?.to_string();
+                Some((container.id.clone()?, reference))
+            })
+            .collect();
+
+        for (member_id, reference) in shared_netns_members {
+            if let Some(parent_id) = interfaces_by_id
+                .keys()
+                .find(|k| k.starts_with(&reference))
+                .cloned()
+                && let Some(parent_ifaces) = interfaces_by_id.get(&parent_id).cloned()
+                && !parent_ifaces.is_empty()
+            {
+                interfaces_by_id.insert(member_id, parent_ifaces);
+            }
+        }
+
+        interfaces_by_id
     }
 
     pub async fn get_containers_and_summaries(
