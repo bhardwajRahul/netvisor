@@ -1,6 +1,11 @@
 <script lang="ts" module>
-	export const CredentialDisplay: EntityDisplayComponent<Credential, object> = {
+	/** A non-null `disabledReason` renders the option disabled with that tooltip. */
+	export type CredentialDisplayContext = { disabledReason?: string | null };
+
+	export const CredentialDisplay: EntityDisplayComponent<Credential, CredentialDisplayContext> = {
 		getId: (credential) => credential.id,
+		getDisabled: (_credential, context) => !!context?.disabledReason,
+		getDisabledReason: (_credential, context) => context?.disabledReason ?? null,
 		getLabel: (credential) => credential.name,
 		getDescription: (credential) => getCredentialDescription(credential),
 		getIcon: (credential) => {
@@ -35,7 +40,7 @@
 
 	interface Props {
 		item: Credential;
-		context?: object;
+		context?: CredentialDisplayContext;
 	}
 
 	let { item, context = {} }: Props = $props();

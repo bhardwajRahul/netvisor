@@ -21,6 +21,10 @@
 	} from '$lib/shared/components/forms/selection/display/IPAddressDisplay.svelte';
 	import { credentialTypes } from '$lib/shared/stores/metadata';
 	import { getCredentialTypeId } from '$lib/features/credentials/types/base';
+	import {
+		claimedIntegrations,
+		daemonHostBlockReason
+	} from '$lib/features/credentials/utils/daemonHostBlocking';
 	import DocsHint from '$lib/shared/components/feedback/DocsHint.svelte';
 	import {
 		common_credentialDemoReadOnly,
@@ -86,6 +90,12 @@
 			(c) => !(formData.credential_assignments ?? []).some((a) => a.credential_id === c.id)
 		)
 	);
+
+	// Socket↔proxy exclusion: a daemon host holds only one transport per single-endpoint
+	// integration. Disable (with a reason) any candidate whose integration is already claimed
+	// by a credential currently assigned to this host. Shares the predicate with the discovery
+	// modal and credential modal via daemonHostBlocking.
+	let claimedHostIntegrations = $derived(claimedIntegrations(selectedCredentials));
 
 	// Resolve network default credentials to full objects for EntityTag display
 	let networkDefaultCredentials = $derived(
@@ -181,6 +191,9 @@
 					emptyMessage="No credential overrides — using network defaults"
 					allowReorder={false}
 					options={availableCredentials}
+					getOptionContext={(c) => ({
+						disabledReason: daemonHostBlockReason(getCredentialTypeId(c), claimedHostIntegrations)
+					})}
 					{items}
 					itemClickAction="edit"
 					optionDisplayComponent={CredentialDisplay}

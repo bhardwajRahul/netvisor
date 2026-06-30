@@ -4,18 +4,18 @@ use crate::server::services::r#impl::categories::ServiceCategory;
 use crate::server::services::r#impl::definitions::ServiceDefinition;
 use crate::server::services::r#impl::patterns::{MatchConfidence, Pattern};
 use crate::server::services::r#impl::virtualization::{
-    DockerVirtualization, ServiceVirtualization,
+    PodmanVirtualization, ServiceVirtualization,
 };
 
 #[derive(Default, Clone, Eq, PartialEq, Hash)]
-pub struct DockerContainer;
+pub struct PodmanContainer;
 
-impl ServiceDefinition for DockerContainer {
+impl ServiceDefinition for PodmanContainer {
     fn name(&self) -> &'static str {
-        "Docker Container"
+        "Podman Container"
     }
     fn description(&self) -> &'static str {
-        "A generic docker container"
+        "A generic podman container"
     }
     fn category(&self) -> ServiceCategory {
         ServiceCategory::Container
@@ -28,18 +28,18 @@ impl ServiceDefinition for DockerContainer {
                 |p: &DiscoverySessionServiceMatchParams| {
                     // If there's a matched service with the id of the container, the container was already detected as a non-generic service
                     let c_id = match p.baseline_params.virtualization {
-                        Some(ServiceVirtualization::Docker(DockerVirtualization {
+                        Some(ServiceVirtualization::Podman(PodmanVirtualization {
                             container_id: Some(id),
                             ..
                         })) => id,
-                        _ => return false, // No docker container_id -> not a docker container
+                        _ => return false, // No podman container_id -> not a podman container
                     };
 
                     p.service_params
                         .matched_services
                         .iter()
                         .all(|s| match &s.base.virtualization {
-                            Some(ServiceVirtualization::Docker(DockerVirtualization {
+                            Some(ServiceVirtualization::Podman(PodmanVirtualization {
                                 container_id,
                                 ..
                             })) if container_id.is_some() => *container_id != Some(c_id.clone()),
@@ -60,5 +60,5 @@ impl ServiceDefinition for DockerContainer {
 }
 
 inventory::submit!(ServiceDefinitionFactory::new(
-    create_service::<DockerContainer>
+    create_service::<PodmanContainer>
 ));

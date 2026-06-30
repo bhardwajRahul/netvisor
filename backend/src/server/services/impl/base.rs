@@ -7,9 +7,7 @@ use crate::server::services::r#impl::definitions::ServiceDefinitionExt;
 use crate::server::services::r#impl::definitions::{DefaultServiceDefinition, ServiceDefinition};
 use crate::server::services::r#impl::endpoints::{Endpoint, EndpointResponse};
 use crate::server::services::r#impl::patterns::{MatchConfidence, MatchReason};
-use crate::server::services::r#impl::virtualization::{
-    DockerVirtualization, ServiceVirtualization,
-};
+use crate::server::services::r#impl::virtualization::ServiceVirtualization;
 use crate::server::shared::entities::ChangeTriggersTopologyStaleness;
 use crate::server::shared::position::Positioned;
 use crate::server::shared::storage::traits::Storable;
@@ -410,12 +408,9 @@ impl Service {
             let mut name = service_definition.name().to_string();
 
             if ServiceDefinitionExt::is_generic(&service_definition) {
-                if let Some(ServiceVirtualization::Docker(DockerVirtualization {
-                    container_name: Some(c_name),
-                    ..
-                })) = virtualization
-                {
-                    name = c_name.clone()
+                // Name a generic container service after its container (Docker or Podman).
+                if let Some(c_name) = virtualization.as_ref().and_then(|v| v.container_name()) {
+                    name = c_name.to_string()
                 }
 
                 // Confidence not applicable for generic services

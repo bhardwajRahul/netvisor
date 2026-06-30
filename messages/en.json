@@ -471,7 +471,7 @@
   "daemons_credentialWizardDescription": "Set up the integrations and credentials this daemon uses when scanning. %link%.",
   "daemons_credentialWizardDescriptionLinkText": "Learn about credential types",
   "daemons_credentialWizardEmpty": "No credentials added yet",
-  "daemons_credentialWizardExistingDescription": "You can modify this credential in the Credentials tab.",
+  "daemons_credentialWizardExistingDescription": "You're adding an existing credential. Edit its fields and targeting from the Credentials tab.",
   "daemons_credentialWizardNetworkCredentials": "Will be used for all hosts:",
   "daemons_credentialWizardReturn": "Create {count} credential(s) and continue to install",
   "daemons_credentialWizardReturnToInstall": "Continue to install",

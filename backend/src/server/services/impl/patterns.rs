@@ -209,8 +209,9 @@ pub enum Pattern<'a> {
     /// the pattern just checks the pre-computed result.
     ClientResponse(ClientProbe),
 
-    /// Whether the host is a docker container
-    DockerContainer,
+    /// Whether the service runs in a container (Docker or Podman). Runtime-agnostic;
+    /// per-runtime container definitions narrow to their virtualization via a custom check.
+    ContainerVirtualization,
 
     /// No match pattern (only added manually or by the system)
     None,
@@ -267,7 +268,7 @@ impl PartialEq for Pattern<'_> {
                     && conf_a == conf_b
             }
             (Pattern::ClientResponse(a), Pattern::ClientResponse(b)) => a == b,
-            (Pattern::DockerContainer, Pattern::DockerContainer) => true,
+            (Pattern::ContainerVirtualization, Pattern::ContainerVirtualization) => true,
             (Pattern::None, Pattern::None) => true,
             _ => false,
         }
@@ -340,7 +341,7 @@ impl Display for Pattern<'_> {
                 write!(f, "A custom match pattern evaluated at runtime")
             }
             Pattern::ClientResponse(probe) => write!(f, "Client probe {:?} succeeded", probe),
-            Pattern::DockerContainer => write!(f, "Service is running in a docker container"),
+            Pattern::ContainerVirtualization => write!(f, "Service is running in a container"),
             Pattern::None => write!(f, "No match pattern provided"),
         }
     }
@@ -862,19 +863,20 @@ impl Pattern<'_> {
                 }
             }
 
-            Pattern::DockerContainer => match virtualization {
-                Some(ServiceVirtualization::Docker(..)) => Ok(MatchResult {
+            Pattern::ContainerVirtualization => match virtualization {
+                Some(ServiceVirtualization::Docker(..))
+                | Some(ServiceVirtualization::Podman(..)) => Ok(MatchResult {
                     ports: vec![],
                     endpoint: None,
                     mac_vendor: None,
                     details: MatchDetails {
                         reason: MatchReason::Reason(
-                            "Service is running in docker container".to_string(),
+                            "Service is running in a container".to_string(),
                         ),
                         confidence: MatchConfidence::Low,
                     },
                 }),
-                _ => Err(anyhow!("Service is not running in a docker container")),
+                _ => Err(anyhow!("Service is not running in a container")),
             },
 
             Pattern::None => Err(anyhow!("No match pattern provided")),
@@ -1056,6 +1058,70 @@ mod tests {
                 client_responses: &self.client_responses,
             }
         }
+    }
+
+    #[test]
+    fn test_container_virtualization_matches_docker_and_podman() {
+        use crate::server::services::definitions::docker_container::DockerContainer;
+        use crate::server::services::definitions::podman_container::PodmanContainer;
+        use crate::server::services::r#impl::virtualization::PodmanVirtualization;
+
+        let ports: Vec<PortType> = vec![];
+
+        // Podman container virtualization → ContainerVirtualization matches, the
+        // PodmanContainer generic claims it, and the DockerContainer generic does not.
+        let mut ctx = TestContext::new();
+        ctx.virtualization = Some(ServiceVirtualization::Podman(PodmanVirtualization {
+            container_name: Some("scanopy-test-web".to_string()),
+            container_id: Some("73413cba1d1c".to_string()),
+            service_id: Uuid::nil(),
+            compose_project: None,
+        }));
+        let baseline = ctx.create_baseline_params(&ports);
+        let params = ctx.create_params_with_ports(&baseline, &ports);
+
+        assert!(
+            Pattern::ContainerVirtualization.matches(&params).is_ok(),
+            "ContainerVirtualization should match a Podman container"
+        );
+        assert!(
+            PodmanContainer.discovery_pattern().matches(&params).is_ok(),
+            "PodmanContainer generic should claim a Podman container"
+        );
+        assert!(
+            DockerContainer
+                .discovery_pattern()
+                .matches(&params)
+                .is_err(),
+            "DockerContainer generic must NOT claim a Podman container"
+        );
+
+        // Symmetric check: a Docker container is claimed by DockerContainer, not PodmanContainer.
+        let mut dctx = TestContext::new();
+        dctx.virtualization = Some(ServiceVirtualization::Docker(
+            crate::server::services::r#impl::virtualization::DockerVirtualization {
+                container_name: Some("nginx".to_string()),
+                container_id: Some("abc123".to_string()),
+                service_id: Uuid::nil(),
+                compose_project: None,
+            },
+        ));
+        let dbaseline = dctx.create_baseline_params(&ports);
+        let dparams = dctx.create_params_with_ports(&dbaseline, &ports);
+        assert!(
+            DockerContainer
+                .discovery_pattern()
+                .matches(&dparams)
+                .is_ok(),
+            "DockerContainer generic should claim a Docker container"
+        );
+        assert!(
+            PodmanContainer
+                .discovery_pattern()
+                .matches(&dparams)
+                .is_err(),
+            "PodmanContainer generic must NOT claim a Docker container"
+        );
     }
 
     #[test]

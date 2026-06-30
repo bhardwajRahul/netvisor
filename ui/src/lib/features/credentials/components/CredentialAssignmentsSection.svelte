@@ -6,6 +6,11 @@
 	import { useNetworksQuery } from '$lib/features/networks/queries';
 	import { useHostsQuery } from '$lib/features/hosts/queries';
 	import { useDaemonsQuery } from '$lib/features/daemons/queries';
+	import { useCredentialsQuery } from '$lib/features/credentials/queries';
+	import {
+		claimedIntegrationsForHost,
+		daemonHostBlockReason
+	} from '$lib/features/credentials/utils/daemonHostBlocking';
 	import { useIPAddressesQuery } from '$lib/features/ip-addresses/queries';
 	import { useSubnetsQuery } from '$lib/features/subnets/queries';
 	import { credentialTypes } from '$lib/shared/stores/metadata';
@@ -34,12 +39,14 @@
 
 	interface Props {
 		credentialTypeId: string;
+		credentialId?: string;
 		assignedNetworkIds: string[];
 		hostAssignments: CredentialHostAssignment[];
 	}
 
 	let {
 		credentialTypeId,
+		credentialId,
 		assignedNetworkIds = $bindable([]),
 		hostAssignments = $bindable([])
 	}: Props = $props();
@@ -57,6 +64,19 @@
 	const ipAddressesQuery = useIPAddressesQuery();
 	const subnetsQuery = useSubnetsQuery();
 	const daemonsQuery = useDaemonsQuery();
+	const credentialsQuery = useCredentialsQuery();
+
+	let allCredentials = $derived(credentialsQuery.data ?? []);
+
+	// Socket↔proxy exclusion: a daemon host whose single-endpoint integration is already claimed
+	// by another credential (the other transport) can't take this one. Shared predicate with the
+	// host modal and discovery modal via daemonHostBlocking.
+	function hostBlockReason(hostId: string): string | null {
+		return daemonHostBlockReason(
+			credentialTypeId,
+			claimedIntegrationsForHost(hostId, allCredentials, credentialId)
+		);
+	}
 
 	let allNetworks = $derived(networksQuery.data ?? []);
 	let allHosts = $derived(hostsQuery.data?.items ?? []);
@@ -178,6 +198,7 @@
 			emptyMessage={credentials_assignHostEmpty()}
 			allowReorder={false}
 			options={availableHosts}
+			getOptionContext={(h) => ({ disabledReason: hostBlockReason(h.id) })}
 			items={selectedHosts}
 			optionDisplayComponent={HostDisplay}
 			itemDisplayComponent={HostDisplay}
@@ -226,6 +247,7 @@
 			emptyMessage={credentials_assignDaemonHostEmpty()}
 			allowReorder={false}
 			options={availableDaemonHosts}
+			getOptionContext={(h) => ({ disabledReason: hostBlockReason(h.id) })}
 			items={selectedHosts}
 			optionDisplayComponent={HostDisplay}
 			itemDisplayComponent={HostDisplay}
