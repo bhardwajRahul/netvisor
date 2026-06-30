@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { Radar } from 'lucide-svelte';
 	import { common_loading } from '$lib/paraglide/messages';
 
 	export let message: string | undefined = undefined;
@@ -7,6 +8,6 @@
 </script>
 
 <div class="py-8 text-center">
-	<div class="mx-auto h-8 w-8 animate-spin rounded-full border-b-2 border-blue-500"></div>
+	<Radar class="mx-auto h-8 w-8 animate-[spin_1.5s_linear_infinite] text-blue-500" />
 	<p class="text-secondary mt-2">{displayMessage}</p>
 </div>
