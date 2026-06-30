@@ -5,6 +5,7 @@
 	import type { Host, IPAddress } from '$lib/features/hosts/types/base';
 	import { useNetworksQuery } from '$lib/features/networks/queries';
 	import { useHostsQuery } from '$lib/features/hosts/queries';
+	import { useDaemonsQuery } from '$lib/features/daemons/queries';
 	import { useIPAddressesQuery } from '$lib/features/ip-addresses/queries';
 	import { useSubnetsQuery } from '$lib/features/subnets/queries';
 	import { credentialTypes } from '$lib/shared/stores/metadata';
@@ -22,6 +23,8 @@
 		credentials_assignNetworkPlaceholder,
 		credentials_assignHostEmpty,
 		credentials_assignHostPlaceholder,
+		credentials_assignDaemonHostLabel,
+		credentials_assignDaemonHostEmpty,
 		credentials_ipScopeAllDefault,
 		credentials_ipScopeLabel,
 		credentials_ipScopePlaceholder
@@ -41,19 +44,28 @@
 		hostAssignments = $bindable([])
 	}: Props = $props();
 
-	// Global assignments cover the Network and Host targets; the daemon-relative
-	// DaemonHost target is configured per-daemon, not here.
 	let targets = $derived(credentialTypes.getMetadata(credentialTypeId)?.targets ?? []);
 	let supportsBroadcast = $derived(targets.includes('Network'));
 	let supportsPerHost = $derived(targets.includes('Hosts'));
+	// Daemon-host-only types (e.g. a Docker/Podman socket) are assigned to a daemon's
+	// own host. Show a host picker filtered to daemon hosts; proxies (which also support
+	// 'Hosts') use the regular host surface, where daemon hosts are already selectable.
+	let supportsDaemonHostOnly = $derived(targets.includes('DaemonHost') && !supportsPerHost);
 
 	const networksQuery = useNetworksQuery();
 	const hostsQuery = useHostsQuery({ limit: 0 });
 	const ipAddressesQuery = useIPAddressesQuery();
 	const subnetsQuery = useSubnetsQuery();
+	const daemonsQuery = useDaemonsQuery();
 
 	let allNetworks = $derived(networksQuery.data ?? []);
 	let allHosts = $derived(hostsQuery.data?.items ?? []);
+	let daemonHostIds = $derived((daemonsQuery.data ?? []).map((d) => d.host_id));
+	let availableDaemonHosts = $derived(
+		allHosts.filter(
+			(h) => daemonHostIds.includes(h.id) && !hostAssignments.some((a) => a.host_id === h.id)
+		)
+	);
 	let allIpAddresses = $derived(ipAddressesQuery.data ?? []);
 	let subnets = $derived(subnetsQuery.data ?? []);
 
@@ -206,11 +218,31 @@
 	</div>
 {/snippet}
 
+{#snippet daemonHostsSurface()}
+	<div class="min-w-0 flex-1">
+		<ListManager
+			label={`${credentials_assignDaemonHostLabel()} (${hostAssignments.length})`}
+			placeholder={credentials_assignHostPlaceholder()}
+			emptyMessage={credentials_assignDaemonHostEmpty()}
+			allowReorder={false}
+			options={availableDaemonHosts}
+			items={selectedHosts}
+			optionDisplayComponent={HostDisplay}
+			itemDisplayComponent={HostDisplay}
+			onAdd={addHost}
+			onRemove={removeHost}
+		/>
+	</div>
+{/snippet}
+
 <div class="flex min-h-[18rem] flex-1 gap-6">
 	{#if supportsBroadcast}
 		{@render networksSurface()}
 	{/if}
 	{#if supportsPerHost}
 		{@render hostsSurface()}
+	{/if}
+	{#if supportsDaemonHostOnly}
+		{@render daemonHostsSurface()}
 	{/if}
 </div>

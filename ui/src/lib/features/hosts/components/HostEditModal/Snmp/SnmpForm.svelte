@@ -6,6 +6,7 @@
 	import { useCurrentUserQuery } from '$lib/features/auth/queries';
 	import { useCredentialsQuery } from '$lib/features/credentials/queries';
 	import { useSubnetsQuery } from '$lib/features/subnets/queries';
+	import { useDaemonsQuery } from '$lib/features/daemons/queries';
 	import ListConfigEditor from '$lib/shared/components/forms/selection/ListConfigEditor.svelte';
 	import ListManager from '$lib/shared/components/forms/selection/ListManager.svelte';
 	import EntityConfigEmpty from '$lib/shared/components/forms/EntityConfigEmpty.svelte';
@@ -66,11 +67,17 @@
 			.filter((c): c is Credential => c != null)
 	);
 
-	// Filter to host-targetable credentials, then exclude already-assigned ones
+	// This host is a daemon's own host if a daemon reports it as its host_id. Daemon
+	// hosts can also be assigned daemon-host-only credentials (e.g. a Docker/Podman socket).
+	const daemonsQuery = useDaemonsQuery();
+	let isDaemonHost = $derived((daemonsQuery.data ?? []).some((d) => d.host_id === formData.id));
+
+	// Filter to credentials assignable to this host: 'Hosts'-targetable always, plus
+	// daemon-host-only ('DaemonHost') credentials when this host belongs to a daemon.
 	let perHostCredentials = $derived(
 		allCredentials.filter((c) => {
-			const meta = credentialTypes.getMetadata(getCredentialTypeId(c));
-			return (meta?.targets ?? []).includes('Hosts');
+			const targets = credentialTypes.getMetadata(getCredentialTypeId(c))?.targets ?? [];
+			return targets.includes('Hosts') || (isDaemonHost && targets.includes('DaemonHost'));
 		})
 	);
 

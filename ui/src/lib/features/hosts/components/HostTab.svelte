@@ -173,7 +173,19 @@
 	});
 
 	let showHostEditor = $state(false);
-	let editingHost = $state<Host | null>(null);
+	// Track the host being edited by id + a snapshot, and resolve `editingHost` from the
+	// live query cache. So when an external change (e.g. a credential assignment removed
+	// elsewhere) invalidates and refetches hosts, the open editor reflects it without a
+	// page reload. The snapshot is the fallback for hosts not in the current page.
+	let editingHostId = $state<string | null>(null);
+	let editingHostSnapshot = $state<Host | null>(null);
+	let editingHost = $derived(
+		editingHostId ? (hostsData.find((h) => h.id === editingHostId) ?? editingHostSnapshot) : null
+	);
+	function setEditingHost(host: Host | null) {
+		editingHostId = host?.id ?? null;
+		editingHostSnapshot = host;
+	}
 
 	let otherHost = $state<Host | null>(null);
 	let showHostConsolidationModal = $state(false);
@@ -188,7 +200,7 @@
 			editingHost?.id
 		);
 		if (result !== undefined) {
-			editingHost = result;
+			setEditingHost(result);
 			showHostEditor = true;
 		}
 	});
@@ -272,12 +284,12 @@
 	);
 
 	function handleCreateHost() {
-		editingHost = null;
+		setEditingHost(null);
 		showHostEditor = true;
 	}
 
 	function handleEditHost(host: Host) {
-		editingHost = host;
+		setEditingHost(host);
 		showHostEditor = true;
 	}
 
@@ -296,7 +308,7 @@
 		try {
 			await createHostMutation.mutateAsync(data);
 			showHostEditor = false;
-			editingHost = null;
+			setEditingHost(null);
 		} catch {
 			// Error handled by mutation
 		}
@@ -306,7 +318,7 @@
 		try {
 			await updateHostMutation.mutateAsync(data);
 			showHostEditor = false;
-			editingHost = null;
+			setEditingHost(null);
 		} catch {
 			// Error handled by mutation
 		}
@@ -348,7 +360,7 @@
 
 	function handleCloseHostEditor() {
 		showHostEditor = false;
-		editingHost = null;
+		setEditingHost(null);
 	}
 </script>
 

@@ -36,6 +36,7 @@
 		daemons_credentialWizardAddExisting,
 		daemons_credentialWizardSelectExisting,
 		daemons_credentialWizardExistingDescription,
+		credentials_daemonHostManagedElsewhere,
 		daemons_credentialWizardDaemonHostUnavailable
 	} from '$lib/paraglide/messages';
 
@@ -44,6 +45,9 @@
 		targetIps: string[];
 		fieldValues: Record<string, string>;
 		isExisting?: boolean;
+		// Managed elsewhere (a daemon-host credential assigned via the host/credential
+		// modals): shown read-only, not removable here, never created/updated.
+		isManaged?: boolean;
 		// How the new credential is assigned: 'broadcast' (network default) or
 		// 'per_host' (target IPs). Defaults based on the type's scope_models.
 		scope?: 'broadcast' | 'per_host';
@@ -87,6 +91,10 @@
 
 	// Local items array for ListConfigEditor display
 	let items = $derived(pendingCredentials.map((p) => p.credential));
+	// Managed (daemon-host) credentials are read-only here — no remove affordance.
+	let managedCredIds = $derived(
+		pendingCredentials.filter((p) => p.isManaged).map((p) => p.credential.id)
+	);
 
 	function isDaemonHostOnly(typeId: string): boolean {
 		return isDaemonHostOnlyTargets(credentialTypes.getMetadata(typeId)?.targets);
@@ -474,6 +482,7 @@
 				{items}
 				onAdd={handleAddCredential}
 				onRemove={handleRemoveCredential}
+				allowItemRemove={(c) => !managedCredIds.includes(c.id)}
 				onClick={onItemSelect}
 				{onEdit}
 				{highlightedIndex}
@@ -484,7 +493,22 @@
 			<!-- Render ALL config panels, hide non-selected (like InterfacesForm) -->
 			{#each pendingCredentials as pending, index (`${pending.credential.id}-${index}`)}
 				<div class:hidden={selectedIndex !== index}>
-					{#if isDaemonHostOnly(pending.credential.credential_type.type)}
+					{#if pending.isManaged}
+						<!-- Daemon-host credential assigned via the host/credential modals: read-only
+						     here. Managed (added/removed) by editing the host or the credential. -->
+						<p class="text-muted mb-4 text-xs">
+							{credentials_daemonHostManagedElsewhere()}
+						</p>
+						<CredentialForm
+							{form}
+							compact={true}
+							hideFields={true}
+							hideTargets={true}
+							fieldPrefix={`credentials[${index}].`}
+							fixedCredentialType={pending.credential.credential_type.type}
+							fixedName={pending.credential.name}
+						/>
+					{:else if isDaemonHostOnly(pending.credential.credential_type.type)}
 						<!-- Daemon-host-only credential (e.g. the local Docker/Podman socket): its
 						     target is implicitly the daemon host (127.0.0.1), so no target picker —
 						     but it's a real credential with optional config (e.g. socket_path). -->

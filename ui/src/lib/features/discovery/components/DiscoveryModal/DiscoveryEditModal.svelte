@@ -22,8 +22,7 @@
 	import type { Host } from '$lib/features/hosts/types/base';
 	import { useSubnetsQuery } from '$lib/features/subnets/queries';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
-	import { billingPlans, credentialTypes } from '$lib/shared/stores/metadata';
-	import Tag from '$lib/shared/components/data/Tag.svelte';
+	import { billingPlans } from '$lib/shared/stores/metadata';
 	import {
 		Info,
 		Crosshair,
@@ -31,19 +30,16 @@
 		Gauge,
 		Calendar,
 		ArrowRight,
-		KeyRound,
-		X
+		KeyRound
 	} from 'lucide-svelte';
 	import CredentialsStep, {
 		type PendingCredential
 	} from '$lib/features/credentials/components/CredentialsStep.svelte';
 	import { useCredentialsQuery } from '$lib/features/credentials/queries';
 	import {
-		common_assigned,
 		common_back,
 		common_cancel,
 		common_close,
-		common_remove,
 		common_credentials,
 		common_delete,
 		common_deleting,
@@ -58,8 +54,6 @@
 		discovery_createDiscovery,
 		discovery_createScheduled,
 		discovery_credentialsDescription,
-		discovery_daemonHostIntegrationsTitle,
-		discovery_daemonHostNewThisScan,
 		discovery_edit,
 		discovery_failedToDelete,
 		discovery_failedToSave,
@@ -135,84 +129,41 @@
 		(daemon ? hosts.find((h) => h.id === daemon.host_id)?.id : null) || null
 	);
 
-	// Credential types already targeting the daemon's own host, derived from this
-	// discovery's DaemonHost-scope integration targets — generic across integrations
-	// (Docker, Podman, …) with no per-integration capability flag. Feeds the shared
-	// CredentialsStep's claimed-daemon-host blocking, so a socket and a proxy of the
-	// same integration can't both target the daemon host (bidirectional).
-	let daemonHostCredentialTypeIds = $derived.by(() => {
-		const credMap = new Map((allCredentialsQuery.data ?? []).map((c) => [c.id, c]));
-		const types = (discovery?.integration_targets ?? [])
-			.filter(
-				(t) => t.scope === 'DaemonHost' && !removedDaemonHostCredIds.includes(t.credential_id)
-			)
-			.map((t) => credMap.get(t.credential_id)?.credential_type.type)
-			.filter((t): t is NonNullable<typeof t> => t != null);
-		return types.filter((t, i) => types.indexOf(t) === i);
-	});
-
 	function ipIsLoopback(ip: string): boolean {
 		const s = ip.trim();
 		return s === '127.0.0.1' || s === '::1' || s.startsWith('127.');
 	}
 
-	// Read-only summary of credentials targeting the daemon's own host, so users see
-	// what's already in play. Distinguishes already-assigned (persisted) from
-	// newly-staged-this-session (a proxy pointed at the daemon host that isn't saved yet).
-	let daemonHostIntegrationList = $derived.by(() => {
+	// Credentials targeting the daemon's own host. Daemon-host targeting lives in the
+	// host_credentials junction (managed via the host/credential modals), so union:
+	// (1) DaemonHost-scope integration targets, (2) loopback Hosts-scope targets, and
+	// (3) credentials assigned to the daemon host via the junction (host_assignments).
+	function computeDaemonHostCredentials(dHostId: string | null) {
+		if (!dHostId) return [];
 		const credMap = new Map((allCredentialsQuery.data ?? []).map((c) => [c.id, c]));
-		const persistedDaemonHostIds = (discovery?.integration_targets ?? [])
+		const fromTargets = (discovery?.integration_targets ?? [])
 			.filter(
 				(t) =>
 					t.scope === 'DaemonHost' ||
 					(t.scope === 'Hosts' && t.ips.length > 0 && t.ips.every(ipIsLoopback))
 			)
-			.map((t) => t.credential_id);
-		const items: {
-			id: string;
-			name: string;
-			integration: string;
-			isNew: boolean;
-			removable: boolean;
-		}[] = [];
-		const push = (
-			cred: { id: string; name: string; credential_type: { type: string } } | undefined,
-			isNew: boolean,
-			removable: boolean
-		) => {
-			if (!cred || items.some((i) => i.id === cred.id)) return;
-			items.push({
-				id: cred.id,
-				name: cred.name,
-				integration:
-					credentialTypes.getMetadata(cred.credential_type.type)?.associated_service ??
-					cred.credential_type.type,
-				isNew,
-				removable
-			});
-		};
-		// Persisted daemon-host (socket) targets — already-assigned, removable here.
-		for (const t of discovery?.integration_targets ?? []) {
-			if (t.scope === 'DaemonHost' && !removedDaemonHostCredIds.includes(t.credential_id))
-				push(credMap.get(t.credential_id), false, true);
-		}
-		// Pending credentials pointed at the daemon host (loopback) — new unless persisted;
-		// removed via the wizard, not here.
-		for (const p of pendingCredentials) {
-			if ((p.targetIps ?? []).some(ipIsLoopback))
-				push(p.credential, !persistedDaemonHostIds.includes(p.credential.id), false);
-		}
-		return items;
+			.map((t) => credMap.get(t.credential_id));
+		const fromAssignments = (allCredentialsQuery.data ?? []).filter((c) =>
+			(c.host_assignments ?? []).some((a) => a.host_id === dHostId)
+		);
+		const all = [...fromTargets, ...fromAssignments].filter((c): c is NonNullable<typeof c> => !!c);
+		return all.filter((c, i) => all.findIndex((x) => x.id === c.id) === i);
+	}
+	let daemonHostCredentials = $derived(computeDaemonHostCredentials(daemonHostId));
+
+	// Claimed integrations (credential types) on the daemon host — feeds the shared
+	// CredentialsStep's bidirectional socket↔proxy blocking. Generic across
+	// integrations (Docker, Podman, …); no per-integration capability flag.
+	let daemonHostCredentialTypeIds = $derived.by(() => {
+		const types = daemonHostCredentials.map((c) => c.credential_type.type);
+		return types.filter((t, i) => types.indexOf(t) === i);
 	});
 
-	// Persisted daemon-host targets the user has staged for removal this session.
-	// Applied on save (dropped from the submitted integration_targets) and excluded
-	// from the claimed set so a freed integration can be re-targeted.
-	let removedDaemonHostCredIds = $state<string[]>([]);
-	function removeDaemonHostTarget(credId: string) {
-		if (!removedDaemonHostCredIds.includes(credId))
-			removedDaemonHostCredIds = [...removedDaemonHostCredIds, credId];
-	}
 	// User-chosen configurable integrations (the fixed socket card is shown checked
 	// via the step's read-only handling, not via this selection).
 	let selectedCredentialTypeIds = $state<string[]>([]);
@@ -449,20 +400,17 @@
 					// explicit IPs → Hosts scope. Daemon-host (socket) targets are daemon-level —
 					// pass them through untouched so editing a discovery doesn't drop them.
 					const persisted = new Set(ids ?? []);
-					// Daemon-host (socket) targets pass through untouched, EXCEPT any the
-					// user removed this session (the discovery modal is authoritative now).
-					const daemonHostTargets = (discovery?.integration_targets ?? []).filter(
-						(t) => t.scope === 'DaemonHost' && !removedDaemonHostCredIds.includes(t.credential_id)
-					);
-					const rebuilt = pendingCredentials
-						.filter((p) => persisted.has(p.credential.id))
+					// Daemon-host targeting lives in the host_credentials junction (managed via the
+					// host/credential modals), NOT here. Build integration_targets only from the
+					// editable network/host credentials; managed (daemon-host) cards are excluded.
+					formData.integration_targets = pendingCredentials
+						.filter((p) => !p.isManaged && persisted.has(p.credential.id))
 						.map((p) => {
 							const ips = p.targetIps.map((s) => s.trim()).filter(Boolean);
 							return ips.length > 0
 								? { scope: 'Hosts' as const, credential_id: p.credential.id, ips }
 								: { scope: 'Network' as const, credential_id: p.credential.id };
 						});
-					formData.integration_targets = [...daemonHostTargets, ...rebuilt];
 					if (isEditing && discovery) {
 						await onUpdate(discovery.id, formData);
 					} else {
@@ -486,25 +434,36 @@
 		formData = getDefaultFormData();
 		pendingCredentials = [];
 		credentialIds = [];
-		removedDaemonHostCredIds = [];
-		if (discovery?.integration_targets?.length && allCredentialsQuery.data) {
+		if (allCredentialsQuery.data) {
 			const credMap = new Map(allCredentialsQuery.data.map((c) => [c.id, c]));
-			// Reconstruct network/host credentialed targets as wizard entries. DaemonHost
-			// (socket) targets are daemon-level and shown via fixed capabilities, not edited here.
-			pendingCredentials = discovery.integration_targets.flatMap((t) => {
+			// Editable: network/host credentialed targets from integration_targets. Daemon-host
+			// targeting (DaemonHost scope or loopback Hosts) is junction-managed — excluded here.
+			const editable: PendingCredential[] = (discovery?.integration_targets ?? []).flatMap((t) => {
 				if (t.scope === 'DaemonHost') return [];
+				if (t.scope === 'Hosts' && t.ips.length > 0 && t.ips.every(ipIsLoopback)) return [];
 				const c = credMap.get(t.credential_id);
 				if (!c) return [];
 				const ips = t.scope === 'Hosts' ? t.ips : [];
 				return [
-					{
-						credential: c,
-						targetIps: ips.length ? ips : [''],
-						fieldValues: {},
-						isExisting: true
-					}
+					{ credential: c, targetIps: ips.length ? ips : [''], fieldValues: {}, isExisting: true }
 				];
 			});
+			// Read-only managed cards: credentials assigned to the daemon host (via the
+			// host/credential modals). Resolve the daemon host inline (formData not yet settled).
+			const dForDiscovery = daemons.find((d) => d.id === discovery?.daemon_id) ?? null;
+			const dHostId = dForDiscovery
+				? (hosts.find((h) => h.id === dForDiscovery.host_id)?.id ?? null)
+				: null;
+			const managed: PendingCredential[] = computeDaemonHostCredentials(dHostId)
+				.filter((c) => !editable.some((p) => p.credential.id === c.id))
+				.map((c) => ({
+					credential: c,
+					targetIps: [],
+					fieldValues: {},
+					isExisting: true,
+					isManaged: true
+				}));
+			pendingCredentials = [...editable, ...managed];
 		}
 		// Show the Integrations grid only as a first-run aid (no credentials exist
 		// yet); otherwise — existing assignments on this session, or the org already
@@ -677,36 +636,6 @@
 			{/if}
 			{#if hasCredentialsTab}
 				<div class="flex min-h-0 flex-1 flex-col" class:hidden={activeTab !== 'credentials'}>
-					{#if daemonHostIntegrationList.length > 0}
-						<div class="card-static mx-4 mt-4 space-y-2 rounded-lg border p-3 sm:mx-6">
-							<p class="text-secondary text-xs font-medium uppercase tracking-wide">
-								{discovery_daemonHostIntegrationsTitle()}
-							</p>
-							<ul class="space-y-1">
-								{#each daemonHostIntegrationList as item (item.id)}
-									<li class="flex items-center gap-2 text-sm">
-										<span class="font-medium">{item.name}</span>
-										<span class="text-secondary">{item.integration}</span>
-										<Tag
-											color={item.isNew ? 'Blue' : 'Gray'}
-											label={item.isNew ? discovery_daemonHostNewThisScan() : common_assigned()}
-										/>
-										{#if item.removable && !readOnly}
-											<button
-												type="button"
-												class="text-secondary hover:text-primary ml-auto"
-												title={common_remove()}
-												aria-label={common_remove()}
-												onclick={() => removeDaemonHostTarget(item.id)}
-											>
-												<X class="h-4 w-4" />
-											</button>
-										{/if}
-									</li>
-								{/each}
-							</ul>
-						</div>
-					{/if}
 					<CredentialsStep
 						bind:this={credentialsStep}
 						networkId={formData.network_id}
