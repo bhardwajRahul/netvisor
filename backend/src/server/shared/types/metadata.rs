@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use serde::Serialize;
 use utoipa::ToSchema;
 
@@ -23,8 +25,12 @@ pub struct TypeMetadata {
     pub id: &'static str,
     #[schema(required)]
     pub name: Option<&'static str>,
-    #[schema(required)]
-    pub description: Option<&'static str>,
+    /// Most providers supply a `&'static str` (wrapped as `Cow::Borrowed`); types
+    /// whose description is composed at build time (e.g. credential transports
+    /// derive theirs from a centralized integration description) supply
+    /// `Cow::Owned`.
+    #[schema(value_type = Option<String>, required)]
+    pub description: Option<Cow<'static, str>>,
     #[schema(required)]
     pub category: Option<&'static str>,
     #[schema(value_type = Option<String>, required)]
@@ -97,7 +103,7 @@ where
         TypeMetadata {
             id,
             name: (!name.is_empty()).then_some(name),
-            description: (!description.is_empty()).then_some(description),
+            description: (!description.is_empty()).then_some(Cow::Borrowed(description)),
             category: (!category.is_empty()).then_some(category),
             icon: Some(icon),
             color,

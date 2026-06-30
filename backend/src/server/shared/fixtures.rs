@@ -5,6 +5,7 @@ use crate::daemon::discovery::types::base::DiscoveryPhase;
 use crate::server::billing::plans::get_website_fixture_plans;
 use crate::server::billing::types::base::{BillingPlan, CancelReason, PlanStatus, SaveOffer};
 use crate::server::billing::types::features::Feature;
+use crate::server::credentials::r#impl::integrations::all_integrations;
 use crate::server::credentials::r#impl::types::CredentialTypeDiscriminants;
 use crate::server::dependencies::r#impl::types::DependencyType;
 use crate::server::discovery::r#impl::scan_settings::ScanSettings;
@@ -105,6 +106,12 @@ pub fn generate_ui_data_fixtures(output_dir: &Path) {
         .map(|d| d.to_metadata())
         .collect();
     write_fixture(&credential_types, output_dir, "credential-types.json");
+
+    // Integrations: a service joined with the credential transports that target
+    // it and one canonical discovery description (for the website integrations
+    // page). Synced like service-definitions.json.
+    let integrations = all_integrations();
+    write_fixture(&integrations, output_dir, "integrations.json");
 
     let scan_settings_fields = ScanSettings::field_definitions();
     write_fixture(&scan_settings_fields, output_dir, "scan-settings.json");
