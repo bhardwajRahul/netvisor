@@ -175,7 +175,6 @@ pub fn daemon(network_id: &Uuid, host_id: &Uuid) -> Daemon {
         last_seen: Some(Utc::now()),
         mode: DaemonMode::ServerPoll,
         capabilities: DaemonCapabilities {
-            has_docker_socket: false,
             interfaced_subnet_ids: Vec::new(),
         },
         version: None,

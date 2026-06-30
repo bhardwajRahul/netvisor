@@ -306,6 +306,35 @@ impl CredentialService {
             .await
     }
 
+    /// Merge `incoming` credential assignments into a host's junction (additive — never prunes).
+    ///
+    /// Discovery self-reports only the credentials that probed successfully on a host. Using the
+    /// replace path (`set_host_credentials`) there would delete user/init-assigned daemon-host
+    /// credentials that didn't probe this scan (e.g. a Docker socket on a Podman-only host),
+    /// regressing the junction-as-source-of-truth model. Merge keeps existing assignments and
+    /// overlays `incoming` (incoming wins per `credential_id`, refreshing `ip_address_ids`), so
+    /// discovery only adds. Explicit user edits still go through the replace path.
+    pub async fn merge_host_credentials(
+        &self,
+        host_id: &Uuid,
+        incoming: &[CredentialAssignment],
+    ) -> Result<(), Error> {
+        let mut by_host = self
+            .get_credential_assignments_for_hosts(&[*host_id])
+            .await?;
+        let existing = by_host.remove(host_id).unwrap_or_default();
+
+        let incoming_ids: std::collections::HashSet<Uuid> =
+            incoming.iter().map(|a| a.credential_id).collect();
+        let mut merged: Vec<CredentialAssignment> = existing
+            .into_iter()
+            .filter(|a| !incoming_ids.contains(&a.credential_id))
+            .collect();
+        merged.extend(incoming.iter().cloned());
+
+        self.set_host_credentials(host_id, &merged).await
+    }
+
     /// Get the network IDs a credential is assigned to (reverse lookup).
     pub async fn get_network_ids_for_credential(
         &self,

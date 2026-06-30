@@ -733,7 +733,6 @@ async fn receive_heartbeat(
         version: None, // Old daemons don't send version in heartbeat
         capabilities: DaemonCapabilities::default(),
         interfaced_subnets: Vec::new(),
-        has_docker_socket: false,
         ready_for_work: true,
     };
     state

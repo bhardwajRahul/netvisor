@@ -931,10 +931,13 @@ impl HostService {
                     .collect();
             }
         }
+        // MERGE (not replace): discovery self-reports only credentials that probed successfully,
+        // so replacing would prune user/init-assigned daemon-host creds that didn't probe this
+        // scan. Merge adds the freshly-discovered assignments without deleting existing ones.
         if !remapped_assignments.is_empty()
             && let Err(e) = self
                 .credential_service
-                .set_host_credentials(&created_host.id, &remapped_assignments)
+                .merge_host_credentials(&created_host.id, &remapped_assignments)
                 .await
         {
             tracing::warn!(

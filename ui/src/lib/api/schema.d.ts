@@ -4803,7 +4803,6 @@ export interface components {
         };
         /** @description Daemon capabilities */
         DaemonCapabilities: {
-            has_docker_socket?: boolean;
             interfaced_subnet_ids: string[];
         };
         /**
@@ -4899,8 +4898,6 @@ export interface components {
         DaemonStatus: {
             /** @description Backwards compat: pre-v0.15.0 daemons send capabilities instead of interfaced_subnets. */
             capabilities?: components["schemas"]["DaemonCapabilities"];
-            /** @description Whether the daemon has access to a Docker socket. */
-            has_docker_socket?: boolean;
             /**
              * @description Subnets detected from daemon's network ip_addresses. Server resolves these
              *     via SubnetService::create (create-or-match by CIDR) to get real IDs.

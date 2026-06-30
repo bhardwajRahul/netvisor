@@ -237,7 +237,6 @@ impl DaemonService {
             daemon_id = %daemon.id,
             daemon_name = %daemon.base.name,
             ready_for_work = status.ready_for_work,
-            has_docker_socket = status.has_docker_socket,
             interfaced_subnet_count = status.interfaced_subnets.len(),
             "ServerPoll status received"
         );
@@ -305,7 +304,6 @@ impl DaemonService {
                     daemon.id,
                     daemon.base.network_id,
                     daemon.base.host_id,
-                    status.has_docker_socket,
                     is_free_plan,
                     &[],
                 )

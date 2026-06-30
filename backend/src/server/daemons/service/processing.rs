@@ -46,7 +46,6 @@ impl DaemonService {
                 }
             }
             daemon.base.capabilities.interfaced_subnet_ids = resolved_ids;
-            daemon.base.capabilities.has_docker_socket = status.has_docker_socket;
         } else if !status.capabilities.interfaced_subnet_ids.is_empty() {
             // Pre-v0.15.0: use capabilities as-is
             daemon.base.capabilities = status.capabilities;
@@ -147,7 +146,6 @@ impl DaemonService {
                 daemon_id,
                 daemon.base.network_id,
                 daemon.base.host_id,
-                daemon.base.capabilities.has_docker_socket,
                 is_free_plan,
                 &[],
             )
@@ -237,18 +235,6 @@ impl DaemonService {
                 host_id = %existing_daemon.base.host_id,
                 "Daemon already registered, updating registration"
             );
-
-            // Init-command credentials (`--credential-id`) are applied to the daemon host only at
-            // first registration. On a restart/re-registration they're ignored — warn so the user
-            // knows to manage credentials in the UI rather than expecting the flag to take effect.
-            if !request.integration_targets.is_empty() {
-                tracing::warn!(
-                    daemon_id = %request.daemon_id,
-                    target_count = request.integration_targets.len(),
-                    "Ignoring init-command credentials on re-registration: they apply only at first \
-                     launch. Assign or change this daemon's credentials in the Scanopy UI."
-                );
-            }
 
             // Update daemon with current info
             // NOTE: We do NOT update URL from registration request.
@@ -418,7 +404,6 @@ impl DaemonService {
             request.daemon_id,
             request.network_id,
             host_response.id,
-            request.capabilities.has_docker_socket,
             is_free_plan,
             &request.integration_targets,
         )
@@ -711,7 +696,6 @@ impl DaemonService {
         daemon_id: Uuid,
         network_id: Uuid,
         host_id: Uuid,
-        has_docker_socket: bool,
         is_free_plan: bool,
         integration_targets: &[IntegrationTarget],
     ) -> Result<(), ApiError> {
@@ -719,7 +703,6 @@ impl DaemonService {
             daemon_id = %daemon_id,
             network_id = %network_id,
             host_id = %host_id,
-            has_docker_socket,
             is_free_plan,
             "Creating default discovery jobs for daemon"
         );

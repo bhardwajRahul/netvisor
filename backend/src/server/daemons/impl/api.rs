@@ -27,8 +27,6 @@ use uuid::Uuid;
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq, Hash, ToSchema)]
 pub struct DaemonCapabilities {
     #[serde(default)]
-    pub has_docker_socket: bool,
-    #[serde(default)]
     #[schema(required)]
     pub interfaced_subnet_ids: Vec<Uuid>,
 }
@@ -37,8 +35,8 @@ impl Display for DaemonCapabilities {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "DaemonCapabilities {{ has_docker_socket: {}, interfaced_subnet_ids: {:?} }}",
-            self.has_docker_socket, self.interfaced_subnet_ids
+            "DaemonCapabilities {{ interfaced_subnet_ids: {:?} }}",
+            self.interfaced_subnet_ids
         )
     }
 }

@@ -4624,7 +4624,6 @@ fn generate_daemons(
                 url: "https://docker-prod01.acme.local:8443".to_string(),
                 last_seen: Some(now),
                 capabilities: DaemonCapabilities {
-                    has_docker_socket: true,
                     interfaced_subnet_ids: vec![subnet.id],
                 },
                 mode: DaemonMode::DaemonPoll,
@@ -4655,7 +4654,6 @@ fn generate_daemons(
                 url: "https://docker01.dc.acme.io:8443".to_string(),
                 last_seen: Some(now),
                 capabilities: DaemonCapabilities {
-                    has_docker_socket: true,
                     interfaced_subnet_ids: vec![subnet.id],
                 },
                 mode: DaemonMode::DaemonPoll,

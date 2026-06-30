@@ -170,10 +170,6 @@
 						}
 					]),
 			{
-				label: 'Has Docker Socket',
-				value: daemon.capabilities.has_docker_socket ? 'Yes' : 'No'
-			},
-			{
 				label: 'Interfaces With',
 				value: daemon.capabilities.interfaced_subnet_ids
 					.map((s) => subnetsData.find((subnet) => subnet.id == s))

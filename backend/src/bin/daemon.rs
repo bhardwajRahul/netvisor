@@ -231,10 +231,6 @@ async fn async_main() -> anyhow::Result<()> {
         DaemonMode::DaemonPoll => {
             if let Some(network_id) = network_id {
                 if let Some(api_key) = api_key {
-                    // Log Docker availability once before connection attempts
-                    let (_, docker_desc) = runtime_service.check_docker_availability().await;
-                    tracing::info!("  Docker:          {}", docker_desc);
-
                     tracing::info!("Connecting to server at {}...", server_addr);
                     let mut result = runtime_service
                         .initialize_services(network_id, api_key.clone())
