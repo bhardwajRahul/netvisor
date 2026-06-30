@@ -493,56 +493,6 @@ impl CredentialService {
         Ok(None)
     }
 
-    /// Re-sync the single-endpoint (container socket/proxy) portion of a daemon
-    /// host's credential assignments to match its Discovery `integration_targets`
-    /// — the authoritative source post-#637. Called when the discovery modal edits
-    /// targeting so the junction (UI + `find_single_endpoint_conflict`) reflects
-    /// reality and a removed socket is cleared. Non-single-endpoint assignments
-    /// (SNMP, discovery-auto-assigned creds) are preserved.
-    pub async fn resync_daemon_host_assignments(
-        &self,
-        host_id: &Uuid,
-        integration_targets: &[IntegrationTarget],
-    ) -> Result<(), Error> {
-        // New daemon-host single-endpoint creds from the targets.
-        let mut desired: Vec<CredentialAssignment> = Vec::new();
-        for target in integration_targets {
-            let hits_daemon_host = match target {
-                IntegrationTarget::DaemonHost { .. } => true,
-                IntegrationTarget::Hosts { ips, .. } => ips.iter().any(|ip| ip.is_loopback()),
-                IntegrationTarget::Network { .. } => false,
-            };
-            if !hits_daemon_host {
-                continue;
-            }
-            let cred_id = target.credential_id();
-            if let Some(cred) = self.get_by_id(&cred_id).await?
-                && cred.base.credential_type.single_endpoint_per_host()
-                && !desired.iter().any(|a| a.credential_id == cred_id)
-            {
-                desired.push(CredentialAssignment {
-                    credential_id: cred_id,
-                    ip_address_ids: None,
-                });
-            }
-        }
-
-        // Preserve existing non-single-endpoint assignments (drop the old
-        // single-endpoint ones — they're replaced by `desired`; drop stale creds).
-        for existing in self.get_credential_assignments_for_host(host_id).await? {
-            if let Some(cred) = self.get_by_id(&existing.credential_id).await?
-                && !cred.base.credential_type.single_endpoint_per_host()
-                && !desired
-                    .iter()
-                    .any(|a| a.credential_id == existing.credential_id)
-            {
-                desired.push(existing);
-            }
-        }
-
-        self.set_host_credentials(host_id, &desired).await
-    }
-
     // ========================================================================
     // Discovery credential building
     // ========================================================================
@@ -706,15 +656,6 @@ impl CredentialService {
                 for assignment in assignments {
                     if let Some(cred) = self.get_by_id(&assignment.credential_id).await? {
                         let cred_type = &cred.base.credential_type;
-                        // Single-endpoint container integrations (Docker/Podman socket+proxy)
-                        // are daemon-host-targeted exclusively via `integration_targets` (the
-                        // #637 single source). The host-assignment junction is only a UI/conflict
-                        // mirror for them; sourcing the scan from it too would double-apply (and
-                        // re-inject a stale socket assignment). Skip them here — they come from
-                        // `integration_targets` below.
-                        if cred_type.single_endpoint_per_host() {
-                            continue;
-                        }
                         let discriminant = cred_type.discriminant();
                         let payload = cred_type.to_query_payload();
                         let mapping = mappings_by_type.entry(discriminant).or_insert_with(|| {
@@ -794,6 +735,22 @@ pub(crate) fn apply_integration_target(
         return;
     }
 
+    // Daemon-host targeting (DaemonHost scope, or only loopback Hosts IPs) is sourced
+    // from the `host_credentials` junction — managed via the host/credential modals.
+    // Skip it here (without even creating an empty mapping) so integration_targets
+    // never double-sources a daemon-host credential or re-injects one the user removed
+    // via those modals.
+    let non_loopback_ips: Vec<IpAddr> = match target {
+        IntegrationTarget::DaemonHost { .. } => return,
+        IntegrationTarget::Hosts { ips, .. } => {
+            ips.iter().copied().filter(|ip| !ip.is_loopback()).collect()
+        }
+        IntegrationTarget::Network { .. } => Vec::new(),
+    };
+    if matches!(target, IntegrationTarget::Hosts { .. }) && non_loopback_ips.is_empty() {
+        return;
+    }
+
     let discriminant = credential_type.discriminant();
     let payload = credential_type.to_query_payload();
     let credential_id = target.credential_id();
@@ -810,19 +767,12 @@ pub(crate) fn apply_integration_target(
                 mapping.default_credential = Some(payload);
             }
         }
-        IntegrationTarget::DaemonHost { .. } => {
-            push_unique_override(
-                mapping,
-                IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
-                payload,
-                credential_id,
-            );
-        }
-        IntegrationTarget::Hosts { ips, .. } => {
-            for ip in ips {
-                push_unique_override(mapping, *ip, payload.clone(), credential_id);
+        IntegrationTarget::Hosts { .. } => {
+            for ip in non_loopback_ips {
+                push_unique_override(mapping, ip, payload.clone(), credential_id);
             }
         }
+        IntegrationTarget::DaemonHost { .. } => unreachable!("returned above"),
     }
 }
 
@@ -997,40 +947,53 @@ mod integration_target_tests {
         IpAddr::V4(Ipv4Addr::LOCALHOST)
     }
 
-    /// #637 core: two daemons reusing ONE credential each target their own daemon host
-    /// (127.0.0.1) independently. With targeting living per-daemon on the `Discovery` (not on a
-    /// shared, consumed credential field), building daemon A's mappings neither mutates the shared
-    /// target nor affects daemon B — so both daemons get the credential, on first scan and every
-    /// scan after.
+    /// Daemon-host targeting is sourced from the `host_credentials` junction (managed via the
+    /// host/credential modals), so `apply_integration_target` produces NO override for a
+    /// `DaemonHost` target — avoiding a double-source with the junction and letting modal
+    /// removal fully clear a daemon-host credential. The shared target is left untouched.
     #[test]
-    fn two_daemons_share_one_credential_independently() {
+    fn daemon_host_target_produces_no_override_junction_sourced() {
         let cred_id = Uuid::new_v4();
-        let cred_type = CredentialTypeDiscriminants::DockerProxy.to_credential_type();
         let target = IntegrationTarget::DaemonHost {
             credential_id: cred_id,
         };
-
-        // Two separate Discovery rows → two separate accumulators.
-        let mut daemon_a: Mappings = HashMap::new();
-        let mut daemon_b: Mappings = HashMap::new();
-        apply_integration_target(&mut daemon_a, &target, &cred_type);
-        apply_integration_target(&mut daemon_b, &target, &cred_type);
-
-        for map in [&daemon_a, &daemon_b] {
-            let mapping = map
-                .get(&CredentialTypeDiscriminants::DockerProxy)
-                .expect("each daemon gets the docker mapping");
-            assert_eq!(mapping.ip_overrides.len(), 1);
-            assert_eq!(mapping.ip_overrides[0].ip, localhost());
-            assert_eq!(mapping.ip_overrides[0].credential_id, cred_id);
+        for disc in [
+            CredentialTypeDiscriminants::DockerProxy,
+            CredentialTypeDiscriminants::DockerSocket,
+        ] {
+            let mut map: Mappings = HashMap::new();
+            apply_integration_target(&mut map, &target, &disc.to_credential_type());
+            assert!(
+                map.is_empty(),
+                "DaemonHost targets are junction-sourced, not integration_targets overrides"
+            );
         }
-
         // No consumption/clear: the shared target is untouched and still usable.
         assert_eq!(
             target,
             IntegrationTarget::DaemonHost {
                 credential_id: cred_id
             }
+        );
+    }
+
+    /// A loopback `Hosts` IP is also daemon-host targeting → junction-sourced, so it's skipped;
+    /// non-loopback IPs in the same target still produce overrides.
+    #[test]
+    fn loopback_hosts_ip_skipped_non_loopback_kept() {
+        let cred_id = Uuid::new_v4();
+        let cred_type = CredentialTypeDiscriminants::DockerProxy.to_credential_type();
+        let target = IntegrationTarget::Hosts {
+            credential_id: cred_id,
+            ips: vec![localhost(), "10.0.0.7".parse::<IpAddr>().unwrap()],
+        };
+        let mut map: Mappings = HashMap::new();
+        apply_integration_target(&mut map, &target, &cred_type);
+        let mapping = map.get(&CredentialTypeDiscriminants::DockerProxy).unwrap();
+        assert_eq!(mapping.ip_overrides.len(), 1, "loopback IP must be skipped");
+        assert_eq!(
+            mapping.ip_overrides[0].ip,
+            "10.0.0.7".parse::<IpAddr>().unwrap()
         );
     }
 
@@ -1042,7 +1005,7 @@ mod integration_target_tests {
         let cred_type = CredentialTypeDiscriminants::DockerProxy.to_credential_type();
         let target = IntegrationTarget::Hosts {
             credential_id: cred_id,
-            ips: vec![localhost()],
+            ips: vec!["10.0.0.5".parse::<IpAddr>().unwrap()],
         };
         let mut map: Mappings = HashMap::new();
         apply_integration_target(&mut map, &target, &cred_type);
@@ -1053,27 +1016,6 @@ mod integration_target_tests {
             1,
             "subsequent scans must not duplicate the override"
         );
-    }
-
-    /// A local socket is just a `DockerSocket` credential with a `DaemonHost` scope: it maps to a
-    /// 127.0.0.1 override carrying its real credential id (no nil sentinel).
-    #[test]
-    fn socket_credential_daemon_host_maps_to_localhost() {
-        let cred_id = Uuid::new_v4();
-        let cred_type = CredentialTypeDiscriminants::DockerSocket.to_credential_type();
-        let target = IntegrationTarget::DaemonHost {
-            credential_id: cred_id,
-        };
-        let mut map: Mappings = HashMap::new();
-        apply_integration_target(&mut map, &target, &cred_type);
-        let mapping = map.get(&CredentialTypeDiscriminants::DockerSocket).unwrap();
-        assert_eq!(mapping.ip_overrides.len(), 1);
-        assert_eq!(mapping.ip_overrides[0].ip, localhost());
-        assert_eq!(mapping.ip_overrides[0].credential_id, cred_id);
-        assert!(matches!(
-            mapping.ip_overrides[0].credential,
-            CredentialQueryPayload::DockerSocket(_)
-        ));
     }
 
     /// A target whose scope isn't permitted by its credential type's `targets()` is skipped —
