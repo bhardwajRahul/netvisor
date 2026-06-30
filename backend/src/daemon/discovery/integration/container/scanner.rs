@@ -25,7 +25,6 @@ use crate::server::ports::r#impl::base::{Port, PortType};
 use crate::server::services::r#impl::base::{Service, ServiceMatchBaselineParams};
 use crate::server::services::r#impl::endpoints::{Endpoint, EndpointResponse};
 use crate::server::subnets::r#impl::base::Subnet;
-use crate::server::subnets::r#impl::types::SubnetTypeDiscriminants;
 
 use super::ContainerRuntime;
 
@@ -77,7 +76,16 @@ impl<'a> ContainerScanner<'a> {
                 self.runtime_service_id,
             )
             .await
-            .unwrap_or_default();
+            .unwrap_or_else(|e| {
+                // A failed/mis-deserialized networks listing silently empties bridge
+                // subnets, degrading container→subnet mapping. Log it rather than swallow.
+                tracing::warn!(
+                    runtime = self.runtime.label(),
+                    error = %e,
+                    "Failed to list container networks; bridge subnets will be empty"
+                );
+                Vec::new()
+            });
 
         // Return bridge subnets locally — they'll be created on the server
         // during create_host after service dedup (so service_id can be patched)
@@ -414,12 +422,11 @@ impl<'a> ContainerScanner<'a> {
                     }
                 });
 
-                let docker_bridge_subnet_ids: Vec<Uuid> = container_interfaces_and_subnets
+                // Container-runtime bridge subnets (Docker OR Podman) — used to exclude
+                // container-internal bindings from host-port placement below.
+                let container_bridge_subnet_ids: Vec<Uuid> = container_interfaces_and_subnets
                     .iter()
-                    .filter(|(_, subnet)| {
-                        subnet.base.subnet_type.discriminant()
-                            == SubnetTypeDiscriminants::DockerBridge
-                    })
+                    .filter(|(_, subnet)| subnet.is_container_bridge_subnet())
                     .map(|(_, subnet)| subnet.id)
                     .collect();
 
@@ -475,7 +482,7 @@ impl<'a> ContainerScanner<'a> {
                                                             .ip_addresses
                                                             .iter()
                                                             .find(|i| i.id == ip_address_id)
-                                                        && !docker_bridge_subnet_ids
+                                                        && !container_bridge_subnet_ids
                                                             .contains(&ip_address.base.subnet_id)
                                                     {
                                                         return Some(b.id());
@@ -519,9 +526,7 @@ impl<'a> ContainerScanner<'a> {
                                     // because Interface::eq deduplication at lines 617-621 may have matched
                                     // different interface objects with different UUIDs
                                     for (ip_address, subnet) in container_interfaces_and_subnets {
-                                        if subnet.base.subnet_type.discriminant()
-                                            != SubnetTypeDiscriminants::DockerBridge
-                                        {
+                                        if !subnet.is_container_bridge_subnet() {
                                             // Find the matching interface in the ip_addresses list
                                             if let Some(matched_ip_address) = host_data
                                                 .ip_addresses

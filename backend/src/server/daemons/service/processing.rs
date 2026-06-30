@@ -320,6 +320,15 @@ impl DaemonService {
             )
             .await?;
 
+        // Seed the daemon host's loopback so a daemon-host socket/proxy credential is probed on the
+        // very first scan (the credential mapping is snapshotted before the daemon self-reports).
+        if let Err(e) = host_service
+            .seed_loopback(host_response.id, request.network_id, auth.clone())
+            .await
+        {
+            tracing::warn!(host_id = %host_response.id, error = %e, "Failed to seed daemon host loopback");
+        }
+
         // Assign credentials targeted at the daemon host to this daemon's host now, so they appear
         // in the credential's assignments immediately (#637 Symptom A). That's any DaemonHost-scoped
         // target (e.g. a local socket credential) or a Hosts target naming a loopback IP. Remote-IP

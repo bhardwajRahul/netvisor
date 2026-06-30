@@ -265,7 +265,11 @@ pub async fn execute_integrations(
             })
             .await
         {
-            tracing::debug!(
+            // A failed integration execute means a matched service (e.g. a Docker/Podman
+            // daemon) produced no child services — the user-visible "unclaimed open ports,
+            // no services" symptom. Surface it at warn so the underlying error (often a
+            // bollard/serde response mismatch) is diagnosable rather than swallowed.
+            tracing::warn!(
                 ip = %params.ip,
                 integration = ?discriminant,
                 error = %e,
