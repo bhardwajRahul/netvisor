@@ -11,7 +11,7 @@
 	import { createColorHelper } from '$lib/shared/utils/styling';
 	import type { Color, ColorStyle } from '$lib/shared/utils/styling';
 	import { serviceDefinitions, containerTypes } from '$lib/shared/stores/metadata';
-	import { getInfrastructureRuleId } from '../../queries';
+	import { findInfraRuleId } from '../../queries';
 	import { formatElementSummary, tallyContainerElements, tallyDirectElements } from '../../labels';
 	import {
 		// useUpdateNodeResizeMutation — DISABLED (container resize is not persisted)
@@ -192,7 +192,10 @@
 	let elementRuleId = $derived(
 		(data as Record<string, unknown>)?.element_rule_id as string | undefined
 	);
-	let isInfraRule = $derived(elementRuleId != null && elementRuleId === getInfrastructureRuleId());
+	// Reactive to $topologyOptions so a network switch (which re-hydrates the
+	// options store) re-derives the infra rule id, unlike a non-reactive get().
+	let infraRuleId = $derived(findInfraRuleId($topologyOptions.request.element_rules));
+	let isInfraRule = $derived(elementRuleId != null && elementRuleId === infraRuleId);
 	let elementRule = $derived.by(() => {
 		if (!elementRuleId) return null;
 		const rules = $topologyOptions.request.element_rules ?? [];
@@ -305,8 +308,7 @@
 					return [];
 				})();
 
-				const infraId = getInfrastructureRuleId();
-				const isInfra = !!(infraId && ruleId === infraId);
+				const isInfra = !!(infraRuleId && ruleId === infraRuleId);
 				const subgroupSummary = topology
 					? formatElementSummary(tallyContainerElements(summary.groupId, topology), $activeView)
 					: '';
