@@ -331,33 +331,21 @@ impl DaemonService {
         // in the credential's assignments immediately (#637 Symptom A). That's any DaemonHost-scoped
         // target (e.g. a local socket credential) or a Hosts target naming a loopback IP. Remote-IP
         // and Network credentials are auto-assigned to their hosts during discovery.
-        let assignments: Vec<CredentialAssignment> = request
-            .integration_targets
-            .iter()
-            .filter_map(|target| {
-                let hits_daemon_host = match target {
-                    IntegrationTarget::DaemonHost { .. } => true,
-                    IntegrationTarget::Hosts { ips, .. } => ips.iter().any(|ip| ip.is_loopback()),
-                    IntegrationTarget::Network { .. } => false,
-                };
-                hits_daemon_host.then(|| CredentialAssignment {
-                    credential_id: target.credential_id(),
-                    ip_address_ids: None,
-                })
-            })
-            .collect();
-        if !assignments.is_empty()
-            && let Err(e) = self
-                .credential_service
-                .set_host_credentials(&host_response.id, &assignments)
-                .await
-        {
-            tracing::warn!(
-                host_id = %host_response.id,
-                error = ?e,
-                "Failed to assign credentials to host during registration"
-            );
-        }
+        // Apply the init-command targeting through the SAME path the discovery-update handler uses:
+        // daemon-host creds (sockets / loopback Hosts) merge into the host_credentials junction;
+        // Network/Hosts targets are returned to persist on the daemon's Discovery row.
+        let remaining_targets = self
+            .credential_service
+            .apply_integration_targets(host_response.id, request.integration_targets.clone())
+            .await
+            .unwrap_or_else(|e| {
+                tracing::warn!(
+                    host_id = %host_response.id,
+                    error = ?e,
+                    "Failed to apply integration targets during registration"
+                );
+                request.integration_targets.clone()
+            });
 
         // If user_id is nil (old daemon), fall back to org owner
         let user_id = if request.user_id.is_nil() {
@@ -405,7 +393,7 @@ impl DaemonService {
             request.network_id,
             host_response.id,
             is_free_plan,
-            &request.integration_targets,
+            &remaining_targets,
         )
         .await?;
 

@@ -10,7 +10,10 @@ use mac_address::MacAddress;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
-use std::{collections::HashMap, net::IpAddr};
+use std::{
+    collections::{HashMap, HashSet},
+    net::IpAddr,
+};
 use strum::IntoDiscriminant;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
@@ -322,8 +325,22 @@ impl<'a> ContainerScanner<'a> {
             .get(container_id)
             .unwrap_or(empty_vec_ref);
 
+        // Pod members / infra containers share a netns and report the pod's full published ports;
+        // scope them to their own image-declared exposed ports so each container is attributed only
+        // its own services (the infra/pause container, exposing nothing, becomes a generic container).
+        let exposed_port_filter: Option<HashSet<u16>> = if Self::scopes_to_exposed_ports(container)
+        {
+            Some(Self::exposed_port_numbers(container))
+        } else {
+            None
+        };
+
         let (host_ip_to_host_ports, container_ips_to_container_ports, host_to_container_port_map) =
-            self.get_ports_from_container(container_summary, container_interfaces_and_subnets);
+            self.get_ports_from_container(
+                container_summary,
+                container_interfaces_and_subnets,
+                exposed_port_filter.as_ref(),
+            );
 
         if container_interfaces_and_subnets.is_empty() {
             tracing::warn!(
@@ -344,6 +361,7 @@ impl<'a> ContainerScanner<'a> {
                     &host_to_container_port_map,
                     name.trim_start_matches("/"),
                     cancel.clone(),
+                    exposed_port_filter.as_ref(),
                 )
                 .await?
             } else {
@@ -585,12 +603,45 @@ impl<'a> ContainerScanner<'a> {
         Ok(None)
     }
 
+    /// Image-declared exposed port numbers for a container (`config.exposed_ports` keys like
+    /// "80/tcp"). Empty when the image declares none (e.g. a pod infra/pause container).
+    fn exposed_port_numbers(container: &ContainerInspectResponse) -> HashSet<u16> {
+        container
+            .config
+            .as_ref()
+            .and_then(|c| c.exposed_ports.as_ref())
+            .map(|p| {
+                p.iter()
+                    .filter_map(|k| PortType::from_str(k).ok().map(|pt| pt.number()))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// Whether a container's ports must be scoped to its own image-declared exposed ports rather
+    /// than the published ports it reports. True for pod members (`NetworkMode "container:<id>"`)
+    /// and pod infra/pause containers (name "<id>-infra"): both share one netns and report the
+    /// pod's full published port set, so without scoping every member matches every co-pod service.
+    fn scopes_to_exposed_ports(container: &ContainerInspectResponse) -> bool {
+        let shared_netns = container
+            .host_config
+            .as_ref()
+            .and_then(|c| c.network_mode.as_deref())
+            .is_some_and(|m| m.starts_with("container:"));
+        let is_infra = container
+            .name
+            .as_deref()
+            .is_some_and(|n| n.ends_with("-infra"));
+        shared_netns || is_infra
+    }
+
     async fn scan_container_endpoints(
         &self,
         ip_address: &IPAddress,
         host_to_container_port_map: &HashMap<(IpAddr, u16), u16>,
         container_name: &str,
         cancel: CancellationToken,
+        exposed_port_filter: Option<&HashSet<u16>>,
     ) -> Result<Vec<EndpointResponse>, Error> {
         use std::collections::HashMap;
 
@@ -605,7 +656,14 @@ impl<'a> ContainerScanner<'a> {
 
         let docker = self.client;
 
-        let all_endpoints = Service::all_discovery_endpoints();
+        // Scope the loopback exec probe to the container's own ports when required (shared-netns
+        // members), so a member doesn't probe a co-pod service over the shared namespace.
+        let all_endpoints: Vec<_> = Service::all_discovery_endpoints()
+            .into_iter()
+            .filter(|e| {
+                exposed_port_filter.is_none_or(|allowed| allowed.contains(&e.port_type.number()))
+            })
+            .collect();
 
         let mut endpoint_responses = Vec::new();
 
@@ -982,6 +1040,7 @@ impl<'a> ContainerScanner<'a> {
         &self,
         container_summary: &ContainerSummary,
         container_interfaces_and_subnets: &[(IPAddress, Subnet)],
+        exposed_port_filter: Option<&HashSet<u16>>,
     ) -> (IpPortHashMap, IpPortHashMap, HashMap<(IpAddr, u16), u16>) {
         let mut host_ip_to_host_ports: IpPortHashMap = HashMap::new();
         let mut container_ips_to_container_ports: IpPortHashMap = HashMap::new();
@@ -994,6 +1053,14 @@ impl<'a> ContainerScanner<'a> {
 
         if let Some(ports) = &container_summary.ports {
             ports.iter().for_each(|p| {
+                // Shared-netns members (and pod infra containers) report the pod's full published
+                // port set; scope to the container's own image-declared exposed ports so each is
+                // attributed only its own services.
+                if let Some(allowed) = exposed_port_filter
+                    && !allowed.contains(&p.private_port)
+                {
+                    return;
+                }
                 // Handle ports regardless of whether ip is set
                 if let Some(port_type @ (PortSummaryTypeEnum::TCP | PortSummaryTypeEnum::UDP)) =
                     p.typ

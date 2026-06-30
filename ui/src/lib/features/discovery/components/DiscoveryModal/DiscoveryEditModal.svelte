@@ -4,7 +4,8 @@
 	import GenericModal from '$lib/shared/components/layout/GenericModal.svelte';
 	import type { ModalTab } from '$lib/shared/components/layout/GenericModal.svelte';
 	import ModalHeaderIcon from '$lib/shared/components/layout/ModalHeaderIcon.svelte';
-	import { entities } from '$lib/shared/stores/metadata';
+	import { entities, credentialTypes } from '$lib/shared/stores/metadata';
+	import { isDaemonHostOnly } from '$lib/features/credentials/types/base';
 	import EntityMetadataSection from '$lib/shared/components/forms/EntityMetadataSection.svelte';
 	import DiscoveryDetailsForm from './DiscoveryDetailsForm.svelte';
 	import DiscoveryTargetsForm from './DiscoveryTargetsForm.svelte';
@@ -392,21 +393,27 @@
 					return; // validation failed — stay on the form
 				}
 				try {
-					// Per-credential target IPs come from the wizard and are delivered as
-					// per-daemon integration targets (Credentialed) on the Discovery — replacing
-					// the old one-shot pending_credential_ids + credential.target_ips. The discovery
-					// modal only handles persisted credentials (sockets are daemon-level, fixed).
-					// Manages only network/host credentialed targets: empty IPs → Network scope,
-					// explicit IPs → Hosts scope. Daemon-host (socket) targets are daemon-level —
-					// pass them through untouched so editing a discovery doesn't drop them.
+					// Per-credential targeting comes from the wizard and is delivered as per-daemon
+					// integration targets on the Discovery. Parity with the daemon-create modal: a
+					// daemon-host-only credential (e.g. a Docker/Podman socket) OR a loopback-only IP
+					// target → DaemonHost scope; explicit non-loopback IPs → Hosts; otherwise Network.
+					// The backend (apply_integration_targets) merges DaemonHost targets into the
+					// host_credentials junction and keeps Network/Hosts on the Discovery — so adding a
+					// socket here works exactly like the create modal / host modal.
 					const persisted = new Set(ids ?? []);
-					// Daemon-host targeting lives in the host_credentials junction (managed via the
-					// host/credential modals), NOT here. Build integration_targets only from the
-					// editable network/host credentials; managed (daemon-host) cards are excluded.
+					// Managed (already-junction-assigned) daemon-host cards are read-only here.
 					formData.integration_targets = pendingCredentials
 						.filter((p) => !p.isManaged && persisted.has(p.credential.id))
 						.map((p) => {
 							const ips = p.targetIps.map((s) => s.trim()).filter(Boolean);
+							const isDaemonHost =
+								isDaemonHostOnly(
+									credentialTypes.getMetadata(p.credential.credential_type.type)?.targets
+								) ||
+								(ips.length > 0 && ips.every(ipIsLoopback));
+							if (isDaemonHost) {
+								return { scope: 'DaemonHost' as const, credential_id: p.credential.id };
+							}
 							return ips.length > 0
 								? { scope: 'Hosts' as const, credential_id: p.credential.id, ips }
 								: { scope: 'Network' as const, credential_id: p.credential.id };
