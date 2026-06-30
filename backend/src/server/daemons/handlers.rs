@@ -847,6 +847,17 @@ async fn provision_daemon(
             ApiError::internal_error(&format!("Failed to create host: {}", e))
         })?;
 
+    // Seed the daemon host's loopback so a daemon-host socket/proxy credential is probed on
+    // the very first scan (the credential mapping is snapshotted before the daemon self-reports).
+    if let Err(e) = state
+        .services
+        .host_service
+        .seed_loopback(created_host.id, request.network_id, auth.entity.clone())
+        .await
+    {
+        tracing::warn!(host_id = %created_host.id, error = %e, "Failed to seed daemon host loopback");
+    }
+
     let version = semver::Version::parse(SERVER_VERSION).map_err(|_| {
         ApiError::internal_error(&format!(
             "Could not parse server version {}",

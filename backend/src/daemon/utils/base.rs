@@ -21,6 +21,24 @@ use std::str::FromStr;
 use std::time::Duration;
 use uuid::Uuid;
 
+/// Negotiate the container daemon's API version after a successful ping.
+///
+/// bollard pins `API_DEFAULT_VERSION` and never negotiates, so it talks to a daemon's
+/// Docker-compatible API using its newest response models. Podman's compat layer advertises
+/// an older Docker API level, so those newer models can fail to deserialize — surfacing as
+/// "no containers found." Negotiating downgrades the client to the daemon's advertised
+/// version. `Docker` is cheaply cloneable (Arc internally), so we clone before negotiating
+/// and fall back to the original default-version client if the `/version` call fails.
+async fn negotiate_container_api_version(client: Docker) -> Docker {
+    match client.clone().negotiate_version().await {
+        Ok(negotiated) => negotiated,
+        Err(e) => {
+            tracing::warn!(error = %e, "Container API version negotiation failed; using default version");
+            client
+        }
+    }
+}
+
 pub const SCAN_TIMEOUT: Duration = Duration::from_millis(800);
 
 /// Cross-platform system utilities trait
@@ -251,7 +269,7 @@ pub trait DaemonUtils {
                         attempt,
                         "Docker client connected successfully"
                     );
-                    return Ok(client);
+                    return Ok(negotiate_container_api_version(client).await);
                 }
                 Ok(Err(e)) => {
                     last_error = Some(format!("Docker ping failed: {}", e));
@@ -338,7 +356,7 @@ pub trait DaemonUtils {
         let mut last_error = None;
         for attempt in 1..=MAX_PING_ATTEMPTS {
             match timeout(DOCKER_CONNECT_TIMEOUT, client.ping()).await {
-                Ok(Ok(_)) => return Ok(client),
+                Ok(Ok(_)) => return Ok(negotiate_container_api_version(client).await),
                 Ok(Err(e)) => {
                     last_error = Some(format!("Container socket ping failed: {}", e));
                 }

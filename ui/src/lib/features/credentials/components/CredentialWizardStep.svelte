@@ -508,20 +508,10 @@
 							fixedCredentialType={pending.credential.credential_type.type}
 							fixedName={pending.credential.name}
 						/>
-					{:else if isDaemonHostOnly(pending.credential.credential_type.type)}
-						<!-- Daemon-host-only credential (e.g. the local Docker/Podman socket): its
-						     target is implicitly the daemon host (127.0.0.1), so no target picker —
-						     but it's a real credential with optional config (e.g. socket_path). -->
-						<CredentialForm
-							bind:this={credentialFormRefs[index]}
-							{form}
-							compact={true}
-							hideTargets={true}
-							fieldPrefix={`credentials[${index}].`}
-							fixedCredentialType={pending.credential.credential_type.type}
-							onChange={(data) => handleConfigChange(index, data)}
-						/>
 					{:else if pending.isExisting}
+						<!-- Existing credential added by reference (incl. daemon-host-only sockets):
+						     read-only here. Checked before isDaemonHostOnly so an existing socket cred
+						     renders as a reference card, not an editable new-credential form. -->
 						<p class="text-muted mb-4 text-xs">
 							{daemons_credentialWizardExistingDescription()}
 						</p>
@@ -534,6 +524,19 @@
 							fixedCredentialType={pending.credential.credential_type.type}
 							fixedName={pending.credential.name}
 							daemonHostUnavailable={daemonHostUnavailableFor(index)}
+							onChange={(data) => handleConfigChange(index, data)}
+						/>
+					{:else if isDaemonHostOnly(pending.credential.credential_type.type)}
+						<!-- Daemon-host-only credential (e.g. the local Docker/Podman socket): its
+						     target is implicitly the daemon host (127.0.0.1), so no target picker —
+						     but it's a real credential with optional config (e.g. socket_path). -->
+						<CredentialForm
+							bind:this={credentialFormRefs[index]}
+							{form}
+							compact={true}
+							hideTargets={true}
+							fieldPrefix={`credentials[${index}].`}
+							fixedCredentialType={pending.credential.credential_type.type}
 							onChange={(data) => handleConfigChange(index, data)}
 						/>
 					{:else}

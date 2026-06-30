@@ -241,4 +241,22 @@ mod tests {
         let result = Subnet::from_discovery("eth0".to_string(), &ip, Uuid::nil());
         assert!(result.is_some(), "/2 prefix should be accepted");
     }
+
+    /// Guards the invariants `HostService::seed_loopback` depends on: the daemon-host
+    /// loopback seed must produce a `127.0.0.0/8`, `Discovery`-sourced, non-bridge subnet.
+    /// Exact CIDR is required for subnet dedup (`Subnet::eq`), and the `Discovery` source is
+    /// required for `SubnetService::create` to reuse it when self-report re-reports loopback
+    /// (a `System` source would not dedup).
+    #[test]
+    fn from_discovery_loopback_seed_shape() {
+        let ip = IpNetwork::V4(
+            pnet::ipnetwork::Ipv4Network::new(std::net::Ipv4Addr::LOCALHOST, 8).unwrap(),
+        );
+        let subnet = Subnet::from_discovery("lo".to_string(), &ip, Uuid::nil())
+            .expect("loopback /8 should produce a subnet");
+        assert_eq!(subnet.base.cidr.to_string(), "127.0.0.0/8");
+        assert_eq!(subnet.base.source, EntitySource::Discovery);
+        assert!(subnet.base.subnet_type.is_loopback());
+        assert!(!subnet.is_container_bridge_subnet());
+    }
 }

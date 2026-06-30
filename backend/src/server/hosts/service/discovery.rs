@@ -6,6 +6,60 @@ impl HostService {
     // Discovery support (internal API)
     // =========================================================================
 
+    /// Seed a daemon host's loopback subnet (`127.0.0.0/8`) and IP (`127.0.0.1`).
+    ///
+    /// A daemon-host socket/proxy credential is reached by the daemon at `127.0.0.1`,
+    /// and the daemon's localhost probe only fires for a credential whose mapping has a
+    /// `127.0.0.1` override. That override is built server-side from the host's persisted
+    /// IP rows, but the mapping is snapshotted at the daemon's first work-poll — *before*
+    /// the daemon self-reports its interfaces. Without a pre-existing loopback IP the first
+    /// scan therefore has no override and never probes the local socket/proxy. Seeding the
+    /// loopback at registration makes ordinary IP-based targeting work on scan 1, identical
+    /// to every later scan.
+    ///
+    /// Idempotent: the loopback subnet dedupes by CIDR in `SubnetService::create`, and the
+    /// IP dedupes on `(host_id, subnet_id, ip_address)`, so self-report re-reporting the
+    /// same loopback later reuses these rows rather than duplicating them.
+    pub async fn seed_loopback(
+        &self,
+        host_id: Uuid,
+        network_id: Uuid,
+        authentication: AuthenticatedEntity,
+    ) -> Result<()> {
+        let Some(loopback_subnet) = Subnet::from_discovery(
+            "lo".to_string(),
+            &pnet::ipnetwork::IpNetwork::V4(
+                pnet::ipnetwork::Ipv4Network::new(std::net::Ipv4Addr::LOCALHOST, 8)
+                    .map_err(|e| anyhow::anyhow!("Invalid loopback network: {e}"))?,
+            ),
+            network_id,
+        ) else {
+            return Ok(());
+        };
+
+        let created_subnet = self
+            .subnet_service
+            .create(loopback_subnet, authentication.clone())
+            .await?;
+
+        let loopback_ip =
+            IPAddress::new(crate::server::ip_addresses::r#impl::base::IPAddressBase {
+                network_id,
+                host_id,
+                subnet_id: created_subnet.id,
+                ip_address: std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+                mac_address: None,
+                name: Some("lo".to_string()),
+                position: 0,
+            });
+
+        self.ip_address_service
+            .create(loopback_ip, authentication)
+            .await?;
+
+        Ok(())
+    }
+
     /// Create or update a host from daemon discovery data.
     /// This handles IP-address and port matching for host deduplication and upserts on conflict.
     #[allow(clippy::too_many_arguments)]
