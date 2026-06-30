@@ -504,14 +504,17 @@ export class LayoutGraph {
 			if (c.collapsed) collapsedIds.add(c.id);
 		}
 
+		if (collapsedIds.size === 0) return allNodes;
+
 		return allNodes.filter((node) => {
-			if (node.node_type === 'Element') {
-				const element = this.elements.get(node.id);
-				if (element?.container && collapsedIds.has(element.container.id)) return false;
-			}
-			if (node.node_type === 'Container') {
-				const container = this.containers.get(node.id);
-				if (container?.parent && collapsedIds.has(container.parent.id)) return false;
+			// Hidden if ANY ancestor container is collapsed — not just the direct
+			// parent. A collapsed root must hide grandchildren even when the
+			// intermediate subcontainer isn't itself in the collapsed set (e.g.
+			// level 3 / auto-collapse add only the root). Mirrors the transitive
+			// logic edge aggregation already uses. A collapsed container's own id
+			// isn't in its ancestor set, so it still renders (as collapsed).
+			for (const ancestorId of this.ancestorIdsOf(node.id)) {
+				if (collapsedIds.has(ancestorId)) return false;
 			}
 			return true;
 		});
