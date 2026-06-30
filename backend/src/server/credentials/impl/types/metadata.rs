@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
 use strum::IntoStaticStr;
@@ -10,7 +12,7 @@ use crate::server::{
         concepts::Concept,
         types::{
             Color, Icon,
-            metadata::{EntityMetadataProvider, HasId, TypeMetadataProvider},
+            metadata::{EntityMetadataProvider, HasId, MetadataProvider, TypeMetadata},
         },
     },
 };
@@ -120,8 +122,9 @@ impl EntityMetadataProvider for CredentialTypeDiscriminants {
     }
 }
 
-impl TypeMetadataProvider for CredentialTypeDiscriminants {
-    fn name(&self) -> &'static str {
+impl CredentialTypeDiscriminants {
+    /// Display name for this credential transport (e.g. "Docker Socket").
+    pub(crate) fn display_name(&self) -> &'static str {
         match self {
             Self::SnmpV1 => "SNMP v1",
             Self::SnmpV2c => "SNMP v2c",
@@ -133,37 +136,63 @@ impl TypeMetadataProvider for CredentialTypeDiscriminants {
         }
     }
 
-    fn description(&self) -> &'static str {
+    /// Canonical "what's discovered" for the integration this credential targets.
+    /// One arm per associated service, shared by all of that service's transports,
+    /// so the text has a single source of truth. The per-transport credential
+    /// description ([`full_description`](Self::full_description)) and the
+    /// `integrations` fixture both derive from this. Exhaustive (no wildcard): a
+    /// new credential variant cannot compile until it declares its integration's
+    /// discovery text.
+    pub(crate) fn integration_discovers(&self) -> &'static str {
         match self {
-            Self::SnmpV1 => {
-                "Discover a host's interfaces, system details, and CDP/LLDP neighbors using SNMPv1."
+            Self::SnmpV1 | Self::SnmpV2c | Self::SnmpV3 => {
+                "Discover a host's interfaces, system details, and CDP/LLDP neighbors."
             }
-            Self::SnmpV2c => {
-                "Discover a host's interfaces, system details, and CDP/LLDP neighbors using SNMPv2c."
+            Self::DockerProxy | Self::DockerSocket => {
+                "Discover Docker containers and the services they expose."
             }
-            Self::SnmpV3 => {
-                "Discover a host's interfaces, system details, and CDP/LLDP neighbors using SNMPv3."
-            }
-            Self::DockerProxy => {
-                "Discover Docker containers and the services they expose over TCP, optionally with TLS."
-            }
-            Self::DockerSocket => {
-                "Discover Docker containers and the services they expose via the daemon's local socket."
-            }
-            Self::PodmanProxy => {
-                "Discover Podman containers and the services they expose over TCP, optionally with TLS."
-            }
-            Self::PodmanSocket => {
-                "Discover Podman containers and the services they expose via the daemon's local socket."
+            Self::PodmanProxy | Self::PodmanSocket => {
+                "Discover Podman containers and the services they expose."
             }
         }
     }
 
-    fn category(&self) -> &'static str {
+    /// Transport-specific note appended after the canonical discovery text. This is
+    /// the only per-transport prose; the shared "what's discovered" stem lives in
+    /// [`integration_discovers`](Self::integration_discovers).
+    pub(crate) fn transport_note(&self) -> &'static str {
+        match self {
+            Self::SnmpV1 => "Uses SNMPv1.",
+            Self::SnmpV2c => "Uses SNMPv2c.",
+            Self::SnmpV3 => "Uses SNMPv3.",
+            Self::DockerProxy | Self::PodmanProxy => "Connects over TCP, optionally with TLS.",
+            Self::DockerSocket | Self::PodmanSocket => "Connects via the daemon's local socket.",
+        }
+    }
+
+    /// Short transport label within an integration (e.g. "Socket", "Proxy", "v2c").
+    pub(crate) fn transport_label(&self) -> &'static str {
+        match self {
+            Self::SnmpV1 => "v1",
+            Self::SnmpV2c => "v2c",
+            Self::SnmpV3 => "v3",
+            Self::DockerProxy | Self::PodmanProxy => "Proxy",
+            Self::DockerSocket | Self::PodmanSocket => "Socket",
+        }
+    }
+
+    /// Full credential description shown in the wizard and `credential-types.json`:
+    /// the canonical discovery text plus the transport note. Derived, never
+    /// hand-written per transport, so the two cannot drift.
+    pub(crate) fn full_description(&self) -> String {
+        format!("{} {}", self.integration_discovers(), self.transport_note())
+    }
+
+    fn category_str(&self) -> &'static str {
         self.to_credential_type().credential_category().into()
     }
 
-    fn metadata(&self) -> serde_json::Value {
+    fn metadata_json(&self) -> serde_json::Value {
         let ct = self.to_credential_type();
         let service = ct.associated_service();
         let url = service.logo_url();
@@ -187,5 +216,22 @@ impl TypeMetadataProvider for CredentialTypeDiscriminants {
             "logo_ext": logo_ext,
             "logo_needs_white_background": service.logo_needs_white_background(),
         })
+    }
+}
+
+// Credential types build their `TypeMetadata` directly (rather than via the
+// `TypeMetadataProvider` blanket) because their description is composed at build
+// time from the centralized integration text — see [`full_description`].
+impl MetadataProvider<TypeMetadata> for CredentialTypeDiscriminants {
+    fn to_metadata(&self) -> TypeMetadata {
+        TypeMetadata {
+            id: self.id(),
+            name: Some(self.display_name()),
+            description: Some(Cow::Owned(self.full_description())),
+            category: Some(self.category_str()),
+            icon: Some(self.icon()),
+            color: self.color(),
+            metadata: Some(self.metadata_json()),
+        }
     }
 }
