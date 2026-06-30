@@ -29,11 +29,30 @@ use uuid::Uuid;
 /// "no containers found." Negotiating downgrades the client to the daemon's advertised
 /// version. `Docker` is cheaply cloneable (Arc internally), so we clone before negotiating
 /// and fall back to the original default-version client if the `/version` call fails.
+///
+/// Best-effort and capped by a short timeout: the client is fully usable on the default
+/// version, so a slow/unresponsive `/version` (e.g. a sluggish `podman machine` VM) must not
+/// stall discovery. Without this cap the call inherits bollard's connect timeout (up to 120s),
+/// which blocks every scan for two minutes before falling back.
+const NEGOTIATE_VERSION_TIMEOUT: Duration = Duration::from_secs(5);
+
 async fn negotiate_container_api_version(client: Docker) -> Docker {
-    match client.clone().negotiate_version().await {
-        Ok(negotiated) => negotiated,
-        Err(e) => {
+    match tokio::time::timeout(
+        NEGOTIATE_VERSION_TIMEOUT,
+        client.clone().negotiate_version(),
+    )
+    .await
+    {
+        Ok(Ok(negotiated)) => negotiated,
+        Ok(Err(e)) => {
             tracing::warn!(error = %e, "Container API version negotiation failed; using default version");
+            client
+        }
+        Err(_) => {
+            tracing::warn!(
+                timeout_secs = NEGOTIATE_VERSION_TIMEOUT.as_secs(),
+                "Container API version negotiation timed out; using default version"
+            );
             client
         }
     }
