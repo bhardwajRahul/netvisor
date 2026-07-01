@@ -662,6 +662,11 @@ async fn create_host_discovery(
                 StatusCode::FORBIDDEN,
                 ErrorCode::BillingHostLimitReached { limit },
             )
+        } else if let Some(err) = created.first_host_error {
+            // Single-host discovery: surface the real per-host failure instead of
+            // a generic message. The processor swallows per-host errors to keep
+            // multi-host batches going; here there is exactly one host.
+            ApiError::internal_error(&format!("Failed to process discovered host: {err}"))
         } else {
             ApiError::internal_error("No host returned from processor")
         }

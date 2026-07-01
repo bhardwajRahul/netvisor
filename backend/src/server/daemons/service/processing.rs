@@ -494,6 +494,7 @@ impl DaemonService {
         let mut subnet_failures = 0;
         let mut limit_event_emitted = false;
         let mut billing_limit_reached: Option<(u64, Uuid)> = None;
+        let mut first_host_error: Option<String> = None;
 
         // One ScanContext per batch — every host's children share the same
         // scan_time so per-scan diff queries see consistent timestamps
@@ -540,6 +541,13 @@ impl DaemonService {
                 }
                 Err(e) => {
                     host_failures += 1;
+
+                    // Retain the first failure so the synchronous single-host
+                    // discovery handler can surface the real cause (multi-host
+                    // batches still continue past it).
+                    if first_host_error.is_none() {
+                        first_host_error = Some(e.to_string());
+                    }
 
                     // Emit billing event once when host limit is hit
                     if !limit_event_emitted
@@ -632,6 +640,7 @@ impl DaemonService {
             subnets: created_subnets,
             hosts: created_hosts,
             billing_limit_hit: billing_limit_reached,
+            first_host_error,
         })
     }
 
