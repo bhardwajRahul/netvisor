@@ -865,24 +865,19 @@ impl DiscoveryOps {
             if let Some((service, mut ports, _endpoint)) = Service::from_discovery(params)
                 && !container_matched
             {
-                // A container (Docker or Podman) matched as a service this round.
-                let is_container = service
+                // A container (Docker or Podman) was matched as a service this round.
+                if service
                     .base
                     .virtualization
                     .as_ref()
                     .and_then(|v| v.container_id())
-                    .is_some();
-
-                let mut bound_port_types: Vec<PortType> =
-                    ports.iter().map(|p| p.base.port_type).collect();
-
-                if is_container {
-                    container_matched = true;
-                    // A container owns all its own ports (the generic container pattern binds
-                    // none). Claim them here so they don't fall through to "Unclaimed Open Ports";
-                    // the host-port loop still binds them to the container service afterward.
-                    bound_port_types.extend(all_ports.iter().copied());
+                    .is_some()
+                {
+                    container_matched = true
                 }
+
+                let bound_port_types: Vec<PortType> =
+                    ports.iter().map(|p| p.base.port_type).collect();
 
                 host_ports.append(&mut ports);
                 unbound_ports.retain(|p| !bound_port_types.contains(p));
