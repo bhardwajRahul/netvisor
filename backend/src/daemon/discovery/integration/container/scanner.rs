@@ -538,6 +538,7 @@ impl<'a> ContainerScanner<'a> {
                                     // Use the interface ID from the `interfaces` list (not container_interfaces_and_subnets)
                                     // because Interface::eq deduplication at lines 617-621 may have matched
                                     // different interface objects with different UUIDs
+                                    let mut bound_to_interface = false;
                                     for (ip_address, subnet) in container_interfaces_and_subnets {
                                         if !subnet.is_container_bridge_subnet() {
                                             // Find the matching interface in the ip_addresses list
@@ -552,8 +553,19 @@ impl<'a> ContainerScanner<'a> {
                                                         Some(matched_ip_address.id),
                                                     ),
                                                 );
+                                                bound_to_interface = true;
                                             }
                                         }
+                                    }
+
+                                    // Published on 0.0.0.0 with no resolvable daemon-host interface
+                                    // (e.g. the daemon host isn't on the container bridge subnet):
+                                    // bind the host port to the container service on all addresses
+                                    // (interface-less) so it isn't left orphaned on the host.
+                                    if !bound_to_interface {
+                                        s.base
+                                            .bindings
+                                            .push(Binding::new_port_serviceless(port.id, None));
                                     }
 
                                     host_data.ports.push(port);
