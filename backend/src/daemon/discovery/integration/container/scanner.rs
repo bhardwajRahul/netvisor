@@ -326,14 +326,9 @@ impl<'a> ContainerScanner<'a> {
             .unwrap_or(empty_vec_ref);
 
         // Pod members / infra containers share a netns and report the pod's full published ports;
-        // scope them to their own image-declared exposed ports so each container is attributed only
-        // its own services (the infra/pause container, exposing nothing, becomes a generic container).
-        let exposed_port_filter: Option<HashSet<u16>> = if Self::scopes_to_exposed_ports(container)
-        {
-            Some(Self::exposed_port_numbers(container))
-        } else {
-            None
-        };
+        // scope them so each container is attributed only its own services (members → their own
+        // exposed ports; the infra/pause container → empty → a portless generic container).
+        let exposed_port_filter: Option<HashSet<u16>> = Self::exposed_port_scope(container);
 
         let (host_ip_to_host_ports, container_ips_to_container_ports, host_to_container_port_map) =
             self.get_ports_from_container(
@@ -618,21 +613,33 @@ impl<'a> ContainerScanner<'a> {
             .unwrap_or_default()
     }
 
-    /// Whether a container's ports must be scoped to its own image-declared exposed ports rather
-    /// than the published ports it reports. True for pod members (`NetworkMode "container:<id>"`)
-    /// and pod infra/pause containers (name "<id>-infra"): both share one netns and report the
-    /// pod's full published port set, so without scoping every member matches every co-pod service.
-    fn scopes_to_exposed_ports(container: &ContainerInspectResponse) -> bool {
+    /// The port set a bridge container's discovery is scoped to (`Some`), or `None` to use its
+    /// reported/published ports as-is.
+    ///
+    /// Pod members and the pod infra container share one netns and each report the pod's FULL
+    /// published port set, so without scoping every one matches every co-pod service:
+    /// - A pod infra/pause container (name "<id>-infra") runs no workload of its own (the members
+    ///   own the ports), so it is scoped to an EMPTY set → matches nothing → generic container.
+    /// - A pod member (`NetworkMode "container:<id>"`) is scoped to its OWN image-declared exposed
+    ///   ports.
+    /// - Any other bridge container: `None` (use the ports it reports).
+    fn exposed_port_scope(container: &ContainerInspectResponse) -> Option<HashSet<u16>> {
+        let is_infra = container
+            .name
+            .as_deref()
+            .is_some_and(|n| n.ends_with("-infra"));
+        if is_infra {
+            return Some(HashSet::new());
+        }
         let shared_netns = container
             .host_config
             .as_ref()
             .and_then(|c| c.network_mode.as_deref())
             .is_some_and(|m| m.starts_with("container:"));
-        let is_infra = container
-            .name
-            .as_deref()
-            .is_some_and(|n| n.ends_with("-infra"));
-        shared_netns || is_infra
+        if shared_netns {
+            return Some(Self::exposed_port_numbers(container));
+        }
+        None
     }
 
     async fn scan_container_endpoints(
