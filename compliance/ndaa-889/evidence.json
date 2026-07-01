@@ -2,20 +2,20 @@
   "document_type": "supporting evidence (the attestation is a separate signed letter)",
   "standard": "NDAA FY2019 Section 889",
   "result": "PASS",
-  "generated_at": "2026-06-28T17:13:22Z",
+  "generated_at": "2026-07-01T11:18:47Z",
   "repository": "scanopy/scanopy",
-  "assessed_commit": "a28e6f5475dba867c3bf90acb8da60593bc8299d",
-  "assessed_describe": "a28e6f5-dirty",
+  "assessed_commit": "ef5a4ead67086bc39ba8c4b8ebfebc23c7903a8d",
+  "assessed_describe": "ef5a4ea-dirty",
   "image_tag": "latest",
   "components_assessed": 11374,
   "allowed_exceptions": 2,
   "prohibited_hits": 0,
   "tooling": {
     "sbom_generator": "syft 1.45.1",
-    "matcher_commit": "a28e6f5"
+    "matcher_commit": "ef5a4ea"
   },
   "policy": {
-    "vendor_list_commit": "a28e6f5",
+    "vendor_list_commit": "ef5a4ea",
     "vendor_list_sha256": "7f018a32dda6755f02f07a70cd76bc3e0a07c180a4dcf1bf7b23a118a663d611",
     "allowlist_sha256": "672002d05725bcd6e87afd809685f79208702c4ecbd0a2be1493c6468ad2c571"
   },
@@ -39,22 +39,22 @@
   "sboms": [
     {
       "file": "sbom-source.cdx.json",
-      "sha256": "3227f4f4156f79700bd87f1f18c51ad6afeac6dfab1eb10b22a8fc5c1658dba0",
+      "sha256": "f5203971bb8415a717720d91f07c2d1a0cfdc9a6536f9f267736112693be20aa",
       "components": 1106
     },
     {
       "file": "sbom-server.cdx.json",
-      "sha256": "dd01b338132d7a7afd532d32dd161f6b16ef143dc36d8c1b5d0fd364fa23c8ca",
+      "sha256": "ecb30822de5545a0be431e21e72ab4e3603315f75a943bbb82c0bcd479883819",
       "components": 3340
     },
     {
       "file": "sbom-server-commercial.cdx.json",
-      "sha256": "07d845a82df0e0dc4078c0ba4300a2716b9b0b5551a168fce82491b3204b31ec",
+      "sha256": "24514bdd030db92f98d6fca3088ec50296b393bc88ca473a232208a1695d7843",
       "components": 3340
     },
     {
       "file": "sbom-daemon.cdx.json",
-      "sha256": "f1c6100efbe294cc80033158d7dfa096afd860c9eafc0cfccf9f08a906cd323e",
+      "sha256": "d4ed2d7b1ca1142449797e82632d958027a0ccf0d7db26c0f9b85a26b20d52e7",
       "components": 3588
     }
   ]
