@@ -10,7 +10,10 @@ use mac_address::MacAddress;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
-use std::{collections::HashMap, net::IpAddr};
+use std::{
+    collections::{HashMap, HashSet},
+    net::IpAddr,
+};
 use strum::IntoDiscriminant;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
@@ -24,11 +27,9 @@ use crate::server::ip_addresses::r#impl::base::{ALL_IP_ADDRESSES_IP, IPAddress, 
 use crate::server::ports::r#impl::base::{Port, PortType};
 use crate::server::services::r#impl::base::{Service, ServiceMatchBaselineParams};
 use crate::server::services::r#impl::endpoints::{Endpoint, EndpointResponse};
-use crate::server::services::r#impl::virtualization::{
-    DockerVirtualization, ServiceVirtualization,
-};
 use crate::server::subnets::r#impl::base::Subnet;
-use crate::server::subnets::r#impl::types::SubnetTypeDiscriminants;
+
+use super::ContainerRuntime;
 
 type IpPortHashMap = HashMap<IpAddr, Vec<PortType>>;
 
@@ -44,13 +45,17 @@ pub struct ProcessContainerParams<'a> {
     pub containers_interfaces_and_subnets: &'a HashMap<String, Vec<(IPAddress, Subnet)>>,
     pub container: &'a ContainerInspectResponse,
     pub container_summary: &'a ContainerSummary,
-    pub docker_service_id: &'a Uuid,
+    pub runtime_service_id: &'a Uuid,
     pub cancel: CancellationToken,
 }
 
-pub struct DockerScanner<'a> {
-    pub docker_client: &'a Docker,
-    pub docker_service_id: Uuid,
+/// Scans a container runtime (Docker or Podman) over its Docker-compatible API.
+/// `runtime` selects the virtualization variants stamped onto discovered
+/// services and subnets.
+pub struct ContainerScanner<'a> {
+    pub runtime: ContainerRuntime,
+    pub client: &'a Docker,
+    pub runtime_service_id: Uuid,
     pub host_ip: IpAddr,
     pub host_naming_fallback: HostNamingFallback,
     pub ops: &'a DiscoveryOps,
@@ -59,27 +64,37 @@ pub struct DockerScanner<'a> {
     pub utils: &'a PlatformDaemonUtils,
 }
 
-impl<'a> DockerScanner<'a> {
-    /// Create Docker bridge subnets from Docker networks.
-    /// Returns the created subnets (with server-assigned IDs) for use in container interface resolution.
-    pub async fn create_docker_bridge_subnets(&self) -> Result<Vec<Subnet>, Error> {
+impl<'a> ContainerScanner<'a> {
+    /// Create bridge subnets from the runtime's networks.
+    /// Returns the bridge subnets locally for use in container interface resolution.
+    pub async fn create_bridge_subnets(&self) -> Result<Vec<Subnet>, Error> {
         let network_id = self.ops.network_id().await?;
 
-        let docker_subnets = self
+        let subnets = self
             .utils
             .get_subnets_from_docker_networks(
                 network_id,
-                self.docker_client,
-                self.docker_service_id,
+                self.client,
+                self.runtime,
+                self.runtime_service_id,
             )
             .await
-            .unwrap_or_default();
+            .unwrap_or_else(|e| {
+                // A failed/mis-deserialized networks listing silently empties bridge
+                // subnets, degrading container→subnet mapping. Log it rather than swallow.
+                tracing::warn!(
+                    runtime = self.runtime.label(),
+                    error = %e,
+                    "Failed to list container networks; bridge subnets will be empty"
+                );
+                Vec::new()
+            });
 
         // Return bridge subnets locally — they'll be created on the server
         // during create_host after service dedup (so service_id can be patched)
-        Ok(docker_subnets
+        Ok(subnets
             .into_iter()
-            .filter(|s| s.is_docker_bridge_subnet())
+            .filter(|s| s.is_container_bridge_subnet())
             .collect())
     }
 
@@ -102,7 +117,7 @@ impl<'a> DockerScanner<'a> {
                         containers_interfaces_and_subnets,
                         container: &container,
                         container_summary: &container_summary,
-                        docker_service_id: &self.docker_service_id,
+                        runtime_service_id: &self.runtime_service_id,
                         cancel,
                     })
                     .await
@@ -195,7 +210,7 @@ impl<'a> DockerScanner<'a> {
             containers_interfaces_and_subnets,
             container,
             cancel,
-            docker_service_id,
+            runtime_service_id,
             ..
         } = params;
 
@@ -253,15 +268,17 @@ impl<'a> DockerScanner<'a> {
                 ip_address,
                 all_ports: &open_ports,
                 endpoint_responses: &endpoint_responses,
-                virtualization: &Some(ServiceVirtualization::Docker(DockerVirtualization {
-                    container_name: container
-                        .name
-                        .clone()
-                        .map(|n| n.trim_start_matches("/").to_string()),
-                    container_id: container.id.clone(),
-                    service_id: **docker_service_id,
-                    compose_project: Self::extract_compose_project(container),
-                })),
+                virtualization: &Some(
+                    self.runtime.service_virtualization(
+                        container
+                            .name
+                            .clone()
+                            .map(|n| n.trim_start_matches("/").to_string()),
+                        container.id.clone(),
+                        **runtime_service_id,
+                        Self::extract_compose_project(container),
+                    ),
+                ),
                 client_responses: &empty_client_responses,
             };
 
@@ -290,7 +307,7 @@ impl<'a> DockerScanner<'a> {
             container,
             container_summary,
             cancel,
-            docker_service_id,
+            runtime_service_id,
             ..
         } = params;
 
@@ -308,8 +325,17 @@ impl<'a> DockerScanner<'a> {
             .get(container_id)
             .unwrap_or(empty_vec_ref);
 
+        // Pod members / infra containers share a netns and report the pod's full published ports;
+        // scope them so each container is attributed only its own services (members → their own
+        // exposed ports; the infra/pause container → empty → a portless generic container).
+        let exposed_port_filter: Option<HashSet<u16>> = Self::exposed_port_scope(container);
+
         let (host_ip_to_host_ports, container_ips_to_container_ports, host_to_container_port_map) =
-            self.get_ports_from_container(container_summary, container_interfaces_and_subnets);
+            self.get_ports_from_container(
+                container_summary,
+                container_interfaces_and_subnets,
+                exposed_port_filter.as_ref(),
+            );
 
         if container_interfaces_and_subnets.is_empty() {
             tracing::warn!(
@@ -330,6 +356,7 @@ impl<'a> DockerScanner<'a> {
                     &host_to_container_port_map,
                     name.trim_start_matches("/"),
                     cancel.clone(),
+                    exposed_port_filter.as_ref(),
                 )
                 .await?
             } else {
@@ -383,17 +410,17 @@ impl<'a> DockerScanner<'a> {
                         ip_address,
                         all_ports: container_ports_on_ip_address,
                         endpoint_responses: &endpoint_responses,
-                        virtualization: &Some(ServiceVirtualization::Docker(
-                            DockerVirtualization {
-                                container_name: container
+                        virtualization: &Some(
+                            self.runtime.service_virtualization(
+                                container
                                     .name
                                     .clone()
                                     .map(|n| n.trim_start_matches("/").to_string()),
-                                container_id: container.id.clone(),
-                                service_id: **docker_service_id,
-                                compose_project: Self::extract_compose_project(container),
-                            },
-                        )),
+                                container.id.clone(),
+                                **runtime_service_id,
+                                Self::extract_compose_project(container),
+                            ),
+                        ),
                         client_responses: &empty_client_responses,
                     },
                     None,
@@ -408,12 +435,11 @@ impl<'a> DockerScanner<'a> {
                     }
                 });
 
-                let docker_bridge_subnet_ids: Vec<Uuid> = container_interfaces_and_subnets
+                // Container-runtime bridge subnets (Docker OR Podman) — used to exclude
+                // container-internal bindings from host-port placement below.
+                let container_bridge_subnet_ids: Vec<Uuid> = container_interfaces_and_subnets
                     .iter()
-                    .filter(|(_, subnet)| {
-                        subnet.base.subnet_type.discriminant()
-                            == SubnetTypeDiscriminants::DockerBridge
-                    })
+                    .filter(|(_, subnet)| subnet.is_container_bridge_subnet())
                     .map(|(_, subnet)| subnet.id)
                     .collect();
 
@@ -469,7 +495,7 @@ impl<'a> DockerScanner<'a> {
                                                             .ip_addresses
                                                             .iter()
                                                             .find(|i| i.id == ip_address_id)
-                                                        && !docker_bridge_subnet_ids
+                                                        && !container_bridge_subnet_ids
                                                             .contains(&ip_address.base.subnet_id)
                                                     {
                                                         return Some(b.id());
@@ -512,10 +538,9 @@ impl<'a> DockerScanner<'a> {
                                     // Use the interface ID from the `interfaces` list (not container_interfaces_and_subnets)
                                     // because Interface::eq deduplication at lines 617-621 may have matched
                                     // different interface objects with different UUIDs
+                                    let mut bound_to_interface = false;
                                     for (ip_address, subnet) in container_interfaces_and_subnets {
-                                        if subnet.base.subnet_type.discriminant()
-                                            != SubnetTypeDiscriminants::DockerBridge
-                                        {
+                                        if !subnet.is_container_bridge_subnet() {
                                             // Find the matching interface in the ip_addresses list
                                             if let Some(matched_ip_address) = host_data
                                                 .ip_addresses
@@ -528,8 +553,19 @@ impl<'a> DockerScanner<'a> {
                                                         Some(matched_ip_address.id),
                                                     ),
                                                 );
+                                                bound_to_interface = true;
                                             }
                                         }
+                                    }
+
+                                    // Published on 0.0.0.0 with no resolvable daemon-host interface
+                                    // (e.g. the daemon host isn't on the container bridge subnet):
+                                    // bind the host port to the container service on all addresses
+                                    // (interface-less) so it isn't left orphaned on the host.
+                                    if !bound_to_interface {
+                                        s.base
+                                            .bindings
+                                            .push(Binding::new_port_serviceless(port.id, None));
                                     }
 
                                     host_data.ports.push(port);
@@ -574,12 +610,57 @@ impl<'a> DockerScanner<'a> {
         Ok(None)
     }
 
+    /// Image-declared exposed port numbers for a container (`config.exposed_ports` keys like
+    /// "80/tcp"). Empty when the image declares none (e.g. a pod infra/pause container).
+    fn exposed_port_numbers(container: &ContainerInspectResponse) -> HashSet<u16> {
+        container
+            .config
+            .as_ref()
+            .and_then(|c| c.exposed_ports.as_ref())
+            .map(|p| {
+                p.iter()
+                    .filter_map(|k| PortType::from_str(k).ok().map(|pt| pt.number()))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// The port set a bridge container's discovery is scoped to (`Some`), or `None` to use its
+    /// reported/published ports as-is.
+    ///
+    /// Pod members and the pod infra container share one netns and each report the pod's FULL
+    /// published port set, so without scoping every one matches every co-pod service:
+    /// - A pod infra/pause container (name "<id>-infra") runs no workload of its own (the members
+    ///   own the ports), so it is scoped to an EMPTY set → matches nothing → generic container.
+    /// - A pod member (`NetworkMode "container:<id>"`) is scoped to its OWN image-declared exposed
+    ///   ports.
+    /// - Any other bridge container: `None` (use the ports it reports).
+    fn exposed_port_scope(container: &ContainerInspectResponse) -> Option<HashSet<u16>> {
+        let is_infra = container
+            .name
+            .as_deref()
+            .is_some_and(|n| n.ends_with("-infra"));
+        if is_infra {
+            return Some(HashSet::new());
+        }
+        let shared_netns = container
+            .host_config
+            .as_ref()
+            .and_then(|c| c.network_mode.as_deref())
+            .is_some_and(|m| m.starts_with("container:"));
+        if shared_netns {
+            return Some(Self::exposed_port_numbers(container));
+        }
+        None
+    }
+
     async fn scan_container_endpoints(
         &self,
         ip_address: &IPAddress,
         host_to_container_port_map: &HashMap<(IpAddr, u16), u16>,
         container_name: &str,
         cancel: CancellationToken,
+        exposed_port_filter: Option<&HashSet<u16>>,
     ) -> Result<Vec<EndpointResponse>, Error> {
         use std::collections::HashMap;
 
@@ -592,9 +673,16 @@ impl<'a> DockerScanner<'a> {
                 .push((*host_ip, *host_port));
         }
 
-        let docker = self.docker_client;
+        let docker = self.client;
 
-        let all_endpoints = Service::all_discovery_endpoints();
+        // Scope the loopback exec probe to the container's own ports when required (shared-netns
+        // members), so a member doesn't probe a co-pod service over the shared namespace.
+        let all_endpoints: Vec<_> = Service::all_discovery_endpoints()
+            .into_iter()
+            .filter(|e| {
+                exposed_port_filter.is_none_or(|allowed| allowed.contains(&e.port_type.number()))
+            })
+            .collect();
 
         let mut endpoint_responses = Vec::new();
 
@@ -971,6 +1059,7 @@ impl<'a> DockerScanner<'a> {
         &self,
         container_summary: &ContainerSummary,
         container_interfaces_and_subnets: &[(IPAddress, Subnet)],
+        exposed_port_filter: Option<&HashSet<u16>>,
     ) -> (IpPortHashMap, IpPortHashMap, HashMap<(IpAddr, u16), u16>) {
         let mut host_ip_to_host_ports: IpPortHashMap = HashMap::new();
         let mut container_ips_to_container_ports: IpPortHashMap = HashMap::new();
@@ -983,6 +1072,14 @@ impl<'a> DockerScanner<'a> {
 
         if let Some(ports) = &container_summary.ports {
             ports.iter().for_each(|p| {
+                // Shared-netns members (and pod infra containers) report the pod's full published
+                // port set; scope to the container's own image-declared exposed ports so each is
+                // attributed only its own services.
+                if let Some(allowed) = exposed_port_filter
+                    && !allowed.contains(&p.private_port)
+                {
+                    return;
+                }
                 // Handle ports regardless of whether ip is set
                 if let Some(port_type @ (PortSummaryTypeEnum::TCP | PortSummaryTypeEnum::UDP)) =
                     p.typ
@@ -1053,7 +1150,7 @@ impl<'a> DockerScanner<'a> {
             .collect::<Vec<(IPAddress, Subnet)>>();
 
         // Collect ip_addresses from containers
-        containers
+        let mut interfaces_by_id: HashMap<String, Vec<(IPAddress, Subnet)>> = containers
             .iter()
             .filter_map(|(container, _)| {
                 let host_networking_mode = container
@@ -1126,14 +1223,46 @@ impl<'a> DockerScanner<'a> {
                     .as_ref()
                     .map(|id| (id.clone(), ip_addresses_and_subnets))
             })
-            .collect()
+            .collect();
+
+        // Pod / shared-netns members run with NetworkMode "container:<id>" — they share the
+        // referenced container's network namespace and report no networks of their own (so the
+        // pass above leaves them with empty interfaces and they'd be dropped). Inherit the
+        // referenced container's interfaces so the member is still discovered (e.g. a pod's
+        // nginx member sharing the infra container's IP). The reference may be a short or full id.
+        let shared_netns_members: Vec<(String, String)> = containers
+            .iter()
+            .filter_map(|(container, _)| {
+                let mode = container
+                    .host_config
+                    .as_ref()
+                    .and_then(|c| c.network_mode.clone())
+                    .unwrap_or_default();
+                let reference = mode.strip_prefix("container:")?.to_string();
+                Some((container.id.clone()?, reference))
+            })
+            .collect();
+
+        for (member_id, reference) in shared_netns_members {
+            if let Some(parent_id) = interfaces_by_id
+                .keys()
+                .find(|k| k.starts_with(&reference))
+                .cloned()
+                && let Some(parent_ifaces) = interfaces_by_id.get(&parent_id).cloned()
+                && !parent_ifaces.is_empty()
+            {
+                interfaces_by_id.insert(member_id, parent_ifaces);
+            }
+        }
+
+        interfaces_by_id
     }
 
     pub async fn get_containers_and_summaries(
         &self,
     ) -> Result<Vec<(ContainerInspectResponse, ContainerSummary)>, Error> {
         let container_summaries = self
-            .docker_client
+            .client
             .list_containers(None::<ListContainersOptions>)
             .await
             .map_err(|e| anyhow!(e))?;
@@ -1143,7 +1272,7 @@ impl<'a> DockerScanner<'a> {
             .filter_map(|c| {
                 if let Some(id) = &c.id {
                     return Some(
-                        self.docker_client
+                        self.client
                             .inspect_container(id, None::<InspectContainerOptions>),
                     );
                 }

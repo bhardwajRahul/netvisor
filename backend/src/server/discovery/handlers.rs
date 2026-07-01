@@ -224,7 +224,7 @@ pub async fn update_discovery(
     state: State<Arc<AppState>>,
     auth: Authorized<Member>,
     id: Path<Uuid>,
-    discovery: Json<Discovery>,
+    mut discovery: Json<Discovery>,
 ) -> ApiResult<Json<ApiResponse<Discovery>>> {
     if let RunType::Historical { .. } = discovery.base.run_type {
         return Err(ApiError::discovery_historical_read_only());
@@ -239,6 +239,42 @@ pub async fn update_discovery(
         return Err(ApiError::bad_request(
             "Cannot change the type of a legacy discovery. Create a new Unified discovery instead.",
         ));
+    }
+
+    // Single-endpoint guard: a daemon host can't run two credentials of the same
+    // integration (e.g. a Docker socket + a Docker proxy, or the Podman pair). All
+    // of this discovery's daemon-host targets resolve to its daemon's host, so check
+    // them against each other before persisting. (Daemon-host credentials themselves
+    // are managed via the host/credential modals — this discovery save never creates
+    // or removes them.)
+    if let Some(daemon) = state
+        .services
+        .daemon_service
+        .get_by_id(&discovery.base.daemon_id)
+        .await?
+    {
+        if let Some((a, b)) = state
+            .services
+            .credential_service
+            .find_daemon_host_target_conflict(daemon.base.host_id, &discovery.integration_targets)
+            .await?
+        {
+            return Err(ApiError::bad_request(&format!(
+                "\"{a}\" and \"{b}\" both target this daemon's host for the same integration, which allows only one credential per host. Remove one."
+            )));
+        }
+
+        // Apply credential targeting through the shared path: daemon-host creds (sockets /
+        // loopback) merge into the host_credentials junction; Network/Hosts targets stay on the
+        // Discovery. Same logic as daemon registration, so both modals behave identically.
+        discovery.integration_targets = state
+            .services
+            .credential_service
+            .apply_integration_targets(
+                daemon.base.host_id,
+                std::mem::take(&mut discovery.integration_targets),
+            )
+            .await?;
     }
 
     update_handler::<Discovery>(state, auth, id, discovery).await

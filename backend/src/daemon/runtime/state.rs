@@ -46,9 +46,6 @@ pub struct DaemonStatus {
     /// v0.15.0+ daemons populate this; pre-v0.15.0 daemons leave it empty.
     #[serde(default)]
     pub interfaced_subnets: Vec<Subnet>,
-    /// Whether the daemon has access to a Docker socket.
-    #[serde(default)]
-    pub has_docker_socket: bool,
     /// Whether the daemon can accept a new discovery session.
     /// Both DaemonPoll and ServerPoll use this to avoid dispatching work to a busy daemon.
     #[serde(default = "default_true")]
@@ -139,7 +136,7 @@ impl DaemonState {
 impl DaemonState {
     /// Get lightweight daemon status (name, mode, version, capabilities).
     /// Note: URL is intentionally not included - server manages URL via provisioning.
-    /// Detects ip_addresses and Docker socket freshly on every call.
+    /// Detects ip_addresses freshly on every call.
     pub async fn get_status(&self) -> DaemonStatus {
         let name = self.config.get_name().await.unwrap_or_default();
         let mode = self.config.get_mode().await.unwrap_or_default();
@@ -148,8 +145,6 @@ impl DaemonState {
 
         // Detect ip_addresses fresh — cheap NIC enumeration
         let interfaced_subnets = self.detect_interfaced_subnets().await.unwrap_or_default();
-        // Detect Docker socket availability — cheap local socket check
-        let has_docker_socket = self.detect_docker_socket().await;
 
         DaemonStatus {
             // Don't send URL - server manages this via provisioning for ServerPoll,
@@ -160,7 +155,6 @@ impl DaemonState {
             version,
             capabilities: DaemonCapabilities::default(),
             interfaced_subnets,
-            has_docker_socket,
             ready_for_work,
         }
     }
@@ -179,17 +173,6 @@ impl DaemonState {
             .await?;
 
         Ok(subnets)
-    }
-
-    /// Check if Docker socket is available (local socket or proxy).
-    async fn detect_docker_socket(&self) -> bool {
-        let docker_proxy = self.config.get_docker_proxy().await;
-        let docker_proxy_ssl_info = self.config.get_docker_proxy_ssl_info().await;
-
-        self.utils
-            .new_docker_client(docker_proxy, docker_proxy_ssl_info)
-            .await
-            .is_ok()
     }
 
     /// Get current discovery session progress, if any.

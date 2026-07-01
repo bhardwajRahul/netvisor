@@ -813,6 +813,7 @@ function buildElkGraph(
 	// Uses topology.services and topology.hosts (always full data, independent
 	// of collapse level) instead of input.nodes (which only has visible nodes).
 	const isWorkloads = view === 'Workloads';
+	const isApplication = view === 'Application';
 	if (isWorkloads && input.topology) {
 		const irrelevantCategories = getIrrelevantServiceCategories(getOrgUseCase());
 
@@ -901,13 +902,30 @@ function buildElkGraph(
 					'elk.layered.considerModelOrder.strategy': 'NODES_AND_EDGES',
 					'elk.layered.considerModelOrder.components': 'MODEL_ORDER'
 				}
-			: ROOT_LAYOUT_OPTIONS;
+			: isApplication
+				? {
+						// Application's container groups (Storage, Web Tier, Database,
+						// Monitoring, Ungrouped, …) are mostly independent with only a few
+						// cross-group flow edges. Layered layout strings the connected ones
+						// into a diagonal cascade and shelf-packs the rest, leaving large
+						// empty gaps. rectpacking instead tiles every group compactly into a
+						// landscape rectangle (whitespace-minimizing); the sparse flow edges
+						// still render but don't drive placement.
+						'elk.algorithm': 'rectpacking',
+						'elk.aspectRatio': '1.6',
+						'elk.spacing.nodeNode': '40',
+						'elk.padding': '[top=25,left=25,bottom=25,right=25]'
+					}
+				: ROOT_LAYOUT_OPTIONS;
 
 	const graph: ElkNode = {
 		id: 'root',
 		layoutOptions: rootOptions,
 		children: rootContainers,
-		edges
+		// rectpacking (Application) ignores edges for placement and can choke on
+		// cross-hierarchy endpoints; downstream reads only node positions, so the
+		// root edge set is unnecessary here. Container-internal edges are unaffected.
+		edges: isApplication ? [] : edges
 	};
 
 	return { graph, containerIds };
@@ -1352,7 +1370,9 @@ function repackDisconnectedContainers(
 	input: ElkLayoutInput
 ): ElkLayoutResult {
 	const view = input.view;
-	if (view === 'L2Physical' || view === 'Workloads') return result;
+	// Application packs all root containers compactly via rectpacking, so the
+	// shelf-pack of "disconnected" groups would only scatter them back out.
+	if (view === 'L2Physical' || view === 'Workloads' || view === 'Application') return result;
 
 	// Build element → root container mapping
 	const parentContainerMap = new Map<string, string>();

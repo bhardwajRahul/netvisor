@@ -70,6 +70,7 @@ export function getCredentialSummary(credential: Credential): string {
 		case 'SnmpV2c':
 			return '161/udp';
 		case 'DockerProxy':
+		case 'PodmanProxy':
 			return `Port ${ct.port ?? 2376}`;
 		default:
 			return '';
@@ -135,6 +136,15 @@ export function getTargetTagProps(target: string): TagProps {
 		color: 'Purple' as Color,
 		title: credentials_targetHostTooltip()
 	};
+}
+
+/**
+ * A credential type that applies *only* to the daemon's own host (e.g. the Docker/Podman
+ * socket). Derived from the target scheme — this replaces the former `is_local_auto` flag.
+ * Such types target only the daemon host (a `<uuid>@127.0.0.1` token) — no remote/network scope.
+ */
+export function isDaemonHostOnly(targets: string[] | undefined): boolean {
+	return targets?.length === 1 && targets[0] === 'DaemonHost';
 }
 
 /**

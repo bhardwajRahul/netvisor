@@ -4,7 +4,8 @@
 	import GenericModal from '$lib/shared/components/layout/GenericModal.svelte';
 	import type { ModalTab } from '$lib/shared/components/layout/GenericModal.svelte';
 	import ModalHeaderIcon from '$lib/shared/components/layout/ModalHeaderIcon.svelte';
-	import { entities } from '$lib/shared/stores/metadata';
+	import { entities, credentialTypes } from '$lib/shared/stores/metadata';
+	import { isDaemonHostOnly } from '$lib/features/credentials/types/base';
 	import EntityMetadataSection from '$lib/shared/components/forms/EntityMetadataSection.svelte';
 	import DiscoveryDetailsForm from './DiscoveryDetailsForm.svelte';
 	import DiscoveryTargetsForm from './DiscoveryTargetsForm.svelte';
@@ -35,7 +36,6 @@
 	import CredentialsStep, {
 		type PendingCredential
 	} from '$lib/features/credentials/components/CredentialsStep.svelte';
-	import type { Credential } from '$lib/features/credentials/types/base';
 	import { useCredentialsQuery } from '$lib/features/credentials/queries';
 	import {
 		common_back,
@@ -130,12 +130,41 @@
 		(daemon ? hosts.find((h) => h.id === daemon.host_id)?.id : null) || null
 	);
 
-	// Auto-local capability type ids the target daemon actually has. The one
-	// capability↔type coupling (a generic backend capability list would remove it):
-	// `has_docker_socket` ⇔ the DockerSocket credential type.
-	let socketCapabilityTypeIds = $derived(
-		daemon?.capabilities?.has_docker_socket ? ['DockerSocket'] : []
-	);
+	function ipIsLoopback(ip: string): boolean {
+		const s = ip.trim();
+		return s === '127.0.0.1' || s === '::1' || s.startsWith('127.');
+	}
+
+	// Credentials targeting the daemon's own host. Daemon-host targeting lives in the
+	// host_credentials junction (managed via the host/credential modals), so union:
+	// (1) DaemonHost-scope integration targets, (2) loopback Hosts-scope targets, and
+	// (3) credentials assigned to the daemon host via the junction (host_assignments).
+	function computeDaemonHostCredentials(dHostId: string | null) {
+		if (!dHostId) return [];
+		const credMap = new Map((allCredentialsQuery.data ?? []).map((c) => [c.id, c]));
+		const fromTargets = (discovery?.integration_targets ?? [])
+			.filter(
+				(t) =>
+					t.scope === 'DaemonHost' ||
+					(t.scope === 'Hosts' && t.ips.length > 0 && t.ips.every(ipIsLoopback))
+			)
+			.map((t) => credMap.get(t.credential_id));
+		const fromAssignments = (allCredentialsQuery.data ?? []).filter((c) =>
+			(c.host_assignments ?? []).some((a) => a.host_id === dHostId)
+		);
+		const all = [...fromTargets, ...fromAssignments].filter((c): c is NonNullable<typeof c> => !!c);
+		return all.filter((c, i) => all.findIndex((x) => x.id === c.id) === i);
+	}
+	let daemonHostCredentials = $derived(computeDaemonHostCredentials(daemonHostId));
+
+	// Claimed integrations (credential types) on the daemon host — feeds the shared
+	// CredentialsStep's bidirectional socket↔proxy blocking. Generic across
+	// integrations (Docker, Podman, …); no per-integration capability flag.
+	let daemonHostCredentialTypeIds = $derived.by(() => {
+		const types = daemonHostCredentials.map((c) => c.credential_type.type);
+		return types.filter((t, i) => types.indexOf(t) === i);
+	});
+
 	// User-chosen configurable integrations (the fixed socket card is shown checked
 	// via the step's read-only handling, not via this selection).
 	let selectedCredentialTypeIds = $state<string[]>([]);
@@ -364,7 +393,31 @@
 					return; // validation failed — stay on the form
 				}
 				try {
-					formData.pending_credential_ids = ids ?? [];
+					// Per-credential targeting comes from the wizard and is delivered as per-daemon
+					// integration targets on the Discovery. Parity with the daemon-create modal: a
+					// daemon-host-only credential (e.g. a Docker/Podman socket) OR a loopback-only IP
+					// target → DaemonHost scope; explicit non-loopback IPs → Hosts; otherwise Network.
+					// The backend (apply_integration_targets) merges DaemonHost targets into the
+					// host_credentials junction and keeps Network/Hosts on the Discovery — so adding a
+					// socket here works exactly like the create modal / host modal.
+					const persisted = new Set(ids ?? []);
+					// Managed (already-junction-assigned) daemon-host cards are read-only here.
+					formData.integration_targets = pendingCredentials
+						.filter((p) => !p.isManaged && persisted.has(p.credential.id))
+						.map((p) => {
+							const ips = p.targetIps.map((s) => s.trim()).filter(Boolean);
+							const isDaemonHost =
+								isDaemonHostOnly(
+									credentialTypes.getMetadata(p.credential.credential_type.type)?.targets
+								) ||
+								(ips.length > 0 && ips.every(ipIsLoopback));
+							if (isDaemonHost) {
+								return { scope: 'DaemonHost' as const, credential_id: p.credential.id };
+							}
+							return ips.length > 0
+								? { scope: 'Hosts' as const, credential_id: p.credential.id, ips }
+								: { scope: 'Network' as const, credential_id: p.credential.id };
+						});
 					if (isEditing && discovery) {
 						await onUpdate(discovery.id, formData);
 					} else {
@@ -388,17 +441,36 @@
 		formData = getDefaultFormData();
 		pendingCredentials = [];
 		credentialIds = [];
-		if (discovery?.pending_credential_ids?.length && allCredentialsQuery.data) {
+		if (allCredentialsQuery.data) {
 			const credMap = new Map(allCredentialsQuery.data.map((c) => [c.id, c]));
-			pendingCredentials = discovery.pending_credential_ids
-				.map((id) => credMap.get(id))
-				.filter((c): c is Credential => c != null)
+			// Editable: network/host credentialed targets from integration_targets. Daemon-host
+			// targeting (DaemonHost scope or loopback Hosts) is junction-managed — excluded here.
+			const editable: PendingCredential[] = (discovery?.integration_targets ?? []).flatMap((t) => {
+				if (t.scope === 'DaemonHost') return [];
+				if (t.scope === 'Hosts' && t.ips.length > 0 && t.ips.every(ipIsLoopback)) return [];
+				const c = credMap.get(t.credential_id);
+				if (!c) return [];
+				const ips = t.scope === 'Hosts' ? t.ips : [];
+				return [
+					{ credential: c, targetIps: ips.length ? ips : [''], fieldValues: {}, isExisting: true }
+				];
+			});
+			// Read-only managed cards: credentials assigned to the daemon host (via the
+			// host/credential modals). Resolve the daemon host inline (formData not yet settled).
+			const dForDiscovery = daemons.find((d) => d.id === discovery?.daemon_id) ?? null;
+			const dHostId = dForDiscovery
+				? (hosts.find((h) => h.id === dForDiscovery.host_id)?.id ?? null)
+				: null;
+			const managed: PendingCredential[] = computeDaemonHostCredentials(dHostId)
+				.filter((c) => !editable.some((p) => p.credential.id === c.id))
 				.map((c) => ({
 					credential: c,
-					targetIps: c.target_ips?.length ? c.target_ips : [''],
+					targetIps: [],
 					fieldValues: {},
-					isExisting: true
+					isExisting: true,
+					isManaged: true
 				}));
+			pendingCredentials = [...editable, ...managed];
 		}
 		// Show the Integrations grid only as a first-run aid (no credentials exist
 		// yet); otherwise — existing assignments on this session, or the org already
@@ -580,7 +652,7 @@
 						bind:subStep={credentialSubStep}
 						bind:selectedTypeIds={selectedCredentialTypeIds}
 						localAutoMode="fixed"
-						fixedCapabilityTypeIds={socketCapabilityTypeIds}
+						fixedCapabilityTypeIds={daemonHostCredentialTypeIds}
 					/>
 				</div>
 			{/if}

@@ -256,88 +256,121 @@ impl CredentialType {
                     group: None,
                 },
             ],
-            Self::DockerProxy {
-                port: _,
-                path: _,
-                ssl_cert: _,
-                ssl_key: _,
-                ssl_chain: _,
-            } => vec![
-                FieldDefinition {
-                    id: "port",
-                    label: "Docker API Port",
-                    field_type: FieldType::String,
-                    placeholder: Some("2375"),
-                    secret: false,
-                    optional: true,
-                    help_text: Some(
-                        "Docker API port. Use 2375 for non-TLS proxies (Tecnativa, HAProxy) or 2376 for TLS.",
-                    ),
-                    options: None,
-                    default_value: Some("2375"),
-                    inline_format: None,
-                    group: Some("Connection"),
-                },
-                FieldDefinition {
-                    id: "path",
-                    label: "URL Path Prefix",
-                    field_type: FieldType::String,
-                    placeholder: Some("/"),
-                    secret: false,
-                    optional: true,
-                    help_text: Some("Optional URL path prefix appended after the port"),
-                    options: None,
-                    default_value: None,
-                    inline_format: None,
-                    group: Some("Connection"),
-                },
-                FieldDefinition {
-                    id: "ssl_cert",
-                    label: "SSL Certificate",
-                    field_type: FieldType::PathOrInline,
-                    placeholder: Some("-----BEGIN CERTIFICATE-----"),
-                    secret: false,
-                    optional: true,
-                    help_text: Some(
-                        "PEM-encoded client certificate. All three TLS fields (cert, key, CA chain) must be provided together.",
-                    ),
-                    options: None,
-                    default_value: None,
-                    inline_format: Some(InlineFormat::PemCertificate),
-                    group: Some("TLS"),
-                },
-                FieldDefinition {
-                    id: "ssl_key",
-                    label: "SSL Private Key",
-                    field_type: FieldType::SecretPathOrInline,
-                    placeholder: None,
-                    secret: true,
-                    optional: true,
-                    help_text: Some(
-                        "PEM private key. All three TLS fields must be provided together.",
-                    ),
-                    options: None,
-                    default_value: None,
-                    inline_format: Some(InlineFormat::PemPrivateKey),
-                    group: Some("TLS"),
-                },
-                FieldDefinition {
-                    id: "ssl_chain",
-                    label: "SSL CA Chain",
-                    field_type: FieldType::PathOrInline,
-                    placeholder: Some("-----BEGIN CERTIFICATE-----"),
-                    secret: false,
-                    optional: true,
-                    help_text: Some(
-                        "PEM-encoded CA certificate chain. All three TLS fields must be provided together.",
-                    ),
-                    options: None,
-                    default_value: None,
-                    inline_format: Some(InlineFormat::PemCertificate),
-                    group: Some("TLS"),
-                },
-            ],
-            Self::DockerSocket {} => vec![],
+            Self::DockerProxy { .. } => container_proxy_field_definitions(
+                "Docker API Port",
+                "Docker API port. Use 2375 for non-TLS proxies (Tecnativa, HAProxy) or 2376 for TLS.",
+            ),
+            Self::PodmanProxy { .. } => container_proxy_field_definitions(
+                "Podman API Port",
+                "Podman API port. Point at a TCP-exposed Podman service (e.g. `podman system service tcp:`) directly or behind a TLS proxy.",
+            ),
+            Self::DockerSocket { .. } => vec![socket_path_field(
+                "/var/run/docker.sock",
+                "Path to the Docker Unix socket. Leave blank to auto-detect (DOCKER_HOST or /var/run/docker.sock).",
+            )],
+            Self::PodmanSocket { .. } => vec![socket_path_field(
+                "/run/podman/podman.sock",
+                "Path to the Podman Unix socket. Leave blank to auto-detect (rootful /run/podman/podman.sock or the rootless $XDG_RUNTIME_DIR/podman/podman.sock).",
+            )],
         }
     }
+}
+
+/// Optional, non-secret socket-path field for local container-socket credentials. The
+/// `placeholder` shows the runtime's default socket so it differs for Docker vs Podman. Blank ⇒
+/// the daemon auto-detects, so a socket credential needs no required config.
+fn socket_path_field(placeholder: &'static str, help: &'static str) -> FieldDefinition {
+    FieldDefinition {
+        id: "socket_path",
+        label: "Socket Path",
+        field_type: FieldType::String,
+        placeholder: Some(placeholder),
+        secret: false,
+        optional: true,
+        help_text: Some(help),
+        options: None,
+        default_value: None,
+        inline_format: None,
+        group: Some("Connection"),
+    }
+}
+
+/// Shared field definitions for a container-runtime (Docker/Podman) proxy
+/// credential. Only the port label/help differ between runtimes; the path and
+/// TLS fields are identical because both speak the Docker-compatible API.
+fn container_proxy_field_definitions(
+    port_label: &'static str,
+    port_help: &'static str,
+) -> Vec<FieldDefinition> {
+    vec![
+        FieldDefinition {
+            id: "port",
+            label: port_label,
+            field_type: FieldType::String,
+            placeholder: Some("2375"),
+            secret: false,
+            optional: true,
+            help_text: Some(port_help),
+            options: None,
+            default_value: Some("2375"),
+            inline_format: None,
+            group: Some("Connection"),
+        },
+        FieldDefinition {
+            id: "path",
+            label: "URL Path Prefix",
+            field_type: FieldType::String,
+            placeholder: Some("/"),
+            secret: false,
+            optional: true,
+            help_text: Some("Optional URL path prefix appended after the port"),
+            options: None,
+            default_value: None,
+            inline_format: None,
+            group: Some("Connection"),
+        },
+        FieldDefinition {
+            id: "ssl_cert",
+            label: "SSL Certificate",
+            field_type: FieldType::PathOrInline,
+            placeholder: Some("-----BEGIN CERTIFICATE-----"),
+            secret: false,
+            optional: true,
+            help_text: Some(
+                "PEM-encoded client certificate. All three TLS fields (cert, key, CA chain) must be provided together.",
+            ),
+            options: None,
+            default_value: None,
+            inline_format: Some(InlineFormat::PemCertificate),
+            group: Some("TLS"),
+        },
+        FieldDefinition {
+            id: "ssl_key",
+            label: "SSL Private Key",
+            field_type: FieldType::SecretPathOrInline,
+            placeholder: None,
+            secret: true,
+            optional: true,
+            help_text: Some("PEM private key. All three TLS fields must be provided together."),
+            options: None,
+            default_value: None,
+            inline_format: Some(InlineFormat::PemPrivateKey),
+            group: Some("TLS"),
+        },
+        FieldDefinition {
+            id: "ssl_chain",
+            label: "SSL CA Chain",
+            field_type: FieldType::PathOrInline,
+            placeholder: Some("-----BEGIN CERTIFICATE-----"),
+            secret: false,
+            optional: true,
+            help_text: Some(
+                "PEM-encoded CA certificate chain. All three TLS fields must be provided together.",
+            ),
+            options: None,
+            default_value: None,
+            inline_format: Some(InlineFormat::PemCertificate),
+            group: Some("TLS"),
+        },
+    ]
 }

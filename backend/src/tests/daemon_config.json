@@ -28,8 +28,7 @@
   "scan_rate_pps": 500,
   "port_scan_batch_size": 200,
   "interfaces": [],
-  "enable_local_docker_socket": true,
-  "credential_ids": [],
+  "integration_targets": [],
   "capabilities": {
     "has_docker_socket": false,
     "interfaced_subnet_ids": []

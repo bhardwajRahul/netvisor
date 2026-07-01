@@ -1,11 +1,9 @@
+use crate::daemon::discovery::integration::container::ContainerRuntime;
 use crate::server::ip_addresses::r#impl::base::{IPAddress, IPAddressBase};
 use crate::server::shared::storage::traits::Storable;
 use crate::server::shared::types::entities::EntitySource;
 use crate::server::subnets::r#impl::base::{Subnet, SubnetBase};
 use crate::server::subnets::r#impl::types::SubnetType;
-use crate::server::subnets::r#impl::virtualization::{
-    DockerSubnetVirtualization, SubnetVirtualization,
-};
 use anyhow::Error;
 use anyhow::anyhow;
 use async_trait::async_trait;
@@ -22,6 +20,43 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::Duration;
 use uuid::Uuid;
+
+/// Negotiate the container daemon's API version after a successful ping.
+///
+/// bollard pins `API_DEFAULT_VERSION` and never negotiates, so it talks to a daemon's
+/// Docker-compatible API using its newest response models. Podman's compat layer advertises
+/// an older Docker API level, so those newer models can fail to deserialize — surfacing as
+/// "no containers found." Negotiating downgrades the client to the daemon's advertised
+/// version. `Docker` is cheaply cloneable (Arc internally), so we clone before negotiating
+/// and fall back to the original default-version client if the `/version` call fails.
+///
+/// Best-effort and capped by a short timeout: the client is fully usable on the default
+/// version, so a slow/unresponsive `/version` (e.g. a sluggish `podman machine` VM) must not
+/// stall discovery. Without this cap the call inherits bollard's connect timeout (up to 120s),
+/// which blocks every scan for two minutes before falling back.
+const NEGOTIATE_VERSION_TIMEOUT: Duration = Duration::from_secs(5);
+
+async fn negotiate_container_api_version(client: Docker) -> Docker {
+    match tokio::time::timeout(
+        NEGOTIATE_VERSION_TIMEOUT,
+        client.clone().negotiate_version(),
+    )
+    .await
+    {
+        Ok(Ok(negotiated)) => negotiated,
+        Ok(Err(e)) => {
+            tracing::warn!(error = %e, "Container API version negotiation failed; using default version");
+            client
+        }
+        Err(_) => {
+            tracing::warn!(
+                timeout_secs = NEGOTIATE_VERSION_TIMEOUT.as_secs(),
+                "Container API version negotiation timed out; using default version"
+            );
+            client
+        }
+    }
+}
 
 pub const SCAN_TIMEOUT: Duration = Duration::from_millis(800);
 
@@ -253,7 +288,7 @@ pub trait DaemonUtils {
                         attempt,
                         "Docker client connected successfully"
                     );
-                    return Ok(client);
+                    return Ok(negotiate_container_api_version(client).await);
                 }
                 Ok(Err(e)) => {
                     last_error = Some(format!("Docker ping failed: {}", e));
@@ -295,12 +330,85 @@ pub trait DaemonUtils {
         ))
     }
 
+    /// Connect to a container runtime's local Unix socket via bollard's
+    /// Docker-compatible client. `Some(path)` connects to an explicit socket.
+    /// `None` falls back to bollard's Docker defaults (`DOCKER_HOST` /
+    /// `/var/run/docker.sock`) — valid ONLY for `ContainerRuntime::Docker`. For
+    /// `Podman`, a `None` path is an error: Podman must never silently connect to
+    /// the Docker socket (which would discover Docker containers as Podman). Pings
+    /// to verify before returning.
+    async fn new_container_socket_client(
+        &self,
+        runtime: ContainerRuntime,
+        socket_path: Option<String>,
+    ) -> Result<Docker, Error> {
+        use tokio::time::timeout;
+
+        const DOCKER_CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
+        const MAX_PING_ATTEMPTS: u32 = 3;
+
+        let start = std::time::Instant::now();
+        let client = match (&socket_path, runtime) {
+            (Some(path), _) => {
+                tracing::debug!(socket = %path, runtime = runtime.label(), "Connecting to container socket");
+                Docker::connect_with_socket(path, 120, API_DEFAULT_VERSION).map_err(|e| {
+                    anyhow::anyhow!("Failed to connect to container socket {}: {}", path, e)
+                })?
+            }
+            // No explicit path: only Docker may use bollard's local defaults.
+            (None, ContainerRuntime::Docker) => {
+                tracing::debug!("Using Docker local defaults");
+                Docker::connect_with_local_defaults()
+                    .map_err(|e| anyhow::anyhow!("Failed to connect to Docker: {}", e))?
+            }
+            // Podman with no resolved socket: fail cleanly rather than fall back to
+            // the Docker default socket.
+            (None, ContainerRuntime::Podman) => {
+                return Err(anyhow::anyhow!(
+                    "No Podman socket found — checked CONTAINER_HOST, /run/podman/podman.sock, \
+                     and $XDG_RUNTIME_DIR/podman/podman.sock. Set the credential's socket_path \
+                     or CONTAINER_HOST to the Podman socket."
+                ));
+            }
+        };
+
+        let mut last_error = None;
+        for attempt in 1..=MAX_PING_ATTEMPTS {
+            match timeout(DOCKER_CONNECT_TIMEOUT, client.ping()).await {
+                Ok(Ok(_)) => return Ok(negotiate_container_api_version(client).await),
+                Ok(Err(e)) => {
+                    last_error = Some(format!("Container socket ping failed: {}", e));
+                }
+                Err(_) => {
+                    last_error = Some(format!(
+                        "Container socket connection timed out after {:?}",
+                        DOCKER_CONNECT_TIMEOUT
+                    ));
+                }
+            }
+            if attempt < MAX_PING_ATTEMPTS {
+                let backoff = Duration::from_millis(500 * 2u64.pow(attempt - 1));
+                tokio::time::sleep(backoff).await;
+            }
+        }
+        tracing::debug!(
+            elapsed_ms = start.elapsed().as_millis(),
+            "Container socket ping failed after {} attempts",
+            MAX_PING_ATTEMPTS
+        );
+        Err(anyhow::anyhow!(last_error.unwrap_or_else(|| {
+            "Container socket connection failed".to_string()
+        })))
+    }
+
     async fn get_subnets_from_docker_networks(
         &self,
         network_id: Uuid,
         client: &Docker,
-        docker_service_id: Uuid,
+        runtime: ContainerRuntime,
+        runtime_service_id: Uuid,
     ) -> Result<Vec<Subnet>, Error> {
+        let bridge_subnet_type = runtime.bridge_subnet_type();
         let subnets: Vec<Subnet> = client
             .list_networks(None::<ListNetworksOptions>)
             .await?
@@ -308,17 +416,17 @@ pub trait DaemonUtils {
             .filter_map(|n| {
                 let driver = n.driver.as_deref().unwrap_or("bridge");
 
-                // Include Docker networks that can be scanned
+                // Include container networks that can be scanned
                 // Skip: host (no separate CIDR), none (no networking), null (invalid)
                 let subnet_type = match driver {
-                    "bridge" | "overlay" => SubnetType::DockerBridge,
+                    "bridge" | "overlay" => bridge_subnet_type,
                     "macvlan" => SubnetType::MacVlan,
                     "ipvlan" => SubnetType::IpVlan,
                     _ => {
                         tracing::trace!(
                             network_name = ?n.name,
                             driver = driver,
-                            "Skipping unsupported Docker network driver"
+                            "Skipping unsupported container network driver"
                         );
                         return None;
                     }
@@ -336,10 +444,8 @@ pub trait DaemonUtils {
                     .iter()
                     .filter_map(|c| {
                         if let Some(cidr) = &c.subnet {
-                            let virtualization = if subnet_type == SubnetType::DockerBridge {
-                                Some(SubnetVirtualization::Docker(DockerSubnetVirtualization {
-                                    service_id: docker_service_id,
-                                }))
+                            let virtualization = if subnet_type == bridge_subnet_type {
+                                Some(runtime.subnet_virtualization(runtime_service_id))
                             } else {
                                 None
                             };
@@ -486,6 +592,24 @@ mod tests {
 
         let result = merge_host_and_docker_subnets(host, docker);
         assert_eq!(result.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn podman_socket_without_path_errors_never_uses_docker_defaults() {
+        // Regression: a Podman socket credential with no resolvable socket path must
+        // fail cleanly rather than fall back to Docker's local socket (which would
+        // discover Docker containers stamped as Podman). The None+Podman arm returns
+        // before any connection attempt, so this is deterministic with no I/O.
+        let utils = create_system_utils();
+        let result = utils
+            .new_container_socket_client(ContainerRuntime::Podman, None)
+            .await;
+        assert!(result.is_err(), "Podman + no socket path must error");
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("Podman socket"),
+            "error should name the missing Podman socket, got: {msg}"
+        );
     }
 
     #[test]

@@ -46,7 +46,7 @@ impl Storable for Discovery {
             base,
             scan_count: 0,
             force_full_scan: false,
-            pending_credential_ids: vec![],
+            integration_targets: vec![],
         }
     }
 
@@ -70,7 +70,7 @@ impl Storable for Discovery {
                 },
             scan_count,
             force_full_scan,
-            pending_credential_ids,
+            integration_targets,
         } = self.clone();
 
         Ok((
@@ -85,7 +85,7 @@ impl Storable for Discovery {
                 "discovery_type",
                 "scan_count",
                 "force_full_scan",
-                "pending_credential_ids",
+                "integration_targets",
             ],
             vec![
                 SqlValue::Uuid(id),
@@ -98,7 +98,7 @@ impl Storable for Discovery {
                 SqlValue::DiscoveryType(discovery_type),
                 SqlValue::I32(scan_count as i32),
                 SqlValue::Bool(force_full_scan),
-                SqlValue::UuidArray(pending_credential_ids),
+                SqlValue::IntegrationTargets(integration_targets),
             ],
         ))
     }
@@ -110,6 +110,10 @@ impl Storable for Discovery {
 
         let run_type: RunType = serde_json::from_value(row.get::<serde_json::Value, _>("run_type"))
             .map_err(|e| anyhow::anyhow!("Failed to deserialize run_type: {}", e))?;
+
+        let integration_targets =
+            serde_json::from_value(row.get::<serde_json::Value, _>("integration_targets"))
+                .map_err(|e| anyhow::anyhow!("Failed to deserialize integration_targets: {}", e))?;
 
         Ok(Discovery {
             id: row.get("id"),
@@ -125,7 +129,7 @@ impl Storable for Discovery {
             },
             scan_count: row.get::<i32, _>("scan_count") as u32,
             force_full_scan: row.get("force_full_scan"),
-            pending_credential_ids: row.get("pending_credential_ids"),
+            integration_targets,
         })
     }
 }

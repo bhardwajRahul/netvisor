@@ -28,11 +28,4 @@ impl<T: Storable> StorableFilter<T> {
         self.values.push(SqlValue::String(id.to_string()));
         self
     }
-
-    /// Filter for credentials that have non-null target_ips
-    pub fn with_target_ips(mut self) -> Self {
-        let col = self.qualify_column("target_ips");
-        self.conditions.push(format!("{} IS NOT NULL", col));
-        self
-    }
 }

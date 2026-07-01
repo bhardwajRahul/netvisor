@@ -14,12 +14,17 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 // Re-export type-specific types so external imports don't break
-pub use super::types::docker_proxy::DockerProxyQueryCredential;
+pub use super::types::container_proxy::ContainerProxyQueryCredential;
 
-/// Docker socket query credential — no fields needed.
-/// The daemon connects via the local Unix socket.
+/// Container-runtime (Docker/Podman) socket query credential. The daemon connects via a local
+/// Unix socket; `socket_path` optionally repoints it (e.g. rootless Podman at
+/// `$XDG_RUNTIME_DIR/podman/podman.sock`, a non-default `DOCKER_HOST`). Blank ⇒ the daemon
+/// auto-detects (bollard defaults for Docker, `resolve_podman_socket_path()` for Podman).
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Hash, Default)]
-pub struct DockerSocketQueryCredential {}
+pub struct ContainerSocketQueryCredential {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub socket_path: Option<String>,
+}
 pub use super::types::snmp::{
     SnmpCredentialMapping, SnmpCredentialMappingExposed, SnmpIpOverrideExposed,
     SnmpQueryCredential, SnmpQueryCredentialExposed, SnmpV3AuthProtocol, SnmpV3Params,
@@ -86,13 +91,57 @@ impl<T> CredentialMapping<T> {
 }
 
 /// A credential payload paired with its server-side ID (if host-assignable).
-/// `credential_id` is Some for host-scoped credentials (IP overrides from host assignments
-/// or target_ips). None for network-level defaults and fallbacks — those don't get auto-assigned
+/// `credential_id` is Some for host-scoped credentials (IP overrides from host assignments).
+/// None for network-level defaults and fallbacks — those don't get auto-assigned
 /// to discovered hosts because they're already available network-wide.
 #[derive(Debug, Clone)]
 pub struct ResolvedCredential<T> {
     pub credential: T,
     pub credential_id: Option<Uuid>,
+}
+
+/// Per-daemon integration targeting, stored on the `Discovery` entity and delivered via the
+/// init command at registration. Each entry references exactly one stored credential and says
+/// where it applies on this daemon. This is the single home for cred↔IP targeting — it replaces
+/// the global, race-prone `credential.target_ips`.
+///
+/// The variants ARE the scopes; their strum [`Target`] discriminants are the capability enum that
+/// `CredentialType::targets()` returns and validates against (single source of truth). Every
+/// target carries a real `credential_id` — there is no credential-less branch and no nil
+/// sentinel; a local socket is just a credential whose type targets only the daemon host.
+#[derive(
+    Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, ToSchema, EnumDiscriminants,
+)]
+// `Target` is the capability enum returned by `CredentialType::targets()`: where a credential
+// can apply (DaemonHost / Network / Hosts). It's the strum discriminant of `IntegrationTarget`.
+#[strum_discriminants(
+    name(Target),
+    derive(Serialize, Deserialize, Hash, ToSchema, strum::VariantNames)
+)]
+#[serde(tag = "scope")]
+pub enum IntegrationTarget {
+    /// The daemon's own host — realized as a 127.0.0.1 IP-override (e.g. a local Docker/Podman
+    /// socket, or any credential the user pins to the daemon host without naming its IP).
+    DaemonHost { credential_id: Uuid },
+    /// All hosts on the network — a broadcast default credential.
+    Network { credential_id: Uuid },
+    /// Specific host IPs — one IP-override per address.
+    Hosts {
+        credential_id: Uuid,
+        #[schema(value_type = Vec<String>)]
+        ips: Vec<IpAddr>,
+    },
+}
+
+impl IntegrationTarget {
+    /// The stored credential this target references (present in every variant).
+    pub fn credential_id(&self) -> Uuid {
+        match self {
+            Self::DaemonHost { credential_id }
+            | Self::Network { credential_id }
+            | Self::Hosts { credential_id, .. } => *credential_id,
+        }
+    }
 }
 
 // ============================================================================
@@ -106,8 +155,10 @@ pub struct ResolvedCredential<T> {
 #[serde(tag = "type")]
 pub enum CredentialQueryPayload {
     Snmp(SnmpQueryCredential),
-    DockerProxy(DockerProxyQueryCredential),
-    DockerSocket(DockerSocketQueryCredential),
+    DockerProxy(ContainerProxyQueryCredential),
+    DockerSocket(ContainerSocketQueryCredential),
+    PodmanProxy(ContainerProxyQueryCredential),
+    PodmanSocket(ContainerSocketQueryCredential),
 }
 
 impl Default for CredentialQueryPayload {
@@ -122,18 +173,29 @@ impl From<CredentialQueryPayloadDiscriminants> for super::types::CredentialTypeD
             CredentialQueryPayloadDiscriminants::Snmp => Self::SnmpV2c,
             CredentialQueryPayloadDiscriminants::DockerProxy => Self::DockerProxy,
             CredentialQueryPayloadDiscriminants::DockerSocket => Self::DockerSocket,
+            CredentialQueryPayloadDiscriminants::PodmanProxy => Self::PodmanProxy,
+            CredentialQueryPayloadDiscriminants::PodmanSocket => Self::PodmanSocket,
         }
     }
 }
 
 impl CredentialQueryPayload {
+    /// The proxy credential for either container-runtime proxy variant
+    /// (Docker/Podman), which share the same Docker-compatible API shape.
+    pub fn as_container_proxy(&self) -> Option<&ContainerProxyQueryCredential> {
+        match self {
+            Self::DockerProxy(c) | Self::PodmanProxy(c) => Some(c),
+            _ => None,
+        }
+    }
+
     /// Ports that should be included in light scans for this credential type.
     /// Used by network scanning to ensure integration-relevant ports are always scanned.
     pub fn required_scan_ports(&self) -> Vec<u16> {
         match self {
             Self::Snmp(_) => vec![161, 1161],
-            Self::DockerProxy(d) => vec![d.port],
-            Self::DockerSocket(_) => vec![],
+            Self::DockerProxy(d) | Self::PodmanProxy(d) => vec![d.port],
+            Self::DockerSocket(_) | Self::PodmanSocket(_) => vec![],
         }
     }
 
@@ -142,6 +204,8 @@ impl CredentialQueryPayload {
             Self::Snmp(_) => "SNMP queries",
             Self::DockerProxy(_) => "Docker proxy connection",
             Self::DockerSocket(_) => "Docker socket connection",
+            Self::PodmanProxy(_) => "Podman proxy connection",
+            Self::PodmanSocket(_) => "Podman socket connection",
         }
     }
 
@@ -177,7 +241,7 @@ impl CredentialQueryPayload {
                     v3,
                 }))
             }
-            Self::DockerProxy(d) => {
+            Self::DockerProxy(d) | Self::PodmanProxy(d) => {
                 let ssl_cert = d
                     .ssl_cert
                     .as_ref()
@@ -205,23 +269,28 @@ impl CredentialQueryPayload {
                     InlineFormat::PemCertificate.validate(value, "SSL CA Chain")?;
                 }
 
-                Ok(Self::DockerProxy(DockerProxyQueryCredential {
+                let resolved = ContainerProxyQueryCredential {
                     port: d.port,
                     path: d.path.clone(),
                     ssl_cert,
                     ssl_key,
                     ssl_chain,
-                }))
+                };
+                Ok(match self {
+                    Self::PodmanProxy(_) => Self::PodmanProxy(resolved),
+                    _ => Self::DockerProxy(resolved),
+                })
             }
             Self::DockerSocket(d) => Ok(Self::DockerSocket(d.clone())),
+            Self::PodmanSocket(d) => Ok(Self::PodmanSocket(d.clone())),
         }
     }
 
     pub fn banner_lines(&self) -> Vec<BannerField> {
         match self {
             Self::Snmp(snmp) => snmp.banner_lines(),
-            Self::DockerProxy(docker) => docker.banner_lines(),
-            Self::DockerSocket(_) => vec![],
+            Self::DockerProxy(c) | Self::PodmanProxy(c) => c.banner_lines(),
+            Self::DockerSocket(_) | Self::PodmanSocket(_) => vec![],
         }
     }
 }

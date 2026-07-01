@@ -6,6 +6,7 @@
 	import { useCurrentUserQuery } from '$lib/features/auth/queries';
 	import { useCredentialsQuery } from '$lib/features/credentials/queries';
 	import { useSubnetsQuery } from '$lib/features/subnets/queries';
+	import { useDaemonsQuery } from '$lib/features/daemons/queries';
 	import ListConfigEditor from '$lib/shared/components/forms/selection/ListConfigEditor.svelte';
 	import ListManager from '$lib/shared/components/forms/selection/ListManager.svelte';
 	import EntityConfigEmpty from '$lib/shared/components/forms/EntityConfigEmpty.svelte';
@@ -20,6 +21,10 @@
 	} from '$lib/shared/components/forms/selection/display/IPAddressDisplay.svelte';
 	import { credentialTypes } from '$lib/shared/stores/metadata';
 	import { getCredentialTypeId } from '$lib/features/credentials/types/base';
+	import {
+		claimedIntegrations,
+		daemonHostBlockReason
+	} from '$lib/features/credentials/utils/daemonHostBlocking';
 	import DocsHint from '$lib/shared/components/feedback/DocsHint.svelte';
 	import {
 		common_credentialDemoReadOnly,
@@ -66,11 +71,17 @@
 			.filter((c): c is Credential => c != null)
 	);
 
-	// Filter to host-targetable credentials, then exclude already-assigned ones
+	// This host is a daemon's own host if a daemon reports it as its host_id. Daemon
+	// hosts can also be assigned daemon-host-only credentials (e.g. a Docker/Podman socket).
+	const daemonsQuery = useDaemonsQuery();
+	let isDaemonHost = $derived((daemonsQuery.data ?? []).some((d) => d.host_id === formData.id));
+
+	// Filter to credentials assignable to this host: 'Hosts'-targetable always, plus
+	// daemon-host-only ('DaemonHost') credentials when this host belongs to a daemon.
 	let perHostCredentials = $derived(
 		allCredentials.filter((c) => {
-			const meta = credentialTypes.getMetadata(getCredentialTypeId(c));
-			return (meta?.targets ?? []).includes('Host');
+			const targets = credentialTypes.getMetadata(getCredentialTypeId(c))?.targets ?? [];
+			return targets.includes('Hosts') || (isDaemonHost && targets.includes('DaemonHost'));
 		})
 	);
 
@@ -79,6 +90,12 @@
 			(c) => !(formData.credential_assignments ?? []).some((a) => a.credential_id === c.id)
 		)
 	);
+
+	// Socket↔proxy exclusion: a daemon host holds only one transport per single-endpoint
+	// integration. Disable (with a reason) any candidate whose integration is already claimed
+	// by a credential currently assigned to this host. Shares the predicate with the discovery
+	// modal and credential modal via daemonHostBlocking.
+	let claimedHostIntegrations = $derived(claimedIntegrations(selectedCredentials));
 
 	// Resolve network default credentials to full objects for EntityTag display
 	let networkDefaultCredentials = $derived(
@@ -174,6 +191,9 @@
 					emptyMessage="No credential overrides — using network defaults"
 					allowReorder={false}
 					options={availableCredentials}
+					getOptionContext={(c) => ({
+						disabledReason: daemonHostBlockReason(getCredentialTypeId(c), claimedHostIntegrations)
+					})}
 					{items}
 					itemClickAction="edit"
 					optionDisplayComponent={CredentialDisplay}

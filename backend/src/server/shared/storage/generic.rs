@@ -180,6 +180,7 @@ where
                 query.bind(serde_json::to_value(&rt_for_storage)?)
             }
             SqlValue::DiscoveryType(v) => query.bind(serde_json::to_value(v)?),
+            SqlValue::IntegrationTargets(v) => query.bind(serde_json::to_value(v)?),
             SqlValue::Email(v) => query.bind(v.as_str()),
             SqlValue::UserOrgPermissions(v) => query.bind(v.as_str()),
             SqlValue::EmailSettings(v) => query.bind(serde_json::to_value(v)?),
@@ -222,9 +223,12 @@ where
             SqlValue::EnabledViews(v) => {
                 query.bind(v.as_ref().map(|views| serde_json::to_value(views).unwrap()))
             }
-            SqlValue::CredentialType(v) => query.bind(serde_json::to_value(
-                crate::server::credentials::r#impl::types::StorageCredentialType(v),
-            )?),
+            SqlValue::CredentialType(v) => {
+                // Expose secrets only for this DB write; the credential's default
+                // serialization (API responses, logs, events) stays redacted.
+                let _expose = crate::server::credentials::r#impl::types::ExposeSecretsGuard::new();
+                query.bind(serde_json::to_value(v)?)
+            }
             SqlValue::MacAddress(v) => {
                 // sqlx mac_address feature supports MacAddress directly
                 query.bind(*v)

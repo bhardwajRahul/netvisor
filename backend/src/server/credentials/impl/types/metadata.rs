@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
 use strum::IntoStaticStr;
@@ -10,7 +12,7 @@ use crate::server::{
         concepts::Concept,
         types::{
             Color, Icon,
-            metadata::{EntityMetadataProvider, HasId, TypeMetadataProvider},
+            metadata::{EntityMetadataProvider, HasId, MetadataProvider, TypeMetadata},
         },
     },
 };
@@ -26,20 +28,6 @@ pub enum CredentialCategory {
     /// Container and virtualization platforms (Docker, vSphere, ESXi)
     #[strum(serialize = "Container & Virtualization")]
     ContainerVirtualization,
-}
-
-/// Where a credential / integration applies. `Network` is a broadcast default
-/// (all hosts on a network), `Host` targets specific hosts, and `DaemonHost` is
-/// the daemon's own host (e.g. the local Docker socket, realized as a 127.0.0.1
-/// IP-override).
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, ToSchema, PartialEq, Eq, Hash)]
-pub enum Target {
-    /// The daemon's own host (local). Daemon-relative.
-    DaemonHost,
-    /// Specific discovered host(s), optionally limited to specific IP addresses.
-    Host,
-    /// All hosts on a network (broadcast default).
-    Network,
 }
 
 /// A credential assigned to a host, optionally limited to specific ip_addresses.
@@ -98,7 +86,15 @@ impl CredentialTypeDiscriminants {
                 ssl_key: None,
                 ssl_chain: None,
             },
-            Self::DockerSocket => CredentialType::DockerSocket {},
+            Self::DockerSocket => CredentialType::DockerSocket { socket_path: None },
+            Self::PodmanProxy => CredentialType::PodmanProxy {
+                port: default_docker_port(),
+                path: None,
+                ssl_cert: None,
+                ssl_key: None,
+                ssl_chain: None,
+            },
+            Self::PodmanSocket => CredentialType::PodmanSocket { socket_path: None },
         }
     }
 }
@@ -119,48 +115,84 @@ impl EntityMetadataProvider for CredentialTypeDiscriminants {
         // Fallback icon when the service logo is unavailable
         match self {
             Self::SnmpV1 | Self::SnmpV2c | Self::SnmpV3 => Concept::SNMP.icon(),
-            Self::DockerProxy => Concept::Containerization.icon(),
-            Self::DockerSocket => Concept::Containerization.icon(),
+            Self::DockerProxy | Self::DockerSocket | Self::PodmanProxy | Self::PodmanSocket => {
+                Concept::Containerization.icon()
+            }
         }
     }
 }
 
-impl TypeMetadataProvider for CredentialTypeDiscriminants {
-    fn name(&self) -> &'static str {
+impl CredentialTypeDiscriminants {
+    /// Display name for this credential transport (e.g. "Docker Socket").
+    pub(crate) fn display_name(&self) -> &'static str {
         match self {
             Self::SnmpV1 => "SNMP v1",
             Self::SnmpV2c => "SNMP v2c",
             Self::SnmpV3 => "SNMP v3",
             Self::DockerProxy => "Docker Proxy",
             Self::DockerSocket => "Docker Socket",
+            Self::PodmanProxy => "Podman Proxy",
+            Self::PodmanSocket => "Podman Socket",
         }
     }
 
-    fn description(&self) -> &'static str {
+    /// Canonical "what's discovered" for the integration this credential targets.
+    /// One arm per associated service, shared by all of that service's transports,
+    /// so the text has a single source of truth. The per-transport credential
+    /// description ([`full_description`](Self::full_description)) and the
+    /// `integrations` fixture both derive from this. Exhaustive (no wildcard): a
+    /// new credential variant cannot compile until it declares its integration's
+    /// discovery text.
+    pub(crate) fn integration_discovers(&self) -> &'static str {
         match self {
-            Self::SnmpV1 => {
-                "Discover a host's interfaces, system details, and CDP/LLDP neighbors using SNMPv1."
+            Self::SnmpV1 | Self::SnmpV2c | Self::SnmpV3 => {
+                "Discover a host's interfaces, system details, and CDP/LLDP neighbors."
             }
-            Self::SnmpV2c => {
-                "Discover a host's interfaces, system details, and CDP/LLDP neighbors using SNMPv2c."
+            Self::DockerProxy | Self::DockerSocket => {
+                "Discover Docker containers and the services they expose."
             }
-            Self::SnmpV3 => {
-                "Discover a host's interfaces, system details, and CDP/LLDP neighbors using SNMPv3."
-            }
-            Self::DockerProxy => {
-                "Discover Docker containers and the services they expose over TCP, optionally with TLS."
-            }
-            Self::DockerSocket => {
-                "Discover Docker containers and the services they expose via the daemon's local socket."
+            Self::PodmanProxy | Self::PodmanSocket => {
+                "Discover Podman containers and the services they expose."
             }
         }
     }
 
-    fn category(&self) -> &'static str {
+    /// Transport-specific note appended after the canonical discovery text. This is
+    /// the only per-transport prose; the shared "what's discovered" stem lives in
+    /// [`integration_discovers`](Self::integration_discovers).
+    pub(crate) fn transport_note(&self) -> &'static str {
+        match self {
+            Self::SnmpV1 => "Uses SNMPv1.",
+            Self::SnmpV2c => "Uses SNMPv2c.",
+            Self::SnmpV3 => "Uses SNMPv3.",
+            Self::DockerProxy | Self::PodmanProxy => "Connects over TCP, optionally with TLS.",
+            Self::DockerSocket | Self::PodmanSocket => "Connects via the daemon's local socket.",
+        }
+    }
+
+    /// Short transport label within an integration (e.g. "Socket", "Proxy", "v2c").
+    pub(crate) fn transport_label(&self) -> &'static str {
+        match self {
+            Self::SnmpV1 => "v1",
+            Self::SnmpV2c => "v2c",
+            Self::SnmpV3 => "v3",
+            Self::DockerProxy | Self::PodmanProxy => "Proxy",
+            Self::DockerSocket | Self::PodmanSocket => "Socket",
+        }
+    }
+
+    /// Full credential description shown in the wizard and `credential-types.json`:
+    /// the canonical discovery text plus the transport note. Derived, never
+    /// hand-written per transport, so the two cannot drift.
+    pub(crate) fn full_description(&self) -> String {
+        format!("{} {}", self.integration_discovers(), self.transport_note())
+    }
+
+    fn category_str(&self) -> &'static str {
         self.to_credential_type().credential_category().into()
     }
 
-    fn metadata(&self) -> serde_json::Value {
+    fn metadata_json(&self) -> serde_json::Value {
         let ct = self.to_credential_type();
         let service = ct.associated_service();
         let url = service.logo_url();
@@ -175,15 +207,31 @@ impl TypeMetadataProvider for CredentialTypeDiscriminants {
         };
         serde_json::json!({
             "fields": ct.field_definitions(),
+            // The frontend derives "daemon-host-only" (former `is_local_auto`) from `targets`.
             "targets": ct.targets(),
             "requires_config": ct.requires_config(),
-            "is_local_auto": ct.is_local_auto(),
             "single_endpoint_per_host": ct.single_endpoint_per_host(),
             "associated_service": ServiceDefinition::name(&*service),
             "has_logo": service.has_logo(),
             "logo_ext": logo_ext,
             "logo_needs_white_background": service.logo_needs_white_background(),
-            "is_user_selectable": ct.is_user_selectable(),
         })
+    }
+}
+
+// Credential types build their `TypeMetadata` directly (rather than via the
+// `TypeMetadataProvider` blanket) because their description is composed at build
+// time from the centralized integration text — see [`full_description`].
+impl MetadataProvider<TypeMetadata> for CredentialTypeDiscriminants {
+    fn to_metadata(&self) -> TypeMetadata {
+        TypeMetadata {
+            id: self.id(),
+            name: Some(self.display_name()),
+            description: Some(Cow::Owned(self.full_description())),
+            category: Some(self.category_str()),
+            icon: Some(self.icon()),
+            color: self.color(),
+            metadata: Some(self.metadata_json()),
+        }
     }
 }

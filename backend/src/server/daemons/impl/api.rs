@@ -6,7 +6,9 @@ use crate::{
     },
     server::{
         auth::middleware::auth::AuthenticatedEntity,
-        credentials::r#impl::mapping::{CredentialMapping, CredentialQueryPayload},
+        credentials::r#impl::mapping::{
+            CredentialMapping, CredentialQueryPayload, IntegrationTarget,
+        },
         daemons::r#impl::{
             base::{Daemon, DaemonBase, DaemonMode},
             version::{DaemonVersionStatus, DeprecationSeverity, DeprecationWarning},
@@ -25,8 +27,6 @@ use uuid::Uuid;
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq, Hash, ToSchema)]
 pub struct DaemonCapabilities {
     #[serde(default)]
-    pub has_docker_socket: bool,
-    #[serde(default)]
     #[schema(required)]
     pub interfaced_subnet_ids: Vec<Uuid>,
 }
@@ -35,8 +35,8 @@ impl Display for DaemonCapabilities {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "DaemonCapabilities {{ has_docker_socket: {}, interfaced_subnet_ids: {:?} }}",
-            self.has_docker_socket, self.interfaced_subnet_ids
+            "DaemonCapabilities {{ interfaced_subnet_ids: {:?} }}",
+            self.interfaced_subnet_ids
         )
     }
 }
@@ -60,9 +60,13 @@ pub struct DaemonRegistrationRequest {
     /// Daemon software version (optional for backwards compat with old daemons)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
-    /// Credential IDs to assign to daemon's host during registration.
+    /// Per-daemon integration targeting from the init command (credentialed cred↔IP and
+    /// credential-less local sockets). Written to this daemon's Discovery at registration so
+    /// it's present before the first session dispatches. Registration assumes new-daemon →
+    /// new-server, so there is no legacy bare-`credential_ids` field — bare-uuid env back-compat
+    /// is handled in the daemon's env parser, never on the wire.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub credential_ids: Vec<Uuid>,
+    pub integration_targets: Vec<IntegrationTarget>,
 }
 
 /// Daemon registration response from server to daemon

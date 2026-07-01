@@ -23,7 +23,7 @@ impl ServiceDefinition for DockerContainer {
 
     fn discovery_pattern(&self) -> Pattern<'_> {
         Pattern::AllOf(vec![
-            Pattern::DockerContainer,
+            Pattern::ContainerVirtualization,
             Pattern::Custom(
                 |p: &DiscoverySessionServiceMatchParams| {
                     // If there's a matched service with the id of the container, the container was already detected as a non-generic service
@@ -46,7 +46,9 @@ impl ServiceDefinition for DockerContainer {
                             _ => true,
                         })
                 },
-                |_| Vec::new(),
+                // The generic container owns all of its own ports, so bind them here. Otherwise
+                // they stay in unbound_ports and "Unclaimed Open Ports" re-claims them.
+                |p| p.baseline_params.all_ports.to_vec(),
                 "No other services with this container's ID have been matched",
                 "A service with this container's ID has already been matched",
                 MatchConfidence::Low,

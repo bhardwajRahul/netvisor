@@ -158,13 +158,15 @@ export function computeCollapsedForLevel(
 			return new Set(containers.map((n) => n.id));
 		}
 		case 2: {
-			// Root containers expanded, all subcontainers collapsed
+			// Root containers expanded except auto-collapse ones (collapsed_by_default
+			// / infrastructure); all subcontainers collapsed. Auto-collapse containers
+			// stay collapsed at every level except 4 (fully expanded).
 			const collapsed = new Set<string>();
 			for (const node of containers) {
 				const data = node as Record<string, unknown>;
 				const ct = data.container_type as string | undefined;
 				const isSub = ct ? containerTypesStore.getMetadata(ct).is_subcontainer : false;
-				if (isSub) {
+				if (isSub || isAutoCollapseContainer(node, containerTypesStore, infraRuleId)) {
 					collapsed.add(node.id);
 				}
 			}

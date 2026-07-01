@@ -7,11 +7,12 @@
 	import { credentialTypes } from '$lib/shared/stores/metadata';
 	import {
 		useBulkCreateCredentialsMutation,
-		useUpdateCredentialMutation,
-		useDeleteCredentialMutation,
-		useCredentialsQuery
+		useDeleteCredentialMutation
 	} from '$lib/features/credentials/queries';
-	import type { Credential } from '$lib/features/credentials/types/base';
+	import {
+		type Credential,
+		isDaemonHostOnly as isDaemonHostOnlyTargets
+	} from '$lib/features/credentials/types/base';
 	import CredentialTypeSelectStep from './CredentialTypeSelectStep.svelte';
 	import CredentialWizardStep, {
 		type PendingCredential as PendingCredentialType
@@ -54,25 +55,23 @@
 	}: Props = $props();
 
 	const bulkCreateCredentialsMutation = useBulkCreateCredentialsMutation();
-	const updateCredentialMutation = useUpdateCredentialMutation();
 	const deleteCredentialMutation = useDeleteCredentialMutation();
-	const credentialsQuery = useCredentialsQuery();
 
 	let credentialWizardRef: ReturnType<typeof CredentialWizardStep> | undefined = $state();
 
-	function isLocalAuto(id: string): boolean {
-		return credentialTypes.getMetadata(id)?.is_local_auto === true;
+	function isDaemonHostOnly(id: string): boolean {
+		return isDaemonHostOnlyTargets(credentialTypes.getMetadata(id)?.targets);
 	}
-	function localAutoTypeIds(): string[] {
+	function daemonHostOnlyTypeIds(): string[] {
 		return credentialTypes
 			.getItems()
-			.filter((t) => t.metadata?.is_local_auto)
+			.filter((t) => isDaemonHostOnlyTargets(t.metadata?.targets))
 			.map((t) => t.id);
 	}
 
-	// Auto-local cards are read-only in `fixed` mode (an installed daemon's
-	// capabilities can't be toggled from here).
-	let lockedTypeIds = $derived(localAutoMode === 'fixed' ? localAutoTypeIds() : []);
+	// Daemon-host-only cards (the local socket) are read-only in `fixed` mode (an installed
+	// daemon's capabilities can't be toggled from here).
+	let lockedTypeIds = $derived(localAutoMode === 'fixed' ? daemonHostOnlyTypeIds() : []);
 
 	// In `fixed` mode the daemon's existing capabilities claim their integration's
 	// daemon host, so a single-endpoint credential can't also target it.
@@ -93,7 +92,7 @@
 		await tick();
 		const seed =
 			localAutoMode === 'fixed'
-				? selectedTypeIds.filter((id) => !isLocalAuto(id))
+				? selectedTypeIds.filter((id) => !isDaemonHostOnly(id))
 				: selectedTypeIds;
 		credentialWizardRef?.addTypes(seed);
 	}
@@ -111,24 +110,18 @@
 	}
 
 	/**
-	 * Persist the wizard's credentials: update target_ips on attached existing
-	 * credentials, validate + bulk-create new ones (idempotent — already-created
-	 * ones are skipped), and return the accumulated credential ids. Returns `null`
-	 * if validation fails (caller should not advance).
+	 * Persist the wizard's credentials: validate + bulk-create new ones (idempotent —
+	 * already-created ones are skipped), and return the accumulated credential ids. Returns
+	 * `null` if validation fails (caller should not advance).
+	 *
+	 * Per-credential target IPs are NOT written to `credential.target_ips` anymore (that field
+	 * is retired, #637). They are delivered per-daemon via the init command's integration-target
+	 * tokens, built by the caller from each pending credential's `targetIps`.
 	 */
 	async function collectCredentialIds(): Promise<string[] | null> {
 		if (!credentialWizardRef) return [...credentialIds];
 
 		const existingCreds = credentialWizardRef.getExistingCredentials();
-		for (const ec of existingCreds) {
-			const ips = ec.targetIps.map((s) => s.trim()).filter(Boolean);
-			if (ips.length > 0) {
-				const cred = credentialsQuery.data?.find((c) => c.id === ec.credentialId);
-				if (cred) {
-					await updateCredentialMutation.mutateAsync({ ...cred, target_ips: ips });
-				}
-			}
-		}
 		const existingIds = existingCreds.map((c) => c.credentialId);
 
 		const unsaved = pendingCredentials.filter(
@@ -141,10 +134,7 @@
 				const prepared = credentialWizardRef
 					.getCredentialsForCreate()
 					.filter((p) => !credentialIds.includes(p.credential.id));
-				const toCreate = prepared.map((p) => {
-					const ips = p.targetIps.map((s) => s.trim()).filter(Boolean);
-					return { ...p.credential, target_ips: ips.length > 0 ? ips : undefined };
-				});
+				const toCreate = prepared.map((p) => ({ ...p.credential }));
 				const created = await bulkCreateCredentialsMutation.mutateAsync(toCreate);
 				credentialIds = [
 					...new Set([...credentialIds, ...created.map((c) => c.id), ...existingIds])
@@ -160,9 +150,7 @@
 
 	// Exposed (read `credentialsStep.busy`) so a parent can disable its submit button
 	// while a create/update is in flight.
-	let busy = $derived(
-		bulkCreateCredentialsMutation.isPending || updateCredentialMutation.isPending
-	);
+	let busy = $derived(bulkCreateCredentialsMutation.isPending);
 
 	export { busy, continueToWizard, backToTypeSelect, collectCredentialIds };
 </script>

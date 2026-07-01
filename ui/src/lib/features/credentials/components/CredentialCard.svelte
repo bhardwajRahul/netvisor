@@ -91,16 +91,19 @@
 			},
 			{
 				label: common_hosts(),
-				value: targets.includes('Host')
-					? assignedHosts.length > 0
-						? assignedHosts.map((h) => ({
-								id: h.id,
-								label: h.name ?? h.id,
-								color: entities.getColorHelper('Host').color as Color,
-								entityRef: entityRef('Host', h.id, h)
-							}))
-						: common_notAssigned()
-					: common_notApplicable()
+				// DaemonHost-only creds (e.g. Docker/Podman sockets) are assigned to their daemon
+				// host via the same junction, so surface those assignments here too.
+				value:
+					targets.includes('Hosts') || targets.includes('DaemonHost')
+						? assignedHosts.length > 0
+							? assignedHosts.map((h) => ({
+									id: h.id,
+									label: h.name ?? h.id,
+									color: entities.getColorHelper('Host').color as Color,
+									entityRef: entityRef('Host', h.id, h)
+								}))
+							: common_notAssigned()
+						: common_notApplicable()
 			},
 			{
 				label: common_tags(),

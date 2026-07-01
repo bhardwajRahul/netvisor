@@ -78,6 +78,32 @@
     }
   },
   {
+    "id": "ApplicationUngrouped",
+    "name": "Ungrouped",
+    "description": "Services not assigned to an application",
+    "category": null,
+    "icon": "workflow",
+    "color": "Purple",
+    "metadata": {
+      "collapsed_by_default": true,
+      "collapsed_size": {
+        "height": 80,
+        "width": 200
+      },
+      "fill_icon": false,
+      "has_border": true,
+      "is_collapsible": true,
+      "is_subcontainer": false,
+      "padding": {
+        "bottom": 25,
+        "left": 25,
+        "right": 25,
+        "top": 25
+      },
+      "title_style": "External"
+    }
+  },
+  {
     "id": "Root",
     "name": "Root",
     "description": "Root container",

@@ -7,9 +7,7 @@ use crate::server::services::r#impl::definitions::ServiceDefinitionExt;
 use crate::server::services::r#impl::definitions::{DefaultServiceDefinition, ServiceDefinition};
 use crate::server::services::r#impl::endpoints::{Endpoint, EndpointResponse};
 use crate::server::services::r#impl::patterns::{MatchConfidence, MatchReason};
-use crate::server::services::r#impl::virtualization::{
-    DockerVirtualization, ServiceVirtualization,
-};
+use crate::server::services::r#impl::virtualization::ServiceVirtualization;
 use crate::server::shared::entities::ChangeTriggersTopologyStaleness;
 use crate::server::shared::position::Positioned;
 use crate::server::shared::storage::traits::Storable;
@@ -165,6 +163,22 @@ impl PartialEq for Service {
         // For non-generic services: same host + definition = same service
         // Handles: Plex discovered on multiple ip_addresses (different port UUIDs)
         if !ServiceDefinitionExt::is_generic(&self.base.service_definition) {
+            // Distinct containers can legitimately run the same service (e.g. two pod members):
+            // when both carry a container_id, keep them distinct by it. Non-container services
+            // (virtualization = None) are unaffected and stay "same host + definition = same".
+            if let (Some(self_cid), Some(other_cid)) = (
+                self.base
+                    .virtualization
+                    .as_ref()
+                    .and_then(|v| v.container_id()),
+                other
+                    .base
+                    .virtualization
+                    .as_ref()
+                    .and_then(|v| v.container_id()),
+            ) {
+                return self_cid == other_cid;
+            }
             return true;
         }
 
@@ -410,12 +424,9 @@ impl Service {
             let mut name = service_definition.name().to_string();
 
             if ServiceDefinitionExt::is_generic(&service_definition) {
-                if let Some(ServiceVirtualization::Docker(DockerVirtualization {
-                    container_name: Some(c_name),
-                    ..
-                })) = virtualization
-                {
-                    name = c_name.clone()
+                // Name a generic container service after its container (Docker or Podman).
+                if let Some(c_name) = virtualization.as_ref().and_then(|v| v.container_name()) {
+                    name = c_name.to_string()
                 }
 
                 // Confidence not applicable for generic services

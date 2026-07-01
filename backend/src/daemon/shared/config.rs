@@ -11,7 +11,75 @@ use std::{path::PathBuf, sync::Arc};
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
+use std::net::IpAddr;
+
+use crate::server::credentials::r#impl::mapping::IntegrationTarget;
 use crate::server::daemons::r#impl::{api::DaemonCapabilities, base::DaemonMode};
+
+/// Parse the `SCANOPY_CREDENTIAL_IDS` / `--credential-id` compact token grammar into per-daemon
+/// [`IntegrationTarget`]s. Every token references a stored credential by id; the suffix is the
+/// target IP(s) — the daemon host is just its loopback address, like any other IP target:
+/// - `<uuid>` → `Network` (broadcast default)
+/// - `<uuid>@127.0.0.1` (a sole loopback) → `DaemonHost` (the daemon's own host, e.g. a local
+///   Docker/Podman socket credential)
+/// - `<uuid>@<ip>[+<ip>...]` → `Hosts` (specific host IP overrides)
+///
+/// Sockets are ordinary credentials now — create one (UI/API) and reference it with its
+/// loopback address (`<uuid>@127.0.0.1`).
+pub fn parse_integration_target_tokens(
+    tokens: &[String],
+) -> anyhow::Result<Vec<IntegrationTarget>> {
+    tokens
+        .iter()
+        .map(|t| t.trim())
+        .filter(|t| !t.is_empty())
+        .map(parse_integration_target_token)
+        .collect()
+}
+
+fn parse_integration_target_token(token: &str) -> anyhow::Result<IntegrationTarget> {
+    match token.split_once('@') {
+        // `<uuid>@<ip>[+<ip>...]` → IP targeting. A sole-loopback target is the daemon's own
+        // host (DaemonHost scope); anything else is specific Hosts overrides.
+        Some((uuid_part, ip_list)) => {
+            let ips = ip_list
+                .split('+')
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+                .map(|s| {
+                    s.parse::<IpAddr>().map_err(|_| {
+                        anyhow::anyhow!("Invalid IP '{}' in credential token '{}'", s, token)
+                    })
+                })
+                .collect::<anyhow::Result<Vec<_>>>()?;
+            if ips.is_empty() {
+                anyhow::bail!(
+                    "Credential token '{}' has '@' but no IPs (use '<uuid>@<ip>[+<ip>]')",
+                    token
+                );
+            }
+            let credential_id = parse_credential_id(uuid_part, token)?;
+            if ips.len() == 1 && ips[0].is_loopback() {
+                Ok(IntegrationTarget::DaemonHost { credential_id })
+            } else {
+                Ok(IntegrationTarget::Hosts { credential_id, ips })
+            }
+        }
+        // `<uuid>` → network-level default.
+        None => Ok(IntegrationTarget::Network {
+            credential_id: parse_credential_id(token, token)?,
+        }),
+    }
+}
+
+fn parse_credential_id(value: &str, token: &str) -> anyhow::Result<Uuid> {
+    Uuid::parse_str(value.trim()).map_err(|_| {
+        anyhow::anyhow!(
+            "Invalid credential token '{}' (expected '<uuid>' or '<uuid>@<ip>[+<ip>]')",
+            token
+        )
+    })
+}
 
 #[derive(Parser)]
 #[command(name = "scanopy-daemon")]
@@ -85,13 +153,11 @@ pub struct DaemonCli {
     #[arg(long)]
     accept_invalid_scan_certs: Option<bool>,
 
-    /// Disable local Docker socket detection. When false, daemon reports has_docker_socket: false regardless of socket presence
-    #[arg(long)]
-    enable_local_docker_socket: Option<bool>,
-
-    /// Credential IDs to assign to this daemon's host during registration (repeatable)
+    /// Integration target tokens (repeatable). Each is `<uuid>` (credential, no specific IP),
+    /// `<uuid>@<ip>[+<ip>...]` (credential pinned to IP(s)), or `docker-socket` / `podman-socket`
+    /// (credential-less local socket on the daemon host).
     #[arg(long = "credential-id")]
-    credential_ids: Option<Vec<Uuid>>,
+    credential_ids: Option<Vec<String>>,
 
     /// Path to log file. Defaults to platform-specific path. Set to "none" to disable file logging.
     #[arg(long)]
@@ -184,13 +250,12 @@ pub struct AppConfig {
     /// Network interfaces to restrict scanning to. Empty means all interfaces.
     #[serde(default)]
     pub interfaces: Vec<String>,
-    /// Whether to detect and report local Docker socket availability.
-    /// When false, daemon reports has_docker_socket: false regardless of socket presence.
-    #[serde(default = "default_enable_local_docker_socket")]
-    pub enable_local_docker_socket: bool,
-    /// Credential IDs to assign to this daemon's host during registration.
+    /// Per-daemon integration targeting parsed from the init command (credentialed cred↔IP and
+    /// credential-less local sockets). Sent in the registration request and written to this
+    /// daemon's Discovery. Local sockets are explicit opt-in here — there are no
+    /// per-integration boolean enable flags.
     #[serde(default)]
-    pub credential_ids: Vec<Uuid>,
+    pub integration_targets: Vec<IntegrationTarget>,
     /// Daemon capabilities (docker socket availability, interfaced subnets)
     /// Updated after SelfReport discovery completes
     #[serde(default)]
@@ -218,10 +283,6 @@ fn default_scan_rate_pps() -> u32 {
 
 fn default_port_scan_batch_size() -> usize {
     200 // Default: 200 ports concurrently per host
-}
-
-fn default_enable_local_docker_socket() -> bool {
-    true
 }
 
 impl Default for AppConfig {
@@ -257,8 +318,7 @@ impl Default for AppConfig {
             scan_rate_pps: default_scan_rate_pps(),
             port_scan_batch_size: default_port_scan_batch_size(),
             capabilities: DaemonCapabilities::default(),
-            enable_local_docker_socket: default_enable_local_docker_socket(),
-            credential_ids: Vec::new(),
+            integration_targets: Vec::new(),
             has_self_reported: false,
         }
     }
@@ -309,19 +369,17 @@ impl AppConfig {
             figment = figment.merge(("interfaces", interfaces));
         }
 
-        // Handle SCANOPY_CREDENTIAL_IDS specially - Figment doesn't auto-split comma-separated
-        // values, so without this it tries to deserialize the raw string into a Vec<Uuid> and
-        // fails with "expected a sequence". Mirrors the SCANOPY_INTERFACES handling above.
-        if let Ok(credential_ids_str) = std::env::var("SCANOPY_CREDENTIAL_IDS") {
-            let credential_ids: Vec<Uuid> = credential_ids_str
-                .split(',')
-                .map(|s| s.trim())
-                .filter(|s| !s.is_empty())
-                .map(Uuid::parse_str)
-                .collect::<std::result::Result<_, _>>()
-                .context("Invalid UUID in SCANOPY_CREDENTIAL_IDS")?;
-            figment = figment.merge(("credential_ids", credential_ids));
-        }
+        // SCANOPY_CREDENTIAL_IDS carries the compact integration-target token grammar (see
+        // `parse_integration_target_tokens`). Collect the raw comma-separated tokens here;
+        // they're parsed into `integration_targets` after extraction (below), since the typed
+        // enum doesn't round-trip cleanly through Figment env merging. CLI tokens take priority.
+        let env_target_tokens: Option<Vec<String>> =
+            std::env::var("SCANOPY_CREDENTIAL_IDS").ok().map(|s| {
+                s.split(',')
+                    .map(|t| t.trim().to_string())
+                    .filter(|t| !t.is_empty())
+                    .collect()
+            });
 
         // Add environment variables (interfaces and credential_ids handled above to support
         // comma-separated values)
@@ -410,16 +468,16 @@ impl AppConfig {
         if let Some(interface) = cli_args.interfaces {
             figment = figment.merge(("interfaces", interface));
         }
-        if let Some(enable_local_docker_socket) = cli_args.enable_local_docker_socket {
-            figment = figment.merge(("enable_local_docker_socket", enable_local_docker_socket));
-        }
-        if let Some(credential_ids) = cli_args.credential_ids {
-            figment = figment.merge(("credential_ids", credential_ids));
-        }
-
-        let config: AppConfig = figment
+        let mut config: AppConfig = figment
             .extract()
             .map_err(|e| Error::msg(format!("Configuration error: {}", e)))?;
+
+        // Parse integration-target tokens last so CLI > env > config-file precedence holds:
+        // CLI tokens win if provided, else env tokens; if neither, keep whatever the config file
+        // already deserialized into `integration_targets`.
+        if let Some(tokens) = cli_args.credential_ids.or(env_target_tokens) {
+            config.integration_targets = parse_integration_target_tokens(&tokens)?;
+        }
 
         Ok(config)
     }
@@ -705,14 +763,9 @@ impl ConfigStore {
         Ok(config.interfaces.clone())
     }
 
-    pub async fn get_enable_local_docker_socket(&self) -> Result<bool> {
+    pub async fn get_integration_targets(&self) -> Result<Vec<IntegrationTarget>> {
         let config = self.config.read().await;
-        Ok(config.enable_local_docker_socket)
-    }
-
-    pub async fn get_credential_ids(&self) -> Result<Vec<Uuid>> {
-        let config = self.config.read().await;
-        Ok(config.credential_ids.clone())
+        Ok(config.integration_targets.clone())
     }
 
     pub async fn get_capabilities(&self) -> Result<DaemonCapabilities> {
@@ -743,7 +796,8 @@ mod tests {
 
     use serial_test::serial;
 
-    use crate::daemon::shared::config::DaemonCli;
+    use crate::daemon::shared::config::{DaemonCli, parse_integration_target_tokens};
+    use crate::server::credentials::r#impl::mapping::IntegrationTarget;
     use crate::{daemon::shared::config::AppConfig, tests::DAEMON_CONFIG_FIXTURE};
     use clap::{CommandFactory, Parser};
     use std::collections::HashMap;
@@ -791,7 +845,7 @@ mod tests {
         help_text: String,
     }
 
-    const EXCLUDED_FIELDS: [&str; 17] = [
+    const EXCLUDED_FIELDS: [&str; 16] = [
         "daemon_api_key",
         "network_id",
         "server_url",
@@ -806,7 +860,6 @@ mod tests {
         "docker_proxy_ssl_cert",
         "docker_proxy_ssl_key",
         "docker_proxy_ssl_chain",
-        "enable_local_docker_socket",
         // Deprecated: scan settings are now per-discovery via ScanSettings
         "use_npcap_arp",
         "arp_retries",
@@ -949,9 +1002,10 @@ mod tests {
         );
     }
 
-    /// Verifies that SCANOPY_CREDENTIAL_IDS accepts a comma-separated string and populates the
-    /// credential_ids field. Figment does not auto-split comma-separated env values, so without
-    /// special handling it fails with "expected a sequence" (regression test for #612).
+    /// Verifies that SCANOPY_CREDENTIAL_IDS accepts a comma-separated list of integration-target
+    /// tokens and populates `integration_targets`. Figment does not auto-split comma-separated env
+    /// values, so the daemon splits + parses them itself (regression test for #612, extended for
+    /// the compact token grammar in #637).
     #[test]
     #[serial]
     fn test_scanopy_credential_ids_env_var() {
@@ -961,7 +1015,12 @@ mod tests {
         // Save and clear any existing value
         let original = std::env::var("SCANOPY_CREDENTIAL_IDS").ok();
         // SAFETY: This test runs serially and restores the original value after
-        unsafe { std::env::set_var("SCANOPY_CREDENTIAL_IDS", format!("{id1},{id2}")) };
+        unsafe {
+            std::env::set_var(
+                "SCANOPY_CREDENTIAL_IDS",
+                format!("{id1}@127.0.0.1,{id1},{id2}@10.0.0.5+10.0.0.6"),
+            )
+        };
 
         // Load config with empty CLI args (env var should take effect)
         let cli = DaemonCli::parse_from::<[&str; 0], &str>([]);
@@ -978,9 +1037,60 @@ mod tests {
         }
 
         assert_eq!(
-            config.credential_ids,
-            vec![id1, id2],
-            "SCANOPY_CREDENTIAL_IDS env var should populate credential_ids field"
+            config.integration_targets,
+            vec![
+                IntegrationTarget::DaemonHost { credential_id: id1 },
+                IntegrationTarget::Network { credential_id: id1 },
+                IntegrationTarget::Hosts {
+                    credential_id: id2,
+                    ips: vec!["10.0.0.5".parse().unwrap(), "10.0.0.6".parse().unwrap()],
+                },
+            ],
+            "SCANOPY_CREDENTIAL_IDS env var should populate integration_targets field"
+        );
+    }
+
+    #[test]
+    fn test_parse_integration_target_tokens_grammar() {
+        let id = Uuid::new_v4();
+        let tokens = vec![
+            id.to_string(),
+            format!("{id}@127.0.0.1"),
+            format!("{id}@::1"),
+            format!("{id}@10.0.0.5"),
+            format!("{id}@127.0.0.1+10.0.0.5"),
+        ];
+        let parsed = parse_integration_target_tokens(&tokens).expect("tokens parse");
+        assert_eq!(
+            parsed,
+            vec![
+                // bare uuid → network default
+                IntegrationTarget::Network { credential_id: id },
+                // sole loopback (v4 or v6) → the daemon host
+                IntegrationTarget::DaemonHost { credential_id: id },
+                IntegrationTarget::DaemonHost { credential_id: id },
+                // a remote IP → specific host
+                IntegrationTarget::Hosts {
+                    credential_id: id,
+                    ips: vec!["10.0.0.5".parse().unwrap()],
+                },
+                // loopback mixed with a remote IP is not a sole-loopback → Hosts
+                IntegrationTarget::Hosts {
+                    credential_id: id,
+                    ips: vec!["127.0.0.1".parse().unwrap(), "10.0.0.5".parse().unwrap()],
+                },
+            ]
+        );
+
+        // Invalid tokens are rejected.
+        assert!(parse_integration_target_tokens(&["not-a-uuid".to_string()]).is_err());
+        assert!(
+            parse_integration_target_tokens(&[format!("{id}@not-an-ip")]).is_err(),
+            "invalid IP should error"
+        );
+        assert!(
+            parse_integration_target_tokens(&[format!("{id}@")]).is_err(),
+            "trailing @ with no IPs should error"
         );
     }
 }

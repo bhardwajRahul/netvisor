@@ -655,15 +655,15 @@ async fn receive_work_request(
     // Legacy: use with_exposed_snmp() (SNMP inline in DiscoveryType::Network)
     let next_session_value = match next_session {
         Some(payload) if matches!(payload.discovery_type, DiscoveryType::Unified { .. }) => {
-            let pending = state
+            let integration_targets = state
                 .services
                 .discovery_service
-                .get_pending_credential_ids_for_session(&payload.session_id)
+                .get_integration_targets_for_session(&payload.session_id)
                 .await;
             let request = state
                 .services
                 .discovery_service
-                .build_daemon_request(&payload, daemon_network_id, &pending)
+                .build_daemon_request(&payload, daemon_network_id, &integration_targets)
                 .await
                 .unwrap_or_else(|e| {
                     tracing::error!("Failed to build daemon request: {}", e);
@@ -733,7 +733,6 @@ async fn receive_heartbeat(
         version: None, // Old daemons don't send version in heartbeat
         capabilities: DaemonCapabilities::default(),
         interfaced_subnets: Vec::new(),
-        has_docker_socket: false,
         ready_for_work: true,
     };
     state
@@ -846,6 +845,17 @@ async fn provision_daemon(
             tracing::error!(error = %e, "Failed to create host for provisioned daemon");
             ApiError::internal_error(&format!("Failed to create host: {}", e))
         })?;
+
+    // Seed the daemon host's loopback so a daemon-host socket/proxy credential is probed on
+    // the very first scan (the credential mapping is snapshotted before the daemon self-reports).
+    if let Err(e) = state
+        .services
+        .host_service
+        .seed_loopback(created_host.id, request.network_id, auth.entity.clone())
+        .await
+    {
+        tracing::warn!(host_id = %created_host.id, error = %e, "Failed to seed daemon host loopback");
+    }
 
     let version = semver::Version::parse(SERVER_VERSION).map_err(|_| {
         ApiError::internal_error(&format!(

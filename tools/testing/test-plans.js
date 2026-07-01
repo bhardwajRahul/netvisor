@@ -1,49 +1,114 @@
 var TEST_PLANS = [
 {
-  "branch": "fix/snmp-interfaces-dropped-614",
+  "branch": "fix/637-init-targeting",
+  "tests": []
+}
+,
+{
+  "branch": "fix/topology-layout-export",
+  "tests": []
+}
+,
+{
+  "branch": "feat/podman-integration",
   "tests": [
     {
-      "id": "snmp-switch-all-ports-persist",
-      "category": "SNMP Discovery",
-      "description": "An SNMP switch whose physical ports are IP-less, share the chassis MAC, and have no ifName must show every ifTable interface, not just the management interface.",
+      "id": "podman-proxy-http-discovery",
+      "category": "Podman Discovery — Proxy (HTTP)",
+      "description": "Discover Podman containers over the HTTP proxy transport and confirm they appear as Podman-virtualized services with their published ports.",
+      "setup": "On a host with Podman: `podman machine init && podman machine start` (macOS) or ensure the Podman socket is running (Linux). Seed a workload: `make podman-workload-up` (creates pod 'scanopy-test-pod' with an nginx on host port 8088 and a standalone nginx on host port 8089). Start the proxy: `make podman-proxy-up` (nginx fronts the Podman socket on http://127.0.0.1:2378). Verify with `curl http://127.0.0.1:2378/version`. Ensure a Scanopy daemon is registered and reachable.",
       "steps": [
-        "Run an SNMP (v2c) discovery scan against a multi-port L2 switch (e.g. TP-Link Omada TL-SG3216) whose access ports have no IP, share the chassis MAC, and report no ifName.",
-        "Open the discovered host's detail page and view its Interfaces list."
+        "Open Credentials and create a new credential of type 'Podman Proxy'.",
+        "Set the port to 2378, leave TLS fields blank, target the daemon host (127.0.0.1), and save.",
+        "Run discovery on the daemon's network.",
+        "Open the discovered daemon host and inspect its services."
       ],
-      "setup": "Requires a real (or simulated) SNMP agent presenting an ifTable with one IP-bearing management interface (low ifIndex, has ifName + MAC) plus N physical ports at high ifIndex that all share the management interface's MAC, have no IP, and no ifName. If hardware is unavailable, point the SNMP credential at an snmpsim instance loaded with the reporter's walk from issue #614.",
-      "expected": "All interfaces appear (1 management/Vlan interface + every physical port). Previously only the single 'Vlan-interface1' row appeared.",
+      "expected": "Discovery completes successfully. The nginx containers appear as services on the host, tagged with Podman virtualization (not Docker). Published ports 8088 and 8089 are present. No errors are shown.",
       "flow": "setup",
       "sequence": 1,
       "status": null,
       "feedback": null
     },
     {
-      "id": "snmp-switch-rescan-no-duplicates",
-      "category": "SNMP Discovery",
-      "description": "Re-scanning the same switch updates the existing interface rows in place rather than duplicating or re-collapsing them.",
+      "id": "podman-proxy-tls-discovery",
+      "category": "Podman Discovery — Proxy (mTLS)",
+      "description": "Discover Podman containers over the TLS proxy transport with mutual TLS, confirming the SSL cert/key/chain fields work.",
+      "setup": "Tear down the HTTP proxy if running: `make podman-proxy-down`. Start the TLS proxy: `make podman-proxy-up-tls` (generates a CA + server + client certs and prints the PEM contents). Keep the workload from the previous test (or re-run `make podman-workload-up`). Copy the printed CA cert, client cert, and client key PEM blocks.",
       "steps": [
-        "After the first scan from the previous test, trigger a second discovery scan of the same switch.",
-        "Re-open the host's Interfaces list and compare counts/identities to the first scan."
+        "Create a new 'Podman Proxy' credential.",
+        "Set the port to 2378.",
+        "Paste the client certificate into SSL Certificate, the client key into SSL Private Key, and the CA chain into SSL CA Chain (all three inline).",
+        "Target the daemon host and save.",
+        "Run discovery and inspect the daemon host's services."
       ],
-      "setup": "Same SNMP target as snmp-switch-all-ports-persist; just run discovery a second time.",
-      "expected": "Interface count is unchanged (no duplicates), each port retains its identity, and no interface is collapsed onto another.",
+      "expected": "Discovery completes over HTTPS with mutual TLS. The same Podman containers/ports are discovered as in the HTTP test. A partial-TLS config (only some of the three fields) should fall back to HTTP with a warning rather than crash.",
       "flow": "setup",
       "sequence": 2,
       "status": null,
       "feedback": null
     },
     {
-      "id": "snmp-host-with-ip-interfaces-unaffected",
-      "category": "SNMP Discovery",
-      "description": "Hosts whose interfaces DO have IPs / distinct MACs / ifNames still dedup and display correctly (no regression from the fix).",
+      "id": "podman-rootless-published-ports",
+      "category": "Podman Discovery — Rootless",
+      "description": "Confirm rootless Podman still surfaces containers via their host-published ports even when no routable bridge subnet/container IP is available.",
+      "setup": "Use ROOTLESS Podman (pasta/slirp4netns). Seed the workload with `make podman-workload-up`. Run discovery via the socket or proxy transport.",
       "steps": [
-        "Run an SNMP discovery scan against a router or server with per-interface IPs and distinct MACs (and ifNames if available).",
-        "View the host's Interfaces list and confirm each interface is present once with correct IP/MAC linkage."
+        "After discovery, inspect the daemon host's services and ports."
       ],
-      "setup": "Any SNMP-capable host with multiple IP-bearing interfaces having distinct MAC addresses (e.g. a Linux server with several NICs, or a layer-3 router).",
-      "expected": "Every interface is present exactly once; IP↔interface MAC links are intact. No duplication and no collapse.",
-      "flow": "setup",
-      "sequence": 3,
+      "expected": "Containers are still discovered as Podman services with their published host ports (8088, 8089). It is acceptable that no Podman bridge subnet and no per-container routable IP appear under rootless networking — discovery must not error.",
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "api-daemon-host-single-endpoint-rejected",
+      "category": "API — Single-endpoint enforcement",
+      "description": "Server-side backstop: persisting a discovery whose integration_targets put two same-integration single-endpoint credentials on the daemon host is rejected.",
+      "setup": "Have a daemon + its primary discovery, plus a Docker socket and a Docker proxy credential (or the Podman pair).",
+      "steps": [
+        "Via the API, PUT the daemon's discovery with integration_targets containing BOTH the socket and the proxy of the same integration scoped to the daemon host (DaemonHost)."
+      ],
+      "expected": "The update is rejected with a 400 naming both credentials (same integration allows only one per host). Submitting just one, or one of each of two DIFFERENT integrations (Docker + Podman), succeeds.",
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "daemon-host-cred-merge-durability",
+      "category": "Discovery modal credential parity",
+      "description": "A daemon-host socket credential assigned via the DISCOVERY modal reaches the host_credentials junction (DaemonHost scope), appears in the banner, and survives a no-op Update.",
+      "setup": "A daemon host running Podman. Have a Docker socket credential and a Podman socket credential.",
+      "steps": [
+        "Open the discovery (edit) modal and add the Podman socket credential (add-existing).",
+        "Save the discovery; run discovery and check the banner.",
+        "Open the discovery modal again and click Update Discovery WITHOUT changes.",
+        "Inspect the daemon host credential assignments / banner."
+      ],
+      "expected": "The socket added via the discovery modal is stored in host_credentials (NOT as a Network integration_target), appears in the discovery banner, and a no-op Update does not wipe it. Parity with the daemon-create modal and the host/credential modal.",
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "discovery-modal-targeting-scopes",
+      "category": "Discovery modal credential parity",
+      "description": "The discovery modal assigns credentials by all three scopes like the daemon-create modal: Network (no IPs), Hosts (explicit IPs, even undiscovered), DaemonHost (socket / loopback).",
+      "setup": "Have a Network-capable credential (e.g. SNMP), a Hosts-capable credential, and a daemon-host socket credential.",
+      "steps": [
+        "In the discovery modal, add a credential with no target IPs (Network), one with explicit non-loopback IPs (Hosts), and a socket (DaemonHost).",
+        "Save and inspect where each lands."
+      ],
+      "expected": "Network/Hosts credentials persist as integration_targets on the discovery; the socket is merged into the daemon host junction. DB: discovery.integration_targets holds only Network/Hosts; host_credentials holds the socket.",
+      "status": null,
+      "feedback": null
+    },
+    {
+      "id": "podman-pod-four-distinct-services",
+      "category": "Podman Discovery - per-container attribution",
+      "description": "A pod with infra + nginx + grafana members plus a standalone nginx yields FOUR distinct container services, each attributed by its own image-exposed ports.",
+      "setup": "Run make podman-workload-up (pod publishes nginx:80 and grafana:3000 as members; plus standalone nginx). Assign a Podman socket credential to the daemon host.",
+      "steps": [
+        "Run discovery against the daemon host.",
+        "Inspect the discovered services."
+      ],
+      "expected": "Four distinct container services: scanopy-test-grafana matched to Grafana (its exposed 3000), scanopy-test-web and the pod infra and scanopy-test-standalone as generic Podman Container (distinct by container_id). The grafana member is NOT duplicated and the nginx members are NOT mislabeled as Grafana.",
       "status": null,
       "feedback": null
     }
@@ -51,93 +116,68 @@ var TEST_PLANS = [
 }
 ,
 {
-  "branch": "feat/email-dns-verification",
-  "tests": []
-}
-,
-{
-  "branch": "feat/billing-events-audit",
-  "tests": []
-}
-,
-{
   "branch": "feat/credentials-mgmt",
+  "tests": []
+}
+,
+{
+  "branch": "feat/radar-loading-spinner",
+  "tests": []
+}
+,
+{
+  "branch": "feat/integrations-fixture",
+  "tests": []
+}
+,
+{
+  "branch": "fix/csp-stripe-elements",
   "tests": [
     {
-      "id": "daemon-flow-regression",
-      "category": "Daemon setup — shared CredentialsStep regression",
-      "description": "The daemon modal's credentials flow is unchanged after extracting the shared component",
-      "setup": "Fresh org with no credentials.",
+      "id": "stripe-elements-renders",
+      "category": "CSP / Stripe Elements",
+      "description": "Stripe Payment Element loads and renders inside the in-app card modal (verifies script-src + frame-src).",
       "steps": [
-        "Open Add Daemon, complete Configure, advance to the Integrations step",
-        "Confirm the flat Integrations grid shows with the Docker Socket card selected by default",
-        "Deselect the Docker Socket, continue to Install, and inspect the run command",
-        "Re-open, this time keep the socket + add a Docker Proxy, continue to the wizard, configure it, and submit ('Create N credentials and continue to install')",
-        "With the socket present, on the Docker Proxy confirm 'Add daemon host' is disabled with the integration-named tooltip"
+        "Open the app in a browser with the dev console open (Console tab).",
+        "Trigger the in-app card modal (PaymentMethodModal) via a billing nudge / 'Add payment method'.",
+        "Wait for the Payment Element to render."
       ],
-      "expected": "Identical to before the refactor: socket default-selected; deselecting adds --enable-local-docker-socket false; wizard creates credentials and advances to Install; the 'Add daemon host' conflict prevention still works.",
+      "setup": "Sign in as a user/org whose billing state surfaces an 'Add payment method' entry point (e.g. an org without a saved card). If needed, create such an org via the API and log in as its owner.",
+      "expected": "The Stripe card-input iframe appears and is interactive. No CSP violation errors in the console mentioning js.stripe.com or hooks.stripe.com.",
       "flow": "setup",
       "sequence": 1,
       "status": null,
       "feedback": null
     },
     {
-      "id": "discovery-integrations-flow",
-      "category": "Discovery modal — unified credentials flow",
-      "description": "A new Unified discovery shows the Integrations grid → wizard like the daemon modal",
-      "setup": "Create a new Unified discovery against a daemon. Use a daemon WITHOUT local Docker socket for this run.",
+      "id": "stripe-setupintent-confirm",
+      "category": "CSP / Stripe Elements",
+      "description": "Submitting a test card succeeds via SetupIntent confirm and the card is saved (verifies connect-src to api.stripe.com).",
       "steps": [
-        "Open the Create Discovery modal, set type to Unified, pick the daemon, and advance to the Credentials step",
-        "Confirm the Integrations grid appears (subtitle + cards), not the bare wizard",
-        "Select an SNMP type and an integration, click Next",
-        "Confirm it advances to the wizard (still on the Credentials tab) seeded with the chosen types; configure them",
-        "Click Back and confirm it returns to the Integrations grid (not the previous tab); Next again returns to the wizard",
-        "Finish the remaining tabs and Save; confirm the credentials are created and attached"
+        "In the open card modal, enter Stripe test card 4242 4242 4242 4242, a future expiry, any CVC and ZIP.",
+        "Submit the form.",
+        "Wait for the success state / modal close, then re-open billing to confirm the saved card is listed."
       ],
-      "expected": "Discovery's Credentials step mirrors the daemon flow: Integrations grid → wizard, with Next/Back stepping through the sub-flow. Saving creates/updates credentials and sets pending_credential_ids.",
+      "expected": "SetupIntent confirm succeeds (network call to api.stripe.com is not blocked), the card is saved and shown in billing. No CSP violations in the console.",
+      "flow": "setup",
+      "sequence": 2,
       "status": null,
       "feedback": null
     },
     {
-      "id": "discovery-socket-readonly",
-      "category": "Discovery modal — read-only socket",
-      "description": "The Docker socket card is read-only in discovery, reflecting the daemon's capability, and prevents a daemon-host proxy",
-      "setup": "Two daemons: one WITH local Docker socket (has_docker_socket true) and one WITHOUT.",
+      "id": "stripe-no-residual-csp-violations",
+      "category": "CSP / Stripe Elements",
+      "description": "No further Stripe domains are blocked by the CSP during the full card flow.",
       "steps": [
-        "New Unified discovery against the daemon WITH the socket → Credentials → Integrations grid",
-        "Confirm the Docker Socket card is shown checked but disabled (read-only); hover it and read the tooltip",
-        "Continue to the wizard, add a Docker Proxy, and check its 'Add daemon host' button",
-        "Repeat against the daemon WITHOUT the socket: the Docker Socket card is shown unchecked + disabled"
+        "With the console open, repeat the render + submit flow above.",
+        "Scan the console for any 'violates the following Content Security Policy directive' messages referencing a stripe domain (e.g. m.stripe.network)."
       ],
-      "expected": "Socket card is non-toggleable, checked iff the daemon has the socket. Tooltip reads 'Local Docker access is set when the daemon is installed. Reinstall the daemon to enable or disable it.' On the socket-enabled daemon, a Docker Proxy's 'Add daemon host' is disabled with the integration-named tooltip (no 'proxy will take priority' note anywhere).",
-      "status": null,
-      "feedback": null
-    },
-    {
-      "id": "discovery-edit-existing-creds",
-      "category": "Discovery modal — edit existing",
-      "description": "Editing a discovery with existing credentials lands on the wizard",
-      "setup": "An existing Unified discovery that already has pending_credential_ids attached.",
-      "steps": [
-        "Open it for editing and go to the Credentials step",
-        "Observe whether it opens on the Integrations grid or the wizard",
-        "Adjust a credential's target and save"
-      ],
-      "expected": "The Credentials step opens directly on the wizard showing the existing credentials (not the empty grid). Saving updates their target_ips and preserves the attachment.",
+      "expected": "No residual CSP violations. If m.stripe.network (Stripe fraud signals, frame-src) is reported blocked, note it — it would need to be added to frame-src as a follow-up.",
+      "flow": "setup",
+      "sequence": 3,
       "status": null,
       "feedback": null
     }
   ]
-}
-,
-{
-  "branch": "fix/subnet-metadata-deser",
-  "tests": [],
-  "notes": "No human/UI tests. This is a backend serde forward-compatibility change with no UI surface. Everything is verified programmatically and runs in `cd backend && cargo test --lib`: (1) `daemon::shared::forward_compat::tests::registered_daemon_responses_are_forward_compatible` deserializes a simulated newer-server payload for every daemon-consumed response type; (2) SubnetType/EntitySource characterization tests cover both production errors plus a reproduction of the original `missing field 'metadata'` failure. A manual test is not feasible: reproducing the failure needs an OLD daemon binary, and the fix by design cannot help an already-deployed old daemon (it only takes effect once the daemon runs this build), so there is no by-hand action that demonstrates the fix."
-}
-,
-{
-  "branch": "feat/card-required-signup",
-  "tests": []
 }
 ];

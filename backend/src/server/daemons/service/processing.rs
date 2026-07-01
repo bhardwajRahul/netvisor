@@ -46,7 +46,6 @@ impl DaemonService {
                 }
             }
             daemon.base.capabilities.interfaced_subnet_ids = resolved_ids;
-            daemon.base.capabilities.has_docker_socket = status.has_docker_socket;
         } else if !status.capabilities.interfaced_subnet_ids.is_empty() {
             // Pre-v0.15.0: use capabilities as-is
             daemon.base.capabilities = status.capabilities;
@@ -140,12 +139,15 @@ impl DaemonService {
                     >(network.base.organization_id)
                 })?;
             let is_free_plan = organization.base.plan.map(|p| p.is_free()).unwrap_or(true);
+            // Reconnect safety-net (discoveries were deleted): no registration request is in
+            // scope on startup, so we can't recover the init-command targeting here. Recreate
+            // with empty targeting; the daemon re-registering restores its integration_targets.
             self.create_default_discovery_jobs(
                 daemon_id,
                 daemon.base.network_id,
                 daemon.base.host_id,
-                daemon.base.capabilities.has_docker_socket,
                 is_free_plan,
+                &[],
             )
             .await?;
         }
@@ -316,50 +318,34 @@ impl DaemonService {
             )
             .await?;
 
-        // Assign only localhost-targeted credentials to daemon host during registration.
-        // Remote credentials will be auto-assigned to their target hosts during discovery.
-        if !request.credential_ids.is_empty() {
-            let mut assignments = Vec::new();
-            for id in &request.credential_ids {
-                let is_local = match self.credential_service.get_by_id(id).await {
-                    Ok(Some(cred)) => match &cred.base.target_ips {
-                        Some(ips) => ips.iter().any(|ip| ip.is_loopback()),
-                        None => false,
-                    },
-                    Ok(None) => {
-                        tracing::warn!(credential_id = %id, "Credential not found during registration");
-                        false
-                    }
-                    Err(e) => {
-                        tracing::warn!(credential_id = %id, error = ?e, "Failed to look up credential during registration");
-                        false
-                    }
-                };
-                if is_local {
-                    assignments.push(CredentialAssignment {
-                        credential_id: *id,
-                        ip_address_ids: None,
-                    });
-                } else {
-                    tracing::debug!(
-                        credential_id = %id,
-                        "Skipping credential with remote target_ips for daemon host assignment"
-                    );
-                }
-            }
-            if !assignments.is_empty()
-                && let Err(e) = self
-                    .credential_service
-                    .set_host_credentials(&host_response.id, &assignments)
-                    .await
-            {
+        // Seed the daemon host's loopback so a daemon-host socket/proxy credential is probed on the
+        // very first scan (the credential mapping is snapshotted before the daemon self-reports).
+        if let Err(e) = host_service
+            .seed_loopback(host_response.id, request.network_id, auth.clone())
+            .await
+        {
+            tracing::warn!(host_id = %host_response.id, error = %e, "Failed to seed daemon host loopback");
+        }
+
+        // Assign credentials targeted at the daemon host to this daemon's host now, so they appear
+        // in the credential's assignments immediately (#637 Symptom A). That's any DaemonHost-scoped
+        // target (e.g. a local socket credential) or a Hosts target naming a loopback IP. Remote-IP
+        // and Network credentials are auto-assigned to their hosts during discovery.
+        // Apply the init-command targeting through the SAME path the discovery-update handler uses:
+        // daemon-host creds (sockets / loopback Hosts) merge into the host_credentials junction;
+        // Network/Hosts targets are returned to persist on the daemon's Discovery row.
+        let remaining_targets = self
+            .credential_service
+            .apply_integration_targets(host_response.id, request.integration_targets.clone())
+            .await
+            .unwrap_or_else(|e| {
                 tracing::warn!(
                     host_id = %host_response.id,
                     error = ?e,
-                    "Failed to assign credentials to host during registration"
+                    "Failed to apply integration targets during registration"
                 );
-            }
-        }
+                request.integration_targets.clone()
+            });
 
         // If user_id is nil (old daemon), fall back to org owner
         let user_id = if request.user_id.is_nil() {
@@ -406,8 +392,8 @@ impl DaemonService {
             request.daemon_id,
             request.network_id,
             host_response.id,
-            request.capabilities.has_docker_socket,
             is_free_plan,
+            &remaining_targets,
         )
         .await?;
 
@@ -698,14 +684,13 @@ impl DaemonService {
         daemon_id: Uuid,
         network_id: Uuid,
         host_id: Uuid,
-        has_docker_socket: bool,
         is_free_plan: bool,
+        integration_targets: &[IntegrationTarget],
     ) -> Result<(), ApiError> {
         tracing::info!(
             daemon_id = %daemon_id,
             network_id = %network_id,
             host_id = %host_id,
-            has_docker_socket,
             is_free_plan,
             "Creating default discovery jobs for daemon"
         );
@@ -730,19 +715,21 @@ impl DaemonService {
             scan_settings: ScanSettings::default(),
         };
 
+        let mut discovery = Discovery::new(DiscoveryBase {
+            run_type: default_run_type,
+            discovery_type: unified_discovery_type.clone(),
+            name: "Discovery".to_string(),
+            daemon_id,
+            network_id,
+            tags: Vec::new(),
+        });
+        // Persist the init-command targeting on the daemon's own Discovery so it's present
+        // before the first session dispatches (the #637 fix: per-daemon, not on the credential).
+        discovery.integration_targets = integration_targets.to_vec();
+
         let unified_discovery = self
             .discovery_service
-            .create_discovery(
-                Discovery::new(DiscoveryBase {
-                    run_type: default_run_type,
-                    discovery_type: unified_discovery_type.clone(),
-                    name: "Discovery".to_string(),
-                    daemon_id,
-                    network_id,
-                    tags: Vec::new(),
-                }),
-                AuthenticatedEntity::System,
-            )
+            .create_discovery(discovery, AuthenticatedEntity::System)
             .await?;
 
         self.discovery_service

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { toPng, toSvg } from 'html-to-image';
-	import { useSvelteFlow, type Node } from '@xyflow/svelte';
+	import { useSvelteFlow } from '@xyflow/svelte';
 	import {
 		FileImage,
 		FileCode,
@@ -12,7 +12,7 @@
 		Moon
 	} from 'lucide-svelte';
 	import { pushError, pushSuccess } from '$lib/shared/stores/feedback';
-	import { activeView } from '../queries';
+	import { activeView, type TopologyView } from '../queries';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
 	import { billingPlans } from '$lib/shared/stores/metadata';
 	import { isExporting } from '../interactions';
@@ -70,7 +70,34 @@
 		exportFeatures?: ExportFeatures;
 	} = $props();
 
-	const { getNodes, getEdges, getViewport, setViewport } = useSvelteFlow();
+	const { getNodes, getNodesBounds, getViewport, setViewport } = useSvelteFlow();
+
+	// Short canonical filename token per perspective. Keyed by the generated
+	// TopologyView enum so adding a backend view fails the build until mapped.
+	const VIEW_FILENAME_TOKENS: Record<TopologyView, string> = {
+		L2Physical: 'l2',
+		L3Logical: 'l3',
+		Workloads: 'infra',
+		Application: 'app'
+	};
+
+	/** Lowercase a network name and reduce non-alphanumerics to single hyphens for safe filenames. */
+	function sanitizeForFilename(name: string): string {
+		const slug = name
+			.toLowerCase()
+			.replace(/[^a-z0-9]+/g, '-')
+			.replace(/-+/g, '-')
+			.replace(/^-|-$/g, '');
+		return slug || 'network';
+	}
+
+	/** Build the canonical export filename: scanopy-<view>-<network>-<date>.<ext>. */
+	function buildExportFilename(ext: string): string {
+		const viewToken = VIEW_FILENAME_TOKENS[$activeView];
+		const networkSlug = sanitizeForFilename(topologyName);
+		const date = new Date().toISOString().split('T')[0];
+		return `scanopy-${viewToken}-${networkSlug}-${date}.${ext}`;
+	}
 
 	const organizationQuery = useOrganizationQuery();
 	let organization = $derived(organizationQuery.data);
@@ -235,22 +262,11 @@
 		}
 	}
 
-	function getAbsolutePosition(node: Node, nodes: Node[]) {
-		if (node.parentId) {
-			const parent = nodes.find((n) => n.id === node.parentId);
-			if (parent) {
-				return {
-					x: parent.position.x + node.position.x,
-					y: parent.position.y + node.position.y
-				};
-			}
-		}
-		return { x: node.position.x, y: node.position.y };
-	}
+	/** Uniform padding (flow units) around the content bounds so the crop isn't flush to nodes. */
+	const EXPORT_PADDING = 40;
 
 	function calculateExportBounds() {
 		const nodes = getNodes();
-		const edges = getEdges();
 
 		if (nodes.length === 0) {
 			pushError(topology_noNodesToExport());
@@ -263,74 +279,14 @@
 			return null;
 		}
 
-		const childNodes = nodes.filter((n) => n.parentId);
-		const parentNodes = nodes.filter((n) => !n.parentId);
-		const parentIdsWithChildren = new Set(childNodes.map((n) => n.parentId));
-		const standaloneNodes = parentNodes.filter((n) => !parentIdsWithChildren.has(n.id));
-
-		let minX = Infinity,
-			minY = Infinity,
-			maxX = -Infinity,
-			maxY = -Infinity;
-
-		childNodes.forEach((child) => {
-			const absPos = getAbsolutePosition(child, nodes);
-			const width = child.measured?.width || child.width || 150;
-			const height = child.measured?.height || child.height || 50;
-			minX = Math.min(minX, absPos.x);
-			minY = Math.min(minY, absPos.y);
-			maxX = Math.max(maxX, absPos.x + width);
-			maxY = Math.max(maxY, absPos.y + height);
-		});
-
-		standaloneNodes.forEach((node) => {
-			const x = node.position.x;
-			const y = node.position.y;
-			const width = node.measured?.width || node.width || 150;
-			const height = node.measured?.height || node.height || 50;
-			minX = Math.min(minX, x);
-			minY = Math.min(minY, y);
-			maxX = Math.max(maxX, x + width);
-			maxY = Math.max(maxY, y + height);
-		});
-
-		const parentBorderMargin = 20;
-		parentNodes
-			.filter((n) => parentIdsWithChildren.has(n.id))
-			.forEach((parent) => {
-				minX = Math.min(minX, parent.position.x - parentBorderMargin);
-				minY = Math.min(minY, parent.position.y - parentBorderMargin);
-			});
-
-		edges.forEach((edge) => {
-			const sourceNode = nodes.find((n) => n.id === edge.source);
-			const targetNode = nodes.find((n) => n.id === edge.target);
-			if (sourceNode && targetNode) {
-				const sourcePos = getAbsolutePosition(sourceNode, nodes);
-				const targetPos = getAbsolutePosition(targetNode, nodes);
-				const sourceCenterX =
-					sourcePos.x + (sourceNode.measured?.width || sourceNode.width || 150) / 2;
-				const sourceCenterY =
-					sourcePos.y + (sourceNode.measured?.height || sourceNode.height || 50) / 2;
-				const targetCenterX =
-					targetPos.x + (targetNode.measured?.width || targetNode.width || 150) / 2;
-				const targetCenterY =
-					targetPos.y + (targetNode.measured?.height || targetNode.height || 50) / 2;
-				minX = Math.min(minX, sourceCenterX, targetCenterX);
-				minY = Math.min(minY, sourceCenterY, targetCenterY);
-				maxX = Math.max(maxX, sourceCenterX, targetCenterX);
-				maxY = Math.max(maxY, sourceCenterY, targetCenterY);
-			}
-		});
-
-		const edgeMargin = 150;
-		minX -= edgeMargin;
-		minY -= edgeMargin;
-		maxX += edgeMargin;
-		maxY += edgeMargin;
-
-		const boundsWidth = maxX - minX;
-		const boundsHeight = maxY - minY;
+		// Union bounding box of every rendered node/container in absolute flow
+		// coords. The hook's getNodesBounds resolves nested container offsets via
+		// the internal node lookup, so the crop is tight and symmetric on all sides.
+		const bounds = getNodesBounds(nodes);
+		const minX = bounds.x - EXPORT_PADDING;
+		const minY = bounds.y - EXPORT_PADDING;
+		const boundsWidth = bounds.width + EXPORT_PADDING * 2;
+		const boundsHeight = bounds.height + EXPORT_PADDING * 2;
 		const targetZoom = 0.75;
 		const imageWidth = Math.round(boundsWidth * targetZoom);
 		const imageHeight = Math.round(boundsHeight * targetZoom);
@@ -481,8 +437,7 @@
 				format === 'svg' ? await toSvg(flowElement, options) : await toPng(flowElement, options);
 
 			const link = document.createElement('a');
-			const date = new Date().toISOString().split('T')[0];
-			link.download = `scanopy-topology-${date}.${format}`;
+			link.download = buildExportFilename(format);
 			link.href = dataUrl;
 			link.click();
 			pushSuccess(topology_exportComplete());
@@ -531,12 +486,11 @@
 
 			const pdfBytes = buildPdf(jpegBytes, canvas.width, canvas.height);
 
-			const date = new Date().toISOString().split('T')[0];
 			const pdfBuffer = new ArrayBuffer(pdfBytes.byteLength);
 			new Uint8Array(pdfBuffer).set(pdfBytes);
 			triggerDownload(
 				new Blob([pdfBuffer], { type: 'application/pdf' }),
-				`scanopy-topology-${date}.pdf`
+				buildExportFilename('pdf')
 			);
 			pushSuccess(topology_exportComplete());
 			trackEvent('topology_exported', { format: 'pdf' });
@@ -671,8 +625,7 @@
 				'</html>'
 			].join('\n');
 
-			const date = new Date().toISOString().split('T')[0];
-			triggerDownload(new Blob([html], { type: 'text/html' }), `scanopy-topology-${date}.html`);
+			triggerDownload(new Blob([html], { type: 'text/html' }), buildExportFilename('html'));
 			pushSuccess(topology_exportComplete());
 			trackEvent('topology_exported', { format: 'html' });
 		});

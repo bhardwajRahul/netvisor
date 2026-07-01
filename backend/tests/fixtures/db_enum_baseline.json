@@ -42,7 +42,9 @@
     "DockerProxy",
     "DockerSocket",
     "SnmpV1",
-    "SnmpV3"
+    "SnmpV3",
+    "PodmanProxy",
+    "PodmanSocket"
   ],
   "DaemonMode": [
     "ServerPoll",
@@ -96,6 +98,11 @@
     "VCenter",
     "ESXi"
   ],
+  "IntegrationTarget": [
+    "DaemonHost",
+    "Network",
+    "Hosts"
+  ],
   "LldpChassisId": [
     "ChassisComponent",
     "InterfaceAlias",
@@ -147,7 +154,8 @@
     "Podman"
   ],
   "SubnetVirtualization": [
-    "Docker"
+    "Docker",
+    "Podman"
   ],
   "TopologyView": [
     "L2Physical",

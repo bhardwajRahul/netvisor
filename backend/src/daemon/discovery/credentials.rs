@@ -44,48 +44,44 @@ pub fn resolve_credentials_for_ip(
 ///
 /// Builds a credential_id → type lookup from the credential mappings, then groups
 /// each host's assignments by type label. Returns type_label → list of "cred_id → ip".
+/// Summarize the credential mappings the daemon actually used, grouped by credential type.
+///
+/// Driven by the mappings themselves (not discovered-host assignments): each mapping's
+/// `ip_overrides` cover daemon-host (127.0.0.1) and per-host targets, and `default_credential`
+/// covers network broadcast. `hosts` is used only to annotate an override IP with a discovered
+/// host name when one matches.
 pub fn summarize_credential_assignments(
     hosts: &[(IpAddr, Host)],
     credential_mappings: &[CredentialMapping<CredentialQueryPayload>],
 ) -> HashMap<String, Vec<String>> {
-    // Build credential_id → type label lookup from mappings
-    let mut cred_type_lookup: HashMap<Uuid, String> = HashMap::new();
-    for mapping in credential_mappings {
-        let type_label: Option<String> = mapping
-            .default_credential
-            .as_ref()
-            .map(|c| {
-                let d: CredentialQueryPayloadDiscriminants = c.into();
-                d.to_string()
-            })
-            .or_else(|| {
-                mapping.ip_overrides.first().map(|o| {
-                    let d: CredentialQueryPayloadDiscriminants = (&o.credential).into();
-                    d.to_string()
-                })
-            });
+    let host_name_by_ip: HashMap<IpAddr, String> = hosts
+        .iter()
+        .map(|(ip, host)| (*ip, host.base.name.clone()))
+        .collect();
 
-        if let Some(label) = type_label {
-            for o in &mapping.ip_overrides {
-                if o.credential_id != Uuid::nil() {
-                    cred_type_lookup.insert(o.credential_id, label.clone());
-                }
-            }
-        }
-    }
-
-    // Group assignments by type
     let mut by_type: HashMap<String, Vec<String>> = HashMap::new();
-    for (ip, host) in hosts {
-        for assignment in &host.base.credential_assignments {
-            let label = cred_type_lookup
-                .get(&assignment.credential_id)
-                .cloned()
-                .unwrap_or_else(|| "Unknown".to_string());
+    for mapping in credential_mappings {
+        // Per-IP overrides: daemon-host (127.0.0.1) and explicit per-host targets.
+        for o in &mapping.ip_overrides {
+            let label: String =
+                Into::<CredentialQueryPayloadDiscriminants>::into(&o.credential).to_string();
+            let target = match host_name_by_ip.get(&o.ip) {
+                Some(name) => format!("{} ({})", o.ip, name),
+                None => o.ip.to_string(),
+            };
             by_type
                 .entry(label)
                 .or_default()
-                .push(format!("{} → {}", assignment.credential_id, ip));
+                .push(format!("{} → {}", o.credential_id, target));
+        }
+        // Network-broadcast default credential (applies to all hosts on the network).
+        if let Some(default) = &mapping.default_credential {
+            let label: String =
+                Into::<CredentialQueryPayloadDiscriminants>::into(default).to_string();
+            by_type
+                .entry(label)
+                .or_default()
+                .push("network default".to_string());
         }
     }
 

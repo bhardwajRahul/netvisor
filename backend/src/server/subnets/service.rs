@@ -87,19 +87,20 @@ impl CrudService<Subnet> for SubnetService {
             // FK columns post-terminal.
             match (&existing_subnet.base.source, &subnet.base.source) {
                 (EntitySource::Discovery, EntitySource::Discovery) => {
-                    use crate::server::subnets::r#impl::virtualization::SubnetVirtualization;
-
-                    if subnet.base.subnet_type.is_docker_bridge()
-                        && existing_subnet.base.subnet_type.is_docker_bridge()
+                    // Container-runtime bridge networks (Docker/Podman) are
+                    // host-scoped: the same CIDR on different daemons is a
+                    // distinct subnet, so they only dedupe when the owning
+                    // runtime service matches. Distinct runtimes carry
+                    // distinct service ids, so a Docker and a Podman bridge
+                    // with the same CIDR never collide.
+                    if subnet.base.subnet_type.is_container_bridge()
+                        && existing_subnet.base.subnet_type.is_container_bridge()
                     {
                         match (
                             &subnet.base.virtualization,
                             &existing_subnet.base.virtualization,
                         ) {
-                            (
-                                Some(SubnetVirtualization::Docker(a)),
-                                Some(SubnetVirtualization::Docker(b)),
-                            ) => a.service_id == b.service_id,
+                            (Some(a), Some(b)) => a.service_id() == b.service_id(),
                             _ => true,
                         }
                     } else {
@@ -198,24 +199,23 @@ impl SubnetService {
         }
     }
 
-    /// Update DockerBridge subnets that reference an old service_id to use the new one.
-    /// Called after host upsert remaps Docker service IDs during create_with_children.
-    pub async fn patch_docker_bridge_virtualization(
+    /// Update container-runtime bridge subnets (Docker/Podman) that reference an
+    /// old service_id to use the new one. Called after host upsert remaps the
+    /// runtime service IDs during create_with_children.
+    pub async fn patch_container_bridge_virtualization(
         &self,
         network_id: &Uuid,
         old_service_id: &Uuid,
         new_service_id: &Uuid,
     ) -> Result<()> {
-        use crate::server::subnets::r#impl::virtualization::SubnetVirtualization;
-
         // SCD2: only patch live subnets; closed historical copies retain
         // their as-of state.
         let filter = StorableFilter::<Subnet>::new_from_network_ids(&[*network_id]).live();
         let subnets = self.storage.get_all(filter).await?;
 
         for mut subnet in subnets {
-            if let Some(SubnetVirtualization::Docker(ref mut d)) = subnet.base.virtualization
-                && d.service_id == *old_service_id
+            if let Some(virt) = subnet.base.virtualization.as_mut()
+                && virt.service_id() == Some(*old_service_id)
             {
                 tracing::debug!(
                     subnet_id = %subnet.id,
@@ -224,7 +224,7 @@ impl SubnetService {
                     new_service_id = %new_service_id,
                     "Patching bridge subnet virtualization service_id"
                 );
-                d.service_id = *new_service_id;
+                virt.set_service_id(*new_service_id);
                 self.storage.update(&mut subnet).await?;
             }
         }

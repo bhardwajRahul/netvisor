@@ -35,7 +35,7 @@
 		MINIMAP_HEIGHT_PX,
 		MINIMAP_OFFSET_PX,
 		aggregatedEdgeOriginals,
-		getInfrastructureRuleId,
+		getInfrastructureRuleIdForTopology,
 		topologyReadOnly
 	} from '../../queries';
 	import { isExporting, expandedPortNodeIds } from '../../interactions';
@@ -315,6 +315,11 @@
 	const hideEdgeTypesStore = derived(topologyOptions, (o) =>
 		(o.local.hide_edge_types ?? []).join(',')
 	);
+
+	// Infra rule id derived from the topology bundle being rendered (not the
+	// global options store, which hydrates out-of-band and lags a network
+	// switch). Keeps auto-collapse of the infra subcontainer correct on switch.
+	const getInfrastructureRuleId = () => getInfrastructureRuleIdForTopology(topology);
 
 	let loadInProgress = false;
 	let pendingReload = false;

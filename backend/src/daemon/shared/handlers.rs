@@ -156,15 +156,7 @@ async fn handle_first_contact(
     // Log deprecation warnings
     request.server_capabilities.log_warnings();
 
-    // Bootstrap docker socket availability so first discovery knows whether to run docker
-    let (has_docker_socket, _) = state
-        .services
-        .runtime_service
-        .check_docker_availability()
-        .await;
-
     let capabilities = DaemonCapabilities {
-        has_docker_socket,
         interfaced_subnet_ids: vec![],
     };
 

@@ -178,6 +178,7 @@ pub mod kubernetes;
 pub mod nomad;
 pub mod openshift;
 pub mod podman;
+pub mod podman_container;
 pub mod portainer;
 pub mod proxmox;
 pub mod rancher;

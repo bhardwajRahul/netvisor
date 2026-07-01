@@ -17,10 +17,14 @@
 		entityDescriptionDisabled?: boolean;
 		onEntityDescriptionSave?: (value: string | null) => void;
 		compact?: boolean;
+		/** A non-null `disabledReason` renders the option disabled with that tooltip. */
+		disabledReason?: string | null;
 	}
 
 	export const HostDisplay: EntityDisplayComponent<Host, HostDisplayContext> = {
 		getId: (host) => host.id,
+		getDisabled: (_host, context) => !!context?.disabledReason,
+		getDisabledReason: (_host, context) => context?.disabledReason ?? null,
 		getLabel: (host) => host.name,
 		getDescription: (host) => host.hostname || 'No Hostname',
 		getIcon: (host, context) => {

@@ -83,11 +83,6 @@ export function buildDefaultValues(
 	return defaults;
 }
 
-export interface DockerConfig {
-	credentialId: string | null;
-	disableLocalSocket?: boolean;
-}
-
 export function buildRunCommand(
 	serverUrl: string,
 	networkId: string,
@@ -96,8 +91,7 @@ export function buildRunCommand(
 	daemon: Daemon | null,
 	userId: string | null,
 	os: DaemonOS = 'linux',
-	dockerConfig?: DockerConfig,
-	credentialIds?: string[]
+	integrationTokens?: string[]
 ): string {
 	const isWindows = os === 'windows';
 	const binary = isWindows ? '.\\scanopy-daemon-windows-amd64.exe' : 'scanopy-daemon';
@@ -159,17 +153,11 @@ export function buildRunCommand(
 		}
 	}
 
-	// Docker config flags
-	if (dockerConfig) {
-		if (dockerConfig.disableLocalSocket) {
-			cmd += ` --enable-local-docker-socket false`;
-		}
-	}
-
-	// Credential IDs (includes docker proxy and wizard credentials)
-	if (credentialIds) {
-		for (const id of credentialIds) {
-			cmd += ` --credential-id ${id}`;
+	// Integration targeting tokens: <uuid>, <uuid>@<ip>[+<ip>], docker-socket, podman-socket.
+	// Local sockets are explicit opt-in tokens — there are no enable/disable flags.
+	if (integrationTokens) {
+		for (const token of integrationTokens) {
+			cmd += ` --credential-id ${token}`;
 		}
 	}
 
@@ -182,8 +170,7 @@ export function buildDockerCompose(
 	key: string,
 	values: Record<string, string | number | boolean>,
 	userId: string | null,
-	dockerConfig?: DockerConfig,
-	credentialIds?: string[]
+	integrationTokens?: string[]
 ): string {
 	const envVars: string[] = [`SCANOPY_SERVER_URL=${serverUrl}`, `SCANOPY_DAEMON_API_KEY=${key}`];
 
@@ -241,16 +228,10 @@ export function buildDockerCompose(
 		}
 	}
 
-	// Docker config env vars
-	if (dockerConfig) {
-		if (dockerConfig.disableLocalSocket) {
-			envVars.push(`SCANOPY_ENABLE_LOCAL_DOCKER_SOCKET=false`);
-		}
-	}
-
-	// Credential IDs (includes docker proxy and wizard credentials)
-	if (credentialIds && credentialIds.length > 0) {
-		envVars.push(`SCANOPY_CREDENTIAL_IDS=${credentialIds.join(',')}`);
+	// Integration targeting tokens (comma-separated): <uuid>, <uuid>@<ip>[+<ip>],
+	// docker-socket, podman-socket. Local sockets are explicit opt-in — no enable/disable flags.
+	if (integrationTokens && integrationTokens.length > 0) {
+		envVars.push(`SCANOPY_CREDENTIAL_IDS=${integrationTokens.join(',')}`);
 	}
 
 	// Mount log volume in Docker so logs persist on host

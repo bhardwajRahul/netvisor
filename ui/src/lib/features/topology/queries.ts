@@ -60,14 +60,11 @@ function getIrrelevantCategories(useCase: string): ServiceCategory[] {
 	return [...getIrrelevantServiceCategories(useCase)] as ServiceCategory[];
 }
 
-/**
- * Find the infrastructure rule ID from the current topology options
- * by looking for the ByServiceCategory rule with is_infra_rule: true.
- * Derives the ID on each call — no stale state possible.
- */
-export function getInfrastructureRuleId(): string | null {
-	const opts = get(topologyOptionsStore);
-	for (const rule of opts.request.element_rules ?? []) {
+/** Scan a set of element rules for the ByServiceCategory rule flagged is_infra_rule. */
+export function findInfraRuleId(
+	elementRules: TopologyOptions['request']['element_rules'] | undefined
+): string | null {
+	for (const rule of elementRules ?? []) {
 		if (
 			typeof rule.rule === 'object' &&
 			'ByServiceCategory' in rule.rule &&
@@ -77,6 +74,31 @@ export function getInfrastructureRuleId(): string | null {
 		}
 	}
 	return null;
+}
+
+/**
+ * Find the infrastructure rule ID from the current topology options store
+ * by looking for the ByServiceCategory rule with is_infra_rule: true.
+ *
+ * Reads the global store, which is hydrated out-of-band from the topology bundle
+ * that drives the layout pipeline — so on a network switch it can briefly lag.
+ * Layout/auto-collapse code must use {@link getInfrastructureRuleIdForTopology}
+ * with the bundle it is rendering; this store-based variant is for UI surfaces
+ * (e.g. the grouping-rule editor) that have no topology in hand.
+ */
+export function getInfrastructureRuleId(): string | null {
+	return findInfraRuleId(get(topologyOptionsStore).request.element_rules);
+}
+
+/**
+ * Infrastructure rule ID derived from a specific topology bundle's options
+ * rather than the global store. Always in sync with the nodes being laid out,
+ * so it stays correct across a same-view network switch.
+ */
+export function getInfrastructureRuleIdForTopology(
+	topology: Topology | RenderableTopology
+): string | null {
+	return findInfraRuleId(topology.options?.request?.element_rules);
 }
 
 const ALL_VIEWS: TopologyView[] = viewsJson.map((p) => p.id as TopologyView);

@@ -242,7 +242,7 @@ impl DiscoveryService {
                         },
                         scan_count: 0,
                         force_full_scan: false,
-                        pending_credential_ids: vec![],
+                        integration_targets: vec![],
                     };
 
                     if let Err(e) = self.discovery_storage.create(&historical_discovery).await {

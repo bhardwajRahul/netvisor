@@ -1,3 +1,4 @@
+use crate::daemon::discovery::integration::container::ContainerRuntime;
 use crate::daemon::discovery::service::base::DiscoveryRunner;
 use crate::daemon::discovery::service::ops::DiscoveryOps;
 use crate::daemon::utils::base::{DaemonUtils, merge_host_and_docker_subnets};
@@ -30,63 +31,13 @@ impl DiscoveryRunner {
             .await?;
         let ops = DiscoveryOps::new(&self.service, DiscoveryType::from(&*self));
 
-        // Inject DockerSocket credential if local socket is accessible and enabled.
-        //
-        // NOTE (future generalization): this is intentionally Docker-specific while
-        // Docker is the *only* auto-local integration (`CredentialType::is_local_auto()`
-        // is true only for `DockerSocket`). When a second auto-local integration is
-        // added (e.g. a local Podman socket), generalize this block: loop over the
-        // credential-type discriminants where `to_credential_type().is_local_auto()`,
-        // and for each — gated by a per-capability daemon flag (e.g. an
-        // `enabled_local_capabilities: HashMap<CredentialTypeDiscriminants, bool>`
-        // replacing the single `enable_local_docker_socket`) and its own connectivity
-        // probe — inject `to_credential_type().to_query_payload()` as a 127.0.0.1
-        // IP-override (keeping the dedupe check below). The exhaustive match the new
-        // variant forces will surface every spot that needs a probe. Kept specific for
-        // now to avoid a speculative probe/flag abstraction for a single integration.
-        let enable_local = self
-            .service
-            .config_store
-            .get_enable_local_docker_socket()
-            .await
-            .unwrap_or(true);
-        if enable_local {
-            // Check if Docker socket is actually accessible
-            let can_connect = self
-                .service
-                .utils
-                .new_docker_client(Ok(None), Ok(None))
-                .await
-                .is_ok();
-            if can_connect {
-                // Check if we already have a DockerSocket credential (avoid duplicates)
-                let already_has = self.credential_mappings.iter().any(|m| {
-                    m.default_credential
-                        .as_ref()
-                        .is_some_and(|c| matches!(c, CredentialQueryPayload::DockerSocket(_)))
-                        || m.ip_overrides.iter().any(|o| {
-                            matches!(o.credential, CredentialQueryPayload::DockerSocket(_))
-                        })
-                });
-                if !already_has {
-                    tracing::debug!("Injecting DockerSocket credential for local socket access");
-                    self.credential_mappings.push(
-                        CredentialMapping {
-                            default_credential: None,
-                            ip_overrides: vec![
-                                crate::server::credentials::r#impl::mapping::IpOverride {
-                                    ip: std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
-                                    credential: CredentialQueryPayload::DockerSocket(
-                                        crate::server::credentials::r#impl::mapping::DockerSocketQueryCredential {},
-                                    ),
-                                    credential_id: Uuid::nil(),
-                                },
-                            ],
-                        },
-                    );
-                }
-            }
-        }
+        // Local Docker/Podman socket integrations are no longer injected here. They arrive in the
+        // server-sent `credential_mappings` as DockerSocket/PodmanSocket overrides at 127.0.0.1,
+        // driven by the per-daemon `integration_targets` (init-command targeting) — explicit
+        // opt-in, no per-integration daemon flags. The localhost-integration phase probes them;
+        // if the socket isn't actually present the probe fails gracefully and is skipped. The
+        // container integration resolves the concrete local socket path (rootful/rootless Podman,
+        // Docker socket) when it sees these payloads.
 
         // Always try SNMP "public" community on all hosts.
         // Injected as a broadcast default — user-configured credentials (IP overrides) take priority.
@@ -153,7 +104,7 @@ impl DiscoveryRunner {
 
         // Get docker subnets for merging
         let (docker_proxy, docker_proxy_ssl_info, _ssl_temp_handles, _, _) =
-            crate::daemon::discovery::integration::docker::proxy::resolve_docker_proxy(
+            crate::daemon::discovery::integration::docker::resolve_docker_proxy(
                 &self.credential_mappings,
                 &self.service.config_store,
             )
@@ -171,7 +122,12 @@ impl DiscoveryRunner {
         {
             self.service
                 .utils
-                .get_subnets_from_docker_networks(network_id, &docker_client, Uuid::nil())
+                .get_subnets_from_docker_networks(
+                    network_id,
+                    &docker_client,
+                    ContainerRuntime::Docker,
+                    Uuid::nil(),
+                )
                 .await
                 .unwrap_or_default()
         } else {
@@ -181,10 +137,11 @@ impl DiscoveryRunner {
         // Merge host and Docker subnets — host subnets always win on CIDR overlap
         let merged = merge_host_and_docker_subnets(subnets, docker_subnets);
 
-        // Filter out DockerBridge subnets — those are handled by Docker phase
+        // Filter out container-runtime bridge subnets (Docker/Podman) — those
+        // are handled by the container integration phase.
         let subnets_to_create: Vec<Subnet> = merged
             .into_iter()
-            .filter(|s| !s.is_docker_bridge_subnet())
+            .filter(|s| !s.is_container_bridge_subnet())
             .collect();
 
         tracing::info!(
@@ -307,7 +264,8 @@ impl DiscoveryRunner {
         let probe_results = dispatch::probe_integrations(
             localhost_ip,
             &localhost_mappings,
-            &[], // No port scan for localhost — integrations do their own probing
+            &[],  // No port scan for localhost — integrations do their own probing
+            true, // skip the probe-gate: daemon-host integrations (e.g. a proxy) always self-probe here
             cancel,
             &self.service.utils,
         )
@@ -323,12 +281,11 @@ impl DiscoveryRunner {
             "Localhost integration probes complete"
         );
 
-        // Use daemon's real IP for subnet/interface matching
-        let host_ip = self
-            .service
-            .utils
-            .get_own_ip_address()
-            .unwrap_or(localhost_ip);
+        // Attribute the discovered runtime service to 127.0.0.1 — the credential is keyed to
+        // localhost and the daemon host already carries a seeded loopback interface. Using the
+        // daemon's real IP here would land in the loopback subnet (its real subnet isn't
+        // discovered in a socket-only scan), adding a spurious non-loopback interface.
+        let host_ip = localhost_ip;
 
         // Build HostData via service matching using probe results
         let subnet = created_subnets

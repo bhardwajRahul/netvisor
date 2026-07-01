@@ -3040,7 +3040,7 @@ export interface components {
          * @description API metadata included in all responses
          * @example {
          *       "api_version": 1,
-         *       "server_version": "0.17.0"
+         *       "server_version": "0.17.1"
          *     }
          */
         ApiMeta: {
@@ -3051,7 +3051,7 @@ export interface components {
             api_version: number;
             /**
              * @description Server version (semver)
-             * @example 0.17.0
+             * @example 0.17.1
              */
             server_version: string;
         };
@@ -3065,19 +3065,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-06-24T21:31:19.413266Z",
+             *       "created_at": "2026-06-29T15:15:28.345331Z",
              *       "first_discovery_id": null,
-             *       "id": "b44b7952-a7bd-41a8-881e-02990f0b82f9",
+             *       "id": "b0144d82-007f-4fb2-a690-da919ef47135",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-06-24T21:31:19.413266Z",
+             *       "last_seen_at": "2026-06-29T15:15:28.345331Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-06-24T21:31:19.413266Z",
-             *       "valid_from": "2026-06-24T21:31:19.413266Z",
+             *       "updated_at": "2026-06-29T15:15:28.345331Z",
+             *       "valid_from": "2026-06-29T15:15:28.345331Z",
              *       "valid_to": null
              *     }
              */
@@ -3273,10 +3273,14 @@ export interface components {
                 /** Format: uuid */
                 readonly id: string;
                 /**
-                 * @description Credential IDs to include in the next scan's credential_mappings.
-                 *     Set by the discovery edit modal, cleared after each scan completes.
+                 * @description Per-daemon integration targeting: which integrations (credentialed or credential-less
+                 *     local) run on this daemon, and on which IPs. Delivered via the init command at
+                 *     registration and editable via the discovery modal. Persistent — re-applied every scan.
+                 *     This is the single home for cred↔IP targeting; it replaces the global
+                 *     `credential.target_ips` (race-prone, consumed once) and the discovery modal's old
+                 *     one-shot `pending_credential_ids`.
                  */
-                pending_credential_ids?: string[];
+                integration_targets: components["schemas"]["IntegrationTarget"][];
                 /**
                  * Format: int32
                  * @description Number of completed scans (incremented by server on session completion)
@@ -3414,19 +3418,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-06-24T21:31:19.396982Z",
+             *               "created_at": "2026-06-29T15:15:28.325514Z",
              *               "first_discovery_id": null,
-             *               "id": "44ae390f-0a35-4f9a-ad20-97abe35df708",
+             *               "id": "bcfb3d6e-4028-4022-81e5-f17eb48c1b55",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-06-24T21:31:19.396982Z",
+             *               "last_seen_at": "2026-06-29T15:15:28.325514Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-06-24T21:31:19.396982Z",
-             *               "valid_from": "2026-06-24T21:31:19.396982Z",
+             *               "updated_at": "2026-06-29T15:15:28.325514Z",
+             *               "valid_from": "2026-06-29T15:15:28.325514Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3440,7 +3444,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "NTP Server",
+             *           "service_definition": "Frigate",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3803,19 +3807,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-06-24T21:31:19.407949Z",
+             *           "created_at": "2026-06-29T15:15:28.339152Z",
              *           "first_discovery_id": null,
-             *           "id": "639cb3b5-463e-4c88-80a9-1f5b2bebf799",
+             *           "id": "9038c85e-20dc-4feb-b435-118f05763ce0",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-06-24T21:31:19.407949Z",
+             *           "last_seen_at": "2026-06-29T15:15:28.339152Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-06-24T21:31:19.407949Z",
-             *           "valid_from": "2026-06-24T21:31:19.407949Z",
+             *           "updated_at": "2026-06-29T15:15:28.339152Z",
+             *           "valid_from": "2026-06-29T15:15:28.339152Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -3829,7 +3833,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "NTP Server",
+             *       "service_definition": "Frigate",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4316,19 +4320,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-06-24T21:31:19.397319Z",
+         *       "created_at": "2026-06-29T15:15:28.325957Z",
          *       "first_discovery_id": null,
-         *       "id": "21d42fd8-a608-4f61-a5ac-9f61d49f5dba",
+         *       "id": "38eff216-2ec5-4bdc-926b-2fdfcfa549f1",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-06-24T21:31:19.397319Z",
+         *       "last_seen_at": "2026-06-29T15:15:28.325957Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-06-24T21:31:19.397319Z",
-         *       "valid_from": "2026-06-24T21:31:19.397319Z",
+         *       "updated_at": "2026-06-29T15:15:28.325957Z",
+         *       "valid_from": "2026-06-29T15:15:28.325957Z",
          *       "valid_to": null
          *     }
          */
@@ -4478,7 +4482,7 @@ export interface components {
         /** @enum {string} */
         Color: "Pink" | "Rose" | "Red" | "Amber" | "Orange" | "Green" | "Emerald" | "Teal" | "Cyan" | "Blue" | "Indigo" | "Purple" | "Fuchsia" | "Violet" | "Sky" | "Gray" | "Lime" | "Yellow";
         /** @enum {string} */
-        ContainerType: "Subnet" | "ServiceCategory" | "Application" | "Root" | "Host" | "NestedTag" | "NestedServiceCategory" | "Hypervisor" | "ContainerRuntime" | "Stack" | "TrunkPort" | "VLAN" | "PortOpStatus";
+        ContainerType: "Subnet" | "ServiceCategory" | "Application" | "ApplicationUngrouped" | "Root" | "Host" | "NestedTag" | "NestedServiceCategory" | "Hypervisor" | "ContainerRuntime" | "Stack" | "TrunkPort" | "VLAN" | "PortOpStatus";
         /**
          * @description Input for creating a binding with a service.
          *     `service_id` and `network_id` are assigned by the server after the service is created.
@@ -4543,7 +4547,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "NTP Server",
+         *           "service_definition": "Frigate",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -4697,8 +4701,26 @@ export interface components {
             /** @enum {string} */
             type: "DockerProxy";
         } | {
+            socket_path?: string | null;
             /** @enum {string} */
             type: "DockerSocket";
+        } | {
+            /** @description Optional URL path prefix (e.g. "/v1.43") */
+            path?: string | null;
+            /**
+             * Format: int32
+             * @description Port for the Podman API proxy (default 2375)
+             */
+            port?: number;
+            ssl_cert?: null | components["schemas"]["FileOrInline"];
+            ssl_chain?: null | components["schemas"]["FileOrInline"];
+            ssl_key?: null | components["schemas"]["SecretValue"];
+            /** @enum {string} */
+            type: "PodmanProxy";
+        } | {
+            socket_path?: string | null;
+            /** @enum {string} */
+            type: "PodmanSocket";
         };
         Daemon: components["schemas"]["DaemonBase"] & {
             /** Format: date-time */
@@ -4822,10 +4844,16 @@ export interface components {
         /** @description Daemon registration request from daemon to server */
         DaemonRegistrationRequest: {
             capabilities: components["schemas"]["DaemonCapabilities"];
-            /** @description Credential IDs to assign to daemon's host during registration. */
-            credential_ids?: string[];
             /** Format: uuid */
             daemon_id: string;
+            /**
+             * @description Per-daemon integration targeting from the init command (credentialed cred↔IP and
+             *     credential-less local sockets). Written to this daemon's Discovery at registration so
+             *     it's present before the first session dispatches. Registration assumes new-daemon →
+             *     new-server, so there is no legacy bare-`credential_ids` field — bare-uuid env back-compat
+             *     is handled in the daemon's env parser, never on the wire.
+             */
+            integration_targets?: components["schemas"]["IntegrationTarget"][];
             mode: components["schemas"]["DaemonMode"];
             name: string;
             /** Format: uuid */
@@ -5003,10 +5031,14 @@ export interface components {
             /** Format: uuid */
             readonly id: string;
             /**
-             * @description Credential IDs to include in the next scan's credential_mappings.
-             *     Set by the discovery edit modal, cleared after each scan completes.
+             * @description Per-daemon integration targeting: which integrations (credentialed or credential-less
+             *     local) run on this daemon, and on which IPs. Delivered via the init command at
+             *     registration and editable via the discovery modal. Persistent — re-applied every scan.
+             *     This is the single home for cred↔IP targeting; it replaces the global
+             *     `credential.target_ips` (race-prone, consumed once) and the discovery modal's old
+             *     one-shot `pending_credential_ids`.
              */
-            pending_credential_ids?: string[];
+            integration_targets: components["schemas"]["IntegrationTarget"][];
             /**
              * Format: int32
              * @description Number of completed scans (incremented by server on session completion)
@@ -5553,19 +5585,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-06-24T21:31:19.396590Z",
+         *               "created_at": "2026-06-29T15:15:28.324972Z",
          *               "first_discovery_id": null,
-         *               "id": "c4435fd4-fe34-4e49-990c-b0e40388232b",
+         *               "id": "4fb8a65a-bb7e-40ed-8836-0c36b12a1149",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-06-24T21:31:19.396590Z",
+         *               "last_seen_at": "2026-06-29T15:15:28.324972Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-06-24T21:31:19.396590Z",
-         *               "valid_from": "2026-06-24T21:31:19.396590Z",
+         *               "updated_at": "2026-06-29T15:15:28.324972Z",
+         *               "valid_from": "2026-06-29T15:15:28.324972Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -5579,7 +5611,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "NTP Server",
+         *           "service_definition": "Frigate",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -5791,6 +5823,34 @@ export interface components {
          * @enum {string}
          */
         InlineGroupRole: "Header" | "Member";
+        /**
+         * @description Per-daemon integration targeting, stored on the `Discovery` entity and delivered via the
+         *     init command at registration. Each entry references exactly one stored credential and says
+         *     where it applies on this daemon. This is the single home for cred↔IP targeting — it replaces
+         *     the global, race-prone `credential.target_ips`.
+         *
+         *     The variants ARE the scopes; their strum [`Target`] discriminants are the capability enum that
+         *     `CredentialType::targets()` returns and validates against (single source of truth). Every
+         *     target carries a real `credential_id` — there is no credential-less branch and no nil
+         *     sentinel; a local socket is just a credential whose type targets only the daemon host.
+         */
+        IntegrationTarget: {
+            /** Format: uuid */
+            credential_id: string;
+            /** @enum {string} */
+            scope: "DaemonHost";
+        } | {
+            /** Format: uuid */
+            credential_id: string;
+            /** @enum {string} */
+            scope: "Network";
+        } | {
+            /** Format: uuid */
+            credential_id: string;
+            ips: string[];
+            /** @enum {string} */
+            scope: "Hosts";
+        };
         Interface: components["schemas"]["InterfaceBase"] & {
             /** Format: date-time */
             readonly created_at: string;
@@ -6286,7 +6346,7 @@ export interface components {
          *         "offset": 0,
          *         "total_count": 142
          *       },
-         *       "server_version": "0.17.0"
+         *       "server_version": "0.17.1"
          *     }
          */
         PaginatedApiMeta: {
@@ -6299,7 +6359,7 @@ export interface components {
             pagination: components["schemas"]["PaginationMeta"];
             /**
              * @description Server version (semver)
-             * @example 0.17.0
+             * @example 0.17.1
              */
             server_version: string;
         };
@@ -6635,6 +6695,14 @@ export interface components {
             seat_count: number;
             /** Format: int64 */
             seat_limit?: number | null;
+        };
+        PodmanSubnetVirtualization: {
+            /**
+             * Format: uuid
+             * @description The Podman daemon service that owns this bridge network.
+             *     Different Podman daemons on different hosts = distinct bridge subnets.
+             */
+            service_id: string;
         };
         PodmanVirtualization: {
             compose_project?: string | null;
@@ -7004,19 +7072,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-06-24T21:31:19.397242Z",
+         *           "created_at": "2026-06-29T15:15:28.325854Z",
          *           "first_discovery_id": null,
-         *           "id": "7decaaa7-3e15-4c8b-93b1-02546b24fc26",
+         *           "id": "516f258f-ca0e-4472-9a42-bd01bd35af92",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-06-24T21:31:19.397242Z",
+         *           "last_seen_at": "2026-06-29T15:15:28.325854Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-06-24T21:31:19.397242Z",
-         *           "valid_from": "2026-06-24T21:31:19.397242Z",
+         *           "updated_at": "2026-06-29T15:15:28.325854Z",
+         *           "valid_from": "2026-06-29T15:15:28.325854Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -7030,7 +7098,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "NTP Server",
+         *       "service_definition": "Frigate",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -7296,16 +7364,19 @@ export interface components {
          */
         SubnetOrderField: "created_at" | "name" | "cidr" | "subnet_type" | "updated_at" | "network_id";
         /** @enum {string} */
-        SubnetType: "Internet" | "Remote" | "Gateway" | "VpnTunnel" | "Dmz" | "Lan" | "WiFi" | "IoT" | "Guest" | "DockerBridge" | "MacVlan" | "IpVlan" | "Management" | "Storage" | "Loopback" | "Unknown";
+        SubnetType: "Internet" | "Remote" | "Gateway" | "VpnTunnel" | "Dmz" | "Lan" | "WiFi" | "IoT" | "Guest" | "DockerBridge" | "PodmanBridge" | "MacVlan" | "IpVlan" | "Management" | "Storage" | "Loopback" | "Unknown";
         /**
          * @description Virtualization metadata for subnets that belong to a virtual infrastructure.
          *     Consistent with HostVirtualization and ServiceVirtualization patterns.
          *     Points to the service that provides the virtualization (e.g., Docker daemon).
          */
-        SubnetVirtualization: components["schemas"]["DockerSubnetVirtualization"] & {
+        SubnetVirtualization: (components["schemas"]["DockerSubnetVirtualization"] & {
             /** @enum {string} */
             type: "Docker";
-        };
+        }) | (components["schemas"]["PodmanSubnetVirtualization"] & {
+            /** @enum {string} */
+            type: "Podman";
+        });
         /**
          * @example {
          *       "color": "Green",
@@ -7450,7 +7521,7 @@ export interface components {
              * @default {
              *       "Application": [
              *         {
-             *           "id": "ac254e05-1b30-4be1-a56c-7ab1efea5a1d",
+             *           "id": "82796dc5-d053-4da2-882c-ab05c3582510",
              *           "rule": {
              *             "ByApplication": {
              *               "tag_ids": []
@@ -7460,23 +7531,23 @@ export interface components {
              *       ],
              *       "L2Physical": [
              *         {
-             *           "id": "6c590a0c-be5a-4748-95f2-8efe34cf26df",
+             *           "id": "44599b74-53db-47f3-bf3b-770b778013de",
              *           "rule": "ByHost"
              *         }
              *       ],
              *       "L3Logical": [
              *         {
-             *           "id": "2d0a4cac-85d4-4ab8-bd9e-8fb4922ce692",
+             *           "id": "17a68964-60c7-4fd3-be99-37f94bdf356a",
              *           "rule": "BySubnet"
              *         },
              *         {
-             *           "id": "8de48685-c2b4-4fdb-9d03-56cf9d9a8d8d",
+             *           "id": "097c65f1-0a73-476c-9bd5-0513e72b8c0b",
              *           "rule": "MergeDockerBridges"
              *         }
              *       ],
              *       "Workloads": [
              *         {
-             *           "id": "6c590a0c-be5a-4748-95f2-8efe34cf26df",
+             *           "id": "44599b74-53db-47f3-bf3b-770b778013de",
              *           "rule": "ByHost"
              *         }
              *       ]
@@ -7488,19 +7559,19 @@ export interface components {
             /**
              * @default [
              *       {
-             *         "id": "dcada258-aee4-46c9-b0d7-1596ef18e01a",
+             *         "id": "b6481282-4036-44fc-9aa5-24b09985199d",
              *         "rule": "ByTrunkPort"
              *       },
              *       {
-             *         "id": "20c00c22-d7f1-443b-9404-dc7c3f52868b",
+             *         "id": "8e701dbf-f93b-4691-bc6e-a082dcfc780f",
              *         "rule": "ByVLAN"
              *       },
              *       {
-             *         "id": "35fedc6b-3df6-4bc0-aead-3306b28ab597",
+             *         "id": "8d2f1998-c834-4452-a149-84c94da6d16b",
              *         "rule": "ByPortOpStatus"
              *       },
              *       {
-             *         "id": "8f0a2ac6-f05f-4ba5-b4b8-8a81cd21a4b5",
+             *         "id": "c8e0bca8-2389-4a45-b310-0d7f9f5d237e",
              *         "rule": {
              *           "ByServiceCategory": {
              *             "categories": [
@@ -7518,7 +7589,7 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "cd9c43bf-f25f-4790-a4cd-192113538669",
+             *         "id": "51651c5b-baba-4514-b7f8-46630335266d",
              *         "rule": {
              *           "ByTag": {
              *             "tag_ids": [],
@@ -7527,15 +7598,15 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "9e5a1e61-61ba-4b6d-b4e9-27acc2fb8ce0",
+             *         "id": "7cc27b22-6067-4ad5-8548-89ad57ee264c",
              *         "rule": "ByHypervisor"
              *       },
              *       {
-             *         "id": "274d63a6-3a20-4fc1-acb9-778fb68dc900",
+             *         "id": "61e59024-1212-4ff9-af44-32ae69269e66",
              *         "rule": "ByContainerRuntime"
              *       },
              *       {
-             *         "id": "c82fca3b-1bd0-49b9-8142-065c8ef45ca2",
+             *         "id": "91d6f69d-c646-4c6f-b68c-945389d5feba",
              *         "rule": "ByStack"
              *       }
              *     ]

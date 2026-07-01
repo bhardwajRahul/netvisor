@@ -150,7 +150,7 @@ impl ViewBuilder for ApplicationBuilder {
             nodes.push(Node {
                 id: UNGROUPED_CONTAINER_ID,
                 node_type: NodeType::Container {
-                    container_type: ContainerType::Application,
+                    container_type: ContainerType::ApplicationUngrouped,
                     parent_container_id: None,
                     entity_id: None,
                     icon: Some(Concept::Application.icon().to_string()),

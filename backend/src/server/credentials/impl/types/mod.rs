@@ -1,6 +1,6 @@
 use crate::server::{
     credentials::r#impl::mapping::{
-        CredentialQueryPayload, DockerProxyQueryCredential, DockerSocketQueryCredential,
+        ContainerProxyQueryCredential, ContainerSocketQueryCredential, CredentialQueryPayload,
         ResolvableSecret, ResolvableValue,
     },
     ports::r#impl::base::PortType,
@@ -13,7 +13,7 @@ use strum::{Display, EnumDiscriminants, EnumIter};
 use strum_macros::{IntoStaticStr, VariantNames};
 use utoipa::ToSchema;
 
-pub mod docker_proxy;
+pub mod container_proxy;
 pub mod snmp;
 
 mod fields;
@@ -21,9 +21,12 @@ mod metadata;
 mod secrets;
 
 pub use fields::{FieldDefinition, FieldType, InlineFormat, PemTag, SelectOption};
-pub use metadata::{CredentialAssignment, CredentialCategory, CredentialHostAssignment, Target};
+pub use metadata::{CredentialAssignment, CredentialCategory, CredentialHostAssignment};
+// `Target` is the strum-discriminant of `IntegrationTarget` (single source of truth for the
+// scope scheme); re-export it here so `CredentialType::targets()` and existing imports resolve.
+pub use super::mapping::Target;
 pub use secrets::{
-    FileOrInline, REDACTED_SECRET_SENTINEL, SecretValue, StorageCredentialType,
+    ExposeSecretsGuard, FileOrInline, REDACTED_SECRET_SENTINEL, SecretValue,
     deserialize_optional_file_or_inline, deserialize_optional_secret_value,
 };
 
@@ -47,7 +50,15 @@ fn default_docker_port() -> u16 {
     IntoStaticStr,
     VariantNames,
 )]
-#[strum_discriminants(derive(Display, Hash, Serialize, Deserialize, IntoStaticStr, EnumIter))]
+#[strum_discriminants(derive(
+    Display,
+    Hash,
+    Serialize,
+    Deserialize,
+    IntoStaticStr,
+    EnumIter,
+    utoipa::ToSchema
+))]
 #[serde(tag = "type")]
 pub enum CredentialType {
     /// SNMPv1 community string — for legacy devices that only speak v1.
@@ -95,9 +106,52 @@ pub enum CredentialType {
         )]
         ssl_chain: Option<FileOrInline>,
     },
-    /// Local Docker socket access. Auto-injected by daemon when socket is available.
-    /// Not user-selectable — managed automatically from daemon capabilities.
-    DockerSocket {},
+    /// Local Docker socket access on the daemon host. `socket_path` optionally repoints the
+    /// socket (non-default `DOCKER_HOST`); blank ⇒ the daemon auto-detects (bollard defaults).
+    DockerSocket {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        socket_path: Option<String>,
+    },
+    /// Podman API proxy credentials. Podman exposes a Docker-compatible REST API,
+    /// so the fields mirror `DockerProxy`. Target IP determined from host
+    /// ip_addresses at scan time.
+    PodmanProxy {
+        /// Port for the Podman API proxy (default 2375)
+        #[serde(default = "default_docker_port")]
+        port: u16,
+        /// Optional URL path prefix (e.g. "/v1.43")
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+        /// PEM-encoded public certificate — inline or file path on daemon host
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            deserialize_with = "deserialize_optional_file_or_inline"
+        )]
+        ssl_cert: Option<FileOrInline>,
+        /// Private key — inline PEM content or file path on daemon host
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            deserialize_with = "deserialize_optional_secret_value"
+        )]
+        ssl_key: Option<SecretValue>,
+        /// PEM-encoded CA chain — inline or file path on daemon host
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            deserialize_with = "deserialize_optional_file_or_inline"
+        )]
+        ssl_chain: Option<FileOrInline>,
+    },
+    /// Local Podman socket access on the daemon host. `socket_path` optionally repoints the
+    /// socket (e.g. rootful `/run/podman/podman.sock` vs rootless
+    /// `$XDG_RUNTIME_DIR/podman/podman.sock`); blank ⇒ the daemon auto-detects via
+    /// `resolve_podman_socket_path()`.
+    PodmanSocket {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        socket_path: Option<String>,
+    },
 }
 
 /// Convert a stored `SecretValue` into a daemon-bound `ResolvableSecret`,
@@ -170,6 +224,13 @@ impl CredentialType {
                     ssl_key: existing_key,
                     ..
                 },
+            )
+            | (
+                Self::PodmanProxy { ssl_key, .. },
+                Self::PodmanProxy {
+                    ssl_key: existing_key,
+                    ..
+                },
             ) => {
                 if let Some(key) = ssl_key
                     && key.is_redacted_sentinel()
@@ -177,7 +238,7 @@ impl CredentialType {
                     *ssl_key = existing_key.clone();
                 }
             }
-            (Self::DockerSocket {}, _) => {}
+            (Self::DockerSocket { .. }, _) | (Self::PodmanSocket { .. }, _) => {}
             // Type changed — no merging needed
             _ => {}
         }
@@ -188,8 +249,10 @@ impl CredentialType {
             Self::SnmpV1 { .. } | Self::SnmpV2c { .. } | Self::SnmpV3 { .. } => {
                 CredentialCategory::NetworkMonitoring
             }
-            Self::DockerProxy { .. } => CredentialCategory::ContainerVirtualization,
-            Self::DockerSocket {} => CredentialCategory::ContainerVirtualization,
+            Self::DockerProxy { .. }
+            | Self::DockerSocket { .. }
+            | Self::PodmanProxy { .. }
+            | Self::PodmanSocket { .. } => CredentialCategory::ContainerVirtualization,
         }
     }
 
@@ -198,14 +261,16 @@ impl CredentialType {
     pub fn targets(&self) -> Vec<Target> {
         match self {
             // SNMP can target the daemon's own host too (a 127.0.0.1 IP-override),
-            // a specific host, or a whole network.
+            // specific hosts, or a whole network.
             Self::SnmpV1 { .. } | Self::SnmpV2c { .. } | Self::SnmpV3 { .. } => {
-                vec![Target::DaemonHost, Target::Host, Target::Network]
+                vec![Target::DaemonHost, Target::Hosts, Target::Network]
             }
-            // Docker proxy: on the daemon host (localhost proxy) or a remote host.
-            Self::DockerProxy { .. } => vec![Target::DaemonHost, Target::Host],
+            // Docker/Podman proxy: on the daemon host (localhost proxy) or remote hosts.
+            Self::DockerProxy { .. } | Self::PodmanProxy { .. } => {
+                vec![Target::DaemonHost, Target::Hosts]
+            }
             // Local socket: only the daemon's own host.
-            Self::DockerSocket {} => vec![Target::DaemonHost],
+            Self::DockerSocket { .. } | Self::PodmanSocket { .. } => vec![Target::DaemonHost],
         }
     }
 
@@ -215,14 +280,6 @@ impl CredentialType {
         !self.field_definitions().is_empty()
     }
 
-    /// Whether this type is a zero-config local capability the daemon auto-detects
-    /// (e.g. the Docker socket): no config to provide and applicable to the daemon's
-    /// own host. Such types render as an on/off toggle and persist as daemon config,
-    /// not as a credential. Derived — never declared per-variant.
-    pub fn is_local_auto(&self) -> bool {
-        !self.requires_config() && self.targets().contains(&Target::DaemonHost)
-    }
-
     /// Whether this integration is a single service instance per host, so its
     /// access methods at a given target are mutually exclusive (e.g. a container
     /// runtime is reached by exactly one of socket/proxy). `false` for try-many
@@ -230,7 +287,10 @@ impl CredentialType {
     /// credential types of the same integration agree.
     pub fn single_endpoint_per_host(&self) -> bool {
         match self {
-            Self::DockerProxy { .. } | Self::DockerSocket {} => true,
+            Self::DockerProxy { .. }
+            | Self::DockerSocket { .. }
+            | Self::PodmanProxy { .. }
+            | Self::PodmanSocket { .. } => true,
             Self::SnmpV1 { .. } | Self::SnmpV2c { .. } | Self::SnmpV3 { .. } => false,
         }
     }
@@ -257,6 +317,12 @@ impl CredentialType {
                 ssl_key,
                 ssl_chain,
                 ..
+            }
+            | Self::PodmanProxy {
+                ssl_cert,
+                ssl_key,
+                ssl_chain,
+                ..
             } => match field_id {
                 "ssl_cert" => match ssl_cert.as_ref()? {
                     FileOrInline::Inline { value } => Some(value.clone()),
@@ -269,7 +335,7 @@ impl CredentialType {
                 },
                 _ => None,
             },
-            Self::DockerSocket {} => None,
+            Self::DockerSocket { .. } | Self::PodmanSocket { .. } => None,
         }
     }
 
@@ -295,20 +361,13 @@ impl CredentialType {
             Self::SnmpV1 { .. } | Self::SnmpV2c { .. } | Self::SnmpV3 { .. } => {
                 Box::new(crate::server::services::definitions::snmp::Snmp)
             }
-            Self::DockerProxy { .. } => {
+            Self::DockerProxy { .. } | Self::DockerSocket { .. } => {
                 Box::new(crate::server::services::definitions::docker_daemon::Docker)
             }
-            Self::DockerSocket {} => {
-                Box::new(crate::server::services::definitions::docker_daemon::Docker)
+            Self::PodmanProxy { .. } | Self::PodmanSocket { .. } => {
+                Box::new(crate::server::services::definitions::podman::Podman)
             }
         }
-    }
-
-    /// Whether this credential type is created as a user credential (vs. rendered
-    /// as a daemon auto-capability toggle). Auto-local types (e.g. the Docker
-    /// socket) are managed as daemon config, not created as credentials.
-    pub fn is_user_selectable(&self) -> bool {
-        !self.is_local_auto()
     }
 
     /// Convert to wire format payload for daemon transmission.
@@ -357,31 +416,53 @@ impl CredentialType {
                 ssl_cert,
                 ssl_key,
                 ssl_chain,
-            } => CredentialQueryPayload::DockerProxy(DockerProxyQueryCredential {
-                port: *port,
-                path: path.clone(),
-                ssl_cert: ssl_cert.as_ref().map(|f| match f {
-                    FileOrInline::Inline { value } => ResolvableValue::Value {
-                        value: value.clone(),
-                    },
-                    FileOrInline::FilePath { path } => {
-                        ResolvableValue::FilePath { path: path.clone() }
-                    }
-                }),
-                ssl_key: ssl_key.as_ref().map(secret_to_resolvable),
-                ssl_chain: ssl_chain.as_ref().map(|f| match f {
-                    FileOrInline::Inline { value } => ResolvableValue::Value {
-                        value: value.clone(),
-                    },
-                    FileOrInline::FilePath { path } => {
-                        ResolvableValue::FilePath { path: path.clone() }
-                    }
-                }),
-            }),
-            CredentialType::DockerSocket {} => {
-                CredentialQueryPayload::DockerSocket(DockerSocketQueryCredential {})
+            } => CredentialQueryPayload::DockerProxy(container_proxy_query(
+                *port, path, ssl_cert, ssl_key, ssl_chain,
+            )),
+            CredentialType::DockerSocket { socket_path } => {
+                CredentialQueryPayload::DockerSocket(ContainerSocketQueryCredential {
+                    socket_path: socket_path.clone(),
+                })
+            }
+            CredentialType::PodmanProxy {
+                port,
+                path,
+                ssl_cert,
+                ssl_key,
+                ssl_chain,
+            } => CredentialQueryPayload::PodmanProxy(container_proxy_query(
+                *port, path, ssl_cert, ssl_key, ssl_chain,
+            )),
+            CredentialType::PodmanSocket { socket_path } => {
+                CredentialQueryPayload::PodmanSocket(ContainerSocketQueryCredential {
+                    socket_path: socket_path.clone(),
+                })
             }
         }
+    }
+}
+
+/// Build a container-runtime proxy query credential from the shared
+/// proxy fields (Docker and Podman use the same Docker-compatible shape).
+fn container_proxy_query(
+    port: u16,
+    path: &Option<String>,
+    ssl_cert: &Option<FileOrInline>,
+    ssl_key: &Option<SecretValue>,
+    ssl_chain: &Option<FileOrInline>,
+) -> ContainerProxyQueryCredential {
+    let file_or_inline = |f: &FileOrInline| match f {
+        FileOrInline::Inline { value } => ResolvableValue::Value {
+            value: value.clone(),
+        },
+        FileOrInline::FilePath { path } => ResolvableValue::FilePath { path: path.clone() },
+    };
+    ContainerProxyQueryCredential {
+        port,
+        path: path.clone(),
+        ssl_cert: ssl_cert.as_ref().map(&file_or_inline),
+        ssl_key: ssl_key.as_ref().map(secret_to_resolvable),
+        ssl_chain: ssl_chain.as_ref().map(&file_or_inline),
     }
 }
 
@@ -651,11 +732,28 @@ mod tests {
 
     #[test]
     fn snmpv3_storage_serialization_exposes_passwords() {
-        // StorageCredentialType is used only for DB writes and must expose secrets.
+        // Under an ExposeSecretsGuard (the DB-write path), secrets are exposed.
         let cred = snmpv3_cred("auth-xyz-plain", "priv-xyz-plain");
-        let json = serde_json::to_string(&StorageCredentialType(&cred)).expect("serialize");
+        let json = {
+            let _expose = ExposeSecretsGuard::new();
+            serde_json::to_string(&cred).expect("serialize")
+        };
         assert!(json.contains("auth-xyz-plain"));
         assert!(json.contains("priv-xyz-plain"));
+    }
+
+    #[test]
+    fn secret_exposure_resets_after_guard_drops() {
+        // After the guard scope, serialization must redact again — the storage
+        // exposure must not leak into subsequent default serializations.
+        let cred = snmpv3_cred("leak-check-auth", "leak-check-priv");
+        {
+            let _expose = ExposeSecretsGuard::new();
+            let _ = serde_json::to_string(&cred);
+        }
+        let json = serde_json::to_string(&cred).expect("serialize");
+        assert!(!json.contains("leak-check-auth"));
+        assert!(json.contains(REDACTED_SECRET_SENTINEL));
     }
 
     #[test]
@@ -664,5 +762,120 @@ mod tests {
         let dbg = format!("{:?}", payload);
         assert!(!dbg.contains("auth-dbg"));
         assert!(!dbg.contains("priv-dbg"));
+    }
+
+    fn podman_cred(ssl_key: Option<&str>) -> CredentialType {
+        CredentialType::PodmanProxy {
+            port: 2376,
+            path: None,
+            ssl_cert: None,
+            ssl_key: ssl_key.map(|k| SecretValue::Inline {
+                value: SecretString::from(k.to_string()),
+            }),
+            ssl_chain: None,
+        }
+    }
+
+    #[test]
+    fn podman_proxy_to_query_payload_round_trips() {
+        match podman_cred(Some("podman-key")).to_query_payload() {
+            CredentialQueryPayload::PodmanProxy(p) => {
+                assert_eq!(p.port, 2376);
+                assert!(matches!(
+                    p.ssl_key,
+                    Some(ResolvableSecret::Value { value }) if value == "podman-key"
+                ));
+            }
+            other => panic!("expected PodmanProxy payload, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn podman_socket_to_query_payload() {
+        assert!(matches!(
+            CredentialType::PodmanSocket { socket_path: None }.to_query_payload(),
+            CredentialQueryPayload::PodmanSocket(_)
+        ));
+    }
+
+    #[test]
+    fn podman_credentials_are_container_virtualization() {
+        assert_eq!(
+            podman_cred(None).credential_category(),
+            CredentialCategory::ContainerVirtualization
+        );
+        assert_eq!(
+            CredentialType::PodmanSocket { socket_path: None }.credential_category(),
+            CredentialCategory::ContainerVirtualization
+        );
+    }
+
+    #[test]
+    fn podman_proxy_associates_podman_service() {
+        assert_eq!(podman_cred(None).associated_service().name(), "Podman");
+        assert_eq!(
+            CredentialType::PodmanSocket { socket_path: None }
+                .associated_service()
+                .name(),
+            "Podman"
+        );
+    }
+
+    #[test]
+    fn podman_proxy_exposes_proxy_fields() {
+        // Same shape as Docker proxy: port, path, and three TLS fields.
+        let fields = podman_cred(None).field_definitions();
+        let ids: Vec<&str> = fields.iter().map(|f| f.id).collect();
+        assert_eq!(
+            ids,
+            vec!["port", "path", "ssl_cert", "ssl_key", "ssl_chain"]
+        );
+        // Socket types expose a single optional, non-secret socket_path field (repointable) and
+        // target only the daemon host — the property the UI derives in place of the old
+        // `is_local_auto` flag.
+        let socket_fields = CredentialType::PodmanSocket { socket_path: None }.field_definitions();
+        assert_eq!(socket_fields.len(), 1);
+        assert_eq!(socket_fields[0].id, "socket_path");
+        assert!(socket_fields[0].optional && !socket_fields[0].secret);
+        assert_eq!(
+            CredentialType::PodmanSocket { socket_path: None }.targets(),
+            vec![Target::DaemonHost]
+        );
+    }
+
+    #[test]
+    fn storage_serialization_tag_round_trips_for_every_variant() {
+        // The stored form is the credential's own derived serialization (under an
+        // exposure guard). This guards that every variant's "type" tag round-trips
+        // through Deserialize — so storage can't silently desync from how it reads.
+        for disc in CredentialTypeDiscriminants::iter() {
+            let ct = disc.to_credential_type();
+            let json = {
+                let _expose = ExposeSecretsGuard::new();
+                serde_json::to_string(&ct).expect("serialize")
+            };
+            let back: CredentialType = serde_json::from_str(&json).expect("deserialize");
+            assert_eq!(
+                CredentialTypeDiscriminants::from(&back),
+                disc,
+                "storage tag did not round-trip for {disc:?}: {json}"
+            );
+        }
+    }
+
+    #[test]
+    fn podman_proxy_merge_redacted_ssl_key() {
+        let existing = podman_cred(Some("original-key"));
+        let mut updated = podman_cred(Some(REDACTED_SECRET_SENTINEL));
+        updated.merge_redacted_secrets(&existing);
+        match &updated {
+            CredentialType::PodmanProxy { ssl_key, .. } => {
+                assert!(matches!(
+                    ssl_key,
+                    Some(SecretValue::Inline { value }) if value.expose_secret() == "original-key"
+                ));
+            }
+            _ => panic!("expected PodmanProxy variant"),
+        }
     }
 }
