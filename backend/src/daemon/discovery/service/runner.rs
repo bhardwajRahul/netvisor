@@ -281,12 +281,11 @@ impl DiscoveryRunner {
             "Localhost integration probes complete"
         );
 
-        // Use daemon's real IP for subnet/interface matching
-        let host_ip = self
-            .service
-            .utils
-            .get_own_ip_address()
-            .unwrap_or(localhost_ip);
+        // Attribute the discovered runtime service to 127.0.0.1 — the credential is keyed to
+        // localhost and the daemon host already carries a seeded loopback interface. Using the
+        // daemon's real IP here would land in the loopback subnet (its real subnet isn't
+        // discovered in a socket-only scan), adding a spurious non-loopback interface.
+        let host_ip = localhost_ip;
 
         // Build HostData via service matching using probe results
         let subnet = created_subnets
