@@ -3,6 +3,8 @@ use crate::server::billing::types::base::BillingPlan;
 use crate::server::shared::events::types::{
     EmailAndToken, OnboardingOperation, OnboardingOperationDiscriminants,
 };
+use crate::server::shared::types::api::ApiError;
+use crate::server::shared::types::error_codes::ErrorCode;
 use crate::server::{
     auth::{
         r#impl::{
@@ -37,6 +39,7 @@ use argon2::{
     Argon2,
     password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng},
 };
+use axum::http::StatusCode;
 use base64ct::{Base64UrlUnpadded, Encoding};
 use chrono::{Duration, Utc};
 use email_address::EmailAddress;
@@ -231,6 +234,28 @@ impl AuthService {
             ProvisionOrg::New(PendingSetup {
                 use_case, org_name, ..
             }) => {
+                // Self-hosted is single-tenant: one instance = one organization.
+                // The instance license is instance-level and CommercialSelfHosted
+                // is unlimited, so uncapped orgs would let one license entitle
+                // arbitrarily many. Cloud (billing_enabled) stays multi-tenant.
+                // Gates creation only — instances already above the cap keep
+                // their orgs. Invited users take the `Existing` arm and are
+                // unaffected. `billing_enabled == false` ⇔ self-hosted.
+                if !billing_enabled {
+                    let org_count = self
+                        .organization_service
+                        .get_all(StorableFilter::<Organization>::new())
+                        .await?
+                        .len();
+                    if org_count >= 1 {
+                        return Err(ApiError::coded(
+                            StatusCode::FORBIDDEN,
+                            ErrorCode::AuthOrgLimitReached,
+                        )
+                        .into());
+                    }
+                }
+
                 let onboarding = vec![OnboardingOperationDiscriminants::OnboardingModalCompleted];
 
                 // Cloud: no plan until user selects one via billing modal → Stripe checkout → webhook

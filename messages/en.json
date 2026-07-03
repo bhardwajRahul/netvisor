@@ -719,6 +719,7 @@
   "errors_auth_not_authenticated": "Not authenticated",
   "errors_auth_oidc_not_configured": "OIDC not configured for this organization",
   "errors_auth_oidc_provider_error": "Failed to authenticate with {provider}",
+  "errors_auth_org_limit_reached": "This instance already has an organization. Ask an admin to invite you instead of creating a new account.",
   "errors_auth_organization_required": "This operation requires an organization context",
   "errors_auth_password_invalid": "Invalid password",
   "errors_auth_password_login_disabled": "Password login is disabled",

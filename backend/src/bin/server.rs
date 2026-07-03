@@ -482,6 +482,29 @@ async fn main() -> anyhow::Result<()> {
         tracing::info!(target: LOG_TARGET, "  Brevo service not configured, skipping org sync");
     }
 
+    // Reconcile self-hosted org plan(s) to the license entitlement. The license
+    // key is env-only, so a key added after an org was provisioned as Community
+    // only takes effect on restart — this is that moment. Runs only for a
+    // self-hosted deployment (no Stripe secret) with a valid commercial license;
+    // upgrades Community orgs to CommercialSelfHosted, idempotently.
+    if state.config.stripe_secret.is_none()
+        && matches!(
+            state.license_service.current_status().await,
+            scanopy::server::license::types::LicenseStatus::Valid(_)
+        )
+    {
+        let organization_service = state.services.organization_service.clone();
+        tracing::info!(target: LOG_TARGET, "  Spawning self-hosted license plan reconciliation task");
+        tokio::spawn(async move {
+            if let Err(e) = organization_service
+                .reconcile_self_hosted_license_plans()
+                .await
+            {
+                tracing::error!(target: LOG_TARGET, error = %e, "Failed to reconcile self-hosted org plans to license entitlement");
+            }
+        });
+    }
+
     // Configuration summary
     tracing::info!(target: LOG_TARGET, "Configuration:");
     tracing::info!(target: LOG_TARGET, "  Listen:          {}", listen_addr);
