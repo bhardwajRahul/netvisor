@@ -63,7 +63,7 @@
 			formData.discovery_type.subnet_ids &&
 			formData.discovery_type.subnet_ids.length > 0
 			? formData.discovery_type.subnet_ids
-					.filter((s) => !daemon.capabilities.interfaced_subnet_ids.includes(s))
+					.filter((s) => !daemon.interfaced_subnet_ids.includes(s))
 					.map((s) => subnetsData.find((subnet) => subnet.id == s))
 					.filter((s) => s != undefined)
 			: []

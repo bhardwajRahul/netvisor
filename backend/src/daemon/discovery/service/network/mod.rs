@@ -115,7 +115,7 @@ impl NetworkScan {
                 let has_cred =
                     m.ip_overrides.iter().any(|o| o.ip == ip) || m.default_credential.is_some();
                 if has_cred {
-                    let integration = IntegrationRegistry::get(discriminant);
+                    let integration = IntegrationRegistry::get(discriminant)?;
                     Some(integration.estimated_seconds() as usize * 100)
                 } else {
                     None

@@ -1,9 +1,6 @@
 use crate::server::{
     config::{AppState, ServerConfig},
-    daemons::r#impl::{
-        api::DaemonCapabilities,
-        base::{Daemon, DaemonBase, DaemonMode},
-    },
+    daemons::r#impl::base::{Daemon, DaemonBase, DaemonMode},
     dependencies::r#impl::{
         base::{Dependency, DependencyBase, DependencyMembers},
         types::DependencyType,
@@ -174,9 +171,6 @@ pub fn daemon(network_id: &Uuid, host_id: &Uuid) -> Daemon {
         url: "http://192.168.1.50:60073".to_string(),
         last_seen: Some(Utc::now()),
         mode: DaemonMode::ServerPoll,
-        capabilities: DaemonCapabilities {
-            interfaced_subnet_ids: Vec::new(),
-        },
         version: None,
         user_id: Uuid::nil(),
         api_key_id: None,

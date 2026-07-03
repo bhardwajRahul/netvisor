@@ -6,7 +6,8 @@
 	import { tooltip } from '$lib/shared/actions/tooltip';
 	import {
 		daemons_integrationsSubtitle,
-		credentials_lockedDaemonCapability
+		credentials_lockedDaemonCapability,
+		credentials_requiresDaemonVersion
 	} from '$lib/paraglide/messages';
 
 	type CredType = TypedTypeMetadata<CredentialTypeMetadata>;
@@ -21,12 +22,17 @@
 		/** Type ids always rendered checked, independent of `selectedTypeIds` (used
 		 *  for locked cards reflecting a fixed capability). */
 		forceCheckedTypeIds?: string[];
+		/** Type ids the selected daemon is too old to receive (server-computed
+		 *  `version_status.incompatible_credential_type_ids`). Disabled with a
+		 *  version-requirement message. */
+		incompatibleTypeIds?: string[];
 	}
 
 	let {
 		selectedTypeIds = $bindable([]),
 		lockedTypeIds = [],
-		forceCheckedTypeIds = []
+		forceCheckedTypeIds = [],
+		incompatibleTypeIds = []
 	}: Props = $props();
 
 	// One flat list of cards: every user-selectable type plus the auto-local
@@ -71,8 +77,32 @@
 		return lockedTypeIds.includes(id);
 	}
 
+	function isIncompatible(id: string): boolean {
+		return incompatibleTypeIds.includes(id);
+	}
+
+	function isDisabled(id: string): boolean {
+		return isLocked(id) || isIncompatible(id);
+	}
+
+	// Disabled reason for the hover tooltip: version-incompatibility takes
+	// precedence over a fixed-capability lock (a too-old daemon can't run it at all).
+	function disabledReason(type: CredType): string | undefined {
+		if (isIncompatible(type.id)) {
+			return credentials_requiresDaemonVersion({
+				version: type.metadata?.minimum_daemon_version ?? ''
+			});
+		}
+		if (isLocked(type.id)) {
+			return credentials_lockedDaemonCapability({
+				integration: type.metadata?.associated_service ?? ''
+			});
+		}
+		return undefined;
+	}
+
 	function toggleType(id: string) {
-		if (isLocked(id)) return;
+		if (isDisabled(id)) return;
 		selectedTypeIds = selectedTypeIds.includes(id)
 			? selectedTypeIds.filter((x) => x !== id)
 			: [...selectedTypeIds, id];
@@ -90,18 +120,10 @@
 				{#each group.cards as type (type.id)}
 					{@const selected =
 						selectedTypeIds.includes(type.id) || forceCheckedTypeIds.includes(type.id)}
-					{@const locked = isLocked(type.id)}
-					<!-- Wrapper is the grid item; it carries the tooltip so a disabled (locked)
-					     card still shows the reason on hover. -->
-					<span
-						class="block"
-						data-tooltip={locked
-							? credentials_lockedDaemonCapability({
-									integration: type.metadata?.associated_service ?? ''
-								})
-							: undefined}
-						use:tooltip
-					>
+					{@const locked = isDisabled(type.id)}
+					<!-- Wrapper is the grid item; it carries the tooltip so a disabled (locked
+					     or version-incompatible) card still shows the reason on hover. -->
+					<span class="block" data-tooltip={disabledReason(type)} use:tooltip>
 						<button
 							type="button"
 							onclick={() => toggleType(type.id)}

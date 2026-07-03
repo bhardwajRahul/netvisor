@@ -1,5 +1,3 @@
-use std::fmt::Display;
-
 use crate::{
     daemon::discovery::types::base::{
         DiscoveryPhase, DiscoverySessionInfo, DiscoverySessionUpdate,
@@ -23,22 +21,20 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-/// Daemon capabilities
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq, Hash, ToSchema)]
-pub struct DaemonCapabilities {
+/// Legacy inbound-only capabilities blob.
+///
+/// Pre-0.15 daemons report their interfaced subnets as bare `subnet_id`s in this
+/// `capabilities` object (they predate the `interfaced_subnets: Vec<Subnet>`
+/// heartbeat channel). It is deserialize-only: the server never stores it, never
+/// echoes it in `DaemonResponse`, and it has no `SqlValue` variant. Reported ids
+/// are routed into the `daemon_interfaced_subnets` junction (existence-filtered)
+/// so legacy daemons keep reporting interfaced subnets. ≥0.15 daemons send the
+/// `Vec<Subnet>` channel instead and leave this empty.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq, ToSchema)]
+pub struct LegacyCapabilities {
     #[serde(default)]
     #[schema(required)]
     pub interfaced_subnet_ids: Vec<Uuid>,
-}
-
-impl Display for DaemonCapabilities {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "DaemonCapabilities {{ interfaced_subnet_ids: {:?} }}",
-            self.interfaced_subnet_ids
-        )
-    }
 }
 
 /// Daemon registration request from daemon to server
@@ -52,7 +48,11 @@ pub struct DaemonRegistrationRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
     pub mode: DaemonMode,
-    pub capabilities: DaemonCapabilities,
+    /// Legacy pre-0.15 interfaced-subnet channel (deserialize-only; see
+    /// [`LegacyCapabilities`]). Repopulated by the first heartbeat, so registration
+    /// does not persist it.
+    #[serde(default)]
+    pub capabilities: LegacyCapabilities,
     /// User responsible for maintaining this daemon (from frontend install command)
     /// Optional for backwards compat with old daemons - defaults to nil UUID
     #[serde(default)]
@@ -345,6 +345,10 @@ impl ServerCapabilities {
                 DeprecationSeverity::Info => {
                     tracing::info!(target: "daemon", "{}", msg);
                 }
+                // Unknown severity from a newer server — log as a warning.
+                DeprecationSeverity::Unknown => {
+                    tracing::warn!(target: "daemon", "{}", msg);
+                }
             }
         }
     }
@@ -370,6 +374,12 @@ pub struct DaemonResponse {
     pub base: DaemonBase,
     /// Computed version status including health and warnings
     pub version_status: DaemonVersionStatus,
+    /// Subnets this daemon has interfaces on, loaded from the
+    /// `daemon_interfaced_subnets` junction (replaces the old
+    /// `capabilities.interfaced_subnet_ids` JSONB field).
+    #[serde(default)]
+    #[schema(required)]
+    pub interfaced_subnet_ids: Vec<Uuid>,
 }
 
 /// Request to pre-provision a ServerPoll mode daemon.

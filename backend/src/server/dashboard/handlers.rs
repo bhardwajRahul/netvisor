@@ -98,18 +98,27 @@ async fn get_dashboard_summary(
         .await
         .map_err(|e| ApiError::internal_error(&e.to_string()))?;
 
+    let daemon_ids: Vec<_> = daemons_result.items.iter().map(|d| d.id).collect();
+    let subnet_ids_map = state
+        .services
+        .daemon_service
+        .get_interfaced_subnet_ids_batch(&daemon_ids)
+        .await;
+
     let policy = DaemonVersionPolicy::default();
     let daemon_responses: Vec<DaemonResponse> = daemons_result
         .items
         .into_iter()
         .map(|d| {
             let version_status = policy.evaluate(d.base.version.as_ref());
+            let interfaced_subnet_ids = subnet_ids_map.get(&d.id).cloned().unwrap_or_default();
             DaemonResponse {
                 id: d.id,
                 created_at: d.created_at,
                 updated_at: d.updated_at,
                 base: d.base,
                 version_status,
+                interfaced_subnet_ids,
             }
         })
         .collect();

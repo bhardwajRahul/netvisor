@@ -672,7 +672,10 @@ export interface paths {
         put?: never;
         /**
          * Update Daemon capabilities
-         * @description Internal endpoint for daemons to report their current capabilities.
+         * @description Legacy internal endpoint for pre-0.15 daemons to report their interfaced
+         *     subnets as bare ids. Modern daemons report them via the status heartbeat's
+         *     `interfaced_subnets` channel; this remains functional so older daemons in a
+         *     rolling deploy keep reporting (and don't 404).
          */
         post: operations["update_capabilities"];
         delete?: never;
@@ -3040,7 +3043,7 @@ export interface components {
          * @description API metadata included in all responses
          * @example {
          *       "api_version": 1,
-         *       "server_version": "0.17.1"
+         *       "server_version": "0.17.2"
          *     }
          */
         ApiMeta: {
@@ -3051,7 +3054,7 @@ export interface components {
             api_version: number;
             /**
              * @description Server version (semver)
-             * @example 0.17.1
+             * @example 0.17.2
              */
             server_version: string;
         };
@@ -3065,19 +3068,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-06-29T15:15:28.345331Z",
+             *       "created_at": "2026-07-03T14:52:14.118816Z",
              *       "first_discovery_id": null,
-             *       "id": "b0144d82-007f-4fb2-a690-da919ef47135",
+             *       "id": "73b4f764-ae05-4097-ba35-398c2f8687d9",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-06-29T15:15:28.345331Z",
+             *       "last_seen_at": "2026-07-03T14:52:14.118816Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-06-29T15:15:28.345331Z",
-             *       "valid_from": "2026-06-29T15:15:28.345331Z",
+             *       "updated_at": "2026-07-03T14:52:14.118816Z",
+             *       "valid_from": "2026-07-03T14:52:14.118816Z",
              *       "valid_to": null
              *     }
              */
@@ -3200,6 +3203,12 @@ export interface components {
                 created_at: string;
                 /** Format: uuid */
                 id: string;
+                /**
+                 * @description Subnets this daemon has interfaces on, loaded from the
+                 *     `daemon_interfaced_subnets` junction (replaces the old
+                 *     `capabilities.interfaced_subnet_ids` JSONB field).
+                 */
+                interfaced_subnet_ids: string[];
                 /** Format: date-time */
                 updated_at: string;
                 /** @description Computed version status including health and warnings */
@@ -3418,19 +3427,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-06-29T15:15:28.325514Z",
+             *               "created_at": "2026-07-03T14:52:14.102319Z",
              *               "first_discovery_id": null,
-             *               "id": "bcfb3d6e-4028-4022-81e5-f17eb48c1b55",
+             *               "id": "8971deda-18e3-441d-adbb-79c71c774f04",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-06-29T15:15:28.325514Z",
+             *               "last_seen_at": "2026-07-03T14:52:14.102319Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-06-29T15:15:28.325514Z",
-             *               "valid_from": "2026-06-29T15:15:28.325514Z",
+             *               "updated_at": "2026-07-03T14:52:14.102319Z",
+             *               "valid_from": "2026-07-03T14:52:14.102319Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3444,7 +3453,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Frigate",
+             *           "service_definition": "Roborock Vacuum",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3807,19 +3816,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-06-29T15:15:28.339152Z",
+             *           "created_at": "2026-07-03T14:52:14.113471Z",
              *           "first_discovery_id": null,
-             *           "id": "9038c85e-20dc-4feb-b435-118f05763ce0",
+             *           "id": "586974dc-6023-429c-88ef-09379974ae1f",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-06-29T15:15:28.339152Z",
+             *           "last_seen_at": "2026-07-03T14:52:14.113471Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-06-29T15:15:28.339152Z",
-             *           "valid_from": "2026-06-29T15:15:28.339152Z",
+             *           "updated_at": "2026-07-03T14:52:14.113471Z",
+             *           "valid_from": "2026-07-03T14:52:14.113471Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -3833,7 +3842,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Frigate",
+             *       "service_definition": "Roborock Vacuum",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4320,19 +4329,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-06-29T15:15:28.325957Z",
+         *       "created_at": "2026-07-03T14:52:14.102680Z",
          *       "first_discovery_id": null,
-         *       "id": "38eff216-2ec5-4bdc-926b-2fdfcfa549f1",
+         *       "id": "0ef85036-5a9b-4229-b2ae-8280335dc554",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-06-29T15:15:28.325957Z",
+         *       "last_seen_at": "2026-07-03T14:52:14.102680Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-06-29T15:15:28.325957Z",
-         *       "valid_from": "2026-06-29T15:15:28.325957Z",
+         *       "updated_at": "2026-07-03T14:52:14.102680Z",
+         *       "valid_from": "2026-07-03T14:52:14.102680Z",
          *       "valid_to": null
          *     }
          */
@@ -4547,7 +4556,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Frigate",
+         *           "service_definition": "Roborock Vacuum",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -4646,11 +4655,6 @@ export interface components {
             /** Format: uuid */
             organization_id: string;
             tags: string[];
-            /**
-             * @description Ephemeral bootstrap IPs for pre-discovery credential resolution.
-             *     Cleared automatically when the next scan dispatches.
-             */
-            target_ips?: string[] | null;
         };
         /**
          * @description Host-keyed mirror of [`CredentialAssignment`]: a host this credential is
@@ -4761,7 +4765,6 @@ export interface components {
              *     NULL for DaemonPoll daemons or those not yet linked to a key.
              */
             api_key_id?: string | null;
-            capabilities: components["schemas"]["DaemonCapabilities"];
             /** Format: uuid */
             host_id: string;
             /**
@@ -4801,11 +4804,6 @@ export interface components {
             /** @description Daemon software version (semver format) */
             version?: string | null;
         };
-        /** @description Daemon capabilities */
-        DaemonCapabilities: {
-            has_docker_socket?: boolean;
-            interfaced_subnet_ids: string[];
-        };
         /**
          * @description Legacy heartbeat payload for backwards compatibility with pre-v0.14.0 daemons.
          *     Old daemons call POST /api/daemons/{id}/heartbeat with this payload.
@@ -4843,7 +4841,12 @@ export interface components {
         };
         /** @description Daemon registration request from daemon to server */
         DaemonRegistrationRequest: {
-            capabilities: components["schemas"]["DaemonCapabilities"];
+            /**
+             * @description Legacy pre-0.15 interfaced-subnet channel (deserialize-only; see
+             *     [`LegacyCapabilities`]). Repopulated by the first heartbeat, so registration
+             *     does not persist it.
+             */
+            capabilities?: components["schemas"]["LegacyCapabilities"];
             /** Format: uuid */
             daemon_id: string;
             /**
@@ -4885,6 +4888,12 @@ export interface components {
             created_at: string;
             /** Format: uuid */
             id: string;
+            /**
+             * @description Subnets this daemon has interfaces on, loaded from the
+             *     `daemon_interfaced_subnets` junction (replaces the old
+             *     `capabilities.interfaced_subnet_ids` JSONB field).
+             */
+            interfaced_subnet_ids: string[];
             /** Format: date-time */
             updated_at: string;
             /** @description Computed version status including health and warnings */
@@ -4898,9 +4907,7 @@ export interface components {
         /** @description Lightweight daemon status for polling responses. */
         DaemonStatus: {
             /** @description Backwards compat: pre-v0.15.0 daemons send capabilities instead of interfaced_subnets. */
-            capabilities?: components["schemas"]["DaemonCapabilities"];
-            /** @description Whether the daemon has access to a Docker socket. */
-            has_docker_socket?: boolean;
+            capabilities?: components["schemas"]["LegacyCapabilities"];
             /**
              * @description Subnets detected from daemon's network ip_addresses. Server resolves these
              *     via SubnetService::create (create-or-match by CIDR) to get real IDs.
@@ -4925,6 +4932,11 @@ export interface components {
         /** @description Daemon version status including health and any warnings */
         DaemonVersionStatus: {
             has_correct_docker_volume_mount?: boolean;
+            /**
+             * @description Credential-type ids this daemon is too old to receive. The UI disables these
+             *     in the discovery credential picker (see [`incompatible_credential_type_ids`]).
+             */
+            incompatible_credential_type_ids: string[];
             status: components["schemas"]["VersionHealthStatus"];
             supports_unified_discovery?: boolean;
             version?: string | null;
@@ -5016,7 +5028,7 @@ export interface components {
          * @description Severity level for deprecation warnings
          * @enum {string}
          */
-        DeprecationSeverity: "Info" | "Warning" | "Critical";
+        DeprecationSeverity: "Info" | "Warning" | "Critical" | "Unknown";
         /** @description Deprecation warning for daemon version */
         DeprecationWarning: {
             message: string;
@@ -5585,19 +5597,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-06-29T15:15:28.324972Z",
+         *               "created_at": "2026-07-03T14:52:14.101913Z",
          *               "first_discovery_id": null,
-         *               "id": "4fb8a65a-bb7e-40ed-8836-0c36b12a1149",
+         *               "id": "83f46396-7de6-476b-ab50-f2ff4144607f",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-06-29T15:15:28.324972Z",
+         *               "last_seen_at": "2026-07-03T14:52:14.101913Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-06-29T15:15:28.324972Z",
-         *               "valid_from": "2026-06-29T15:15:28.324972Z",
+         *               "updated_at": "2026-07-03T14:52:14.101913Z",
+         *               "valid_from": "2026-07-03T14:52:14.101913Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -5611,7 +5623,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Frigate",
+         *           "service_definition": "Roborock Vacuum",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -6003,6 +6015,20 @@ export interface components {
             y: number;
         };
         /**
+         * @description Legacy inbound-only capabilities blob.
+         *
+         *     Pre-0.15 daemons report their interfaced subnets as bare `subnet_id`s in this
+         *     `capabilities` object (they predate the `interfaced_subnets: Vec<Subnet>`
+         *     heartbeat channel). It is deserialize-only: the server never stores it, never
+         *     echoes it in `DaemonResponse`, and it has no `SqlValue` variant. Reported ids
+         *     are routed into the `daemon_interfaced_subnets` junction (existence-filtered)
+         *     so legacy daemons keep reporting interfaced subnets. ≥0.15 daemons send the
+         *     `Vec<Subnet>` channel instead and leave this empty.
+         */
+        LegacyCapabilities: {
+            interfaced_subnet_ids: string[];
+        };
+        /**
          * @description LLDP Chassis ID subtypes per IEEE 802.1AB.
          *
          *     The chassis ID identifies the remote device. Different network equipment
@@ -6346,7 +6372,7 @@ export interface components {
          *         "offset": 0,
          *         "total_count": 142
          *       },
-         *       "server_version": "0.17.1"
+         *       "server_version": "0.17.2"
          *     }
          */
         PaginatedApiMeta: {
@@ -6359,7 +6385,7 @@ export interface components {
             pagination: components["schemas"]["PaginationMeta"];
             /**
              * @description Server version (semver)
-             * @example 0.17.1
+             * @example 0.17.2
              */
             server_version: string;
         };
@@ -6384,6 +6410,12 @@ export interface components {
                 created_at: string;
                 /** Format: uuid */
                 id: string;
+                /**
+                 * @description Subnets this daemon has interfaces on, loaded from the
+                 *     `daemon_interfaced_subnets` junction (replaces the old
+                 *     `capabilities.interfaced_subnet_ids` JSONB field).
+                 */
+                interfaced_subnet_ids: string[];
                 /** Format: date-time */
                 updated_at: string;
                 /** @description Computed version status including health and warnings */
@@ -7072,19 +7104,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-06-29T15:15:28.325854Z",
+         *           "created_at": "2026-07-03T14:52:14.102604Z",
          *           "first_discovery_id": null,
-         *           "id": "516f258f-ca0e-4472-9a42-bd01bd35af92",
+         *           "id": "ff6b0fbe-06ea-4a5c-8881-6c2958649f36",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-06-29T15:15:28.325854Z",
+         *           "last_seen_at": "2026-07-03T14:52:14.102604Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-06-29T15:15:28.325854Z",
-         *           "valid_from": "2026-06-29T15:15:28.325854Z",
+         *           "updated_at": "2026-07-03T14:52:14.102604Z",
+         *           "valid_from": "2026-07-03T14:52:14.102604Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -7098,7 +7130,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Frigate",
+         *       "service_definition": "Roborock Vacuum",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -7521,7 +7553,7 @@ export interface components {
              * @default {
              *       "Application": [
              *         {
-             *           "id": "82796dc5-d053-4da2-882c-ab05c3582510",
+             *           "id": "a1b1eaf9-a64c-4cbb-96eb-abfb30ce0bc2",
              *           "rule": {
              *             "ByApplication": {
              *               "tag_ids": []
@@ -7531,23 +7563,23 @@ export interface components {
              *       ],
              *       "L2Physical": [
              *         {
-             *           "id": "44599b74-53db-47f3-bf3b-770b778013de",
+             *           "id": "c7c3ced1-311b-4747-a3e9-0a1c70d520f8",
              *           "rule": "ByHost"
              *         }
              *       ],
              *       "L3Logical": [
              *         {
-             *           "id": "17a68964-60c7-4fd3-be99-37f94bdf356a",
+             *           "id": "cbb9d8ee-7a35-48b0-ba7a-b21c4b86c2a1",
              *           "rule": "BySubnet"
              *         },
              *         {
-             *           "id": "097c65f1-0a73-476c-9bd5-0513e72b8c0b",
+             *           "id": "26d5ade6-6153-4052-88ab-7f8ca9429c32",
              *           "rule": "MergeDockerBridges"
              *         }
              *       ],
              *       "Workloads": [
              *         {
-             *           "id": "44599b74-53db-47f3-bf3b-770b778013de",
+             *           "id": "c7c3ced1-311b-4747-a3e9-0a1c70d520f8",
              *           "rule": "ByHost"
              *         }
              *       ]
@@ -7559,19 +7591,19 @@ export interface components {
             /**
              * @default [
              *       {
-             *         "id": "b6481282-4036-44fc-9aa5-24b09985199d",
+             *         "id": "9c60a5a2-e9a6-4641-baf0-abdae8553485",
              *         "rule": "ByTrunkPort"
              *       },
              *       {
-             *         "id": "8e701dbf-f93b-4691-bc6e-a082dcfc780f",
+             *         "id": "c9ec4265-c3dc-44e1-80c4-8467cb0685f0",
              *         "rule": "ByVLAN"
              *       },
              *       {
-             *         "id": "8d2f1998-c834-4452-a149-84c94da6d16b",
+             *         "id": "26745d54-f10b-407c-95f9-479935b13b82",
              *         "rule": "ByPortOpStatus"
              *       },
              *       {
-             *         "id": "c8e0bca8-2389-4a45-b310-0d7f9f5d237e",
+             *         "id": "4abe9da0-fbfd-46d3-912c-cfa314a505f1",
              *         "rule": {
              *           "ByServiceCategory": {
              *             "categories": [
@@ -7589,7 +7621,7 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "51651c5b-baba-4514-b7f8-46630335266d",
+             *         "id": "8d35bb8d-e1d0-4d12-9b60-98ea2c60aa15",
              *         "rule": {
              *           "ByTag": {
              *             "tag_ids": [],
@@ -7598,15 +7630,15 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "7cc27b22-6067-4ad5-8548-89ad57ee264c",
+             *         "id": "e44b1361-4232-46b6-b60a-1e52909a8666",
              *         "rule": "ByHypervisor"
              *       },
              *       {
-             *         "id": "61e59024-1212-4ff9-af44-32ae69269e66",
+             *         "id": "7b01bfbf-9312-472e-b8e5-16aa0c6075f9",
              *         "rule": "ByContainerRuntime"
              *       },
              *       {
-             *         "id": "91d6f69d-c646-4c6f-b68c-945389d5feba",
+             *         "id": "72a9229a-48c2-4431-9c78-7b11ae833bf7",
              *         "rule": "ByStack"
              *       }
              *     ]
@@ -9098,7 +9130,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["DaemonCapabilities"];
+                "application/json": components["schemas"]["LegacyCapabilities"];
             };
         };
         responses: {

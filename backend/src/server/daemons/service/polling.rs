@@ -393,7 +393,12 @@ impl DaemonService {
                 .await;
             let request = self
                 .discovery_service
-                .build_daemon_request(&work, work.network_id, &integration_targets)
+                .build_daemon_request(
+                    &work,
+                    work.network_id,
+                    &integration_targets,
+                    daemon.base.version.as_ref(),
+                )
                 .await
                 .unwrap_or_else(|e| {
                     tracing::error!("Failed to build daemon request: {}", e);

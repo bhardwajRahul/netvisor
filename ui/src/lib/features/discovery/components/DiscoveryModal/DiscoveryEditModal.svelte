@@ -653,6 +653,7 @@
 						bind:selectedTypeIds={selectedCredentialTypeIds}
 						localAutoMode="fixed"
 						fixedCapabilityTypeIds={daemonHostCredentialTypeIds}
+						incompatibleTypeIds={daemon?.version_status?.incompatible_credential_type_ids ?? []}
 					/>
 				</div>
 			{/if}

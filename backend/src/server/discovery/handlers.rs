@@ -4,6 +4,7 @@ use crate::server::{
         permissions::{Authorized, IsDaemon, Member, Viewer},
     },
     config::AppState,
+    credentials::r#impl::types::CredentialTypeDiscriminants,
     daemons::r#impl::{api::DiscoveryUpdatePayload, version::supports_unified_discovery},
     discovery::r#impl::{
         base::Discovery,
@@ -253,6 +254,34 @@ pub async fn update_discovery(
         .get_by_id(&discovery.base.daemon_id)
         .await?
     {
+        // Version gate: a Discovery binds to exactly one daemon, so reject up front
+        // any target whose credential type is too new for that daemon to receive.
+        // This is the authoritative "prevent adding" — the server-side dispatch filter
+        // would otherwise silently drop the mapping at scan time.
+        for target in &discovery.integration_targets {
+            if let Some(cred) = state
+                .services
+                .credential_service
+                .get_by_id(&target.credential_id())
+                .await?
+            {
+                let disc = CredentialTypeDiscriminants::from(&cred.base.credential_type);
+                if !disc.compatible_with_daemon(daemon.base.version.as_ref()) {
+                    return Err(ApiError::bad_request(&format!(
+                        "Credential type \"{}\" requires daemon version {} or newer, but this daemon is on {}. Upgrade the daemon or choose a compatible credential type.",
+                        disc.display_name(),
+                        disc.minimum_daemon_version(),
+                        daemon
+                            .base
+                            .version
+                            .as_ref()
+                            .map(|v| v.to_string())
+                            .unwrap_or_else(|| "an unknown version".to_string()),
+                    )));
+                }
+            }
+        }
+
         if let Some((a, b)) = state
             .services
             .credential_service

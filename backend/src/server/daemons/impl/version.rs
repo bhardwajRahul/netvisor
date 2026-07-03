@@ -2,6 +2,8 @@ use semver::Version;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
+use crate::server::credentials::r#impl::types::CredentialTypeDiscriminants;
+
 /// Version policy for daemons
 ///
 /// Defines which versions are supported, recommended, and deprecated.
@@ -33,6 +35,20 @@ pub fn minimum_unified_discovery() -> Version {
 /// Returns true if the daemon version supports unified discovery (>= 0.15.0).
 pub fn supports_unified_discovery(version: Option<&Version>) -> bool {
     version.is_some_and(|v| v >= &minimum_unified_discovery())
+}
+
+/// Credential-type ids that a daemon at `version` cannot safely receive (their
+/// per-type `minimum_daemon_version` floor is newer than the daemon). Powers the UI
+/// compatibility gate: the frontend disables these types in the discovery credential
+/// picker. Iterating the discriminants keeps this in lockstep with the per-type
+/// declarations — a new credential type with a higher floor is covered automatically.
+/// An unknown version yields every type whose floor is above the 0.16.2 wire floor.
+pub fn incompatible_credential_type_ids(version: Option<&Version>) -> Vec<String> {
+    use strum::IntoEnumIterator;
+    CredentialTypeDiscriminants::iter()
+        .filter(|d| !d.compatible_with_daemon(version))
+        .map(|d| <&'static str>::from(d).to_string())
+        .collect()
 }
 
 /// Returns true if the daemon predates the Interface → IPAddress binding type rename (< 0.16.0).
@@ -84,12 +100,14 @@ impl DaemonVersionPolicy {
             }],
             supports_unified_discovery: false,
             has_correct_docker_volume_mount: false,
+            incompatible_credential_type_ids: incompatible_credential_type_ids(None),
         }
     }
 
     fn evaluate_known(&self, v: &Version) -> DaemonVersionStatus {
         let supports_unified = supports_unified_discovery(Some(v));
         let has_correct_mount = has_correct_docker_volume_mount(Some(v));
+        let incompatible = incompatible_credential_type_ids(Some(v));
         if v < &self.minimum_supported {
             DaemonVersionStatus {
                 version: Some(v.to_string()),
@@ -104,6 +122,7 @@ impl DaemonVersionPolicy {
                 }],
                 supports_unified_discovery: supports_unified,
                 has_correct_docker_volume_mount: has_correct_mount,
+                incompatible_credential_type_ids: incompatible.clone(),
             }
         } else if v < &self.recommended {
             DaemonVersionStatus {
@@ -119,6 +138,7 @@ impl DaemonVersionPolicy {
                 }],
                 supports_unified_discovery: supports_unified,
                 has_correct_docker_volume_mount: has_correct_mount,
+                incompatible_credential_type_ids: incompatible.clone(),
             }
         } else {
             DaemonVersionStatus {
@@ -127,6 +147,7 @@ impl DaemonVersionPolicy {
                 warnings: vec![],
                 supports_unified_discovery: supports_unified,
                 has_correct_docker_volume_mount: has_correct_mount,
+                incompatible_credential_type_ids: incompatible,
             }
         }
     }
@@ -148,6 +169,11 @@ pub enum DeprecationSeverity {
     Info,
     Warning,
     Critical,
+    /// Forward-compat: a severity a newer server emits that this daemon doesn't
+    /// know. `#[serde(other)]` absorbs it (treated as an ordinary warning when
+    /// logged) rather than failing to deserialize the whole `ServerCapabilities`.
+    #[serde(other)]
+    Unknown,
 }
 
 /// Daemon version status including health and any warnings
@@ -161,6 +187,11 @@ pub struct DaemonVersionStatus {
     pub supports_unified_discovery: bool,
     #[serde(default)]
     pub has_correct_docker_volume_mount: bool,
+    /// Credential-type ids this daemon is too old to receive. The UI disables these
+    /// in the discovery credential picker (see [`incompatible_credential_type_ids`]).
+    #[serde(default)]
+    #[schema(required)]
+    pub incompatible_credential_type_ids: Vec<String>,
 }
 
 /// Health status for daemon versions
@@ -281,6 +312,25 @@ mod tests {
         assert!(has_correct_docker_volume_mount(Some(&Version::new(
             1, 0, 0
         ))));
+    }
+
+    #[test]
+    fn test_incompatible_credential_type_ids_by_version() {
+        // 0.16.2 daemon: SnmpV1/SnmpV3/Podman* are too new.
+        let at_0_16_2 = incompatible_credential_type_ids(Some(&Version::new(0, 16, 2)));
+        assert!(at_0_16_2.contains(&"SnmpV1".to_string()));
+        assert!(at_0_16_2.contains(&"SnmpV3".to_string()));
+        assert!(at_0_16_2.contains(&"PodmanProxy".to_string()));
+        assert!(at_0_16_2.contains(&"PodmanSocket".to_string()));
+        assert!(!at_0_16_2.contains(&"SnmpV2c".to_string()));
+
+        // 0.17.2 daemon: nothing incompatible.
+        assert!(incompatible_credential_type_ids(Some(&Version::new(0, 17, 2))).is_empty());
+
+        // Unknown version: everything above the 0.16.2 floor is incompatible.
+        let unknown = incompatible_credential_type_ids(None);
+        assert!(unknown.contains(&"PodmanProxy".to_string()));
+        assert!(!unknown.contains(&"SnmpV2c".to_string()));
     }
 
     #[test]

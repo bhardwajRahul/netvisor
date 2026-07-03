@@ -18,7 +18,7 @@ use crate::server::topology::types::views::TopologyView;
 use crate::server::vlans::r#impl::base::Vlan;
 use crate::server::{
     billing::types::base::BillingPlan,
-    daemons::r#impl::{api::DaemonCapabilities, base::DaemonMode},
+    daemons::r#impl::base::DaemonMode,
     discovery::r#impl::types::{DiscoveryType, RunType},
     hosts::r#impl::{base::Host, virtualization::HostVirtualization},
     interfaces::r#impl::base::Interface,
@@ -240,7 +240,6 @@ pub enum SqlValue {
     IPAddresses(Vec<IPAddress>),
     RunType(RunType),
     DiscoveryType(DiscoveryType),
-    DaemonCapabilities(DaemonCapabilities),
     UserOrgPermissions(UserOrgPermissions),
     EmailSettings(EmailSettings),
     OptionBillingPlan(Option<BillingPlan>),
@@ -274,7 +273,6 @@ pub enum SqlValue {
     Tags(Vec<Tag>),
     Vlans(Vec<Vlan>),
     PlanLimitNotifications(PlanLimitNotifications),
-    OptionalIpAddrArray(Option<Vec<IpAddr>>),
     OptionalUuidVec(Option<Vec<Uuid>>),
     IntegrationTargets(Vec<IntegrationTarget>),
 }
@@ -391,7 +389,6 @@ impl DbEnumContributor for Box<dyn ServiceDefinition> {
 // NOT reachable elsewhere, replace the empty impl with one that delegates
 // to the nested enum's `contribute`.
 impl_db_enum_contributor_empty!(
-    DaemonCapabilities,
     UserOrgPermissions,
     EmailSettings,
     TopologyOptions,
@@ -539,9 +536,9 @@ impl SqlValue {
                 <DateTime<Utc>>::contribute(out)
             }
             SqlValueDiscriminants::IpCidr => IpCidr::contribute(out),
-            SqlValueDiscriminants::IpAddr
-            | SqlValueDiscriminants::OptionalIpAddr
-            | SqlValueDiscriminants::OptionalIpAddrArray => IpAddr::contribute(out),
+            SqlValueDiscriminants::IpAddr | SqlValueDiscriminants::OptionalIpAddr => {
+                IpAddr::contribute(out)
+            }
             SqlValueDiscriminants::MacAddress | SqlValueDiscriminants::OptionalMacAddress => {
                 MacAddress::contribute(out)
             }
@@ -563,7 +560,6 @@ impl SqlValue {
             SqlValueDiscriminants::IPAddresses => IPAddress::contribute(out),
             SqlValueDiscriminants::RunType => RunType::contribute(out),
             SqlValueDiscriminants::DiscoveryType => DiscoveryType::contribute(out),
-            SqlValueDiscriminants::DaemonCapabilities => DaemonCapabilities::contribute(out),
             SqlValueDiscriminants::UserOrgPermissions => UserOrgPermissions::contribute(out),
             SqlValueDiscriminants::EmailSettings => EmailSettings::contribute(out),
             SqlValueDiscriminants::OptionBillingPlan => BillingPlan::contribute(out),

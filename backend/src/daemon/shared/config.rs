@@ -14,7 +14,7 @@ use uuid::Uuid;
 use std::net::IpAddr;
 
 use crate::server::credentials::r#impl::mapping::IntegrationTarget;
-use crate::server::daemons::r#impl::{api::DaemonCapabilities, base::DaemonMode};
+use crate::server::daemons::r#impl::{api::LegacyCapabilities, base::DaemonMode};
 
 /// Parse the `SCANOPY_CREDENTIAL_IDS` / `--credential-id` compact token grammar into per-daemon
 /// [`IntegrationTarget`]s. Every token references a stored credential by id; the suffix is the
@@ -259,7 +259,7 @@ pub struct AppConfig {
     /// Daemon capabilities (docker socket availability, interfaced subnets)
     /// Updated after SelfReport discovery completes
     #[serde(default)]
-    pub capabilities: DaemonCapabilities,
+    pub capabilities: LegacyCapabilities,
     /// Set to true after the first self-report completes
     #[serde(default)]
     pub has_self_reported: bool,
@@ -317,7 +317,7 @@ impl Default for AppConfig {
             interfaces: Vec::new(),
             scan_rate_pps: default_scan_rate_pps(),
             port_scan_batch_size: default_port_scan_batch_size(),
-            capabilities: DaemonCapabilities::default(),
+            capabilities: LegacyCapabilities::default(),
             integration_targets: Vec::new(),
             has_self_reported: false,
         }
@@ -768,12 +768,12 @@ impl ConfigStore {
         Ok(config.integration_targets.clone())
     }
 
-    pub async fn get_capabilities(&self) -> Result<DaemonCapabilities> {
+    pub async fn get_capabilities(&self) -> Result<LegacyCapabilities> {
         let config = self.config.read().await;
         Ok(config.capabilities.clone())
     }
 
-    pub async fn set_capabilities(&self, capabilities: DaemonCapabilities) -> Result<()> {
+    pub async fn set_capabilities(&self, capabilities: LegacyCapabilities) -> Result<()> {
         let mut config = self.config.write().await;
         config.capabilities = capabilities;
         self.save(&config.clone()).await

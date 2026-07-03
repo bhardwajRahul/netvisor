@@ -84,7 +84,10 @@ pub async fn probe_integrations(
             return Err(Error::msg("Discovery was cancelled"));
         }
 
-        let integration = IntegrationRegistry::get(discriminant);
+        let Some(integration) = IntegrationRegistry::get(discriminant) else {
+            tracing::warn!(integration = ?discriminant, "Skipping unrecognized credential type from newer server");
+            continue;
+        };
 
         let credentials = resolve_credentials_for_ip(mapping, ip);
         if credentials.is_empty() {
@@ -198,7 +201,9 @@ pub async fn execute_integrations(
             continue;
         };
 
-        let integration = IntegrationRegistry::get(discriminant);
+        let Some(integration) = IntegrationRegistry::get(discriminant) else {
+            continue;
+        };
 
         // Use the credential that actually succeeded during probe. If no probe
         // winner was recorded for this integration, there's nothing to execute.
