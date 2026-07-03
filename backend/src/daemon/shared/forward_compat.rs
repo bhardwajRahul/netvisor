@@ -356,7 +356,7 @@ inventory::submit!(DaemonResponseCheck::new::<(
     Option<DaemonDiscoveryRequest>,
     bool
 )>());
-inventory::submit!(DaemonResponseCheck::new::<ApiResponse<VlanDiscoveryResponse>>());
+inventory::submit!(DaemonResponseCheck::new::<VlanDiscoveryResponse>());
 
 #[cfg(test)]
 mod tests {
