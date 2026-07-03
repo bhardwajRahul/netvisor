@@ -2411,8 +2411,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List snapshots for a network, sorted by `taken_at` DESC. */
-        get: operations["get_all_snapshots"];
+        /** List all Snapshots */
+        get: operations["list_snapshots"];
         put?: never;
         /**
          * Take a snapshot of the current live topology + entity state for a network.
@@ -2435,14 +2435,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get a snapshot by ID. */
+        /** Get Snapshot by ID */
         get: operations["get_snapshot_by_id"];
         put?: never;
         post?: never;
-        /**
-         * Delete a snapshot. The cascade FK on closed entity rows + topology rows
-         *     reaps everything tied to this snapshot automatically.
-         */
+        /** Delete Snapshot */
         delete: operations["delete_snapshot"];
         options?: never;
         head?: never;
@@ -13536,7 +13533,7 @@ export interface operations {
             };
         };
     };
-    get_all_snapshots: {
+    list_snapshots: {
         parameters: {
             query?: {
                 /** @description Filter by network ID */
@@ -13554,21 +13551,14 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description List of snapshots */
+            /** @description List of Snapshots */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": {
-                        data: (components["schemas"]["SnapshotBase"] & {
-                            /** Format: date-time */
-                            readonly created_at: string;
-                            /** Format: uuid */
-                            readonly id: string;
-                            /** Format: date-time */
-                            readonly updated_at: string;
-                        })[];
+                        data: components["schemas"]["Snapshot"][];
                         error?: string | null;
                         meta: components["schemas"]["PaginatedApiMeta"];
                         success: boolean;

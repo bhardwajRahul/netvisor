@@ -10335,8 +10335,8 @@
         "tags": [
           "Snapshots"
         ],
-        "summary": "List snapshots for a network, sorted by `taken_at` DESC.",
-        "operationId": "get_all_snapshots",
+        "summary": "List all Snapshots",
+        "operationId": "list_snapshots",
         "parameters": [
           {
             "name": "network_id",
@@ -10399,7 +10399,7 @@
         ],
         "responses": {
           "200": {
-            "description": "List of snapshots",
+            "description": "List of Snapshots",
             "content": {
               "application/json": {
                 "schema": {
@@ -10414,36 +10414,7 @@
                     "data": {
                       "type": "array",
                       "items": {
-                        "allOf": [
-                          {
-                            "$ref": "#/components/schemas/SnapshotBase"
-                          },
-                          {
-                            "type": "object",
-                            "required": [
-                              "id",
-                              "created_at",
-                              "updated_at"
-                            ],
-                            "properties": {
-                              "created_at": {
-                                "type": "string",
-                                "format": "date-time",
-                                "readOnly": true
-                              },
-                              "id": {
-                                "type": "string",
-                                "format": "uuid",
-                                "readOnly": true
-                              },
-                              "updated_at": {
-                                "type": "string",
-                                "format": "date-time",
-                                "readOnly": true
-                              }
-                            }
-                          }
-                        ]
+                        "$ref": "#/components/schemas/Snapshot"
                       }
                     },
                     "error": {
@@ -10536,7 +10507,7 @@
         "tags": [
           "Snapshots"
         ],
-        "summary": "Get a snapshot by ID.",
+        "summary": "Get Snapshot by ID",
         "operationId": "get_snapshot_by_id",
         "parameters": [
           {
@@ -10585,7 +10556,7 @@
         "tags": [
           "Snapshots"
         ],
-        "summary": "Delete a snapshot. The cascade FK on closed entity rows + topology rows\nreaps everything tied to this snapshot automatically.",
+        "summary": "Delete Snapshot",
         "operationId": "delete_snapshot",
         "parameters": [
           {
@@ -27328,6 +27299,10 @@
     {
       "name": "Shares",
       "description": "Shared network views. Create read-only shareable links to your network topology."
+    },
+    {
+      "name": "Snapshots",
+      "description": "Point-in-time capture of a network's topology and entities. Created manually via the topology tab; loadable from the snapshots dropdown."
     },
     {
       "name": "Credentials",
