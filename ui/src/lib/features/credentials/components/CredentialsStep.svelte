@@ -158,6 +158,8 @@
 			{description}
 			bind:pendingCredentials
 			{claimedDaemonHostIntegrations}
+			{daemonVersion}
+			{daemonName}
 			onRemoveCredential={handleRemoveCredential}
 		/>
 	</div>
