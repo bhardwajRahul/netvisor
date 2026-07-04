@@ -768,30 +768,32 @@ impl DiscoveryOps {
         };
 
         let api_client = &self.api_client;
-        let response: crate::server::shared::types::api::ApiResponse<VlanDiscoveryResponse> =
-            (|| async {
-                api_client
-                    .post(
-                        "/api/v1/vlans/discovery",
-                        &request,
-                        "Failed to upsert VLANs",
-                    )
-                    .await
-            })
-            .retry(
-                ExponentialBuilder::default()
-                    .with_min_delay(Duration::from_millis(500))
-                    .with_max_delay(Duration::from_secs(10))
-                    .with_max_times(3),
-            )
-            .notify(|e, dur| tracing::warn!("Retrying VLAN upsert after {:?}: {}", dur, e))
-            .await?;
+        // `api_client.post` (→ `execute`) already strips the `ApiResponse` envelope and
+        // returns the inner payload, so the type here must be the bare
+        // `VlanDiscoveryResponse`, not `ApiResponse<VlanDiscoveryResponse>`. Wrapping it
+        // made the daemon try to parse a second envelope out of `{"vlans":[...]}`, failing
+        // with `missing field 'success'` and losing all VLAN resolution (GH #649).
+        let response: VlanDiscoveryResponse = (|| async {
+            api_client
+                .post(
+                    "/api/v1/vlans/discovery",
+                    &request,
+                    "Failed to upsert VLANs",
+                )
+                .await
+        })
+        .retry(
+            ExponentialBuilder::default()
+                .with_min_delay(Duration::from_millis(500))
+                .with_max_delay(Duration::from_secs(10))
+                .with_max_times(3),
+        )
+        .notify(|e, dur| tracing::warn!("Retrying VLAN upsert after {:?}: {}", dur, e))
+        .await?;
 
         let mut mapping = std::collections::HashMap::new();
-        if let Some(data) = response.data {
-            for item in data.vlans {
-                mapping.insert(item.vlan_number, item.id);
-            }
+        for item in response.vlans {
+            mapping.insert(item.vlan_number, item.id);
         }
         // Record canonical VLAN IDs so the terminal payload's
         // `ScannedEntityIds.vlan_ids` includes them. Per-entity FK-update

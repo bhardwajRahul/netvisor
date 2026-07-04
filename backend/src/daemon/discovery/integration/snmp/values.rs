@@ -92,6 +92,30 @@ pub fn parse_portlist_bitmap(bytes: &[u8]) -> Vec<i32> {
     ports
 }
 
+/// Parse a Q-BRIDGE `dot1qTpFdbTable` OID index suffix into a MAC address.
+///
+/// The table is indexed by `{ dot1qFdbId, dot1qTpFdbAddress }`, so the OID suffix
+/// after a column base is `[fdb_id, mac0, mac1, mac2, mac3, mac4, mac5]` — 7
+/// sub-identifiers, with the 6-octet MAC carried in the index (not a column value).
+/// Returns `None` for a wrong-length suffix or an octet outside 0..=255.
+pub fn qbridge_fdb_index_to_mac(suffix: &[u64]) -> Option<MacAddress> {
+    if suffix.len() != 7 {
+        return None;
+    }
+    let mac = &suffix[1..7];
+    if mac.iter().any(|&o| o > 255) {
+        return None;
+    }
+    Some(MacAddress::new([
+        mac[0] as u8,
+        mac[1] as u8,
+        mac[2] as u8,
+        mac[3] as u8,
+        mac[4] as u8,
+        mac[5] as u8,
+    ]))
+}
+
 /// Parse LLDP management address from raw SNMP bytes.
 ///
 /// SNMP returns the address in one of these formats:
@@ -160,5 +184,30 @@ mod tests {
     #[test]
     fn test_value_to_u16_overflow() {
         assert_eq!(value_to_u16(&Value::Integer(70000)), None);
+    }
+
+    #[test]
+    fn test_qbridge_fdb_index_to_mac_valid() {
+        // Suffix = [fdb_id=20, aa:bb:cc:dd:ee:ff]. The MAC is the last 6 sub-ids.
+        let suffix = [20u64, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF];
+        assert_eq!(
+            qbridge_fdb_index_to_mac(&suffix),
+            Some(MacAddress::new([0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF]))
+        );
+    }
+
+    #[test]
+    fn test_qbridge_fdb_index_to_mac_wrong_length() {
+        // Legacy dot1dTpFdbTable suffix (6 sub-ids, no fdb_id) must not parse here.
+        assert_eq!(
+            qbridge_fdb_index_to_mac(&[0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF]),
+            None
+        );
+    }
+
+    #[test]
+    fn test_qbridge_fdb_index_to_mac_octet_out_of_range() {
+        let suffix = [1u64, 256, 0, 0, 0, 0, 0];
+        assert_eq!(qbridge_fdb_index_to_mac(&suffix), None);
     }
 }

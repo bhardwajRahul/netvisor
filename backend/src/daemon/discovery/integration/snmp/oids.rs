@@ -283,6 +283,18 @@ pub mod bridge {
         /// dot1dTpFdbStatus - Entry status
         pub const DOT1D_TP_FDB_STATUS: &str = "1.3.6.1.2.1.17.4.3.1.3";
     }
+
+    /// dot1qTpFdbEntry columns (Q-BRIDGE-MIB, RFC 4363). Indexed by
+    /// { dot1qFdbId, dot1qTpFdbAddress } — the MAC is in the index, not a column.
+    /// VLAN-aware switches (Aruba/HP ProCurve, etc.) typically populate only this
+    /// table and leave the legacy dot1dTpFdbTable empty. See GH #649.
+    pub mod q_fdb_entry {
+        /// dot1qTpFdbPort - Bridge port number (dot1dBasePort space)
+        pub const DOT1Q_TP_FDB_PORT: &str = "1.3.6.1.2.1.17.7.1.2.2.1.2";
+
+        /// dot1qTpFdbStatus - Entry status (1=other,2=invalid,3=learned,4=self,5=mgmt)
+        pub const DOT1Q_TP_FDB_STATUS: &str = "1.3.6.1.2.1.17.7.1.2.2.1.3";
+    }
 }
 
 /// VLAN MIB OIDs - Q-BRIDGE-MIB (IEEE 802.1Q) and Cisco VTP
