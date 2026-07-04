@@ -20,7 +20,7 @@
 		common_ipAddresses,
 		common_services,
 		common_tags,
-		hosts_containerizedServices,
+		common_containerizedServices,
 		hosts_noContainers,
 		hosts_noInterfaces,
 		hosts_noServicesAssigned,
@@ -145,7 +145,7 @@
 					emptyText: hosts_noServicesAssigned()
 				},
 				{
-					label: hosts_containerizedServices(),
+					label: common_containerizedServices(),
 					value: containers
 						.map((c) => ({
 							id: c.id,

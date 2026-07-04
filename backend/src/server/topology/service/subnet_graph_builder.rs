@@ -1,12 +1,13 @@
 use itertools::Itertools;
 use std::collections::{HashMap, HashSet};
+use strum::IntoDiscriminant;
 use uuid::Uuid;
 
 use crate::server::{
     hosts::r#impl::base::Host,
     ip_addresses::r#impl::base::IPAddress,
     shared::entities::EntityDiscriminants,
-    subnets::r#impl::types::SubnetType,
+    subnets::r#impl::types::{SubnetType, SubnetTypeDiscriminants},
     topology::{
         service::{
             anchor_planner::ChildAnchorPlanner,
@@ -34,7 +35,7 @@ struct SubnetChildData {
 }
 
 pub struct SubnetGraphBuilder {
-    consolidated_docker_subnets: HashMap<Uuid, Vec<Uuid>>,
+    consolidated_container_bridge_subnets: HashMap<Uuid, Vec<Uuid>>,
 }
 
 impl Default for SubnetGraphBuilder {
@@ -46,20 +47,29 @@ impl Default for SubnetGraphBuilder {
 impl SubnetGraphBuilder {
     pub fn new() -> Self {
         Self {
-            consolidated_docker_subnets: HashMap::new(),
+            consolidated_container_bridge_subnets: HashMap::new(),
         }
     }
 
-    /// Compute which subnet ID each host's Docker bridges should be grouped under.
-    /// Returns a map of host_id → primary_subnet_id (first DockerBridge subnet found).
-    fn compute_docker_bridge_grouping(ctx: &TopologyContext) -> HashMap<Uuid, Uuid> {
-        let mut mapping: HashMap<Uuid, Uuid> = HashMap::new();
+    /// Compute which subnet ID each host's container bridges should be grouped under.
+    /// Keyed by (host_id, bridge runtime) so a host's Docker bridges and Podman
+    /// bridges merge into separate containers. Value is the primary (first) bridge
+    /// subnet found for that (host, runtime).
+    fn compute_container_bridge_grouping(
+        ctx: &TopologyContext,
+    ) -> HashMap<(Uuid, SubnetTypeDiscriminants), Uuid> {
+        let mut mapping: HashMap<(Uuid, SubnetTypeDiscriminants), Uuid> = HashMap::new();
         for ip_address in ctx.ip_addresses {
             let Some(subnet) = ctx.get_subnet_by_id(ip_address.base.subnet_id) else {
                 continue;
             };
-            if subnet.base.subnet_type == SubnetType::DockerBridge {
-                mapping.entry(ip_address.base.host_id).or_insert(subnet.id);
+            if subnet.base.subnet_type.is_container_bridge() {
+                mapping
+                    .entry((
+                        ip_address.base.host_id,
+                        subnet.base.subnet_type.discriminant(),
+                    ))
+                    .or_insert(subnet.id);
             }
         }
         mapping
@@ -72,17 +82,13 @@ impl SubnetGraphBuilder {
         all_edges: &mut [Edge],
         grouping: &GroupingConfig,
     ) -> (HashSet<Uuid>, Vec<Node>) {
-        let docker_bridge_host_subnet_id_to_group_on = if grouping.should_group_docker_bridges() {
-            Self::compute_docker_bridge_grouping(ctx)
+        let container_bridge_grouping = if grouping.should_group_container_bridges() {
+            Self::compute_container_bridge_grouping(ctx)
         } else {
             HashMap::new()
         };
-        let children_by_subnet = self.group_children_by_subnet(
-            ctx,
-            all_edges,
-            grouping,
-            docker_bridge_host_subnet_id_to_group_on,
-        );
+        let children_by_subnet =
+            self.group_children_by_subnet(ctx, all_edges, grouping, container_bridge_grouping);
         let mut child_nodes = Vec::new();
 
         let subnet_ids: HashSet<Uuid> = children_by_subnet
@@ -106,20 +112,20 @@ impl SubnetGraphBuilder {
         let host_interfaces = ctx.get_ip_addresses_for_host(host.id);
         let host_has_name = host.base.name != "Unknown Device" && !host.base.name.is_empty();
 
-        // P1: Docker containers — always show "Docker @", never VM header
-        if *subnet_type == SubnetType::DockerBridge {
+        // P1: container-bridge interfaces — always show "<Runtime> @", never VM header
+        if let Some(runtime) = subnet_type.container_runtime_label() {
             let header_text = if host_has_name {
-                Some("Docker @ ".to_owned() + &host.base.name.clone())
+                Some(format!("{runtime} @ {}", host.base.name))
             } else {
-                // Generate a label from non-docker ip_address, if there is one
+                // Generate a label from a non-container-bridge ip_address, if there is one
                 host_interfaces
                     .iter()
                     .find(|i| {
                         ctx.get_subnet_from_ip_address_id(i.id)
-                            .map(|s| s.base.subnet_type != SubnetType::DockerBridge)
+                            .map(|s| !s.base.subnet_type.is_container_bridge())
                             .unwrap_or(false)
                     })
-                    .map(|i| "Docker @ ".to_owned() + &i.base.ip_address.to_string())
+                    .map(|i| format!("{runtime} @ {}", i.base.ip_address))
             };
 
             return header_text;
@@ -160,20 +166,20 @@ impl SubnetGraphBuilder {
     }
 
     /// Group host ip_addresses by subnet
-    /// If group_docker_bridges_by_host is true, all DockerBridge ip_addresses for a given host
-    /// are consolidated into one subnet
+    /// If container-bridge grouping is enabled, a host's container-bridge ip_addresses
+    /// are consolidated into one subnet per (host, runtime).
     fn group_children_by_subnet(
         &mut self,
         ctx: &TopologyContext,
         all_edges: &mut [Edge],
         grouping: &GroupingConfig,
-        docker_bridge_host_subnet_id_to_group_on: HashMap<Uuid, Uuid>,
+        container_bridge_grouping: HashMap<(Uuid, SubnetTypeDiscriminants), Uuid>,
     ) -> HashMap<Uuid, Vec<SubnetChildData>> {
         let mut children_by_subnet: HashMap<Uuid, Vec<SubnetChildData>> = HashMap::new();
 
-        // Track DockerBridge ip_addresses by host (only used if grouping is enabled)
-        // Map: (host_id, primary_subnet_id) -> Vec<subnet_id>)
-        let mut docker_subnets_by_host: HashMap<(Uuid, Uuid), Vec<Uuid>> = HashMap::new();
+        // Track container-bridge ip_addresses by (host, primary subnet) (only used if
+        // grouping is enabled). Map: (host_id, primary_subnet_id) -> Vec<subnet_id>
+        let mut container_bridge_subnets_by_host: HashMap<(Uuid, Uuid), Vec<Uuid>> = HashMap::new();
 
         for ip_address in ctx.ip_addresses {
             let Some(host) = ctx.get_host_by_id(ip_address.base.host_id) else {
@@ -201,14 +207,13 @@ impl SubnetGraphBuilder {
                 ip_address_id: Some(ip_address.id),
             };
 
-            // Special handling for DockerBridge (only if grouping is enabled)
-            if grouping.should_group_docker_bridges()
-                && matches!(subnet_type, SubnetType::DockerBridge)
-            {
+            // Special handling for container bridges (only if grouping is enabled):
+            // consolidate under the (host, runtime) primary subnet.
+            if grouping.should_group_container_bridges() && subnet_type.is_container_bridge() {
                 if let Some(subnet_grouping_id) =
-                    docker_bridge_host_subnet_id_to_group_on.get(&host.id)
+                    container_bridge_grouping.get(&(host.id, subnet_type.discriminant()))
                 {
-                    docker_subnets_by_host
+                    container_bridge_subnets_by_host
                         .entry((host.id, *subnet_grouping_id))
                         .or_default()
                         .push(ip_address.base.subnet_id);
@@ -226,15 +231,15 @@ impl SubnetGraphBuilder {
             }
         }
 
-        // Consolidate all DockerBridge children into their primary subnet (only if grouping is enabled)
-        if grouping.should_group_docker_bridges() {
-            for ((_, grouping_id), mut subnet_ids) in docker_subnets_by_host {
+        // Consolidate container-bridge children into their primary subnet (only if grouping is enabled)
+        if grouping.should_group_container_bridges() {
+            for ((_, grouping_id), mut subnet_ids) in container_bridge_subnets_by_host {
                 // Remove duplicates and sort for consistency
                 subnet_ids.sort();
                 subnet_ids.dedup();
 
                 // Store the consolidation mapping
-                self.consolidated_docker_subnets
+                self.consolidated_container_bridge_subnets
                     .insert(grouping_id, subnet_ids);
             }
         }
@@ -386,39 +391,48 @@ impl SubnetGraphBuilder {
             .iter()
             .map(|subnet_id| {
                 // Build display header from subnet metadata
-                let header = if let Some(cids) = self.consolidated_docker_subnets.get(subnet_id) {
-                    Some(
-                        "Docker Bridge: (".to_owned()
-                            + &ctx
-                                .subnets
+                let header =
+                    if let Some(cids) = self.consolidated_container_bridge_subnets.get(subnet_id) {
+                        // Consolidation is per (host, runtime), so the merged subnets
+                        // share a runtime — derive the label from any of them.
+                        let runtime = ctx
+                            .subnets
+                            .iter()
+                            .find(|s| cids.contains(&s.id))
+                            .and_then(|s| s.base.subnet_type.container_runtime_label())
+                            .unwrap_or("Container");
+                        Some(format!(
+                            "{runtime} Bridge: ({})",
+                            ctx.subnets
                                 .iter()
                                 .filter(|s| cids.contains(&s.id))
                                 .map(|s| s.base.cidr.to_string())
                                 .join(", ")
-                            + ")",
-                    )
-                } else if let Some(subnet) = ctx.subnets.iter().find(|s| s.id == *subnet_id) {
-                    use crate::server::shared::types::metadata::TypeMetadataProvider;
-                    let type_name = subnet.base.subnet_type.name();
-                    let cidr = subnet.base.cidr.to_string();
-                    let show_label = subnet.base.subnet_type.show_label();
-                    let name_or_type = if subnet.base.name != cidr {
-                        subnet.base.name.clone()
-                    } else if show_label {
-                        type_name.to_string()
+                        ))
+                    } else if let Some(subnet) = ctx.subnets.iter().find(|s| s.id == *subnet_id) {
+                        use crate::server::shared::types::metadata::TypeMetadataProvider;
+                        let type_name = subnet.base.subnet_type.name();
+                        let cidr = subnet.base.cidr.to_string();
+                        let show_label = subnet.base.subnet_type.show_label();
+                        let name_or_type = if subnet.base.name != cidr {
+                            subnet.base.name.clone()
+                        } else if show_label {
+                            type_name.to_string()
+                        } else {
+                            String::new()
+                        };
+                        Some(if name_or_type.is_empty() {
+                            cidr
+                        } else {
+                            format!("{}: {}", name_or_type, cidr)
+                        })
                     } else {
-                        String::new()
+                        None
                     };
-                    Some(if name_or_type.is_empty() {
-                        cidr
-                    } else {
-                        format!("{}: {}", name_or_type, cidr)
-                    })
-                } else {
-                    None
-                };
 
-                let will_accept_edges = self.consolidated_docker_subnets.contains_key(subnet_id);
+                let will_accept_edges = self
+                    .consolidated_container_bridge_subnets
+                    .contains_key(subnet_id);
                 Node {
                     id: *subnet_id,
                     node_type: NodeType::Container {

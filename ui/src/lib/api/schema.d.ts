@@ -5763,7 +5763,7 @@ export interface components {
              * @description Rules that change which containers exist and how they nest.
              *     Container titles are data-driven (subnet CIDR, host names), not user-configurable.
              */
-            rule: "BySubnet" | "MergeDockerBridges" | {
+            rule: "BySubnet" | "MergeContainerBridges" | {
                 ByApplication: {
                     tag_ids?: string[];
                 };
@@ -7542,7 +7542,7 @@ export interface components {
              *         },
              *         {
              *           "id": "097c65f1-0a73-476c-9bd5-0513e72b8c0b",
-             *           "rule": "MergeDockerBridges"
+             *           "rule": "MergeContainerBridges"
              *         }
              *       ],
              *       "Workloads": [

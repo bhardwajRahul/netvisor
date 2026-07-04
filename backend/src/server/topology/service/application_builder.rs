@@ -11,7 +11,7 @@ use super::{
 };
 use crate::server::{
     dependencies::r#impl::{base::DependencyMembers, types::DependencyType},
-    services::r#impl::{categories::ServiceCategory, virtualization::ServiceVirtualization},
+    services::r#impl::categories::ServiceCategory,
     shared::{
         concepts::Concept, entities::EntityDiscriminants, types::metadata::EntityMetadataProvider,
     },
@@ -319,18 +319,19 @@ impl ViewBuilder for ApplicationBuilder {
             }
         }
 
-        // Create ContainerRuntime overlay edges
+        // Create ContainerRuntime overlay edges (runtime-agnostic: Docker, Podman, …)
         for service in ctx.services {
-            if let Some(ServiceVirtualization::Docker(docker)) = &service.base.virtualization
+            if let Some(virt) = &service.base.virtualization
+                && let Some(runtime_service_id) = virt.service_id()
                 && service_node_ids.contains_key(&service.id)
-                && service_node_ids.contains_key(&docker.service_id)
+                && service_node_ids.contains_key(&runtime_service_id)
             {
                 edges.push(Edge {
                     id: Uuid::new_v4(),
-                    source: docker.service_id,
+                    source: runtime_service_id,
                     target: service.id,
                     edge_type: EdgeType::ContainerRuntime {
-                        service_id: docker.service_id,
+                        service_id: runtime_service_id,
                         host_id: service.base.host_id,
                     },
                     label: None,

@@ -221,4 +221,125 @@ mod tests {
             "ByTag should not match IP addresses on service-only tags"
         );
     }
+
+    #[test]
+    fn test_l3_merges_container_bridges_per_runtime() {
+        use crate::server::subnets::r#impl::types::SubnetType;
+        use crate::server::topology::types::grouping::ContainerRule;
+        use crate::server::topology::types::views::TopologyView;
+
+        let network_id = Uuid::new_v4();
+        let host_id = Uuid::new_v4();
+
+        let host = Host {
+            id: host_id,
+            base: HostBase {
+                name: "bridge-host".to_string(),
+                network_id,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        // Same host runs two Podman bridges and one Docker bridge. Per-runtime
+        // merging must collapse the two Podman bridges into one container and
+        // keep the Docker bridge as a separate one.
+        let make_bridge = |st: SubnetType, cidr: Ipv4Cidr, name: &str| Subnet {
+            id: Uuid::new_v4(),
+            base: SubnetBase {
+                cidr: IpCidr::V4(cidr),
+                network_id,
+                name: name.to_string(),
+                subnet_type: st,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let podman_a = make_bridge(
+            SubnetType::PodmanBridge,
+            Ipv4Cidr::new(Ipv4Addr::new(10, 88, 0, 0), 16).unwrap(),
+            "podman0",
+        );
+        let podman_b = make_bridge(
+            SubnetType::PodmanBridge,
+            Ipv4Cidr::new(Ipv4Addr::new(10, 89, 0, 0), 24).unwrap(),
+            "podman1",
+        );
+        let docker = make_bridge(
+            SubnetType::DockerBridge,
+            Ipv4Cidr::new(Ipv4Addr::new(172, 17, 0, 0), 16).unwrap(),
+            "docker0",
+        );
+
+        let make_ip = |subnet_id: Uuid, addr: Ipv4Addr| IPAddress {
+            id: Uuid::new_v4(),
+            base: IPAddressBase {
+                network_id,
+                host_id,
+                subnet_id,
+                ip_address: std::net::IpAddr::V4(addr),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let ip_addresses = vec![
+            make_ip(podman_a.id, Ipv4Addr::new(10, 88, 0, 2)),
+            make_ip(podman_b.id, Ipv4Addr::new(10, 89, 0, 2)),
+            make_ip(docker.id, Ipv4Addr::new(172, 17, 0, 2)),
+        ];
+
+        let mut options = TopologyOptions::default();
+        options.request.container_rules.insert(
+            TopologyView::L3Logical,
+            vec![
+                IdentifiedRule::new(ContainerRule::BySubnet),
+                IdentifiedRule::new(ContainerRule::MergeContainerBridges),
+            ],
+        );
+
+        let hosts = vec![host];
+        let subnets = vec![podman_a, podman_b, docker];
+
+        let ctx = TopologyContext::new(
+            &hosts,
+            &ip_addresses,
+            &subnets,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &options,
+            TopologyView::L3Logical,
+        );
+        let grouping =
+            GroupingConfig::from_request_options(&ctx.options.request, TopologyView::L3Logical);
+        let (nodes, _edges) = L3Builder.build(&ctx, &grouping);
+
+        let headers: Vec<&str> = nodes.iter().filter_map(|n| n.header.as_deref()).collect();
+
+        let podman_headers: Vec<&&str> = headers
+            .iter()
+            .filter(|h| h.starts_with("Podman Bridge:"))
+            .collect();
+        assert_eq!(
+            podman_headers.len(),
+            1,
+            "the two Podman bridges should merge into one container, got {headers:?}"
+        );
+        // Both Podman CIDRs are consolidated into that single container's header.
+        assert!(podman_headers[0].contains("10.88"));
+        assert!(podman_headers[0].contains("10.89"));
+
+        assert_eq!(
+            headers
+                .iter()
+                .filter(|h| h.starts_with("Docker Bridge:"))
+                .count(),
+            1,
+            "the Docker bridge stays a separate container, got {headers:?}"
+        );
+    }
 }

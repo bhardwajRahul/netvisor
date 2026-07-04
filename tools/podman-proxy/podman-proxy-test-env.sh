@@ -385,7 +385,9 @@ cmd_status() {
 
 # Seed/tear-down a discoverable workload: a pod with a published-port nginx
 # container plus a standalone published-port container. Gives discovery
-# containers, ports, and (rootful) a bridge subnet to find.
+# containers, ports, and (rootful) a bridge subnet to find. The two pod members
+# share a compose project label so they group as one Stack in topology; the
+# standalone container is deliberately left unlabeled (ungrouped) for contrast.
 cmd_workload() {
     if ! command -v podman &>/dev/null; then
         printf "${RED}podman CLI not found${NC}\n"
@@ -398,16 +400,23 @@ cmd_workload() {
             # Pod publishes nginx (80) and a fingerprintable Grafana (3000). Both run as pod
             # members (shared netns) so discovery must resolve their interfaces from the pod's
             # infra container, and Grafana exercises HTTP service detection via an existing def.
+            # podman pod does NOT propagate a compose-project label, so we stamp
+            # `com.docker.compose.project` on each member ourselves (the same label
+            # `docker compose` sets) — this is what Scanopy's Stack grouping keys on.
             podman pod create --name scanopy-test-pod -p 8088:80 -p 8090:3000 >/dev/null 2>&1 || true
             podman run -d --pod scanopy-test-pod --name scanopy-test-web \
+                --label com.docker.compose.project=scanopy-test \
+                --label com.docker.compose.service=web \
                 docker.io/library/nginx:alpine >/dev/null
             podman run -d --pod scanopy-test-pod --name scanopy-test-grafana \
+                --label com.docker.compose.project=scanopy-test \
+                --label com.docker.compose.service=grafana \
                 docker.io/grafana/grafana >/dev/null
             podman run -d --name scanopy-test-standalone -p 8089:80 \
                 docker.io/library/nginx:alpine >/dev/null
             echo ""
-            printf "  ${GREEN}✓${NC} pod 'scanopy-test-pod' (nginx on host port 8088, Grafana on host port 8090)\n"
-            printf "  ${GREEN}✓${NC} container 'scanopy-test-standalone' (nginx on host port 8089)\n"
+            printf "  ${GREEN}✓${NC} pod 'scanopy-test-pod' — web + grafana share compose project 'scanopy-test' (nginx 8088, Grafana 8090)\n"
+            printf "  ${GREEN}✓${NC} container 'scanopy-test-standalone' (nginx on host port 8089, ungrouped)\n"
             echo ""
             podman ps --filter "name=scanopy-test" --format "table {{.Names}}\t{{.Ports}}\t{{.Status}}"
             ;;

@@ -10,6 +10,15 @@
 	import { SvelteMap } from 'svelte/reactivity';
 	import type { Subnet } from '$lib/features/subnets/types/base';
 	import type { RenderableTopology } from '$lib/features/topology/types/base';
+	import { subnetTypes } from '$lib/shared/stores/metadata';
+	import {
+		common_containerizedService,
+		common_containerizedServices,
+		topology_containerBridgeSubnet,
+		topology_containerBridgeSubnets,
+		topology_containerHost,
+		topology_containerService
+	} from '$lib/paraglide/messages';
 
 	let { edge, serviceId }: { edge: Edge; serviceId: string } = $props();
 
@@ -43,17 +52,16 @@
 			(($topologyOptions.request.container_rules ?? {}) as Record<string, { rule: unknown }[]>)[
 				$activeView
 			] ?? []
-		).some((r) => r.rule === 'MergeDockerBridges')
+		).some((r) => r.rule === 'MergeContainerBridges')
 	);
-	// Get containerized services - all if grouped, or just the one in edge.target if not
+	// Get containerized services - all if grouped, or just the one in edge.target if not.
+	// Runtime-agnostic: ServiceVirtualization is Docker | Podman (both container runtimes),
+	// so matching on the runtime service_id naturally covers either.
 	let containerizedServices = $derived(
 		topology
 			? isGrouped
 				? topology.services.filter(
-						(s) =>
-							s.virtualization &&
-							s.virtualization.type === 'Docker' &&
-							s.virtualization.details.service_id === serviceId
+						(s) => s.virtualization && s.virtualization.details.service_id === serviceId
 					)
 				: topology.services.filter((s) => s.bindings.some((b) => b.ip_address_id == edge.target))
 			: []
@@ -71,8 +79,8 @@
 		return topology.subnets.find((s) => s.id === subnetId) || null;
 	}
 
-	// Get all Docker Bridge subnets for those containerized services
-	let allDockerSubnets = $derived.by(() => {
+	// Get all container bridge subnets (Docker/Podman) for those containerized services
+	let allBridgeSubnets = $derived.by(() => {
 		const subnets = new SvelteMap<string, Subnet>(); // Use Map to deduplicate by subnet ID
 
 		for (const service of containerizedServices) {
@@ -91,7 +99,7 @@
 				if (!iface?.subnet_id) continue;
 
 				const subnet = getSubnetFromTopology(iface.subnet_id);
-				if (subnet?.subnet_type === 'DockerBridge') {
+				if (subnet && subnetTypes.getMetadata(subnet.subnet_type).is_container_bridge) {
 					subnets.set(subnet.id, subnet);
 				}
 			}
@@ -103,7 +111,7 @@
 
 <div class="space-y-3">
 	{#if containerizingHost}
-		<span class="text-secondary mb-2 block text-sm font-medium">Docker Host</span>
+		<span class="text-secondary mb-2 block text-sm font-medium">{topology_containerHost()}</span>
 		<div class="card card-static">
 			<EntityDisplayWrapper
 				context={{
@@ -122,7 +130,7 @@
 		</div>
 	{/if}
 	{#if containerizingService}
-		<span class="text-secondary mb-2 block text-sm font-medium">Docker Service</span>
+		<span class="text-secondary mb-2 block text-sm font-medium">{topology_containerService()}</span>
 		<div class="card card-static">
 			<EntityDisplayWrapper
 				context={{
@@ -140,7 +148,7 @@
 	{/if}
 
 	<span class="text-secondary mb-2 block text-sm font-medium">
-		{isGrouped ? 'Containerized Services' : 'Containerized Service'}
+		{isGrouped ? common_containerizedServices() : common_containerizedService()}
 	</span>
 	{#each containerizedServices as service (service.id)}
 		<div class="card card-static">
@@ -159,11 +167,13 @@
 		</div>
 	{/each}
 
-	{#if allDockerSubnets.length > 0}
+	{#if allBridgeSubnets.length > 0}
 		<span class="text-secondary mb-2 block text-sm font-medium"
-			>Docker Bridge Subnet{allDockerSubnets.length > 1 ? 's' : ''}</span
+			>{allBridgeSubnets.length > 1
+				? topology_containerBridgeSubnets()
+				: topology_containerBridgeSubnet()}</span
 		>
-		{#each allDockerSubnets as subnet (subnet.id)}
+		{#each allBridgeSubnets as subnet (subnet.id)}
 			<div class="card card-static">
 				<EntityDisplayWrapper
 					context={{ compact: true }}

@@ -21155,7 +21155,7 @@
               {
                 "type": "string",
                 "enum": [
-                  "MergeDockerBridges"
+                  "MergeContainerBridges"
                 ]
               },
               {
@@ -26377,7 +26377,7 @@
                 },
                 {
                   "id": "097c65f1-0a73-476c-9bd5-0513e72b8c0b",
-                  "rule": "MergeDockerBridges"
+                  "rule": "MergeContainerBridges"
                 }
               ],
               "Workloads": [
