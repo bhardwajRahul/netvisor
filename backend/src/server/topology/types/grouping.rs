@@ -202,7 +202,7 @@ impl TypeMetadataProvider for ContainerRule {
     fn name(&self) -> &'static str {
         match self {
             ContainerRule::BySubnet => "Subnet",
-            ContainerRule::MergeContainerBridges => "Container bridges",
+            ContainerRule::MergeContainerBridges => "Container Bridges",
             ContainerRule::ByApplication { .. } => "Application",
             ContainerRule::ByHost => "Host",
         }
@@ -210,12 +210,12 @@ impl TypeMetadataProvider for ContainerRule {
 
     fn description(&self) -> &'static str {
         match self {
-            ContainerRule::BySubnet => "Group nodes by network subnet",
+            ContainerRule::BySubnet => "Group entities by subnet",
             ContainerRule::MergeContainerBridges => {
                 "Merge a host's container runtime bridge subnets into a single group (e.g., Docker bridge networks). This prevents clutter from multiple bridge subnets on the same host."
             }
             ContainerRule::ByApplication { .. } => "Group services by application tag",
-            ContainerRule::ByHost => "Group elements by host",
+            ContainerRule::ByHost => "Group entities by host",
         }
     }
 
@@ -380,7 +380,7 @@ impl EntityMetadataProvider for ElementRule {
 impl TypeMetadataProvider for ElementRule {
     fn name(&self) -> &'static str {
         match self {
-            ElementRule::ByServiceCategory { .. } => "Service category",
+            ElementRule::ByServiceCategory { .. } => "Service Category",
             ElementRule::ByTag { .. } => "Tag",
             ElementRule::ByHypervisor => "Hypervisor",
             ElementRule::ByContainerRuntime => "Container Runtime",
@@ -393,11 +393,11 @@ impl TypeMetadataProvider for ElementRule {
 
     fn description(&self) -> &'static str {
         match self {
-            ElementRule::ByServiceCategory { .. } => "Group elements by service category",
-            ElementRule::ByTag { .. } => "Group elements by tag",
+            ElementRule::ByServiceCategory { .. } => "Group services by category",
+            ElementRule::ByTag { .. } => "Group entities by tag",
             ElementRule::ByHypervisor => "Group VMs by hypervisor",
             ElementRule::ByContainerRuntime => "Group containers by runtime",
-            ElementRule::ByStack => "Group workloads deployed together as one unit",
+            ElementRule::ByStack => "Group containers deployed together as a stack (e.g., Docker Compose, Podman Compose)",
             ElementRule::ByTrunkPort => "Group trunk ports (ports carrying multiple VLANs)",
             ElementRule::ByVLAN => "Group access ports by native VLAN ID",
             ElementRule::ByPortOpStatus => "Group ports by operational status",

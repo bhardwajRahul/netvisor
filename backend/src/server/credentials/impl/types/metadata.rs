@@ -214,7 +214,7 @@ impl CredentialTypeDiscriminants {
             // SnmpV1/SnmpV3 inner `SnmpVersion` values shipped in 0.17.0.
             Self::SnmpV1 | Self::SnmpV3 => semver::Version::new(0, 17, 0),
             // Podman variants shipped in 0.17.2.
-            Self::PodmanProxy | Self::PodmanSocket => semver::Version::new(0, 18, 2),
+            Self::PodmanProxy | Self::PodmanSocket => semver::Version::new(0, 17, 2),
         }
     }
 
