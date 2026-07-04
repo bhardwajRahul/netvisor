@@ -92,6 +92,13 @@ impl ServiceVirtualization {
             Self::Podman(p) => p.compose_project.as_deref(),
         }
     }
+
+    /// Service-definition id of this container runtime (e.g. `"Docker"`, `"Podman"`).
+    /// Used as the logo for a deployment-unit (Stack) grouping container. The variant
+    /// discriminant matches the runtime's `ServiceDefinition` id by construction.
+    pub fn runtime_service_definition_id(&self) -> &'static str {
+        self.into()
+    }
 }
 
 impl HasId for ServiceVirtualization {

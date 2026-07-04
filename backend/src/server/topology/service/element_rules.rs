@@ -83,8 +83,10 @@ pub struct ElementMatchData {
     pub element_entity: EntityDiscriminants,
     /// The service ID of the virtualizer managing this element (for ByHypervisor/ByContainerRuntime grouping).
     pub virtualizer_service_id: Option<Uuid>,
-    /// The Docker Compose project name (for ByStack grouping).
-    pub compose_project: Option<String>,
+    /// The deployment-unit identity this element belongs to (for ByStack grouping) —
+    /// e.g. a Docker/Podman compose project. Runtime-agnostic: any orchestrator's
+    /// deployment-group key feeds this field, so the rule stays vendor-neutral.
+    pub deployment_group: Option<String>,
     /// Native VLAN entity UUID on this port (for ByVLAN grouping).
     pub native_vlan_id: Option<Uuid>,
     /// Native VLAN number (for grouping key and display).
@@ -314,7 +316,7 @@ fn compute_virtualizer_placements(rule: &ElementRule, ctx: &PlacementContext) ->
     result
 }
 
-/// ByStack: group elements by compose_project.
+/// ByStack: group elements by their deployment-unit identity (`deployment_group`).
 fn compute_stack_placements(ctx: &PlacementContext) -> RulePlacement {
     let mut result = RulePlacement {
         containers: Vec::new(),
@@ -334,12 +336,12 @@ fn compute_stack_placements(ctx: &PlacementContext) -> RulePlacement {
 
         let mut by_stack: HashMap<String, Vec<Uuid>> = HashMap::new();
         for id in &unclaimed {
-            if let Some(project) = ctx
+            if let Some(group) = ctx
                 .match_data
                 .get(id)
-                .and_then(|d| d.compose_project.clone())
+                .and_then(|d| d.deployment_group.clone())
             {
-                by_stack.entry(project).or_default().push(*id);
+                by_stack.entry(group).or_default().push(*id);
             }
         }
 
@@ -379,6 +381,55 @@ fn compute_stack_placements(ctx: &PlacementContext) -> RulePlacement {
     }
 
     result
+}
+
+/// Map each deployment-unit identity (compose project) → the container-runtime
+/// service-definition id to use as that Stack subcontainer's logo.
+///
+/// A deployment unit is runtime-homogeneous in practice (a compose project runs
+/// on one runtime), so a project with conflicting runtimes maps to `None` (no logo).
+/// Builders call this and then stamp `associated_service_definition` on each
+/// `ContainerType::Stack` node by its header (the project name).
+pub(crate) fn stack_runtime_logos(services: &[Service]) -> HashMap<String, Option<&'static str>> {
+    let mut logos: HashMap<String, Option<&'static str>> = HashMap::new();
+    for service in services {
+        let Some(virt) = &service.base.virtualization else {
+            continue;
+        };
+        let Some(project) = virt.compose_project() else {
+            continue;
+        };
+        let runtime = virt.runtime_service_definition_id();
+        logos
+            .entry(project.to_string())
+            .and_modify(|existing| {
+                if *existing != Some(runtime) {
+                    *existing = None;
+                }
+            })
+            .or_insert(Some(runtime));
+    }
+    logos
+}
+
+/// Stamp the runtime logo onto every `ContainerType::Stack` node, keyed by its
+/// header (deployment-unit / compose-project name). Shared by the graph builders.
+pub(crate) fn apply_stack_runtime_logos(nodes: &mut [Node], services: &[Service]) {
+    let logos = stack_runtime_logos(services);
+    for node in nodes.iter_mut() {
+        let header = node.header.clone();
+        if let NodeType::Container {
+            container_type: ContainerType::Stack,
+            associated_service_definition,
+            ..
+        } = &mut node.node_type
+        {
+            *associated_service_definition = header
+                .as_deref()
+                .and_then(|h| logos.get(h).copied().flatten())
+                .map(str::to_string);
+        }
+    }
 }
 
 /// ByServiceCategory: group elements matching specified categories.
@@ -795,6 +846,10 @@ pub fn apply_element_rules(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::server::services::r#impl::{
+        base::ServiceBase,
+        virtualization::{DockerVirtualization, PodmanVirtualization, ServiceVirtualization},
+    };
     use crate::server::topology::types::{grouping::IdentifiedRule, nodes::ElementEntityType};
 
     fn make_element(id: Uuid, container_id: Uuid) -> Node {
@@ -806,13 +861,13 @@ mod tests {
         )
     }
 
-    fn make_match_data(compose_project: Option<&str>) -> ElementMatchData {
+    fn make_match_data(deployment_group: Option<&str>) -> ElementMatchData {
         ElementMatchData {
             categories: HashSet::new(),
             tag_ids: HashSet::new(),
             element_entity: EntityDiscriminants::Service,
             virtualizer_service_id: None,
-            compose_project: compose_project.map(String::from),
+            deployment_group: deployment_group.map(String::from),
             native_vlan_id: None,
             vlan_number: None,
             vlan_name: None,
@@ -967,5 +1022,104 @@ mod tests {
             })
             .count();
         assert_eq!(stack_count, 2);
+    }
+
+    fn service_with_virt(virt: ServiceVirtualization) -> Service {
+        Service {
+            base: ServiceBase {
+                virtualization: Some(virt),
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+    }
+
+    fn docker_virt(project: Option<&str>) -> ServiceVirtualization {
+        ServiceVirtualization::Docker(DockerVirtualization {
+            container_name: None,
+            container_id: None,
+            service_id: Uuid::new_v4(),
+            compose_project: project.map(String::from),
+        })
+    }
+
+    fn podman_virt(project: Option<&str>) -> ServiceVirtualization {
+        ServiceVirtualization::Podman(PodmanVirtualization {
+            container_name: None,
+            container_id: None,
+            service_id: Uuid::new_v4(),
+            compose_project: project.map(String::from),
+        })
+    }
+
+    fn stack_container(header: &str) -> Node {
+        Node {
+            id: Uuid::new_v4(),
+            node_type: NodeType::Container {
+                container_type: ContainerType::Stack,
+                parent_container_id: None,
+                entity_id: None,
+                icon: None,
+                color: None,
+                associated_service_definition: None,
+                element_rule_id: None,
+                will_accept_edges: true,
+            },
+            position: Default::default(),
+            size: Default::default(),
+            header: Some(header.to_string()),
+        }
+    }
+
+    fn associated_def(node: &Node) -> Option<&str> {
+        match &node.node_type {
+            NodeType::Container {
+                associated_service_definition,
+                ..
+            } => associated_service_definition.as_deref(),
+            _ => panic!("expected container"),
+        }
+    }
+
+    #[test]
+    fn stack_runtime_logos_maps_each_runtime_to_its_service_definition() {
+        let services = vec![
+            service_with_virt(docker_virt(Some("media"))),
+            service_with_virt(podman_virt(Some("infra"))),
+        ];
+        let logos = stack_runtime_logos(&services);
+        assert_eq!(logos.get("media").copied().flatten(), Some("Docker"));
+        assert_eq!(logos.get("infra").copied().flatten(), Some("Podman"));
+    }
+
+    #[test]
+    fn stack_runtime_logos_conflicting_runtime_is_none() {
+        // Same project name on two different runtimes → ambiguous logo.
+        let services = vec![
+            service_with_virt(docker_virt(Some("shared"))),
+            service_with_virt(podman_virt(Some("shared"))),
+        ];
+        let logos = stack_runtime_logos(&services);
+        assert_eq!(logos.get("shared").copied().flatten(), None);
+    }
+
+    #[test]
+    fn apply_stack_runtime_logos_stamps_podman_and_docker_stacks() {
+        let mut nodes = vec![stack_container("media"), stack_container("infra")];
+        let services = vec![
+            service_with_virt(docker_virt(Some("media"))),
+            service_with_virt(podman_virt(Some("infra"))),
+        ];
+        apply_stack_runtime_logos(&mut nodes, &services);
+        assert_eq!(associated_def(&nodes[0]), Some("Docker"));
+        assert_eq!(associated_def(&nodes[1]), Some("Podman"));
+    }
+
+    #[test]
+    fn apply_stack_runtime_logos_leaves_unknown_stack_without_logo() {
+        let mut nodes = vec![stack_container("orphan")];
+        let services = vec![service_with_virt(docker_virt(Some("media")))];
+        apply_stack_runtime_logos(&mut nodes, &services);
+        assert_eq!(associated_def(&nodes[0]), None);
     }
 }
