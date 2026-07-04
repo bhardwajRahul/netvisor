@@ -503,7 +503,6 @@ mod tests {
         }
     }
 
-
     fn snmp_cred(community: &str) -> CredentialType {
         CredentialType::SnmpV2c {
             community: SecretValue::Inline {

@@ -41,10 +41,10 @@
 		localAutoMode?: 'interactive' | 'fixed';
 		/** In `fixed` mode, the auto-local type ids the target daemon actually has. */
 		fixedCapabilityTypeIds?: string[];
-		/** Credential type ids the target daemon is too old to receive (from the
-		 *  daemon's server-computed `version_status.incompatible_credential_type_ids`).
-		 *  Rendered disabled with a version-requirement message. */
-		incompatibleTypeIds?: string[];
+		/** Version of the single daemon this picker targets. A credential type card is
+		 *  disabled when this version is older than the type's `minimum_daemon_version`.
+		 *  Absent/null ⇒ no version gate (e.g. create-daemon flow). */
+		daemonVersion?: string | null;
 	}
 
 	let {
@@ -56,7 +56,7 @@
 		selectedTypeIds = $bindable([]),
 		localAutoMode = 'interactive',
 		fixedCapabilityTypeIds = [],
-		incompatibleTypeIds = []
+		daemonVersion = null
 	}: Props = $props();
 
 	const bulkCreateCredentialsMutation = useBulkCreateCredentialsMutation();
@@ -165,7 +165,7 @@
 		<CredentialTypeSelectStep
 			bind:selectedTypeIds
 			{lockedTypeIds}
-			{incompatibleTypeIds}
+			{daemonVersion}
 			forceCheckedTypeIds={localAutoMode === 'fixed' ? fixedCapabilityTypeIds : []}
 		/>
 	</div>

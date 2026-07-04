@@ -66,9 +66,9 @@ export interface CredentialTypeMetadata {
 	single_endpoint_per_host?: boolean;
 	/** Name of the associated ServiceDefinition (e.g. "SNMP", "Docker") */
 	associated_service?: string;
-	/** Minimum daemon version (semver) that can receive this credential type. Used
-	 *  only for the compatibility message; the actual picker gate uses the
-	 *  server-computed `version_status.incompatible_credential_type_ids`. */
+	/** Minimum daemon version (semver) that can receive this credential type. The
+	 *  discovery credential picker compares the selected daemon's `version` against
+	 *  this to disable too-new types (and to build the requirement tooltip). */
 	minimum_daemon_version?: string;
 	/** Whether the associated service has a logo */
 	has_logo?: boolean;
