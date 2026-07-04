@@ -77,8 +77,8 @@
   },
   {
     "id": "ByStack",
-    "name": "Docker Stack",
-    "description": "Group by Docker Compose project",
+    "name": "Stack",
+    "description": "Group workloads deployed together as one unit",
     "category": null,
     "icon": "box",
     "color": "Blue",

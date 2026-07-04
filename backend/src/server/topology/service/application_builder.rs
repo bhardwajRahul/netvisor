@@ -4,7 +4,8 @@ use uuid::Uuid;
 use super::{
     context::TopologyContext,
     element_rules::{
-        ElementMatchData, TaggableLookups, apply_element_rules, resolve_element_tag_ids,
+        ElementMatchData, TaggableLookups, apply_element_rules, apply_stack_runtime_logos,
+        resolve_element_tag_ids,
     },
     view::ViewBuilder,
 };
@@ -193,7 +194,7 @@ impl ViewBuilder for ApplicationBuilder {
                 let categories = HashSet::from([service.base.service_definition.category()]);
                 let tag_ids =
                     resolve_element_tag_ids(EntityDiscriminants::Service, service.id, &tag_lookups);
-                let compose_project = service
+                let deployment_group = service
                     .base
                     .virtualization
                     .as_ref()
@@ -203,7 +204,7 @@ impl ViewBuilder for ApplicationBuilder {
                     tag_ids,
                     element_entity: EntityDiscriminants::Service,
                     virtualizer_service_id: None,
-                    compose_project,
+                    deployment_group,
                     native_vlan_id: None,
                     vlan_number: None,
                     vlan_name: None,
@@ -215,17 +216,9 @@ impl ViewBuilder for ApplicationBuilder {
             None,
         );
 
-        // Post-process: set associated_service_definition on Stack subcontainers (always Docker)
-        for node in nodes.iter_mut() {
-            if let NodeType::Container {
-                container_type: ContainerType::Stack,
-                associated_service_definition,
-                ..
-            } = &mut node.node_type
-            {
-                *associated_service_definition = Some("Docker".to_string());
-            }
-        }
+        // Post-process: stamp each Stack subcontainer's logo from the runtime of
+        // the services in that deployment group (Docker, Podman, …).
+        apply_stack_runtime_logos(&mut nodes, ctx.services);
 
         // Build binding_id → service_id lookup (for Bindings variant backward compat)
         let binding_to_service = ctx.build_binding_to_service_map();

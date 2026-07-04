@@ -5,7 +5,6 @@ use uuid::Uuid;
 use crate::server::{
     hosts::r#impl::base::Host,
     ip_addresses::r#impl::base::IPAddress,
-    services::r#impl::virtualization::ServiceVirtualization,
     shared::entities::EntityDiscriminants,
     subnets::r#impl::types::SubnetType,
     topology::{
@@ -13,7 +12,8 @@ use crate::server::{
             anchor_planner::ChildAnchorPlanner,
             context::TopologyContext,
             element_rules::{
-                ElementMatchData, TaggableLookups, apply_element_rules, resolve_element_tag_ids,
+                ElementMatchData, TaggableLookups, apply_element_rules, apply_stack_runtime_logos,
+                resolve_element_tag_ids,
             },
         },
         types::{
@@ -305,15 +305,15 @@ impl SubnetGraphBuilder {
                     child.host_id,
                     &tag_lookups,
                 );
-                // Resolve compose_project only for elements inside Docker subnets.
-                // LAN ip_addresses shouldn't be grouped by stack.
-                let is_docker_subnet = ctx
+                // Resolve the deployment group (compose project) only for elements
+                // inside container subnets. LAN ip_addresses shouldn't be grouped by stack.
+                let is_container_subnet = ctx
                     .subnets
                     .iter()
                     .find(|s| s.id == _subnet_id)
                     .map(|s| s.base.subnet_type.is_container_network())
                     .unwrap_or(false);
-                let compose_project = if !is_docker_subnet {
+                let deployment_group = if !is_container_subnet {
                     None
                 } else {
                     let mut projects: HashSet<&str> = HashSet::new();
@@ -335,12 +335,16 @@ impl SubnetGraphBuilder {
                                     .filter(|s| s.base.host_id == child.host_id),
                             )
                         };
+                    // Runtime-agnostic: any container runtime (Docker, Podman, …) that
+                    // carries a compose project participates in stack grouping.
                     for service in services_iter {
-                        if let Some(ServiceVirtualization::Docker(dv)) =
-                            &service.base.virtualization
-                            && let Some(ref project) = dv.compose_project
+                        if let Some(project) = service
+                            .base
+                            .virtualization
+                            .as_ref()
+                            .and_then(|v| v.compose_project())
                         {
-                            projects.insert(project.as_str());
+                            projects.insert(project);
                         }
                     }
                     if projects.len() == 1 {
@@ -354,7 +358,7 @@ impl SubnetGraphBuilder {
                     tag_ids,
                     element_entity: EntityDiscriminants::IPAddress,
                     virtualizer_service_id: None,
-                    compose_project,
+                    deployment_group,
                     native_vlan_id: None,
                     vlan_number: None,
                     vlan_name: None,
@@ -366,17 +370,9 @@ impl SubnetGraphBuilder {
             None,
         );
 
-        // Post-process: set associated_service_definition on Stack subcontainers (always Docker)
-        for node in child_nodes.iter_mut() {
-            if let NodeType::Container {
-                container_type: ContainerType::Stack,
-                associated_service_definition,
-                ..
-            } = &mut node.node_type
-            {
-                *associated_service_definition = Some("Docker".to_string());
-            }
-        }
+        // Post-process: stamp each Stack subcontainer's logo from the runtime of
+        // the services in that deployment group (Docker, Podman, …).
+        apply_stack_runtime_logos(child_nodes, ctx.services);
     }
 
     /// Create subnet container nodes
