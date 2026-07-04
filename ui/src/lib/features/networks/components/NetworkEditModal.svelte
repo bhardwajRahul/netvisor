@@ -171,7 +171,7 @@
 {#snippet networkCredentialHelpSnippet()}
 	<DocsHint
 		text={networks_credentialHelp()}
-		href="https://scanopy.net/docs/using-scanopy/credentials/#scope-models"
+		href="https://scanopy.net/docs/using-scanopy/credentials/#where-a-credential-applies"
 		linkText={networks_credentialHelpLinkText()}
 	/>
 {/snippet}
