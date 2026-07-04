@@ -33,9 +33,15 @@ impl DaemonService {
             daemon.base.version = Some(version);
         }
 
-        // Resolve interfaced subnets based on daemon version
-        if supports_unified_discovery(daemon.base.version.as_ref()) {
-            // v0.15.0+ daemon: resolve full Subnet objects (empty = no ip_addresses)
+        // Resolve interfaced subnets and persist them to the
+        // `daemon_interfaced_subnets` junction (replaces the old capabilities JSONB).
+        //   • v0.15.0+ daemons send full `Subnet` objects; create-or-match by CIDR
+        //     yields canonical, FK-valid ids.
+        //   • Pre-0.15 daemons send bare ids in the legacy `capabilities` blob; keep
+        //     honoring them so those daemons still report interfaced subnets, but
+        //     existence-filter first — a dangling id can't satisfy the FK (that
+        //     referential-integrity gap is exactly what this table fixes).
+        let subnet_ids: Vec<Uuid> = if supports_unified_discovery(daemon.base.version.as_ref()) {
             let mut resolved_ids = Vec::new();
             for subnet in status.interfaced_subnets {
                 match self.subnet_service.create(subnet, auth.clone()).await {
@@ -45,14 +51,45 @@ impl DaemonService {
                     }
                 }
             }
-            daemon.base.capabilities.interfaced_subnet_ids = resolved_ids;
-        } else if !status.capabilities.interfaced_subnet_ids.is_empty() {
-            // Pre-v0.15.0: use capabilities as-is
-            daemon.base.capabilities = status.capabilities;
-        }
+            resolved_ids
+        } else {
+            self.filter_existing_subnet_ids(&status.capabilities.interfaced_subnet_ids)
+                .await
+        };
+
+        self.interfaced_subnet_storage
+            .save_interfaced_subnets_for_daemon(&daemon_id, &subnet_ids)
+            .await
+            .map_err(|e| {
+                ApiError::internal_error(&format!("Failed to save interfaced subnets: {e}"))
+            })?;
 
         self.update(&mut daemon, auth).await?;
         Ok(())
+    }
+
+    /// Keep only the subnet ids that currently exist as live `subnets` rows, so a
+    /// legacy daemon's stale/dangling id can't violate the junction FK. Goes through
+    /// `SubnetService` (not storage) to respect entity boundaries.
+    async fn filter_existing_subnet_ids(&self, ids: &[Uuid]) -> Vec<Uuid> {
+        if ids.is_empty() {
+            return Vec::new();
+        }
+        let filter = StorableFilter::<Subnet>::new_from_uuids_column("id", ids).live();
+        match self.subnet_service.get_all(filter).await {
+            Ok(subnets) => {
+                let existing: std::collections::HashSet<Uuid> =
+                    subnets.into_iter().map(|s| s.id).collect();
+                ids.iter()
+                    .copied()
+                    .filter(|id| existing.contains(id))
+                    .collect()
+            }
+            Err(e) => {
+                tracing::warn!(error = ?e, "Failed to validate legacy interfaced subnet ids; skipping");
+                Vec::new()
+            }
+        }
     }
 
     /// Process a daemon startup announcement
@@ -239,7 +276,8 @@ impl DaemonService {
             // Update daemon with current info
             // NOTE: We do NOT update URL from registration request.
             // URL is only set via admin provisioning for ServerPoll daemons.
-            existing_daemon.base.capabilities = request.capabilities;
+            // (Interfaced subnets are not taken from registration — they flow via the
+            // status heartbeat / update-capabilities channels into the junction.)
             existing_daemon.base.last_seen = Some(Utc::now());
             existing_daemon.base.mode = request.mode;
             existing_daemon.base.name = request.name;
@@ -327,6 +365,30 @@ impl DaemonService {
             tracing::warn!(host_id = %host_response.id, error = %e, "Failed to seed daemon host loopback");
         }
 
+        // Version gate (mirrors the discovery-update handler): reject any registration
+        // target whose credential type is too new for this daemon's version, before
+        // it's applied to the host_credentials junction or the Discovery row.
+        for target in &request.integration_targets {
+            if let Some(cred) = self
+                .credential_service
+                .get_by_id(&target.credential_id())
+                .await?
+            {
+                let disc = CredentialTypeDiscriminants::from(&cred.base.credential_type);
+                if !disc.compatible_with_daemon(daemon_version.as_ref()) {
+                    return Err(ApiError::bad_request(&format!(
+                        "Credential type \"{}\" requires daemon version {} or newer, but this daemon is on {}.",
+                        disc.display_name(),
+                        disc.minimum_daemon_version(),
+                        daemon_version
+                            .as_ref()
+                            .map(|v| v.to_string())
+                            .unwrap_or_else(|| "an unknown version".to_string()),
+                    )));
+                }
+            }
+        }
+
         // Assign credentials targeted at the daemon host to this daemon's host now, so they appear
         // in the credential's assignments immediately (#637 Symptom A). That's any DaemonHost-scoped
         // target (e.g. a local socket credential) or a Hosts target naming a loopback IP. Remote-IP
@@ -365,7 +427,6 @@ impl DaemonService {
             // DaemonPoll mode: URL not needed (server never connects to daemon)
             // ServerPoll mode: URL is set during provisioning, not during registration
             url: String::new(),
-            capabilities: request.capabilities.clone(),
             last_seen: Some(Utc::now()),
             mode: request.mode,
             name: request.name,
@@ -405,26 +466,36 @@ impl DaemonService {
     }
 
     /// Process a capabilities update from a daemon
+    /// Legacy `POST /{id}/update-capabilities` channel: a pre-0.15 daemon reporting
+    /// its interfaced subnets as bare ids. Route them into the junction
+    /// (existence-filtered), consistent with the heartbeat's legacy branch, so these
+    /// daemons keep reporting. Modern daemons use the status `Vec<Subnet>` channel.
     pub async fn process_capabilities(
         &self,
         daemon_id: Uuid,
-        capabilities: DaemonCapabilities,
-        auth: AuthenticatedEntity,
+        capabilities: LegacyCapabilities,
+        _auth: AuthenticatedEntity,
     ) -> Result<(), ApiError> {
         tracing::debug!(
             daemon_id = %daemon_id,
-            capabilities = %capabilities,
-            "Updating daemon capabilities",
+            interfaced_subnet_ids = ?capabilities.interfaced_subnet_ids,
+            "Updating daemon interfaced subnets (legacy capabilities channel)",
         );
 
-        let mut daemon = self
-            .get_by_id(&daemon_id)
-            .await?
-            .ok_or_else(|| ApiError::entity_not_found::<Daemon>(daemon_id))?;
+        // Confirm the daemon exists (auth already scoped it to the caller's network).
+        if self.get_by_id(&daemon_id).await?.is_none() {
+            return Err(ApiError::entity_not_found::<Daemon>(daemon_id));
+        }
 
-        daemon.base.capabilities = capabilities;
-
-        self.update(&mut daemon, auth).await?;
+        let subnet_ids = self
+            .filter_existing_subnet_ids(&capabilities.interfaced_subnet_ids)
+            .await;
+        self.interfaced_subnet_storage
+            .save_interfaced_subnets_for_daemon(&daemon_id, &subnet_ids)
+            .await
+            .map_err(|e| {
+                ApiError::internal_error(&format!("Failed to save interfaced subnets: {e}"))
+            })?;
         Ok(())
     }
 
@@ -524,19 +595,9 @@ impl DaemonService {
                 Ok(host_response) => {
                     // Credential assignments are persisted inside discover_host()
                     // after remapping daemon interface UUIDs to server-assigned UUIDs.
-
-                    // Scope loopback credentials to the loopback interface
-                    if let Err(e) = self
-                        .scope_loopback_credentials(&host_response.id, host_service)
-                        .await
-                    {
-                        tracing::warn!(
-                            host_id = %host_response.id,
-                            error = ?e,
-                            "Failed to scope loopback credentials"
-                        );
-                    }
-
+                    // (Loopback credential scoping is handled at registration via
+                    // seed_loopback + explicit integration_targets IP overrides; the
+                    // old target_ips-based scoping was removed with target_ips.)
                     created_hosts.push((pending_id, host_response));
                 }
                 Err(e) => {

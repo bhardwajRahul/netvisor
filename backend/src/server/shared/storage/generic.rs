@@ -152,7 +152,6 @@ where
             SqlValue::Bindings(v) => query.bind(serde_json::to_value(v)?),
             SqlValue::OptionalHostVirtualization(v) => query.bind(serde_json::to_value(v)?),
             SqlValue::OptionalSubnetVirtualization(v) => query.bind(serde_json::to_value(v)?),
-            SqlValue::DaemonCapabilities(v) => query.bind(serde_json::to_value(v)?),
             SqlValue::IpAddr(v) => {
                 // Convert IpAddr to IpNetwork for proper INET binding
                 let network = IpNetwork::from(*v);
@@ -236,12 +235,6 @@ where
             SqlValue::OptionalMacAddress(v) => {
                 // sqlx mac_address feature supports MacAddress directly
                 query.bind(*v)
-            }
-            SqlValue::OptionalIpAddrArray(v) => {
-                let networks: Option<Vec<IpNetwork>> = v
-                    .as_ref()
-                    .map(|ips| ips.iter().map(|ip| IpNetwork::from(*ip)).collect());
-                query.bind(networks)
             }
             SqlValue::EntityDiscriminant(v) => {
                 // Serialize to JSON string to match how it's stored/deserialized

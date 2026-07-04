@@ -927,7 +927,7 @@ impl NetworkScan {
                         let has_cred = m.ip_overrides.iter().any(|o| o.ip == ip)
                             || m.default_credential.is_some();
                         if has_cred {
-                            let integration = IntegrationRegistry::get(discriminant);
+                            let integration = IntegrationRegistry::get(discriminant)?;
                             Some(integration.estimated_seconds() as usize * 100)
                         } else {
                             None
@@ -1043,7 +1043,9 @@ impl NetworkScan {
         // Mark integration probe costs as completed
         if let Some(counter) = completed_cost {
             for discriminant in probe_results.working_credential_ids.keys() {
-                let integration = IntegrationRegistry::get(*discriminant);
+                let Some(integration) = IntegrationRegistry::get(*discriminant) else {
+                    continue;
+                };
                 counter.fetch_add(
                     integration.estimated_seconds() as usize * 100,
                     Ordering::Relaxed,

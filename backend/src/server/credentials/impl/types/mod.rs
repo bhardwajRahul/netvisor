@@ -280,6 +280,13 @@ impl CredentialType {
         !self.field_definitions().is_empty()
     }
 
+    /// Minimum daemon version that can safely receive this credential type over the
+    /// wire. Delegates to the discriminant's exhaustive declaration
+    /// ([`CredentialTypeDiscriminants::minimum_daemon_version`]).
+    pub fn minimum_daemon_version(&self) -> semver::Version {
+        CredentialTypeDiscriminants::from(self).minimum_daemon_version()
+    }
+
     /// Whether this integration is a single service instance per host, so its
     /// access methods at a given target are mutually exclusive (e.g. a container
     /// runtime is reached by exactly one of socket/proxy). `false` for try-many
@@ -494,6 +501,60 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// The exact minimum-daemon-version floor per credential type (the release each
+    /// variant first shipped in). Guards against an accidental floor change.
+    #[test]
+    fn minimum_daemon_version_floors() {
+        use CredentialTypeDiscriminants::*;
+        let v = |a, b, c| semver::Version::new(a, b, c);
+        assert_eq!(SnmpV2c.minimum_daemon_version(), v(0, 16, 2));
+        assert_eq!(DockerProxy.minimum_daemon_version(), v(0, 16, 2));
+        assert_eq!(DockerSocket.minimum_daemon_version(), v(0, 16, 2));
+        assert_eq!(SnmpV1.minimum_daemon_version(), v(0, 17, 0));
+        assert_eq!(SnmpV3.minimum_daemon_version(), v(0, 17, 0));
+        assert_eq!(PodmanProxy.minimum_daemon_version(), v(0, 17, 2));
+        assert_eq!(PodmanSocket.minimum_daemon_version(), v(0, 17, 2));
+    }
+
+    /// The dispatch filter predicate: which credential types a daemon at a given
+    /// version may receive. This is the rule `build_all_credential_mappings` applies
+    /// via `retain`, so it directly covers A2's acceptance criteria.
+    #[test]
+    fn compatible_with_daemon_gates_by_version() {
+        use CredentialTypeDiscriminants::*;
+        use std::collections::HashSet;
+        let compatible = |version: Option<semver::Version>| {
+            CredentialTypeDiscriminants::iter()
+                .filter(|d| d.compatible_with_daemon(version.as_ref()))
+                .collect::<HashSet<_>>()
+        };
+
+        // 0.16.2 daemon: SNMPv2c + Docker only — no SnmpV1/SnmpV3/Podman.
+        let at_0_16_2 = compatible(Some(semver::Version::new(0, 16, 2)));
+        assert_eq!(
+            at_0_16_2,
+            HashSet::from([SnmpV2c, DockerProxy, DockerSocket])
+        );
+
+        // 0.17.0 daemon: adds SNMPv1/v3 but still no Podman.
+        let at_0_17_0 = compatible(Some(semver::Version::new(0, 17, 0)));
+        assert!(at_0_17_0.contains(&SnmpV1) && at_0_17_0.contains(&SnmpV3));
+        assert!(!at_0_17_0.contains(&PodmanProxy) && !at_0_17_0.contains(&PodmanSocket));
+
+        // 0.17.2 daemon: everything.
+        let at_0_17_2 = compatible(Some(semver::Version::new(0, 17, 2)));
+        assert_eq!(
+            at_0_17_2,
+            CredentialTypeDiscriminants::iter().collect::<HashSet<_>>()
+        );
+
+        // Unknown version: conservative — only the 0.16.2 wire floor.
+        assert_eq!(
+            compatible(None),
+            HashSet::from([SnmpV2c, DockerProxy, DockerSocket])
+        );
     }
 
     fn snmp_cred(community: &str) -> CredentialType {

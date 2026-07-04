@@ -17,7 +17,7 @@ use crate::{
     },
     server::{
         daemons::r#impl::{
-            api::{DaemonCapabilities, DiscoveryUpdatePayload},
+            api::{DiscoveryUpdatePayload, LegacyCapabilities},
             base::DaemonMode,
         },
         hosts::r#impl::{api::DiscoveryHostRequest, api::HostResponse},
@@ -40,7 +40,7 @@ pub struct DaemonStatus {
     pub version: Option<Version>,
     /// Backwards compat: pre-v0.15.0 daemons send capabilities instead of interfaced_subnets.
     #[serde(default)]
-    pub capabilities: DaemonCapabilities,
+    pub capabilities: LegacyCapabilities,
     /// Subnets detected from daemon's network ip_addresses. Server resolves these
     /// via SubnetService::create (create-or-match by CIDR) to get real IDs.
     /// v0.15.0+ daemons populate this; pre-v0.15.0 daemons leave it empty.
@@ -158,7 +158,7 @@ impl DaemonState {
             name,
             mode,
             version,
-            capabilities: DaemonCapabilities::default(),
+            capabilities: LegacyCapabilities::default(),
             interfaced_subnets,
             ready_for_work,
         }

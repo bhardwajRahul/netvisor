@@ -159,6 +159,13 @@ pub enum CredentialQueryPayload {
     DockerSocket(ContainerSocketQueryCredential),
     PodmanProxy(ContainerProxyQueryCredential),
     PodmanSocket(ContainerSocketQueryCredential),
+    /// Forward-compat fallback: a credential type from a newer server that this
+    /// daemon doesn't recognize. `#[serde(other)]` deserializes any unknown `type`
+    /// tag here (a unit variant, the only shape allowed for `other` on an
+    /// internally-tagged enum — mirrors `EntitySource`/`SubnetType`) instead of
+    /// hard-failing the whole discovery request. The daemon's dispatch skips it.
+    #[serde(other)]
+    Unknown,
 }
 
 impl Default for CredentialQueryPayload {
@@ -175,6 +182,11 @@ impl From<CredentialQueryPayloadDiscriminants> for super::types::CredentialTypeD
             CredentialQueryPayloadDiscriminants::DockerSocket => Self::DockerSocket,
             CredentialQueryPayloadDiscriminants::PodmanProxy => Self::PodmanProxy,
             CredentialQueryPayloadDiscriminants::PodmanSocket => Self::PodmanSocket,
+            // `Unknown` is the daemon-side forward-compat sentinel; the server only
+            // ever builds `CredentialQueryPayload` from a known `CredentialType`, so
+            // this reverse conversion never sees it. Fall back to the SNMP default to
+            // keep the mapping total (unreachable server-side).
+            CredentialQueryPayloadDiscriminants::Unknown => Self::SnmpV2c,
         }
     }
 }
@@ -196,6 +208,7 @@ impl CredentialQueryPayload {
             Self::Snmp(_) => vec![161, 1161],
             Self::DockerProxy(d) | Self::PodmanProxy(d) => vec![d.port],
             Self::DockerSocket(_) | Self::PodmanSocket(_) => vec![],
+            Self::Unknown => vec![],
         }
     }
 
@@ -206,6 +219,7 @@ impl CredentialQueryPayload {
             Self::DockerSocket(_) => "Docker socket connection",
             Self::PodmanProxy(_) => "Podman proxy connection",
             Self::PodmanSocket(_) => "Podman socket connection",
+            Self::Unknown => "unknown credential",
         }
     }
 
@@ -283,6 +297,7 @@ impl CredentialQueryPayload {
             }
             Self::DockerSocket(d) => Ok(Self::DockerSocket(d.clone())),
             Self::PodmanSocket(d) => Ok(Self::PodmanSocket(d.clone())),
+            Self::Unknown => Ok(Self::Unknown),
         }
     }
 
@@ -291,6 +306,7 @@ impl CredentialQueryPayload {
             Self::Snmp(snmp) => snmp.banner_lines(),
             Self::DockerProxy(c) | Self::PodmanProxy(c) => c.banner_lines(),
             Self::DockerSocket(_) | Self::PodmanSocket(_) => vec![],
+            Self::Unknown => vec![],
         }
     }
 }

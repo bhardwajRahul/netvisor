@@ -15,10 +15,7 @@ use crate::server::{
     bindings::r#impl::base::Binding,
     credentials::r#impl::mapping::SnmpCredentialMapping,
     daemon_api_keys::r#impl::base::{DaemonApiKey, DaemonApiKeyBase},
-    daemons::r#impl::{
-        api::DaemonCapabilities,
-        base::{Daemon, DaemonBase, DaemonMode},
-    },
+    daemons::r#impl::base::{Daemon, DaemonBase, DaemonMode},
     dependencies::r#impl::{
         base::{Dependency, DependencyBase, DependencyMembers},
         types::DependencyType,
@@ -316,9 +313,6 @@ pub fn daemon() -> Daemon {
             host_id: ids::HOST,
             url: "http://192.168.1.100:8080".to_string(),
             mode: DaemonMode::DaemonPoll,
-            capabilities: DaemonCapabilities {
-                interfaced_subnet_ids: vec![ids::SUBNET],
-            },
             last_seen: Some(example_timestamp()),
             name: "home-daemon".to_string(),
             tags: vec![],

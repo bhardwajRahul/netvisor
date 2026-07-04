@@ -9,7 +9,7 @@ use crate::{
         shared::auth::server_auth_middleware,
     },
     server::{
-        daemons::r#impl::api::{DaemonCapabilities, FirstContactRequest},
+        daemons::r#impl::api::{FirstContactRequest, LegacyCapabilities},
         shared::types::api::{ApiResponse, ApiResult},
     },
 };
@@ -156,7 +156,7 @@ async fn handle_first_contact(
     // Log deprecation warnings
     request.server_capabilities.log_warnings();
 
-    let capabilities = DaemonCapabilities {
+    let capabilities = LegacyCapabilities {
         interfaced_subnet_ids: vec![],
     };
 

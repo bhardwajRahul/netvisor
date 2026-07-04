@@ -26,14 +26,15 @@ use crate::daemon::runtime::types::InitializeDaemonRequest;
 use crate::server::auth::middleware::auth::AuthenticatedEntity;
 use crate::server::billing::types::base::{LimitSource, LimitType};
 use crate::server::credentials::r#impl::mapping::IntegrationTarget;
-use crate::server::credentials::r#impl::types::CredentialAssignment;
+use crate::server::credentials::r#impl::types::CredentialTypeDiscriminants;
 use crate::server::credentials::service::CredentialService;
 use crate::server::daemon_api_keys::service::DaemonApiKeyService;
 use crate::server::daemons::r#impl::api::{
-    DaemonCapabilities, DaemonDiscoveryRequest, DaemonRegistrationRequest,
-    DaemonRegistrationResponse, DiscoveryUpdatePayload, FirstContactRequest, ServerCapabilities,
+    DaemonDiscoveryRequest, DaemonRegistrationRequest, DaemonRegistrationResponse,
+    DiscoveryUpdatePayload, FirstContactRequest, LegacyCapabilities, ServerCapabilities,
 };
 use crate::server::daemons::r#impl::base::{Daemon, DaemonBase};
+use crate::server::daemons::r#impl::interfaced_subnets::DaemonInterfacedSubnetStorage;
 use crate::server::daemons::r#impl::version::{
     DaemonVersionPolicy, pre_interface_to_ip_address_rename, supports_unified_discovery,
 };
@@ -60,6 +61,7 @@ use crate::server::shared::storage::generic::GenericPostgresStorage;
 use crate::server::shared::storage::traits::{Entity, Storable, Storage};
 use crate::server::shared::types::api::{ApiError, ApiResponse};
 use crate::server::shared::types::entities::EntitySource;
+use crate::server::subnets::r#impl::base::Subnet;
 use crate::server::subnets::service::SubnetService;
 use crate::server::tags::entity_tags::EntityTagService;
 use crate::server::users::service::UserService;
@@ -96,6 +98,7 @@ pub(crate) fn is_within_standby_grace(
 pub struct DaemonService {
     // Storage and core dependencies
     daemon_storage: Arc<GenericPostgresStorage<Daemon>>,
+    interfaced_subnet_storage: DaemonInterfacedSubnetStorage,
     client: reqwest::Client,
     event_bus: Arc<EventBus>,
     entity_tag_service: Arc<EntityTagService>,

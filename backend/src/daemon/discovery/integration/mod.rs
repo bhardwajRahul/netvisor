@@ -150,8 +150,12 @@ pub struct IntegrationContext<'a> {
 pub struct IntegrationRegistry;
 
 impl IntegrationRegistry {
-    pub fn get(d: CredentialQueryPayloadDiscriminants) -> Box<dyn DiscoveryIntegration> {
-        match d {
+    /// Resolve a credential type to its integration. Returns `None` for the
+    /// forward-compat `Unknown` variant — a newer server may send a credential type
+    /// this daemon doesn't recognize (deserialized via `#[serde(other)]`); callers
+    /// skip it rather than failing the whole discovery request.
+    pub fn get(d: CredentialQueryPayloadDiscriminants) -> Option<Box<dyn DiscoveryIntegration>> {
+        Some(match d {
             CredentialQueryPayloadDiscriminants::Snmp => Box::new(snmp::SnmpIntegration),
             CredentialQueryPayloadDiscriminants::DockerProxy => Box::new(docker::DockerIntegration),
             CredentialQueryPayloadDiscriminants::DockerSocket => {
@@ -161,7 +165,8 @@ impl IntegrationRegistry {
             CredentialQueryPayloadDiscriminants::PodmanSocket => {
                 Box::new(podman::PodmanSocketIntegration)
             }
-        }
+            CredentialQueryPayloadDiscriminants::Unknown => return None,
+        })
     }
 }
 

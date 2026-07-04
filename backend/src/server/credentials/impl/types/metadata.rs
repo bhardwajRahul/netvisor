@@ -192,6 +192,43 @@ impl CredentialTypeDiscriminants {
         self.to_credential_type().credential_category().into()
     }
 
+    /// Minimum daemon version that can safely receive credential mappings of this
+    /// type over the server→daemon wire. Exhaustive (no wildcard): a new credential
+    /// variant will not compile until it declares its floor. This single declaration
+    /// drives server-side dispatch filtering (never send a mapping an older daemon
+    /// can't deserialize), assignment-time rejection, and the UI compatibility gate.
+    ///
+    /// Gated on the 7-way `CredentialType` discriminant, NOT the collapsed
+    /// `CredentialQueryPayload` wire tag: SnmpV1/V3 carry a higher floor than SnmpV2c
+    /// despite all three sharing the single `Snmp` wire variant.
+    ///
+    /// Distinct from the global [`DaemonVersionPolicy::minimum_supported`] floor —
+    /// same `semver` comparison, different purpose.
+    pub fn minimum_daemon_version(&self) -> semver::Version {
+        match self {
+            // Unified credential-wire floor. Older daemons ignore `credential_mappings`
+            // via #[serde(default)], so filtering these out is harmless.
+            Self::SnmpV2c | Self::DockerProxy | Self::DockerSocket => {
+                semver::Version::new(0, 16, 2)
+            }
+            // SnmpV1/SnmpV3 inner `SnmpVersion` values shipped in 0.17.0.
+            Self::SnmpV1 | Self::SnmpV3 => semver::Version::new(0, 17, 0),
+            // Podman variants shipped in 0.17.2.
+            Self::PodmanProxy | Self::PodmanSocket => semver::Version::new(0, 17, 2),
+        }
+    }
+
+    /// Whether a daemon at `daemon_version` can safely receive credential mappings of
+    /// this type. A missing version is treated conservatively: only types at the
+    /// 0.16.2 unified-wire floor are considered compatible. Shared by server-side
+    /// dispatch filtering and the UI compatibility gate so the two never diverge.
+    pub fn compatible_with_daemon(&self, daemon_version: Option<&semver::Version>) -> bool {
+        match daemon_version {
+            Some(v) => *v >= self.minimum_daemon_version(),
+            None => self.minimum_daemon_version() <= semver::Version::new(0, 16, 2),
+        }
+    }
+
     fn metadata_json(&self) -> serde_json::Value {
         let ct = self.to_credential_type();
         let service = ct.associated_service();
@@ -211,6 +248,9 @@ impl CredentialTypeDiscriminants {
             "targets": ct.targets(),
             "requires_config": ct.requires_config(),
             "single_endpoint_per_host": ct.single_endpoint_per_host(),
+            // Minimum daemon version that can receive this type (message-only on the
+            // frontend; the actual gate uses the server-computed compat flag).
+            "minimum_daemon_version": self.minimum_daemon_version().to_string(),
             "associated_service": ServiceDefinition::name(&*service),
             "has_logo": service.has_logo(),
             "logo_ext": logo_ext,

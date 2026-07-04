@@ -6,10 +6,7 @@ use sqlx::postgres::PgRow;
 use uuid::Uuid;
 
 use crate::server::{
-    daemons::r#impl::{
-        api::DaemonCapabilities,
-        base::{Daemon, DaemonBase, DaemonMode},
-    },
+    daemons::r#impl::base::{Daemon, DaemonBase, DaemonMode},
     shared::{
         entities::EntityDiscriminants,
         entity_metadata::EntityCategory,
@@ -63,7 +60,6 @@ impl Storable for Daemon {
                 Self::BaseData {
                     network_id,
                     host_id,
-                    capabilities,
                     last_seen,
                     mode,
                     url,
@@ -86,7 +82,6 @@ impl Storable for Daemon {
                 "last_seen",
                 "network_id",
                 "host_id",
-                "capabilities",
                 "url",
                 "name",
                 "mode",
@@ -104,7 +99,6 @@ impl Storable for Daemon {
                 SqlValue::OptionTimestamp(last_seen),
                 SqlValue::Uuid(network_id),
                 SqlValue::Uuid(host_id),
-                SqlValue::DaemonCapabilities(capabilities),
                 SqlValue::String(url),
                 SqlValue::String(name),
                 SqlValue::DaemonMode(mode),
@@ -122,10 +116,6 @@ impl Storable for Daemon {
         let mode: DaemonMode = serde_json::from_str(&row.get::<String, _>("mode"))
             .map_err(|e| anyhow::anyhow!("Failed to deserialize mode: {}", e))?;
 
-        let capabilities: DaemonCapabilities =
-            serde_json::from_value(row.get::<serde_json::Value, _>("capabilities"))
-                .map_err(|e| anyhow::anyhow!("Failed to deserialize capabilities: {}", e))?;
-
         // Parse version from string, ignoring parse errors (version may be invalid)
         let version: Option<Version> = row
             .get::<Option<String>, _>("version")
@@ -142,7 +132,6 @@ impl Storable for Daemon {
                 network_id: row.get("network_id"),
                 name: row.get("name"),
                 mode,
-                capabilities,
                 tags: Vec::new(), // Hydrated from entity_tags junction table
                 version,
                 user_id: row.get("user_id"),
@@ -231,8 +220,6 @@ impl Entity for Daemon {
         self.base.url = existing.base.url.clone();
         // last_seen is server-set only
         self.base.last_seen = existing.base.last_seen;
-        // capabilities are reported by the daemon, not user-editable
-        self.base.capabilities = existing.base.capabilities.clone();
         // standby is managed by the inactivity background task and the
         // reactivation paths (startup + discovery queue); not user-editable.
         self.base.standby = existing.base.standby;

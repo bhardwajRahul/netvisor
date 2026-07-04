@@ -41,6 +41,10 @@
 		localAutoMode?: 'interactive' | 'fixed';
 		/** In `fixed` mode, the auto-local type ids the target daemon actually has. */
 		fixedCapabilityTypeIds?: string[];
+		/** Credential type ids the target daemon is too old to receive (from the
+		 *  daemon's server-computed `version_status.incompatible_credential_type_ids`).
+		 *  Rendered disabled with a version-requirement message. */
+		incompatibleTypeIds?: string[];
 	}
 
 	let {
@@ -51,7 +55,8 @@
 		subStep = $bindable('typeSelect'),
 		selectedTypeIds = $bindable([]),
 		localAutoMode = 'interactive',
-		fixedCapabilityTypeIds = []
+		fixedCapabilityTypeIds = [],
+		incompatibleTypeIds = []
 	}: Props = $props();
 
 	const bulkCreateCredentialsMutation = useBulkCreateCredentialsMutation();
@@ -160,6 +165,7 @@
 		<CredentialTypeSelectStep
 			bind:selectedTypeIds
 			{lockedTypeIds}
+			{incompatibleTypeIds}
 			forceCheckedTypeIds={localAutoMode === 'fixed' ? fixedCapabilityTypeIds : []}
 		/>
 	</div>

@@ -15,8 +15,11 @@ impl DaemonService {
         user_service: Arc<UserService>,
         daemon_api_key_service: Arc<DaemonApiKeyService>,
     ) -> Self {
+        let interfaced_subnet_storage =
+            DaemonInterfacedSubnetStorage::new(daemon_storage.pool().clone());
         Self {
             daemon_storage,
+            interfaced_subnet_storage,
             client: reqwest::Client::builder()
                 .timeout(Duration::from_secs(10))
                 .build()
@@ -33,6 +36,34 @@ impl DaemonService {
             host_service: std::sync::OnceLock::new(),
             poll_semaphore: Arc::new(Semaphore::new(MAX_CONCURRENT_POLLS)),
         }
+    }
+
+    /// Subnet ids this daemon has interfaces on, from the
+    /// `daemon_interfaced_subnets` junction. Errors degrade to an empty list — a
+    /// junction read failure shouldn't fail a whole daemon fetch.
+    pub async fn get_interfaced_subnet_ids(&self, daemon_id: &Uuid) -> Vec<Uuid> {
+        self.interfaced_subnet_storage
+            .get_subnet_ids_for_daemon(daemon_id)
+            .await
+            .unwrap_or_else(|e| {
+                tracing::warn!(error = ?e, "Failed to load interfaced subnet ids");
+                Vec::new()
+            })
+    }
+
+    /// Batch variant of [`Self::get_interfaced_subnet_ids`] for list endpoints
+    /// (avoids N+1).
+    pub async fn get_interfaced_subnet_ids_batch(
+        &self,
+        daemon_ids: &[Uuid],
+    ) -> std::collections::HashMap<Uuid, Vec<Uuid>> {
+        self.interfaced_subnet_storage
+            .get_subnet_ids_for_daemons(daemon_ids)
+            .await
+            .unwrap_or_else(|e| {
+                tracing::warn!(error = ?e, "Failed to batch-load interfaced subnet ids");
+                std::collections::HashMap::new()
+            })
     }
 
     /// Check if an unverified org has reached its daemon limit (1 daemon).

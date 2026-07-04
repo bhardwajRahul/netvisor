@@ -24,8 +24,8 @@ use crate::server::{
     config::AppState,
     daemons::r#impl::{
         api::{
-            DaemonCapabilities, DaemonRegistrationRequest, DaemonRegistrationResponse,
-            DaemonResponse, DaemonStartupRequest, ServerCapabilities,
+            DaemonRegistrationRequest, DaemonRegistrationResponse, DaemonResponse,
+            DaemonStartupRequest, LegacyCapabilities, ServerCapabilities,
         },
         base::{Daemon, DaemonBase, DaemonMode},
         version::DaemonVersionPolicy,
@@ -331,18 +331,28 @@ async fn get_all(
         .get_paginated_ordered(filter, &order_by)
         .await?;
 
+    // Batch-load interfaced subnets from the junction to avoid N+1.
+    let daemon_ids: Vec<Uuid> = result.items.iter().map(|d| d.id).collect();
+    let subnet_ids_map = state
+        .services
+        .daemon_service
+        .get_interfaced_subnet_ids_batch(&daemon_ids)
+        .await;
+
     let policy = DaemonVersionPolicy::default();
     let responses: Vec<DaemonResponse> = result
         .items
         .into_iter()
         .map(|d| {
             let version_status = policy.evaluate(d.base.version.as_ref());
+            let interfaced_subnet_ids = subnet_ids_map.get(&d.id).cloned().unwrap_or_default();
             DaemonResponse {
                 id: d.id,
                 created_at: d.created_at,
                 updated_at: d.updated_at,
                 base: d.base,
                 version_status,
+                interfaced_subnet_ids,
             }
         })
         .collect();
@@ -406,6 +416,11 @@ async fn get_by_id(
 
     let policy = DaemonVersionPolicy::default();
     let version_status = policy.evaluate(daemon.base.version.as_ref());
+    let interfaced_subnet_ids = state
+        .services
+        .daemon_service
+        .get_interfaced_subnet_ids(&daemon.id)
+        .await;
 
     Ok(Json(ApiResponse::success(DaemonResponse {
         id: daemon.id,
@@ -413,6 +428,7 @@ async fn get_by_id(
         updated_at: daemon.updated_at,
         base: daemon.base,
         version_status,
+        interfaced_subnet_ids,
     })))
 }
 
@@ -496,13 +512,16 @@ async fn daemon_startup(
 
 /// Update Daemon capabilities
 ///
-/// Internal endpoint for daemons to report their current capabilities.
+/// Legacy internal endpoint for pre-0.15 daemons to report their interfaced
+/// subnets as bare ids. Modern daemons report them via the status heartbeat's
+/// `interfaced_subnets` channel; this remains functional so older daemons in a
+/// rolling deploy keep reporting (and don't 404).
 #[utoipa::path(
     post,
     path = "/{id}/update-capabilities",
     tags = [Daemon::ENTITY_NAME_PLURAL, "internal"],
     params(("id" = Uuid, Path, description = "Daemon ID")),
-    request_body = DaemonCapabilities,
+    request_body = LegacyCapabilities,
     responses(
         (status = 200, description = "Capabilities updated", body = EmptyApiResponse),
         (status = 404, description = "Daemon not found", body = ApiErrorResponse),
@@ -513,7 +532,7 @@ async fn update_capabilities(
     State(state): State<Arc<AppState>>,
     auth: Authorized<IsDaemon>,
     Path(id): Path<Uuid>,
-    Json(updated_capabilities): Json<DaemonCapabilities>,
+    Json(updated_capabilities): Json<LegacyCapabilities>,
 ) -> ApiResult<Json<ApiResponse<()>>> {
     let daemon_network_id = auth.network_ids()[0];
 
@@ -613,7 +632,7 @@ async fn receive_work_request(
     tracing::debug!(
         daemon_id = %daemon_id,
         ready_for_work = status.ready_for_work,
-        capabilities = %status.capabilities,
+        interfaced_subnet_ids = ?status.capabilities.interfaced_subnet_ids,
         "DaemonPoll work request received"
     );
     state
@@ -663,7 +682,12 @@ async fn receive_work_request(
             let request = state
                 .services
                 .discovery_service
-                .build_daemon_request(&payload, daemon_network_id, &integration_targets)
+                .build_daemon_request(
+                    &payload,
+                    daemon_network_id,
+                    &integration_targets,
+                    daemon.base.version.as_ref(),
+                )
                 .await
                 .unwrap_or_else(|e| {
                     tracing::error!("Failed to build daemon request: {}", e);
@@ -731,7 +755,7 @@ async fn receive_heartbeat(
         name: request.name,
         mode: request.mode,
         version: None, // Old daemons don't send version in heartbeat
-        capabilities: DaemonCapabilities::default(),
+        capabilities: LegacyCapabilities::default(),
         interfaced_subnets: Vec::new(),
         ready_for_work: true,
     };
@@ -871,7 +895,6 @@ async fn provision_daemon(
         network_id: request.network_id,
         url: request.url,
         last_seen: None,
-        capabilities: DaemonCapabilities::default(),
         mode: DaemonMode::ServerPoll,
         name: request.name,
         tags: Vec::new(),
@@ -911,6 +934,8 @@ async fn provision_daemon(
             updated_at: created_daemon.updated_at,
             base: created_daemon.base,
             version_status,
+            // Freshly provisioned; interfaced subnets populate on first heartbeat.
+            interfaced_subnet_ids: Vec::new(),
         },
         daemon_api_key: plaintext,
     })))

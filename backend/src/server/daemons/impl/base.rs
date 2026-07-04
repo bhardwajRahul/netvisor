@@ -9,9 +9,7 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::Validate;
 
-use crate::server::{
-    daemons::r#impl::api::DaemonCapabilities, shared::entities::ChangeTriggersTopologyStaleness,
-};
+use crate::server::shared::entities::ChangeTriggersTopologyStaleness;
 
 #[derive(
     Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, Default, ToSchema, Validate,
@@ -27,9 +25,6 @@ pub struct DaemonBase {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(read_only)]
     pub last_seen: Option<DateTime<Utc>>,
-    #[serde(default)]
-    #[schema(read_only, required)]
-    pub capabilities: DaemonCapabilities,
     pub mode: DaemonMode,
     pub name: String,
     #[serde(default)]
@@ -84,8 +79,7 @@ pub struct Daemon {
 
 impl Daemon {
     pub fn suppress_logs(&self, other: &Self) -> bool {
-        self.base.capabilities == other.base.capabilities
-            && self.base.mode == other.base.mode
+        self.base.mode == other.base.mode
             && self.base.url == other.base.url
             && self.base.network_id == other.base.network_id
             && self.base.host_id == other.base.host_id
