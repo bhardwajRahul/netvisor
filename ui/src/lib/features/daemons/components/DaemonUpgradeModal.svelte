@@ -146,7 +146,7 @@ docker compose up -d`;
 										/>
 										<DocsHint
 											text={daemons_docsUpgradeMultipleDaemons()}
-											href="https://scanopy.net/docs/guides/multiple-daemons/#upgrading"
+											href="https://scanopy.net/docs/guides/multiple-daemons/#upgrading-and-restarting"
 											linkText={daemons_docsUpgradeMultipleDaemonsLinkText()}
 										/>
 									</div>
@@ -234,7 +234,7 @@ docker compose up -d`;
 									<CodeContainer language="bash" expandable={false} code={macosConfigListCommand} />
 									<DocsHint
 										text={daemons_docsUpgradeMultipleDaemons()}
-										href="https://scanopy.net/docs/guides/multiple-daemons/#upgrading"
+										href="https://scanopy.net/docs/guides/multiple-daemons/#upgrading-and-restarting"
 										linkText={daemons_docsUpgradeMultipleDaemonsLinkText()}
 									/>
 								</div>
@@ -277,7 +277,7 @@ docker compose up -d`;
 									/>
 									<DocsHint
 										text={daemons_docsUpgradeMultipleDaemons()}
-										href="https://scanopy.net/docs/guides/multiple-daemons/#upgrading"
+										href="https://scanopy.net/docs/guides/multiple-daemons/#upgrading-and-restarting"
 										linkText={daemons_docsUpgradeMultipleDaemonsLinkText()}
 									/>
 								</div>
