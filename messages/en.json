@@ -407,7 +407,7 @@
   "credentials_filePathReadByDaemon": "File paths are read by the daemon at scan time — the content is never stored in Scanopy.",
   "credentials_ipScopeAllDefault": "All IP addresses (default)",
   "credentials_lockedDaemonCapability": "Local {integration} access is set when the daemon is installed. Reinstall the daemon to enable or disable it.",
-  "credentials_requiresDaemonVersion": "This credential type requires daemon version {version} or newer. Upgrade this daemon to use it.",
+  "credentials_requiresDaemonVersion": "This credential type requires daemon version {version} or newer. Upgrade the daemon \"{name}\" to use it.",
   "credentials_ipScopeLabel": "IP address scope",
   "credentials_ipScopePlaceholder": "Select an IP address to restrict scope",
   "credentials_noCredentialSelected": "No Credential Selected",

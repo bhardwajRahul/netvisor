@@ -29,13 +29,16 @@
 		 *  no daemon is connected yet) ⇒ no version gate. Assignment surfaces that span
 		 *  many daemons don't pass this — those are handled by the backend dispatch filter. */
 		daemonVersion?: string | null;
+		/** Name of that daemon, used in the version-requirement tooltip. */
+		daemonName?: string | null;
 	}
 
 	let {
 		selectedTypeIds = $bindable([]),
 		lockedTypeIds = [],
 		forceCheckedTypeIds = [],
-		daemonVersion = null
+		daemonVersion = null,
+		daemonName = null
 	}: Props = $props();
 
 	// One flat list of cards: every user-selectable type plus the auto-local
@@ -99,7 +102,8 @@
 	function disabledReason(type: CredType): string | undefined {
 		if (isIncompatible(type)) {
 			return credentials_requiresDaemonVersion({
-				version: type.metadata?.minimum_daemon_version ?? ''
+				version: type.metadata?.minimum_daemon_version ?? '',
+				name: daemonName ?? ''
 			});
 		}
 		if (isLocked(type.id)) {

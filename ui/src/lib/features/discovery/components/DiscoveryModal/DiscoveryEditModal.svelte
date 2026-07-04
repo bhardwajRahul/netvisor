@@ -654,6 +654,7 @@
 						localAutoMode="fixed"
 						fixedCapabilityTypeIds={daemonHostCredentialTypeIds}
 						daemonVersion={daemon?.version ?? null}
+						daemonName={daemon?.name ?? null}
 					/>
 				</div>
 			{/if}
