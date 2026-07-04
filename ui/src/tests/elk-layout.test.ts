@@ -157,7 +157,7 @@ function makeTopology(
 					hide_service_categories: [],
 					container_rules: [
 						{ id: '00000000-0000-0000-0000-000000000001', rule: 'BySubnet' },
-						{ id: '00000000-0000-0000-0000-000000000002', rule: 'MergeDockerBridges' }
+						{ id: '00000000-0000-0000-0000-000000000002', rule: 'MergeContainerBridges' }
 					],
 					element_rules: []
 				}
@@ -715,7 +715,7 @@ describe('computeElkLayout', () => {
 	});
 
 	it('element-to-element ServiceVirtualization edge (no elevation) positions subnets adjacently', async () => {
-		// When MergeDockerBridges is off, the edge stays as IP→IP (no elevation)
+		// When MergeContainerBridges is off, the edge stays as IP→IP (no elevation)
 		const hostSubnet = uuid();
 		const dockerBridge = uuid();
 		const farSubnet = uuid();
@@ -771,7 +771,7 @@ describe('computeElkLayout', () => {
 
 	it('full pipeline: edge elevation + ELK positions Docker bridge near host', async () => {
 		// End-to-end test: raw edges → edge elevation → ELK layout
-		// Docker bridge has will_accept_edges: true (MergeDockerBridges)
+		// Container bridge has will_accept_edges: true (MergeContainerBridges)
 		const hostSubnet = uuid();
 		const dockerBridge = uuid();
 		const farSubnet = uuid();
@@ -783,7 +783,7 @@ describe('computeElkLayout', () => {
 			makeContainer(hostSubnet),
 			{
 				...makeContainer(dockerBridge, { container_type: 'Subnet' }),
-				will_accept_edges: true // MergeDockerBridges enables this
+				will_accept_edges: true // MergeContainerBridges enables this
 			} as TopologyNode,
 			makeContainer(farSubnet),
 			makeElement(hostIP, hostSubnet),

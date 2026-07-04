@@ -107,7 +107,8 @@ impl<T: GraphRule> IdentifiedRule<T> {
 )]
 pub enum ContainerRule {
     BySubnet,
-    MergeDockerBridges,
+    #[serde(alias = "MergeDockerBridges")]
+    MergeContainerBridges,
     ByApplication {
         #[serde(default)]
         tag_ids: Vec<Uuid>,
@@ -119,7 +120,7 @@ impl GraphRule for ContainerRule {
     fn applicable_views(&self) -> &'static [TopologyView] {
         match self {
             ContainerRule::BySubnet => &[TopologyView::L3Logical],
-            ContainerRule::MergeDockerBridges => &[TopologyView::L3Logical],
+            ContainerRule::MergeContainerBridges => &[TopologyView::L3Logical],
             ContainerRule::ByApplication { .. } => &[TopologyView::Application],
             ContainerRule::ByHost => &[TopologyView::L2Physical, TopologyView::Workloads],
         }
@@ -127,7 +128,7 @@ impl GraphRule for ContainerRule {
 
     fn will_accept_edges(&self) -> bool {
         match self {
-            ContainerRule::MergeDockerBridges => true,
+            ContainerRule::MergeContainerBridges => true,
             ContainerRule::BySubnet
             | ContainerRule::ByApplication { .. }
             | ContainerRule::ByHost => false,
@@ -136,7 +137,7 @@ impl GraphRule for ContainerRule {
 
     fn is_removable(&self) -> bool {
         match self {
-            ContainerRule::MergeDockerBridges => true,
+            ContainerRule::MergeContainerBridges => true,
             ContainerRule::BySubnet
             | ContainerRule::ByApplication { .. }
             | ContainerRule::ByHost => false,
@@ -145,7 +146,7 @@ impl GraphRule for ContainerRule {
 
     fn is_reorderable(&self) -> bool {
         match self {
-            ContainerRule::MergeDockerBridges => true,
+            ContainerRule::MergeContainerBridges => true,
             ContainerRule::BySubnet
             | ContainerRule::ByApplication { .. }
             | ContainerRule::ByHost => false,
@@ -155,7 +156,7 @@ impl GraphRule for ContainerRule {
     fn is_configurable(&self) -> bool {
         match self {
             ContainerRule::BySubnet
-            | ContainerRule::MergeDockerBridges
+            | ContainerRule::MergeContainerBridges
             | ContainerRule::ByApplication { .. }
             | ContainerRule::ByHost => false,
         }
@@ -164,7 +165,7 @@ impl GraphRule for ContainerRule {
     fn allow_multiple(&self) -> bool {
         match self {
             ContainerRule::BySubnet
-            | ContainerRule::MergeDockerBridges
+            | ContainerRule::MergeContainerBridges
             | ContainerRule::ByApplication { .. }
             | ContainerRule::ByHost => false,
         }
@@ -181,7 +182,7 @@ impl EntityMetadataProvider for ContainerRule {
     fn color(&self) -> Color {
         match self {
             ContainerRule::BySubnet => Color::Blue,
-            ContainerRule::MergeDockerBridges => Color::Teal,
+            ContainerRule::MergeContainerBridges => Color::Teal,
             ContainerRule::ByApplication { .. } => Concept::Application.color(),
             ContainerRule::ByHost => Concept::L2.color(),
         }
@@ -190,7 +191,7 @@ impl EntityMetadataProvider for ContainerRule {
     fn icon(&self) -> Icon {
         match self {
             ContainerRule::BySubnet => Icon::Network,
-            ContainerRule::MergeDockerBridges => Icon::Boxes,
+            ContainerRule::MergeContainerBridges => Icon::Boxes,
             ContainerRule::ByApplication { .. } => Concept::Application.icon(),
             ContainerRule::ByHost => Concept::L2.icon(),
         }
@@ -201,7 +202,7 @@ impl TypeMetadataProvider for ContainerRule {
     fn name(&self) -> &'static str {
         match self {
             ContainerRule::BySubnet => "Subnet",
-            ContainerRule::MergeDockerBridges => "Docker bridges",
+            ContainerRule::MergeContainerBridges => "Container bridges",
             ContainerRule::ByApplication { .. } => "Application",
             ContainerRule::ByHost => "Host",
         }
@@ -210,8 +211,8 @@ impl TypeMetadataProvider for ContainerRule {
     fn description(&self) -> &'static str {
         match self {
             ContainerRule::BySubnet => "Group nodes by network subnet",
-            ContainerRule::MergeDockerBridges => {
-                "Merge Docker Bridge subnets from the same host into a single container"
+            ContainerRule::MergeContainerBridges => {
+                "Merge a host's container bridge subnets into a single container"
             }
             ContainerRule::ByApplication { .. } => "Group services by application tag",
             ContainerRule::ByHost => "Group elements by host",
@@ -444,10 +445,10 @@ impl GroupingConfig {
         }
     }
 
-    pub fn should_group_docker_bridges(&self) -> bool {
+    pub fn should_group_container_bridges(&self) -> bool {
         self.container_rules
             .iter()
-            .any(|r| matches!(r.rule, ContainerRule::MergeDockerBridges))
+            .any(|r| matches!(r.rule, ContainerRule::MergeContainerBridges))
     }
 
     pub fn has_application_rule(&self) -> bool {
@@ -483,19 +484,28 @@ mod tests {
         );
         let config = GroupingConfig::from_request_options(&options, TopologyView::L3Logical);
 
-        assert!(!config.should_group_docker_bridges());
+        assert!(!config.should_group_container_bridges());
     }
 
     #[test]
     fn test_serialization_round_trip_container_rules() {
         let rules = vec![
             IdentifiedRule::new(ContainerRule::BySubnet),
-            IdentifiedRule::new(ContainerRule::MergeDockerBridges),
+            IdentifiedRule::new(ContainerRule::MergeContainerBridges),
         ];
 
         let json = serde_json::to_string(&rules).unwrap();
         let deserialized: Vec<IdentifiedRule<ContainerRule>> = serde_json::from_str(&json).unwrap();
         assert_eq!(rules, deserialized);
+    }
+
+    #[test]
+    fn test_merge_container_bridges_deserializes_legacy_alias() {
+        // Persisted request-options written before the rename stored the variant
+        // as "MergeDockerBridges"; the serde alias must still deserialize them.
+        let legacy = r#"{"id":"00000000-0000-0000-0000-000000000001","rule":"MergeDockerBridges"}"#;
+        let parsed: IdentifiedRule<ContainerRule> = serde_json::from_str(legacy).unwrap();
+        assert_eq!(parsed.rule, ContainerRule::MergeContainerBridges);
     }
 
     #[test]
