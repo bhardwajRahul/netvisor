@@ -10891,19 +10891,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-07-03T14:52:14.118808Z",
+              "created_at": "2026-07-04T22:09:24.636948Z",
               "first_discovery_id": null,
-              "id": "d8d10ff5-8312-434d-bdb6-873d10571776",
+              "id": "ef6143d2-4ecb-4e4c-9e70-376000437b5e",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-07-03T14:52:14.118808Z",
+              "last_seen_at": "2026-07-04T22:09:24.636948Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-07-03T14:52:14.118808Z",
-              "valid_from": "2026-07-03T14:52:14.118808Z",
+              "updated_at": "2026-07-04T22:09:24.636948Z",
+              "valid_from": "2026-07-04T22:09:24.636948Z",
               "valid_to": null
             }
           },
@@ -11898,19 +11898,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-07-03T14:52:14.102307Z",
+                      "created_at": "2026-07-04T22:09:24.620021Z",
                       "first_discovery_id": null,
-                      "id": "91f886d4-4139-4f19-808a-f7b191731d1c",
+                      "id": "017eee0b-c92e-40a8-97fb-6cf841022679",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-07-03T14:52:14.102307Z",
+                      "last_seen_at": "2026-07-04T22:09:24.620021Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-07-03T14:52:14.102307Z",
-                      "valid_from": "2026-07-03T14:52:14.102307Z",
+                      "updated_at": "2026-07-04T22:09:24.620021Z",
+                      "valid_from": "2026-07-04T22:09:24.620021Z",
                       "valid_to": null
                     }
                   ],
@@ -11924,7 +11924,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Roborock Vacuum",
+                  "service_definition": "Z-Wave JS",
                   "source": {
                     "type": "Manual"
                   },
@@ -12922,19 +12922,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-07-03T14:52:14.113429Z",
+                  "created_at": "2026-07-04T22:09:24.631373Z",
                   "first_discovery_id": null,
-                  "id": "274fafc9-a22f-4c18-89cb-da99cf3b0bf9",
+                  "id": "ca76f4ae-ed9a-4bd6-99c8-73dccd3f13be",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-07-03T14:52:14.113429Z",
+                  "last_seen_at": "2026-07-04T22:09:24.631373Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-07-03T14:52:14.113429Z",
-                  "valid_from": "2026-07-03T14:52:14.113429Z",
+                  "updated_at": "2026-07-04T22:09:24.631373Z",
+                  "valid_from": "2026-07-04T22:09:24.631373Z",
                   "valid_to": null
                 }
               ],
@@ -12948,7 +12948,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Roborock Vacuum",
+              "service_definition": "Z-Wave JS",
               "source": {
                 "type": "Manual"
               },
@@ -14727,19 +14727,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-07-03T14:52:14.102665Z",
+          "created_at": "2026-07-04T22:09:24.620414Z",
           "first_discovery_id": null,
-          "id": "86eed831-a59e-4f7f-afeb-fcd6fc483ef2",
+          "id": "01476da8-4814-464e-bd0a-4c9a05c89a1e",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-07-03T14:52:14.102665Z",
+          "last_seen_at": "2026-07-04T22:09:24.620414Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-07-03T14:52:14.102665Z",
-          "valid_from": "2026-07-03T14:52:14.102665Z",
+          "updated_at": "2026-07-04T22:09:24.620414Z",
+          "valid_from": "2026-07-04T22:09:24.620414Z",
           "valid_to": null
         }
       },
@@ -15330,7 +15330,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Roborock Vacuum",
+              "service_definition": "Z-Wave JS",
               "tags": [],
               "virtualization": null
             }
@@ -16291,19 +16291,11 @@
         "type": "object",
         "description": "Daemon version status including health and any warnings",
         "required": [
-          "status",
-          "incompatible_credential_type_ids"
+          "status"
         ],
         "properties": {
           "has_correct_docker_volume_mount": {
             "type": "boolean"
-          },
-          "incompatible_credential_type_ids": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "Credential-type ids this daemon is too old to receive. The UI disables these\nin the discovery credential picker (see [`incompatible_credential_type_ids`])."
           },
           "status": {
             "$ref": "#/components/schemas/VersionHealthStatus"
@@ -18185,19 +18177,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-07-03T14:52:14.101905Z",
+                  "created_at": "2026-07-04T22:09:24.619560Z",
                   "first_discovery_id": null,
-                  "id": "16b454e3-ab21-4f04-8825-d304153e82fb",
+                  "id": "9211176f-7aed-4a06-8e3c-df9ee020f1a2",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-07-03T14:52:14.101905Z",
+                  "last_seen_at": "2026-07-04T22:09:24.619560Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-07-03T14:52:14.101905Z",
-                  "valid_from": "2026-07-03T14:52:14.101905Z",
+                  "updated_at": "2026-07-04T22:09:24.619560Z",
+                  "valid_from": "2026-07-04T22:09:24.619560Z",
                   "valid_to": null
                 }
               ],
@@ -18211,7 +18203,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Roborock Vacuum",
+              "service_definition": "Z-Wave JS",
               "source": {
                 "type": "Manual"
               },
@@ -20741,19 +20733,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-07-03T14:52:14.092188Z",
+                        "created_at": "2026-07-04T22:09:24.609791Z",
                         "first_discovery_id": null,
-                        "id": "81a48786-b88f-489c-b05f-eb2444f89945",
+                        "id": "81ffca34-1bd3-4bf8-9873-d67a652a9790",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-07-03T14:52:14.092188Z",
+                        "last_seen_at": "2026-07-04T22:09:24.609791Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-07-03T14:52:14.092188Z",
-                        "valid_from": "2026-07-03T14:52:14.092188Z",
+                        "updated_at": "2026-07-04T22:09:24.609791Z",
+                        "valid_from": "2026-07-04T22:09:24.609791Z",
                         "valid_to": null
                       }
                     ],
@@ -20767,7 +20759,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Roborock Vacuum",
+                    "service_definition": "Z-Wave JS",
                     "source": {
                       "type": "Manual"
                     },
@@ -20888,19 +20880,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-07-03T14:52:14.112350Z",
+                    "created_at": "2026-07-04T22:09:24.630304Z",
                     "first_discovery_id": null,
-                    "id": "79e15148-3342-47a0-a106-f92a8e257fe0",
+                    "id": "35ac1847-5ef6-437e-85d6-9426e9423972",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-07-03T14:52:14.112350Z",
+                    "last_seen_at": "2026-07-04T22:09:24.630304Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-07-03T14:52:14.112350Z",
-                    "valid_from": "2026-07-03T14:52:14.112350Z",
+                    "updated_at": "2026-07-04T22:09:24.630304Z",
+                    "valid_from": "2026-07-04T22:09:24.630304Z",
                     "valid_to": null
                   }
                 ],
@@ -20914,7 +20906,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Roborock Vacuum",
+                "service_definition": "Z-Wave JS",
                 "source": {
                   "type": "Manual"
                 },
@@ -22565,19 +22557,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-07-03T14:52:14.102589Z",
+              "created_at": "2026-07-04T22:09:24.620326Z",
               "first_discovery_id": null,
-              "id": "ca5dda5d-8ca1-4059-82cd-3c1800508549",
+              "id": "32c835b3-f3bc-494b-b81f-ac8f77812909",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-07-03T14:52:14.102589Z",
+              "last_seen_at": "2026-07-04T22:09:24.620326Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-07-03T14:52:14.102589Z",
-              "valid_from": "2026-07-03T14:52:14.102589Z",
+              "updated_at": "2026-07-04T22:09:24.620326Z",
+              "valid_from": "2026-07-04T22:09:24.620326Z",
               "valid_to": null
             }
           ],
@@ -22591,7 +22583,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Roborock Vacuum",
+          "service_definition": "Z-Wave JS",
           "source": {
             "type": "Manual"
           },
@@ -23721,7 +23713,7 @@
             "default": {
               "Application": [
                 {
-                  "id": "5d8cc074-cfbb-4422-97e9-e5b4765bf017",
+                  "id": "36b78ac6-3e46-438b-8338-e106710f4f91",
                   "rule": {
                     "ByApplication": {
                       "tag_ids": []
@@ -23731,23 +23723,23 @@
               ],
               "L2Physical": [
                 {
-                  "id": "44053615-0956-4f48-b423-90897648821b",
+                  "id": "383fb020-5e1d-4a88-8d91-b27ae1eddfc2",
                   "rule": "ByHost"
                 }
               ],
               "L3Logical": [
                 {
-                  "id": "768e1f54-b360-4698-b9f2-c037ccf605fa",
+                  "id": "87b717ff-2ea1-47ff-8f81-87377e607169",
                   "rule": "BySubnet"
                 },
                 {
-                  "id": "4ced27cd-512e-49ea-99b7-67486623e5f6",
+                  "id": "a8d86be3-97f7-450f-9f05-df9b34a2b1e5",
                   "rule": "MergeDockerBridges"
                 }
               ],
               "Workloads": [
                 {
-                  "id": "44053615-0956-4f48-b423-90897648821b",
+                  "id": "383fb020-5e1d-4a88-8d91-b27ae1eddfc2",
                   "rule": "ByHost"
                 }
               ]
@@ -23776,19 +23768,19 @@
             },
             "default": [
               {
-                "id": "34b02acc-cabc-463a-8f88-8e4ef7dc0642",
+                "id": "01d34ee8-5fba-4a32-a984-671bd1519997",
                 "rule": "ByTrunkPort"
               },
               {
-                "id": "46b0cf71-fd87-4859-b33b-c2b47050a828",
+                "id": "681ef964-4dca-475b-b21e-470e3599ee47",
                 "rule": "ByVLAN"
               },
               {
-                "id": "fa1cd41a-2c61-4876-9cfd-b6d14853aac2",
+                "id": "4bafca68-9669-4c02-9786-208fe7c7aa6e",
                 "rule": "ByPortOpStatus"
               },
               {
-                "id": "f166966a-a2a0-4471-a7fd-9c03a24a72b2",
+                "id": "81c08d16-f18d-4111-a990-d89449921565",
                 "rule": {
                   "ByServiceCategory": {
                     "categories": [
@@ -23806,7 +23798,7 @@
                 }
               },
               {
-                "id": "95272d13-c7cc-461f-aa08-7dcffed30925",
+                "id": "5fd8e540-5ffa-48ea-a405-d7273f6d5030",
                 "rule": {
                   "ByTag": {
                     "tag_ids": [],
@@ -23815,15 +23807,15 @@
                 }
               },
               {
-                "id": "3e10ab11-77eb-4117-8f21-b5f823c77eea",
+                "id": "184acb72-de82-445a-ba4b-8e925ab2de21",
                 "rule": "ByHypervisor"
               },
               {
-                "id": "5104457a-903e-4d0a-b6ad-56fc11b3b599",
+                "id": "6096bf5b-ccf9-4473-ad7e-e12e0f1ee8c3",
                 "rule": "ByContainerRuntime"
               },
               {
-                "id": "952baca1-2404-4700-9695-c8a8683d7660",
+                "id": "c2ff1fb0-3b29-4ff4-b677-b32b2dd98179",
                 "rule": "ByStack"
               }
             ]
