@@ -206,11 +206,13 @@ impl CredentialTypeDiscriminants {
     /// same `semver` comparison, different purpose.
     pub fn minimum_daemon_version(&self) -> semver::Version {
         match self {
+            // TEMPORARY (revert via `git revert` of this commit): DockerProxy bumped to
+            // 0.18.0 so a current 0.17.x daemon sees it as incompatible, for manually
+            // testing the picker/assignment version gate on dev. Real value is 0.16.2.
+            Self::DockerProxy => semver::Version::new(0, 18, 0),
             // Unified credential-wire floor. Older daemons ignore `credential_mappings`
             // via #[serde(default)], so filtering these out is harmless.
-            Self::SnmpV2c | Self::DockerProxy | Self::DockerSocket => {
-                semver::Version::new(0, 16, 2)
-            }
+            Self::SnmpV2c | Self::DockerSocket => semver::Version::new(0, 16, 2),
             // SnmpV1/SnmpV3 inner `SnmpVersion` values shipped in 0.17.0.
             Self::SnmpV1 | Self::SnmpV3 => semver::Version::new(0, 17, 0),
             // Podman variants shipped in 0.17.2.

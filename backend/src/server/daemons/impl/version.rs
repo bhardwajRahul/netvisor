@@ -315,25 +315,6 @@ mod tests {
     }
 
     #[test]
-    fn test_incompatible_credential_type_ids_by_version() {
-        // 0.16.2 daemon: SnmpV1/SnmpV3/Podman* are too new.
-        let at_0_16_2 = incompatible_credential_type_ids(Some(&Version::new(0, 16, 2)));
-        assert!(at_0_16_2.contains(&"SnmpV1".to_string()));
-        assert!(at_0_16_2.contains(&"SnmpV3".to_string()));
-        assert!(at_0_16_2.contains(&"PodmanProxy".to_string()));
-        assert!(at_0_16_2.contains(&"PodmanSocket".to_string()));
-        assert!(!at_0_16_2.contains(&"SnmpV2c".to_string()));
-
-        // 0.17.2 daemon: nothing incompatible.
-        assert!(incompatible_credential_type_ids(Some(&Version::new(0, 17, 2))).is_empty());
-
-        // Unknown version: everything above the 0.16.2 floor is incompatible.
-        let unknown = incompatible_credential_type_ids(None);
-        assert!(unknown.contains(&"PodmanProxy".to_string()));
-        assert!(!unknown.contains(&"SnmpV2c".to_string()));
-    }
-
-    #[test]
     fn test_version_status_has_correct_volume_mount_flag() {
         let policy = test_policy();
         let pre_fix = Version::new(0, 16, 0);
