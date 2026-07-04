@@ -397,7 +397,9 @@ impl TypeMetadataProvider for ElementRule {
             ElementRule::ByTag { .. } => "Group entities by tag",
             ElementRule::ByHypervisor => "Group VMs by hypervisor",
             ElementRule::ByContainerRuntime => "Group containers by runtime",
-            ElementRule::ByStack => "Group containers deployed together as a stack (e.g., Docker Compose, Podman Compose)",
+            ElementRule::ByStack => {
+                "Group containers deployed together as a stack (e.g., Docker Compose, Podman Compose)"
+            }
             ElementRule::ByTrunkPort => "Group trunk ports (ports carrying multiple VLANs)",
             ElementRule::ByVLAN => "Group access ports by native VLAN ID",
             ElementRule::ByPortOpStatus => "Group ports by operational status",
