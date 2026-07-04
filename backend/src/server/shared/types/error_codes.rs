@@ -81,6 +81,9 @@ pub enum ErrorCode {
     AuthPasswordLoginDisabled,
     /// User registration is disabled
     AuthRegistrationDisabled,
+    /// Self-hosted instance already has its single organization; further
+    /// non-invite sign-ups must join the existing org via an invite.
+    AuthOrgLimitReached,
     /// Email verification required for this feature
     AuthEmailVerificationRequired,
 
@@ -251,6 +254,9 @@ impl ErrorCode {
             }
             Self::AuthPasswordLoginDisabled => "Password login is disabled",
             Self::AuthRegistrationDisabled => "User registration is disabled",
+            Self::AuthOrgLimitReached => {
+                "This instance already has an organization. Ask an admin to invite you instead of creating a new account."
+            }
             Self::AuthEmailVerificationRequired => {
                 "Please verify your email to access this feature"
             }
@@ -370,6 +376,7 @@ impl ErrorCode {
             | Self::LicenseLocked
             | Self::AuthPasswordLoginDisabled
             | Self::AuthRegistrationDisabled
+            | Self::AuthOrgLimitReached
             | Self::AuthEmailVerificationRequired
             | Self::AuthOidcNotConfigured
             | Self::SharePasswordRequired
