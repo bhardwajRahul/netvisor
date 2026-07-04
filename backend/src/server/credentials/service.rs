@@ -347,16 +347,28 @@ impl CredentialService {
         daemon_host_id: Uuid,
         targets: Vec<IntegrationTarget>,
     ) -> Result<Vec<IntegrationTarget>, Error> {
-        let assignments: Vec<CredentialAssignment> = targets
-            .iter()
-            .filter(|t| Self::targets_daemon_host(t))
-            .map(|t| CredentialAssignment {
-                credential_id: t.credential_id(),
-                ip_address_ids: None,
-            })
-            .collect();
+        if targets.iter().any(Self::targets_daemon_host) {
+            // Daemon-host credentials (local sockets, localhost proxies) connect over the
+            // loopback, so scope them to the daemon host's loopback IP — not `None`, which
+            // fans the credential out to every interface on the host (LAN, docker/podman
+            // bridges, …). `seed_loopback` guarantees the loopback IP exists by this point.
+            let loopback_ids = self.host_loopback_ip_ids(&daemon_host_id).await;
+            if loopback_ids.is_empty() {
+                tracing::warn!(
+                    daemon_host_id = %daemon_host_id,
+                    "No loopback IP on daemon host; daemon-host credentials will not be IP-scoped",
+                );
+            }
+            let ip_address_ids = (!loopback_ids.is_empty()).then_some(loopback_ids);
 
-        if !assignments.is_empty() {
+            let assignments: Vec<CredentialAssignment> = targets
+                .iter()
+                .filter(|t| Self::targets_daemon_host(t))
+                .map(|t| CredentialAssignment {
+                    credential_id: t.credential_id(),
+                    ip_address_ids: ip_address_ids.clone(),
+                })
+                .collect();
             self.merge_host_credentials(&daemon_host_id, &assignments)
                 .await?;
         }
@@ -365,6 +377,26 @@ impl CredentialService {
             .into_iter()
             .filter(|t| !Self::targets_daemon_host(t))
             .collect())
+    }
+
+    /// Loopback IP-address ids for a host (empty if none / unresolved). Daemon-host
+    /// credentials are scoped to these so a local socket/proxy only targets 127.0.0.1
+    /// instead of every interface on the daemon host.
+    async fn host_loopback_ip_ids(&self, host_id: &Uuid) -> Vec<Uuid> {
+        let Some(host_service) = self.host_service.get() else {
+            return Vec::new();
+        };
+        match host_service.get_ip_addresses_for_host(host_id).await {
+            Ok(ips) => ips
+                .into_iter()
+                .filter(|ip| ip.base.ip_address.is_loopback())
+                .map(|ip| ip.id)
+                .collect(),
+            Err(e) => {
+                tracing::warn!(host_id = %host_id, error = ?e, "Failed to resolve daemon host loopback IP");
+                Vec::new()
+            }
+        }
     }
 
     /// Get the network IDs a credential is assigned to (reverse lookup).
