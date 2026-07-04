@@ -4,7 +4,7 @@
 	import ListSelectItem from '$lib/shared/components/forms/selection/ListSelectItem.svelte';
 	import { CredentialTypeDisplay } from '$lib/shared/components/forms/selection/display/CredentialTypeDisplay.svelte';
 	import { tooltip } from '$lib/shared/actions/tooltip';
-	import { coerce, lt } from 'semver';
+	import { daemonTooOldForCredential } from '$lib/features/credentials/utils/versionGate';
 	import {
 		daemons_integrationsSubtitle,
 		credentials_lockedDaemonCapability,
@@ -84,13 +84,9 @@
 	}
 
 	// The target daemon is too old for this credential type when its version is below
-	// the type's `minimum_daemon_version` floor. `coerce` tolerates partial/odd version
-	// strings; with no daemon version or no declared floor there's nothing to gate on.
+	// the type's `minimum_daemon_version` floor.
 	function isIncompatible(type: CredType): boolean {
-		const min = type.metadata?.minimum_daemon_version;
-		if (!min || !daemonVersion) return false;
-		const dv = coerce(daemonVersion);
-		return dv ? lt(dv, min) : false;
+		return daemonTooOldForCredential(type.metadata?.minimum_daemon_version, daemonVersion);
 	}
 
 	function isDisabled(type: CredType): boolean {

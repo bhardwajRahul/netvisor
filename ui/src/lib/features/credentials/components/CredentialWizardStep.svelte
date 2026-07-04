@@ -19,6 +19,7 @@
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
 	import { useNetworksQuery } from '$lib/features/networks/queries';
 	import { useCredentialsQuery } from '$lib/features/credentials/queries';
+	import { daemonTooOldForCredential } from '$lib/features/credentials/utils/versionGate';
 	import { v4 as uuidv4 } from 'uuid';
 	import DocsHint from '$lib/shared/components/feedback/DocsHint.svelte';
 	import { pushError } from '$lib/shared/stores/feedback';
@@ -37,7 +38,8 @@
 		daemons_credentialWizardSelectExisting,
 		daemons_credentialWizardExistingDescription,
 		credentials_daemonHostManagedElsewhere,
-		daemons_credentialWizardDaemonHostUnavailable
+		daemons_credentialWizardDaemonHostUnavailable,
+		credentials_requiresDaemonVersion
 	} from '$lib/paraglide/messages';
 
 	export interface PendingCredential {
@@ -64,6 +66,11 @@
 		 *  count as claiming the daemon host, so a single-endpoint credential of the
 		 *  same integration can't also target it. */
 		claimedDaemonHostIntegrations?: string[];
+		/** Version + name of the daemon this credential set targets. A credential type
+		 *  is disabled in the add-credential dropdown when the daemon is older than the
+		 *  type's `minimum_daemon_version`. Absent/null ⇒ no version gate. */
+		daemonVersion?: string | null;
+		daemonName?: string | null;
 	}
 
 	let {
@@ -72,7 +79,9 @@
 		onRemoveCredential,
 		description,
 		descriptionLinkText,
-		claimedDaemonHostIntegrations = []
+		claimedDaemonHostIntegrations = [],
+		daemonVersion = null,
+		daemonName = null
 	}: Props = $props();
 
 	// Query network and credential data for network-level credential display
@@ -164,10 +173,18 @@
 		})
 	);
 
-	// Reason an option is unselectable in the add dropdown (null = selectable). An
-	// auto-local capability (Docker socket) is disabled when its integration's daemon
-	// host is already claimed by another pending credential (e.g. a daemon-host proxy).
+	// Reason an option is unselectable in the add dropdown (null = selectable):
+	// (1) the target daemon is too old for the type, or (2) an auto-local capability
+	// (Docker socket) whose integration's daemon host is already claimed by another
+	// pending credential (e.g. a daemon-host proxy). Version takes precedence — a
+	// too-old daemon can't run the type at all.
 	function dropdownDisabledReason(type: TypedTypeMetadata<CredentialTypeMetadata>): string | null {
+		if (daemonTooOldForCredential(type.metadata?.minimum_daemon_version, daemonVersion)) {
+			return credentials_requiresDaemonVersion({
+				version: type.metadata?.minimum_daemon_version ?? '',
+				name: daemonName ?? ''
+			});
+		}
 		if (!isDaemonHostOnlyTargets(type.metadata?.targets) || !type.metadata.associated_service)
 			return null;
 		return integrationClaimsDaemonHost(type.metadata.associated_service)
