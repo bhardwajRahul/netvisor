@@ -212,7 +212,7 @@ impl TypeMetadataProvider for ContainerRule {
         match self {
             ContainerRule::BySubnet => "Group nodes by network subnet",
             ContainerRule::MergeContainerBridges => {
-                "Merge a host's container bridge subnets into a single container"
+                "Merge a host's container runtime bridge subnets into a single group (e.g., Docker bridge networks). This prevents clutter from multiple bridge subnets on the same host."
             }
             ContainerRule::ByApplication { .. } => "Group services by application tag",
             ContainerRule::ByHost => "Group elements by host",
