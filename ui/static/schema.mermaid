@@ -85,6 +85,8 @@ erDiagram
 "public.subnet_vlans" }o--o| "public.snapshots" : "FOREIGN KEY (snapshot_id) REFERENCES snapshots(id) ON DELETE CASCADE"
 "public.snapshots" }o--o| "public.users" : "FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL"
 "public.snapshots" }o--|| "public.networks" : "FOREIGN KEY (network_id) REFERENCES networks(id) ON DELETE CASCADE"
+"public.daemon_interfaced_subnets" }o--|| "public.subnets" : "FOREIGN KEY (subnet_id) REFERENCES subnets(id) ON DELETE CASCADE"
+"public.daemon_interfaced_subnets" }o--|| "public.daemons" : "FOREIGN KEY (daemon_id) REFERENCES daemons(id) ON DELETE CASCADE"
 
 "public._sqlx_migrations" {
   bigint version
@@ -235,7 +237,6 @@ erDiagram
   timestamp_with_time_zone updated_at
   integer scan_count
   boolean force_full_scan
-  uuid__ pending_credential_ids
   jsonb integration_targets
 }
 "public.api_keys" {
@@ -514,6 +515,10 @@ erDiagram
   uuid created_by_user_id FK
   timestamp_with_time_zone created_at
   timestamp_with_time_zone updated_at
+}
+"public.daemon_interfaced_subnets" {
+  uuid daemon_id FK
+  uuid subnet_id FK
 }
 "tower_sessions.session" {
   text id
