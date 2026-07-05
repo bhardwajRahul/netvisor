@@ -6,6 +6,13 @@
 	import AppShell from '$lib/shared/components/layout/AppShell.svelte';
 	import '../app.css';
 	import { VERSION } from '$lib/version';
+	import { browser } from '$app/environment';
+	import { captureFirstTouch } from '$lib/shared/utils/first-touch';
+
+	// Snapshot landing URL/UTMs before any auth redirect can rewrite the URL
+	if (browser) {
+		captureFirstTouch();
+	}
 
 	let { children }: { children: Snippet } = $props();
 

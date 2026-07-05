@@ -2,11 +2,17 @@ import posthog from 'posthog-js';
 import { queryClient, queryKeys } from '$lib/api/query-client';
 import type { Organization } from '$lib/features/organizations/types';
 import { billingPlans } from '$lib/shared/stores/metadata';
+import { campaignParams, getFirstTouch, getSessionEntry } from '$lib/shared/utils/first-touch';
 
 // Event queue for events that fire before PostHog loads
 type QueuedEvent =
 	| { type: 'capture'; event: string; properties?: Record<string, unknown> }
-	| { type: 'identify'; userId: string; traits: Record<string, unknown> }
+	| {
+			type: 'identify';
+			userId: string;
+			traits: Record<string, unknown>;
+			setOnceTraits?: Record<string, unknown>;
+	  }
 	| { type: 'group'; groupType: string; groupKey: string; traits: Record<string, unknown> }
 	| { type: 'reset' };
 
@@ -26,7 +32,7 @@ export function flushEventQueue() {
 				posthog.capture(item.event, item.properties);
 				break;
 			case 'identify':
-				posthog.identify(item.userId, item.traits);
+				posthog.identify(item.userId, item.traits, item.setOnceTraits);
 				break;
 			case 'group':
 				posthog.group(item.groupType, item.groupKey, item.traits);
@@ -81,10 +87,36 @@ export function identifyUser(
 		plan_status: organization?.plan_status ?? null,
 		has_payment_method: organization?.has_payment_method ?? null
 	};
+
+	// Latest-touch attribution (set, not set-once): a returning user arriving
+	// via a new campaign gets their attribution refreshed even though the
+	// initial_* props below are locked to their first visit.
+	const sessionEntry = getSessionEntry();
+	if (sessionEntry) {
+		for (const [key, value] of Object.entries(campaignParams(sessionEntry))) {
+			traits[`latest_${key}`] = value;
+		}
+	}
+
+	// First-touch attribution, set once per person. Custom initial_* names
+	// avoid colliding with PostHog's built-in $initial_* properties.
+	let setOnceTraits: Record<string, unknown> | undefined;
+	const firstTouch = getFirstTouch();
+	if (firstTouch) {
+		setOnceTraits = {
+			initial_landing_url: firstTouch.landing_url,
+			initial_referrer_url: firstTouch.referrer || null,
+			first_touch_ts: firstTouch.ts
+		};
+		for (const [key, value] of Object.entries(campaignParams(firstTouch))) {
+			setOnceTraits[`initial_${key}`] = value;
+		}
+	}
+
 	if (posthog.__loaded) {
-		posthog.identify(userId, traits);
+		posthog.identify(userId, traits, setOnceTraits);
 	} else {
-		eventQueue.push({ type: 'identify', userId, traits });
+		eventQueue.push({ type: 'identify', userId, traits, setOnceTraits });
 	}
 
 	// Associate user with their organization group
