@@ -198,6 +198,10 @@ pub(crate) async fn register(
         .await?;
 
     session
+        .insert("session_epoch", user.base.session_epoch)
+        .await
+        .map_err(|e| ApiError::internal_error(&format!("Failed to save session: {}", e)))?;
+    session
         .insert("user_id", user.id)
         .await
         .map_err(|e| ApiError::internal_error(&format!("Failed to save session: {}", e)))?;

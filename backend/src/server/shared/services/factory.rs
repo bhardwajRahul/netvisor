@@ -219,6 +219,7 @@ impl ServiceFactory {
             organization_service.clone(),
             user_service.clone(),
             daemon_api_key_service.clone(),
+            crate::server::config::get_deployment_type(&config),
         ));
 
         // HostService needs DaemonService

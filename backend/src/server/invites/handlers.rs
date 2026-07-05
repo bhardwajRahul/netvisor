@@ -15,6 +15,7 @@ use crate::server::shared::storage::traits::Entity;
 use crate::server::shared::types::api::ApiResponse;
 use crate::server::shared::types::api::ApiResult;
 use crate::server::shared::types::api::{ApiError, ApiErrorResponse, EmptyApiResponse};
+use crate::server::shared::validation::validate_network_ids_access;
 use crate::server::users::r#impl::base::User;
 use crate::server::users::r#impl::permissions::UserOrgPermissions;
 use anyhow::Error;
@@ -75,13 +76,7 @@ async fn create_invite(
         ));
     }
 
-    for network_id in &request.network_ids {
-        if !network_ids.contains(network_id) {
-            return Err(ApiError::forbidden(
-                "Cannot grant access to networks you don't have access to",
-            ));
-        }
-    }
+    validate_network_ids_access(&request.network_ids, &network_ids)?;
     // Seat limit check
     if let Some(max_seats) = plan.config().included_seats
         && plan.config().seat_cents.is_none()

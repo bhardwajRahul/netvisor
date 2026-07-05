@@ -68,12 +68,14 @@ pub struct OidcCallbackParams {
     pub state: String,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Validate)]
 pub struct UpdatePasswordRequest {
     /// Current password — required if the user already has a password set.
     /// Not required for OIDC-only users adding their first password.
     pub current_password: Option<String>,
     /// New password to set
+    #[validate(length(min = 10, message = "Password must be at least 10 characters"))]
+    #[validate(custom(function = "validate_password_complexity"))]
     pub new_password: String,
 }
 
@@ -100,9 +102,11 @@ pub struct ForgotPasswordRequest {
     pub email: EmailAddress,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Validate)]
 pub struct ResetPasswordRequest {
     pub token: String,
+    #[validate(length(min = 10, message = "Password must be at least 10 characters"))]
+    #[validate(custom(function = "validate_password_complexity"))]
     pub password: String,
 }
 

@@ -92,6 +92,14 @@ pub async fn update_org_name(
     Path(id): Path<Uuid>,
     Json(name): Json<String>,
 ) -> ApiResult<Json<ApiResponse<Organization>>> {
+    // Organization's scoping fields are both None, so the generic update_handler
+    // below cannot enforce tenant ownership — check it explicitly here, matching
+    // the sibling reset/delete/populate-demo handlers.
+    let user_org_id = auth.require_organization_id()?;
+    if id != user_org_id {
+        return Err(ApiError::permission_denied());
+    }
+
     let mut org = state
         .services
         .organization_service

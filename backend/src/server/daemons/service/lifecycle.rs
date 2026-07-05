@@ -14,6 +14,7 @@ impl DaemonService {
         organization_service: Arc<OrganizationService>,
         user_service: Arc<UserService>,
         daemon_api_key_service: Arc<DaemonApiKeyService>,
+        deployment_type: crate::server::config::DeploymentType,
     ) -> Self {
         let interfaced_subnet_storage =
             DaemonInterfacedSubnetStorage::new(daemon_storage.pool().clone());
@@ -35,6 +36,7 @@ impl DaemonService {
             daemon_api_key_service,
             host_service: std::sync::OnceLock::new(),
             poll_semaphore: Arc::new(Semaphore::new(MAX_CONCURRENT_POLLS)),
+            deployment_type,
         }
     }
 

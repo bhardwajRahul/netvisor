@@ -711,6 +711,23 @@ impl CredentialService {
         let interface_filter = StorableFilter::<IPAddress>::new_from_network_ids(&[network_id]);
         let ip_addresses = self.ip_address_service.get_all(interface_filter).await?;
 
+        // Defense-in-depth: only ever hand a daemon credentials owned by the
+        // scanned network's own organization. Write-time validation already
+        // rejects cross-org credential↔network/host assignments, but a stale or
+        // otherwise-inconsistent junction row must never serialize a foreign
+        // tenant's secret onto the wire. If the network's org can't be resolved
+        // we fall back to the write-time guard rather than break a live scan.
+        let network_org_id = self
+            .network_service
+            .get_by_id(&network_id)
+            .await?
+            .map(|n| n.base.organization_id);
+        let owned_by_network_org = |cred: &Credential| -> bool {
+            network_org_id
+                .map(|org| cred.base.organization_id == org)
+                .unwrap_or(true)
+        };
+
         // Fetch network-level credentials
         let network_cred_ids = self.get_credential_ids_for_network(&network_id).await?;
 
@@ -721,7 +738,9 @@ impl CredentialService {
         > = std::collections::HashMap::new();
 
         for cred_id in &network_cred_ids {
-            if let Some(cred) = self.get_by_id(cred_id).await? {
+            if let Some(cred) = self.get_by_id(cred_id).await?
+                && owned_by_network_org(&cred)
+            {
                 let cred_type = &cred.base.credential_type;
                 let discriminant = cred_type.discriminant();
                 let payload = cred_type.to_query_payload();
@@ -745,7 +764,9 @@ impl CredentialService {
         for host in &hosts {
             if let Some(assignments) = host_cred_map.get(&host.id) {
                 for assignment in assignments {
-                    if let Some(cred) = self.get_by_id(&assignment.credential_id).await? {
+                    if let Some(cred) = self.get_by_id(&assignment.credential_id).await?
+                        && owned_by_network_org(&cred)
+                    {
                         let cred_type = &cred.base.credential_type;
                         let discriminant = cred_type.discriminant();
                         let payload = cred_type.to_query_payload();

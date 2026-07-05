@@ -103,7 +103,7 @@ tracing-appender = "0.2"
 # === Metrics ===
 metrics = "0.24"
 metrics-exporter-prometheus = { version = "0.16", default-features = false, features = ["http-listener"] }
-dotenv = "0.15"
+dotenvy = "0.15"
 figment = { version = "0.10", features = ["json", "env", "toml"] }
 
 # === CLI ===
@@ -160,7 +160,6 @@ bollard = { version = "0.20.2", features = ["ssl"] }
 httparse = "1.10.1"
 async-stream = "0.3.6"
 serial_test = "3.2.0"
-postgres = "0.19.12"
 tower-sessions = "0.14.0"
 tower-sessions-core = "0.14.0"
 tower-sessions-memory-store = "0.14.0"
@@ -193,7 +192,7 @@ async-stripe-webhook = { version = "1.0.0-alpha.2", default-features = false }
 moka = { version = "0.12.11", features = ["future"] }
 nanoid = "0.4.0"
 serde_with = "3.15.1"
-lettre = { version = "0.11.19", default-features = false, features = ["smtp-transport", "builder", "tokio1", "tokio1-rustls", "ring", "webpki-roots"] }
+lettre = { version = "0.11.22", default-features = false, features = ["smtp-transport", "builder", "tokio1", "tokio1-rustls", "ring", "webpki-roots"] }
 html2text = "0.16.4"
 json_value_merge = "2.0.1"
 axum-client-ip = "1.1.3"

@@ -139,6 +139,18 @@ async fn create_network(
     let entity = auth.entity.clone();
     let organization_id = auth.organization_id();
 
+    // Validate referenced credentials belong to the caller's org before any
+    // writes — the credential_ids are caller-supplied and are synced to the
+    // network→credential junction below (which is later read to hand credential
+    // secrets to daemons), so an unchecked foreign id would leak another
+    // tenant's secret.
+    let org_id = organization_id.ok_or_else(ApiError::organization_required)?;
+    state
+        .services
+        .credential_service
+        .validate_ids_in_org(&network.base.credential_ids, org_id)
+        .await?;
+
     let response = create_handler::<Network>(
         State(state.clone()),
         auth.into_permission::<Member>(),
@@ -232,6 +244,17 @@ async fn update_network(
     Json(network): Json<Network>,
 ) -> ApiResult<Json<ApiResponse<Network>>> {
     let credential_ids = network.base.credential_ids.clone();
+
+    // Validate referenced credentials belong to the caller's org before syncing
+    // them to the network→credential junction (see create_network).
+    let org_id = auth
+        .organization_id()
+        .ok_or_else(ApiError::organization_required)?;
+    state
+        .services
+        .credential_service
+        .validate_ids_in_org(&credential_ids, org_id)
+        .await?;
 
     let mut response = update_handler::<Network>(
         State(state.clone()),

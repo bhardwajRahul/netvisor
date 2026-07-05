@@ -452,24 +452,32 @@ impl AuthService {
 
     /// Attempt login without rate limiting
     async fn try_login(&self, request: &LoginRequest) -> Result<User> {
-        // Get user by email
+        // Fixed dummy hash used to equalize work on the "no such user" / "user
+        // without a password" paths. Verifying against this takes the same
+        // Argon2 time as a real account, so response latency doesn't reveal
+        // which emails are registered (timing-based user enumeration).
+        static DUMMY_PASSWORD_HASH: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+            hash_password("timing-equalizer-not-a-real-password").unwrap_or_default()
+        });
+
         let user = self
             .user_service
             .get_one(StorableFilter::<User>::new_from_email(&request.email))
-            .await?
-            .ok_or_else(|| anyhow!("Invalid email or password"))?;
+            .await?;
 
-        // Check if user has a password set
-        let password_hash = user
-            .base
-            .password_hash
+        // Always run a password verification, against the real hash when
+        // present and the dummy hash otherwise, before deciding success.
+        let hash_to_check = user
             .as_ref()
-            .ok_or_else(|| anyhow!("Invalid email or password"))?;
+            .and_then(|u| u.base.password_hash.clone())
+            .unwrap_or_else(|| DUMMY_PASSWORD_HASH.clone());
 
-        // Verify password
-        verify_password(&request.password, password_hash)?;
+        let verified = verify_password(&request.password, &hash_to_check).is_ok();
 
-        Ok(user.clone())
+        match user {
+            Some(user) if verified => Ok(user),
+            _ => Err(anyhow!("Invalid email or password")),
+        }
     }
 
     pub async fn update_password(
@@ -497,6 +505,10 @@ impl AuthService {
         }
 
         user.set_password(hash_password(&new_password)?);
+
+        // Invalidate all other sessions by bumping the session epoch. The
+        // acting session is re-stamped with the new epoch by the handler.
+        user.base.session_epoch += 1;
 
         self.event_bus
             .publish(Event::new(
@@ -617,6 +629,10 @@ impl AuthService {
         user.set_password(hashed_password);
         user.base.password_reset_token = None;
         user.base.password_reset_expires = None;
+        // Invalidate all existing sessions (a reset implies the account may be
+        // compromised). The reset handler re-stamps the requesting browser's
+        // session with the new epoch.
+        user.base.session_epoch += 1;
         self.user_service
             .update(&mut user, AuthenticatedEntity::System)
             .await?;

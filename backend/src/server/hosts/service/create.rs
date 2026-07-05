@@ -315,6 +315,13 @@ impl HostService {
         let mut created_subnet_ids: std::collections::HashSet<Uuid> =
             std::collections::HashSet::new();
         for mut subnet in subnets {
+            // Force the subnet onto the resolved host's network. The daemon's
+            // discovery payload is only authenticated for its own network, but
+            // subnets ride in the host request with a caller-supplied
+            // network_id; without this a daemon could write subnets into any
+            // network. Mirrors how ports/interfaces force host_id + network_id.
+            subnet.base.network_id = created_host.base.network_id;
+
             if let Some(ref mut virt) = subnet.base.virtualization
                 && let Some(old_id) = virt.service_id()
                 && let Some(&new_id) = service_id_remap.get(&old_id)
@@ -359,6 +366,9 @@ impl HostService {
         let mut created_ip_addresses = Vec::new();
         for mut ip_address in ip_addresses {
             ip_address.base.host_id = created_host.id;
+            // Force onto the host's network (see subnet loop above): the payload
+            // network_id is caller-supplied and must not be trusted.
+            ip_address.base.network_id = created_host.base.network_id;
 
             // Remap subnet_id if the subnet was deduped to an existing one
             if let Some(&new_subnet_id) = subnet_id_remap.get(&ip_address.base.subnet_id) {

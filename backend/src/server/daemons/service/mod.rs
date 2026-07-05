@@ -118,6 +118,9 @@ pub struct DaemonService {
 
     // Polling state
     poll_semaphore: Arc<Semaphore>,
+
+    // Deployment mode — gates the cloud-only SSRF guard on outbound daemon URLs.
+    deployment_type: crate::server::config::DeploymentType,
 }
 
 impl EventBusService<Daemon> for DaemonService {

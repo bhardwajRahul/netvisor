@@ -124,19 +124,6 @@ impl UserApiKeyService {
         Ok(())
     }
 
-    /// Validate that the requested network access is a subset of the user's network access
-    pub fn validate_network_access(
-        key_network_ids: &[Uuid],
-        user_network_ids: &[Uuid],
-    ) -> Result<(), String> {
-        for network_id in key_network_ids {
-            if !user_network_ids.contains(network_id) {
-                return Err(format!("You don't have access to network {}", network_id));
-            }
-        }
-        Ok(())
-    }
-
     /// Get network IDs for an API key from the junction table
     pub async fn get_network_ids(&self, api_key_id: &Uuid) -> Result<Vec<Uuid>> {
         self.network_access_storage.get_for_key(api_key_id).await
