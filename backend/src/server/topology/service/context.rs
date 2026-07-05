@@ -106,7 +106,7 @@ impl<'a> TopologyContext<'a> {
     }
 
     /// Get the first non-docker-bridge interface for a host
-    pub fn get_first_non_docker_bridge_ip_address_for_host(
+    pub fn get_first_non_container_bridge_ip_address_for_host(
         &self,
         host_id: Uuid,
     ) -> Option<&'a IPAddress> {

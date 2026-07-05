@@ -25,7 +25,7 @@
 		getIconColor: () => entities.getColorHelper('Daemon').icon,
 		getTags: (daemon: Daemon, context: DaemonDisplayContext) => {
 			const subnetsData = context?.subnets ?? [];
-			return daemon.capabilities.interfaced_subnet_ids
+			return daemon.interfaced_subnet_ids
 				.map((id) => subnetsData.find((sub) => sub.id === id))
 				.filter(Boolean)
 				.map((subnet) => ({

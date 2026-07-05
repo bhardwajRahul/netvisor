@@ -18,8 +18,8 @@ use super::types::{
     LldpLocalInfo, LldpNeighbor, PortVlanMembership, SystemInfo, VlanInfo,
 };
 use super::values::{
-    parse_lldp_mgmt_addr, parse_portlist_bitmap, value_to_i32, value_to_ip, value_to_mac,
-    value_to_string, value_to_u16, value_to_u64,
+    parse_lldp_mgmt_addr, parse_portlist_bitmap, qbridge_fdb_index_to_mac, value_to_i32,
+    value_to_ip, value_to_mac, value_to_string, value_to_u16, value_to_u64,
 };
 
 /// Query system MIB information from a device
@@ -983,8 +983,22 @@ async fn walk_bridge_port_mapping(
     Ok(port_to_if_index)
 }
 
-/// Query bridge FDB (dot1dTpFdbTable) for MAC-to-port mappings.
-/// Also walks dot1dBasePortIfIndex to resolve bridge port numbers to ifIndex values.
+/// In-progress FDB row assembled column-by-column across an SNMP walk, keyed by
+/// its MAC. Shared by the legacy (dot1dTpFdbTable) and VLAN-aware (dot1qTpFdbTable)
+/// collectors so their results can be merged by MAC.
+#[derive(Default)]
+struct FdbBuilder {
+    mac_address: Option<mac_address::MacAddress>,
+    port: Option<i32>,
+    status: Option<i32>,
+}
+
+/// Query bridge FDB for MAC-to-port mappings, resolving bridge ports to ifIndex
+/// values via dot1dBasePortIfIndex. Collects both the legacy `dot1dTpFdbTable`
+/// (RFC 4188) and the VLAN-aware `dot1qTpFdbTable` (Q-BRIDGE, RFC 4363) — many
+/// VLAN-aware switches (Aruba/HP ProCurve, etc.) populate only the latter and
+/// leave the legacy table empty, so relying on dot1d alone silently produced no
+/// L2 adjacency for them (GH #649).
 pub async fn query_bridge_fdb(
     ip: IpAddr,
     credential: &SnmpQueryCredential,
@@ -992,16 +1006,11 @@ pub async fn query_bridge_fdb(
 ) -> Result<Vec<BridgeFdbEntry>> {
     let mut session = create_session(ip, credential, port).await?;
 
-    // Step 1: Walk dot1dBasePortIfIndex to build bridge_port → ifIndex map
+    // Step 1: Walk dot1dBasePortIfIndex to build bridge_port → ifIndex map.
+    // Both FDB tables reference this same dot1dBasePort space.
     let port_to_if_index = walk_bridge_port_mapping(&mut session).await?;
 
-    // Step 2: Walk dot1dTpFdbTable columns
-    struct FdbBuilder {
-        mac_address: Option<mac_address::MacAddress>,
-        port: Option<i32>,
-        status: Option<i32>,
-    }
-
+    // Step 2: Walk legacy dot1dTpFdbTable columns.
     let mut fdb_entries: HashMap<String, FdbBuilder> = HashMap::new();
 
     let columns = [
@@ -1060,11 +1069,7 @@ pub async fn query_bridge_fdb(
                                 .collect::<Vec<_>>()
                                 .join(".");
 
-                            let entry = fdb_entries.entry(key).or_insert_with(|| FdbBuilder {
-                                mac_address: None,
-                                port: None,
-                                status: None,
-                            });
+                            let entry = fdb_entries.entry(key).or_default();
 
                             match column_name {
                                 "address" => entry.mac_address = value_to_mac(&value),
@@ -1086,6 +1091,14 @@ pub async fn query_bridge_fdb(
         }
     }
 
+    // Step 3: Merge in VLAN-aware Q-BRIDGE dot1qTpFdbTable entries. Legacy rows
+    // win; Q-BRIDGE fills in MACs the legacy table didn't report (or all of them,
+    // on switches that populate only the Q-BRIDGE table).
+    let qbridge = walk_qbridge_fdb(&mut session).await.unwrap_or_default();
+    for (key, builder) in qbridge {
+        fdb_entries.entry(key).or_insert(builder);
+    }
+
     // Filter: keep learned (3) and self (5), resolve bridge port to ifIndex
     let result: Vec<BridgeFdbEntry> = fdb_entries
         .into_values()
@@ -1105,13 +1118,107 @@ pub async fn query_bridge_fdb(
         .collect();
 
     debug!(
-        "Bridge FDB walk from {} returned {} entries ({} port mappings)",
+        "Bridge FDB walk from {} returned {} entries ({} port mappings, incl. Q-BRIDGE)",
         ip,
         result.len(),
         port_to_if_index.len()
     );
 
     Ok(result)
+}
+
+/// Walk the VLAN-aware Q-BRIDGE FDB (`dot1qTpFdbTable`, RFC 4363) for MAC→port
+/// mappings, keyed by MAC so results merge with the legacy `dot1dTpFdbTable`.
+///
+/// Unlike the legacy table, the MAC lives in the table INDEX
+/// (`dot1qFdbId` + 6 MAC octets), not a column, so it's derived from the OID
+/// suffix. Ports are `dot1dBasePort` numbers, resolved by the caller against the
+/// same `dot1dBasePortIfIndex` map. VLAN-aware switches (Aruba/HP ProCurve, etc.)
+/// often populate only this table (GH #649).
+async fn walk_qbridge_fdb(
+    session: &mut Box<snmp2::AsyncSession>,
+) -> Result<HashMap<String, FdbBuilder>> {
+    let mut entries: HashMap<String, FdbBuilder> = HashMap::new();
+
+    let columns = [
+        (oids::bridge::q_fdb_entry::DOT1Q_TP_FDB_PORT, "port"),
+        (oids::bridge::q_fdb_entry::DOT1Q_TP_FDB_STATUS, "status"),
+    ];
+
+    for (base_oid_str, column_name) in columns {
+        let base_oid = match parse_oid(base_oid_str) {
+            Ok(o) => o,
+            Err(e) => {
+                debug!("Failed to parse Q-BRIDGE FDB OID {}: {}", base_oid_str, e);
+                continue;
+            }
+        };
+
+        let base_parts: Vec<u64> = base_oid_str
+            .split('.')
+            .filter(|s| !s.is_empty())
+            .filter_map(|s| s.parse().ok())
+            .collect();
+
+        let mut current_oid = base_oid.clone();
+        let mut count = 0;
+
+        loop {
+            if count >= MAX_WALK_ENTRIES {
+                break;
+            }
+
+            match timeout(SNMP_TIMEOUT, session.getnext(&current_oid)).await {
+                Ok(Ok(mut response)) => {
+                    if let Some((resp_oid, value)) = response.varbinds.next() {
+                        if matches!(
+                            value,
+                            Value::EndOfMibView | Value::NoSuchObject | Value::NoSuchInstance
+                        ) {
+                            break;
+                        }
+
+                        let response_parts = oid_to_vec(&resp_oid);
+                        if response_parts.len() <= base_parts.len()
+                            || !response_parts.starts_with(&base_parts)
+                        {
+                            break;
+                        }
+
+                        // Q-BRIDGE index = dot1qFdbId (1 sub-id) + MAC (6 octets).
+                        let suffix = &response_parts[base_parts.len()..];
+                        if let Some(mac) = qbridge_fdb_index_to_mac(suffix) {
+                            // Key by MAC alone (drop fdb_id) so the same MAC learned
+                            // across VLANs collapses to one entry and merges with the
+                            // legacy table's MAC key.
+                            let key = suffix[1..7]
+                                .iter()
+                                .map(|v| v.to_string())
+                                .collect::<Vec<_>>()
+                                .join(".");
+
+                            let entry = entries.entry(key).or_default();
+                            entry.mac_address = Some(mac);
+                            match column_name {
+                                "port" => entry.port = value_to_i32(&value),
+                                "status" => entry.status = value_to_i32(&value),
+                                _ => {}
+                            }
+                        }
+
+                        current_oid = Oid::from(response_parts.as_slice())
+                            .map_err(|e| anyhow!("Invalid response OID: {:?}", e))?;
+                        count += 1;
+                    } else {
+                        break;
+                    }
+                }
+                Ok(Err(_)) | Err(_) => break,
+            }
+        }
+    }
+
+    Ok(entries)
 }
 
 /// Query local LLDP chassis ID (scalar GETs, not walks).

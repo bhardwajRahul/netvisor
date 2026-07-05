@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Scanopy API",
-    "description": "\nNetwork topology discovery and visualization API.\n\n## Authentication\n\nTwo authentication methods are supported:\n\n| Method | Header | Use Case |\n|--------|--------|----------|\n| User API key | `Authorization: Bearer scp_u_...` | Programmatic access, integrations |\n| Session cookie | `Cookie: session_id=...` | Web UI (via `/api/auth/login`) |\n\nUser API keys require your organization to have API access enabled. Create keys at **Platform > API Keys**.\n\n## Rate Limiting\n\nLimit: 300 requests/minute\n\nBurst: 150\n\nResponse headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`\n\nWhen rate limited, you'll receive HTTP `429 Too Many Requests` with a `Retry-After` header.\n\n## Pagination\n\nList endpoints support pagination via query parameters:\n\n| Parameter | Type | Default | Description |\n|-----------|------|---------|-------------|\n| `limit` | integer | 50 | Maximum results to return (1-1000). Use 0 for no limit. |\n| `offset` | integer | 0 | Number of results to skip |\n\nExample: `GET /api/v1/hosts?limit=10&offset=20`\n\n## Response Format\n\nAll responses use a standard envelope:\n\n```json\n{\n  \"success\": true,\n  \"data\": { ... },\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.17.1\"\n  }\n}\n```\n\n**Paginated list responses** include pagination metadata:\n\n```json\n{\n  \"success\": true,\n  \"data\": [ ... ],\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.17.1\",\n    \"pagination\": {\n      \"total_count\": 142,\n      \"limit\": 50,\n      \"offset\": 0,\n      \"has_more\": true\n    }\n  }\n}\n```\n\n| Field | Description |\n|-------|-------------|\n| `total_count` | Total items matching your query (ignoring pagination) |\n| `limit` | Applied limit (your request or default) |\n| `offset` | Applied offset |\n| `has_more` | `true` if more results exist beyond this page |\n\n**Error responses** include an `error` field instead of `data`:\n\n```json\n{\n  \"success\": false,\n  \"error\": \"Resource not found\",\n  \"meta\": { ... }\n}\n```\n\n**Common status codes:** `400` validation error, `401` unauthorized, `403` forbidden, `404` not found, `409` conflict, `429` rate limited.\n\n## Versioning\n\nEndpoints are prefixed with `/api/v1/`. The API version is an integer (`api_version: 1`) returned in every response, versioned independently from the application. Check `GET /api/version` for current versions.\n\n**While Scanopy is pre-v1.0 (current: 0.17.1)**, the API should be considered unstable. Breaking changes may be introduced in any release without incrementing the API version. We recommend pinning to a specific Scanopy release if you depend on API stability, and reviewing the [changelog](/changelog) before upgrading. After Scanopy reaches v1.0, breaking API changes will only occur with an API version increment.\n\n## Multi-Tenancy\n\nResources are scoped to your **organization** and **network(s)**:\n\n- You can only access entities within your organization\n- Network-level entities (hosts, services, etc.) are filtered to networks you have access to\n- Use `?network_id=<UUID>` to filter list endpoints to a specific network\n- API keys can be scoped to a subset of your accessible networks\n",
+    "description": "\nNetwork topology discovery and visualization API.\n\n## Authentication\n\nTwo authentication methods are supported:\n\n| Method | Header | Use Case |\n|--------|--------|----------|\n| User API key | `Authorization: Bearer scp_u_...` | Programmatic access, integrations |\n| Session cookie | `Cookie: session_id=...` | Web UI (via `/api/auth/login`) |\n\nUser API keys require your organization to have API access enabled. Create keys at **Platform > API Keys**.\n\n## Rate Limiting\n\nLimit: 300 requests/minute\n\nBurst: 150\n\nResponse headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`\n\nWhen rate limited, you'll receive HTTP `429 Too Many Requests` with a `Retry-After` header.\n\n## Pagination\n\nList endpoints support pagination via query parameters:\n\n| Parameter | Type | Default | Description |\n|-----------|------|---------|-------------|\n| `limit` | integer | 50 | Maximum results to return (1-1000). Use 0 for no limit. |\n| `offset` | integer | 0 | Number of results to skip |\n\nExample: `GET /api/v1/hosts?limit=10&offset=20`\n\n## Response Format\n\nAll responses use a standard envelope:\n\n```json\n{\n  \"success\": true,\n  \"data\": { ... },\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.17.2\"\n  }\n}\n```\n\n**Paginated list responses** include pagination metadata:\n\n```json\n{\n  \"success\": true,\n  \"data\": [ ... ],\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.17.2\",\n    \"pagination\": {\n      \"total_count\": 142,\n      \"limit\": 50,\n      \"offset\": 0,\n      \"has_more\": true\n    }\n  }\n}\n```\n\n| Field | Description |\n|-------|-------------|\n| `total_count` | Total items matching your query (ignoring pagination) |\n| `limit` | Applied limit (your request or default) |\n| `offset` | Applied offset |\n| `has_more` | `true` if more results exist beyond this page |\n\n**Error responses** include an `error` field instead of `data`:\n\n```json\n{\n  \"success\": false,\n  \"error\": \"Resource not found\",\n  \"meta\": { ... }\n}\n```\n\n**Common status codes:** `400` validation error, `401` unauthorized, `403` forbidden, `404` not found, `409` conflict, `429` rate limited.\n\n## Versioning\n\nEndpoints are prefixed with `/api/v1/`. The API version is an integer (`api_version: 1`) returned in every response, versioned independently from the application. Check `GET /api/version` for current versions.\n\n**While Scanopy is pre-v1.0 (current: 0.17.2)**, the API should be considered unstable. Breaking changes may be introduced in any release without incrementing the API version. We recommend pinning to a specific Scanopy release if you depend on API stability, and reviewing the [changelog](/changelog) before upgrading. After Scanopy reaches v1.0, breaking API changes will only occur with an API version increment.\n\n## Multi-Tenancy\n\nResources are scoped to your **organization** and **network(s)**:\n\n- You can only access entities within your organization\n- Network-level entities (hosts, services, etc.) are filtered to networks you have access to\n- Use `?network_id=<UUID>` to filter list endpoints to a specific network\n- API keys can be scoped to a subset of your accessible networks\n",
     "license": {
       "name": "Dual (AGPL3.0, Commercial License Available)"
     },
@@ -8210,8 +8210,8 @@
         "tags": [
           "Snapshots"
         ],
-        "summary": "List snapshots for a network, sorted by `taken_at` DESC.",
-        "operationId": "get_all_snapshots",
+        "summary": "List all Snapshots",
+        "operationId": "list_snapshots",
         "parameters": [
           {
             "name": "network_id",
@@ -8274,7 +8274,7 @@
         ],
         "responses": {
           "200": {
-            "description": "List of snapshots",
+            "description": "List of Snapshots",
             "content": {
               "application/json": {
                 "schema": {
@@ -8289,36 +8289,7 @@
                     "data": {
                       "type": "array",
                       "items": {
-                        "allOf": [
-                          {
-                            "$ref": "#/components/schemas/SnapshotBase"
-                          },
-                          {
-                            "type": "object",
-                            "required": [
-                              "id",
-                              "created_at",
-                              "updated_at"
-                            ],
-                            "properties": {
-                              "created_at": {
-                                "type": "string",
-                                "format": "date-time",
-                                "readOnly": true
-                              },
-                              "id": {
-                                "type": "string",
-                                "format": "uuid",
-                                "readOnly": true
-                              },
-                              "updated_at": {
-                                "type": "string",
-                                "format": "date-time",
-                                "readOnly": true
-                              }
-                            }
-                          }
-                        ]
+                        "$ref": "#/components/schemas/Snapshot"
                       }
                     },
                     "error": {
@@ -8411,7 +8382,7 @@
         "tags": [
           "Snapshots"
         ],
-        "summary": "Get a snapshot by ID.",
+        "summary": "Get Snapshot by ID",
         "operationId": "get_snapshot_by_id",
         "parameters": [
           {
@@ -8460,7 +8431,7 @@
         "tags": [
           "Snapshots"
         ],
-        "summary": "Delete a snapshot. The cascade FK on closed entity rows + topology rows\nreaps everything tied to this snapshot automatically.",
+        "summary": "Delete Snapshot",
         "operationId": "delete_snapshot",
         "parameters": [
           {
@@ -10770,12 +10741,12 @@
           "server_version": {
             "type": "string",
             "description": "Server version (semver)",
-            "example": "0.17.1"
+            "example": "0.17.2"
           }
         },
         "example": {
           "api_version": 1,
-          "server_version": "0.17.1"
+          "server_version": "0.17.2"
         }
       },
       "ApiResponse": {
@@ -10891,19 +10862,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-06-29T15:15:28.345334Z",
+              "created_at": "2026-07-04T23:35:58.585800Z",
               "first_discovery_id": null,
-              "id": "db2357cc-7a96-409d-a930-39660765debe",
+              "id": "406b2e7c-38fe-42ea-8589-4395032f3afb",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-29T15:15:28.345334Z",
+              "last_seen_at": "2026-07-04T23:35:58.585800Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-29T15:15:28.345334Z",
-              "valid_from": "2026-06-29T15:15:28.345334Z",
+              "updated_at": "2026-07-04T23:35:58.585800Z",
+              "valid_from": "2026-07-04T23:35:58.585800Z",
               "valid_to": null
             }
           },
@@ -11282,7 +11253,8 @@
                   "id",
                   "created_at",
                   "updated_at",
-                  "version_status"
+                  "version_status",
+                  "interfaced_subnet_ids"
                 ],
                 "properties": {
                   "created_at": {
@@ -11292,6 +11264,14 @@
                   "id": {
                     "type": "string",
                     "format": "uuid"
+                  },
+                  "interfaced_subnet_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "description": "Subnets this daemon has interfaces on, loaded from the\n`daemon_interfaced_subnets` junction (replaces the old\n`capabilities.interfaced_subnet_ids` JSONB field)."
                   },
                   "updated_at": {
                     "type": "string",
@@ -11889,19 +11869,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-06-29T15:15:28.325374Z",
+                      "created_at": "2026-07-04T23:35:58.565506Z",
                       "first_discovery_id": null,
-                      "id": "f6da90d1-e5dc-4778-8881-f85997200d6f",
+                      "id": "60fe67f5-3fc8-4bb8-ad13-5dfe88db5398",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-06-29T15:15:28.325374Z",
+                      "last_seen_at": "2026-07-04T23:35:58.565506Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-06-29T15:15:28.325374Z",
-                      "valid_from": "2026-06-29T15:15:28.325374Z",
+                      "updated_at": "2026-07-04T23:35:58.565506Z",
+                      "valid_from": "2026-07-04T23:35:58.565506Z",
                       "valid_to": null
                     }
                   ],
@@ -11915,7 +11895,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "Frigate",
+                  "service_definition": "OpenSpeedTest",
                   "source": {
                     "type": "Manual"
                   },
@@ -12913,19 +12893,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-06-29T15:15:28.339150Z",
+                  "created_at": "2026-07-04T23:35:58.579390Z",
                   "first_discovery_id": null,
-                  "id": "d3e893e7-4fb3-46d7-8618-d964b89ce301",
+                  "id": "0cf63599-76ba-4301-9423-211cd25acc33",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-29T15:15:28.339150Z",
+                  "last_seen_at": "2026-07-04T23:35:58.579390Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-29T15:15:28.339150Z",
-                  "valid_from": "2026-06-29T15:15:28.339150Z",
+                  "updated_at": "2026-07-04T23:35:58.579390Z",
+                  "valid_from": "2026-07-04T23:35:58.579390Z",
                   "valid_to": null
                 }
               ],
@@ -12939,7 +12919,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Frigate",
+              "service_definition": "OpenSpeedTest",
               "source": {
                 "type": "Manual"
               },
@@ -14718,19 +14698,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-06-29T15:15:28.325774Z",
+          "created_at": "2026-07-04T23:35:58.565956Z",
           "first_discovery_id": null,
-          "id": "36e21825-a52b-4351-9429-716eb5bf230c",
+          "id": "ec52a491-2e9c-4e5d-9323-d0a73d2f158a",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-06-29T15:15:28.325774Z",
+          "last_seen_at": "2026-07-04T23:35:58.565956Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-06-29T15:15:28.325774Z",
-          "valid_from": "2026-06-29T15:15:28.325774Z",
+          "updated_at": "2026-07-04T23:35:58.565956Z",
+          "valid_from": "2026-07-04T23:35:58.565956Z",
           "valid_to": null
         }
       },
@@ -15082,6 +15062,7 @@
           "Subnet",
           "ServiceCategory",
           "Application",
+          "ApplicationUngrouped",
           "Root",
           "Host",
           "NestedTag",
@@ -15320,7 +15301,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "Frigate",
+              "service_definition": "OpenSpeedTest",
               "tags": [],
               "virtualization": null
             }
@@ -15534,16 +15515,6 @@
               "type": "string",
               "format": "uuid"
             }
-          },
-          "target_ips": {
-            "type": [
-              "array",
-              "null"
-            ],
-            "items": {
-              "type": "string"
-            },
-            "description": "Ephemeral bootstrap IPs for pre-discovery credential resolution.\nCleared automatically when the next scan dispatches."
           }
         }
       },
@@ -15962,7 +15933,6 @@
           "host_id",
           "network_id",
           "url",
-          "capabilities",
           "mode",
           "name",
           "tags",
@@ -15976,9 +15946,6 @@
             ],
             "format": "uuid",
             "description": "Foreign key to API key used for ServerPoll authentication.\nNULL for DaemonPoll daemons or those not yet linked to a key."
-          },
-          "capabilities": {
-            "$ref": "#/components/schemas/DaemonCapabilities"
           },
           "host_id": {
             "type": "string",
@@ -16043,22 +16010,6 @@
               "null"
             ],
             "description": "Daemon software version (semver format)"
-          }
-        }
-      },
-      "DaemonCapabilities": {
-        "type": "object",
-        "description": "Daemon capabilities",
-        "required": [
-          "interfaced_subnet_ids"
-        ],
-        "properties": {
-          "interfaced_subnet_ids": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "format": "uuid"
-            }
           }
         }
       },
@@ -16128,12 +16079,12 @@
           "daemon_id",
           "network_id",
           "name",
-          "mode",
-          "capabilities"
+          "mode"
         ],
         "properties": {
           "capabilities": {
-            "$ref": "#/components/schemas/DaemonCapabilities"
+            "$ref": "#/components/schemas/LegacyCapabilities",
+            "description": "Legacy pre-0.15 interfaced-subnet channel (deserialize-only; see\n[`LegacyCapabilities`]). Repopulated by the first heartbeat, so registration\ndoes not persist it."
           },
           "daemon_id": {
             "type": "string",
@@ -16216,7 +16167,8 @@
               "id",
               "created_at",
               "updated_at",
-              "version_status"
+              "version_status",
+              "interfaced_subnet_ids"
             ],
             "properties": {
               "created_at": {
@@ -16226,6 +16178,14 @@
               "id": {
                 "type": "string",
                 "format": "uuid"
+              },
+              "interfaced_subnet_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "description": "Subnets this daemon has interfaces on, loaded from the\n`daemon_interfaced_subnets` junction (replaces the old\n`capabilities.interfaced_subnet_ids` JSONB field)."
               },
               "updated_at": {
                 "type": "string",
@@ -16262,7 +16222,7 @@
         ],
         "properties": {
           "capabilities": {
-            "$ref": "#/components/schemas/DaemonCapabilities",
+            "$ref": "#/components/schemas/LegacyCapabilities",
             "description": "Backwards compat: pre-v0.15.0 daemons send capabilities instead of interfaced_subnets."
           },
           "interfaced_subnets": {
@@ -16570,7 +16530,8 @@
         "enum": [
           "Info",
           "Warning",
-          "Critical"
+          "Critical",
+          "Unknown"
         ]
       },
       "DeprecationWarning": {
@@ -18187,19 +18148,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-06-29T15:15:28.324884Z",
+                  "created_at": "2026-07-04T23:35:58.565001Z",
                   "first_discovery_id": null,
-                  "id": "8eb63fda-2f37-4d02-bc25-afb13de36f49",
+                  "id": "a9e2e320-c407-4ebc-b310-23c86c53eeca",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-06-29T15:15:28.324884Z",
+                  "last_seen_at": "2026-07-04T23:35:58.565001Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-06-29T15:15:28.324884Z",
-                  "valid_from": "2026-06-29T15:15:28.324884Z",
+                  "updated_at": "2026-07-04T23:35:58.565001Z",
+                  "valid_from": "2026-07-04T23:35:58.565001Z",
                   "valid_to": null
                 }
               ],
@@ -18213,7 +18174,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "Frigate",
+              "service_definition": "OpenSpeedTest",
               "source": {
                 "type": "Manual"
               },
@@ -18497,7 +18458,7 @@
               {
                 "type": "string",
                 "enum": [
-                  "MergeDockerBridges"
+                  "MergeContainerBridges"
                 ]
               },
               {
@@ -19219,6 +19180,22 @@
           },
           "y": {
             "type": "integer"
+          }
+        }
+      },
+      "LegacyCapabilities": {
+        "type": "object",
+        "description": "Legacy inbound-only capabilities blob.\n\nPre-0.15 daemons report their interfaced subnets as bare `subnet_id`s in this\n`capabilities` object (they predate the `interfaced_subnets: Vec<Subnet>`\nheartbeat channel). It is deserialize-only: the server never stores it, never\nechoes it in `DaemonResponse`, and it has no `SqlValue` variant. Reported ids\nare routed into the `daemon_interfaced_subnets` junction (existence-filtered)\nso legacy daemons keep reporting interfaced subnets. ≥0.15 daemons send the\n`Vec<Subnet>` channel instead and leave this empty.",
+        "required": [
+          "interfaced_subnet_ids"
+        ],
+        "properties": {
+          "interfaced_subnet_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         }
       },
@@ -20246,7 +20223,7 @@
           "server_version": {
             "type": "string",
             "description": "Server version (semver)",
-            "example": "0.17.1"
+            "example": "0.17.2"
           }
         },
         "example": {
@@ -20257,7 +20234,7 @@
             "offset": 0,
             "total_count": 142
           },
-          "server_version": "0.17.1"
+          "server_version": "0.17.2"
         }
       },
       "PaginatedApiResponse_Credential": {
@@ -20340,7 +20317,8 @@
                     "id",
                     "created_at",
                     "updated_at",
-                    "version_status"
+                    "version_status",
+                    "interfaced_subnet_ids"
                   ],
                   "properties": {
                     "created_at": {
@@ -20350,6 +20328,14 @@
                     "id": {
                       "type": "string",
                       "format": "uuid"
+                    },
+                    "interfaced_subnet_ids": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "description": "Subnets this daemon has interfaces on, loaded from the\n`daemon_interfaced_subnets` junction (replaces the old\n`capabilities.interfaced_subnet_ids` JSONB field)."
                     },
                     "updated_at": {
                       "type": "string",
@@ -20718,19 +20704,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-06-29T15:15:28.313465Z",
+                        "created_at": "2026-07-04T23:35:58.552973Z",
                         "first_discovery_id": null,
-                        "id": "8ede0ce0-3fe6-4262-8f5c-146e44612f24",
+                        "id": "31459f20-3add-4998-84e2-a8c705f6ec5b",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-06-29T15:15:28.313465Z",
+                        "last_seen_at": "2026-07-04T23:35:58.552973Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-06-29T15:15:28.313465Z",
-                        "valid_from": "2026-06-29T15:15:28.313465Z",
+                        "updated_at": "2026-07-04T23:35:58.552973Z",
+                        "valid_from": "2026-07-04T23:35:58.552973Z",
                         "valid_to": null
                       }
                     ],
@@ -20744,7 +20730,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "Frigate",
+                    "service_definition": "OpenSpeedTest",
                     "source": {
                       "type": "Manual"
                     },
@@ -20865,19 +20851,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-06-29T15:15:28.337775Z",
+                    "created_at": "2026-07-04T23:35:58.578090Z",
                     "first_discovery_id": null,
-                    "id": "34979eca-7a36-4798-b418-7dc5d5186850",
+                    "id": "0be4c449-2043-4a92-a3af-d6213ac4aff3",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-06-29T15:15:28.337775Z",
+                    "last_seen_at": "2026-07-04T23:35:58.578090Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-06-29T15:15:28.337775Z",
-                    "valid_from": "2026-06-29T15:15:28.337775Z",
+                    "updated_at": "2026-07-04T23:35:58.578090Z",
+                    "valid_from": "2026-07-04T23:35:58.578090Z",
                     "valid_to": null
                   }
                 ],
@@ -20891,7 +20877,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "Frigate",
+                "service_definition": "OpenSpeedTest",
                 "source": {
                   "type": "Manual"
                 },
@@ -22542,19 +22528,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-06-29T15:15:28.325679Z",
+              "created_at": "2026-07-04T23:35:58.565862Z",
               "first_discovery_id": null,
-              "id": "c16ed68a-d79b-4a10-877a-7394139d363b",
+              "id": "8b7fec68-5c56-4ab0-a343-20752fce29d6",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-06-29T15:15:28.325679Z",
+              "last_seen_at": "2026-07-04T23:35:58.565862Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-06-29T15:15:28.325679Z",
-              "valid_from": "2026-06-29T15:15:28.325679Z",
+              "updated_at": "2026-07-04T23:35:58.565862Z",
+              "valid_from": "2026-07-04T23:35:58.565862Z",
               "valid_to": null
             }
           ],
@@ -22568,7 +22554,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "Frigate",
+          "service_definition": "OpenSpeedTest",
           "source": {
             "type": "Manual"
           },
@@ -23698,7 +23684,7 @@
             "default": {
               "Application": [
                 {
-                  "id": "6b4c4172-7fa2-42f0-9d2b-02e682eafb92",
+                  "id": "6d7ab418-9b92-47e5-b0b6-92162157624d",
                   "rule": {
                     "ByApplication": {
                       "tag_ids": []
@@ -23708,23 +23694,23 @@
               ],
               "L2Physical": [
                 {
-                  "id": "f5686c82-6d2c-47b6-bec1-06e5943db773",
+                  "id": "338a0566-d354-4d12-a106-b24789bad930",
                   "rule": "ByHost"
                 }
               ],
               "L3Logical": [
                 {
-                  "id": "436bf1f7-fcbb-4e9d-a89d-c454669f18bf",
+                  "id": "93b9420e-0daf-4e1d-be59-42ccb0d6bb9f",
                   "rule": "BySubnet"
                 },
                 {
-                  "id": "7079ad5e-5a37-44d7-ae00-3ec324ae6f7b",
-                  "rule": "MergeDockerBridges"
+                  "id": "b69df42b-64ba-493e-9f1c-79be4ff05f65",
+                  "rule": "MergeContainerBridges"
                 }
               ],
               "Workloads": [
                 {
-                  "id": "f5686c82-6d2c-47b6-bec1-06e5943db773",
+                  "id": "338a0566-d354-4d12-a106-b24789bad930",
                   "rule": "ByHost"
                 }
               ]
@@ -23753,19 +23739,19 @@
             },
             "default": [
               {
-                "id": "c108a992-c3ee-49ac-b6de-eab2f14c4146",
+                "id": "fb13ef4c-db96-4adc-901d-7b8f25bb8c2c",
                 "rule": "ByTrunkPort"
               },
               {
-                "id": "829e9195-3c4a-4529-aa37-a53f98301dcc",
+                "id": "6eb842a2-f8af-4487-b7a2-b83d499400fc",
                 "rule": "ByVLAN"
               },
               {
-                "id": "a8bb475c-f215-4338-a905-722f2ba31aaf",
+                "id": "8079af3c-020d-42cf-a746-a1f264e66ebf",
                 "rule": "ByPortOpStatus"
               },
               {
-                "id": "4a254791-8a66-4196-b201-86cc819564e8",
+                "id": "8810accc-d231-40ef-a7bc-73b954dc6193",
                 "rule": {
                   "ByServiceCategory": {
                     "categories": [
@@ -23783,7 +23769,7 @@
                 }
               },
               {
-                "id": "fc4054d8-ec3e-4cd2-a8e0-f778f7bbd2d2",
+                "id": "e98b243e-cea7-457b-b5c1-3c840dd9b645",
                 "rule": {
                   "ByTag": {
                     "tag_ids": [],
@@ -23792,15 +23778,15 @@
                 }
               },
               {
-                "id": "ae369740-1ce1-4a0a-8db2-38246c63c753",
+                "id": "0152c228-e735-4cbe-aca9-57c406a75b53",
                 "rule": "ByHypervisor"
               },
               {
-                "id": "6d97f089-93f9-47fd-be6e-af2b8f91664b",
+                "id": "90513175-a1b4-4d85-b212-e236641d4d5a",
                 "rule": "ByContainerRuntime"
               },
               {
-                "id": "84a18a68-41a8-41b5-9415-870962b59c0a",
+                "id": "d3d22be1-8e6d-432d-89b2-4ce3d3159ddd",
                 "rule": "ByStack"
               }
             ]
@@ -24670,6 +24656,10 @@
     {
       "name": "Shares",
       "description": "Shared network views. Create read-only shareable links to your network topology."
+    },
+    {
+      "name": "Snapshots",
+      "description": "Point-in-time capture of a network's topology and entities. Created manually via the topology tab; loadable from the snapshots dropdown."
     },
     {
       "name": "Credentials",

@@ -13,7 +13,7 @@
 
 use std::sync::Arc;
 
-use axum::extract::{Path, State};
+use axum::extract::State;
 use axum::response::Json;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -24,76 +24,39 @@ use uuid::Uuid;
 use crate::server::{
     auth::middleware::{
         features::{RequireFeature, TakeSnapshotFeature},
-        permissions::{Authorized, Member, Viewer},
+        permissions::{Authorized, Member},
     },
     config::AppState,
     shared::events::{
         traits::{Event, OrgScope},
         types::{OnboardingOperation, OnboardingOperationDiscriminants},
     },
-    shared::extractors::Query,
     shared::{
-        handlers::traits::{delete_handler, get_all_handler, get_by_id_handler},
         services::traits::CrudService,
         storage::traits::Entity,
-        types::api::{
-            ApiError, ApiErrorResponse, ApiResponse, ApiResult, EmptyApiResponse,
-            PaginatedApiResponse,
-        },
+        types::api::{ApiError, ApiErrorResponse, ApiResponse, ApiResult},
     },
     snapshots::types::base::{Snapshot, SnapshotBase},
 };
-
-use crate::server::shared::handlers::query::NetworkFilterQuery;
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CreateSnapshotRequest {
     pub network_id: Uuid,
 }
 
+// Generated handlers for generic CRUD operations. `create` is hand-rolled below
+// because it needs the discovery lock + close-and-clone + onboarding event.
+mod generated {
+    use super::*;
+    crate::crud_get_all_handler!(Snapshot);
+    crate::crud_get_by_id_handler!(Snapshot);
+    crate::crud_delete_handler!(Snapshot);
+}
+
 pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
     OpenApiRouter::new()
-        .routes(routes!(get_all_snapshots, create_snapshot))
-        .routes(routes!(get_snapshot_by_id, delete_snapshot))
-}
-
-/// List snapshots for a network, sorted by `taken_at` DESC.
-#[utoipa::path(
-    get,
-    path = "",
-    tag = Snapshot::ENTITY_NAME_PLURAL,
-    params(NetworkFilterQuery),
-    responses(
-        (status = 200, description = "List of snapshots", body = inline(PaginatedApiResponse<Snapshot>)),
-    ),
-    security(("user_api_key" = []), ("session" = []))
-)]
-async fn get_all_snapshots(
-    State(state): State<Arc<AppState>>,
-    auth: Authorized<Viewer>,
-    query: Query<NetworkFilterQuery>,
-) -> ApiResult<Json<PaginatedApiResponse<Snapshot>>> {
-    get_all_handler::<Snapshot>(State(state), auth, query).await
-}
-
-/// Get a snapshot by ID.
-#[utoipa::path(
-    get,
-    path = "/{id}",
-    tag = Snapshot::ENTITY_NAME_PLURAL,
-    params(("id" = Uuid, Path, description = "Snapshot ID")),
-    responses(
-        (status = 200, description = "Snapshot found", body = ApiResponse<Snapshot>),
-        (status = 404, description = "Snapshot not found", body = ApiErrorResponse),
-    ),
-    security(("user_api_key" = []), ("session" = []))
-)]
-async fn get_snapshot_by_id(
-    State(state): State<Arc<AppState>>,
-    auth: Authorized<Viewer>,
-    path: Path<Uuid>,
-) -> ApiResult<Json<ApiResponse<Snapshot>>> {
-    get_by_id_handler::<Snapshot>(State(state), auth, path).await
+        .routes(routes!(generated::get_all, create_snapshot))
+        .routes(routes!(generated::get_by_id, generated::delete))
 }
 
 /// Take a snapshot of the current live topology + entity state for a network.
@@ -204,25 +167,4 @@ async fn create_snapshot(
     }
 
     Ok(Json(ApiResponse::success(created)))
-}
-
-/// Delete a snapshot. The cascade FK on closed entity rows + topology rows
-/// reaps everything tied to this snapshot automatically.
-#[utoipa::path(
-    delete,
-    path = "/{id}",
-    tag = Snapshot::ENTITY_NAME_PLURAL,
-    params(("id" = Uuid, Path, description = "Snapshot ID")),
-    responses(
-        (status = 200, description = "Snapshot deleted", body = EmptyApiResponse),
-        (status = 404, description = "Snapshot not found", body = ApiErrorResponse),
-    ),
-    security(("user_api_key" = []), ("session" = []))
-)]
-async fn delete_snapshot(
-    State(state): State<Arc<AppState>>,
-    auth: Authorized<Member>,
-    path: Path<Uuid>,
-) -> ApiResult<Json<ApiResponse<()>>> {
-    delete_handler::<Snapshot>(State(state), auth, path).await
 }

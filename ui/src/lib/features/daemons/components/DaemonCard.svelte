@@ -171,7 +171,7 @@
 					]),
 			{
 				label: 'Interfaces With',
-				value: daemon.capabilities.interfaced_subnet_ids
+				value: daemon.interfaced_subnet_ids
 					.map((s) => subnetsData.find((subnet) => subnet.id == s))
 					.filter((s) => s != undefined)
 					.filter((s) => !subnetTypes.getMetadata(s.subnet_type).hide_from_subnet_list)

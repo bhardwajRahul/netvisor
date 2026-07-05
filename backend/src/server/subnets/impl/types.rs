@@ -201,6 +201,17 @@ impl SubnetType {
         matches!(self, SubnetType::DockerBridge | SubnetType::PodmanBridge)
     }
 
+    /// Human-facing runtime label for a container bridge network
+    /// (`"Docker"` / `"Podman"`), used to derive runtime-neutral container headers.
+    /// `None` for non-bridge subnet types.
+    pub fn container_runtime_label(&self) -> Option<&'static str> {
+        match self {
+            SubnetType::DockerBridge => Some("Docker"),
+            SubnetType::PodmanBridge => Some("Podman"),
+            _ => None,
+        }
+    }
+
     pub fn is_loopback(&self) -> bool {
         matches!(self, SubnetType::Loopback)
     }
@@ -360,6 +371,7 @@ impl TypeMetadataProvider for SubnetType {
         serde_json::json!({
             "network_scan_discovery_eligible": network_scan_discovery_eligible,
             "is_for_containers": is_for_containers,
+            "is_container_bridge": self.is_container_bridge(),
             "show_label": show_label,
             "hide_from_subnet_list": self.hide_from_subnet_list()
         })
@@ -397,6 +409,21 @@ mod forward_compat_tests {
             let json = serde_json::to_string(&variant).unwrap();
             let back: SubnetType = serde_json::from_str(&json).unwrap();
             assert_eq!(variant, back);
+        }
+    }
+
+    #[test]
+    fn container_runtime_label_present_iff_container_bridge() {
+        // Invariant: a runtime label exists exactly for the container-bridge types.
+        // Locks the two predicates together without restating each mapping, so it
+        // fails only if a new bridge type forgets its label (or vice versa).
+        use strum::IntoEnumIterator;
+        for st in SubnetType::iter() {
+            assert_eq!(
+                st.container_runtime_label().is_some(),
+                st.is_container_bridge(),
+                "{st:?}: runtime label presence must match is_container_bridge()"
+            );
         }
     }
 }

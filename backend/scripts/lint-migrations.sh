@@ -54,12 +54,16 @@ status=0
 # entire rules per file by partitioning into separate squawk invocations.
 DOWNTIME_FILES=("$MIGRATIONS_DIR/20260502120004_drop_legacy_topology_columns.sql")
 FK_BACKFILL_FILES=("$MIGRATIONS_DIR/20260502120001_add_snapshot_id_fks.sql")
+# Columns dropped that have NO live code readers at the currently-deployed release,
+# so the drop is safe under a rolling deploy (contract already paid). Header comment
+# in each migration documents why. Suppress ban-drop-column.
+NO_READER_DROP_FILES=("$MIGRATIONS_DIR/20260703120001_drop_discovery_pending_credential_ids.sql")
 
 # Filter file lists.
 in_tx_main=()
 for f in "${in_tx_files[@]}"; do
     skip=0
-    for d in "${DOWNTIME_FILES[@]}" "${FK_BACKFILL_FILES[@]}"; do
+    for d in "${DOWNTIME_FILES[@]}" "${FK_BACKFILL_FILES[@]}" "${NO_READER_DROP_FILES[@]}"; do
         if [ "$f" = "$d" ]; then skip=1; break; fi
     done
     if [ "$skip" = "0" ]; then in_tx_main+=("$f"); fi
@@ -86,6 +90,15 @@ done
 for f in "${FK_BACKFILL_FILES[@]}"; do
     if [ -e "$f" ]; then
         squawk --config "$CONFIG_PATH" --exclude=adding-foreign-key-constraint "$f" || status=$?
+    fi
+done
+
+# No-reader column drops: safe under rolling deploy (no deployed container reads
+# the column). Header comment in each migration documents why. Suppress
+# ban-drop-column.
+for f in "${NO_READER_DROP_FILES[@]}"; do
+    if [ -e "$f" ]; then
+        squawk --config "$CONFIG_PATH" --exclude=ban-drop-column "$f" || status=$?
     fi
 done
 

@@ -280,6 +280,13 @@ impl CredentialType {
         !self.field_definitions().is_empty()
     }
 
+    /// Minimum daemon version that can safely receive this credential type over the
+    /// wire. Delegates to the discriminant's exhaustive declaration
+    /// ([`CredentialTypeDiscriminants::minimum_daemon_version`]).
+    pub fn minimum_daemon_version(&self) -> semver::Version {
+        CredentialTypeDiscriminants::from(self).minimum_daemon_version()
+    }
+
     /// Whether this integration is a single service instance per host, so its
     /// access methods at a given target are mutually exclusive (e.g. a container
     /// runtime is reached by exactly one of socket/proxy). `false` for try-many

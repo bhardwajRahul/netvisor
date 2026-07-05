@@ -13,7 +13,7 @@ use crate::server::{
     },
     daemon_api_keys::r#impl::base::{DaemonApiKey, DaemonApiKeyBase},
     daemons::r#impl::{
-        api::{DaemonCapabilities, DiscoveryUpdatePayload},
+        api::DiscoveryUpdatePayload,
         base::{Daemon, DaemonBase, DaemonMode},
     },
     dependencies::r#impl::{
@@ -363,7 +363,6 @@ fn generate_credentials(organization_id: Uuid, now: DateTime<Utc>) -> Vec<Creden
                         value: SecretString::from("public".to_string()),
                     },
                 },
-                target_ips: None,
                 tags: Vec::new(),
                 assigned_network_ids: Vec::new(),
                 host_assignments: Vec::new(),
@@ -381,7 +380,6 @@ fn generate_credentials(organization_id: Uuid, now: DateTime<Utc>) -> Vec<Creden
                         value: SecretString::from("acme-network".to_string()),
                     },
                 },
-                target_ips: None,
                 tags: Vec::new(),
                 assigned_network_ids: Vec::new(),
                 host_assignments: Vec::new(),
@@ -401,7 +399,6 @@ fn generate_credentials(organization_id: Uuid, now: DateTime<Utc>) -> Vec<Creden
                     ssl_key: None,
                     ssl_chain: None,
                 },
-                target_ips: None,
                 tags: Vec::new(),
                 assigned_network_ids: Vec::new(),
                 host_assignments: Vec::new(),
@@ -4596,7 +4593,7 @@ fn generate_interfaces(
 fn generate_daemons(
     networks: &[Network],
     hosts: &[&Host],
-    subnets: &[Subnet],
+    _subnets: &[Subnet],
     now: DateTime<Utc>,
     user_id: Uuid,
 ) -> Vec<Daemon> {
@@ -4607,12 +4604,13 @@ fn generate_daemons(
             .unwrap()
     };
     let find_host = |name: &str| hosts.iter().find(|h| h.base.name == name).copied();
-    let find_subnet = |name: &str| subnets.iter().find(|s| s.base.name.contains(name));
 
     let mut daemons = Vec::new();
 
-    // HQ Daemon on docker-prod01
-    if let (Some(host), Some(subnet)) = (find_host("docker-prod01"), find_subnet("HQ Servers")) {
+    // HQ Daemon on docker-prod01. (Interfaced subnets are populated at runtime from
+    // daemon heartbeats into the `daemon_interfaced_subnets` junction; demo seed data
+    // leaves them empty.)
+    if let Some(host) = find_host("docker-prod01") {
         let network = find_network("Headquarters");
         daemons.push(Daemon {
             id: Uuid::new_v4(),
@@ -4623,9 +4621,6 @@ fn generate_daemons(
                 network_id: network.id,
                 url: "https://docker-prod01.acme.local:8443".to_string(),
                 last_seen: Some(now),
-                capabilities: DaemonCapabilities {
-                    interfaced_subnet_ids: vec![subnet.id],
-                },
                 mode: DaemonMode::DaemonPoll,
                 name: "HQ Daemon".to_string(),
                 tags: vec![],
@@ -4642,7 +4637,7 @@ fn generate_daemons(
     }
 
     // DC Daemon on dc-docker01
-    if let (Some(host), Some(subnet)) = (find_host("dc-docker01"), find_subnet("DC Compute")) {
+    if let Some(host) = find_host("dc-docker01") {
         let network = find_network("Data Center");
         daemons.push(Daemon {
             id: Uuid::new_v4(),
@@ -4653,9 +4648,6 @@ fn generate_daemons(
                 network_id: network.id,
                 url: "https://docker01.dc.acme.io:8443".to_string(),
                 last_seen: Some(now),
-                capabilities: DaemonCapabilities {
-                    interfaced_subnet_ids: vec![subnet.id],
-                },
                 mode: DaemonMode::DaemonPoll,
                 standby_cleared_at: None,
                 name: "DC Daemon".to_string(),

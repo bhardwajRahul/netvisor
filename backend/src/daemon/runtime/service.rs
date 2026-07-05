@@ -5,8 +5,8 @@ use crate::daemon::shared::config::ConfigStore;
 use crate::daemon::utils::base::DaemonUtils;
 use crate::daemon::utils::base::{PlatformDaemonUtils, create_system_utils};
 use crate::server::daemons::r#impl::api::{
-    DaemonCapabilities, DaemonDiscoveryRequest, DaemonRegistrationRequest,
-    DaemonRegistrationResponse, DaemonStartupRequest, ServerCapabilities,
+    DaemonDiscoveryRequest, DaemonRegistrationRequest, DaemonRegistrationResponse,
+    DaemonStartupRequest, LegacyCapabilities, ServerCapabilities,
 };
 use crate::server::daemons::r#impl::base::Daemon;
 use crate::server::shared::types::api::{ApiError, ApiErrorResponse};
@@ -150,7 +150,7 @@ impl DaemonRuntimeService {
                 name: name.clone(),
                 mode,
                 version: Some(semver::Version::parse(env!("CARGO_PKG_VERSION")).unwrap()),
-                capabilities: DaemonCapabilities::default(),
+                capabilities: LegacyCapabilities::default(),
                 interfaced_subnets,
                 ready_for_work: !self.discovery_manager.is_discovery_running().await,
             };
@@ -392,7 +392,7 @@ impl DaemonRuntimeService {
             url: None,
             name: name.clone(),
             mode,
-            capabilities: DaemonCapabilities {
+            capabilities: LegacyCapabilities {
                 interfaced_subnet_ids: Vec::new(),
             },
             user_id,

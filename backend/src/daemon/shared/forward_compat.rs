@@ -31,9 +31,11 @@ use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 use uuid::Uuid;
 
+use crate::server::credentials::r#impl::mapping::CredentialQueryPayload;
 use crate::server::daemons::r#impl::api::{
     DaemonDiscoveryRequest, DaemonRegistrationResponse, ServerCapabilities,
 };
+use crate::server::daemons::r#impl::version::{DeprecationSeverity, DeprecationWarning};
 use crate::server::discovery::r#impl::types::DiscoveryType;
 use crate::server::hosts::r#impl::api::HostResponse;
 use crate::server::hosts::r#impl::virtualization::HostVirtualization;
@@ -153,6 +155,16 @@ impl DaemonResponse for ServiceVirtualization {
     }
 }
 
+impl DaemonResponse for CredentialQueryPayload {
+    // Internally tagged (`tag = "type"`); absorbed by `#[serde(other)] Unknown`.
+    // This is the wire enum that broke every 0.16.2–0.17.1 daemon on Podman
+    // mappings (no fallback until now). Enrolled directly AND nested inside
+    // `DaemonDiscoveryRequest::skewed()` so the harness fails if the fallback regresses.
+    fn skewed() -> Value {
+        json!({ "type": Self::SENTINEL })
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Leaf response types. Each exhaustively destructures its own fields (no `..`)
 // as a compile-time completeness guard, then skews the enum-bearing fields.
@@ -241,7 +253,13 @@ impl DaemonResponse for ServerCapabilities {
         let instance = ServerCapabilities {
             server_version: Version::new(0, 0, 0),
             minimum_daemon_version: Version::new(0, 0, 0),
-            deprecation_warnings: Vec::new(),
+            // Non-empty so the nested `DeprecationSeverity` enum is actually
+            // exercised — an empty Vec previously hid it from the harness.
+            deprecation_warnings: vec![DeprecationWarning {
+                message: "skew".to_string(),
+                sunset_date: None,
+                severity: DeprecationSeverity::default(),
+            }],
         };
         // Compile guard.
         let ServerCapabilities {
@@ -249,7 +267,10 @@ impl DaemonResponse for ServerCapabilities {
             minimum_daemon_version: _,
             deprecation_warnings: _,
         } = &instance;
-        with_unknown_field(serde_json::to_value(&instance).expect("ServerCapabilities serializes"))
+        let mut v = serde_json::to_value(&instance).expect("ServerCapabilities serializes");
+        // Skew the nested severity (unit enum, absorbed by `#[serde(other)] Unknown`).
+        v["deprecation_warnings"][0]["severity"] = json!(SENTINEL);
+        with_unknown_field(v)
     }
 }
 
@@ -266,9 +287,12 @@ impl DaemonResponse for DaemonRegistrationResponse {
             host_id: _,
             server_capabilities: _,
         } = &instance;
-        with_unknown_field(
-            serde_json::to_value(&instance).expect("DaemonRegistrationResponse serializes"),
-        )
+        let mut v = serde_json::to_value(&instance).expect("DaemonRegistrationResponse serializes");
+        // Nest a fully-skewed `ServerCapabilities` instead of leaving the Option
+        // `None` — otherwise the nested type (and its skewed severity) go
+        // unexercised when reached through a registration response.
+        v["server_capabilities"] = ServerCapabilities::skewed();
+        with_unknown_field(v)
     }
 }
 
@@ -289,10 +313,18 @@ impl DaemonResponse for DaemonDiscoveryRequest {
         } = &instance;
         // `discovery_type` is intentionally NOT skewed: an unknown discovery
         // kind is not actionable by the daemon and should be rejected, not
-        // silently degraded. We only verify unknown-field tolerance here.
-        with_unknown_field(
-            serde_json::to_value(&instance).expect("DaemonDiscoveryRequest serializes"),
-        )
+        // silently degraded.
+        let mut v = serde_json::to_value(&instance).expect("DaemonDiscoveryRequest serializes");
+        // Populate `credential_mappings` with a real mapping whose payload is a
+        // credential type from a newer server. Without this, the nil `Vec` left the
+        // nested `CredentialQueryPayload` enum unexercised — the exact hole that let
+        // the Podman variants ship without forward-compat coverage. If the
+        // `#[serde(other)] Unknown` fallback were removed, deserializing this fails.
+        v["credential_mappings"] = json!([{
+            "default_credential": CredentialQueryPayload::skewed(),
+            "ip_overrides": [],
+        }]);
+        with_unknown_field(v)
     }
 }
 
@@ -352,11 +384,12 @@ inventory::submit!(DaemonResponseCheck::new::<Subnet>());
 inventory::submit!(DaemonResponseCheck::new::<HostResponse>());
 inventory::submit!(DaemonResponseCheck::new::<DaemonRegistrationResponse>());
 inventory::submit!(DaemonResponseCheck::new::<ServerCapabilities>());
+inventory::submit!(DaemonResponseCheck::new::<CredentialQueryPayload>());
 inventory::submit!(DaemonResponseCheck::new::<(
     Option<DaemonDiscoveryRequest>,
     bool
 )>());
-inventory::submit!(DaemonResponseCheck::new::<ApiResponse<VlanDiscoveryResponse>>());
+inventory::submit!(DaemonResponseCheck::new::<VlanDiscoveryResponse>());
 
 #[cfg(test)]
 mod tests {

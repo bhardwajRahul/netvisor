@@ -309,6 +309,11 @@ impl HostService {
         // Patch virtualization.service_id using the pre-computed remap
         let mut subnet_id_remap: std::collections::HashMap<Uuid, Uuid> =
             std::collections::HashMap::new();
+        // Subnet ids known-good because this call just created (or deduped to) them.
+        // An ip_address referencing one of these needs no dangling-subnet repair,
+        // so the common path skips the live-subnet lookup entirely.
+        let mut created_subnet_ids: std::collections::HashSet<Uuid> =
+            std::collections::HashSet::new();
         for mut subnet in subnets {
             if let Some(ref mut virt) = subnet.base.virtualization
                 && let Some(old_id) = virt.service_id()
@@ -324,6 +329,7 @@ impl HostService {
             if created.id != original_id {
                 subnet_id_remap.insert(original_id, created.id);
             }
+            created_subnet_ids.insert(created.id);
         }
 
         // Create ip_addresses with correct host_id
@@ -343,6 +349,13 @@ impl HostService {
                 acc
             });
 
+        // Live subnets for this host's network, loaded lazily to repair any
+        // ip_address whose subnet_id references no live subnet row — e.g. an old
+        // daemon reporting the server-seeded loopback subnet under a UUID this
+        // server never minted (see HostService::seed_loopback). Resolve-only:
+        // never creates a subnet; on no CIDR match the insert error surfaces.
+        let mut network_live_subnets: Option<Vec<Subnet>> = None;
+
         let mut created_ip_addresses = Vec::new();
         for mut ip_address in ip_addresses {
             ip_address.base.host_id = created_host.id;
@@ -350,6 +363,44 @@ impl HostService {
             // Remap subnet_id if the subnet was deduped to an existing one
             if let Some(&new_subnet_id) = subnet_id_remap.get(&ip_address.base.subnet_id) {
                 ip_address.base.subnet_id = new_subnet_id;
+            }
+
+            // Repair a dangling subnet_id (one referencing no live subnet row) by
+            // mapping the IP to the most-specific live subnet on the network that
+            // contains it. Guards the ip_addresses.subnet_id -> subnets FK against
+            // stale references (e.g. an old daemon reporting the server-seeded
+            // loopback subnet under a UUID this server re-minted; see seed_loopback).
+            //
+            // A subnet_id this call just created/deduped is known-good, so the
+            // common host (every IP references an in-request subnet) skips the
+            // live-subnet lookup entirely. The lookup is lazy and loads once.
+            if !created_subnet_ids.contains(&ip_address.base.subnet_id) {
+                if network_live_subnets.is_none() {
+                    network_live_subnets = Some(
+                        self.subnet_service
+                            .get_all(
+                                StorableFilter::<Subnet>::new_from_network_ids(&[created_host
+                                    .base
+                                    .network_id])
+                                .live(),
+                            )
+                            .await?,
+                    );
+                }
+                let live_subnets = network_live_subnets.as_ref().expect("loaded above");
+                if let Some(resolved) = resolve_dangling_subnet_id(
+                    live_subnets,
+                    ip_address.base.subnet_id,
+                    ip_address.base.ip_address,
+                ) {
+                    tracing::warn!(
+                        ip = %ip_address.base.ip_address,
+                        dangling_subnet_id = %ip_address.base.subnet_id,
+                        resolved_subnet_id = %resolved,
+                        "Repaired ip_address referencing a non-existent subnet via CIDR match"
+                    );
+                    ip_address.base.subnet_id = resolved;
+                }
             }
 
             if matches!(conflict_behavior, ConflictBehavior::Upsert) {
@@ -955,5 +1006,104 @@ impl HostService {
             created_services,
             created_interfaces,
         ))
+    }
+}
+
+/// Resolve a dangling `subnet_id` — one that references no live subnet row — to
+/// the most-specific live subnet on the network whose CIDR contains `ip`.
+///
+/// Returns `None` when `subnet_id` already matches a live subnet (no repair
+/// needed) or when no live subnet contains the IP (unresolvable — the caller
+/// leaves the reference untouched and lets the FK insert error surface). On
+/// overlapping CIDRs the longest prefix wins, so an IP is never mis-attributed
+/// to a broader subnet while a more-specific one also contains it.
+fn resolve_dangling_subnet_id(
+    live_subnets: &[Subnet],
+    subnet_id: Uuid,
+    ip: std::net::IpAddr,
+) -> Option<Uuid> {
+    if live_subnets.iter().any(|s| s.id == subnet_id) {
+        return None;
+    }
+    live_subnets
+        .iter()
+        .filter(|s| s.base.cidr.contains(&ip))
+        .max_by_key(|s| s.base.cidr.network_length())
+        .map(|s| s.id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::server::subnets::r#impl::base::SubnetBase;
+
+    fn subnet(id: Uuid, cidr: &str) -> Subnet {
+        Subnet {
+            id,
+            base: SubnetBase {
+                cidr: cidr.parse().expect("valid test CIDR"),
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+    }
+
+    fn ip(s: &str) -> std::net::IpAddr {
+        s.parse().expect("valid test IP")
+    }
+
+    #[test]
+    fn repairs_dangling_loopback_to_seeded_subnet() {
+        // The compat case: the daemon reports 127.0.0.1 under a loopback subnet id
+        // this server never minted; the live seeded loopback subnet is `seeded`.
+        let seeded = Uuid::new_v4();
+        let live = vec![
+            subnet(seeded, "127.0.0.0/8"),
+            subnet(Uuid::new_v4(), "172.25.0.0/28"),
+        ];
+        let dangling = Uuid::new_v4();
+        assert_eq!(
+            resolve_dangling_subnet_id(&live, dangling, ip("127.0.0.1")),
+            Some(seeded)
+        );
+    }
+
+    #[test]
+    fn valid_subnet_id_is_left_untouched() {
+        let valid = Uuid::new_v4();
+        let live = vec![subnet(valid, "127.0.0.0/8")];
+        // subnet_id already resolves to a live row -> no repair, no re-matching.
+        assert_eq!(
+            resolve_dangling_subnet_id(&live, valid, ip("127.0.0.1")),
+            None
+        );
+    }
+
+    #[test]
+    fn overlapping_cidrs_resolve_to_most_specific() {
+        let broad = Uuid::new_v4();
+        let specific = Uuid::new_v4();
+        // Both contain 10.0.0.5; the /24 must win over the /16.
+        let live = vec![
+            subnet(broad, "10.0.0.0/16"),
+            subnet(specific, "10.0.0.0/24"),
+        ];
+        let dangling = Uuid::new_v4();
+        assert_eq!(
+            resolve_dangling_subnet_id(&live, dangling, ip("10.0.0.5")),
+            Some(specific)
+        );
+    }
+
+    #[test]
+    fn unresolvable_ip_returns_none() {
+        // No live subnet contains the IP -> leave the reference so the insert
+        // error surfaces rather than silently mis-attributing the IP.
+        let live = vec![subnet(Uuid::new_v4(), "10.0.0.0/24")];
+        let dangling = Uuid::new_v4();
+        assert_eq!(
+            resolve_dangling_subnet_id(&live, dangling, ip("192.168.1.1")),
+            None
+        );
     }
 }

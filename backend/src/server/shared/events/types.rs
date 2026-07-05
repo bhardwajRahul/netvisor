@@ -262,6 +262,18 @@ pub enum BillingOperation {
     StripeCustomerCreated {
         customer_id: String,
     },
+    /// A self-hosted org's plan was reconciled to the entitlement implied by a
+    /// now-present commercial license (Community → CommercialSelfHosted). Emitted
+    /// by the startup reconciliation pass, not by Stripe. The org subscriber
+    /// writes the new plan; email is deliberately not sent (the email subscriber
+    /// allowlists discriminants and excludes this one) so a silent instance-level
+    /// upgrade doesn't spam org owners. Transient/event-only — never persisted to
+    /// a `BillingOperation` DB column, so it is intentionally absent from the
+    /// `DbEnumContributor` baseline (matches `StripeCustomerCreated` etc.).
+    LicenseReconciled {
+        from: BillingPlan,
+        to: BillingPlan,
+    },
 }
 
 impl BillingOperation {
@@ -280,7 +292,7 @@ impl BillingOperation {
             | Self::Paused { plan, .. }
             | Self::PaymentFailed { plan, .. }
             | Self::PaymentRecovered { plan, .. } => Some(plan),
-            Self::PlanChanged { to, .. } => Some(to),
+            Self::PlanChanged { to, .. } | Self::LicenseReconciled { to, .. } => Some(to),
             _ => None,
         }
     }
@@ -360,8 +372,13 @@ impl BillingOperation {
             //   `PaymentRecovered` — which fires inside `handle_invoice_paid`
             //   BEFORE `PaymentSucceeded` for the was-past-due case, so we
             //   lose nothing.
+            // `LicenseReconciled` swaps the org's plan (Community →
+            // CommercialSelfHosted) but implies no status transition — both are
+            // billing-exempt self-hosted plans. Like `PlanChanged`, the plan
+            // write is owned by the org subscriber's arm, not `plan_status`.
             Self::CheckoutStarted { .. }
             | Self::PlanChanged { .. }
+            | Self::LicenseReconciled { .. }
             | Self::TrialWillEnd { .. }
             | Self::FeatureLimitHit { .. }
             | Self::PaymentSucceeded { .. }
@@ -467,6 +484,34 @@ mod tests {
         let json = serde_json::to_string(&op).expect("serialize");
         let back: BillingOperation = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(op, back, "round-trip mismatch for {json}");
+    }
+
+    #[test]
+    fn license_reconciled_round_trip() {
+        use crate::server::billing::plans::{get_commercial_self_hosted_plan, get_community_plan};
+        round_trip(BillingOperation::LicenseReconciled {
+            from: get_community_plan(),
+            to: get_commercial_self_hosted_plan(),
+        });
+    }
+
+    #[test]
+    fn license_reconciled_plan_reports_target() {
+        use crate::server::billing::plans::{get_commercial_self_hosted_plan, get_community_plan};
+        use crate::server::shared::types::metadata::TypeMetadataProvider;
+        let op = BillingOperation::LicenseReconciled {
+            from: get_community_plan(),
+            to: get_commercial_self_hosted_plan(),
+        };
+        // PostHog labels `plan_type` off `resulting_plan_name()` → must be the
+        // upgraded target, not null, so analytics don't clobber the plan.
+        assert_eq!(op.plan(), Some(&get_commercial_self_hosted_plan()));
+        assert_eq!(
+            op.resulting_plan_name(),
+            Some(get_commercial_self_hosted_plan().name())
+        );
+        // Plan swap, not a status transition.
+        assert_eq!(op.implied_status(), None);
     }
 
     #[test]

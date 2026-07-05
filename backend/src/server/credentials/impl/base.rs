@@ -3,7 +3,6 @@ use crate::server::shared::entities::ChangeTriggersTopologyStaleness;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
-use std::net::IpAddr;
 use strum::IntoDiscriminant;
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -23,11 +22,6 @@ pub struct CredentialBase {
     ))]
     pub name: String,
     pub credential_type: CredentialType,
-    /// Ephemeral bootstrap IPs for pre-discovery credential resolution.
-    /// Cleared automatically when the next scan dispatches.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[schema(value_type = Option<Vec<String>>)]
-    pub target_ips: Option<Vec<IpAddr>>,
     #[serde(default = "default_tags")]
     #[schema(required)]
     pub tags: Vec<Uuid>,
@@ -48,7 +42,6 @@ impl PartialEq for CredentialBase {
         self.organization_id == other.organization_id
             && self.name == other.name
             && self.credential_type == other.credential_type
-            && self.target_ips == other.target_ips
             && self.tags == other.tags
             && self.assigned_network_ids == other.assigned_network_ids
             && self.host_assignments == other.host_assignments
@@ -67,7 +60,6 @@ impl Default for CredentialBase {
                     value: SecretString::from(String::new()),
                 },
             },
-            target_ips: None,
             tags: Vec::new(),
             assigned_network_ids: Vec::new(),
             host_assignments: Vec::new(),

@@ -66,6 +66,10 @@ export interface CredentialTypeMetadata {
 	single_endpoint_per_host?: boolean;
 	/** Name of the associated ServiceDefinition (e.g. "SNMP", "Docker") */
 	associated_service?: string;
+	/** Minimum daemon version (semver) that can receive this credential type. The
+	 *  discovery credential picker compares the selected daemon's `version` against
+	 *  this to disable too-new types (and to build the requirement tooltip). */
+	minimum_daemon_version?: string;
 	/** Whether the associated service has a logo */
 	has_logo?: boolean;
 	/** Whether the logo needs a white background */
@@ -180,6 +184,7 @@ export interface PermissionsMetadata {
 export interface SubnetTypeMetadata {
 	network_scan_discovery_eligible: boolean;
 	is_for_containers: boolean;
+	is_container_bridge: boolean;
 	show_label: boolean;
 	hide_from_subnet_list: boolean;
 }

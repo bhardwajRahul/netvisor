@@ -36,24 +36,19 @@ use std::sync::{Arc, OnceLock};
 use strum::IntoDiscriminant;
 use uuid::Uuid;
 
-/// The set of things a credential targets, normalized across the three storage
-/// representations (network junction, host junction, bootstrap target IPs) so two
-/// credentials can be tested for overlap. Used to enforce the single-endpoint
-/// invariant — see [`CredentialService::find_single_endpoint_conflict`].
+/// The set of things a credential targets, normalized across the network and host
+/// junction tables so two credentials can be tested for overlap. Used to enforce
+/// the single-endpoint invariant — see
+/// [`CredentialService::find_single_endpoint_conflict`].
 #[derive(Debug, Default)]
 struct CredentialTargets {
     networks: HashSet<Uuid>,
     /// host_id → the IPs it is scoped to (`None` = the whole host).
     hosts: Vec<(Uuid, Option<HashSet<Uuid>>)>,
-    ips: HashSet<IpAddr>,
 }
 
 impl CredentialTargets {
-    fn build(
-        networks: &[Uuid],
-        host_assignments: &[CredentialHostAssignment],
-        target_ips: Option<&[IpAddr]>,
-    ) -> Self {
+    fn build(networks: &[Uuid], host_assignments: &[CredentialHostAssignment]) -> Self {
         Self {
             networks: networks.iter().copied().collect(),
             hosts: host_assignments
@@ -67,9 +62,6 @@ impl CredentialTargets {
                     )
                 })
                 .collect(),
-            ips: target_ips
-                .map(|ips| ips.iter().copied().collect())
-                .unwrap_or_default(),
         }
     }
 
@@ -86,9 +78,6 @@ impl CredentialTargets {
     /// their IP scopes intersect.
     fn overlaps(&self, other: &Self) -> bool {
         if !self.networks.is_disjoint(&other.networks) {
-            return true;
-        }
-        if !self.ips.is_disjoint(&other.ips) {
             return true;
         }
         self.hosts.iter().any(|(h1, s1)| {
@@ -358,16 +347,28 @@ impl CredentialService {
         daemon_host_id: Uuid,
         targets: Vec<IntegrationTarget>,
     ) -> Result<Vec<IntegrationTarget>, Error> {
-        let assignments: Vec<CredentialAssignment> = targets
-            .iter()
-            .filter(|t| Self::targets_daemon_host(t))
-            .map(|t| CredentialAssignment {
-                credential_id: t.credential_id(),
-                ip_address_ids: None,
-            })
-            .collect();
+        if targets.iter().any(Self::targets_daemon_host) {
+            // Daemon-host credentials (local sockets, localhost proxies) connect over the
+            // loopback, so scope them to the daemon host's loopback IP — not `None`, which
+            // fans the credential out to every interface on the host (LAN, docker/podman
+            // bridges, …). `seed_loopback` guarantees the loopback IP exists by this point.
+            let loopback_ids = self.host_loopback_ip_ids(&daemon_host_id).await;
+            if loopback_ids.is_empty() {
+                tracing::warn!(
+                    daemon_host_id = %daemon_host_id,
+                    "No loopback IP on daemon host; daemon-host credentials will not be IP-scoped",
+                );
+            }
+            let ip_address_ids = (!loopback_ids.is_empty()).then_some(loopback_ids);
 
-        if !assignments.is_empty() {
+            let assignments: Vec<CredentialAssignment> = targets
+                .iter()
+                .filter(|t| Self::targets_daemon_host(t))
+                .map(|t| CredentialAssignment {
+                    credential_id: t.credential_id(),
+                    ip_address_ids: ip_address_ids.clone(),
+                })
+                .collect();
             self.merge_host_credentials(&daemon_host_id, &assignments)
                 .await?;
         }
@@ -376,6 +377,26 @@ impl CredentialService {
             .into_iter()
             .filter(|t| !Self::targets_daemon_host(t))
             .collect())
+    }
+
+    /// Loopback IP-address ids for a host (empty if none / unresolved). Daemon-host
+    /// credentials are scoped to these so a local socket/proxy only targets 127.0.0.1
+    /// instead of every interface on the daemon host.
+    async fn host_loopback_ip_ids(&self, host_id: &Uuid) -> Vec<Uuid> {
+        let Some(host_service) = self.host_service.get() else {
+            return Vec::new();
+        };
+        match host_service.get_ip_addresses_for_host(host_id).await {
+            Ok(ips) => ips
+                .into_iter()
+                .filter(|ip| ip.base.ip_address.is_loopback())
+                .map(|ip| ip.id)
+                .collect(),
+            Err(e) => {
+                tracing::warn!(host_id = %host_id, error = ?e, "Failed to resolve daemon host loopback IP");
+                Vec::new()
+            }
+        }
     }
 
     /// Get the network IDs a credential is assigned to (reverse lookup).
@@ -447,7 +468,7 @@ impl CredentialService {
     /// at 127.0.0.1). Returns the name of the first conflicting credential, if any.
     ///
     /// `candidate` carries its intended assignments in `base` (network ids, host
-    /// assignments, target_ips) — call this before persisting. Try-many
+    /// assignments) — call this before persisting. Try-many
     /// integrations (e.g. SNMP, multiple communities per network) are unconstrained.
     pub async fn find_single_endpoint_conflict(
         &self,
@@ -476,8 +497,7 @@ impl CredentialService {
             return Ok(None);
         }
 
-        // Hydrate the others' junction-backed assignments (target_ips is already
-        // loaded as a column on the credential rows).
+        // Hydrate the others' junction-backed assignments.
         let other_ids: Vec<Uuid> = others.iter().map(|c| c.id).collect();
         let net_map = self.get_network_ids_for_credentials(&other_ids).await?;
         let host_map = self
@@ -487,7 +507,6 @@ impl CredentialService {
         let cand = CredentialTargets::build(
             &candidate.base.assigned_network_ids,
             &candidate.base.host_assignments,
-            candidate.base.target_ips.as_deref(),
         );
         for other in &others {
             let empty_nets = Vec::new();
@@ -495,7 +514,6 @@ impl CredentialService {
             let other_targets = CredentialTargets::build(
                 net_map.get(&other.id).unwrap_or(&empty_nets),
                 host_map.get(&other.id).unwrap_or(&empty_hosts),
-                other.base.target_ips.as_deref(),
             );
             if single_endpoint_targets_conflict(
                 ct,
@@ -679,6 +697,7 @@ impl CredentialService {
         &self,
         network_id: Uuid,
         integration_targets: &[IntegrationTarget],
+        daemon_version: Option<&semver::Version>,
     ) -> Result<Vec<CredentialMapping<CredentialQueryPayload>>, Error> {
         let host_service = self
             .host_service
@@ -775,6 +794,15 @@ impl CredentialService {
             };
             apply_integration_target(&mut mappings_by_type, target, &cred.base.credential_type);
         }
+
+        // Version gate: never dispatch a credential mapping the target daemon can't
+        // deserialize. Filter on the `CredentialType` discriminant (the HashMap key,
+        // 7-way) BEFORE the lossy collapse to the 5-way `CredentialQueryPayload` wire
+        // tag — SnmpV1/V3 have a higher floor than SnmpV2c. A missing version is
+        // treated conservatively (keep only the 0.16.2 wire floor). This protects the
+        // installed base of already-released daemons that predate `serde(other)`.
+        mappings_by_type
+            .retain(|discriminant, _| discriminant.compatible_with_daemon(daemon_version));
 
         Ok(mappings_by_type.into_values().collect())
     }
@@ -873,11 +901,6 @@ fn push_unique_override(
 mod single_endpoint_tests {
     use super::*;
     use crate::server::credentials::r#impl::types::CredentialHostAssignment;
-    use std::net::{IpAddr, Ipv4Addr};
-
-    fn ip(n: u8) -> IpAddr {
-        IpAddr::V4(Ipv4Addr::new(127, 0, 0, n))
-    }
 
     fn host(id: Uuid, ips: Option<Vec<Uuid>>) -> CredentialHostAssignment {
         CredentialHostAssignment {
@@ -888,32 +911,24 @@ mod single_endpoint_tests {
 
     #[test]
     fn disjoint_targets_do_not_overlap() {
-        let a = CredentialTargets::build(&[Uuid::nil()], &[], Some(&[ip(1)]));
-        let b = CredentialTargets::build(&[Uuid::from_u128(9)], &[], Some(&[ip(2)]));
+        let a = CredentialTargets::build(&[Uuid::nil()], &[]);
+        let b = CredentialTargets::build(&[Uuid::from_u128(9)], &[]);
         assert!(!a.overlaps(&b));
     }
 
     #[test]
     fn shared_network_overlaps() {
         let net = Uuid::from_u128(1);
-        let a = CredentialTargets::build(&[net], &[], None);
-        let b = CredentialTargets::build(&[net], &[], None);
-        assert!(a.overlaps(&b));
-    }
-
-    #[test]
-    fn shared_target_ip_overlaps_including_daemon_host() {
-        // Two Docker credentials both pinned to the daemon host (127.0.0.1).
-        let a = CredentialTargets::build(&[], &[], Some(&[ip(1)]));
-        let b = CredentialTargets::build(&[], &[], Some(&[ip(1)]));
+        let a = CredentialTargets::build(&[net], &[]);
+        let b = CredentialTargets::build(&[net], &[]);
         assert!(a.overlaps(&b));
     }
 
     #[test]
     fn same_host_whole_host_overlaps() {
         let h = Uuid::from_u128(5);
-        let a = CredentialTargets::build(&[], &[host(h, None)], None);
-        let b = CredentialTargets::build(&[], &[host(h, Some(vec![Uuid::from_u128(2)]))], None);
+        let a = CredentialTargets::build(&[], &[host(h, None)]);
+        let b = CredentialTargets::build(&[], &[host(h, Some(vec![Uuid::from_u128(2)]))]);
         // One side covers the whole host → overlaps regardless of the other's scope.
         assert!(a.overlaps(&b));
     }
@@ -921,8 +936,8 @@ mod single_endpoint_tests {
     #[test]
     fn same_host_disjoint_ip_scopes_do_not_overlap() {
         let h = Uuid::from_u128(5);
-        let a = CredentialTargets::build(&[], &[host(h, Some(vec![Uuid::from_u128(1)]))], None);
-        let b = CredentialTargets::build(&[], &[host(h, Some(vec![Uuid::from_u128(2)]))], None);
+        let a = CredentialTargets::build(&[], &[host(h, Some(vec![Uuid::from_u128(1)]))]);
+        let b = CredentialTargets::build(&[], &[host(h, Some(vec![Uuid::from_u128(2)]))]);
         assert!(!a.overlaps(&b));
     }
 
@@ -930,19 +945,15 @@ mod single_endpoint_tests {
     fn same_host_intersecting_ip_scopes_overlap() {
         let h = Uuid::from_u128(5);
         let shared = Uuid::from_u128(7);
-        let a = CredentialTargets::build(
-            &[],
-            &[host(h, Some(vec![shared, Uuid::from_u128(1)]))],
-            None,
-        );
-        let b = CredentialTargets::build(&[], &[host(h, Some(vec![shared]))], None);
+        let a = CredentialTargets::build(&[], &[host(h, Some(vec![shared, Uuid::from_u128(1)]))]);
+        let b = CredentialTargets::build(&[], &[host(h, Some(vec![shared]))]);
         assert!(a.overlaps(&b));
     }
 
     #[test]
     fn different_hosts_do_not_overlap() {
-        let a = CredentialTargets::build(&[], &[host(Uuid::from_u128(1), None)], None);
-        let b = CredentialTargets::build(&[], &[host(Uuid::from_u128(2), None)], None);
+        let a = CredentialTargets::build(&[], &[host(Uuid::from_u128(1), None)]);
+        let b = CredentialTargets::build(&[], &[host(Uuid::from_u128(2), None)]);
         assert!(!a.overlaps(&b));
     }
 

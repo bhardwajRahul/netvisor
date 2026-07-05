@@ -59,7 +59,6 @@ impl Storable for Credential {
                     organization_id,
                     name,
                     credential_type,
-                    target_ips,
                     tags: _,                 // Stored in entity_tags junction table
                     assigned_network_ids: _, // Stored in network_credentials junction table
                     host_assignments: _,     // Stored in host_credentials junction table
@@ -72,7 +71,6 @@ impl Storable for Credential {
                 "organization_id",
                 "name",
                 "credential_type",
-                "target_ips",
                 "created_at",
                 "updated_at",
             ],
@@ -81,7 +79,6 @@ impl Storable for Credential {
                 SqlValue::Uuid(organization_id),
                 SqlValue::String(name),
                 SqlValue::CredentialType(credential_type),
-                SqlValue::OptionalIpAddrArray(target_ips),
                 SqlValue::Timestamp(created_at),
                 SqlValue::Timestamp(updated_at),
             ],
@@ -92,10 +89,6 @@ impl Storable for Credential {
         let credential_type_json: serde_json::Value = row.get("credential_type");
         let credential_type: CredentialType = serde_json::from_value(credential_type_json)?;
 
-        // Read target_ips as Vec<IpNetwork> (INET[]) and convert to Vec<IpAddr>
-        let target_ips: Option<Vec<ipnetwork::IpNetwork>> = row.get("target_ips");
-        let target_ips = target_ips.map(|ips| ips.into_iter().map(|n| n.ip()).collect());
-
         Ok(Credential {
             id: row.get("id"),
             created_at: row.get("created_at"),
@@ -104,7 +97,6 @@ impl Storable for Credential {
                 organization_id: row.get("organization_id"),
                 name: row.get("name"),
                 credential_type,
-                target_ips,
                 tags: Vec::new(), // Hydrated from entity_tags junction table
                 assigned_network_ids: Vec::new(), // Hydrated from network_credentials junction table
                 host_assignments: Vec::new(),     // Hydrated from host_credentials junction table

@@ -1,5 +1,23 @@
 [
   {
+    "category": "ContainerRuntime",
+    "color": "Blue",
+    "description": "Daemonless container runtime",
+    "discovery_pattern": "Client probe Podman succeeded",
+    "logo_needs_white_background": false,
+    "logo_url": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/podman.svg",
+    "name": "Podman"
+  },
+  {
+    "category": "ContainerRuntime",
+    "color": "Blue",
+    "description": "Docker",
+    "discovery_pattern": "Client probe Docker succeeded",
+    "logo_needs_white_background": false,
+    "logo_url": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/docker.svg",
+    "name": "Docker"
+  },
+  {
     "category": "Media",
     "color": "Blue",
     "description": "User invitation and management system for Jellyfin, Plex, Emby etc",
@@ -1341,13 +1359,13 @@
     "name": "Portainer"
   },
   {
-    "category": "ContainerRuntime",
+    "category": "Container",
     "color": "Blue",
-    "description": "Daemonless container runtime",
-    "discovery_pattern": "No match pattern provided",
+    "description": "A generic podman container",
+    "discovery_pattern": "All of: (Service is running in a container, A custom match pattern evaluated at runtime)",
     "logo_needs_white_background": false,
-    "logo_url": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/podman.svg",
-    "name": "Podman"
+    "logo_url": "",
+    "name": "Podman Container"
   },
   {
     "category": "Orchestrator",
@@ -1404,19 +1422,10 @@
     "name": "Docker Swarm"
   },
   {
-    "category": "ContainerRuntime",
-    "color": "Blue",
-    "description": "Docker",
-    "discovery_pattern": "Client probe Docker succeeded",
-    "logo_needs_white_background": false,
-    "logo_url": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/docker.svg",
-    "name": "Docker"
-  },
-  {
     "category": "Container",
     "color": "Blue",
     "description": "A generic docker container",
-    "discovery_pattern": "All of: (Service is running in a docker container, A custom match pattern evaluated at runtime)",
+    "discovery_pattern": "All of: (Service is running in a container, A custom match pattern evaluated at runtime)",
     "logo_needs_white_background": false,
     "logo_url": "",
     "name": "Docker Container"

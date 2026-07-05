@@ -210,7 +210,7 @@ fn default_container_rules() -> HashMap<TopologyView, Vec<IdentifiedRule<Contain
     // Build from applicable_views: for each rule type, add it to every view it applies to
     let all_rules: Vec<IdentifiedRule<ContainerRule>> = vec![
         IdentifiedRule::new(BySubnet),
-        IdentifiedRule::new(MergeDockerBridges),
+        IdentifiedRule::new(MergeContainerBridges),
         IdentifiedRule::new(ByApplication { tag_ids: vec![] }),
         IdentifiedRule::new(ByHost),
     ];

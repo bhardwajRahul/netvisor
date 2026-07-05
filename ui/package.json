@@ -1,7 +1,7 @@
 {
 	"name": "scanopy-ui",
 	"private": true,
-	"version": "0.17.2",
+	"version": "0.17.3",
 	"type": "module",
 	"scripts": {
 		"dev": "vite dev",
@@ -27,6 +27,7 @@
 		"@types/canvas-confetti": "^1.9.0",
 		"@types/node": "^25.0.8",
 		"@types/prismjs": "^1.26.5",
+		"@types/semver": "^7.7.1",
 		"autoprefixer": "^10.4.21",
 		"baseline-browser-mapping": "^2.8.32",
 		"eslint": "^10.0.1",
@@ -90,6 +91,7 @@
 		"openapi-typescript": "^7.10.1",
 		"postcss": "^8.5.15",
 		"posthog-js": "^1.306.0",
+		"semver": "^7.7.4",
 		"svelte-forms": "^2.3.1",
 		"svelte-prism": "^1.1.6",
 		"svelte-table": "^0.6.5",

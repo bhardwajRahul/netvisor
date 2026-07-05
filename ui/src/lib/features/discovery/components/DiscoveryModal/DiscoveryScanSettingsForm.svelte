@@ -73,7 +73,7 @@
 	// Find interfaced subnets that would be truncated by the cutoff
 	let truncatedInterfacedSubnets = $derived.by(() => {
 		if (!daemon) return [];
-		const interfacedIds = daemon.capabilities.interfaced_subnet_ids;
+		const interfacedIds = daemon.interfaced_subnet_ids;
 		return subnetsData
 			.filter((s) => interfacedIds.includes(s.id))
 			.filter((s) => {

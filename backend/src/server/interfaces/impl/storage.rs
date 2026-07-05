@@ -428,6 +428,15 @@ impl Entity for Interface {
         if existing.base.if_name.is_some() && self.base.if_name.is_none() {
             self.base.if_name = existing.base.if_name.clone();
         }
+        // Preserve the server-derived L2 neighbor. Daemons never send `neighbor` —
+        // it is resolved server-side after a scan completes (resolve_lldp_links /
+        // resolve_fdb_links). Without this, every re-scan overwrites the resolved
+        // neighbor with the daemon's None, tearing down the whole L2 topology until
+        // the post-completion re-resolution pass rebuilds it (which races the client
+        // refetch and only restores fully-resolved ports). See GH #649.
+        if existing.base.neighbor.is_some() && self.base.neighbor.is_none() {
+            self.base.neighbor = existing.base.neighbor.clone();
+        }
     }
 }
 
@@ -580,6 +589,39 @@ mod tests {
             incoming.base.mac_address, existing.base.mac_address,
             "MAC address should be treated as immutable once captured from SNMP ifPhysAddress."
         );
+    }
+
+    #[test]
+    fn preserve_immutable_fields_keeps_existing_neighbor_when_incoming_is_none() {
+        // GH #649: daemons never send `neighbor` (it is resolved server-side after a
+        // scan). Before the fix, a re-scan's incoming None wiped the resolved neighbor,
+        // dropping the host off the L2 topology map every scan. It must survive.
+        let mut existing = make_interface(5, Some("eth0"), None);
+        existing.base.neighbor = Some(Neighbor::Interface(Uuid::new_v4()));
+        let mut incoming = make_interface(5, Some("eth0"), None);
+        assert!(incoming.base.neighbor.is_none());
+
+        incoming.preserve_immutable_fields(&existing);
+
+        assert_eq!(
+            incoming.base.neighbor, existing.base.neighbor,
+            "Server-resolved L2 neighbor must survive a re-scan that reports neighbor=None; otherwise the L2 topology is torn down on every scan."
+        );
+    }
+
+    #[test]
+    fn preserve_immutable_fields_allows_neighbor_to_be_updated_when_incoming_has_value() {
+        // Re-resolution must still be able to change the neighbor: an incoming Some
+        // wins over the existing value.
+        let mut existing = make_interface(5, Some("eth0"), None);
+        existing.base.neighbor = Some(Neighbor::Host(Uuid::new_v4()));
+        let new_neighbor = Neighbor::Interface(Uuid::new_v4());
+        let mut incoming = make_interface(5, Some("eth0"), None);
+        incoming.base.neighbor = Some(new_neighbor.clone());
+
+        incoming.preserve_immutable_fields(&existing);
+
+        assert_eq!(incoming.base.neighbor, Some(new_neighbor));
     }
 
     #[test]

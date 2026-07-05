@@ -283,3 +283,48 @@ impl DaemonApiClient {
         &self.config_store
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::server::vlans::handlers::{VlanDiscoveryResponse, VlanDiscoveryResponseItem};
+    use uuid::Uuid;
+
+    /// `execute` unwraps the `ApiResponse` envelope and hands the call site the
+    /// inner `data`, so a `post`/`get` type parameter must be the INNER payload
+    /// type — never `ApiResponse<Inner>`. Wrapping it made the VLAN upsert try to
+    /// parse a second envelope out of `{"vlans":[...]}`, failing with
+    /// `missing field 'success'` (GH #649). This pins the contract for the whole
+    /// deserialize path, independent of any single call site.
+    #[test]
+    fn execute_unwrap_contract_uses_inner_payload_type() {
+        // The real body the server sends for POST /api/v1/vlans/discovery.
+        let server_body = ApiResponse::success(VlanDiscoveryResponse {
+            vlans: vec![VlanDiscoveryResponseItem {
+                vlan_number: 20,
+                id: Uuid::nil(),
+            }],
+        });
+        let body_json = serde_json::to_value(&server_body).unwrap();
+
+        // Mirror `execute`: parse the envelope, then hand the call site `.data`.
+        let envelope: ApiResponse<serde_json::Value> = serde_json::from_value(body_json).unwrap();
+        let data = envelope.data.expect("server sends data");
+
+        // Correct call-site type (the bare inner) deserializes cleanly.
+        let ok: Result<VlanDiscoveryResponse, _> = serde_json::from_value(data.clone());
+        assert!(
+            ok.is_ok(),
+            "inner payload must deserialize as VlanDiscoveryResponse"
+        );
+        assert_eq!(ok.unwrap().vlans[0].vlan_number, 20);
+
+        // The old buggy double-envelope type fails exactly as the reporter saw.
+        let bad: Result<ApiResponse<VlanDiscoveryResponse>, _> = serde_json::from_value(data);
+        let err = bad.expect_err("double-envelope must not parse the inner payload");
+        assert!(
+            err.to_string().contains("missing field `success`"),
+            "expected the GH #649 error, got: {err}"
+        );
+    }
+}

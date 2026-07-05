@@ -261,8 +261,8 @@
   },
   {
     "id": "Stack",
-    "name": "Docker stack",
-    "description": "Elements grouped by Docker Compose project",
+    "name": "Stack",
+    "description": "Workloads deployed together as one unit",
     "category": null,
     "icon": "box",
     "color": "Blue",

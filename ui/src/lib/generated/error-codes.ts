@@ -30,6 +30,8 @@ export const ERROR_CODES = {
 	auth_demo_mode: 'This action is disabled in demo mode',
 	auth_password_login_disabled: 'Password login is disabled',
 	auth_registration_disabled: 'User registration is disabled',
+	auth_org_limit_reached:
+		'This instance already has an organization. Ask an admin to invite you instead of creating a new account.',
 	auth_email_verification_required: 'Please verify your email to access this feature',
 	license_locked: 'Your license has expired or is invalid. The server is in read-only mode.',
 	entity_not_found: "{entity} with ID '{id}' not found",
@@ -108,6 +110,7 @@ export interface ErrorParams {
 	auth_demo_mode: Record<string, never>;
 	auth_password_login_disabled: Record<string, never>;
 	auth_registration_disabled: Record<string, never>;
+	auth_org_limit_reached: Record<string, never>;
 	auth_email_verification_required: Record<string, never>;
 	license_locked: Record<string, never>;
 	entity_not_found: { entity: string | number; id: string | number };

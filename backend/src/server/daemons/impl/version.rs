@@ -148,6 +148,11 @@ pub enum DeprecationSeverity {
     Info,
     Warning,
     Critical,
+    /// Forward-compat: a severity a newer server emits that this daemon doesn't
+    /// know. `#[serde(other)]` absorbs it (treated as an ordinary warning when
+    /// logged) rather than failing to deserialize the whole `ServerCapabilities`.
+    #[serde(other)]
+    Unknown,
 }
 
 /// Daemon version status including health and any warnings

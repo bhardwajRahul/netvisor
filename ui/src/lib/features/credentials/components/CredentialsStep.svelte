@@ -9,10 +9,7 @@
 		useBulkCreateCredentialsMutation,
 		useDeleteCredentialMutation
 	} from '$lib/features/credentials/queries';
-	import {
-		type Credential,
-		isDaemonHostOnly as isDaemonHostOnlyTargets
-	} from '$lib/features/credentials/types/base';
+	import { type Credential } from '$lib/features/credentials/types/base';
 	import CredentialTypeSelectStep from './CredentialTypeSelectStep.svelte';
 	import CredentialWizardStep, {
 		type PendingCredential as PendingCredentialType
@@ -41,6 +38,12 @@
 		localAutoMode?: 'interactive' | 'fixed';
 		/** In `fixed` mode, the auto-local type ids the target daemon actually has. */
 		fixedCapabilityTypeIds?: string[];
+		/** Version of the single daemon this picker targets. A credential type card is
+		 *  disabled when this version is older than the type's `minimum_daemon_version`.
+		 *  Absent/null ⇒ no version gate (e.g. create-daemon flow). */
+		daemonVersion?: string | null;
+		/** Name of that daemon, used in the version-requirement tooltip. */
+		daemonName?: string | null;
 	}
 
 	let {
@@ -51,27 +54,15 @@
 		subStep = $bindable('typeSelect'),
 		selectedTypeIds = $bindable([]),
 		localAutoMode = 'interactive',
-		fixedCapabilityTypeIds = []
+		fixedCapabilityTypeIds = [],
+		daemonVersion = null,
+		daemonName = null
 	}: Props = $props();
 
 	const bulkCreateCredentialsMutation = useBulkCreateCredentialsMutation();
 	const deleteCredentialMutation = useDeleteCredentialMutation();
 
 	let credentialWizardRef: ReturnType<typeof CredentialWizardStep> | undefined = $state();
-
-	function isDaemonHostOnly(id: string): boolean {
-		return isDaemonHostOnlyTargets(credentialTypes.getMetadata(id)?.targets);
-	}
-	function daemonHostOnlyTypeIds(): string[] {
-		return credentialTypes
-			.getItems()
-			.filter((t) => isDaemonHostOnlyTargets(t.metadata?.targets))
-			.map((t) => t.id);
-	}
-
-	// Daemon-host-only cards (the local socket) are read-only in `fixed` mode (an installed
-	// daemon's capabilities can't be toggled from here).
-	let lockedTypeIds = $derived(localAutoMode === 'fixed' ? daemonHostOnlyTypeIds() : []);
 
 	// In `fixed` mode the daemon's existing capabilities claim their integration's
 	// daemon host, so a single-endpoint credential can't also target it.
@@ -83,18 +74,13 @@
 			: []
 	);
 
-	// Move from the Integrations grid to the wizard, seeding configurable selections.
-	// In `interactive` mode, selected local-auto ids are seeded too (they show as
-	// info entries and drive the install flag). In `fixed` mode they never enter the
-	// wizard (the daemon already has them).
+	// Move from the Integrations grid to the wizard, seeding every selected type —
+	// including daemon-host-only sockets, which are configured and assigned to the
+	// daemon host like any other credential (no special path).
 	async function continueToWizard() {
 		subStep = 'wizard';
 		await tick();
-		const seed =
-			localAutoMode === 'fixed'
-				? selectedTypeIds.filter((id) => !isDaemonHostOnly(id))
-				: selectedTypeIds;
-		credentialWizardRef?.addTypes(seed);
+		credentialWizardRef?.addTypes(selectedTypeIds);
 	}
 
 	function backToTypeSelect() {
@@ -159,7 +145,8 @@
 	<div class="flex min-h-0 flex-1 flex-col">
 		<CredentialTypeSelectStep
 			bind:selectedTypeIds
-			{lockedTypeIds}
+			{daemonVersion}
+			{daemonName}
 			forceCheckedTypeIds={localAutoMode === 'fixed' ? fixedCapabilityTypeIds : []}
 		/>
 	</div>
@@ -171,6 +158,8 @@
 			{description}
 			bind:pendingCredentials
 			{claimedDaemonHostIntegrations}
+			{daemonVersion}
+			{daemonName}
 			onRemoveCredential={handleRemoveCredential}
 		/>
 	</div>

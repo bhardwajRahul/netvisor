@@ -1,13 +1,11 @@
 use itertools::Itertools;
 use petgraph::{Graph, graph::NodeIndex};
 use std::collections::{HashMap, HashSet};
-use strum::IntoDiscriminant;
 use uuid::Uuid;
 
 use crate::server::{
     dependencies::r#impl::{base::Dependency, types::DependencyType},
     interfaces::r#impl::base::Neighbor,
-    subnets::r#impl::types::{SubnetType, SubnetTypeDiscriminants},
     topology::{
         service::context::TopologyContext,
         types::{
@@ -89,7 +87,7 @@ impl EdgeBuilder {
             .filter_map(|s| {
                 let host = ctx.get_host_by_id(s.base.host_id)?;
                 let origin_ip_address =
-                    ctx.get_first_non_docker_bridge_ip_address_for_host(host.id)?;
+                    ctx.get_first_non_container_bridge_ip_address_for_host(host.id)?;
                 Some((s, host, origin_ip_address))
             })
             .flat_map(|(s, host, origin_ip_address)| {
@@ -98,7 +96,7 @@ impl EdgeBuilder {
                     .iter()
                     .filter_map(|i| ctx.get_subnet_by_id(i.base.subnet_id))
                     .filter_map(|s| {
-                        if s.base.subnet_type == SubnetType::DockerBridge {
+                        if s.base.subnet_type.is_container_bridge() {
                             return Some(s.id);
                         }
                         None
@@ -270,10 +268,10 @@ impl EdgeBuilder {
             .flat_map(|host| {
                 let host_interfaces = ctx.get_ip_addresses_for_host(host.id);
 
-                // Use the first non-DockerBridge interface as the origin
-                // This ensures we don't try to create edges FROM a DockerBridge interface
+                // Use the first non-container-bridge interface as the origin
+                // This ensures we don't try to create edges FROM a container-bridge interface
                 if let Some(origin_ip_address) =
-                    ctx.get_first_non_docker_bridge_ip_address_for_host(host.id)
+                    ctx.get_first_non_container_bridge_ip_address_for_host(host.id)
                 {
                     host_interfaces
                         .iter()
@@ -284,15 +282,13 @@ impl EdgeBuilder {
                             let target_subnet = ctx.get_subnet_by_id(ip_address.base.subnet_id);
 
                             if let Some(source_subnet) = source_subnet
-                                && source_subnet.base.subnet_type.discriminant()
-                                    == SubnetTypeDiscriminants::DockerBridge
+                                && source_subnet.base.subnet_type.is_container_bridge()
                             {
                                 return None;
                             }
 
                             if let Some(target_subnet) = target_subnet
-                                && target_subnet.base.subnet_type.discriminant()
-                                    == SubnetTypeDiscriminants::DockerBridge
+                                && target_subnet.base.subnet_type.is_container_bridge()
                             {
                                 return None;
                             }

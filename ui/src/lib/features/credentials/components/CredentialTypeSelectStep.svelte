@@ -4,9 +4,11 @@
 	import ListSelectItem from '$lib/shared/components/forms/selection/ListSelectItem.svelte';
 	import { CredentialTypeDisplay } from '$lib/shared/components/forms/selection/display/CredentialTypeDisplay.svelte';
 	import { tooltip } from '$lib/shared/actions/tooltip';
+	import { daemonTooOldForCredential } from '$lib/features/credentials/utils/versionGate';
 	import {
 		daemons_integrationsSubtitle,
-		credentials_lockedDaemonCapability
+		credentials_lockedDaemonCapability,
+		credentials_requiresDaemonVersion
 	} from '$lib/paraglide/messages';
 
 	type CredType = TypedTypeMetadata<CredentialTypeMetadata>;
@@ -21,12 +23,22 @@
 		/** Type ids always rendered checked, independent of `selectedTypeIds` (used
 		 *  for locked cards reflecting a fixed capability). */
 		forceCheckedTypeIds?: string[];
+		/** Version of the single daemon this picker targets (the discovery modal's bound
+		 *  daemon). A card is disabled when this version is older than the credential
+		 *  type's `minimum_daemon_version`. `null`/absent (e.g. create-daemon flow, where
+		 *  no daemon is connected yet) ⇒ no version gate. Assignment surfaces that span
+		 *  many daemons don't pass this — those are handled by the backend dispatch filter. */
+		daemonVersion?: string | null;
+		/** Name of that daemon, used in the version-requirement tooltip. */
+		daemonName?: string | null;
 	}
 
 	let {
 		selectedTypeIds = $bindable([]),
 		lockedTypeIds = [],
-		forceCheckedTypeIds = []
+		forceCheckedTypeIds = [],
+		daemonVersion = null,
+		daemonName = null
 	}: Props = $props();
 
 	// One flat list of cards: every user-selectable type plus the auto-local
@@ -71,8 +83,36 @@
 		return lockedTypeIds.includes(id);
 	}
 
-	function toggleType(id: string) {
-		if (isLocked(id)) return;
+	// The target daemon is too old for this credential type when its version is below
+	// the type's `minimum_daemon_version` floor.
+	function isIncompatible(type: CredType): boolean {
+		return daemonTooOldForCredential(type.metadata?.minimum_daemon_version, daemonVersion);
+	}
+
+	function isDisabled(type: CredType): boolean {
+		return isLocked(type.id) || isIncompatible(type);
+	}
+
+	// Disabled reason for the hover tooltip: version-incompatibility takes
+	// precedence over a fixed-capability lock (a too-old daemon can't run it at all).
+	function disabledReason(type: CredType): string | undefined {
+		if (isIncompatible(type)) {
+			return credentials_requiresDaemonVersion({
+				version: type.metadata?.minimum_daemon_version ?? '',
+				name: daemonName ?? ''
+			});
+		}
+		if (isLocked(type.id)) {
+			return credentials_lockedDaemonCapability({
+				integration: type.metadata?.associated_service ?? ''
+			});
+		}
+		return undefined;
+	}
+
+	function toggleType(type: CredType) {
+		if (isDisabled(type)) return;
+		const id = type.id;
 		selectedTypeIds = selectedTypeIds.includes(id)
 			? selectedTypeIds.filter((x) => x !== id)
 			: [...selectedTypeIds, id];
@@ -90,21 +130,13 @@
 				{#each group.cards as type (type.id)}
 					{@const selected =
 						selectedTypeIds.includes(type.id) || forceCheckedTypeIds.includes(type.id)}
-					{@const locked = isLocked(type.id)}
-					<!-- Wrapper is the grid item; it carries the tooltip so a disabled (locked)
-					     card still shows the reason on hover. -->
-					<span
-						class="block"
-						data-tooltip={locked
-							? credentials_lockedDaemonCapability({
-									integration: type.metadata?.associated_service ?? ''
-								})
-							: undefined}
-						use:tooltip
-					>
+					{@const locked = isDisabled(type)}
+					<!-- Wrapper is the grid item; it carries the tooltip so a disabled (locked
+					     or version-incompatible) card still shows the reason on hover. -->
+					<span class="block" data-tooltip={disabledReason(type)} use:tooltip>
 						<button
 							type="button"
-							onclick={() => toggleType(type.id)}
+							onclick={() => toggleType(type)}
 							aria-pressed={selected}
 							disabled={locked}
 							class="card w-full rounded-lg border p-3 text-left {locked

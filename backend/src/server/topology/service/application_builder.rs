@@ -4,13 +4,14 @@ use uuid::Uuid;
 use super::{
     context::TopologyContext,
     element_rules::{
-        ElementMatchData, TaggableLookups, apply_element_rules, resolve_element_tag_ids,
+        ElementMatchData, TaggableLookups, apply_element_rules, apply_stack_runtime_logos,
+        resolve_element_tag_ids,
     },
     view::ViewBuilder,
 };
 use crate::server::{
     dependencies::r#impl::{base::DependencyMembers, types::DependencyType},
-    services::r#impl::{categories::ServiceCategory, virtualization::ServiceVirtualization},
+    services::r#impl::categories::ServiceCategory,
     shared::{
         concepts::Concept, entities::EntityDiscriminants, types::metadata::EntityMetadataProvider,
     },
@@ -193,7 +194,7 @@ impl ViewBuilder for ApplicationBuilder {
                 let categories = HashSet::from([service.base.service_definition.category()]);
                 let tag_ids =
                     resolve_element_tag_ids(EntityDiscriminants::Service, service.id, &tag_lookups);
-                let compose_project = service
+                let deployment_group = service
                     .base
                     .virtualization
                     .as_ref()
@@ -203,7 +204,7 @@ impl ViewBuilder for ApplicationBuilder {
                     tag_ids,
                     element_entity: EntityDiscriminants::Service,
                     virtualizer_service_id: None,
-                    compose_project,
+                    deployment_group,
                     native_vlan_id: None,
                     vlan_number: None,
                     vlan_name: None,
@@ -215,17 +216,9 @@ impl ViewBuilder for ApplicationBuilder {
             None,
         );
 
-        // Post-process: set associated_service_definition on Stack subcontainers (always Docker)
-        for node in nodes.iter_mut() {
-            if let NodeType::Container {
-                container_type: ContainerType::Stack,
-                associated_service_definition,
-                ..
-            } = &mut node.node_type
-            {
-                *associated_service_definition = Some("Docker".to_string());
-            }
-        }
+        // Post-process: stamp each Stack subcontainer's logo from the runtime of
+        // the services in that deployment group (Docker, Podman, …).
+        apply_stack_runtime_logos(&mut nodes, ctx.services);
 
         // Build binding_id → service_id lookup (for Bindings variant backward compat)
         let binding_to_service = ctx.build_binding_to_service_map();
@@ -326,18 +319,19 @@ impl ViewBuilder for ApplicationBuilder {
             }
         }
 
-        // Create ContainerRuntime overlay edges
+        // Create ContainerRuntime overlay edges (runtime-agnostic: Docker, Podman, …)
         for service in ctx.services {
-            if let Some(ServiceVirtualization::Docker(docker)) = &service.base.virtualization
+            if let Some(virt) = &service.base.virtualization
+                && let Some(runtime_service_id) = virt.service_id()
                 && service_node_ids.contains_key(&service.id)
-                && service_node_ids.contains_key(&docker.service_id)
+                && service_node_ids.contains_key(&runtime_service_id)
             {
                 edges.push(Edge {
                     id: Uuid::new_v4(),
-                    source: docker.service_id,
+                    source: runtime_service_id,
                     target: service.id,
                     edge_type: EdgeType::ContainerRuntime {
-                        service_id: docker.service_id,
+                        service_id: runtime_service_id,
                         host_id: service.base.host_id,
                     },
                     label: None,

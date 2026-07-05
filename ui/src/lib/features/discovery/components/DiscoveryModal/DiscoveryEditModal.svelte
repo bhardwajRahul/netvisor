@@ -106,7 +106,10 @@
 	let furthestReached = $state(0);
 	let pendingCredentials = $state<PendingCredential[]>([]);
 	let credentialsStep: ReturnType<typeof CredentialsStep> | undefined = $state();
-	let credentialSubStep = $state<'typeSelect' | 'wizard'>('typeSelect');
+	// The discovery modal always opens on the credential wizard; the Integrations-grid
+	// type picker is skipped (it couldn't advance in edit mode, and the wizard's own
+	// type dropdown adds any credential type, sockets included).
+	let credentialSubStep = $state<'typeSelect' | 'wizard'>('wizard');
 	let credentialIds = $state<string[]>([]);
 	const allCredentialsQuery = useCredentialsQuery();
 
@@ -300,12 +303,6 @@
 	}
 
 	function previousTab() {
-		// Step back within the credentials sub-flow (wizard → Integrations grid)
-		// before leaving the tab.
-		if (activeTab === 'credentials' && credentialSubStep === 'wizard') {
-			credentialsStep?.backToTypeSelect();
-			return;
-		}
 		const flow = getFlow();
 		const idx = flow.indexOf(activeTab);
 		if (idx > 0) {
@@ -472,13 +469,8 @@
 				}));
 			pendingCredentials = [...editable, ...managed];
 		}
-		// Show the Integrations grid only as a first-run aid (no credentials exist
-		// yet); otherwise — existing assignments on this session, or the org already
-		// has credentials — open straight on the wizard. Mirrors the daemon modal.
-		credentialSubStep =
-			pendingCredentials.length > 0 || (allCredentialsQuery.data?.length ?? 0) > 0
-				? 'wizard'
-				: 'typeSelect';
+		// Always open straight on the wizard (the Integrations-grid picker is skipped).
+		credentialSubStep = 'wizard';
 
 		// Parse schedule fields from cron
 		let scheduleDaysOfWeek = '0';
@@ -653,6 +645,8 @@
 						bind:selectedTypeIds={selectedCredentialTypeIds}
 						localAutoMode="fixed"
 						fixedCapabilityTypeIds={daemonHostCredentialTypeIds}
+						daemonVersion={daemon?.version ?? null}
+						daemonName={daemon?.name ?? null}
 					/>
 				</div>
 			{/if}
