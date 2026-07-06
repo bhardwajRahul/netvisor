@@ -13,13 +13,15 @@ The coordinator maintains this file (see CLAUDE.md → *Database Expand/Contract
 
 | Change | Expand | Code-removal release | Contract (DROP) release | Precondition | Status | Owner |
 |---|---|---|---|---|---|---|
-| `discovery.pending_credential_ids` (UUID[]) | superseded by `discovery.integration_targets` (0.17.2) | already unreferenced at 0.17.2 | **0.17.3** | none — no deployed container reads it | drop scheduled (0.17.3) | feat/credential-daemon-compat (Part C1) |
-| `credentials.target_ips` (INET[]) | superseded by `integration_targets` / `host_credentials` | **0.17.3** (remove storage r/w, `base.rs` field, dedup + loopback readers) | **0.17.4** | 0.17.3 fully deployed — no container reads `target_ips` | code-removal pending | feat/credential-daemon-compat (Part C2) |
-| `daemons.capabilities` (JSONB) | interfaced subnets move to `daemon_interfaced_subnets` junction (0.17.3) | **0.17.3** (delete `DaemonCapabilities`, stop reading/writing the column) | **0.17.4** | 0.17.3 fully deployed — no container reads/writes `capabilities` | code-removal pending | feat/credential-daemon-compat (Part B3) |
+| `credentials.target_ips` (INET[]) | superseded by `integration_targets` / `host_credentials` | **0.17.3** (remove storage r/w, `base.rs` field, dedup + loopback readers) | **0.17.4** | 0.17.3 fully deployed — no container reads `target_ips` | drop scheduled (0.17.4) | refactor/db-contract-v0-17-4 |
+| `daemons.capabilities` (JSONB) | interfaced subnets move to `daemon_interfaced_subnets` junction (0.17.3) | **0.17.3** (delete `DaemonCapabilities`, stop reading/writing the column) | **0.17.4** | 0.17.3 fully deployed — no container reads/writes `capabilities` | drop scheduled (0.17.4) | refactor/db-contract-v0-17-4 |
 
 ## Notes
 - **No native Postgres enums exist** in this schema — all "enums" (credential type, subnet/host virtualization, integration targets) are serde-tagged JSON stored in JSONB columns. Adding/removing a variant is a code + JSONB-data concern, not a DDL contract, but old-server *deserialization* of a new variant is still a coexistence risk (mind `#[serde(other)]` fallbacks and `Deploy-Mode: downtime` when a new variant can reach an old binary).
 - Squawk flags every `DROP COLUMN` as unsafe; contract migrations need the documented exception annotation + `SET lock_timeout`/`statement_timeout` guards (pattern: `backend/migrations/20260502120004_drop_legacy_topology_columns.sql`).
 
 ## Done
-_(none yet)_
+
+| Change | Expand | Code-removal release | Contract (DROP) release | Contract migration | Owner |
+|---|---|---|---|---|---|
+| `discovery.pending_credential_ids` (UUID[]) | superseded by `discovery.integration_targets` (0.17.2) | already unreferenced at 0.17.2 | **0.17.3** | `20260703120001_drop_discovery_pending_credential_ids.sql` (shipped in `v0.17.3`) | feat/credential-daemon-compat (Part C1) |

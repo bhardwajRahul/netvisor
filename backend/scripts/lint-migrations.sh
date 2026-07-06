@@ -57,7 +57,10 @@ FK_BACKFILL_FILES=("$MIGRATIONS_DIR/20260502120001_add_snapshot_id_fks.sql")
 # Columns dropped that have NO live code readers at the currently-deployed release,
 # so the drop is safe under a rolling deploy (contract already paid). Header comment
 # in each migration documents why. Suppress ban-drop-column.
-NO_READER_DROP_FILES=("$MIGRATIONS_DIR/20260703120001_drop_discovery_pending_credential_ids.sql")
+NO_READER_DROP_FILES=(
+    "$MIGRATIONS_DIR/20260703120001_drop_discovery_pending_credential_ids.sql"
+    "$MIGRATIONS_DIR/20260706120000_drop_credentials_target_ips_and_daemons_capabilities.sql"
+)
 
 # Filter file lists.
 in_tx_main=()
