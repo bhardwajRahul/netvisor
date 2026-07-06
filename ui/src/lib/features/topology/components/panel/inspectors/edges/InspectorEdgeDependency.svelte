@@ -19,7 +19,9 @@
 		common_delete,
 		common_deleting,
 		common_confirmDeleteName,
-		common_edit
+		common_dependency,
+		common_edit,
+		common_services
 	} from '$lib/paraglide/messages';
 	import { createColorHelper } from '$lib/shared/utils/styling';
 	import type { Dependency } from '$lib/features/dependencies/types/base';
@@ -224,7 +226,7 @@
 
 <div class="space-y-3">
 	{#if group && localGroup}
-		<span class="text-secondary mb-2 block text-sm font-medium">Dependency</span>
+		<span class="text-secondary mb-2 block text-sm font-medium">{common_dependency()}</span>
 		<div class="card card-static">
 			<EntityDisplayWrapper
 				context={groupContext}
@@ -256,7 +258,7 @@
 			</button>
 		{/if}
 
-		<span class="text-secondary mb-2 block text-sm font-medium">Services</span>
+		<span class="text-secondary mb-2 block text-sm font-medium">{common_services()}</span>
 		{#if group.members.type === 'Bindings'}
 			{#each group.members.binding_ids as bindingId (bindingId)}
 				{@const bindingService = getServiceForBindingFromTopology(bindingId)}

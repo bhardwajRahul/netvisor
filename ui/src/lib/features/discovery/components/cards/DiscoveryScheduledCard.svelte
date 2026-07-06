@@ -25,6 +25,7 @@
 		common_disable,
 		common_enable,
 		common_legacy,
+		common_tags,
 		discovery_alreadyRunning,
 		discovery_cannotDeleteWhileRunning,
 		discovery_cannotToggleWhileRunning,
@@ -197,7 +198,7 @@
 
 {#snippet tagsSnippet()}
 	<div class="flex items-center gap-2">
-		<span class="text-secondary text-sm">Tags:</span>
+		<span class="text-secondary text-sm">{common_tags()}:</span>
 		<TagPickerInline
 			selectedTagIds={discovery.tags}
 			entityId={discovery.id}

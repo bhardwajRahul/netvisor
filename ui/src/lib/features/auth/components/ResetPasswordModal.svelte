@@ -17,7 +17,7 @@
 		auth_passwordResetComplete,
 		auth_passwordUpdatedBody,
 		auth_passwordUpdatedTitle,
-		auth_resetPasswordTitle,
+		auth_resetPassword,
 		auth_setNewPassword,
 		common_resetting
 	} from '$lib/paraglide/messages';
@@ -120,7 +120,7 @@
 					</button>
 				{:else}
 					<button type="submit" disabled={resetting} class="btn-primary w-full">
-						{resetting ? common_resetting() : auth_resetPasswordTitle()}
+						{resetting ? common_resetting() : auth_resetPassword()}
 					</button>
 
 					<div class="text-center">

@@ -32,12 +32,13 @@
 	import {
 		common_close,
 		common_failedToSave,
+		common_noEntitySelected,
 		common_save,
 		common_saving,
+		common_share,
 		common_shares,
 		common_validation_entityField,
 		shares_manageShares,
-		shares_noShareSelected,
 		shares_noSharesSubtitle,
 		shares_noSharesYet,
 		shares_selectToEdit,
@@ -331,7 +332,10 @@
 					{/each}
 
 					{#if !selectedItem}
-						<EntityConfigEmpty title={shares_noShareSelected()} subtitle={shares_selectToEdit()} />
+						<EntityConfigEmpty
+							title={common_noEntitySelected({ entity: common_share() })}
+							subtitle={shares_selectToEdit()}
+						/>
 					{/if}
 				</svelte:fragment>
 			</ListConfigEditor>

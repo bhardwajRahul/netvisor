@@ -7,7 +7,6 @@
 	import InterfaceConfigPanel from './InterfaceConfigPanel.svelte';
 	import {
 		hosts_interfaces_emptySubtitle,
-		hosts_interfaces_emptyTitle,
 		hosts_noInterfaces,
 		hosts_interfaces_selectToView,
 		hosts_interfaces_subtitle,
@@ -51,7 +50,7 @@
 				<InterfaceConfigPanel iface={selectedItem} />
 			{:else if interfaces.length === 0}
 				<EntityConfigEmpty
-					title={hosts_interfaces_emptyTitle()}
+					title={hosts_noInterfaces()}
 					subtitle={hosts_interfaces_emptySubtitle()}
 				/>
 			{:else}

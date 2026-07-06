@@ -2,6 +2,14 @@
 	import GenericModal from '$lib/shared/components/layout/GenericModal.svelte';
 	import { FileSpreadsheet, FileArchive } from 'lucide-svelte';
 	import { downloadCsv, downloadHostsZip, type CsvExportParams } from '$lib/shared/utils/csvExport';
+	import {
+		hosts_exportChooseFormat,
+		hosts_exportCsvDesc,
+		hosts_exportCsvTitle,
+		hosts_exportTitle,
+		hosts_exportZipDesc,
+		hosts_exportZipTitle
+	} from '$lib/paraglide/messages';
 
 	let {
 		isOpen = false,
@@ -36,9 +44,9 @@
 	}
 </script>
 
-<GenericModal title="Export Hosts" {isOpen} {onClose} size="sm">
+<GenericModal title={hosts_exportTitle()} {isOpen} {onClose} size="sm">
 	<div class="p-6">
-		<p class="text-secondary mb-4 text-sm">Choose an export format:</p>
+		<p class="text-secondary mb-4 text-sm">{hosts_exportChooseFormat()}</p>
 
 		<div class="space-y-3">
 			<button
@@ -48,8 +56,8 @@
 			>
 				<FileSpreadsheet class="text-tertiary h-6 w-6 shrink-0" />
 				<div>
-					<div class="text-primary font-medium">Hosts Only (CSV)</div>
-					<div class="text-tertiary text-sm">Export host data to a single CSV file</div>
+					<div class="text-primary font-medium">{hosts_exportCsvTitle()}</div>
+					<div class="text-tertiary text-sm">{hosts_exportCsvDesc()}</div>
 				</div>
 			</button>
 
@@ -60,11 +68,8 @@
 			>
 				<FileArchive class="text-tertiary h-6 w-6 shrink-0" />
 				<div>
-					<div class="text-primary font-medium">Hosts with Children (ZIP)</div>
-					<div class="text-tertiary text-sm">
-						Export hosts, interfaces, ports, services, and SNMP entries as separate CSVs in a ZIP
-						file
-					</div>
+					<div class="text-primary font-medium">{hosts_exportZipTitle()}</div>
+					<div class="text-tertiary text-sm">{hosts_exportZipDesc()}</div>
 				</div>
 			</button>
 		</div>

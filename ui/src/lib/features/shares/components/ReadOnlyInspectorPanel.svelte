@@ -6,6 +6,7 @@
 	import InspectorNode from '$lib/features/topology/components/panel/inspectors/InspectorNode.svelte';
 	import InspectorEdge from '$lib/features/topology/components/panel/inspectors/InspectorEdge.svelte';
 	import { optionsPanelExpanded, MINIMAP_FITVIEW_BOTTOM_PX } from '$lib/features/topology/queries';
+	import { topology_collapsePanel, topology_expandPanel } from '$lib/paraglide/messages';
 
 	interface Props {
 		showMinimap?: boolean;
@@ -46,7 +47,7 @@
 				<button
 					class="btn-icon rounded-xl p-3"
 					onclick={() => setExpanded(false)}
-					aria-label="Collapse panel"
+					aria-label={topology_collapsePanel()}
 				>
 					<ChevronLeft class="text-secondary h-5 w-5" />
 				</button>
@@ -81,7 +82,7 @@
 			<button
 				class="btn-icon rounded-2xl p-3"
 				onclick={() => setExpanded(true)}
-				aria-label="Expand panel"
+				aria-label={topology_expandPanel()}
 			>
 				<ChevronRight class="text-secondary h-5 w-5" />
 			</button>

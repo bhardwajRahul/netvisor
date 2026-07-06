@@ -27,18 +27,20 @@
 		common_hidden,
 		common_hostname,
 		common_hosts,
+		common_confirmBulkDelete,
 		common_name,
 		common_network,
+		common_noEntityYet,
+		common_service,
 		common_services,
 		common_tags,
+		common_unknownEntity,
 		common_unknownNetwork,
 		common_updated,
-		hosts_confirmBulkDelete,
+		daemons_installPromptHosts,
 		hosts_fields_interfaceIp,
 		hosts_fields_virtualizedBy,
-		hosts_noHostsYet,
-		hosts_notVirtualized,
-		hosts_unknownService
+		hosts_notVirtualized
 	} from '$lib/paraglide/messages';
 
 	let { isReadOnly = false }: TabProps = $props();
@@ -223,7 +225,9 @@
 								(s) => s.id === host.virtualization?.details.service_id
 							);
 							if (virtualizationService) {
-								return virtualizationService?.name || hosts_unknownService();
+								return (
+									virtualizationService?.name || common_unknownEntity({ entity: common_service() })
+								);
 							}
 						}
 						return hosts_notVirtualized();
@@ -339,7 +343,7 @@
 	}
 
 	async function handleBulkDelete(ids: string[]) {
-		if (confirm(hosts_confirmBulkDelete({ count: ids.length }))) {
+		if (confirm(common_confirmBulkDelete({ count: ids.length, entity: common_hosts() }))) {
 			await bulkDeleteHostsMutation.mutateAsync(ids);
 		}
 	}
@@ -399,14 +403,14 @@
 	</TabHeader>
 
 	{#if !hasDaemon(onboarding)}
-		<PreDaemonEmptyState title="Install a daemon to start discovering hosts on your network." />
+		<PreDaemonEmptyState title={daemons_installPromptHosts()} />
 	{:else if isInitialLoading}
 		<!-- Loading state (only on initial load) -->
 		<Loading />
 	{:else if hostsData.length === 0 && !hostsPagination}
 		<!-- Empty state -->
 		<EmptyState
-			title={hosts_noHostsYet()}
+			title={common_noEntityYet({ entity: common_hosts() })}
 			subtitle=""
 			onClick={handleCreateHost}
 			cta={common_create()}

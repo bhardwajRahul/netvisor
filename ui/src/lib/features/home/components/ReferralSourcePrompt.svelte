@@ -7,10 +7,15 @@
 	import SelectInput from '$lib/shared/components/forms/input/SelectInput.svelte';
 	import TextInput from '$lib/shared/components/forms/input/TextInput.svelte';
 	import {
+		common_details,
+		common_dismiss,
 		common_other,
 		common_reddit,
+		common_source,
+		common_submit,
 		common_tiktok,
 		common_youtube,
+		home_referralSubtitle,
 		onboarding_howDidYouHear,
 		onboarding_referralSource_aiAssistant,
 		onboarding_referralSource_blogArticle,
@@ -102,10 +107,10 @@
 			<div class="flex items-center justify-between">
 				<div>
 					<h3 class="text-primary text-sm font-semibold">{onboarding_howDidYouHear()}</h3>
-					<p class="text-secondary mt-1 text-xs">Helps us understand how people find Scanopy.</p>
+					<p class="text-secondary mt-1 text-xs">{home_referralSubtitle()}</p>
 				</div>
 				<button onclick={dismiss} class="text-tertiary hover:text-secondary text-sm">
-					Dismiss
+					{common_dismiss()}
 				</button>
 			</div>
 			<form
@@ -119,7 +124,7 @@
 					<form.Field name="referral_source">
 						{#snippet children(field)}
 							<SelectInput
-								label="Source"
+								label={common_source()}
 								id="referral-source"
 								{field}
 								options={referralSourceOptions}
@@ -130,7 +135,7 @@
 						<form.Field name="referral_source_other">
 							{#snippet children(field)}
 								<TextInput
-									label="Details"
+									label={common_details()}
 									id="referral-source-other"
 									{field}
 									placeholder={onboarding_referralSource_otherPlaceholder()}
@@ -140,7 +145,7 @@
 					{/if}
 				</div>
 				<button type="submit" class="btn-primary mt-3 text-sm" disabled={!selectedSource}>
-					Submit
+					{common_submit()}
 				</button>
 			</form>
 		</div>

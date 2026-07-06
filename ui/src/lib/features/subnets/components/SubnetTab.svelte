@@ -27,16 +27,17 @@
 		common_cidr,
 		common_confirmDeleteName,
 		common_create,
+		common_confirmBulkDelete,
 		common_created,
 		common_description,
 		common_name,
 		common_network,
+		common_noEntityYet,
 		common_subnets,
 		common_tags,
 		common_unknownNetwork,
 		common_updated,
-		subnets_confirmBulkDelete,
-		subnets_noSubnetsYet,
+		daemons_installPromptSubnets,
 		subnets_subnetType
 	} from '$lib/paraglide/messages';
 	import { hasDaemon } from '$lib/shared/onboarding/checklist';
@@ -132,7 +133,7 @@
 	}
 
 	async function handleBulkDelete(ids: string[]) {
-		if (confirm(subnets_confirmBulkDelete({ count: ids.length }))) {
+		if (confirm(common_confirmBulkDelete({ count: ids.length, entity: common_subnets() }))) {
 			await bulkDeleteSubnetsMutation.mutateAsync(ids);
 		}
 	}
@@ -201,14 +202,14 @@
 	</TabHeader>
 
 	{#if !hasDaemon(onboarding)}
-		<PreDaemonEmptyState title="Install a daemon to start discovering subnets on your network." />
+		<PreDaemonEmptyState title={daemons_installPromptSubnets()} />
 	{:else if isLoading}
 		<!-- Loading state -->
 		<Loading />
 	{:else if subnetsData.length === 0}
 		<!-- Empty state -->
 		<EmptyState
-			title={subnets_noSubnetsYet()}
+			title={common_noEntityYet({ entity: common_subnets() })}
 			subtitle=""
 			onClick={handleCreateSubnet}
 			cta={common_create()}

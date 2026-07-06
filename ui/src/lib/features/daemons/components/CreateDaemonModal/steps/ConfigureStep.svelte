@@ -29,7 +29,8 @@
 		daemons_useExistingKey,
 		daemons_useExistingKeyHelp,
 		daemons_useKey,
-		daemons_configureReachabilityFailed
+		daemons_configureReachabilityFailed,
+		daemons_portReachable
 	} from '$lib/paraglide/messages';
 
 	interface Props {
@@ -210,7 +211,7 @@
 		<!-- Reachability result (driven by parent) -->
 		{#if reachabilityResult}
 			{#if reachabilityResult.reachable}
-				<InlineSuccess title="Port is reachable" />
+				<InlineSuccess title={daemons_portReachable()} />
 			{:else}
 				<InlineDanger
 					title={reachabilityResult.error ?? 'Port is not reachable'}

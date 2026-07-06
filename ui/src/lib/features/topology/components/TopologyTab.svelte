@@ -75,11 +75,15 @@
 	import type { TabProps } from '$lib/shared/types';
 	import {
 		common_delete,
+		common_share,
+		common_upgrade,
+		daemons_installPromptTopology,
 		topology_lastScanned,
 		topology_liveView,
 		topology_noTopologySelected,
 		topology_snapshotDeleteConfirm,
-		topology_takeSnapshot
+		topology_takeSnapshot,
+		topology_verifyEmailToShare
 	} from '$lib/paraglide/messages';
 	import { useConfigQuery } from '$lib/shared/stores/config-query';
 
@@ -602,7 +606,7 @@
 
 <SvelteFlowProvider>
 	{#if !hasDaemon(onboarding)}
-		<PreDaemonEmptyState title="Install a daemon to start mapping your network topology." />
+		<PreDaemonEmptyState title={daemons_installPromptTopology()} />
 	{:else}
 		<div class="space-y-3">
 			<!-- Header -->
@@ -619,8 +623,8 @@
 						     clarifying that a share captures the live view, not the snapshot. -->
 						{#if !isReadOnly}
 							{#if currentUser && !currentUser.email_verified}
-								<span data-tooltip="Please verify email to share topology" use:tooltip>
-									<button class="btn-secondary opacity-50" disabled title="Share">
+								<span data-tooltip={topology_verifyEmailToShare()} use:tooltip>
+									<button class="btn-secondary opacity-50" disabled title={common_share()}>
 										<Share2 class="my-1 h-5 w-5" />
 									</button>
 								</span>
@@ -628,7 +632,7 @@
 								<button
 									class="btn-secondary"
 									onclick={() => (isShareModalOpen = true)}
-									title="Share"
+									title={common_share()}
 								>
 									<Share2 class="my-1 h-5 w-5" />
 								</button>
@@ -695,7 +699,7 @@
 						>
 							<Camera class="h-5 w-5" />
 							{#if !snapshotsEnabled}
-								<Tag label="Upgrade" color="Yellow" />
+								<Tag label={common_upgrade()} color="Yellow" />
 							{/if}
 						</button>
 					{/if}

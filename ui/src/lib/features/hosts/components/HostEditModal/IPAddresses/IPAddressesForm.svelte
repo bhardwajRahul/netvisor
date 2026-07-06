@@ -14,12 +14,13 @@
 	import EntityMetadataSection from '$lib/shared/components/forms/EntityMetadataSection.svelte';
 	import {
 		common_cancel,
+		common_ipAddress,
 		common_ipAddresses,
+		common_noEntitySelected,
 		hosts_ipAddresses_deleteMessage,
 		hosts_ipAddresses_deleteTitle,
 		hosts_ipAddresses_emptyMessage,
 		hosts_ipAddresses_helpText,
-		hosts_ipAddresses_noSelected,
 		hosts_ipAddresses_placeholder,
 		hosts_ipAddresses_selectToConfig
 	} from '$lib/paraglide/messages';
@@ -243,7 +244,7 @@
 				/>
 			{:else if !selectedItem}
 				<EntityConfigEmpty
-					title={hosts_ipAddresses_noSelected()}
+					title={common_noEntitySelected({ entity: common_ipAddress() })}
 					subtitle={hosts_ipAddresses_selectToConfig()}
 				/>
 			{/if}

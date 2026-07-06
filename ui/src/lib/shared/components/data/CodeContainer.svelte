@@ -7,7 +7,12 @@
 	import 'prismjs/components/prism-bash';
 	import 'prismjs/components/prism-powershell';
 	import 'prismjs/themes/prism-twilight.css';
-	import { common_copied, common_copy, common_failedToCopy } from '$lib/paraglide/messages';
+	import {
+		common_collapse,
+		common_copied,
+		common_copy,
+		common_failedToCopy
+	} from '$lib/paraglide/messages';
 	import { useConfigQuery, isCloud } from '$lib/shared/stores/config-query';
 
 	let {
@@ -78,7 +83,7 @@
 					type="button"
 					class="text-tertiary hover:text-secondary p-1 transition-colors"
 					onclick={toggleJson}
-					title="Collapse"
+					title={common_collapse()}
 				>
 					<X class="h-4 w-4" />
 				</button>

@@ -12,11 +12,11 @@
 		common_enabled,
 		common_expired,
 		common_expires,
+		common_lastUsed,
 		common_never,
 		common_no,
 		common_tags,
-		common_yes,
-		daemonApiKeys_lastUsed
+		common_yes
 	} from '$lib/paraglide/messages';
 
 	let {
@@ -48,7 +48,7 @@
 				value: formatTimestamp(apiKey.created_at)
 			},
 			{
-				label: daemonApiKeys_lastUsed(),
+				label: common_lastUsed(),
 				value: apiKey.last_used ? formatTimestamp(apiKey.last_used) : common_never()
 			},
 			{

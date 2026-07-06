@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { ModalTab } from './GenericModal.svelte';
 	import { Check } from 'lucide-svelte';
+	import { common_progressSteps } from '$lib/paraglide/messages';
 
 	let {
 		tabs = [],
@@ -15,7 +16,7 @@
 	let activeIndex = $derived(tabs.findIndex((t) => t.id === activeTab));
 </script>
 
-<nav class="flex w-full items-start pb-4 pt-4" aria-label="Progress steps">
+<nav class="flex w-full items-start pb-4 pt-4" aria-label={common_progressSteps()}>
 	{#each tabs as tab, i (tab.id)}
 		{@const isCompleted = i < activeIndex && !tab.disabled}
 		{@const isCurrent = tab.id === activeTab}

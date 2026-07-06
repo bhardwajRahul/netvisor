@@ -12,10 +12,10 @@
 	import type { IconComponent } from '$lib/shared/utils/types';
 	import { onMount } from 'svelte';
 	import {
+		common_getStarted,
 		home_nudges_apiKeysAction,
 		home_nudges_apiKeysDescription,
 		home_nudges_apiKeysTitle,
-		home_nudges_applicationTagsAction,
 		home_nudges_applicationTagsDescription,
 		home_nudges_applicationTagsTitle,
 		home_nudges_daemonAttentionAction,
@@ -121,7 +121,7 @@
 				id: 'application-tags',
 				title: home_nudges_applicationTagsTitle(),
 				description: home_nudges_applicationTagsDescription(),
-				actionLabel: home_nudges_applicationTagsAction(),
+				actionLabel: common_getStarted(),
 				action: () => {
 					activeView.set('Application');
 					onNavigate('topology');

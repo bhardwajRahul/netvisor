@@ -18,13 +18,14 @@
 		common_hide,
 		common_interfaces,
 		common_ipAddresses,
+		common_service,
 		common_services,
 		common_tags,
 		common_containerizedServices,
+		common_unknownEntity,
 		hosts_noContainers,
 		hosts_noInterfaces,
 		hosts_noServicesAssigned,
-		hosts_unknownService,
 		hosts_vmManagedBy
 	} from '$lib/paraglide/messages';
 	import { useInterfacesQuery } from '$lib/features/interfaces/queries';
@@ -117,7 +118,8 @@
 			...(host.virtualization !== null && virtualizationService
 				? {
 						subtitle: hosts_vmManagedBy({
-							serviceName: virtualizationService.name || hosts_unknownService()
+							serviceName:
+								virtualizationService.name || common_unknownEntity({ entity: common_service() })
 						})
 					}
 				: {}),
@@ -218,7 +220,7 @@
 
 {#snippet tagsSnippet()}
 	<div class="flex items-center gap-2">
-		<span class="text-secondary text-sm">Tags:</span>
+		<span class="text-secondary text-sm">{common_tags()}:</span>
 		<TagPickerInline selectedTagIds={host.tags} entityId={host.id} entityType="Host" />
 	</div>
 {/snippet}

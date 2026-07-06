@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Pencil } from 'lucide-svelte';
+	import { inspector_editDescription } from '$lib/paraglide/messages';
 
 	function focus(node: HTMLElement) {
 		node.focus();
@@ -59,7 +60,7 @@
 		onclick={startEdit}
 	>
 		<Pencil class="h-3 w-3" />
-		<span>Edit description...</span>
+		<span>{inspector_editDescription()}</span>
 	</button>
 {:else if value}
 	{#if editable}

@@ -28,6 +28,8 @@
 		credentials_fileOnHost,
 		credentials_filePathReadByDaemon,
 		common_enterValue,
+		credentials_ipExamplePlaceholder,
+		credentials_namePlaceholderExample,
 		credentials_secretStoredInDatabase,
 		credentials_typeImmutableWarning,
 		credentials_docsSnmp,
@@ -646,7 +648,7 @@
 										<TextInput
 											label=""
 											id="target-ip-{fieldPrefix}{i}"
-											placeholder="e.g. 192.168.1.1"
+											placeholder={credentials_ipExamplePlaceholder()}
 											{field}
 										/>
 									{/snippet}
@@ -765,7 +767,7 @@
 							label={common_name()}
 							id="credential-name"
 							{field}
-							placeholder="e.g. Office SNMP"
+							placeholder={credentials_namePlaceholderExample()}
 							required
 						/>
 					{/snippet}

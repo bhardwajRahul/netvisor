@@ -20,7 +20,16 @@
 		discovery_scanModeLight,
 		discovery_subnetsScanned,
 		discovery_allInterfacedSubnets,
-		common_ipAddress
+		discovery_dockerScanDetails,
+		discovery_scanMode,
+		discovery_scanTuning,
+		discovery_selfReportDetails,
+		common_duration,
+		common_finished,
+		common_hostId,
+		common_ipAddress,
+		common_progress,
+		common_started
 	} from '$lib/paraglide/messages';
 
 	interface Props {
@@ -98,7 +107,7 @@
 	<!-- Run Details -->
 	<InfoCard title={discovery_runDetails()}>
 		{#if payload.progress !== undefined}
-			<InfoRow label="Progress">
+			<InfoRow label={common_progress()}>
 				<div class="flex items-center gap-2">
 					<span>{payload.progress}%</span>
 					<ProgressTrack progress={payload.progress} class="w-24" />
@@ -106,16 +115,16 @@
 			</InfoRow>
 		{/if}
 		{#if duration}
-			<InfoRow label="Duration">{duration}</InfoRow>
+			<InfoRow label={common_duration()}>{duration}</InfoRow>
 		{/if}
 		{#if payload.started_at}
-			<InfoRow label="Started">{formatTimestamp(payload.started_at)}</InfoRow>
+			<InfoRow label={common_started()}>{formatTimestamp(payload.started_at)}</InfoRow>
 		{/if}
 		{#if payload.finished_at}
-			<InfoRow label="Finished">{formatTimestamp(payload.finished_at)}</InfoRow>
+			<InfoRow label={common_finished()}>{formatTimestamp(payload.finished_at)}</InfoRow>
 		{/if}
 		{#if payload.discovery_type.type === 'Unified' && payload.discovery_type.scan_settings}
-			<InfoRow label="Scan Mode">
+			<InfoRow label={discovery_scanMode()}>
 				{payload.discovery_type.scan_settings.is_full_scan
 					? discovery_scanModeFull()
 					: discovery_scanModeLight()}
@@ -141,7 +150,7 @@
 					<InfoRow label={setting.label}>{setting.value}</InfoRow>
 				{/each}
 			{:else}
-				<InfoRow label="Scan Tuning">{discovery_defaultSettings()}</InfoRow>
+				<InfoRow label={discovery_scanTuning()}>{discovery_defaultSettings()}</InfoRow>
 			{/if}
 		</InfoCard>
 
@@ -159,12 +168,12 @@
 
 		<!-- Docker/SelfReport host_id card -->
 	{:else if payload.discovery_type.type === 'Docker'}
-		<InfoCard title="Docker Scan Details">
-			<InfoRow label="Host ID" mono>{payload.discovery_type.host_id}</InfoRow>
+		<InfoCard title={discovery_dockerScanDetails()}>
+			<InfoRow label={common_hostId()} mono>{payload.discovery_type.host_id}</InfoRow>
 		</InfoCard>
 	{:else if payload.discovery_type.type === 'SelfReport'}
-		<InfoCard title="Self Report Details">
-			<InfoRow label="Host ID" mono>{payload.discovery_type.host_id}</InfoRow>
+		<InfoCard title={discovery_selfReportDetails()}>
+			<InfoRow label={common_hostId()} mono>{payload.discovery_type.host_id}</InfoRow>
 		</InfoCard>
 	{/if}
 </div>

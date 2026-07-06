@@ -15,7 +15,8 @@
 		topology_levelFullyCollapsed,
 		topology_levelContainersExpanded,
 		topology_levelSubcontainersExpanded,
-		topology_levelFullyExpanded
+		topology_levelFullyExpanded,
+		topology_parseFailed
 	} from '$lib/paraglide/messages';
 	import { type Node, type Edge } from '@xyflow/svelte';
 	import '@xyflow/svelte/dist/style.css';
@@ -333,7 +334,7 @@
 		void loadTopologyData()
 			.catch((err) => {
 				isMeasuring = false;
-				pushError(`Failed to parse topology data ${err}`);
+				pushError(topology_parseFailed({ error: String(err) }));
 			})
 			.finally(() => {
 				loadInProgress = false;

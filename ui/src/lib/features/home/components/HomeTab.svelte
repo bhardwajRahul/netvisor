@@ -18,7 +18,11 @@
 	import { onMount } from 'svelte';
 	import { openModal } from '$lib/shared/stores/modal-registry';
 	import { useConfigQuery, isCloud } from '$lib/shared/stores/config-query';
-	import { home_demoEmbedTitle, home_demoEmbedSubtitle } from '$lib/paraglide/messages';
+	import {
+		home_demoEmbedTitle,
+		home_demoEmbedSubtitle,
+		home_demoNetworkTopology
+	} from '$lib/paraglide/messages';
 	type OnboardingOperation = components['schemas']['OnboardingOperationDiscriminants'];
 
 	// eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -138,7 +142,7 @@
 							height="100%"
 							frameborder="0"
 							style="border: none;"
-							title="Demo network topology"
+							title={home_demoNetworkTopology()}
 						></iframe>
 					</div>
 				</div>

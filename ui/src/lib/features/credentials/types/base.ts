@@ -16,6 +16,7 @@ import type { Color } from '$lib/shared/utils/styling';
 import type { TagProps } from '$lib/shared/components/data/types';
 import {
 	common_network,
+	common_testing,
 	common_unknown,
 	credentials_targetNetworkTooltip,
 	credentials_targetDaemonHost,
@@ -23,13 +24,11 @@ import {
 	credentials_targetHost,
 	credentials_targetHostTooltip,
 	snmp_adminStatusDown,
-	snmp_adminStatusTesting,
 	snmp_adminStatusUp,
 	snmp_operStatusDormant,
 	snmp_operStatusDown,
 	snmp_operStatusLowerLayerDown,
 	snmp_operStatusNotPresent,
-	snmp_operStatusTesting,
 	snmp_operStatusUp
 } from '$lib/paraglide/messages';
 
@@ -93,7 +92,7 @@ export function getAdminStatusLabels(): Record<IfAdminStatus, string> {
 	return {
 		Up: snmp_adminStatusUp(),
 		Down: snmp_adminStatusDown(),
-		Testing: snmp_adminStatusTesting()
+		Testing: common_testing()
 	};
 }
 
@@ -104,7 +103,7 @@ export function getOperStatusLabels(): Record<IfOperStatus, string> {
 	return {
 		Up: snmp_operStatusUp(),
 		Down: snmp_operStatusDown(),
-		Testing: snmp_operStatusTesting(),
+		Testing: common_testing(),
 		Unknown: common_unknown(),
 		Dormant: snmp_operStatusDormant(),
 		NotPresent: snmp_operStatusNotPresent(),

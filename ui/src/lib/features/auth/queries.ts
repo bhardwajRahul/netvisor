@@ -6,6 +6,15 @@ import { createQuery, createMutation, useQueryClient } from '@tanstack/svelte-qu
 import { queryKeys } from '$lib/api/query-client';
 import { apiClient } from '$lib/api/client';
 import { pushError, pushSuccess } from '$lib/shared/stores/feedback';
+import {
+	auth_emailVerified,
+	auth_loggedOut,
+	auth_passwordHasBeenReset,
+	auth_passwordResetLinkSent,
+	auth_verificationEmailSent,
+	auth_welcome,
+	auth_welcomeBack
+} from '$lib/paraglide/messages';
 import { resetIdentity } from '$lib/shared/utils/analytics';
 import type { User } from '../users/types';
 import type { components } from '$lib/api/schema';
@@ -60,7 +69,7 @@ export function useLoginMutation() {
 			if (typeof localStorage !== 'undefined') {
 				localStorage.setItem('hasAccount', 'true');
 			}
-			pushSuccess(`Welcome back, ${user.email}!`);
+			pushSuccess(auth_welcomeBack({ email: user.email }));
 		},
 		onError: (error: Error) => {
 			pushError(error.message);
@@ -119,7 +128,7 @@ export function useRegisterMutation() {
 			if (typeof localStorage !== 'undefined') {
 				localStorage.setItem('hasAccount', 'true');
 			}
-			pushSuccess(`Welcome, ${user.email}!`);
+			pushSuccess(auth_welcome({ email: user.email }));
 		}
 	}));
 }
@@ -143,7 +152,7 @@ export function useLogoutMutation() {
 			// Invalidate all queries on logout
 			queryClient.clear();
 			resetIdentity();
-			pushSuccess('Logged out successfully');
+			pushSuccess(auth_loggedOut());
 		},
 		onError: (error: Error) => {
 			pushError(error.message);
@@ -164,7 +173,7 @@ export function useForgotPasswordMutation() {
 			return true;
 		},
 		onSuccess: () => {
-			pushSuccess('Password reset link sent to your email');
+			pushSuccess(auth_passwordResetLinkSent());
 		},
 		onError: (error: Error) => {
 			pushError(error.message);
@@ -192,8 +201,8 @@ export function useResetPasswordMutation() {
 			if (typeof localStorage !== 'undefined') {
 				localStorage.setItem('hasAccount', 'true');
 			}
-			pushSuccess('Your password has been reset');
-			pushSuccess(`Welcome, ${user.email}!`);
+			pushSuccess(auth_passwordHasBeenReset());
+			pushSuccess(auth_welcome({ email: user.email }));
 		}
 	}));
 }
@@ -236,7 +245,7 @@ export function useVerifyEmailMutation() {
 			if (typeof localStorage !== 'undefined') {
 				localStorage.setItem('hasAccount', 'true');
 			}
-			pushSuccess('Email verified successfully!');
+			pushSuccess(auth_emailVerified());
 		},
 		onError: (error: Error) => {
 			pushError(error.message);
@@ -257,7 +266,7 @@ export function useResendVerificationMutation() {
 			return true;
 		},
 		onSuccess: () => {
-			pushSuccess('Verification email sent. Please check your inbox.');
+			pushSuccess(auth_verificationEmailSent());
 		},
 		onError: (error: Error) => {
 			pushError(error.message);

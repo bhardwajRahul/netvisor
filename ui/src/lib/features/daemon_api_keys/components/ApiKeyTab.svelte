@@ -21,15 +21,15 @@
 	import { downloadCsv } from '$lib/shared/utils/csvExport';
 	import { modalState } from '$lib/shared/stores/modal-registry';
 	import {
+		common_confirmBulkDelete,
+		common_confirmDeleteName,
 		common_create,
 		common_created,
 		common_name,
 		common_network,
+		common_noEntityYet,
 		common_tags,
 		common_unknownNetwork,
-		daemonApiKeys_confirmBulkDelete,
-		daemonApiKeys_confirmDelete,
-		daemonApiKeys_noApiKeysYet,
 		daemonApiKeys_title
 	} from '$lib/paraglide/messages';
 
@@ -78,7 +78,7 @@
 	});
 
 	async function handleDeleteApiKey(apiKey: ApiKey) {
-		if (confirm(daemonApiKeys_confirmDelete({ name: apiKey.name }))) {
+		if (confirm(common_confirmDeleteName({ name: apiKey.name }))) {
 			deleteApiKeyMutation.mutate(apiKey.id);
 		}
 	}
@@ -105,7 +105,7 @@
 	}
 
 	async function handleBulkDelete(ids: string[]) {
-		if (confirm(daemonApiKeys_confirmBulkDelete({ count: ids.length }))) {
+		if (confirm(common_confirmBulkDelete({ count: ids.length, entity: daemonApiKeys_title() }))) {
 			await bulkDeleteApiKeysMutation.mutateAsync(ids);
 		}
 	}
@@ -176,7 +176,7 @@
 	{:else if apiKeysData.length === 0}
 		<!-- Empty state -->
 		<EmptyState
-			title={daemonApiKeys_noApiKeysYet()}
+			title={common_noEntityYet({ entity: daemonApiKeys_title() })}
 			subtitle=""
 			onClick={handleCreateApiKey}
 			cta={common_create()}

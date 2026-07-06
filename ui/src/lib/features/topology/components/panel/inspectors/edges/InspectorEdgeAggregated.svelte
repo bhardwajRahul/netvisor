@@ -3,7 +3,14 @@
 	import type { TopologyEdge, RenderableTopology } from '$lib/features/topology/types/base';
 	import { useTopology, selectedTopologyId } from '$lib/features/topology/context';
 	import { edgeTypes } from '$lib/shared/stores/metadata';
-	import { topology_connectionsCount, common_dependenciesLabel } from '$lib/paraglide/messages';
+	import {
+		topology_connectionsCount,
+		topology_containerCount,
+		common_containerizedServices,
+		common_dependenciesLabel,
+		common_docker,
+		inspector_dockerService
+	} from '$lib/paraglide/messages';
 	import EntityDisplayWrapper from '$lib/shared/components/forms/selection/display/EntityDisplayWrapper.svelte';
 	import { SameHostEdgeDisplay } from '$lib/shared/components/forms/selection/display/SameHostEdgeDisplay.svelte';
 	import { PhysicalLinkEdgeDisplay } from '$lib/shared/components/forms/selection/display/PhysicalLinkEdgeDisplay.svelte';
@@ -219,7 +226,9 @@
 			{:else if isContainerRuntime(edgeType) && svcVirtData}
 				{#if svcVirtData.mode === 'single'}
 					{#if svcVirtData.containerizer}
-						<span class="text-secondary mb-1 block text-sm font-medium">Docker Service</span>
+						<span class="text-secondary mb-1 block text-sm font-medium"
+							>{inspector_dockerService()}</span
+						>
 						<div class="card card-static">
 							<EntityDisplayWrapper
 								item={svcVirtData.containerizer}
@@ -230,7 +239,7 @@
 					{/if}
 					{#if svcVirtData.containerized.length > 0}
 						<span class="text-secondary mb-1 block text-sm font-medium">
-							Containerized Services ({svcVirtData.containerized.length})
+							{common_containerizedServices()} ({svcVirtData.containerized.length})
 						</span>
 						{#each svcVirtData.containerized as service (service.id)}
 							<div class="card card-static">
@@ -254,9 +263,9 @@
 								displayComponent={HostDisplay}
 							/>
 							<div class="flex items-center gap-2 px-3 pb-2">
-								<Tag label="Docker" color="Indigo" />
+								<Tag label={common_docker()} color="Indigo" />
 								<span class="text-tertiary text-xs"
-									>{containerCount} container{containerCount !== 1 ? 's' : ''}</span
+									>{topology_containerCount({ count: containerCount })}</span
 								>
 							</div>
 						</div>

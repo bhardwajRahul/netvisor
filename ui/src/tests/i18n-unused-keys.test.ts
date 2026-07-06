@@ -11,22 +11,7 @@ const DYNAMIC_KEY_PREFIXES = [
 ];
 
 // Keys that are allowed to have duplicate values (intentionally same or context-specific)
-const ALLOWED_DUPLICATE_KEYS = new Set([
-	// errors_ keys are accessed dynamically, so duplicates with other keys are acceptable
-	'errors_auth_password_invalid',
-	// SNMP status labels - "Testing" appears in both admin and oper status contexts
-	// These may need different translations in some languages
-	'snmp_adminStatusTesting',
-	'snmp_operStatusTesting',
-	// System Description - used in both LLDP neighbor info and SNMP system info contexts
-	// These may need different translations in some languages
-	'hosts_ipAddresses_lldpSysDescr',
-	'hosts_snmp_sysDescr',
-	// Chassis ID - used in both interface LLDP info and SNMP system info contexts
-	// These may need different translations in some languages
-	'hosts_ipAddresses_chassisId',
-	'hosts_snmp_chassisId'
-]);
+const ALLOWED_DUPLICATE_KEYS = new Set<string>([]);
 
 // Keys that are allowed to be single-word without common_ prefix (context-specific technical terms)
 const ALLOWED_SINGLE_WORD_KEYS = new Set([
@@ -34,17 +19,27 @@ const ALLOWED_SINGLE_WORD_KEYS = new Set([
 	'snmp_versionV2c',
 	'snmp_versionV2cShort',
 	// SNMP status labels - context-specific status values that may need different translations than generic terms
-	'snmp_adminStatusTesting',
 	'snmp_operStatusUp',
 	'snmp_operStatusDown',
-	'snmp_operStatusTesting',
 	'snmp_operStatusDormant',
 	// SNMP placeholders - context-specific defaults
 	'snmp_communityStringPlaceholder',
 	// LLDP/CDP neighbor context - specific to network discovery protocol terminology
 	'hosts_ipAddresses_neighbor',
 	// Discovery legacy label - context-specific label for non-Unified discovery types
-	'discovery_legacyType'
+	'discovery_legacyType',
+	// Billing pricing-simulator tokens - lowercase count units and rate/hosting labels
+	// that are context-specific to the inline pricing breakdown (distinct from the
+	// title-case common_ nouns used as standalone labels)
+	'billing_networkUnit',
+	'billing_networkUnitPlural',
+	'billing_seatUnit',
+	'billing_seatUnitPlural',
+	'billing_priceBase',
+	'billing_rateMonthly',
+	'billing_selfHosted',
+	// Job-role option - proper noun
+	'home_profileRoleDevops'
 ]);
 
 function findFilesRecursively(dir: string, extensions: string[]): string[] {

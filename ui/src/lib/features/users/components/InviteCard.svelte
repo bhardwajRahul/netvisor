@@ -12,11 +12,12 @@
 		common_expires,
 		common_permissions,
 		common_revoke,
+		common_unknownEntity,
 		common_url,
+		common_user,
 		invites_confirmRevoke,
 		invites_createdBy,
-		invites_pendingInvite,
-		invites_unknownUser
+		invites_pendingInvite
 	} from '$lib/paraglide/messages';
 
 	let { invite, viewMode }: { invite: OrganizationInvite; viewMode: 'card' | 'list' } = $props();
@@ -63,7 +64,9 @@
 			},
 			{
 				label: invites_createdBy(),
-				value: usersData.find((u) => u.id == invite.created_by)?.email || invites_unknownUser()
+				value:
+					usersData.find((u) => u.id == invite.created_by)?.email ||
+					common_unknownEntity({ entity: common_user() })
 			},
 			{
 				label: common_expires(),
