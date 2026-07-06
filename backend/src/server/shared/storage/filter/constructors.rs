@@ -42,6 +42,13 @@ impl<T: Storable> StorableFilter<T> {
         Self::new()
     }
 
+    /// Every row of `T`, unscoped — for the one-shot Brevo domain-classification
+    /// backfill, which iterates all users. Ephemeral release code: remove with
+    /// `BrevoService::backfill_domain_classifications` next release.
+    pub fn new_for_brevo_backfill() -> Self {
+        Self::new()
+    }
+
     pub fn new_from_network_ids(network_ids: &[Uuid]) -> Self {
         Self::new().network_ids(network_ids)
     }

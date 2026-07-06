@@ -1,3 +1,4 @@
+use super::domain_classification::{DomainClass, InstitutionType};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -22,6 +23,8 @@ pub struct ContactAttributes {
     pub email_blacklisted: Option<bool>,
     pub scanopy_marketing_opt_in: Option<bool>,
     pub scanopy_marketing_opt_in_date: Option<String>,
+    pub scanopy_domain_class: Option<String>,
+    pub scanopy_institution_type: Option<String>,
 }
 
 impl ContactAttributes {
@@ -84,6 +87,23 @@ impl ContactAttributes {
         self
     }
 
+    /// Set both email-domain classification attributes. The institution type
+    /// is written as an empty string for non-institutional domains so a
+    /// re-sync actively clears any stale value in Brevo.
+    pub fn with_domain_classification(
+        mut self,
+        class: DomainClass,
+        institution_type: Option<InstitutionType>,
+    ) -> Self {
+        self.scanopy_domain_class = Some(class.as_str().to_string());
+        self.scanopy_institution_type = Some(
+            institution_type
+                .map(|t| t.as_str().to_string())
+                .unwrap_or_default(),
+        );
+        self
+    }
+
     /// Convert to Brevo API attributes map (UPPERCASE keys)
     pub fn to_attributes(&self) -> HashMap<String, serde_json::Value> {
         let mut attrs = HashMap::new();
@@ -123,6 +143,12 @@ impl ContactAttributes {
                 "SCANOPY_MARKETING_OPT_IN_DATE".to_string(),
                 serde_json::json!(v),
             );
+        }
+        if let Some(v) = &self.scanopy_domain_class {
+            attrs.insert("SCANOPY_DOMAIN_CLASS".to_string(), serde_json::json!(v));
+        }
+        if let Some(v) = &self.scanopy_institution_type {
+            attrs.insert("SCANOPY_INSTITUTION_TYPE".to_string(), serde_json::json!(v));
         }
         attrs
     }

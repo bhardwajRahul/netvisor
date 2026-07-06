@@ -1,4 +1,5 @@
 pub mod client;
+pub mod domain_classification;
 pub mod service;
 pub mod subscriber;
 pub mod types;

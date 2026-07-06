@@ -3,6 +3,7 @@ use crate::server::{
     billing::types::base::PlanStatus,
     brevo::{
         client::BrevoClient,
+        domain_classification::classify_email_domain,
         types::{CompanyAttributes, ContactAttributes},
     },
     credentials::{
@@ -278,6 +279,7 @@ impl BrevoService {
             _ => return Ok(()),
         };
 
+        let (domain_class, institution_type) = classify_email_domain(email.domain());
         let contact_attrs = ContactAttributes::new()
             .with_email(email.to_string())
             .with_user_id(user_id)
@@ -286,7 +288,8 @@ impl BrevoService {
             .with_last_login_date(event.timestamp)
             .with_email_blacklisted(false)
             .with_marketing_opt_in(marketing_opt_in)
-            .with_marketing_opt_in_date(event.timestamp);
+            .with_marketing_opt_in_date(event.timestamp)
+            .with_domain_classification(domain_class, institution_type);
 
         let doi_attributes = contact_attrs.to_attributes();
 
@@ -893,6 +896,50 @@ impl BrevoService {
             synced = synced_count,
             total = total,
             "Brevo organization sync complete"
+        );
+        Ok(())
+    }
+
+    /// One-shot backfill of `SCANOPY_DOMAIN_CLASS` / `SCANOPY_INSTITUTION_TYPE`
+    /// for every existing user, spawned once at server startup. Ephemeral
+    /// release code — remove (together with
+    /// `StorableFilter::new_for_brevo_backfill`) in the release after
+    /// email-domain classification ships.
+    ///
+    /// Idempotent: recomputes the same pure classification and upserts, so
+    /// re-running (every startup during this release) is safe. Only reachable
+    /// when the Brevo API key is configured — an unconfigured environment
+    /// never constructs `BrevoService`, so nothing syncs.
+    pub async fn backfill_domain_classifications(&self) -> Result<()> {
+        let users = self
+            .user_service
+            .get_all(StorableFilter::<User>::new_for_brevo_backfill())
+            .await?;
+        let total = users.len();
+        tracing::info!(total, "Starting Brevo domain-classification backfill");
+
+        let mut synced = 0usize;
+        for user in users {
+            let email = &user.base.email;
+            let (domain_class, institution_type) = classify_email_domain(email.domain());
+            let attrs = ContactAttributes::new()
+                .with_email(email.to_string())
+                .with_user_id(user.id)
+                .with_domain_classification(domain_class, institution_type);
+            match self.client.upsert_contact(email.as_ref(), attrs).await {
+                Ok(_) => synced += 1,
+                Err(e) => tracing::warn!(
+                    error = %e,
+                    domain = email.domain(),
+                    "Failed to backfill domain classification"
+                ),
+            }
+        }
+
+        tracing::info!(
+            synced,
+            total,
+            "Brevo domain-classification backfill complete"
         );
         Ok(())
     }
