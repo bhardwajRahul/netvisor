@@ -988,6 +988,7 @@ impl HostService {
             if pruned > 0 {
                 tracing::info!(
                     host_id = %created_host.id,
+                    interfaces_complete = true,
                     incoming = created_interfaces.len(),
                     existing = existing_count,
                     pruned = pruned,
@@ -996,10 +997,19 @@ impl HostService {
             }
         } else if !created_interfaces.is_empty() {
             // Non-empty incoming set that we chose NOT to prune against ⇒ an incomplete (partial)
-            // walk. Surface it so a self-hosted operator can see why stale interfaces persist.
+            // walk. Surface it so a self-hosted operator can see why stale interfaces persist —
+            // and how many interfaces this partial scan would have deleted had the fix not gated it.
+            let existing_count = self
+                .interface_service
+                .get_for_host(&created_host.id)
+                .await
+                .map(|v| v.len())
+                .unwrap_or_default();
             tracing::info!(
                 host_id = %created_host.id,
+                interfaces_complete = false,
                 incoming = created_interfaces.len(),
+                existing = existing_count,
                 "Skipped interface prune: SNMP ifTable walk was incomplete (partial scan) — preserving existing interfaces and L2 links"
             );
         }
