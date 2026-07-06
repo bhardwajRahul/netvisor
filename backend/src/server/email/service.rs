@@ -8,8 +8,8 @@ use uuid::Uuid;
 use super::messages::{
     CancellationInitiated, CheckoutCompleted, DaemonStandby, DaemonUnreachable, DiscoveryDigest,
     DiscoveryGuide, Email, EmailAttachment, EmailChangedOld, EmailPreference, InstallCommand,
-    Invite, OidcLinked, OidcUnlinked, OrganizationDeleted, PasswordChanged, PasswordReset,
-    PaymentActionRequired, PaymentFailed, PaymentMethodAdded, PaymentMethodRemoved,
+    InstitutionalSignup, Invite, OidcLinked, OidcUnlinked, OrganizationDeleted, PasswordChanged,
+    PasswordReset, PaymentActionRequired, PaymentFailed, PaymentMethodAdded, PaymentMethodRemoved,
     PaymentRecovered, PlanChanged, PlanLimitApproaching, PlanLimitReached, SubscriptionCancelled,
     SubscriptionPaused, SubscriptionReactivated, SubscriptionResumed, TrialConverted, TrialEnding,
     TrialExpired, TrialStarted, UsageSummary, Verification,
@@ -64,6 +64,9 @@ pub struct EmailService {
     /// Deployment type of this instance — gates the footer's sender-identity
     /// block (cloud discloses Scanopy LLC; self-hosted does not).
     pub deployment_type: DeploymentType,
+    /// Destination for server-admin notifications (institutional-signup
+    /// notice, and any future admin-facing notices). `None` disables them.
+    pub server_admin_contact_email: Option<EmailAddress>,
     /// HTTP client for fetching invoice PDFs from Stripe's public links before
     /// attaching them to billing emails.
     http: reqwest::Client,
@@ -81,6 +84,7 @@ impl EmailService {
         daemon_service: Arc<DaemonService>,
         public_url: String,
         deployment_type: DeploymentType,
+        server_admin_contact_email: Option<EmailAddress>,
     ) -> Self {
         Self {
             transport,
@@ -92,6 +96,7 @@ impl EmailService {
             daemon_service,
             public_url,
             deployment_type,
+            server_admin_contact_email,
             http: reqwest::Client::new(),
         }
     }
@@ -204,6 +209,27 @@ impl EmailService {
             to,
             &EmailChangedOld {
                 new_email: new_email.as_str(),
+            },
+        )
+        .await
+    }
+
+    /// Notify the server admin of an institutional signup. Sends the email
+    /// domain and institution type only — never the registrant's address.
+    /// No-op unless `server_admin_contact_email` is configured.
+    pub async fn send_institutional_signup_email(
+        &self,
+        domain: &str,
+        institution_type: &str,
+    ) -> Result<()> {
+        let Some(to) = self.server_admin_contact_email.clone() else {
+            return Ok(());
+        };
+        self.dispatch(
+            to,
+            &InstitutionalSignup {
+                domain,
+                institution_type,
             },
         )
         .await

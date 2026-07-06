@@ -473,9 +473,19 @@ async fn main() -> anyhow::Result<()> {
     // Sync existing organizations to Brevo if configured
     if let Some(brevo_service) = state.services.brevo_service.clone() {
         tracing::info!(target: LOG_TARGET, "  Spawning Brevo organization sync task");
+        let org_sync_service = brevo_service.clone();
         tokio::spawn(async move {
-            if let Err(e) = brevo_service.sync_existing_organizations().await {
+            if let Err(e) = org_sync_service.sync_existing_organizations().await {
                 tracing::error!(target: LOG_TARGET, error = %e, "Failed to sync existing organizations to Brevo");
+            }
+        });
+
+        // Ephemeral release code — remove next release: one-shot backfill of
+        // email-domain-classification contact attributes for existing users.
+        tracing::info!(target: LOG_TARGET, "  Spawning Brevo domain-classification backfill task");
+        tokio::spawn(async move {
+            if let Err(e) = brevo_service.backfill_domain_classifications().await {
+                tracing::error!(target: LOG_TARGET, error = %e, "Failed to backfill Brevo domain classifications");
             }
         });
     } else {
