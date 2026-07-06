@@ -78,13 +78,22 @@ pub async fn query_system_info(
 }
 
 /// Walk the ifTable and ifXTable to get interface information
+/// Walk the ifTable/ifXTable columns.
+///
+/// Returns the collected entries plus a `complete` flag: `true` only when every column walked
+/// cleanly to its end-of-subtree, `false` if any column was cut short by an SNMP error, a
+/// per-getnext timeout, or the `MAX_WALK_ENTRIES` cap. A `false` here means the entry set may be
+/// a partial view of the host's real ifTable — the server uses it to skip the interface prune so
+/// a transient partial walk cannot delete interfaces (and their resolved L2 neighbors). See #649.
 pub async fn walk_if_table(
     ip: IpAddr,
     credential: &SnmpQueryCredential,
     port: u16,
-) -> Result<Vec<IfTableEntry>> {
+) -> Result<(Vec<IfTableEntry>, bool)> {
     let mut session = create_session(ip, credential, port).await?;
     let mut entries: HashMap<i32, IfTableEntry> = HashMap::new();
+    // Cleared to false the moment any column walk is cut short (error/timeout/limit).
+    let mut complete = true;
 
     // Define the columns we want to walk
     let columns = [
@@ -123,6 +132,7 @@ pub async fn walk_if_table(
         loop {
             if count >= MAX_WALK_ENTRIES {
                 warn!("Walk limit reached for {} on {}", column_name, ip);
+                complete = false;
                 break;
             }
 
@@ -194,15 +204,19 @@ pub async fn walk_if_table(
                             .map_err(|e| anyhow!("Invalid response OID: {:?}", e))?;
                         count += 1;
                     } else {
+                        // getnext returned no varbind — abnormal termination, treat as partial.
+                        complete = false;
                         break;
                     }
                 }
                 Ok(Err(e)) => {
                     debug!("Walk {} failed on {}: {:?}", column_name, ip, e);
+                    complete = false;
                     break;
                 }
                 Err(_) => {
                     debug!("Walk {} timeout on {}", column_name, ip);
+                    complete = false;
                     break;
                 }
             }
@@ -214,10 +228,14 @@ pub async fn walk_if_table(
     let mut result: Vec<IfTableEntry> = entries.into_values().collect();
     result.sort_by_key(|e| e.if_index);
 
-    debug!(
-        "SNMP ifTable walk from {} returned {} ip_addresses",
-        ip,
-        result.len()
+    // `complete` distinguishes an authoritative full ifTable from a partial walk cut short by
+    // timeout/error. The server prunes stale interfaces only on a complete walk (GH #649), so
+    // surface it at info level for self-hosted daemon-log triage.
+    tracing::info!(
+        ip = %ip,
+        if_count = result.len(),
+        complete = complete,
+        "SNMP ifTable walk finished"
     );
     // Diagnostic for issue #614 (high-ifIndex interfaces missing): log the full set of
     // collected ifIndex values, not just the count, so we can tell whether a high-ifIndex
@@ -228,7 +246,7 @@ pub async fn walk_if_table(
         "SNMP ifTable walk ifIndex set"
     );
 
-    Ok(result)
+    Ok((result, complete))
 }
 
 /// Query LLDP remote table for neighbor information

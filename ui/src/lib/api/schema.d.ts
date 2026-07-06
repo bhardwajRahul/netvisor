@@ -5079,6 +5079,13 @@ export interface components {
             host: components["schemas"]["Host"];
             /** @description SNMP interface entries (ifTable data) - optional, populated when SNMP is enabled. */
             interfaces?: components["schemas"]["Interface"][];
+            /**
+             * @description Whether `interfaces` is a complete, authoritative ifTable. When false (a partial SNMP walk
+             *     cut short by timeout/error), the server must NOT prune interfaces missing from this scan —
+             *     otherwise a transient partial walk tears down the host's L2 topology (#649). Daemons that
+             *     predate this field omit it; it defaults to true so their behavior is unchanged.
+             */
+            interfaces_complete?: boolean;
             ip_addresses: components["schemas"]["IPAddress"][];
             ports: components["schemas"]["Port"][];
             services: components["schemas"]["Service"][];

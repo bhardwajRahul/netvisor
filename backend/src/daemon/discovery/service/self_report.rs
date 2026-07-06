@@ -153,6 +153,8 @@ impl DiscoveryRunner {
             vec![daemon_service],
             vec![],
             vec![],
+            // Self-report carries no ifTable; empty interface set, nothing to prune.
+            true,
             cancel,
         )
         .await?;
