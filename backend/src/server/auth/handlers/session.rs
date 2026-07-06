@@ -62,6 +62,10 @@ pub(crate) async fn login(
         .map_err(|e| ApiError::internal_error(&format!("Failed to cycle session: {}", e)))?;
 
     session
+        .insert("session_epoch", user.base.session_epoch)
+        .await
+        .map_err(|e| ApiError::internal_error(&format!("Failed to save session: {}", e)))?;
+    session
         .insert("user_id", user.id)
         .await
         .map_err(|e| ApiError::internal_error(&format!("Failed to save session: {}", e)))?;
@@ -126,6 +130,22 @@ pub(crate) async fn get_current_user(
         .get_by_id(&user_id)
         .await?
         .ok_or_else(|| ApiError::entity_not_found::<User>(user_id))?;
+
+    // Honor the session epoch here too. Unlike the protected API endpoints, this
+    // handler reads the session directly (not via the `Authorized` extractor),
+    // so without this check a session invalidated by a password change/reset
+    // ("log out everywhere") would still resolve a current user — leaving the
+    // frontend's auth-state query (`POST /api/auth/me`) believing it is logged
+    // in while every data request 401s.
+    let session_epoch: i64 = session
+        .get("session_epoch")
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or(0);
+    if session_epoch < user.base.session_epoch {
+        return Err(ApiError::not_authenticated());
+    }
 
     Ok(Json(ApiResponse::success(user)))
 }

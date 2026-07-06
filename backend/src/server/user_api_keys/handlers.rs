@@ -2,6 +2,7 @@ use crate::server::shared::events::traits::{Event, OrgScope};
 use crate::server::shared::events::types::{OnboardingOperation, OnboardingOperationDiscriminants};
 use crate::server::shared::extractors::Query;
 use crate::server::shared::storage::traits::Entity;
+use crate::server::shared::validation::validate_network_ids_access;
 use crate::server::{
     auth::middleware::{
         features::{ApiKeyFeature, RequireFeature},
@@ -143,8 +144,7 @@ pub async fn create_user_api_key(
         .map_err(|_| ApiError::permission_denied())?;
 
     // Validate network access is a subset of user's access
-    UserApiKeyService::validate_network_access(&api_key.base.network_ids, &user_network_ids)
-        .map_err(|_| ApiError::permission_denied())?;
+    validate_network_ids_access(&api_key.base.network_ids, &user_network_ids)?;
 
     // Set user_id and organization_id from authenticated user
     api_key.base.user_id = user_id;
@@ -237,8 +237,7 @@ pub async fn update_user_api_key(
         .map_err(|_| ApiError::permission_denied())?;
 
     // Validate network access is a subset of user's access
-    UserApiKeyService::validate_network_access(&request.base.network_ids, &user_network_ids)
-        .map_err(|_| ApiError::permission_denied())?;
+    validate_network_ids_access(&request.base.network_ids, &user_network_ids)?;
 
     // Preserve immutable fields
     request.preserve_immutable_fields(&existing);

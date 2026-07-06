@@ -79,6 +79,12 @@ pub struct UserBase {
     /// Per-user email preferences
     #[serde(default)]
     pub email_settings: EmailSettings,
+    /// Monotonic session epoch. Every active session records the epoch it was
+    /// created under; the auth extractor rejects a session whose epoch is below
+    /// the user's current value. Bumping this (on password change/reset)
+    /// invalidates all other sessions ("log out everywhere"). Never client-facing.
+    #[serde(skip)]
+    pub session_epoch: i64,
 }
 
 impl Default for UserBase {
@@ -101,6 +107,7 @@ impl Default for UserBase {
             password_reset_expires: None,
             pending_email: None,
             email_settings: EmailSettings::default(),
+            session_epoch: 0,
         }
     }
 }
@@ -134,6 +141,7 @@ impl UserBase {
             password_reset_expires: None,
             pending_email: None,
             email_settings: EmailSettings::default(),
+            session_epoch: 0,
         }
     }
 
@@ -164,6 +172,7 @@ impl UserBase {
             password_reset_expires: None,
             pending_email: None,
             email_settings: EmailSettings::default(),
+            session_epoch: 0,
         }
     }
 }
@@ -250,6 +259,7 @@ impl Storable for User {
                     password_reset_expires,
                     pending_email,
                     email_settings,
+                    session_epoch,
                     ..
                 },
         } = self.clone();
@@ -275,6 +285,7 @@ impl Storable for User {
                 "password_reset_expires",
                 "pending_email",
                 "email_settings",
+                "session_epoch",
             ],
             vec![
                 SqlValue::Uuid(id),
@@ -295,6 +306,7 @@ impl Storable for User {
                 SqlValue::OptionTimestamp(password_reset_expires),
                 SqlValue::OptionalString(pending_email.map(|e| e.to_string())),
                 SqlValue::EmailSettings(email_settings),
+                SqlValue::I64(session_epoch),
             ],
         ))
     }
@@ -342,6 +354,7 @@ impl Storable for User {
                     .ok()
                     .and_then(|v| serde_json::from_value(v).ok())
                     .unwrap_or_default(),
+                session_epoch: row.try_get("session_epoch").unwrap_or(0),
             },
         })
     }

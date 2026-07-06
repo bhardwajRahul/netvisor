@@ -36,7 +36,7 @@ pub const LOG_TARGET: &str = "server";
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let _ = dotenv::dotenv();
+    let _ = dotenvy::dotenv();
 
     let cli = ServerCli::parse();
 

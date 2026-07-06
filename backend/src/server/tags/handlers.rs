@@ -354,6 +354,34 @@ async fn resolve_entity_scope(
     }
 }
 
+/// Validate that every `entity_id` belongs to the caller's tenant before we
+/// write tag-junction rows for it. Tag-org is validated separately by the
+/// service (`validate_tag_full`); this guards the *target entities*, which are
+/// otherwise caller-supplied ids written straight to the junction. Resolves each
+/// id's `(network_id, organization_id)` and requires a match on whichever axis
+/// the entity is scoped by; an id that can't be resolved (missing / foreign) is
+/// rejected with the same error as a cross-tenant id (no existence oracle).
+async fn validate_entities_in_tenant(
+    state: &AppState,
+    auth: &Authorized<Member>,
+    entity_ids: &[Uuid],
+    entity_type: EntityDiscriminants,
+) -> Result<(), ApiError> {
+    let org_id = auth.require_organization_id()?;
+    let network_ids = auth.network_ids();
+    for entity_id in entity_ids {
+        let (net, org) = resolve_entity_scope(state, entity_id, entity_type).await;
+        let org_ok = org == Some(org_id);
+        let net_ok = net.is_some_and(|n| network_ids.contains(&n));
+        if !(org_ok || net_ok) {
+            return Err(ApiError::forbidden(
+                "Cannot modify tags on an entity outside your organization",
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Emit EntityEvent::Updated for each entity whose tags changed.
 /// This triggers subscribers (like topology) to refresh their snapshots.
 ///
@@ -462,6 +490,8 @@ pub async fn bulk_add_tag(
         .organization_id()
         .ok_or_else(|| ApiError::forbidden("Organization context required"))?;
 
+    validate_entities_in_tenant(&state, &auth, &request.entity_ids, request.entity_type).await?;
+
     let affected_count = state
         .services
         .entity_tag_service
@@ -530,6 +560,8 @@ pub async fn bulk_remove_tag(
         .organization_id()
         .ok_or_else(|| ApiError::forbidden("Organization context required"))?;
 
+    validate_entities_in_tenant(&state, &auth, &request.entity_ids, request.entity_type).await?;
+
     let affected_count = state
         .services
         .entity_tag_service
@@ -588,6 +620,14 @@ pub async fn set_entity_tags(
     let organization_id = auth
         .organization_id()
         .ok_or_else(|| ApiError::forbidden("Organization context required"))?;
+
+    validate_entities_in_tenant(
+        &state,
+        &auth,
+        std::slice::from_ref(&request.entity_id),
+        request.entity_type,
+    )
+    .await?;
 
     state
         .services

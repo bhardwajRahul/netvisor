@@ -16,6 +16,7 @@ use crate::server::shared::storage::traits::{Entity, Storable};
 use crate::server::shared::types::api::{
     ApiError, ApiErrorResponse, EmptyApiResponse, PaginatedApiResponse,
 };
+use crate::server::shared::validation::validate_network_ids_access;
 use crate::server::{
     config::AppState,
     shared::types::api::{ApiResponse, ApiResult},
@@ -204,7 +205,20 @@ async fn save_assignments(
     credential: &mut Credential,
     assigned_network_ids: Vec<Uuid>,
     host_assignments: Vec<crate::server::credentials::r#impl::types::CredentialHostAssignment>,
+    user_network_ids: &[Uuid],
 ) -> Result<(), ApiError> {
+    // Validate caller-supplied references before writing the assignment
+    // junction rows: a credential must not be assignable to a network or host
+    // outside the caller's tenant (else a foreign daemon would receive this
+    // credential's endpoint/secret during discovery).
+    validate_network_ids_access(&assigned_network_ids, user_network_ids)?;
+    let host_ids: Vec<Uuid> = host_assignments.iter().map(|a| a.host_id).collect();
+    state
+        .services
+        .host_service
+        .validate_ids_in_networks(&host_ids, user_network_ids)
+        .await?;
+
     state
         .services
         .credential_service
@@ -279,6 +293,7 @@ async fn update_credential(
 
     let assigned_network_ids = entity.base.assigned_network_ids.clone();
     let host_assignments = entity.base.host_assignments.clone();
+    let network_ids = auth.network_ids();
 
     enforce_single_endpoint(&state, &entity).await?;
 
@@ -291,7 +306,14 @@ async fn update_credential(
     .await?;
 
     if let Some(ref mut credential) = response.data {
-        save_assignments(&state, credential, assigned_network_ids, host_assignments).await?;
+        save_assignments(
+            &state,
+            credential,
+            assigned_network_ids,
+            host_assignments,
+            &network_ids,
+        )
+        .await?;
     }
 
     Ok(response)
@@ -421,6 +443,7 @@ pub async fn create_credential(
 ) -> ApiResult<Json<ApiResponse<Credential>>> {
     let assigned_network_ids = credential.base.assigned_network_ids.clone();
     let host_assignments = credential.base.host_assignments.clone();
+    let network_ids = auth.network_ids();
 
     enforce_single_endpoint(&state, &credential).await?;
 
@@ -432,7 +455,14 @@ pub async fn create_credential(
     .await?;
 
     if let Some(ref mut created) = response.data {
-        save_assignments(&state, created, assigned_network_ids, host_assignments).await?;
+        save_assignments(
+            &state,
+            created,
+            assigned_network_ids,
+            host_assignments,
+            &network_ids,
+        )
+        .await?;
     }
 
     Ok(response)
@@ -472,9 +502,16 @@ async fn bulk_create_credentials(
             .map_err(|e| ApiError::bad_request(&e.to_string()))?;
     }
 
+    // This path calls credential_service.create directly (bypassing the generic
+    // create_handler's validate_create_access), so enforce tenancy here: force
+    // each credential's org to the caller's rather than trusting the body, and
+    // validate assignment references (inside save_assignments).
+    let org_id = auth.require_organization_id()?;
+    let network_ids = auth.network_ids();
     let auth_entity = auth.into_entity();
     let mut created = Vec::with_capacity(credentials.len());
-    for credential in credentials {
+    for mut credential in credentials {
+        credential.base.organization_id = org_id;
         let assigned_network_ids = credential.base.assigned_network_ids.clone();
         let host_assignments = credential.base.host_assignments.clone();
         // Checked sequentially, so each credential also sees earlier batch members
@@ -485,7 +522,14 @@ async fn bulk_create_credentials(
             .credential_service
             .create(credential, auth_entity.clone())
             .await?;
-        save_assignments(&state, &mut result, assigned_network_ids, host_assignments).await?;
+        save_assignments(
+            &state,
+            &mut result,
+            assigned_network_ids,
+            host_assignments,
+            &network_ids,
+        )
+        .await?;
         created.push(result);
     }
 

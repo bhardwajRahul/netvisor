@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use crate::server::shared::events::traits::{EntityEventFlags, EntityScope, Event as TypedEvent};
 use crate::server::{
     auth::middleware::auth::AuthenticatedEntity,
+    shared::types::api::ApiError,
     shared::{
         entities::{ChangeTriggersTopologyStaleness, Entity as EntityEnum},
         events::{bus::EventBus, types::EntityOperation},
@@ -207,6 +208,70 @@ where
         } else {
             Ok(None)
         }
+    }
+
+    /// Validate that every id in `ids` refers to a live entity owned by `org_id`.
+    ///
+    /// Loads the referenced rows and rejects if any requested id is missing
+    /// (does not exist / is not visible) or belongs to a different organization.
+    /// Call this before persisting caller-supplied foreign-key references (e.g.
+    /// junction rows) so a caller cannot reference another tenant's entities by
+    /// id. Returns `entity_access_denied` for the first offending id — the same
+    /// response for "missing" and "wrong org", so it is not an existence oracle.
+    async fn validate_ids_in_org(&self, ids: &[Uuid], org_id: Uuid) -> Result<(), ApiError> {
+        let unique: Vec<Uuid> = ids
+            .iter()
+            .copied()
+            .collect::<std::collections::HashSet<Uuid>>()
+            .into_iter()
+            .collect();
+        if unique.is_empty() {
+            return Ok(());
+        }
+        let filter = StorableFilter::<T>::new_from_entity_ids(&unique);
+        let entities = self.get_all(filter).await.map_err(ApiError::from)?;
+        let owned: std::collections::HashSet<Uuid> = entities
+            .iter()
+            .filter(|e| self.get_organization_id(e) == Some(org_id))
+            .map(|e| e.id())
+            .collect();
+        if let Some(missing) = unique.iter().find(|id| !owned.contains(id)) {
+            return Err(ApiError::entity_access_denied::<T>(*missing));
+        }
+        Ok(())
+    }
+
+    /// Validate that every id in `ids` refers to a live entity on a network the
+    /// caller can access. Network-keyed analogue of [`validate_ids_in_org`], for
+    /// entities scoped by `network_id` rather than `organization_id`.
+    async fn validate_ids_in_networks(
+        &self,
+        ids: &[Uuid],
+        user_network_ids: &[Uuid],
+    ) -> Result<(), ApiError> {
+        let unique: Vec<Uuid> = ids
+            .iter()
+            .copied()
+            .collect::<std::collections::HashSet<Uuid>>()
+            .into_iter()
+            .collect();
+        if unique.is_empty() {
+            return Ok(());
+        }
+        let filter = StorableFilter::<T>::new_from_entity_ids(&unique);
+        let entities = self.get_all(filter).await.map_err(ApiError::from)?;
+        let accessible: std::collections::HashSet<Uuid> = entities
+            .iter()
+            .filter(|e| {
+                self.get_network_id(e)
+                    .is_some_and(|n| user_network_ids.contains(&n))
+            })
+            .map(|e| e.id())
+            .collect();
+        if let Some(missing) = unique.iter().find(|id| !accessible.contains(id)) {
+            return Err(ApiError::entity_access_denied::<T>(*missing));
+        }
+        Ok(())
     }
 
     /// Delete entity by ID

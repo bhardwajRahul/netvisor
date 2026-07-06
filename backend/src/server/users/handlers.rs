@@ -328,6 +328,14 @@ async fn admin_update_user(
         .map_err(|e| ApiError::internal_error(&e.to_string()))?
         .ok_or_else(|| ApiError::entity_not_found::<User>(id))?;
 
+    // Target must belong to the admin's own organization. This handler calls
+    // service.update directly (bypassing the generic org-scoped handler), so
+    // without this check an admin could modify a lower-privileged user in
+    // another org by id.
+    if existing.base.organization_id != auth.require_organization_id()? {
+        return Err(ApiError::permission_denied());
+    }
+
     // Cannot edit yourself through this endpoint
     if admin_user_id == id {
         return Err(ApiError::permission_denied());

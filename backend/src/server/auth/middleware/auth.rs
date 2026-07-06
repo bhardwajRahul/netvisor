@@ -606,6 +606,20 @@ impl AuthenticatedEntity {
             .map_err(|_| AuthError(ApiError::not_authenticated()))?
             .ok_or_else(|| AuthError(ApiError::not_authenticated()))?;
 
+        // Reject sessions issued before the user's current session epoch. Bumping
+        // the epoch (on password change/reset) invalidates all sessions that
+        // don't carry the new value. Sessions predating the feature have no
+        // stored epoch and default to 0, matching a never-bumped user.
+        let session_epoch: i64 = session
+            .get("session_epoch")
+            .await
+            .ok()
+            .flatten()
+            .unwrap_or(0);
+        if session_epoch < user.base.session_epoch {
+            return Err(AuthError(ApiError::not_authenticated()));
+        }
+
         let network_ids: Vec<Uuid> = if matches!(
             user.base.permissions,
             UserOrgPermissions::Owner | UserOrgPermissions::Admin
