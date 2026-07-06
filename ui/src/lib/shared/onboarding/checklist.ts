@@ -1,6 +1,16 @@
 import type { components } from '$lib/api/schema';
 import { openModal } from '$lib/shared/stores/modal-registry';
 import { trackEvent } from '$lib/shared/utils/analytics';
+import {
+	gettingStarted_stepAccountDescription,
+	gettingStarted_stepAccountLabel,
+	gettingStarted_stepDaemonDescription,
+	gettingStarted_stepDaemonLabel,
+	gettingStarted_stepDiscoveryDescription,
+	gettingStarted_stepDiscoveryLabel,
+	gettingStarted_stepTopologyDescription,
+	gettingStarted_stepTopologyLabel
+} from '$lib/paraglide/messages';
 
 type OnboardingOperation = components['schemas']['OnboardingOperationDiscriminants'];
 
@@ -8,8 +18,8 @@ export interface ChecklistStep {
 	id: string;
 	milestone: OnboardingOperation;
 	prerequisite: OnboardingOperation | null;
-	label: string;
-	description: string;
+	label: () => string;
+	description: () => string;
 	actionTab: string;
 	actionModal?: string;
 }
@@ -19,16 +29,16 @@ export const CHECKLIST_STEPS: ChecklistStep[] = [
 		id: 'account',
 		milestone: 'OrgCreated',
 		prerequisite: null,
-		label: 'Account created',
-		description: 'Your organization is set up and ready to go.',
+		label: () => gettingStarted_stepAccountLabel(),
+		description: () => gettingStarted_stepAccountDescription(),
 		actionTab: 'home'
 	},
 	{
 		id: 'daemon',
 		milestone: 'FirstDaemonRegistered',
 		prerequisite: 'OrgCreated',
-		label: 'Install a daemon',
-		description: 'Install a daemon to start discovering your network.',
+		label: () => gettingStarted_stepDaemonLabel(),
+		description: () => gettingStarted_stepDaemonDescription(),
 		actionTab: 'daemons',
 		actionModal: 'create-daemon'
 	},
@@ -36,16 +46,16 @@ export const CHECKLIST_STEPS: ChecklistStep[] = [
 		id: 'discovery',
 		milestone: 'FirstDiscoveryCompleted',
 		prerequisite: 'FirstDaemonRegistered',
-		label: 'Run a discovery',
-		description: 'See live results as your daemon discovers hosts and services.',
+		label: () => gettingStarted_stepDiscoveryLabel(),
+		description: () => gettingStarted_stepDiscoveryDescription(),
 		actionTab: 'discovery-scans'
 	},
 	{
 		id: 'topology',
 		milestone: 'FirstTopologyRebuild',
 		prerequisite: 'FirstDiscoveryCompleted',
-		label: 'View your topology',
-		description: 'See your network visualized as an interactive map.',
+		label: () => gettingStarted_stepTopologyLabel(),
+		description: () => gettingStarted_stepTopologyDescription(),
 		actionTab: 'topology'
 	}
 ];

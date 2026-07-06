@@ -10,7 +10,8 @@
 	import {
 		hosts_virtualization_hypervisorService,
 		hosts_virtualization_virtualMachines,
-		hosts_virtualization_noVmsYet
+		hosts_virtualization_noVmsYet,
+		inspector_hypervisorHost
 	} from '$lib/paraglide/messages';
 
 	let { edge, hypervisorServiceId }: { edge: Edge; hypervisorServiceId: string } = $props();
@@ -66,7 +67,7 @@
 	{/if}
 
 	{#if hypervisorHost}
-		<span class="text-secondary mb-2 block text-sm font-medium">Hypervisor Host</span>
+		<span class="text-secondary mb-2 block text-sm font-medium">{inspector_hypervisorHost()}</span>
 		<div class="card card-static">
 			<EntityDisplayWrapper
 				context={{

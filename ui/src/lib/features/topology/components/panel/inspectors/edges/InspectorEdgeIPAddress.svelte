@@ -7,6 +7,7 @@
 	import { getTopologyEditState } from '$lib/features/topology/state';
 	import { topologyReadOnly } from '$lib/features/topology/queries';
 	import type { RenderableTopology } from '$lib/features/topology/types/base';
+	import { common_host, common_ipAddresses } from '$lib/paraglide/messages';
 
 	import type { components } from '$lib/api/schema';
 	type TopologyView = components['schemas']['TopologyView'];
@@ -47,7 +48,7 @@
 
 <div class="space-y-3">
 	{#if host}
-		<span class="text-secondary mb-2 block text-sm font-medium">Host</span>
+		<span class="text-secondary mb-2 block text-sm font-medium">{common_host()}</span>
 		<div class="card card-static">
 			<EntityDisplayWrapper
 				context={{
@@ -62,7 +63,7 @@
 			/>
 		</div>
 	{/if}
-	<span class="text-secondary mb-2 block text-sm font-medium">IP Addresses</span>
+	<span class="text-secondary mb-2 block text-sm font-medium">{common_ipAddresses()}</span>
 	{#if sourceInterface}
 		<div class="card card-static">
 			<EntityDisplayWrapper

@@ -9,6 +9,7 @@ import createClient, { type Middleware } from 'openapi-fetch';
 import type { paths, components } from './schema';
 import { pushError } from '$lib/shared/stores/feedback';
 import { translateError, type ApiErrorResponse } from '$lib/i18n/errors';
+import { common_httpError } from '$lib/paraglide/messages';
 import { env } from '$env/dynamic/public';
 
 // Re-export schema types for convenience
@@ -303,7 +304,7 @@ const errorMiddleware: Middleware = {
 				}
 			} catch {
 				if (!(options as { silenceErrors?: boolean }).silenceErrors) {
-					pushError(`HTTP ${response.status}: ${response.statusText}`);
+					pushError(common_httpError({ status: response.status, statusText: response.statusText }));
 				}
 			}
 		}

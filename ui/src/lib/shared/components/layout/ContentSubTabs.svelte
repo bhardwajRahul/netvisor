@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { IconComponent } from '$lib/shared/utils/types';
 	import type { Component } from 'svelte';
+	import { common_contentTabs } from '$lib/paraglide/messages';
 
 	export interface SubTab {
 		id: string;
@@ -27,7 +28,7 @@
 	<nav
 		class="mb-6 flex space-x-6 border-b"
 		style="border-color: var(--color-border)"
-		aria-label="Content tabs"
+		aria-label={common_contentTabs()}
 	>
 		{#each tabs as tab (tab.id)}
 			<button

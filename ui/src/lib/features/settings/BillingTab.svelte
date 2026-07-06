@@ -54,7 +54,10 @@
 		settings_billing_trialCountdown,
 		settings_billing_trialEndsOn,
 		billing_addPaymentMethod,
-		billing_noPaymentMethodBannerBody
+		billing_noPaymentMethodBannerBody,
+		billing_requestAccepted,
+		billing_subscriptionReactivated,
+		billing_trialExtended
 	} from '$lib/paraglide/messages';
 	import InlineWarning from '$lib/shared/components/feedback/InlineWarning.svelte';
 	import InlineDanger from '$lib/shared/components/feedback/InlineDanger.svelte';
@@ -371,11 +374,9 @@
 			await reactivateMutation.mutateAsync();
 			const flipped = await waitForOrgUpdate((o) => o.plan_status === 'active');
 			if (flipped) {
-				pushSuccess('Subscription reactivated.');
+				pushSuccess(billing_subscriptionReactivated());
 			} else {
-				pushWarning(
-					'Reactivate request accepted. It may take a moment to reflect across your account.'
-				);
+				pushWarning(billing_requestAccepted());
 			}
 			organizationQuery.refetch();
 		} catch {
@@ -389,11 +390,9 @@
 			await extendTrialMutation.mutateAsync();
 			const flipped = await waitForOrgUpdate((o) => o.trial_extended_used === true);
 			if (flipped) {
-				pushSuccess('Trial extended.');
+				pushSuccess(billing_trialExtended());
 			} else {
-				pushWarning(
-					'Trial extend request accepted. It may take a moment to reflect across your account.'
-				);
+				pushWarning(billing_requestAccepted());
 			}
 			organizationQuery.refetch();
 		} catch {

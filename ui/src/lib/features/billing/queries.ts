@@ -8,6 +8,18 @@ import { apiClient } from '$lib/api/client';
 import type { BillingPlan, BillingRate } from './types';
 import type { components } from '$lib/api/schema';
 import { pushError, pushSuccess } from '$lib/shared/stores/feedback';
+import {
+	billing_errorApplyingDiscount,
+	billing_errorBillingPortal,
+	billing_errorCancellingSubscription,
+	billing_errorChangingPlan,
+	billing_errorExtendingTrial,
+	billing_errorPausingSubscription,
+	billing_errorReactivatingSubscription,
+	billing_errorResumingSubscription,
+	billing_errorSavingPaymentMethod,
+	billing_errorStartingCardSetup
+} from '$lib/paraglide/messages';
 
 type PauseDuration = components['schemas']['PauseDuration'];
 type CancelSubscriptionRequest = components['schemas']['CancelSubscriptionRequest'];
@@ -50,7 +62,7 @@ export function useCheckoutMutation() {
 			}
 		},
 		onError: (error: Error) => {
-			pushError(`Error changing plan: ${error.message}. Please try again.`);
+			pushError(billing_errorChangingPlan({ message: error.message }));
 		}
 	}));
 }
@@ -70,7 +82,7 @@ export function useCustomerPortalMutation() {
 			return data.data;
 		},
 		onError: (error: Error) => {
-			pushError(`Error getting billing portal URL: ${error.message}. Please try again.`);
+			pushError(billing_errorBillingPortal({ message: error.message }));
 		}
 	}));
 }
@@ -89,7 +101,7 @@ export function useCreateSetupIntentMutation() {
 			return data.data.client_secret;
 		},
 		onError: (error: Error) => {
-			pushError(`Error starting card setup: ${error.message}. Please try again.`);
+			pushError(billing_errorStartingCardSetup({ message: error.message }));
 		}
 	}));
 }
@@ -110,7 +122,7 @@ export function useFinalizePaymentMethodMutation() {
 			return true;
 		},
 		onError: (error: Error) => {
-			pushError(`Error saving payment method: ${error.message}. Please try again.`);
+			pushError(billing_errorSavingPaymentMethod({ message: error.message }));
 		}
 	}));
 }
@@ -133,7 +145,7 @@ export function useChangePlanMutation() {
 			pushSuccess(data);
 		},
 		onError: (error: Error) => {
-			pushError(`Error changing plan: ${error.message}. Please try again.`);
+			pushError(billing_errorChangingPlan({ message: error.message }));
 		}
 	}));
 }
@@ -156,7 +168,7 @@ export function usePauseSubscriptionMutation() {
 		// confirms the org actually flipped to paused. The API 200 only means
 		// Stripe accepted the request, not that downstream state is consistent.
 		onError: (error: Error) => {
-			pushError(`Error pausing subscription: ${error.message}. Please try again.`);
+			pushError(billing_errorPausingSubscription({ message: error.message }));
 		}
 	}));
 }
@@ -175,7 +187,7 @@ export function useResumeSubscriptionMutation() {
 		},
 		// No onSuccess toast — call site fires it after waitForOrgUpdate.
 		onError: (error: Error) => {
-			pushError(`Error resuming subscription: ${error.message}. Please try again.`);
+			pushError(billing_errorResumingSubscription({ message: error.message }));
 		}
 	}));
 }
@@ -194,7 +206,7 @@ export function useReactivateSubscriptionMutation() {
 		},
 		// No onSuccess toast — call site fires it after waitForOrgUpdate.
 		onError: (error: Error) => {
-			pushError(`Error reactivating subscription: ${error.message}. Please try again.`);
+			pushError(billing_errorReactivatingSubscription({ message: error.message }));
 		}
 	}));
 }
@@ -213,7 +225,7 @@ export function useExtendTrialMutation() {
 		},
 		// No onSuccess toast — call site fires it after waitForOrgUpdate.
 		onError: (error: Error) => {
-			pushError(`Error extending trial: ${error.message}. Please try again.`);
+			pushError(billing_errorExtendingTrial({ message: error.message }));
 		}
 	}));
 }
@@ -232,7 +244,7 @@ export function useCancelSubscriptionMutation() {
 			return data.data;
 		},
 		onError: (error: Error) => {
-			pushError(`Error cancelling subscription: ${error.message}. Please try again.`);
+			pushError(billing_errorCancellingSubscription({ message: error.message }));
 		}
 	}));
 }
@@ -274,7 +286,7 @@ export function useApplyDiscountSaveOfferMutation() {
 		// `org.last_discount_at` is populated, so success is tied to the actual
 		// downstream write rather than the Stripe acknowledgement.
 		onError: (error: Error) => {
-			pushError(`Error applying discount: ${error.message}. Please try again.`);
+			pushError(billing_errorApplyingDiscount({ message: error.message }));
 		}
 	}));
 }

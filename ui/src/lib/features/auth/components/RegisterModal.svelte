@@ -35,7 +35,8 @@
 		common_back,
 		common_change,
 		common_continue,
-		common_email
+		common_email,
+		common_somethingWentWrong
 	} from '$lib/paraglide/messages';
 
 	let {
@@ -311,7 +312,7 @@
 							</button>
 						{/if}
 					{:else if emailError === 'generic'}
-						<InlineDanger title="Something went wrong. Please try again." />
+						<InlineDanger title={common_somethingWentWrong()} />
 					{/if}
 				</div>
 			{:else}

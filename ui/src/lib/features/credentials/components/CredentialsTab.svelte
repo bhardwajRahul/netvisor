@@ -34,8 +34,10 @@
 		credentials_bulkDeleteConfirm,
 		credentials_bulkDeleteImpact,
 		credentials_deleteImpact,
+		credentials_emptySubtitle,
 		credentials_subtitle,
 		common_credentials,
+		common_noEntityYet,
 		common_scope
 	} from '$lib/paraglide/messages';
 
@@ -229,8 +231,8 @@
 		<Loading />
 	{:else if credentials.length === 0}
 		<EmptyState
-			title="No credentials yet"
-			subtitle="Create credentials to authenticate with network devices and services."
+			title={common_noEntityYet({ entity: common_credentials() })}
+			subtitle={credentials_emptySubtitle()}
 			onClick={canManage ? handleCreateCredential : undefined}
 			cta={canManage ? common_create() : ''}
 		/>

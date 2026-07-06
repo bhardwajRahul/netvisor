@@ -29,6 +29,7 @@
 		common_created,
 		common_duration,
 		common_unknown,
+		daemons_installPromptDiscoveries,
 		discovery_confirmDeleteHistorical,
 		discovery_finishedAt,
 		discovery_historyTitle,
@@ -173,7 +174,7 @@
 	<TabHeader title={discovery_historyTitle()} />
 
 	{#if !hasDaemon(onboarding)}
-		<PreDaemonEmptyState title="Install a daemon to start running discoveries on your network." />
+		<PreDaemonEmptyState title={daemons_installPromptDiscoveries()} />
 	{:else if isLoading}
 		<Loading />
 	{:else if historicalDiscoveries.length === 0}

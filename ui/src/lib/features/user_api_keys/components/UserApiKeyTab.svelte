@@ -23,16 +23,19 @@
 
 	import {
 		common_apiKeys,
+		common_confirmBulkDelete,
+		common_confirmDeleteName,
 		common_create,
 		common_name,
 		common_networks,
 		common_permissions,
 		common_tags,
-		userApiKeys_confirmBulkDelete,
-		userApiKeys_confirmDelete,
+		userApiKeys_apiAccessUnavailableSubtitle,
+		userApiKeys_apiAccessUnavailableTitle,
 		userApiKeys_noApiKeysSubtitle,
 		userApiKeys_noApiKeysYet,
-		userApiKeys_subtitle
+		userApiKeys_subtitle,
+		userApiKeys_verifyEmailToCreate
 	} from '$lib/paraglide/messages';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
 	import { billingPlans } from '$lib/shared/stores/metadata';
@@ -89,7 +92,7 @@
 	});
 
 	async function handleDelete(apiKey: UserApiKey) {
-		if (confirm(userApiKeys_confirmDelete({ name: apiKey.name }))) {
+		if (confirm(common_confirmDeleteName({ name: apiKey.name }))) {
 			deleteMutation.mutate(apiKey.id);
 		}
 	}
@@ -116,7 +119,7 @@
 	}
 
 	async function handleBulkDelete(ids: string[]) {
-		if (confirm(userApiKeys_confirmBulkDelete({ count: ids.length }))) {
+		if (confirm(common_confirmBulkDelete({ count: ids.length, entity: common_apiKeys() }))) {
 			await bulkDeleteMutation.mutateAsync(ids);
 		}
 	}
@@ -174,7 +177,7 @@
 		<svelte:fragment slot="actions">
 			{#if !isReadOnly && hasApiAccess}
 				{#if !isEmailVerified}
-					<span data-tooltip="Please verify email to create an API key" use:tooltip>
+					<span data-tooltip={userApiKeys_verifyEmailToCreate()} use:tooltip>
 						<button class="btn-primary flex items-center opacity-50" disabled>
 							<Plus class="h-5 w-5" />{common_create()}
 						</button>
@@ -190,8 +193,8 @@
 
 	{#if !hasApiAccess}
 		<EmptyState
-			title="API Access Not Available"
-			subtitle="Your current plan does not include API access. Upgrade to a plan with API access to create and manage API keys."
+			title={userApiKeys_apiAccessUnavailableTitle()}
+			subtitle={userApiKeys_apiAccessUnavailableSubtitle()}
 		>
 			<UpgradeButton feature="api_access" surface="api_keys_tab" />
 		</EmptyState>

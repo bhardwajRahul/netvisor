@@ -21,17 +21,18 @@
 	import { modalState, resolveModalDeepLink } from '$lib/shared/stores/modal-registry';
 	import { tooltip } from '$lib/shared/actions/tooltip';
 	import {
+		common_confirmBulkDelete,
 		common_created,
 		common_email,
 		common_emailAndPassword,
 		common_role,
 		common_users,
 		users_authMethod,
-		users_confirmBulkDelete,
 		users_inviteUser,
 		users_noUsersFound,
 		users_noUsersSubtitle,
-		users_subtitle
+		users_subtitle,
+		users_verifyEmailToInvite
 	} from '$lib/paraglide/messages';
 
 	let { isReadOnly = false }: TabProps = $props();
@@ -113,7 +114,7 @@
 	);
 
 	async function handleBulkDelete(ids: string[]) {
-		if (confirm(users_confirmBulkDelete({ count: ids.length }))) {
+		if (confirm(common_confirmBulkDelete({ count: ids.length, entity: common_users() }))) {
 			await bulkDeleteUsersMutation.mutateAsync(ids);
 		}
 	}
@@ -189,7 +190,7 @@
 					{#if isAtSeatLimit}
 						<UpgradeButton feature="seats" surface="users_tab" gate_type="limit_hit" />
 					{:else if currentUser && !currentUser.email_verified}
-						<span data-tooltip="Please verify email to invite users" use:tooltip>
+						<span data-tooltip={users_verifyEmailToInvite()} use:tooltip>
 							<button class="btn-primary flex items-center opacity-50" disabled>
 								<UserPlus class="mr-2 h-5 w-5" />
 								{users_inviteUser()}

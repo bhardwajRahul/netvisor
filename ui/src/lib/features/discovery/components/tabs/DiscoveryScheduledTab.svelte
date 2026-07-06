@@ -38,6 +38,7 @@
 		common_create,
 		common_created,
 		common_tags,
+		daemons_installPromptDiscoveries,
 		discovery_confirmDeleteScheduled,
 		common_scans,
 		discovery_legacyDaemonsWarning,
@@ -239,7 +240,7 @@
 	{/if}
 
 	{#if !hasDaemon(onboarding)}
-		<PreDaemonEmptyState title="Install a daemon to start running discoveries on your network." />
+		<PreDaemonEmptyState title={daemons_installPromptDiscoveries()} />
 	{:else if isLoading}
 		<Loading />
 	{:else if discoveriesData.length === 0}

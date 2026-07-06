@@ -1,6 +1,7 @@
 <script lang="ts">
 	import GenericModal from './GenericModal.svelte';
 	import SupportOptions from '$lib/features/support/SupportOptions.svelte';
+	import { daemons_troubleshootingTitle } from '$lib/paraglide/messages';
 
 	let {
 		isOpen = false,
@@ -11,7 +12,7 @@
 	} = $props();
 </script>
 
-<GenericModal title="Daemon Troubleshooting" {isOpen} {onClose} size="xl">
+<GenericModal title={daemons_troubleshootingTitle()} {isOpen} {onClose} size="xl">
 	<div class="p-6">
 		<SupportOptions isTroubleshooting={true} hasEmailSupport={false} />
 	</div>

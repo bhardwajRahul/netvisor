@@ -21,7 +21,7 @@
 	import { onboardingStore } from '$lib/features/auth/stores/onboarding';
 	import { trackEvent } from '$lib/shared/utils/analytics';
 	import { pushError } from '$lib/shared/stores/feedback';
-	import { auth_emailAlreadyInUse } from '$lib/paraglide/messages';
+	import { auth_emailAlreadyInUse, common_goBack } from '$lib/paraglide/messages';
 	import { useConfigQuery, isCloud } from '$lib/shared/stores/config-query';
 	import { setLastLoginMethod } from '$lib/features/auth/components/LoginModal.svelte';
 
@@ -248,7 +248,7 @@
 							type="button"
 							onclick={handleBack}
 							class="text-secondary hover:text-primary -ml-1 flex items-center transition-colors"
-							aria-label="Go back"
+							aria-label={common_goBack()}
 						>
 							<ChevronLeft class="h-4 w-4" />
 						</button>

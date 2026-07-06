@@ -16,7 +16,8 @@
 	import { useHostsQuery } from '$lib/features/hosts/queries';
 	import { useServicesCacheQuery } from '$lib/features/services/queries';
 	import {
-		common_noServiceSelected,
+		common_noEntitySelected,
+		common_service,
 		hosts_virtualization_emptyMessage,
 		hosts_virtualization_emptySubtitle,
 		hosts_virtualization_emptyTitle,
@@ -129,7 +130,7 @@
 				/>
 			{:else}
 				<EntityConfigEmpty
-					title={common_noServiceSelected()}
+					title={common_noEntitySelected({ entity: common_service() })}
 					subtitle={hosts_virtualization_selectToManage()}
 				/>
 			{/if}

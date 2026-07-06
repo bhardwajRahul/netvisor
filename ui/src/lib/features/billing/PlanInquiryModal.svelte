@@ -8,7 +8,39 @@
 	import SelectInput from '$lib/shared/components/forms/input/SelectInput.svelte';
 	import { CheckCircle } from 'lucide-svelte';
 	import { trackEvent } from '$lib/shared/utils/analytics';
-	import { billing_requestInfo, common_cancel, common_sending } from '$lib/paraglide/messages';
+	import {
+		billing_inquiry1To3Months,
+		billing_inquiry3To6Months,
+		billing_inquiryIntro,
+		billing_inquiryJustExploring,
+		billing_inquiryMessagePlaceholder,
+		billing_inquiryNamePlaceholder,
+		billing_inquiryNetworkCountLabel,
+		billing_inquiryNetworkCountPlaceholder,
+		billing_inquiryReceived,
+		billing_inquiryTeamSizeSelect,
+		billing_inquiryThanks,
+		billing_inquiryTimelineLabel,
+		billing_inquiryTimelineSelect,
+		billing_requestInfo,
+		common_cancel,
+		common_close,
+		common_companySize,
+		common_companySize101To250,
+		common_companySize1To10,
+		common_companySize11To25,
+		common_companySize251To500,
+		common_companySize26To50,
+		common_companySize501To1000,
+		common_companySize51To100,
+		common_companySizeOver1000,
+		common_immediately,
+		common_message,
+		common_name,
+		common_sending,
+		common_somethingWentWrong,
+		common_submit
+	} from '$lib/paraglide/messages';
 	import { apiClient } from '$lib/api/client';
 
 	interface Props {
@@ -36,23 +68,23 @@
 	let submitError = $state('');
 
 	const teamSizeOptions = [
-		{ value: '', label: 'Select team size', disabled: true },
-		{ value: '1-10', label: '1-10 employees' },
-		{ value: '11-25', label: '11-25 employees' },
-		{ value: '26-50', label: '26-50 employees' },
-		{ value: '51-100', label: '51-100 employees' },
-		{ value: '101-250', label: '101-250 employees' },
-		{ value: '251-500', label: '251-500 employees' },
-		{ value: '501-1000', label: '501-1000 employees' },
-		{ value: '1001+', label: '1001+ employees' }
+		{ value: '', label: billing_inquiryTeamSizeSelect(), disabled: true },
+		{ value: '1-10', label: common_companySize1To10() },
+		{ value: '11-25', label: common_companySize11To25() },
+		{ value: '26-50', label: common_companySize26To50() },
+		{ value: '51-100', label: common_companySize51To100() },
+		{ value: '101-250', label: common_companySize101To250() },
+		{ value: '251-500', label: common_companySize251To500() },
+		{ value: '501-1000', label: common_companySize501To1000() },
+		{ value: '1001+', label: common_companySizeOver1000() }
 	];
 
 	const urgencyOptions = [
-		{ value: '', label: 'Select timeline', disabled: true },
-		{ value: 'immediately', label: 'Immediately' },
-		{ value: '1-3 months', label: '1-3 months' },
-		{ value: '3-6 months', label: '3-6 months' },
-		{ value: 'exploring', label: 'Just exploring' }
+		{ value: '', label: billing_inquiryTimelineSelect(), disabled: true },
+		{ value: 'immediately', label: common_immediately() },
+		{ value: '1-3 months', label: billing_inquiry1To3Months() },
+		{ value: '3-6 months', label: billing_inquiry3To6Months() },
+		{ value: 'exploring', label: billing_inquiryJustExploring() }
 	];
 
 	function getDefaultValues() {
@@ -93,7 +125,7 @@
 				}
 			} catch (err) {
 				console.error('Plan inquiry form error:', err);
-				submitError = 'Something went wrong. Please try again.';
+				submitError = common_somethingWentWrong();
 				trackEvent('plan_inquiry_submitted', { planType, success: false });
 			} finally {
 				loading = false;
@@ -131,12 +163,11 @@
 			<div class="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-500/20">
 				<CheckCircle class="h-8 w-8 text-green-400" />
 			</div>
-			<h3 class="text-primary mb-2 text-xl font-semibold">Thank you!</h3>
+			<h3 class="text-primary mb-2 text-xl font-semibold">{billing_inquiryThanks()}</h3>
 			<p class="text-secondary mb-6">
-				We've received your inquiry about the {planName} plan. We'll be in touch within one business
-				day.
+				{billing_inquiryReceived({ planName })}
 			</p>
-			<button type="button" onclick={handleClose} class="btn-primary">Close</button>
+			<button type="button" onclick={handleClose} class="btn-primary">{common_close()}</button>
 		</div>
 	{:else}
 		<form
@@ -149,7 +180,7 @@
 		>
 			<div class="flex-1 overflow-auto p-6">
 				<p class="text-secondary mb-6 text-sm">
-					Tell us about your needs and we'll get back to you shortly.
+					{billing_inquiryIntro()}
 				</p>
 
 				<div class="space-y-4">
@@ -160,7 +191,13 @@
 						}}
 					>
 						{#snippet children(field)}
-							<TextInput label="Name" id="inquiry-name" {field} placeholder="Your name" required />
+							<TextInput
+								label={common_name()}
+								id="inquiry-name"
+								{field}
+								placeholder={billing_inquiryNamePlaceholder()}
+								required
+							/>
 						{/snippet}
 					</form.Field>
 
@@ -172,7 +209,7 @@
 					>
 						{#snippet children(field)}
 							<SelectInput
-								label="Company Size"
+								label={common_companySize()}
 								id="inquiry-team-size"
 								{field}
 								options={teamSizeOptions}
@@ -189,7 +226,7 @@
 					>
 						{#snippet children(field)}
 							<SelectInput
-								label="How soon do you need a solution?"
+								label={billing_inquiryTimelineLabel()}
 								id="inquiry-urgency"
 								{field}
 								options={urgencyOptions}
@@ -201,11 +238,11 @@
 					<form.Field name="networkCount">
 						{#snippet children(field)}
 							<TextInput
-								label="How many networks/sites?"
+								label={billing_inquiryNetworkCountLabel()}
 								id="inquiry-network-count"
 								{field}
 								type="number"
-								placeholder="e.g., 10"
+								placeholder={billing_inquiryNetworkCountPlaceholder()}
 							/>
 						{/snippet}
 					</form.Field>
@@ -213,10 +250,10 @@
 					<form.Field name="message">
 						{#snippet children(field)}
 							<TextArea
-								label="Message"
+								label={common_message()}
 								id="inquiry-message"
 								{field}
-								placeholder="Tell us about your use case..."
+								placeholder={billing_inquiryMessagePlaceholder()}
 								rows={3}
 							/>
 						{/snippet}
@@ -234,7 +271,7 @@
 						{common_cancel()}
 					</button>
 					<button type="submit" disabled={loading} class="btn-primary">
-						{loading ? common_sending() : 'Submit'}
+						{loading ? common_sending() : common_submit()}
 					</button>
 				</div>
 			</div>

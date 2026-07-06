@@ -317,7 +317,7 @@
 						checked={complete}
 						disabled={complete || !enabled || isAccountStep}
 						onToggle={() => handleStepClick(step)}
-						label={isActiveDiscoveryStep ? gettingStarted_scanningNetwork() : step.label}
+						label={isActiveDiscoveryStep ? gettingStarted_scanningNetwork() : step.label()}
 					>
 						{#snippet icon()}
 							{#if complete}
@@ -345,7 +345,7 @@
 						{/snippet}
 						{#snippet subContent()}
 							{#if !complete && enabled && !isAccountStep && !isActiveDiscoveryStep}
-								<p class="text-tertiary text-xs">{step.description}</p>
+								<p class="text-tertiary text-xs">{step.description()}</p>
 							{:else if isActiveDiscoveryStep && activeNetworkSession}
 								<DiscoveryEstimation
 									phase={activeNetworkSession.phase}

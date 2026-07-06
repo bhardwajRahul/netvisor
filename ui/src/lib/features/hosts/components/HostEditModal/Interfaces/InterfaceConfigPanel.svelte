@@ -10,17 +10,17 @@
 	import InterfaceDetailsCard from '$lib/features/hosts/components/InterfaceDetailsCard.svelte';
 	import {
 		hosts_interfaces_cdpNeighbor,
-		hosts_interfaces_chassisId,
 		hosts_interfaces_index,
 		hosts_interfaces_lldpNeighbor,
-		hosts_interfaces_lldpSysDescr,
 		hosts_interfaces_managementAddress,
 		hosts_interfaces_portId,
 		hosts_interfaces_remoteAddress,
 		hosts_interfaces_remoteDevice,
 		hosts_interfaces_remotePlatform,
 		hosts_interfaces_remotePort,
-		hosts_interfaces_remoteSystemName
+		hosts_interfaces_remoteSystemName,
+		hosts_snmp_chassisId,
+		hosts_snmp_sysDescr
 	} from '$lib/paraglide/messages';
 
 	interface Props {
@@ -91,15 +91,13 @@
 
 	<!-- LLDP Neighbor Info Section -->
 	<CollapsibleCard title={hosts_interfaces_lldpNeighbor()} bind:expanded={lldpExpanded}>
-		<InfoRow label={hosts_interfaces_chassisId()} mono
-			>{iface.lldp_chassis_id?.value || '-'}</InfoRow
-		>
+		<InfoRow label={hosts_snmp_chassisId()} mono>{iface.lldp_chassis_id?.value || '-'}</InfoRow>
 		<InfoRow label={hosts_interfaces_portId()} mono>{iface.lldp_port_id?.value || '-'}</InfoRow>
 		<InfoRow label={hosts_interfaces_remoteSystemName()}>{iface.lldp_sys_name || '-'}</InfoRow>
 		<InfoRow label={hosts_interfaces_remotePort()}>{iface.lldp_port_desc || '-'}</InfoRow>
 		<InfoRow label={hosts_interfaces_managementAddress()} mono
 			>{iface.lldp_mgmt_addr || '-'}</InfoRow
 		>
-		<InfoRow label={hosts_interfaces_lldpSysDescr()}>{iface.lldp_sys_desc || '-'}</InfoRow>
+		<InfoRow label={hosts_snmp_sysDescr()}>{iface.lldp_sys_desc || '-'}</InfoRow>
 	</CollapsibleCard>
 </div>

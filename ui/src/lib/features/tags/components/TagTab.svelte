@@ -25,16 +25,16 @@
 	import {
 		common_application,
 		common_color,
+		common_confirmBulkDelete,
 		common_confirmDeleteName,
 		common_create,
 		common_created,
 		common_description,
 		common_name,
+		common_noEntityYet,
 		common_tags,
 		common_updated,
-		tags_confirmBulkDelete,
 		tags_noTagsHelp,
-		tags_noTagsYet,
 		tags_subtitle
 	} from '$lib/paraglide/messages';
 
@@ -130,7 +130,7 @@
 	}
 
 	async function handleBulkDelete(ids: string[]) {
-		if (confirm(tags_confirmBulkDelete({ count: ids.length }))) {
+		if (confirm(common_confirmBulkDelete({ count: ids.length, entity: common_tags() }))) {
 			await bulkDeleteTagsMutation.mutateAsync(ids);
 		}
 	}
@@ -174,7 +174,7 @@
 		<Loading />
 	{:else if tags.length === 0}
 		<EmptyState
-			title={tags_noTagsYet()}
+			title={common_noEntityYet({ entity: common_tags() })}
 			subtitle={tags_noTagsHelp()}
 			onClick={canManage ? handleCreateTag : undefined}
 			cta={canManage ? common_create() : ''}

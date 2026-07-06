@@ -27,6 +27,7 @@
 	import type { UserOrgPermissions } from '$lib/features/users/types';
 	import type { SubTab } from '$lib/shared/components/layout/ContentSubTabs.svelte';
 	import {
+		common_demo,
 		common_upgrade,
 		billing_trialPill,
 		billing_trialPillOneDay,
@@ -654,7 +655,7 @@
 			</button>
 			{#if !collapsed && isDemoOrg}
 				<div class="mt-2 flex justify-center">
-					<Tag label="Demo" color="Yellow" />
+					<Tag label={common_demo()} color="Yellow" />
 				</div>
 			{/if}
 		</div>

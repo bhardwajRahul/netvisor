@@ -2,9 +2,9 @@
 	import { Loader2 } from 'lucide-svelte';
 	import type { OidcProviderMetadata } from '$lib/shared/stores/config-query';
 	import {
-		auth_lastUsed,
 		auth_signInWith,
 		auth_signInWithEmail,
+		common_lastUsed,
 		common_or
 	} from '$lib/paraglide/messages';
 
@@ -60,7 +60,7 @@
 					<span>{getOidcLabel(provider.name)}</span>
 					{#if lastLoginMethod === `oidc:${provider.slug}`}
 						<span class="rounded-full bg-white/20 px-2 py-0.5 text-xs font-medium">
-							{auth_lastUsed()}
+							{common_lastUsed()}
 						</span>
 					{/if}
 				</button>
@@ -84,7 +84,7 @@
 			<span>{resolvedEmailLabel}</span>
 			{#if lastLoginMethod === 'email'}
 				<span class="ml-2 rounded-full bg-white/20 px-2 py-0.5 text-xs font-medium">
-					{auth_lastUsed()}
+					{common_lastUsed()}
 				</span>
 			{/if}
 		</button>

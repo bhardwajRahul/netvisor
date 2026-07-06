@@ -2,6 +2,7 @@
 	import type { IconComponent } from '$lib/shared/utils/types';
 	import { X } from 'lucide-svelte';
 	import { onMount } from 'svelte';
+	import { common_dismiss } from '$lib/paraglide/messages';
 
 	let {
 		title,
@@ -55,7 +56,7 @@
 				<button
 					onclick={dismiss}
 					class="shrink-0 rounded p-0.5 transition-colors hover:bg-white/10"
-					aria-label="Dismiss"
+					aria-label={common_dismiss()}
 				>
 					<X class="h-4 w-4 {textColor}" />
 				</button>

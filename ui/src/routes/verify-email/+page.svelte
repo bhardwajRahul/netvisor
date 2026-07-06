@@ -14,6 +14,23 @@
 	import ModalHeaderIcon from '$lib/shared/components/layout/ModalHeaderIcon.svelte';
 	import { Mail } from 'lucide-svelte';
 	import { resolve } from '$app/paths';
+	import {
+		auth_backToLogin,
+		auth_checkYourEmail,
+		common_sending,
+		verifyEmail_didntReceive,
+		verifyEmail_failed,
+		verifyEmail_noToken,
+		verifyEmail_noTokenBody,
+		verifyEmail_resend,
+		verifyEmail_sentLinkTo,
+		verifyEmail_title,
+		verifyEmail_tryRegisteringAgain,
+		verifyEmail_verified,
+		verifyEmail_verifiedBody,
+		verifyEmail_verifying,
+		verifyEmail_verifyingBody
+	} from '$lib/paraglide/messages';
 
 	const verifyMutation = useVerifyEmailMutation();
 	const resendMutation = useResendVerificationMutation();
@@ -48,7 +65,7 @@
 			setTimeout(() => navigate(), 2000);
 		} catch (e) {
 			status = 'error';
-			errorMessage = e instanceof Error ? e.message : 'Verification failed';
+			errorMessage = e instanceof Error ? e.message : verifyEmail_failed();
 		}
 	});
 
@@ -87,7 +104,7 @@
 				onClose={() => {}}
 				showCloseButton={false}
 				preventCloseOnClickOutside={true}
-				title="Verify Your Email"
+				title={verifyEmail_title()}
 			>
 				{#snippet headerIcon()}
 					<ModalHeaderIcon Icon={Mail} color="Blue" />
@@ -95,17 +112,17 @@
 
 				{#if status === 'verifying'}
 					<div class="p-6 text-center">
-						<h2 class="text-primary mb-2 text-xl font-semibold">Verifying your email...</h2>
-						<p class="text-tertiary">Please wait while we verify your email address.</p>
+						<h2 class="text-primary mb-2 text-xl font-semibold">{verifyEmail_verifying()}</h2>
+						<p class="text-tertiary">{verifyEmail_verifyingBody()}</p>
 					</div>
 				{:else if status === 'success'}
 					<div class="p-6 text-center">
-						<h2 class="text-primary mb-2 text-xl font-semibold">Email Verified!</h2>
-						<p class="text-tertiary">Your email has been verified. Redirecting you now...</p>
+						<h2 class="text-primary mb-2 text-xl font-semibold">{verifyEmail_verified()}</h2>
+						<p class="text-tertiary">{verifyEmail_verifiedBody()}</p>
 					</div>
 				{:else if status === 'error'}
 					<div class="p-6 text-center">
-						<h2 class="text-primary mb-2 text-xl font-semibold">Verification Failed</h2>
+						<h2 class="text-primary mb-2 text-xl font-semibold">{verifyEmail_failed()}</h2>
 						<p class="text-tertiary mb-4">{errorMessage}</p>
 						{#if email}
 							<button
@@ -114,41 +131,40 @@
 								onclick={handleResend}
 								disabled={isResending}
 							>
-								{isResending ? 'Sending...' : 'Resend Verification Email'}
+								{isResending ? common_sending() : verifyEmail_resend()}
 							</button>
 						{:else}
 							<p class="text-muted text-sm">
-								Please try registering again or contact support if the problem persists.
+								{verifyEmail_tryRegisteringAgain()}
 							</p>
 						{/if}
 					</div>
 				{:else if status === 'pending'}
 					<div class="p-6 text-center">
-						<h2 class="text-primary mb-2 text-xl font-semibold">Check Your Email</h2>
+						<h2 class="text-primary mb-2 text-xl font-semibold">{auth_checkYourEmail()}</h2>
 						<p class="text-tertiary mb-4">
-							We sent a verification link to <span class="text-secondary font-medium">{email}</span
-							>. Click the link to verify your account.
+							{verifyEmail_sentLinkTo({ email })}
 						</p>
 						<div class="space-y-3">
-							<p class="text-muted text-sm">Didn't receive the email?</p>
+							<p class="text-muted text-sm">{verifyEmail_didntReceive()}</p>
 							<button
 								type="button"
 								class="btn-secondary w-full"
 								onclick={handleResend}
 								disabled={isResending}
 							>
-								{isResending ? 'Sending...' : 'Resend Verification Email'}
+								{isResending ? common_sending() : verifyEmail_resend()}
 							</button>
 						</div>
 					</div>
 				{:else}
 					<div class="p-6 text-center">
-						<h2 class="text-primary mb-2 text-xl font-semibold">No Verification Token</h2>
+						<h2 class="text-primary mb-2 text-xl font-semibold">{verifyEmail_noToken()}</h2>
 						<p class="text-tertiary mb-4">
-							Please use the verification link sent to your email, or go back to login.
+							{verifyEmail_noTokenBody()}
 						</p>
 						<button type="button" class="btn-secondary w-full" onclick={handleBackToLogin}>
-							Back to Login
+							{auth_backToLogin()}
 						</button>
 					</div>
 				{/if}

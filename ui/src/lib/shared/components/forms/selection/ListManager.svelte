@@ -5,6 +5,7 @@
 	import ListSelectItem from './ListSelectItem.svelte';
 	import type { EntityDisplayComponent } from './types';
 	import type { Snippet } from 'svelte';
+	import { common_edit, common_remove } from '$lib/paraglide/messages';
 
 	interface Props {
 		// Global
@@ -419,7 +420,7 @@
 									}
 								}}
 								class={btnClass}
-								title="Edit"
+								title={common_edit()}
 							>
 								<EditIconComponent size={16} />
 							</button>
@@ -465,7 +466,7 @@
 									removeItem(index);
 								}}
 								class="btn-icon-danger"
-								title="Remove"
+								title={common_remove()}
 							>
 								<Trash2 size={16} />
 							</button>

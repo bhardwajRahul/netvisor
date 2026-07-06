@@ -170,7 +170,7 @@
 
 {#snippet tagsSnippet()}
 	<div class="flex items-center gap-2">
-		<span class="text-secondary text-sm">Tags:</span>
+		<span class="text-secondary text-sm">{common_tags()}:</span>
 		<TagPickerInline selectedTagIds={service.tags} entityId={service.id} entityType="Service" />
 	</div>
 {/snippet}

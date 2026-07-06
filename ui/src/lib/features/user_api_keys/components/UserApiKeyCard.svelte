@@ -7,6 +7,7 @@
 	import type { UserApiKey } from '../queries';
 	import { useNetworksQuery } from '$lib/features/networks/queries';
 	import TagPickerInline from '$lib/features/tags/components/TagPickerInline.svelte';
+	import { common_tags } from '$lib/paraglide/messages';
 
 	// Queries
 
@@ -106,7 +107,7 @@
 
 {#snippet tagsSnippet()}
 	<div class="flex items-center gap-2">
-		<span class="text-secondary text-sm">Tags:</span>
+		<span class="text-secondary text-sm">{common_tags()}:</span>
 		<TagPickerInline
 			selectedTagIds={apiKey.tags ?? []}
 			entityId={apiKey.id}

@@ -1,17 +1,18 @@
 import type { components } from '$lib/api/schema';
 import {
+	common_entityName,
 	common_internalIt,
 	common_homelab,
+	common_network,
+	common_organization,
 	common_other,
 	onboarding_internalItDescription,
 	onboarding_internalItNetworkHelp,
 	onboarding_internalItNetworkLabel,
 	onboarding_internalItNetworkPlaceholder,
-	onboarding_internalItOrgLabel,
 	onboarding_internalItOrgPlaceholder,
 	onboarding_homelabDescription,
 	onboarding_homelabNetworkHelp,
-	onboarding_homelabNetworkLabel,
 	onboarding_homelabNetworkPlaceholder,
 	onboarding_homelabOrgLabel,
 	onboarding_homelabOrgPlaceholder,
@@ -75,7 +76,7 @@ export function getUseCases(): Record<UseCase, UseCaseConfig> {
 		internal_it: {
 			label: common_internalIt(),
 			description: onboarding_internalItDescription(),
-			orgLabel: onboarding_internalItOrgLabel(),
+			orgLabel: common_entityName({ entity: common_organization() }),
 			orgPlaceholder: onboarding_internalItOrgPlaceholder(),
 			orgHelp: onboarding_orgHelp(),
 			networkLabel: onboarding_internalItNetworkLabel(),
@@ -93,7 +94,7 @@ export function getUseCases(): Record<UseCase, UseCaseConfig> {
 			orgLabel: onboarding_homelabOrgLabel(),
 			orgPlaceholder: onboarding_homelabOrgPlaceholder(),
 			orgHelp: onboarding_orgHelp(),
-			networkLabel: onboarding_homelabNetworkLabel(),
+			networkLabel: common_entityName({ entity: common_network() }),
 			networkPlaceholder: onboarding_homelabNetworkPlaceholder(),
 			networkHelp: onboarding_homelabNetworkHelp(),
 			colors: {
@@ -120,10 +121,10 @@ export function getUseCases(): Record<UseCase, UseCaseConfig> {
 		other: {
 			label: common_other(),
 			description: onboarding_otherDescription(),
-			orgLabel: onboarding_internalItOrgLabel(),
+			orgLabel: common_entityName({ entity: common_organization() }),
 			orgPlaceholder: onboarding_otherOrgPlaceholder(),
 			orgHelp: onboarding_orgHelp(),
-			networkLabel: onboarding_homelabNetworkLabel(),
+			networkLabel: common_entityName({ entity: common_network() }),
 			networkPlaceholder: onboarding_otherNetworkPlaceholder(),
 			networkHelp: onboarding_homelabNetworkHelp(),
 			colors: {

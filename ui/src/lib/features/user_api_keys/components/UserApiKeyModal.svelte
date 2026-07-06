@@ -45,7 +45,8 @@
 		userApiKeys_createApiKey,
 		userApiKeys_enableHelp,
 		userApiKeys_namePlaceholder,
-		userApiKeys_permissionsHelp
+		userApiKeys_permissionsHelp,
+		userApiKeys_shareIntegration
 	} from '$lib/paraglide/messages';
 
 	interface Props {
@@ -210,7 +211,7 @@
 		<div class="min-h-0 flex-1 overflow-auto p-6">
 			<div class="space-y-6">
 				<InlineSuccess
-					title="Share your integration with the community!"
+					title={userApiKeys_shareIntegration()}
 					body="Creating an integration that you think others might benefit from? Scanopy will be adding an integration library in an upcoming release. Go to the <a class='underline hover:no-underline' target='_blank' href='https://github.com/scanopy/integrations'>Scanopy integrations GitHub</a> and create a PR to get started."
 				></InlineSuccess>
 

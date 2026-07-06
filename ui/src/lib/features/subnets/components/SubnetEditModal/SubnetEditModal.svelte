@@ -27,6 +27,7 @@
 		common_saving,
 		common_update,
 		subnets_cidrHelp,
+		subnets_cidrPlaceholder,
 		subnets_createSubnet,
 		subnets_descriptionPlaceholder,
 		subnets_namePlaceholder,
@@ -190,7 +191,7 @@
 								label={common_cidr()}
 								id="cidr"
 								{field}
-								placeholder="192.168.1.0/24 or 2001:db8::/32"
+								placeholder={subnets_cidrPlaceholder()}
 								disabled={getIsCidrDisabled()}
 								helpText={subnets_cidrHelp()}
 								required

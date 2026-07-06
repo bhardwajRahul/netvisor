@@ -8,6 +8,7 @@
 	import { formatPort } from '$lib/shared/utils/formatting';
 	import InlineDanger from '$lib/shared/components/feedback/InlineDanger.svelte';
 	import InlineWarning from '$lib/shared/components/feedback/InlineWarning.svelte';
+	import { hosts_ports_noAvailableOnInterface } from '$lib/paraglide/messages';
 
 	// TanStack Query hooks
 	const servicesQuery = useServicesCacheQuery();
@@ -265,7 +266,7 @@
 				<div class="flex-1">
 					<label for="port-select-{binding.id}" class="text-tertiary mb-1 block text-xs">Port</label
 					>
-					<InlineDanger title="No available ports on this interface" />
+					<InlineDanger title={hosts_ports_noAvailableOnInterface()} />
 				</div>
 			{:else}
 				<div class="flex-1">

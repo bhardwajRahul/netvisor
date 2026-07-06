@@ -26,11 +26,12 @@
 	import { downloadCsv } from '$lib/shared/utils/csvExport';
 	import { closeModal, modalState, resolveModalDeepLink } from '$lib/shared/stores/modal-registry';
 	import {
+		common_confirmBulkDelete,
+		common_confirmDeleteName,
+		common_noEntityYet,
 		common_services,
-		services_confirmBulkDelete,
-		services_confirmDelete,
+		daemons_installPromptServices,
 		services_hiddenCategories,
-		services_noServicesYet,
 		services_subtitle
 	} from '$lib/paraglide/messages';
 	import { serviceDefinitions } from '$lib/shared/stores/metadata';
@@ -204,7 +205,7 @@
 	);
 
 	function handleDeleteService(service: Service) {
-		if (confirm(services_confirmDelete({ serviceName: service.name }))) {
+		if (confirm(common_confirmDeleteName({ name: service.name }))) {
 			deleteServiceMutation.mutate(service.id);
 		}
 	}
@@ -220,7 +221,7 @@
 	}
 
 	async function handleBulkDelete(ids: string[]) {
-		if (confirm(services_confirmBulkDelete({ count: ids.length }))) {
+		if (confirm(common_confirmBulkDelete({ count: ids.length, entity: common_services() }))) {
 			await bulkDeleteServicesMutation.mutateAsync(ids);
 		}
 	}
@@ -316,13 +317,13 @@
 	<TabHeader title={common_services()} subtitle={services_subtitle()} />
 
 	{#if !hasDaemon(onboarding)}
-		<PreDaemonEmptyState title="Install a daemon to start discovering services on your network." />
+		<PreDaemonEmptyState title={daemons_installPromptServices()} />
 	{:else if isInitialLoading}
 		<!-- Loading state (only on initial load) -->
 		<Loading />
 	{:else if servicesData.length === 0 && !servicesPagination}
 		<!-- Empty state -->
-		<EmptyState title={services_noServicesYet()} subtitle="" />
+		<EmptyState title={common_noEntityYet({ entity: common_services() })} subtitle="" />
 	{:else}
 		<DataControls
 			items={servicesData}

@@ -13,8 +13,8 @@
 		auth_enterYourEmail,
 		auth_resetLinkSentBody,
 		auth_resetLinkSentTitle,
+		auth_resetPassword,
 		auth_resetPasswordInstructions,
-		auth_resetPasswordTitle,
 		auth_sendResetLink,
 		common_email,
 		common_sending
@@ -59,7 +59,7 @@
 
 <GenericModal
 	{isOpen}
-	title={emailSent ? auth_checkYourEmail() : auth_resetPasswordTitle()}
+	title={emailSent ? auth_checkYourEmail() : auth_resetPassword()}
 	size="md"
 	{onClose}
 	onOpen={handleOpen}

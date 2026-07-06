@@ -24,6 +24,7 @@
 	import {
 		common_back,
 		common_close,
+		common_currentPassword,
 		common_email,
 		common_emailAndPassword,
 		common_link,
@@ -38,6 +39,9 @@
 		common_userId,
 		settings_account_authMethods,
 		settings_account_credentialsUpdated,
+		settings_account_currentPasswordPlaceholder,
+		settings_account_emailChangeFailed,
+		settings_account_emailChangeIntro,
 		settings_account_enterEmail,
 		settings_account_failedToUnlink,
 		settings_account_failedToUpdate,
@@ -53,6 +57,7 @@
 		settings_account_updateCredentials,
 		settings_account_updateEmailPassword,
 		settings_account_userInfo,
+		settings_account_verificationSentTo,
 		settings_account_cookiePreferencesDesc,
 		cookies_preferences,
 		common_manage
@@ -136,11 +141,11 @@
 					body: { current_password: value.currentPassword, new_email: value.newEmail }
 				});
 				if (data?.success) {
-					pushSuccess('Verification email sent to ' + value.newEmail);
+					pushSuccess(settings_account_verificationSentTo({ email: value.newEmail }));
 					emailChangeForm.reset({ currentPassword: '', newEmail: '' });
 					subView = 'main';
 				} else {
-					pushError(data?.error || 'Failed to request email change');
+					pushError(data?.error || settings_account_emailChangeFailed());
 				}
 			} finally {
 				emailChangeLoading = false;
@@ -407,11 +412,11 @@
 						>
 							{#snippet children(field)}
 								<TextInput
-									label="Current Password"
+									label={common_currentPassword()}
 									id="currentPassword"
 									type="password"
 									{field}
-									placeholder="Enter your current password"
+									placeholder={settings_account_currentPasswordPlaceholder()}
 								/>
 							{/snippet}
 						</form.Field>
@@ -442,7 +447,7 @@
 		{:else if subView === 'email-change'}
 			<div class="space-y-2">
 				<p class="text-secondary mb-2 text-sm">
-					Enter your new email address. We'll send a verification link to confirm the change.
+					{settings_account_emailChangeIntro()}
 				</p>
 				<div class="space-y-6">
 					<emailChangeForm.Field
@@ -453,11 +458,11 @@
 					>
 						{#snippet children(field)}
 							<TextInput
-								label="Current Password"
+								label={common_currentPassword()}
 								id="emailChangeCurrentPassword"
 								type="password"
 								{field}
-								placeholder="Enter your current password"
+								placeholder={settings_account_currentPasswordPlaceholder()}
 							/>
 						{/snippet}
 					</emailChangeForm.Field>
