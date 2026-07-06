@@ -14,8 +14,8 @@
 		CredentialTypeDisplayContext
 	> = {
 		getId: (item) => item.id,
-		getLabel: (item) => item.name ?? item.id,
-		getDescription: (item) => item.description ?? '',
+		getLabel: (item) => credentialTypes.getName(item.id),
+		getDescription: (item) => credentialTypes.getDescription(item.id),
 		getIcon: (item) => credentialTypes.getIconComponent(item.id),
 		getIconColor: (item) => credentialTypes.getColorHelper(item.id).icon,
 		getCategory: (item) => item.category ?? null,

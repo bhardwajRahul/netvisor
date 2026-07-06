@@ -24,6 +24,7 @@ import {
 	createStyle,
 	type ColorStyle
 } from '../utils/styling';
+import { metaName, metaDescription } from '$lib/i18n/metadata';
 
 export type Color = components['schemas']['Color'];
 
@@ -350,16 +351,17 @@ function createTypeMetadataHelpers<T extends TypeMetadataKeys, M = unknown>(cate
 
 		getName: (id: string | null) => {
 			const $registry = get(metadata);
-			return (
-				($registry?.[category] as TypeMetadata[])?.find((item) => item.id === id)?.name || id || ''
-			);
+			const fallback =
+				($registry?.[category] as TypeMetadata[])?.find((item) => item.id === id)?.name || id || '';
+			return metaName(category, id, fallback);
 		},
 
 		getDescription: (id: string | null) => {
 			const $registry = get(metadata);
-			return (
-				($registry?.[category] as TypeMetadata[])?.find((item) => item.id === id)?.description || ''
-			);
+			const fallback =
+				($registry?.[category] as TypeMetadata[])?.find((item) => item.id === id)?.description ||
+				'';
+			return metaDescription(category, id, fallback);
 		},
 
 		getCategory: (id: string | null) => {
@@ -500,13 +502,15 @@ interface StaticMetadataItem {
 /**
  * Create metadata helpers from a static metadata array.
  * Used for billing page to avoid runtime API calls by using static JSON fixtures.
+ * `fixtureKey` namespaces the meta_* i18n lookups (e.g. 'billing_plans').
  */
-export function createStaticHelpers<M>(items: StaticMetadataItem[]) {
+export function createStaticHelpers<M>(fixtureKey: string, items: StaticMetadataItem[]) {
 	const map = new Map(items.map((i) => [i.id, i]));
 	return {
 		getMetadata: (id: string | null): M => (map.get(id ?? '')?.metadata as M) ?? ({} as M),
-		getName: (id: string | null) => map.get(id ?? '')?.name ?? id ?? '',
-		getDescription: (id: string | null) => map.get(id ?? '')?.description ?? '',
+		getName: (id: string | null) => metaName(fixtureKey, id, map.get(id ?? '')?.name ?? id ?? ''),
+		getDescription: (id: string | null) =>
+			metaDescription(fixtureKey, id, map.get(id ?? '')?.description ?? ''),
 		getCategory: (id: string | null) => map.get(id ?? '')?.category ?? '',
 		getIconComponent: (id: string | null) => {
 			const item = map.get(id ?? '');
