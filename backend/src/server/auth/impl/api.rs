@@ -174,3 +174,56 @@ pub struct OnboardingStateResponse {
     /// Network ID from pending setup (if any)
     pub network_id: Option<Uuid>,
 }
+
+#[cfg(test)]
+mod password_policy_tests {
+    use super::*;
+
+    // Guards the security property: the password policy (min length + complexity)
+    // is enforced on password change and reset, matching registration. These
+    // request structs are validated by the handlers before the raw fields reach
+    // the service, so a regression that drops the derive would silently allow
+    // weak passwords through those flows.
+
+    #[test]
+    fn update_password_rejects_weak_and_accepts_strong() {
+        let strong = UpdatePasswordRequest {
+            current_password: Some("whatever".into()),
+            new_password: "Str0ngPassword".into(),
+        };
+        assert!(strong.validate().is_ok());
+
+        let too_short = UpdatePasswordRequest {
+            current_password: None,
+            new_password: "Sh0rt".into(),
+        };
+        assert!(too_short.validate().is_err());
+
+        let no_complexity = UpdatePasswordRequest {
+            current_password: None,
+            new_password: "alllowercasenodigits".into(),
+        };
+        assert!(no_complexity.validate().is_err());
+    }
+
+    #[test]
+    fn reset_password_rejects_weak_and_accepts_strong() {
+        let strong = ResetPasswordRequest {
+            token: "tok".into(),
+            password: "Str0ngPassword".into(),
+        };
+        assert!(strong.validate().is_ok());
+
+        let too_short = ResetPasswordRequest {
+            token: "tok".into(),
+            password: "Ab1".into(),
+        };
+        assert!(too_short.validate().is_err());
+
+        let no_digit = ResetPasswordRequest {
+            token: "tok".into(),
+            password: "NoDigitsHereAtAll".into(),
+        };
+        assert!(no_digit.validate().is_err());
+    }
+}
