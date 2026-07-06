@@ -907,38 +907,21 @@ impl BrevoService {
     /// email-domain classification ships.
     ///
     /// Idempotent: recomputes the same pure classification and upserts, so
-    /// re-running (every startup during this release) is safe. Set
-    /// `BREVO_BACKFILL_DRY_RUN=1` to log `domain -> class` per user without
-    /// calling Brevo — useful for reviewing classifications and curating
-    /// `institutional-overrides.json`.
+    /// re-running (every startup during this release) is safe. Only reachable
+    /// when the Brevo API key is configured — an unconfigured environment
+    /// never constructs `BrevoService`, so nothing syncs.
     pub async fn backfill_domain_classifications(&self) -> Result<()> {
-        let dry_run = std::env::var("BREVO_BACKFILL_DRY_RUN")
-            .is_ok_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
-
         let users = self
             .user_service
             .get_all(StorableFilter::<User>::new_for_brevo_backfill())
             .await?;
         let total = users.len();
-        tracing::info!(
-            total,
-            dry_run,
-            "Starting Brevo domain-classification backfill"
-        );
+        tracing::info!(total, "Starting Brevo domain-classification backfill");
 
         let mut synced = 0usize;
         for user in users {
             let email = &user.base.email;
             let (domain_class, institution_type) = classify_email_domain(email.domain());
-            if dry_run {
-                tracing::info!(
-                    domain = email.domain(),
-                    class = domain_class.as_str(),
-                    institution_type = institution_type.map(|t| t.as_str()).unwrap_or(""),
-                    "Dry-run domain classification"
-                );
-                continue;
-            }
             let attrs = ContactAttributes::new()
                 .with_email(email.to_string())
                 .with_user_id(user.id)
