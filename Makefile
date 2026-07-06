@@ -276,6 +276,8 @@ generate-messages:
 generate-fixtures:
 	@echo "Generating metadata fixtures from backend..."
 	cd backend && cargo run --bin generate-fixtures
+	@echo "Syncing meta_* i18n keys into en.json..."
+	cd ui && node scripts/generate-meta-messages.js
 	@echo "✅ Generated all metadata fixtures in ui/src/lib/data/"
 
 update-oui:

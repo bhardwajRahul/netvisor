@@ -32,8 +32,11 @@
 	} = $props();
 
 	// Create helpers from static fixtures (no API calls needed)
-	const billingPlanHelpers = createStaticHelpers<BillingPlanMetadata>(billingPlansJson);
-	const featureHelpers = createStaticHelpers<FeatureMetadata>(featuresJson);
+	const billingPlanHelpers = createStaticHelpers<BillingPlanMetadata>(
+		'billing_plans',
+		billingPlansJson
+	);
+	const featureHelpers = createStaticHelpers<FeatureMetadata>('features', featuresJson);
 
 	// Transform fixture data to BillingPlan[] format (exclude self-hosted plans, deduplicate)
 	const plansData = (() => {

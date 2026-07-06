@@ -17,6 +17,7 @@
 	import type { Credential, CredentialType } from '../types/base';
 	import { createDefaultCredential } from '../types/base';
 	import { credentialTypes } from '$lib/shared/stores/metadata';
+	import { translateFieldDefinitions } from '$lib/i18n/metadata';
 	import { useOrganizationQuery } from '$lib/features/organizations/queries';
 	import TextInput from '$lib/shared/components/forms/input/TextInput.svelte';
 	import type { FieldDefinition } from '$lib/shared/stores/metadata';
@@ -130,10 +131,11 @@
 	// Show the Hosts | Networks toggle only when both modes are available.
 	let showTargetModeToggle = $derived(supportsHosts && supportsNetworks);
 
-	// Get field definitions for the currently selected type
+	// Get field definitions for the currently selected type (labels/placeholders/
+	// help text resolved via meta_* i18n keys with fixture-string fallback)
 	let currentFields: FieldDefinition[] = $derived.by(() => {
 		const meta = credentialTypes.getMetadata(selectedTypeId);
-		return meta?.fields ?? [];
+		return translateFieldDefinitions('credential_types', selectedTypeId, meta?.fields ?? []);
 	});
 
 	// Group fields by their group property for visual grouping

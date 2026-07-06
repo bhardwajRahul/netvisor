@@ -7,7 +7,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Prefixes for keys that are accessed dynamically and should be skipped
 const DYNAMIC_KEY_PREFIXES = [
-	'errors_' // Accessed via `errors_${error.code}` in src/lib/i18n/errors.ts
+	'errors_', // Accessed via `errors_${error.code}` in src/lib/i18n/errors.ts
+	'meta_' // Accessed via `meta_${fixtureKey}_${id}_*` in src/lib/i18n/metadata.ts
 ];
 
 // Keys that are allowed to have duplicate values (intentionally same or context-specific)
@@ -131,6 +132,9 @@ describe('i18n', () => {
 		for (const [key, value] of Object.entries(messages)) {
 			if (key === '$schema') continue;
 			if (typeof value !== 'string') continue;
+			// Dynamic keys are generated (e.g. from fixtures) and looked up by
+			// constructed name, so they can't be consolidated into common_ keys.
+			if (isDynamicKey(key)) continue;
 
 			const existing = valueToKeys.get(value) || [];
 			existing.push(key);

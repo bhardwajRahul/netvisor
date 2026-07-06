@@ -14,6 +14,7 @@
 	import cancelReasons from '$lib/data/cancel-reasons.json';
 	import saveOffers from '$lib/data/save-offers.json';
 	import { billingPlans } from '$lib/shared/stores/metadata';
+	import { metaName } from '$lib/i18n/metadata';
 	import { pushSuccess, pushWarning } from '$lib/shared/stores/feedback';
 	import { useConfigQuery } from '$lib/shared/stores/config-query';
 	import { waitForOrgUpdate } from '$lib/shared/billing/wait-for-org-update';
@@ -148,7 +149,7 @@
 		{ value: '', label: '—', disabled: true },
 		...cancelReasons.map((r) => ({
 			value: r.id,
-			label: r.name ?? r.id
+			label: metaName('cancel_reasons', r.id, r.name ?? r.id)
 		}))
 	]);
 
@@ -363,7 +364,11 @@
 						<div class="card card-static space-y-3 p-4">
 							<div>
 								<h4 class="text-primary text-base font-semibold">
-									{offerMeta('pause')?.name ?? settings_billing_saveOffer_pauseTitle()}
+									{metaName(
+										'save_offers',
+										'pause',
+										offerMeta('pause')?.name ?? settings_billing_saveOffer_pauseTitle()
+									)}
 								</h4>
 								<p class="text-secondary mt-1 text-sm">
 									{settings_billing_saveOffer_pauseSubtitle()}
@@ -418,7 +423,11 @@
 						<div class="card card-static space-y-3 p-4">
 							<div>
 								<h4 class="text-primary text-base font-semibold">
-									{offerMeta('discount')?.name ?? settings_billing_saveOffer_discountTitle()}
+									{metaName(
+										'save_offers',
+										'discount',
+										offerMeta('discount')?.name ?? settings_billing_saveOffer_discountTitle()
+									)}
 								</h4>
 								<p class="text-secondary mt-1 text-sm">
 									{#if saveOfferCoupon?.billing_rate === 'Year'}
