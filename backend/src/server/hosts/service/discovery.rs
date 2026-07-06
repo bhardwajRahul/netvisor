@@ -71,6 +71,7 @@ impl HostService {
         mut services: Vec<Service>,
         mut interfaces: Vec<crate::server::interfaces::r#impl::base::Interface>,
         mut subnets: Vec<Subnet>,
+        interfaces_complete: bool,
         scan_ctx: Option<&crate::server::shared::services::scan_context::ScanContext>,
         authentication: AuthenticatedEntity,
         limit_ctx: Option<&HostLimitContext>,
@@ -134,6 +135,7 @@ impl HostService {
                 ConflictBehavior::Upsert,
                 authentication.clone(),
                 limit_ctx,
+                interfaces_complete,
             )
             .await?;
 

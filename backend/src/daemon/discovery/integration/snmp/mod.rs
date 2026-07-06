@@ -177,15 +177,23 @@ impl DiscoveryIntegration for SnmpIntegration {
             return Err(anyhow::anyhow!("Discovery was cancelled"));
         }
 
-        // Walk interface table
-        let snmp_if_entries = match walk_if_table(ip, credential, port).await {
-            Ok(entries) => {
-                tracing::debug!(ip = %ip, if_count = entries.len(), "SNMP ifTable walked");
-                entries
+        // Walk interface table. `if_table_complete` tells the server whether this is an
+        // authoritative full ifTable (safe to prune stale interfaces against) or a partial walk
+        // cut short by timeout/error (must NOT prune — see GH #649). A hard failure yields an
+        // empty set, which the server's existing empty-set guard already protects.
+        let (snmp_if_entries, if_table_complete) = match walk_if_table(ip, credential, port).await {
+            Ok((entries, complete)) => {
+                tracing::debug!(
+                    ip = %ip,
+                    if_count = entries.len(),
+                    complete = complete,
+                    "SNMP ifTable walked"
+                );
+                (entries, complete)
             }
             Err(e) => {
                 tracing::debug!(ip = %ip, error = %e, "SNMP ifTable walk failed");
-                Vec::new()
+                (Vec::new(), false)
             }
         };
 
@@ -372,6 +380,10 @@ impl DiscoveryIntegration for SnmpIntegration {
             );
             host_data.add_if_entry(interface);
         }
+        // Mark whether this SNMP interface set is a complete, authoritative ifTable. The server
+        // only prunes interfaces no longer reported when this is true, so a partial walk cannot
+        // tear down the host's L2 topology (GH #649).
+        host_data.set_interfaces_complete(if_table_complete);
 
         // --- Discover remote subnets from ipAddrTable ---
         let scanning_subnet = ctx.scanning_subnet;
@@ -546,6 +558,8 @@ impl DiscoveryIntegration for SnmpIntegration {
                         vec![],
                         vec![],
                         vec![],
+                        // ARP-discovered remote host has no ifTable of its own; nothing to prune.
+                        true,
                         ctx.cancel,
                     )
                     .await
@@ -679,10 +693,11 @@ pub async fn poll_device(
         .await
         .map_err(|_| anyhow::anyhow!("System info query timeout"))??;
 
-    let interfaces = timeout(SNMP_WALK_TIMEOUT, walk_if_table(ip, credential, port))
-        .await
-        .map_err(|_| anyhow::anyhow!("ifTable walk timeout"))?
-        .unwrap_or_default();
+    let (interfaces, _if_table_complete) =
+        timeout(SNMP_WALK_TIMEOUT, walk_if_table(ip, credential, port))
+            .await
+            .map_err(|_| anyhow::anyhow!("ifTable walk timeout"))?
+            .unwrap_or_default();
 
     let lldp_neighbors = timeout(
         SNMP_WALK_TIMEOUT,

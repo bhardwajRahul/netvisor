@@ -183,6 +183,7 @@ impl EntityBuffer {
                     services: actual.services,
                     interfaces: actual.interfaces,
                     subnets: vec![],
+                    interfaces_complete: true,
                 };
                 *entry = BufferedEntity::Created {
                     pending_id,
@@ -422,6 +423,7 @@ mod tests {
             services: vec![],
             interfaces: vec![],
             subnets: vec![],
+            interfaces_complete: true,
         };
         buffer.push_host(host).await;
 
@@ -474,6 +476,7 @@ mod tests {
                         services: vec![],
                         interfaces: vec![],
                         subnets: vec![],
+                        interfaces_complete: true,
                     };
                     buf.push_host(host).await;
                 })
@@ -882,6 +885,7 @@ mod tests {
             }],
             interfaces: vec![],
             subnets: vec![],
+            interfaces_complete: true,
         };
         // Set the host ID to match our shared host_id
         let mut host1 = host1;
@@ -951,6 +955,7 @@ mod tests {
             }],
             interfaces: vec![],
             subnets: vec![],
+            interfaces_complete: true,
         };
         let mut host2 = host2;
         host2.host.id = host_id;
@@ -1147,6 +1152,7 @@ mod tests {
             }],
             interfaces: vec![],
             subnets: vec![],
+            interfaces_complete: true,
         };
         let mut host_req = host_req;
         host_req.host.id = host_id;

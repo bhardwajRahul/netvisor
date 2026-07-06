@@ -350,6 +350,8 @@ impl DaemonService {
                 vec![],
                 vec![],
                 vec![],
+                // No interfaces in this registration stub; nothing to prune.
+                true,
                 None,
                 auth.clone(),
                 None,
@@ -586,6 +588,7 @@ impl DaemonService {
                     host_request.services,
                     host_request.interfaces,
                     host_request.subnets,
+                    host_request.interfaces_complete,
                     scan_ctx.as_ref(),
                     auth.clone(),
                     limit_ctx.as_ref(),
