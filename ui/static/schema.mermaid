@@ -116,6 +116,7 @@ erDiagram
   timestamp_with_time_zone password_reset_expires
   text pending_email
   jsonb email_settings
+  bigint session_epoch
 }
 "public.networks" {
   uuid id
@@ -195,7 +196,6 @@ erDiagram
   uuid host_id
   timestamp_with_time_zone created_at
   timestamp_with_time_zone last_seen
-  jsonb capabilities
   timestamp_with_time_zone updated_at
   text mode
   text url
@@ -467,7 +467,6 @@ erDiagram
   uuid organization_id FK
   text name
   jsonb credential_type
-  inet__ target_ips
   timestamp_with_time_zone created_at
   timestamp_with_time_zone updated_at
 }
