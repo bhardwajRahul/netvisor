@@ -57,6 +57,11 @@ pub struct AuthService {
     /// Rate limiting for verification email resend (not token storage - tokens stored in DB)
     verification_resend_cooldown: Arc<RwLock<HashMap<EmailAddress, Instant>>>,
     event_bus: Arc<EventBus>,
+    /// Plan assigned to a new org on a self-hosted deployment, resolved once at
+    /// startup from the license key (`plan_for_license`). On cloud this is
+    /// unused (new orgs get `plan = None` until Stripe checkout). Its
+    /// `included_orgs` also drives the self-hosted org-creation cap.
+    default_self_hosted_plan: BillingPlan,
 }
 
 impl AuthService {
@@ -78,6 +83,7 @@ impl AuthService {
         organization_service: Arc<OrganizationService>,
         has_email_service: bool,
         event_bus: Arc<EventBus>,
+        default_self_hosted_plan: BillingPlan,
     ) -> Self {
         Self {
             user_service,
@@ -86,6 +92,7 @@ impl AuthService {
             login_attempts: Arc::new(RwLock::new(HashMap::new())),
             verification_resend_cooldown: Arc::new(RwLock::new(HashMap::new())),
             event_bus,
+            default_self_hosted_plan,
         }
     }
 
@@ -234,20 +241,22 @@ impl AuthService {
             ProvisionOrg::New(PendingSetup {
                 use_case, org_name, ..
             }) => {
-                // Self-hosted is single-tenant: one instance = one organization.
-                // The instance license is instance-level and CommercialSelfHosted
-                // is unlimited, so uncapped orgs would let one license entitle
-                // arbitrarily many. Cloud (billing_enabled) stays multi-tenant.
+                // Self-hosted org count is capped by the licensed plan's
+                // `included_orgs` (Community/Standard = 1, Plus = 5,
+                // Commercial/Enterprise = unlimited). `None` = unlimited = no
+                // cap. Cloud (billing_enabled) stays multi-tenant regardless.
                 // Gates creation only — instances already above the cap keep
                 // their orgs. Invited users take the `Existing` arm and are
                 // unaffected. `billing_enabled == false` ⇔ self-hosted.
-                if !billing_enabled {
+                if !billing_enabled
+                    && let Some(max_orgs) = self.default_self_hosted_plan.config().included_orgs
+                {
                     let org_count = self
                         .organization_service
                         .get_all(StorableFilter::<Organization>::new())
                         .await?
                         .len();
-                    if org_count >= 1 {
+                    if org_count >= max_orgs as usize {
                         return Err(ApiError::coded(
                             StatusCode::FORBIDDEN,
                             ErrorCode::AuthOrgLimitReached,
@@ -259,12 +268,12 @@ impl AuthService {
                 let onboarding = vec![OnboardingOperationDiscriminants::OnboardingModalCompleted];
 
                 // Cloud: no plan until user selects one via billing modal → Stripe checkout → webhook
-                // Self-hosted: emit a CheckoutCompleted event below so the ledger
-                // reflects the default plan immediately.
+                // Self-hosted: assign the license-resolved plan and emit a
+                // CheckoutCompleted event below so the ledger reflects it immediately.
                 let self_hosted_plan = if billing_enabled {
                     None
                 } else {
-                    Some(BillingPlan::default())
+                    Some(self.default_self_hosted_plan)
                 };
                 new_org_plan = self_hosted_plan;
 

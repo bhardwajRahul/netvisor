@@ -488,16 +488,15 @@ async fn main() -> anyhow::Result<()> {
     // self-hosted deployment (no Stripe secret) with a valid commercial license;
     // upgrades Community orgs to CommercialSelfHosted, idempotently.
     if state.config.stripe_secret.is_none()
-        && matches!(
-            state.license_service.current_status().await,
-            scanopy::server::license::types::LicenseStatus::Valid(_)
-        )
+        && let scanopy::server::license::types::LicenseStatus::Valid(claims) =
+            state.license_service.current_status().await
     {
+        let target = scanopy::server::billing::plans::plan_for_license(&claims);
         let organization_service = state.services.organization_service.clone();
         tracing::info!(target: LOG_TARGET, "  Spawning self-hosted license plan reconciliation task");
         tokio::spawn(async move {
             if let Err(e) = organization_service
-                .reconcile_self_hosted_license_plans()
+                .reconcile_self_hosted_license_plans(target)
                 .await
             {
                 tracing::error!(target: LOG_TARGET, error = %e, "Failed to reconcile self-hosted org plans to license entitlement");

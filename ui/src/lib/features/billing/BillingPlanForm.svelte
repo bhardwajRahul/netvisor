@@ -304,7 +304,7 @@
 		switch (hosting) {
 			case 'Cloud':
 				return 'Cyan';
-			case 'Managed':
+			case 'Any':
 				return 'Purple';
 			case 'SelfHosted':
 				return 'Green';
@@ -317,6 +317,8 @@
 		switch (hosting) {
 			case 'SelfHosted':
 				return 'Self-Hosted';
+			case 'Any':
+				return 'Self-Hosted or Cloud';
 			default:
 				return hosting;
 		}
