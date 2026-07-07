@@ -255,7 +255,7 @@ impl ErrorCode {
             Self::AuthPasswordLoginDisabled => "Password login is disabled",
             Self::AuthRegistrationDisabled => "User registration is disabled",
             Self::AuthOrgLimitReached => {
-                "This instance already has an organization. Ask an admin to invite you instead of creating a new account."
+                "This server has reached its maximum number of organizations. Ask an admin to invite you to an existing organization."
             }
             Self::AuthEmailVerificationRequired => {
                 "Please verify your email to access this feature"

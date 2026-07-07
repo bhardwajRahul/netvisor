@@ -83,6 +83,17 @@ pub struct ServiceFactory {
 
 impl ServiceFactory {
     pub async fn new(storage: &StorageFactory, config: ServerConfig) -> Result<Self> {
+        // The plan a new self-hosted org is provisioned onto, resolved once from
+        // the license key (Standard/Plus/Commercial for a valid key, else the
+        // Community default). Its `included_orgs` also bounds the org-creation
+        // cap. `effective_license_key` is None on cloud, so the key is ignored
+        // there (new orgs get no plan until Stripe checkout). Computed up front,
+        // before `config`'s fields are moved out below.
+        let default_self_hosted_plan = config
+            .effective_license_key()
+            .map(|key| key.self_hosted_plan())
+            .unwrap_or_default();
+
         let event_bus = Arc::new(EventBus::new());
 
         let logging_service = Arc::new(LoggingService::new());
@@ -348,26 +359,6 @@ impl ServiceFactory {
             })))
         } else {
             None
-        };
-
-        // The plan a new self-hosted org is provisioned onto, resolved once from
-        // the license key. A valid key's tier (Standard/Plus/Commercial) wins;
-        // with no key, or an invalid/expired one (which also locks the server),
-        // this falls back to `BillingPlan::default()` (Community). Its
-        // `included_orgs` also bounds the self-hosted org-creation cap. Cloud
-        // ignores it (new orgs get no plan until Stripe checkout).
-        let default_self_hosted_plan = {
-            use crate::server::billing::plans::plan_for_license;
-            use crate::server::billing::types::base::BillingPlan;
-            use crate::server::license::{service::LicenseService, types::LicenseStatus};
-
-            match config.license_key.as_deref() {
-                Some(key) => match LicenseService::validate_key(key) {
-                    LicenseStatus::Valid(claims) => plan_for_license(&claims),
-                    _ => BillingPlan::default(),
-                },
-                None => BillingPlan::default(),
-            }
         };
 
         let auth_service = Arc::new(AuthService::new(

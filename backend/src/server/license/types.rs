@@ -42,11 +42,11 @@ pub struct LicenseClaims {
     pub plan: Option<LicensePlan>,
 }
 
-/// Runtime license state, checked by middleware on every request.
+/// Runtime license state of a configured key, checked by middleware on every
+/// request. A deployment with no license key has no `LicenseService` at all
+/// (the community/cloud case), so there is no "not required" variant here.
 #[derive(Debug, Clone)]
 pub enum LicenseStatus {
-    /// License validation not required (community build)
-    NotRequired,
     /// Valid commercial license
     Valid(LicenseClaims),
     /// Valid signature but past expiry date
@@ -62,12 +62,11 @@ impl LicenseStatus {
     }
 
     /// Status string for the public config API response.
-    pub fn as_api_string(&self) -> Option<&'static str> {
+    pub fn as_api_string(&self) -> &'static str {
         match self {
-            LicenseStatus::NotRequired => None,
-            LicenseStatus::Valid(_) => Some("valid"),
-            LicenseStatus::Expired(_) => Some("expired"),
-            LicenseStatus::Invalid(_) => Some("invalid"),
+            LicenseStatus::Valid(_) => "valid",
+            LicenseStatus::Expired(_) => "expired",
+            LicenseStatus::Invalid(_) => "invalid",
         }
     }
 

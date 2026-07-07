@@ -14,7 +14,7 @@ use scanopy::server::{
         rate_limit::rate_limit_middleware,
     },
     billing::plans::get_purchasable_plans,
-    config::{AppState, ServerCli, ServerConfig, get_deployment_type},
+    config::{AppState, DeploymentType, ServerCli, ServerConfig, get_deployment_type},
     license::middleware::license_guard_middleware,
     shared::handlers::{
         cache::AppCache,
@@ -191,15 +191,17 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
-    // License key periodic re-validation (every 5 minutes)
-    let license_revalidate = state.license_service.clone();
-    tokio::spawn(async move {
-        let mut interval = tokio::time::interval(Duration::from_secs(300));
-        loop {
-            interval.tick().await;
-            license_revalidate.revalidate().await;
-        }
-    });
+    // License key periodic re-validation (every 5 minutes). Only runs when a
+    // license key is configured — keyless deployments have no license service.
+    if let Some(license_revalidate) = state.license_service.clone() {
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(300));
+            loop {
+                interval.tick().await;
+                license_revalidate.revalidate().await;
+            }
+        });
+    }
 
     tracing::info!(target: LOG_TARGET, "  Background tasks started");
 
@@ -491,13 +493,16 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // Reconcile self-hosted org plan(s) to the license entitlement. The license
-    // key is env-only, so a key added after an org was provisioned as Community
-    // only takes effect on restart — this is that moment. Runs only for a
-    // self-hosted deployment (no Stripe secret) with a valid commercial license;
-    // upgrades Community orgs to CommercialSelfHosted, idempotently.
+    // key is env-only, so a key added/changed after orgs were provisioned only
+    // takes effect on restart — this is that moment. Moves every org onto the
+    // license-resolved tier (any direction), idempotently. The `stripe_secret`
+    // gate confines this to self-hosted; on cloud `current_status()` is also
+    // never `Valid` (the key is dropped via `effective_license_key`), so
+    // reconciliation can never run against a cloud deployment.
     if state.config.stripe_secret.is_none()
+        && let Some(license_service) = &state.license_service
         && let scanopy::server::license::types::LicenseStatus::Valid(claims) =
-            state.license_service.current_status().await
+            license_service.current_status().await
     {
         let target = scanopy::server::billing::plans::plan_for_license(&claims);
         let organization_service = state.services.organization_service.clone();
@@ -518,39 +523,48 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!(target: LOG_TARGET, "  Public URL:      {}", public_url);
     tracing::info!(target: LOG_TARGET, "  Log level:       {}", log_level);
     tracing::info!(target: LOG_TARGET, "  Deployment:      {:?}", deployment_type);
-    {
-        let license_status = state.license_service.current_status().await;
-        match &license_status {
-            scanopy::server::license::types::LicenseStatus::NotRequired => {
+    if let Some(contact) = &state.config.server_admin_contact_email {
+        tracing::info!(target: LOG_TARGET, "  Admin contact:   {}", contact);
+    }
+    // Licensing is a self-hosted concept; on cloud the key is ignored entirely,
+    // so don't log a (misleading) License line there.
+    if deployment_type != DeploymentType::Cloud {
+        match &state.license_service {
+            None => {
                 tracing::info!(target: LOG_TARGET, "  License:         not required (community)");
             }
-            scanopy::server::license::types::LicenseStatus::Valid(claims) => {
-                let intended_exp = chrono::DateTime::from_timestamp(claims.intended_exp, 0)
-                    .map(|d| d.format("%Y-%m-%d").to_string())
-                    .unwrap_or_else(|| "unknown".to_string());
-                if license_status.in_grace_period() {
-                    let hard_exp = chrono::DateTime::from_timestamp(claims.exp, 0)
-                        .map(|d| d.format("%Y-%m-%d").to_string())
-                        .unwrap_or_else(|| "unknown".to_string());
-                    tracing::warn!(
-                        target: LOG_TARGET,
-                        "  License:         GRACE PERIOD (expired {}, hard lockout {})",
-                        intended_exp,
-                        hard_exp,
-                    );
-                } else {
-                    tracing::info!(
-                        target: LOG_TARGET,
-                        "  License:         valid (expires {})",
-                        intended_exp,
-                    );
+            Some(license_service) => {
+                let license_status = license_service.current_status().await;
+                match &license_status {
+                    scanopy::server::license::types::LicenseStatus::Valid(claims) => {
+                        let intended_exp = chrono::DateTime::from_timestamp(claims.intended_exp, 0)
+                            .map(|d| d.format("%Y-%m-%d").to_string())
+                            .unwrap_or_else(|| "unknown".to_string());
+                        if license_status.in_grace_period() {
+                            let hard_exp = chrono::DateTime::from_timestamp(claims.exp, 0)
+                                .map(|d| d.format("%Y-%m-%d").to_string())
+                                .unwrap_or_else(|| "unknown".to_string());
+                            tracing::warn!(
+                                target: LOG_TARGET,
+                                "  License:         GRACE PERIOD (expired {}, hard lockout {})",
+                                intended_exp,
+                                hard_exp,
+                            );
+                        } else {
+                            tracing::info!(
+                                target: LOG_TARGET,
+                                "  License:         valid (expires {})",
+                                intended_exp,
+                            );
+                        }
+                    }
+                    scanopy::server::license::types::LicenseStatus::Expired(_) => {
+                        tracing::warn!(target: LOG_TARGET, "  License:         EXPIRED — server is in read-only mode");
+                    }
+                    scanopy::server::license::types::LicenseStatus::Invalid(reason) => {
+                        tracing::error!(target: LOG_TARGET, "  License:         INVALID ({}) — server is in read-only mode", reason);
+                    }
                 }
-            }
-            scanopy::server::license::types::LicenseStatus::Expired(_) => {
-                tracing::warn!(target: LOG_TARGET, "  License:         EXPIRED — server is in read-only mode");
-            }
-            scanopy::server::license::types::LicenseStatus::Invalid(reason) => {
-                tracing::error!(target: LOG_TARGET, "  License:         INVALID ({}) — server is in read-only mode", reason);
             }
         }
     }
