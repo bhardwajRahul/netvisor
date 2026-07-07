@@ -16,16 +16,17 @@ pub struct LicenseService {
 impl LicenseService {
     /// Create a new license service.
     ///
+    /// A deployment is "commercial" iff a license key is configured. With no
+    /// key (`SCANOPY_LICENSE_KEY` unset) the deployment is the free community
+    /// edition and licensing is `NotRequired`; with a key present the key is
+    /// validated and drives `Valid`/`Expired`/`Invalid`. This is the single
+    /// runtime signal — there is no separate commercial build.
+    ///
     /// - `license_key`: the raw JWT string from `SCANOPY_LICENSE_KEY`
-    /// - `is_commercial`: whether the server was built with `--features commercial`
-    pub fn new(license_key: Option<String>, is_commercial: bool) -> Self {
-        let status = if !is_commercial {
-            LicenseStatus::NotRequired
-        } else {
-            match &license_key {
-                None => LicenseStatus::Invalid("No license key provided".to_string()),
-                Some(key) => Self::validate_key(key),
-            }
+    pub fn new(license_key: Option<String>) -> Self {
+        let status = match &license_key {
+            None => LicenseStatus::NotRequired,
+            Some(key) => Self::validate_key(key),
         };
 
         Self {
@@ -111,24 +112,18 @@ mod tests {
     }
 
     #[test]
-    fn community_build_not_required() {
-        let service = LicenseService::new(None, false);
+    fn no_key_is_not_required() {
+        // No license key configured => free community edition, not locked.
+        let service = LicenseService::new(None);
         let status = service.status.blocking_read();
         assert!(!status.is_locked());
         assert_eq!(status.as_api_string(), None);
     }
 
     #[test]
-    fn commercial_build_no_key_is_invalid() {
-        let service = LicenseService::new(None, true);
-        let status = service.status.blocking_read();
-        assert!(status.is_locked());
-        assert_eq!(status.as_api_string(), Some("invalid"));
-    }
-
-    #[test]
-    fn commercial_build_garbage_key_is_invalid() {
-        let service = LicenseService::new(Some("not-a-jwt".to_string()), true);
+    fn garbage_key_is_invalid() {
+        // A key is present but does not verify => commercial deployment, locked.
+        let service = LicenseService::new(Some("not-a-jwt".to_string()));
         let status = service.status.blocking_read();
         assert!(status.is_locked());
         assert_eq!(status.as_api_string(), Some("invalid"));

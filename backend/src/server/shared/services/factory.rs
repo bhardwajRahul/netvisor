@@ -350,21 +350,22 @@ impl ServiceFactory {
         };
 
         // The plan a new self-hosted org is provisioned onto, resolved once from
-        // the license key. On the community build (or with no/invalid key) this
-        // is `BillingPlan::default()`; on the commercial build a valid key's tier
-        // (Standard/Plus/Commercial) wins. Its `included_orgs` also bounds the
-        // self-hosted org-creation cap. Cloud ignores it (new orgs get no plan).
+        // the license key. A valid key's tier (Standard/Plus/Commercial) wins;
+        // with no key, or an invalid/expired one (which also locks the server),
+        // this falls back to `BillingPlan::default()` (Community). Its
+        // `included_orgs` also bounds the self-hosted org-creation cap. Cloud
+        // ignores it (new orgs get no plan until Stripe checkout).
         let default_self_hosted_plan = {
             use crate::server::billing::plans::plan_for_license;
             use crate::server::billing::types::base::BillingPlan;
             use crate::server::license::{service::LicenseService, types::LicenseStatus};
 
-            match (cfg!(feature = "commercial"), config.license_key.as_deref()) {
-                (true, Some(key)) => match LicenseService::validate_key(key) {
+            match config.license_key.as_deref() {
+                Some(key) => match LicenseService::validate_key(key) {
                     LicenseStatus::Valid(claims) => plan_for_license(&claims),
                     _ => BillingPlan::default(),
                 },
-                _ => BillingPlan::default(),
+                None => BillingPlan::default(),
             }
         };
 

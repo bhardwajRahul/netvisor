@@ -64,9 +64,8 @@ history (older states are reconstructable from the pinned commit + tool version)
 Not a GitHub Release: Releases are for images/binaries.
 
 **Refresh it** (before a deal, or on the monthly schedule): Actions tab →
-"889 Evidence" → Run workflow. It runs `tools/889/889-evidence.sh` in CI — which
-includes the private `server-commercial` image (pulled with `GITHUB_TOKEN`) —
-and commits the refreshed bundle to `compliance/ndaa-889/` on `dev`. It also
+"889 Evidence" → Run workflow. It runs `tools/889/889-evidence.sh` in CI and
+commits the refreshed bundle to `compliance/ndaa-889/` on `dev`. It also
 auto-runs after "Promote Release to Latest" so the evidence tracks production.
 
 ### Generating a bundle locally
@@ -176,13 +175,12 @@ fine.
 ## Images scanned at release
 
 The `supply-chain-889` job in `release.yml` runs after `create-manifests` and
-scans the released source tree plus **all three** published images:
+scans the released source tree plus **both** published images:
 
-- `ghcr.io/<repo>/server` (community)
-- `ghcr.io/<repo>/server-commercial`
+- `ghcr.io/<repo>/server`
 - `ghcr.io/<repo>/daemon`
 
-All three are first-party artifacts shipped to users, so all three are in scope.
+Both are first-party artifacts shipped to users, so both are in scope.
 The external `postgres` base image is pulled, not built by the release, and is
 out of scope here; the Debian base packages inside our images *are* captured
 when those images are scanned.

@@ -373,8 +373,8 @@ jobs:
   # Docker builds - parallelized by image type
   # ============================================
   
-  build-docker-server-community:
-    name: Build Server (Community)
+  build-docker-server:
+    name: Build Server
     runs-on: ${{ matrix.runner }}
     needs: [build-binaries, test-and-update-fixtures, migration-branch-test]
     permissions:
@@ -421,7 +421,7 @@ jobs:
           images: ghcr.io/${{ github.repository }}/server
           labels: |
             org.opencontainers.image.title=Scanopy Server
-            org.opencontainers.image.description=Scanopy server (community edition) — Network diagrams that update themselves.
+            org.opencontainers.image.description=Scanopy server — Network diagrams that update themselves.
             org.opencontainers.image.vendor=Scanopy
             org.opencontainers.image.licenses=AGPL-3.0-only
 
@@ -436,7 +436,7 @@ jobs:
             PUBLIC_SERVER_HOSTNAME=default
             PUBLIC_SERVER_PORT=60072
             OCI_IMAGE_TITLE=Scanopy Server
-            OCI_IMAGE_DESCRIPTION=Scanopy server (community edition) — Network diagrams that update themselves.
+            OCI_IMAGE_DESCRIPTION=Scanopy server — Network diagrams that update themselves.
             OCI_IMAGE_LICENSES=AGPL-3.0-only
           tags: |
             ghcr.io/${{ github.repository }}/server:${{ github.event.release.tag_name }}-${{ matrix.suffix }}
@@ -445,80 +445,6 @@ jobs:
             org.scanopy.deploy_mode=${{ needs.migration-branch-test.outputs.deploy_mode }}
           cache-from: type=gha,scope=server-${{ matrix.suffix }}
           cache-to: type=gha,mode=max,scope=server-${{ matrix.suffix }}
-
-  build-docker-server-commercial:
-    name: Build Server (Commercial)
-    runs-on: ${{ matrix.runner }}
-    needs: [build-binaries, test-and-update-fixtures, migration-branch-test]
-    permissions:
-      contents: read
-      packages: write
-    strategy:
-      matrix:
-        include:
-          - runner: ubuntu-latest
-            platform: linux/amd64
-            suffix: amd64
-          - runner: ubuntu-24.04-arm
-            platform: linux/arm64
-            suffix: arm64
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Pull latest changes
-        run: |
-          git fetch origin ${{ github.event.release.target_commitish }}
-          git reset --hard origin/${{ github.event.release.target_commitish }}
-
-      - name: Download generated UI fixtures
-        uses: actions/download-artifact@v4
-        with:
-          name: ui-fixtures
-          path: ui/src/lib/data/
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract Docker metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/${{ github.repository }}/server-commercial
-          labels: |
-            org.opencontainers.image.title=Scanopy Server (Commercial)
-            org.opencontainers.image.description=Scanopy server (commercial edition) — Network diagrams that update themselves.
-            org.opencontainers.image.vendor=Scanopy
-            org.opencontainers.image.licenses=AGPL-3.0-only OR LicenseRef-Scanopy-Commercial
-
-      - name: Build and push
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./backend/Dockerfile
-          platforms: ${{ matrix.platform }}
-          push: true
-          build-args: |
-            PUBLIC_SERVER_HOSTNAME=default
-            PUBLIC_SERVER_PORT=60072
-            CARGO_FEATURES=commercial
-            OCI_IMAGE_TITLE=Scanopy Server (Commercial)
-            OCI_IMAGE_DESCRIPTION=Scanopy server (commercial edition) — Network diagrams that update themselves.
-            OCI_IMAGE_LICENSES=AGPL-3.0-only OR LicenseRef-Scanopy-Commercial
-          tags: |
-            ghcr.io/${{ github.repository }}/server-commercial:${{ github.event.release.tag_name }}-${{ matrix.suffix }}
-          labels: |
-            ${{ steps.meta.outputs.labels }}
-            org.scanopy.deploy_mode=${{ needs.migration-branch-test.outputs.deploy_mode }}
-          cache-from: type=gha,scope=server-commercial-${{ matrix.suffix }}
-          cache-to: type=gha,mode=max,scope=server-commercial-${{ matrix.suffix }}
 
   build-docker-daemon:
     name: Build Daemon Docker
@@ -592,7 +518,7 @@ jobs:
   create-manifests:
     name: Create Multi-arch Manifests
     runs-on: ubuntu-latest
-    needs: [build-docker-server-community, build-docker-server-commercial, build-docker-daemon]
+    needs: [build-docker-server, build-docker-daemon]
     permissions:
       packages: write
 
@@ -604,17 +530,11 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       
-      - name: Create manifest for Server Community (GHCR)
+      - name: Create manifest for Server (GHCR)
         run: |
           docker buildx imagetools create -t ghcr.io/${{ github.repository }}/server:${{ github.event.release.tag_name }} \
             ghcr.io/${{ github.repository }}/server:${{ github.event.release.tag_name }}-amd64 \
             ghcr.io/${{ github.repository }}/server:${{ github.event.release.tag_name }}-arm64
-      
-      - name: Create manifest for Server Commercial (GHCR)
-        run: |
-          docker buildx imagetools create -t ghcr.io/${{ github.repository }}/server-commercial:${{ github.event.release.tag_name }} \
-            ghcr.io/${{ github.repository }}/server-commercial:${{ github.event.release.tag_name }}-amd64 \
-            ghcr.io/${{ github.repository }}/server-commercial:${{ github.event.release.tag_name }}-arm64
 
   upload-assets:
     name: Upload Release Assets
@@ -744,11 +664,10 @@ jobs:
           repo="ghcr.io/${{ github.repository }}"
           syft scan dir:. -o cyclonedx-json | jq . > "sbom-source-${TAG}.cdx.json"
           syft scan "registry:${repo}/server:${TAG}" -o cyclonedx-json | jq . > "sbom-server-${TAG}.cdx.json"
-          syft scan "registry:${repo}/server-commercial:${TAG}" -o cyclonedx-json | jq . > "sbom-server-commercial-${TAG}.cdx.json"
           syft scan "registry:${repo}/daemon:${TAG}" -o cyclonedx-json | jq . > "sbom-daemon-${TAG}.cdx.json"
 
       - name: Run 889 check
-        run: ./tools/889/check-889.sh sbom-source-"${TAG}".cdx.json sbom-server-"${TAG}".cdx.json sbom-server-commercial-"${TAG}".cdx.json sbom-daemon-"${TAG}".cdx.json
+        run: ./tools/889/check-889.sh sbom-source-"${TAG}".cdx.json sbom-server-"${TAG}".cdx.json sbom-daemon-"${TAG}".cdx.json
 
       - name: Summary
         if: always()
@@ -756,8 +675,8 @@ jobs:
           {
             echo "## NDAA Section 889 supply-chain check (gate)"
             echo ""
-            echo "Scanned the released source tree and the \`server\`, \`server-commercial\`,"
-            echo "and \`daemon\` images at \`${TAG}\`. A hit fails the release."
+            echo "Scanned the released source tree and the \`server\` and \`daemon\`"
+            echo "images at \`${TAG}\`. A hit fails the release."
             echo ""
             echo "Published review evidence lives at \`compliance/ndaa-889/\` and is refreshed"
             echo "by the **889 Evidence** workflow (which tracks the promoted \`:latest\` images)."

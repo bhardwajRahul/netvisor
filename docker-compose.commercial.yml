@@ -37,8 +37,10 @@ services:
     networks:
       - scanopy
 
+  # The commercial edition is the standard server image plus a license key.
+  # There is no separate commercial image.
   server:
-    image: ghcr.io/scanopy/scanopy/server-commercial:latest
+    image: ghcr.io/scanopy/scanopy/server:latest
     ports:
       - "60072:60072"
     environment:

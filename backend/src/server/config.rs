@@ -399,11 +399,9 @@ impl AppState {
             StorageFactory::new(&config.database_url(), config.use_secure_session_cookies).await?;
         let services = ServiceFactory::new(&storage, config.clone()).await?;
 
-        let is_commercial = cfg!(feature = "commercial");
-        let license_service = Arc::new(LicenseService::new(
-            config.license_key.clone(),
-            is_commercial,
-        ));
+        // Commercial mode is driven by the presence of a license key at
+        // runtime — no separate build. No key => free community edition.
+        let license_service = Arc::new(LicenseService::new(config.license_key.clone()));
 
         Ok(Arc::new(Self {
             config,
@@ -417,16 +415,16 @@ impl AppState {
 
 pub fn get_deployment_type(config: &ServerConfig) -> DeploymentType {
     if config.stripe_secret.is_some() {
+        // Stripe configured => the Scanopy-operated cloud.
         DeploymentType::Cloud
+    } else if config.license_key.is_some() {
+        // Self-hosted with a license key => commercial edition. Validity is a
+        // separate concern (LicenseService); an invalid key still reads as a
+        // commercial deployment and locks the server via license middleware.
+        DeploymentType::Commercial
     } else {
-        #[cfg(feature = "commercial")]
-        {
-            DeploymentType::Commercial
-        }
-        #[cfg(not(feature = "commercial"))]
-        {
-            DeploymentType::Community
-        }
+        // Self-hosted, no key => free community edition.
+        DeploymentType::Community
     }
 }
 
