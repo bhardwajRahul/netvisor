@@ -15,7 +15,6 @@ mod discovery_digest;
 mod discovery_guide;
 mod email_changed_old;
 mod install_command;
-mod institutional_signup;
 mod invite;
 mod oidc_linked;
 mod oidc_unlinked;
@@ -50,7 +49,6 @@ pub use discovery_digest::DiscoveryDigest;
 pub use discovery_guide::DiscoveryGuide;
 pub use email_changed_old::EmailChangedOld;
 pub use install_command::InstallCommand;
-pub use institutional_signup::InstitutionalSignup;
 pub use invite::Invite;
 pub use oidc_linked::OidcLinked;
 pub use oidc_unlinked::OidcUnlinked;
@@ -577,13 +575,6 @@ mod tests {
             &InstallCommand {
                 install_command: "curl … | sh",
                 os: "linux",
-            },
-        );
-        f(
-            "institutional_signup",
-            &InstitutionalSignup {
-                domain: "sanpedro.gob.mx",
-                institution_type: "government",
             },
         );
         f(
