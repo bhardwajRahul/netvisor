@@ -45,7 +45,7 @@ pub struct EmailAndToken {
 )]
 #[serde(tag = "type")]
 #[strum(serialize_all = "snake_case")]
-#[strum_discriminants(derive(Hash, EnumIter, strum::Display, Serialize, Deserialize,))]
+#[strum_discriminants(derive(Hash, EnumIter, strum::Display, strum::AsRefStr, Serialize, Deserialize,))]
 pub enum AuthOperation {
     // User Auth
     Register {
@@ -108,7 +108,7 @@ pub enum AuthOperation {
     Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, strum::Display, EnumDiscriminants,
 )]
 #[strum(serialize_all = "snake_case")]
-#[strum_discriminants(derive(Hash, EnumIter, strum::Display, Serialize, Deserialize,))]
+#[strum_discriminants(derive(Hash, EnumIter, strum::Display, strum::AsRefStr, Serialize, Deserialize,))]
 pub enum EntityOperation {
     Get,
     GetAll,
@@ -120,7 +120,7 @@ pub enum EntityOperation {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, strum::Display, EnumDiscriminants)]
 #[serde(tag = "type")]
 #[strum(serialize_all = "snake_case")]
-#[strum_discriminants(derive(Hash, EnumIter, strum::Display, Serialize, Deserialize,))]
+#[strum_discriminants(derive(Hash, EnumIter, strum::Display, strum::AsRefStr, Serialize, Deserialize,))]
 pub enum BillingOperation {
     CheckoutStarted {
         plan: BillingPlan,
@@ -407,6 +407,7 @@ impl BillingOperation {
     Hash,
     EnumIter,
     strum::Display,
+    strum::AsRefStr,
     Serialize,
     Deserialize,
     utoipa::ToSchema,
@@ -469,7 +470,7 @@ pub enum OnboardingOperation {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, strum::Display, EnumDiscriminants)]
 #[serde(tag = "type")]
 #[strum(serialize_all = "snake_case")]
-#[strum_discriminants(derive(Hash, EnumIter, strum::Display, Serialize, Deserialize,))]
+#[strum_discriminants(derive(Hash, EnumIter, strum::Display, strum::AsRefStr, Serialize, Deserialize,))]
 pub enum AnalyticsOperation {
     TopologyShareViewed { share_id: Uuid, has_password: bool },
     TopologyEmbedViewed { share_id: Uuid, has_password: bool },

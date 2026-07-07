@@ -7,7 +7,6 @@
 
 use std::{collections::HashMap, fmt::Debug, hash::Hash, net::IpAddr};
 use std::{sync::Arc, time::Duration};
-
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use strum::IntoDiscriminant;
@@ -54,6 +53,7 @@ pub trait Operation:
                           + Sync
                           + Serialize
                           + DeserializeOwned
+                          + AsRef<str>
                           + 'static,
     > + Serialize
     + DeserializeOwned
@@ -69,6 +69,14 @@ pub trait Operation:
     type Filter: SubscriberFilter<Self>;
 
     fn log_level(&self) -> EventLogLevel;
+
+    /// Human-scannable label prefixed to the event's log line, e.g.
+    /// `"Created"`. Receives the `Scope` because some operations (notably
+    /// entity events) carry the meaningful noun there rather than on the
+    /// operation itself. Default is the operation discriminant's name.
+    fn log_label(&self, _scope: &Self::Scope) -> String {
+        self.discriminant().as_ref().to_string()
+    }
 }
 
 // ===========================================================================
@@ -250,6 +258,10 @@ impl<Op: Operation> Event<Op> {
     pub fn discriminant(&self) -> <Op as IntoDiscriminant>::Discriminant {
         self.operation.discriminant()
     }
+
+    pub fn log_label(&self) -> String {
+        self.operation.log_label(&self.scope)
+    }
 }
 
 /// Render an event as JSON. Used by the logging subscriber so log lines are
@@ -408,6 +420,16 @@ impl Operation for EntityOperation {
     type Filter = EntityEventFilter;
     fn log_level(&self) -> EventLogLevel {
         EventLogLevel::Info
+    }
+
+    /// Entity events carry the noun in the scope, so compose it with the
+    /// operation, e.g. `"Subnet Created"`.
+    fn log_label(&self, scope: &Self::Scope) -> String {
+        format!(
+            "{} {}",
+            scope.entity_discriminant().as_ref(),
+            self.discriminant().as_ref()
+        )
     }
 }
 

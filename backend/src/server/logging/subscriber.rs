@@ -22,13 +22,13 @@ use crate::{
     },
 };
 
-fn log_at_level(level: EventLogLevel, message: impl std::fmt::Display) {
+fn log_at_level(level: EventLogLevel, label: &str, message: impl std::fmt::Display) {
     match level {
-        EventLogLevel::Error => tracing::error!("{}", message),
-        EventLogLevel::Warn => tracing::warn!("{}", message),
-        EventLogLevel::Info => tracing::info!("{}", message),
-        EventLogLevel::Debug => tracing::debug!("{}", message),
-        EventLogLevel::Trace => tracing::trace!("{}", message),
+        EventLogLevel::Error => tracing::error!(label = label, "{}", message),
+        EventLogLevel::Warn => tracing::warn!(label = label, "{}", message),
+        EventLogLevel::Info => tracing::info!(label = label, "{}", message),
+        EventLogLevel::Debug => tracing::debug!(label = label, "{}", message),
+        EventLogLevel::Trace => tracing::trace!(label = label, "{}", message),
     }
 }
 
@@ -36,7 +36,7 @@ fn log_event<Op: Operation>(event: &Event<Op>, suppress: bool) {
     if suppress {
         return;
     }
-    log_at_level(event.operation.log_level(), event);
+    log_at_level(event.operation.log_level(), &event.log_label(), event);
 }
 
 #[async_trait]
