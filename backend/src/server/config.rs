@@ -10,7 +10,6 @@ use axum::extract::State;
 use axum::http::header::CACHE_CONTROL;
 use axum::response::IntoResponse;
 use clap::Parser;
-use email_address::EmailAddress;
 use figment::{
     Figment,
     providers::{Env, Format, Serialized, Toml},
@@ -149,13 +148,6 @@ pub struct ServerConfig {
     // Brevo CRM integration
     pub brevo_api_key: Option<String>,
 
-    /// Destination for notifications aimed at the server admin (e.g. the
-    /// institutional-signup notice). Notifications are skipped when unset.
-    /// Picks up `SCANOPY_SERVER_ADMIN_CONTACT_EMAIL` from the env via the
-    /// existing Figment env-var pipeline.
-    #[serde(default)]
-    pub server_admin_contact_email: Option<EmailAddress>,
-
     // External service IP restrictions
     // Maps service name (lowercase) to list of allowed IPs/CIDRs
     // Populated from SCANOPY_EXTERNAL_SERVICE_<NAME>_ALLOWED_IPS env vars
@@ -259,7 +251,6 @@ impl Default for ServerConfig {
             enforce_billing_for_testing: false,
             metrics_token: None,
             brevo_api_key: None,
-            server_admin_contact_email: None,
             external_service_allowed_ips: HashMap::new(),
             license_key: None,
             snapshot_retention_days_override: None,

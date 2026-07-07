@@ -12,7 +12,6 @@ use std::collections::HashMap;
 use crate::server::{
     auth::middleware::auth::AuthenticatedEntity,
     billing::types::base::BillingReason,
-    brevo::domain_classification::{DomainClass, classify_email_domain_probed},
     digest::payload::{DiscoveryDigestOperation, DiscoveryDigestOperationDiscriminants},
     email::service::{EmailService, format_cents},
     shared::{
@@ -199,24 +198,6 @@ impl Subscriber<AuthOperation> for EmailService {
 
     async fn handle(&self, events: Vec<Event<AuthOperation>>) -> Result<(), Error> {
         for event in events {
-            // Institutional-signup notice to the server admin (no-op unless
-            // server_admin_contact_email is configured). Best-effort: a send
-            // failure must not break the verification-email flow below.
-            if matches!(event.operation, AuthOperation::Register { .. })
-                && let AuthenticatedEntity::User { email, .. } = &event.authentication
-            {
-                let (domain_class, institution_type) =
-                    classify_email_domain_probed(email.domain()).await;
-                if domain_class == DomainClass::Institutional
-                    && let Some(institution_type) = institution_type
-                    && let Err(e) = self
-                        .send_institutional_signup_email(email.domain(), institution_type.as_str())
-                        .await
-                {
-                    tracing::warn!(error = %e, "Failed to send institutional-signup notice");
-                }
-            }
-
             match event.operation {
                 AuthOperation::Register {
                     email_and_token: Some(params),
