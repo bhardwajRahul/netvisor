@@ -40,9 +40,11 @@ pub async fn license_guard_middleware(
         return next.run(request).await;
     }
 
-    // Check license status
-    let status = state.license_service.current_status().await;
-    if status.is_locked() {
+    // Check license status. No license service => no key configured
+    // (community/cloud) => never locked.
+    if let Some(license_service) = &state.license_service
+        && license_service.current_status().await.is_locked()
+    {
         return ApiError::license_locked().into_response();
     }
 

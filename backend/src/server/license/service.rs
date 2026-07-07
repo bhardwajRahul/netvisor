@@ -6,29 +6,20 @@ use super::types::LicenseStatus;
 
 pub struct LicenseService {
     status: Arc<RwLock<LicenseStatus>>,
-    license_key_raw: Option<LicenseKey>,
+    license_key: LicenseKey,
 }
 
 impl LicenseService {
-    /// Create a new license service.
-    ///
-    /// A deployment is "commercial" iff a license key is configured. With no
-    /// key (`SCANOPY_LICENSE_KEY` unset) the deployment is the free community
-    /// edition and licensing is `NotRequired`; with a key present the key is
-    /// validated and drives `Valid`/`Expired`/`Invalid`. This is the single
-    /// runtime signal — there is no separate commercial build.
-    ///
-    /// - `license_key`: the effective key for this deployment (`None` on cloud
-    ///   or community, per `ServerConfig::effective_license_key`).
-    pub fn new(license_key: Option<LicenseKey>) -> Self {
-        let status = match &license_key {
-            None => LicenseStatus::NotRequired,
-            Some(key) => key.validate(),
-        };
-
+    /// Create a license service for a configured key. Only construct one when a
+    /// license key actually applies (`ServerConfig::effective_license_key` is
+    /// `Some`) — a keyless deployment (community or cloud) has no
+    /// `LicenseService` at all, which is what represents "licensing not
+    /// required". The key is validated immediately and drives
+    /// `Valid`/`Expired`/`Invalid`.
+    pub fn new(license_key: LicenseKey) -> Self {
         Self {
-            status: Arc::new(RwLock::new(status)),
-            license_key_raw: license_key,
+            status: Arc::new(RwLock::new(license_key.validate())),
+            license_key,
         }
     }
 
@@ -40,30 +31,28 @@ impl LicenseService {
     /// Re-validate the license key. Called by the periodic background task
     /// to catch time-based expiry transitions without requiring a restart.
     pub async fn revalidate(&self) {
-        if let Some(key) = &self.license_key_raw {
-            let new_status = key.validate();
-            let mut status = self.status.write().await;
+        let new_status = self.license_key.validate();
+        let mut status = self.status.write().await;
 
-            let was_locked = status.is_locked();
-            let now_locked = new_status.is_locked();
+        let was_locked = status.is_locked();
+        let now_locked = new_status.is_locked();
 
-            if was_locked != now_locked {
-                if now_locked {
-                    tracing::warn!(
-                        target: "server",
-                        "License status changed to locked: {}",
-                        new_status.as_api_string().unwrap_or("unknown")
-                    );
-                } else {
-                    tracing::info!(
-                        target: "server",
-                        "License status changed to valid"
-                    );
-                }
+        if was_locked != now_locked {
+            if now_locked {
+                tracing::warn!(
+                    target: "server",
+                    "License status changed to locked: {}",
+                    new_status.as_api_string()
+                );
+            } else {
+                tracing::info!(
+                    target: "server",
+                    "License status changed to valid"
+                );
             }
-
-            *status = new_status;
         }
+
+        *status = new_status;
     }
 }
 
@@ -85,21 +74,12 @@ mod tests {
     }
 
     #[test]
-    fn no_key_is_not_required() {
-        // No license key configured => free community edition, not locked.
-        let service = LicenseService::new(None);
-        let status = service.status.blocking_read();
-        assert!(!status.is_locked());
-        assert_eq!(status.as_api_string(), None);
-    }
-
-    #[test]
     fn garbage_key_is_invalid() {
         // A key is present but does not verify => commercial deployment, locked.
-        let service = LicenseService::new(Some(LicenseKey::new("not-a-jwt".to_string())));
+        let service = LicenseService::new(LicenseKey::new("not-a-jwt".to_string()));
         let status = service.status.blocking_read();
         assert!(status.is_locked());
-        assert_eq!(status.as_api_string(), Some("invalid"));
+        assert_eq!(status.as_api_string(), "invalid");
     }
 
     #[test]

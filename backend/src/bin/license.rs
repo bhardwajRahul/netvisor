@@ -114,9 +114,6 @@ fn main() -> anyhow::Result<()> {
                     println!("Status:  INVALID");
                     println!("Reason:  {}", reason);
                 }
-                scanopy::server::license::types::LicenseStatus::NotRequired => {
-                    unreachable!("LicenseKey::validate never returns NotRequired");
-                }
             }
 
             Ok(())

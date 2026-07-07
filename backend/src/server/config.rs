@@ -418,7 +418,10 @@ pub struct AppState {
     pub config: ServerConfig,
     pub services: ServiceFactory,
     pub session_store: SessionManagerLayer<PostgresStore>,
-    pub license_service: Arc<LicenseService>,
+    /// Present only when a license key applies (self-hosted commercial). A
+    /// keyless deployment (community or cloud) has no license service —
+    /// licensing is "not required".
+    pub license_service: Option<Arc<LicenseService>>,
     pub pool: PgPool,
 }
 
@@ -429,10 +432,13 @@ impl AppState {
         let services = ServiceFactory::new(&storage, config.clone()).await?;
 
         // Commercial mode is driven by the presence of a license key at
-        // runtime — no separate build. No key => free community edition.
-        // `effective_license_key` returns None on cloud, so a stray key can
-        // never validate, lock, or reconfigure a cloud deployment.
-        let license_service = Arc::new(LicenseService::new(config.effective_license_key()));
+        // runtime — no separate build. No key => free community edition, and no
+        // license service at all. `effective_license_key` returns None on cloud,
+        // so a stray key can never validate, lock, or reconfigure a cloud
+        // deployment.
+        let license_service = config
+            .effective_license_key()
+            .map(|key| Arc::new(LicenseService::new(key)));
 
         Ok(Arc::new(Self {
             config,
@@ -479,11 +485,20 @@ pub async fn get_public_config(State(state): State<Arc<AppState>>) -> impl IntoR
         .unwrap_or_default();
 
     let deployment_type = get_deployment_type(&state.config);
-    let current_license = state.license_service.current_status().await;
-    let license_status = current_license.as_api_string().map(String::from);
-    let license_expiry = current_license.expiry_date();
-    let license_intended_expiry = current_license.intended_expiry_date();
-    let license_in_grace_period = current_license.in_grace_period();
+    let current_license = match &state.license_service {
+        Some(svc) => Some(svc.current_status().await),
+        None => None,
+    };
+    let license_status = current_license
+        .as_ref()
+        .map(|s| s.as_api_string().to_string());
+    let license_expiry = current_license.as_ref().and_then(|s| s.expiry_date());
+    let license_intended_expiry = current_license
+        .as_ref()
+        .and_then(|s| s.intended_expiry_date());
+    let license_in_grace_period = current_license
+        .as_ref()
+        .is_some_and(|s| s.in_grace_period());
 
     let billing_enabled = state.config.stripe_secret.is_some();
     // Self-hosted only: is the instance at its licensed org cap? Cloud is
