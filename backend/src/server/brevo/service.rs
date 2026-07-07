@@ -295,15 +295,43 @@ impl BrevoService {
 
         let doi_attributes = contact_attrs.to_attributes();
 
-        // Upsert the contact independently from the company (the company is
-        // created on OrgCreated; for invited users, no company is created and
-        // they're attached to an existing one elsewhere).
-        if let Err(e) = self
+        // Upsert the contact. The company is created on the OrgCreated channel;
+        // once both exist we link them. Because the two events arrive on separate
+        // subscriber channels with no ordering guarantee, we link idempotently
+        // from both sides (Brevo's link-unlink endpoint is idempotent) — whichever
+        // handler runs second finds the other party present and links.
+        let contact_id = match self
             .client
             .upsert_contact(email.as_ref(), contact_attrs)
             .await
         {
-            tracing::warn!(error = %e, "Failed to upsert Brevo contact at register");
+            Ok(id) => Some(id),
+            Err(e) => {
+                tracing::warn!(error = %e, "Failed to upsert Brevo contact at register");
+                None
+            }
+        };
+
+        // If the org's Brevo company already exists, link the contact now.
+        // Otherwise handle_org_created links it once the company is created.
+        if let Some(contact_id) = contact_id
+            && let Some(org_id) = event.scope.organization_id
+        {
+            match self.get_brevo_company_id(org_id).await {
+                Ok(Some(company_id)) => {
+                    if let Err(e) = self
+                        .client
+                        .link_contact_to_company(&company_id, contact_id)
+                        .await
+                    {
+                        tracing::warn!(error = %e, "Failed to link Brevo contact to company at register");
+                    }
+                }
+                Ok(None) => {} // Company not created yet; handle_org_created will link.
+                Err(e) => {
+                    tracing::warn!(error = %e, "Failed to look up Brevo company id at register");
+                }
+            }
         }
 
         // Add to "Product Updates" and "Onboarding" lists (all signups)
@@ -385,6 +413,27 @@ impl BrevoService {
             self.organization_service
                 .update(&mut org, event.authentication.clone())
                 .await?;
+        }
+
+        // Link the owner's contact to the new company. The contact is created on
+        // the AuthOperation (Register) channel; if it isn't in Brevo yet,
+        // handle_register links it once the company exists. Idempotent on Brevo's
+        // side, so linking from both handlers is safe.
+        if let Some(email) = &owner_email {
+            match self.client.get_contact_id_by_email(email).await {
+                Ok(contact_id) => {
+                    if let Err(e) = self
+                        .client
+                        .link_contact_to_company(&company_id, contact_id)
+                        .await
+                    {
+                        tracing::warn!(error = %e, "Failed to link owner contact to new Brevo company");
+                    }
+                }
+                Err(e) => {
+                    tracing::debug!(error = %e, "Owner contact not yet in Brevo; will link on register");
+                }
+            }
         }
 
         // Track event for automation (uses owner email; OK to skip if missing)
