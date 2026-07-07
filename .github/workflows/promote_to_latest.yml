@@ -77,11 +77,6 @@ jobs:
           docker buildx imagetools create -t ghcr.io/${{ github.repository }}/daemon:latest \
             ghcr.io/${{ github.repository }}/daemon:${{ inputs.release_tag }}
 
-      - name: Create multi-arch manifest for Server Commercial (GHCR)
-        run: |
-          docker buildx imagetools create -t ghcr.io/${{ github.repository }}/server-commercial:latest \
-            ghcr.io/${{ github.repository }}/server-commercial:${{ inputs.release_tag }}
-
       - name: Checkout scanopy repo (dev branch for latest fixtures)
         uses: actions/checkout@v4
         with:

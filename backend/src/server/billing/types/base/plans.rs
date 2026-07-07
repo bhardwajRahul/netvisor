@@ -80,19 +80,15 @@ impl Hash for BillingPlan {
 }
 
 impl Default for BillingPlan {
+    /// The conservative fallback plan. Self-hosted org provisioning uses the
+    /// license-resolved plan (`AuthService::default_self_hosted_plan`), not this;
+    /// `default()` only backstops `Option<BillingPlan>::unwrap_or_default()` for
+    /// rows with no plan set, where Community (the least-privileged self-hosted
+    /// plan) is the safe choice.
     fn default() -> Self {
-        #[cfg(feature = "commercial")]
-        {
-            use crate::server::billing::plans::get_commercial_self_hosted_plan;
+        use crate::server::billing::plans::get_community_plan;
 
-            get_commercial_self_hosted_plan()
-        }
-        #[cfg(not(feature = "commercial"))]
-        {
-            use crate::server::billing::plans::get_community_plan;
-
-            get_community_plan()
-        }
+        get_community_plan()
     }
 }
 

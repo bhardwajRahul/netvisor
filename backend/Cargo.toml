@@ -225,4 +225,3 @@ jsonschema = "0.29"
 
 [features]
 generate-fixtures = []
-commercial = []
