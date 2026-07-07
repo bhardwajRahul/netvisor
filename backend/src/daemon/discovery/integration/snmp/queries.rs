@@ -230,8 +230,8 @@ pub async fn walk_if_table(
 
     // `complete` distinguishes an authoritative full ifTable from a partial walk cut short by
     // timeout/error. The server prunes stale interfaces only on a complete walk (GH #649), so
-    // surface it at info level for self-hosted daemon-log triage.
-    tracing::info!(
+    // surface it at debug level for self-hosted daemon-log triage (enable SCANOPY_LOG_LEVEL=debug).
+    tracing::debug!(
         ip = %ip,
         if_count = result.len(),
         complete = complete,
@@ -1137,11 +1137,11 @@ pub async fn query_bridge_fdb(
         })
         .collect();
 
-    // Info-level with the legacy-vs-Q-BRIDGE split: on a VLAN-aware switch, legacy=0 with
-    // qbridge>0 confirms the daemon has (and is using) the Q-BRIDGE FDB collection; legacy=0 and
-    // qbridge=0 on a switch that snmpwalk shows has FDB data points at an un-upgraded daemon or a
-    // MIB the switch doesn't expose (GH #649).
-    tracing::info!(
+    // Debug-level (enable SCANOPY_LOG_LEVEL=debug) with the legacy-vs-Q-BRIDGE split: on a
+    // VLAN-aware switch, legacy=0 with qbridge>0 confirms the daemon has (and is using) the
+    // Q-BRIDGE FDB collection; legacy=0 and qbridge=0 on a switch that snmpwalk shows has FDB data
+    // points at an un-upgraded daemon or a MIB the switch doesn't expose (GH #649).
+    tracing::debug!(
         ip = %ip,
         entries = result.len(),
         legacy_dot1d = legacy_count,
