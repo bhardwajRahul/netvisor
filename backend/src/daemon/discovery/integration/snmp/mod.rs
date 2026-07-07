@@ -401,7 +401,7 @@ impl DiscoveryIntegration for SnmpIntegration {
         // glance per switch: how many interfaces were collected and whether the walk was complete
         // (a partial walk is why the server now skips pruning), and the L2 source signals
         // (ARP/FDB/LLDP/CDP) plus VLAN upsert status that feed neighbor resolution.
-        tracing::info!(
+        tracing::debug!(
             ip = %ip,
             if_count = snmp_if_entries.len(),
             if_table_complete = if_table_complete,

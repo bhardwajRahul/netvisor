@@ -153,7 +153,7 @@ impl HostService {
         // Always log (even at zero) so a "no L2 links" report shows where resolution fell off:
         // no candidates (nothing collected FDB), candidates but none single-MAC (shared/uplink
         // ports), single-MAC but no host owns that MAC, or resolved.
-        tracing::info!(
+        tracing::debug!(
             network_id = %network_id,
             total_candidates = total_candidates,
             single_mac = single_mac,
@@ -200,7 +200,7 @@ impl HostService {
             }
         }
 
-        tracing::info!(
+        tracing::debug!(
             network_id = %network_id,
             total_interfaces = interfaces.len(),
             full_edges = full_edges,

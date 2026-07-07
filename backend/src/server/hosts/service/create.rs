@@ -986,7 +986,7 @@ impl HostService {
                 }
             }
             if pruned > 0 {
-                tracing::info!(
+                tracing::debug!(
                     host_id = %created_host.id,
                     interfaces_complete = true,
                     incoming = created_interfaces.len(),
@@ -1005,7 +1005,7 @@ impl HostService {
                 .await
                 .map(|v| v.len())
                 .unwrap_or_default();
-            tracing::info!(
+            tracing::debug!(
                 host_id = %created_host.id,
                 interfaces_complete = false,
                 incoming = created_interfaces.len(),

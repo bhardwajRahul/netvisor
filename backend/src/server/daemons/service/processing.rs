@@ -584,7 +584,7 @@ impl DaemonService {
             // this host. If a switch loses its L2 links while `interfaces_complete = true` with a
             // large `incoming_interfaces`, the daemon was not upgraded (old daemons omit the field
             // and it defaults to true), so the partial-walk prune fix cannot engage.
-            tracing::info!(
+            tracing::debug!(
                 daemon_version = auth.daemon_version().unwrap_or("unknown"),
                 host_name = %host_name,
                 interfaces_complete = host_request.interfaces_complete,
