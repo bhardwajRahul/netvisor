@@ -29,6 +29,7 @@
 		billing_seatUnit,
 		billing_seatUnitPlural,
 		billing_selfHosted,
+		billing_selfHostedOrCloud,
 		billing_showFeatures,
 		billing_hideFeatures,
 		billing_snapshotRetention,
@@ -337,7 +338,7 @@
 		switch (hosting) {
 			case 'Cloud':
 				return 'Cyan';
-			case 'Managed':
+			case 'Any':
 				return 'Purple';
 			case 'SelfHosted':
 				return 'Green';
@@ -350,6 +351,8 @@
 		switch (hosting) {
 			case 'SelfHosted':
 				return billing_selfHosted();
+			case 'Any':
+				return billing_selfHostedOrCloud();
 			default:
 				return hosting;
 		}

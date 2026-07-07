@@ -115,6 +115,7 @@
 	"billing_seatUnit": "seat",
 	"billing_seatUnitPlural": "seats",
 	"billing_selfHosted": "Self-Hosted",
+	"billing_selfHostedOrCloud": "Self-Hosted or Cloud",
 	"billing_showFeatures": "Show features",
 	"billing_snapshotRetention": "Snapshot Retention",
 	"billing_startTrialNoCreditCard": "Start free trial — no card required",

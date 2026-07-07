@@ -106,6 +106,7 @@ mod tests {
             exp,
             intended_exp,
             org_id: None,
+            plan: None,
         }
     }
 

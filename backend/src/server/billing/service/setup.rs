@@ -108,6 +108,8 @@ impl BillingService {
                 plan,
                 BillingPlan::Community(_)
                     | BillingPlan::CommercialSelfHosted(_)
+                    | BillingPlan::SelfHostedStandard(_)
+                    | BillingPlan::SelfHostedPlus(_)
                     | BillingPlan::Enterprise(_)
                     | BillingPlan::Demo(_)
             ) {
