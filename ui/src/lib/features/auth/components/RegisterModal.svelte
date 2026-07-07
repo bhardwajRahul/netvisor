@@ -25,9 +25,6 @@
 		auth_creatingAccount,
 		auth_emailAlreadyInUse,
 		auth_enterYourEmail,
-		auth_orgLimitReachedBody,
-		auth_orgLimitReachedContact,
-		auth_orgLimitReachedTitle,
 		auth_passwordLoginDisabledNoProviders,
 		auth_scanopyLogo,
 		auth_signInInstead,
@@ -75,11 +72,6 @@
 	let enableEmailOptIn = $derived(configData?.has_email_opt_in ?? false);
 	let enableTermsCheckbox = $derived(configData?.billing_enabled ?? false);
 	let isCloudDeployment = $derived(configData ? isCloud(configData) : false);
-
-	// Block new-organization signup when the instance is at its org cap. Invited
-	// users join an existing org (they don't create one), so they are exempt.
-	let showOrgLimitGate = $derived((configData?.org_limit_reached ?? false) && !invitedBy);
-	let adminContactEmail = $derived(configData?.server_admin_contact_email ?? null);
 
 	$effect(() => {
 		if (
@@ -244,20 +236,7 @@
 			{#if subStep === 'method'}
 				<!-- Sub-step: Choose method (OIDC-first) -->
 				<div class="space-y-4">
-					{#if showOrgLimitGate}
-						<InlineInfo title={auth_orgLimitReachedTitle()} body={auth_orgLimitReachedBody()} />
-						{#if adminContactEmail}
-							<p class="text-secondary text-center text-sm">
-								{auth_orgLimitReachedContact()}
-								<a
-									href="mailto:{adminContactEmail}"
-									class="text-accent underline hover:no-underline"
-								>
-									{adminContactEmail}
-								</a>
-							</p>
-						{/if}
-					{:else if disablePasswordLogin && !hasOidcProviders}
+					{#if disablePasswordLogin && !hasOidcProviders}
 						<InlineDanger title={auth_passwordLoginDisabledNoProviders()} />
 					{:else}
 						{#if enableTermsCheckbox || enableEmailOptIn}
