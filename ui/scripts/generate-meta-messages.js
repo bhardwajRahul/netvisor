@@ -51,7 +51,6 @@ export const COVERED_FIXTURES = [
 	{ file: 'permissions.json', key: 'permissions', kind: 'typeMetadata' },
 	{ file: 'scan-settings.json', key: 'scan_settings', kind: 'fieldDefinitions' },
 	{ file: 'subnet-types.json', key: 'subnet_types', kind: 'typeMetadata' },
-	{ file: 'group-types.json', key: 'group_types', kind: 'typeMetadata' },
 	{ file: 'container-types.json', key: 'container_types', kind: 'typeMetadata' },
 	{ file: 'container-rule-types.json', key: 'container_rule_types', kind: 'typeMetadata' },
 	{ file: 'element-rule-types.json', key: 'element_rule_types', kind: 'typeMetadata' },
