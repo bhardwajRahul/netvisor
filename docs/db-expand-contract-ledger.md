@@ -17,6 +17,15 @@ The coordinator maintains this file (see CLAUDE.md → *Database Expand/Contract
 | `credentials.target_ips` (INET[]) | superseded by `integration_targets` / `host_credentials` | **0.17.3** (remove storage r/w, `base.rs` field, dedup + loopback readers) | **0.17.4** | 0.17.3 fully deployed — no container reads `target_ips` | code-removal pending | feat/credential-daemon-compat (Part C2) |
 | `daemons.capabilities` (JSONB) | interfaced subnets move to `daemon_interfaced_subnets` junction (0.17.3) | **0.17.3** (delete `DaemonCapabilities`, stop reading/writing the column) | **0.17.4** | 0.17.3 fully deployed — no container reads/writes `capabilities` | code-removal pending | feat/credential-daemon-compat (Part B3) |
 
+## Deferred diagnostic instrumentation (non-schema)
+
+Temporary tracing added to triage a live issue, to remove or downgrade once the issue is
+confirmed resolved. Not a schema concern, tracked here so the coordinator sees it at release time.
+
+| Instrumentation | Added | Remove/downgrade when | Recommendation | Owner |
+|---|---|---|---|---|
+| GH #649 L2 diagnostics (commit `04097c3af`): daemon `"SNMP host collection summary"` + `"Bridge FDB walk finished"` split (`snmp/mod.rs`, `snmp/queries.rs`); server `"Discovery host received"` (`daemons/service/processing.rs`); prune-decision lines + `"L2 topology summary after discovery"` + FDB-resolution breakdown (`hosts/service/create.rs`, `hosts/service/topology.rs`, `hosts/subscriber.rs`) | 0.17.4 | #649 confirmed fixed on the reporter's setup (switches stay on the L2 map across scheduled scans) | Downgrade the high-frequency per-host lines (`"Discovery host received"`, `"SNMP host collection summary"`) to `debug`; the per-scan summaries (`"L2 topology summary after discovery"`, FDB-resolution breakdown, prune decision) are low-volume and worth keeping at `info` as permanent operational logging | fix/issue-649-l2-topology-missing-devices |
+
 ## Notes
 - **No native Postgres enums exist** in this schema — all "enums" (credential type, subnet/host virtualization, integration targets) are serde-tagged JSON stored in JSONB columns. Adding/removing a variant is a code + JSONB-data concern, not a DDL contract, but old-server *deserialization* of a new variant is still a coexistence risk (mind `#[serde(other)]` fallbacks and `Deploy-Mode: downtime` when a new variant can reach an old binary).
 - Squawk flags every `DROP COLUMN` as unsafe; contract migrations need the documented exception annotation + `SET lock_timeout`/`statement_timeout` guards (pattern: `backend/migrations/20260502120004_drop_legacy_topology_columns.sql`).
