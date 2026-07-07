@@ -14,7 +14,7 @@ use scanopy::server::{
         rate_limit::rate_limit_middleware,
     },
     billing::plans::get_purchasable_plans,
-    config::{AppState, ServerCli, ServerConfig, get_deployment_type},
+    config::{AppState, DeploymentType, ServerCli, ServerConfig, get_deployment_type},
     license::middleware::license_guard_middleware,
     shared::handlers::{
         cache::AppCache,
@@ -483,10 +483,12 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // Reconcile self-hosted org plan(s) to the license entitlement. The license
-    // key is env-only, so a key added after an org was provisioned as Community
-    // only takes effect on restart — this is that moment. Runs only for a
-    // self-hosted deployment (no Stripe secret) with a valid commercial license;
-    // upgrades Community orgs to CommercialSelfHosted, idempotently.
+    // key is env-only, so a key added/changed after orgs were provisioned only
+    // takes effect on restart — this is that moment. Moves every org onto the
+    // license-resolved tier (any direction), idempotently. The `stripe_secret`
+    // gate confines this to self-hosted; on cloud `current_status()` is also
+    // never `Valid` (the key is dropped via `effective_license_key`), so
+    // reconciliation can never run against a cloud deployment.
     if state.config.stripe_secret.is_none()
         && let scanopy::server::license::types::LicenseStatus::Valid(claims) =
             state.license_service.current_status().await
@@ -510,7 +512,12 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!(target: LOG_TARGET, "  Public URL:      {}", public_url);
     tracing::info!(target: LOG_TARGET, "  Log level:       {}", log_level);
     tracing::info!(target: LOG_TARGET, "  Deployment:      {:?}", deployment_type);
-    {
+    if let Some(contact) = &state.config.server_admin_contact_email {
+        tracing::info!(target: LOG_TARGET, "  Admin contact:   {}", contact);
+    }
+    // Licensing is a self-hosted concept; on cloud the key is ignored entirely,
+    // so don't log a (misleading) License line there.
+    if deployment_type != DeploymentType::Cloud {
         let license_status = state.license_service.current_status().await;
         match &license_status {
             scanopy::server::license::types::LicenseStatus::NotRequired => {

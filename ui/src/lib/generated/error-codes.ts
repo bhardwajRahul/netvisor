@@ -31,7 +31,7 @@ export const ERROR_CODES = {
 	auth_password_login_disabled: 'Password login is disabled',
 	auth_registration_disabled: 'User registration is disabled',
 	auth_org_limit_reached:
-		'This instance already has an organization. Ask an admin to invite you instead of creating a new account.',
+		'This server has reached its maximum number of organizations. Ask an admin to invite you to an existing organization.',
 	auth_email_verification_required: 'Please verify your email to access this feature',
 	license_locked: 'Your license has expired or is invalid. The server is in read-only mode.',
 	entity_not_found: "{entity} with ID '{id}' not found",

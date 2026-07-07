@@ -2,8 +2,8 @@ use chrono::{Duration, Utc};
 use clap::{Parser, Subcommand};
 use jsonwebtoken::{Algorithm, Header};
 use scanopy::server::license::{
-    keys::encoding_key_from_env,
-    service::LicenseService,
+    crypto::encoding_key_from_env,
+    key::LicenseKey,
     types::{LicenseClaims, LicensePlan},
 };
 
@@ -76,7 +76,7 @@ fn main() -> anyhow::Result<()> {
             Ok(())
         }
         Commands::Verify { key } => {
-            let status = LicenseService::validate_key(&key);
+            let status = LicenseKey::new(key).validate();
 
             match &status {
                 scanopy::server::license::types::LicenseStatus::Valid(claims) => {
@@ -115,7 +115,7 @@ fn main() -> anyhow::Result<()> {
                     println!("Reason:  {}", reason);
                 }
                 scanopy::server::license::types::LicenseStatus::NotRequired => {
-                    unreachable!("validate_key never returns NotRequired");
+                    unreachable!("LicenseKey::validate never returns NotRequired");
                 }
             }
 

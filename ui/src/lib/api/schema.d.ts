@@ -3751,8 +3751,15 @@ export interface components {
                 license_status?: string | null;
                 needs_cookie_consent: boolean;
                 oidc_providers: components["schemas"]["OidcProviderMetadata"][];
+                /** @description True when this self-hosted instance is at its licensed organization cap. */
+                org_limit_reached: boolean;
                 posthog_key?: string | null;
                 public_url: string;
+                /**
+                 * Format: email
+                 * @description Admin contact email shown to users blocked by `org_limit_reached`.
+                 */
+                server_admin_contact_email?: string | null;
                 /** Format: int32 */
                 server_port: number;
                 /**
@@ -6880,8 +6887,15 @@ export interface components {
             license_status?: string | null;
             needs_cookie_consent: boolean;
             oidc_providers: components["schemas"]["OidcProviderMetadata"][];
+            /** @description True when this self-hosted instance is at its licensed organization cap. */
+            org_limit_reached: boolean;
             posthog_key?: string | null;
             public_url: string;
+            /**
+             * Format: email
+             * @description Admin contact email shown to users blocked by `org_limit_reached`.
+             */
+            server_admin_contact_email?: string | null;
             /** Format: int32 */
             server_port: number;
             /**

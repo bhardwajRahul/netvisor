@@ -1,4 +1,5 @@
 use crate::server::auth::r#impl::oidc::OidcProviderMetadata;
+use crate::server::license::key::LicenseKey;
 use crate::server::license::service::LicenseService;
 use crate::server::shared::types::api::ApiResponse;
 use crate::server::{
@@ -10,6 +11,7 @@ use axum::extract::State;
 use axum::http::header::CACHE_CONTROL;
 use axum::response::IntoResponse;
 use clap::Parser;
+use email_address::EmailAddress;
 use figment::{
     Figment,
     providers::{Env, Format, Serialized, Toml},
@@ -157,6 +159,12 @@ pub struct ServerConfig {
     // License key for commercial self-hosted deployments
     pub license_key: Option<String>,
 
+    /// Admin contact email shown to users who are blocked from creating a new
+    /// organization on a self-hosted instance at its org cap. Populated from
+    /// `SCANOPY_SERVER_ADMIN_CONTACT_EMAIL`; a malformed value fails config load.
+    #[serde(default)]
+    pub server_admin_contact_email: Option<EmailAddress>,
+
     /// Override the snapshot retention window for self-hosted / community /
     /// enterprise / demo plans. Default 90 days when unset. Ignored for the
     /// SaaS-tier plans (Free / Starter / Pro / Business / Team) which carry
@@ -222,6 +230,14 @@ pub struct PublicConfigResponse {
     /// effective retention for this deployment rather than the per-plan
     /// fixture default.
     pub snapshot_retention_days_override: Option<u32>,
+    /// True when this self-hosted instance has reached its licensed
+    /// organization cap (`included_orgs`), so new-org registration is blocked.
+    /// Always false on cloud (multi-tenant) and on unlimited-org plans.
+    pub org_limit_reached: bool,
+    /// Admin contact email to show users blocked by `org_limit_reached`,
+    /// from `SCANOPY_SERVER_ADMIN_CONTACT_EMAIL`.
+    #[schema(value_type = String, format = "email")]
+    pub server_admin_contact_email: Option<EmailAddress>,
 }
 
 impl Default for ServerConfig {
@@ -253,6 +269,7 @@ impl Default for ServerConfig {
             brevo_api_key: None,
             external_service_allowed_ips: HashMap::new(),
             license_key: None,
+            server_admin_contact_email: None,
             snapshot_retention_days_override: None,
         }
     }
@@ -383,6 +400,18 @@ impl ServerConfig {
     pub fn database_url(&self) -> String {
         self.database_url.to_string()
     }
+
+    /// The license key that actually applies, wrapped as a [`LicenseKey`]. On
+    /// cloud (Stripe configured) licensing is irrelevant, so a stray
+    /// `SCANOPY_LICENSE_KEY` is ignored — it must never validate, lock, or
+    /// reconfigure a cloud deployment.
+    pub fn effective_license_key(&self) -> Option<LicenseKey> {
+        if self.stripe_secret.is_some() {
+            None
+        } else {
+            self.license_key.clone().map(LicenseKey::new)
+        }
+    }
 }
 
 pub struct AppState {
@@ -401,7 +430,9 @@ impl AppState {
 
         // Commercial mode is driven by the presence of a license key at
         // runtime — no separate build. No key => free community edition.
-        let license_service = Arc::new(LicenseService::new(config.license_key.clone()));
+        // `effective_license_key` returns None on cloud, so a stray key can
+        // never validate, lock, or reconfigure a cloud deployment.
+        let license_service = Arc::new(LicenseService::new(config.effective_license_key()));
 
         Ok(Arc::new(Self {
             config,
@@ -454,6 +485,36 @@ pub async fn get_public_config(State(state): State<Arc<AppState>>) -> impl IntoR
     let license_intended_expiry = current_license.intended_expiry_date();
     let license_in_grace_period = current_license.in_grace_period();
 
+    let billing_enabled = state.config.stripe_secret.is_some();
+    // Self-hosted only: is the instance at its licensed org cap? Cloud is
+    // multi-tenant, and unlimited-org plans (Commercial/Enterprise) never cap.
+    // Fails open (false) so a transient DB error doesn't block registration.
+    let org_limit_reached = if billing_enabled {
+        false
+    } else {
+        use crate::server::organizations::r#impl::base::Organization;
+        use crate::server::shared::services::traits::CrudService;
+        use crate::server::shared::storage::filter::StorableFilter;
+
+        let included_orgs = state
+            .config
+            .effective_license_key()
+            .map(|key| key.self_hosted_plan())
+            .unwrap_or_default()
+            .config()
+            .included_orgs;
+        match included_orgs {
+            Some(max) => state
+                .services
+                .organization_service
+                .get_all(StorableFilter::<Organization>::new())
+                .await
+                .map(|orgs| orgs.len() >= max as usize)
+                .unwrap_or(false),
+            None => false,
+        }
+    };
+
     (
         [(CACHE_CONTROL, "no-store, no-cache, must-revalidate")],
         Json(ApiResponse::success(PublicConfigResponse {
@@ -461,7 +522,7 @@ pub async fn get_public_config(State(state): State<Arc<AppState>>) -> impl IntoR
             disable_registration: state.config.disable_registration,
             disable_password_login: state.config.disable_password_login,
             oidc_providers,
-            billing_enabled: state.config.stripe_secret.is_some(),
+            billing_enabled,
             stripe_publishable_key: state.config.stripe_key.clone(),
             discount_save_offer_available: std::env::var("STRIPE_SAVE_OFFER_COUPON_ID").is_ok(),
             has_integrated_daemon: state.config.integrated_daemon_url.is_some(),
@@ -481,6 +542,8 @@ pub async fn get_public_config(State(state): State<Arc<AppState>>) -> impl IntoR
             license_intended_expiry,
             license_in_grace_period,
             snapshot_retention_days_override: state.config.snapshot_retention_days_override,
+            org_limit_reached,
+            server_admin_contact_email: state.config.server_admin_contact_email.clone(),
         })),
     )
 }

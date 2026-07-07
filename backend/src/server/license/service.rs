@@ -1,16 +1,12 @@
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use jsonwebtoken::{Algorithm, Validation};
-
-use super::{
-    keys::decoding_key,
-    types::{LicenseClaims, LicenseStatus},
-};
+use super::key::LicenseKey;
+use super::types::LicenseStatus;
 
 pub struct LicenseService {
     status: Arc<RwLock<LicenseStatus>>,
-    license_key_raw: Option<String>,
+    license_key_raw: Option<LicenseKey>,
 }
 
 impl LicenseService {
@@ -22,41 +18,17 @@ impl LicenseService {
     /// validated and drives `Valid`/`Expired`/`Invalid`. This is the single
     /// runtime signal — there is no separate commercial build.
     ///
-    /// - `license_key`: the raw JWT string from `SCANOPY_LICENSE_KEY`
-    pub fn new(license_key: Option<String>) -> Self {
+    /// - `license_key`: the effective key for this deployment (`None` on cloud
+    ///   or community, per `ServerConfig::effective_license_key`).
+    pub fn new(license_key: Option<LicenseKey>) -> Self {
         let status = match &license_key {
             None => LicenseStatus::NotRequired,
-            Some(key) => Self::validate_key(key),
+            Some(key) => key.validate(),
         };
 
         Self {
             status: Arc::new(RwLock::new(status)),
             license_key_raw: license_key,
-        }
-    }
-
-    /// Validate a license key JWT and return the resulting status.
-    pub fn validate_key(key: &str) -> LicenseStatus {
-        let mut validation = Validation::new(Algorithm::EdDSA);
-        validation.set_issuer(&["scanopy"]);
-        validation.set_required_spec_claims(&["sub", "iss", "iat", "exp"]);
-        // Don't auto-validate exp — we check manually to distinguish Expired vs Invalid
-        validation.validate_exp = false;
-
-        match jsonwebtoken::decode::<LicenseClaims>(key, &decoding_key(), &validation) {
-            Ok(token_data) => {
-                if token_data.claims.sub != "scanopy-license" {
-                    return LicenseStatus::Invalid("Invalid subject claim".to_string());
-                }
-
-                let now = chrono::Utc::now().timestamp();
-                if token_data.claims.exp < now {
-                    LicenseStatus::Expired(token_data.claims)
-                } else {
-                    LicenseStatus::Valid(token_data.claims)
-                }
-            }
-            Err(e) => LicenseStatus::Invalid(e.to_string()),
         }
     }
 
@@ -69,7 +41,7 @@ impl LicenseService {
     /// to catch time-based expiry transitions without requiring a restart.
     pub async fn revalidate(&self) {
         if let Some(key) = &self.license_key_raw {
-            let new_status = Self::validate_key(key);
+            let new_status = key.validate();
             let mut status = self.status.write().await;
 
             let was_locked = status.is_locked();
@@ -97,6 +69,7 @@ impl LicenseService {
 
 #[cfg(test)]
 mod tests {
+    use super::super::types::LicenseClaims;
     use super::*;
 
     fn claims(iat: i64, exp: i64, intended_exp: i64) -> LicenseClaims {
@@ -123,7 +96,7 @@ mod tests {
     #[test]
     fn garbage_key_is_invalid() {
         // A key is present but does not verify => commercial deployment, locked.
-        let service = LicenseService::new(Some("not-a-jwt".to_string()));
+        let service = LicenseService::new(Some(LicenseKey::new("not-a-jwt".to_string())));
         let status = service.status.blocking_read();
         assert!(status.is_locked());
         assert_eq!(status.as_api_string(), Some("invalid"));
