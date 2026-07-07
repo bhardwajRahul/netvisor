@@ -53,6 +53,9 @@ impl Subscriber<DiscoveryPhase> for HostService {
                     "Failed to resolve FDB links after discovery completion"
                 );
             }
+            // GH #649 diagnostics: one-line L2 edge/dangling summary for the network so a
+            // "still no L2 links" report shows whether edges exist post-resolution.
+            self.log_l2_topology_summary(network_id).await;
         }
         Ok(())
     }

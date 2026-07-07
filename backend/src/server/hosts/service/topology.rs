@@ -116,18 +116,24 @@ impl HostService {
         let unresolved = self.interface_service.get_all(filter).await?;
 
         let mut resolved_count: u32 = 0;
+        // GH #649 diagnostics: track why FDB resolution produced (or didn't produce) L2 links.
+        let total_candidates = unresolved.len();
+        let mut single_mac = 0usize;
+        let mut host_matched = 0usize;
 
         for mut interface in unresolved {
             let mac = match &interface.base.fdb_macs {
                 Some(macs) if macs.len() == 1 => &macs[0],
                 _ => continue,
             };
+            single_mac += 1;
 
             // Try to find host by MAC
             let host_id = match resolver.find_host_by_mac(mac, network_id).await {
                 Some(id) => id,
                 None => continue,
             };
+            host_matched += 1;
 
             // Try full resolution (specific port)
             let neighbor =
@@ -144,14 +150,63 @@ impl HostService {
             resolved_count += 1;
         }
 
-        if resolved_count > 0 {
-            tracing::info!(
-                network_id = %network_id,
-                resolved = resolved_count,
-                "FDB link resolution complete"
-            );
-        }
+        // Always log (even at zero) so a "no L2 links" report shows where resolution fell off:
+        // no candidates (nothing collected FDB), candidates but none single-MAC (shared/uplink
+        // ports), single-MAC but no host owns that MAC, or resolved.
+        tracing::info!(
+            network_id = %network_id,
+            total_candidates = total_candidates,
+            single_mac = single_mac,
+            host_matched = host_matched,
+            resolved = resolved_count,
+            "FDB link resolution complete"
+        );
 
         Ok(resolved_count)
+    }
+
+    /// GH #649 diagnostics: after a scan's neighbor resolution completes, summarize the L2 edge
+    /// state of the whole network in one line. `full_edges` is how many interfaces the L2 map will
+    /// actually render (`Neighbor::Interface`); `partial` are host-only resolutions; `dangling`
+    /// are interfaces whose neighbor points to an interface id that no longer exists — data that
+    /// survived but silently produces no edge, a distinct failure mode from an over-eager prune.
+    pub async fn log_l2_topology_summary(&self, network_id: Uuid) {
+        use crate::server::interfaces::r#impl::base::Neighbor;
+
+        let filter = StorableFilter::<Interface>::new_from_network_ids(&[network_id]).live();
+        let interfaces = match self.interface_service.get_all(filter).await {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!(network_id = %network_id, error = %e, "L2 summary: failed to load interfaces");
+                return;
+            }
+        };
+
+        let present_ids: HashSet<Uuid> = interfaces.iter().map(|i| i.id).collect();
+        let mut full_edges = 0usize;
+        let mut partial = 0usize;
+        let mut dangling = 0usize;
+        for iface in &interfaces {
+            match &iface.base.neighbor {
+                Some(Neighbor::Interface(id)) => {
+                    if present_ids.contains(id) {
+                        full_edges += 1;
+                    } else {
+                        dangling += 1;
+                    }
+                }
+                Some(Neighbor::Host(_)) => partial += 1,
+                None => {}
+            }
+        }
+
+        tracing::info!(
+            network_id = %network_id,
+            total_interfaces = interfaces.len(),
+            full_edges = full_edges,
+            partial = partial,
+            dangling = dangling,
+            "L2 topology summary after discovery"
+        );
     }
 }
