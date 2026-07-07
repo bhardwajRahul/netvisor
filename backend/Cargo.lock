@@ -5417,6 +5417,7 @@ dependencies = [
  "hostname",
  "html2text",
  "httparse",
+ "idna",
  "if-addrs",
  "inventory",
  "ipgen",

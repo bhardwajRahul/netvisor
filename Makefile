@@ -1,4 +1,4 @@
-.PHONY: help build test test-unit clean format lint lint-migrations generate-schema generate-messages generate-fixtures update-oui seed-dev set-plan-community set-plan-starter set-plan-pro set-plan-team set-plan-business set-plan-enterprise test-plan test-merge test-results install-dev-mac install-dev-linux install-dev-windows snmp-verify snmp-status docker-proxy-up docker-proxy-up-tls docker-proxy-down docker-proxy-status podman-proxy-up podman-proxy-up-tls podman-proxy-down podman-proxy-status podman-workload-up podman-workload-down issue-license
+.PHONY: help build test test-unit clean format lint lint-migrations generate-schema generate-messages generate-fixtures refresh-vendored-data seed-dev set-plan-community set-plan-starter set-plan-pro set-plan-team set-plan-business set-plan-enterprise test-plan test-merge test-results install-dev-mac install-dev-linux install-dev-windows snmp-verify snmp-status docker-proxy-up docker-proxy-up-tls docker-proxy-down docker-proxy-status podman-proxy-up podman-proxy-up-tls podman-proxy-down podman-proxy-status podman-workload-up podman-workload-down issue-license
 
 DAYS ?= 365
 
@@ -280,10 +280,10 @@ generate-fixtures:
 	cd ui && node scripts/generate-meta-messages.js
 	@echo "✅ Generated all metadata fixtures in ui/src/lib/data/"
 
-update-oui:
-	@echo "Downloading latest IEEE OUI database..."
-	curl -sf --max-time 60 -o backend/assets/oui.csv https://standards-oui.ieee.org/oui/oui.csv
-	@echo "✅ OUI database updated. Rebuild to embed new data."
+refresh-vendored-data:
+	@echo "Refreshing vendored data assets (oui.csv + domain-classification)..."
+	backend/scripts/refresh-vendored-data.sh
+	@echo "✅ Vendored data refreshed. Rebuild to embed new data."
 
 stripe-webhook:
 	stripe listen --forward-to http://localhost:60072/api/billing/webhooks
