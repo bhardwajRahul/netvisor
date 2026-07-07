@@ -361,13 +361,18 @@ impl BillingPlan {
         env_override.unwrap_or_else(|| self.features().snapshot_retention_days)
     }
 
+    /// Whether the plan supports having more than one member at all (a coarse
+    /// capability gate for the invite UI/endpoint). The actual seat cap is
+    /// enforced per-invite in the invites handler, so this only distinguishes
+    /// solo plans from team plans:
+    /// - unlimited seats (`None`) → yes
+    /// - a finite cap above one seat (e.g. Standard's 25) → yes
+    /// - can buy more seats (`seat_cents`) → yes
+    /// - a single-seat plan (Free/Community/Starter/Pro) → no
     pub fn can_invite_users(&self) -> bool {
-        // If there's an included amount, then there's a cap and seat_cents needs to be Some to buy more
-        if self.config().included_seats.is_some() {
-            self.config().seat_cents.is_some()
-        // If included is None, it's unlimited
-        } else {
-            true
+        match self.config().included_seats {
+            None => true,
+            Some(included_seats) => included_seats > 1 || self.config().seat_cents.is_some(),
         }
     }
 
