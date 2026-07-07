@@ -183,3 +183,34 @@ mod snapshot_retention_tests {
         );
     }
 }
+
+#[cfg(test)]
+mod can_invite_users_tests {
+    use crate::server::billing::plans::*;
+    use crate::server::shared::types::metadata::HasId;
+
+    // A team plan (finite multi-seat, unlimited, or buy-more) can invite; a
+    // solo single-seat plan cannot. The actual seat cap is enforced per-invite
+    // in the invites handler, so a finite cap like Standard's must NOT gate the
+    // capability off (regression: it did while the check keyed off seat_cents).
+    #[test]
+    fn team_plans_can_invite_solo_plans_cannot() {
+        // Finite multi-seat, no overage purchase (Standard: 25 seats).
+        assert!(get_self_hosted_standard_plan().can_invite_users());
+        // Unlimited seats.
+        assert!(get_self_hosted_plus_plan().can_invite_users());
+        assert!(get_commercial_self_hosted_plan().can_invite_users());
+        assert!(get_enterprise_plan().can_invite_users());
+        // Buy-more seats (Business).
+        assert!(
+            get_purchasable_plans()
+                .into_iter()
+                .find(|p| p.id() == "Business")
+                .unwrap()
+                .can_invite_users()
+        );
+        // Single-seat solo plans.
+        assert!(!get_free_plan().can_invite_users());
+        assert!(!get_community_plan().can_invite_users());
+    }
+}
