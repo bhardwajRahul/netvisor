@@ -24,6 +24,32 @@ pub enum EventLogLevel {
     Trace,
 }
 
+/// Semantic color for an event's log label. The logging subscriber maps this
+/// to an ANSI background-color badge with white text. Only the
+/// create/update/delete distinction is meaningful (green/blue/red); everything
+/// else — telemetry, auth, billing, lifecycle — is `Neutral`, so operation
+/// types opt in via `Operation::log_color` rather than mapping every variant.
+#[derive(Debug, Clone, Copy)]
+pub enum LabelColor {
+    Green,
+    Blue,
+    Red,
+    Neutral,
+}
+
+impl LabelColor {
+    /// ANSI SGR params (bright background `;` bright-white foreground), without
+    /// the escape framing.
+    pub fn ansi_code(self) -> &'static str {
+        match self {
+            LabelColor::Green => "42;97",
+            LabelColor::Blue => "44;97",
+            LabelColor::Red => "41;97",
+            LabelColor::Neutral => "40;97",
+        }
+    }
+}
+
 /// Authentication method for user-flow auth events. API-key auth lives on
 /// dedicated variants (`RotateKey`, `ApiKeyAuthFailed`) — not here.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -45,7 +71,14 @@ pub struct EmailAndToken {
 )]
 #[serde(tag = "type")]
 #[strum(serialize_all = "snake_case")]
-#[strum_discriminants(derive(Hash, EnumIter, strum::Display, strum::AsRefStr, Serialize, Deserialize,))]
+#[strum_discriminants(derive(
+    Hash,
+    EnumIter,
+    strum::Display,
+    strum::AsRefStr,
+    Serialize,
+    Deserialize,
+))]
 pub enum AuthOperation {
     // User Auth
     Register {
@@ -108,7 +141,14 @@ pub enum AuthOperation {
     Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, strum::Display, EnumDiscriminants,
 )]
 #[strum(serialize_all = "snake_case")]
-#[strum_discriminants(derive(Hash, EnumIter, strum::Display, strum::AsRefStr, Serialize, Deserialize,))]
+#[strum_discriminants(derive(
+    Hash,
+    EnumIter,
+    strum::Display,
+    strum::AsRefStr,
+    Serialize,
+    Deserialize,
+))]
 pub enum EntityOperation {
     Get,
     GetAll,
@@ -120,7 +160,14 @@ pub enum EntityOperation {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, strum::Display, EnumDiscriminants)]
 #[serde(tag = "type")]
 #[strum(serialize_all = "snake_case")]
-#[strum_discriminants(derive(Hash, EnumIter, strum::Display, strum::AsRefStr, Serialize, Deserialize,))]
+#[strum_discriminants(derive(
+    Hash,
+    EnumIter,
+    strum::Display,
+    strum::AsRefStr,
+    Serialize,
+    Deserialize,
+))]
 pub enum BillingOperation {
     CheckoutStarted {
         plan: BillingPlan,
@@ -470,7 +517,14 @@ pub enum OnboardingOperation {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, strum::Display, EnumDiscriminants)]
 #[serde(tag = "type")]
 #[strum(serialize_all = "snake_case")]
-#[strum_discriminants(derive(Hash, EnumIter, strum::Display, strum::AsRefStr, Serialize, Deserialize,))]
+#[strum_discriminants(derive(
+    Hash,
+    EnumIter,
+    strum::Display,
+    strum::AsRefStr,
+    Serialize,
+    Deserialize,
+))]
 pub enum AnalyticsOperation {
     TopologyShareViewed { share_id: Uuid, has_password: bool },
     TopologyEmbedViewed { share_id: Uuid, has_password: bool },

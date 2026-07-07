@@ -5371,6 +5371,7 @@ dependencies = [
 name = "scanopy-server"
 version = "0.17.3"
 dependencies = [
+ "anstyle-query",
  "anyhow",
  "argon2",
  "async-fs",

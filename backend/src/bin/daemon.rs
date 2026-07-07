@@ -44,8 +44,8 @@ async fn async_main() -> anyhow::Result<()> {
     // Initialize tracing with stdout + optional file appender
     let log_path = config.resolve_log_path();
     let env_filter = tracing_subscriber::EnvFilter::new(format!(
-        "scanopy={},daemon={}",
-        config.log_level, config.log_level
+        "scanopy={lvl},daemon={lvl},events={lvl}",
+        lvl = config.log_level
     ));
 
     // _guard must be held for the lifetime of the program to ensure logs flush
@@ -66,9 +66,14 @@ async fn async_main() -> anyhow::Result<()> {
 
         tracing_subscriber::registry()
             .with(env_filter)
-            .with(tracing_subscriber::fmt::layer())
             .with(
                 tracing_subscriber::fmt::layer()
+                    .fmt_fields(scanopy::server::logging::format::LabelFields)
+                    .with_ansi(scanopy::server::logging::format::supports_ansi()),
+            )
+            .with(
+                tracing_subscriber::fmt::layer()
+                    .fmt_fields(scanopy::server::logging::format::LabelFields)
                     .with_writer(non_blocking)
                     .with_ansi(false),
             )
@@ -77,7 +82,11 @@ async fn async_main() -> anyhow::Result<()> {
         _file_guard = None;
         tracing_subscriber::registry()
             .with(env_filter)
-            .with(tracing_subscriber::fmt::layer())
+            .with(
+                tracing_subscriber::fmt::layer()
+                    .fmt_fields(scanopy::server::logging::format::LabelFields)
+                    .with_ansi(scanopy::server::logging::format::supports_ansi()),
+            )
             .init();
     }
 

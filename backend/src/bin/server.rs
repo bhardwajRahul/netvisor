@@ -65,10 +65,14 @@ async fn main() -> anyhow::Result<()> {
     // Initialize tracing
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::new(format!(
-            "scanopy={},server={},request_log={}",
-            config.log_level, config.log_level, config.log_level
+            "scanopy={lvl},server={lvl},request_log={lvl},events={lvl}",
+            lvl = config.log_level
         )))
-        .with(tracing_subscriber::fmt::layer())
+        .with(
+            tracing_subscriber::fmt::layer()
+                .fmt_fields(scanopy::server::logging::format::LabelFields)
+                .with_ansi(scanopy::server::logging::format::supports_ansi()),
+        )
         .init();
 
     // Startup banner

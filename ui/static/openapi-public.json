@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Scanopy API",
-    "description": "\nNetwork topology discovery and visualization API.\n\n## Authentication\n\nTwo authentication methods are supported:\n\n| Method | Header | Use Case |\n|--------|--------|----------|\n| User API key | `Authorization: Bearer scp_u_...` | Programmatic access, integrations |\n| Session cookie | `Cookie: session_id=...` | Web UI (via `/api/auth/login`) |\n\nUser API keys require your organization to have API access enabled. Create keys at **Platform > API Keys**.\n\n## Rate Limiting\n\nLimit: 300 requests/minute\n\nBurst: 150\n\nResponse headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`\n\nWhen rate limited, you'll receive HTTP `429 Too Many Requests` with a `Retry-After` header.\n\n## Pagination\n\nList endpoints support pagination via query parameters:\n\n| Parameter | Type | Default | Description |\n|-----------|------|---------|-------------|\n| `limit` | integer | 50 | Maximum results to return (1-1000). Use 0 for no limit. |\n| `offset` | integer | 0 | Number of results to skip |\n\nExample: `GET /api/v1/hosts?limit=10&offset=20`\n\n## Response Format\n\nAll responses use a standard envelope:\n\n```json\n{\n  \"success\": true,\n  \"data\": { ... },\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.17.2\"\n  }\n}\n```\n\n**Paginated list responses** include pagination metadata:\n\n```json\n{\n  \"success\": true,\n  \"data\": [ ... ],\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.17.2\",\n    \"pagination\": {\n      \"total_count\": 142,\n      \"limit\": 50,\n      \"offset\": 0,\n      \"has_more\": true\n    }\n  }\n}\n```\n\n| Field | Description |\n|-------|-------------|\n| `total_count` | Total items matching your query (ignoring pagination) |\n| `limit` | Applied limit (your request or default) |\n| `offset` | Applied offset |\n| `has_more` | `true` if more results exist beyond this page |\n\n**Error responses** include an `error` field instead of `data`:\n\n```json\n{\n  \"success\": false,\n  \"error\": \"Resource not found\",\n  \"meta\": { ... }\n}\n```\n\n**Common status codes:** `400` validation error, `401` unauthorized, `403` forbidden, `404` not found, `409` conflict, `429` rate limited.\n\n## Versioning\n\nEndpoints are prefixed with `/api/v1/`. The API version is an integer (`api_version: 1`) returned in every response, versioned independently from the application. Check `GET /api/version` for current versions.\n\n**While Scanopy is pre-v1.0 (current: 0.17.2)**, the API should be considered unstable. Breaking changes may be introduced in any release without incrementing the API version. We recommend pinning to a specific Scanopy release if you depend on API stability, and reviewing the [changelog](/changelog) before upgrading. After Scanopy reaches v1.0, breaking API changes will only occur with an API version increment.\n\n## Multi-Tenancy\n\nResources are scoped to your **organization** and **network(s)**:\n\n- You can only access entities within your organization\n- Network-level entities (hosts, services, etc.) are filtered to networks you have access to\n- Use `?network_id=<UUID>` to filter list endpoints to a specific network\n- API keys can be scoped to a subset of your accessible networks\n",
+    "description": "\nNetwork topology discovery and visualization API.\n\n## Authentication\n\nTwo authentication methods are supported:\n\n| Method | Header | Use Case |\n|--------|--------|----------|\n| User API key | `Authorization: Bearer scp_u_...` | Programmatic access, integrations |\n| Session cookie | `Cookie: session_id=...` | Web UI (via `/api/auth/login`) |\n\nUser API keys require your organization to have API access enabled. Create keys at **Platform > API Keys**.\n\n## Rate Limiting\n\nLimit: 300 requests/minute\n\nBurst: 150\n\nResponse headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`\n\nWhen rate limited, you'll receive HTTP `429 Too Many Requests` with a `Retry-After` header.\n\n## Pagination\n\nList endpoints support pagination via query parameters:\n\n| Parameter | Type | Default | Description |\n|-----------|------|---------|-------------|\n| `limit` | integer | 50 | Maximum results to return (1-1000). Use 0 for no limit. |\n| `offset` | integer | 0 | Number of results to skip |\n\nExample: `GET /api/v1/hosts?limit=10&offset=20`\n\n## Response Format\n\nAll responses use a standard envelope:\n\n```json\n{\n  \"success\": true,\n  \"data\": { ... },\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.17.3\"\n  }\n}\n```\n\n**Paginated list responses** include pagination metadata:\n\n```json\n{\n  \"success\": true,\n  \"data\": [ ... ],\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.17.3\",\n    \"pagination\": {\n      \"total_count\": 142,\n      \"limit\": 50,\n      \"offset\": 0,\n      \"has_more\": true\n    }\n  }\n}\n```\n\n| Field | Description |\n|-------|-------------|\n| `total_count` | Total items matching your query (ignoring pagination) |\n| `limit` | Applied limit (your request or default) |\n| `offset` | Applied offset |\n| `has_more` | `true` if more results exist beyond this page |\n\n**Error responses** include an `error` field instead of `data`:\n\n```json\n{\n  \"success\": false,\n  \"error\": \"Resource not found\",\n  \"meta\": { ... }\n}\n```\n\n**Common status codes:** `400` validation error, `401` unauthorized, `403` forbidden, `404` not found, `409` conflict, `429` rate limited.\n\n## Versioning\n\nEndpoints are prefixed with `/api/v1/`. The API version is an integer (`api_version: 1`) returned in every response, versioned independently from the application. Check `GET /api/version` for current versions.\n\n**While Scanopy is pre-v1.0 (current: 0.17.3)**, the API should be considered unstable. Breaking changes may be introduced in any release without incrementing the API version. We recommend pinning to a specific Scanopy release if you depend on API stability, and reviewing the [changelog](/changelog) before upgrading. After Scanopy reaches v1.0, breaking API changes will only occur with an API version increment.\n\n## Multi-Tenancy\n\nResources are scoped to your **organization** and **network(s)**:\n\n- You can only access entities within your organization\n- Network-level entities (hosts, services, etc.) are filtered to networks you have access to\n- Use `?network_id=<UUID>` to filter list endpoints to a specific network\n- API keys can be scoped to a subset of your accessible networks\n",
     "license": {
       "name": "Dual (AGPL3.0, Commercial License Available)"
     },
@@ -10741,12 +10741,12 @@
           "server_version": {
             "type": "string",
             "description": "Server version (semver)",
-            "example": "0.17.2"
+            "example": "0.17.3"
           }
         },
         "example": {
           "api_version": 1,
-          "server_version": "0.17.2"
+          "server_version": "0.17.3"
         }
       },
       "ApiResponse": {
@@ -10862,19 +10862,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-07-04T23:35:58.585800Z",
+              "created_at": "2026-07-07T19:19:03.661060Z",
               "first_discovery_id": null,
-              "id": "406b2e7c-38fe-42ea-8589-4395032f3afb",
+              "id": "db5d5781-c07d-448e-99bc-7d4ad21f1e77",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-07-04T23:35:58.585800Z",
+              "last_seen_at": "2026-07-07T19:19:03.661060Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-07-04T23:35:58.585800Z",
-              "valid_from": "2026-07-04T23:35:58.585800Z",
+              "updated_at": "2026-07-07T19:19:03.661060Z",
+              "valid_from": "2026-07-07T19:19:03.661060Z",
               "valid_to": null
             }
           },
@@ -11869,19 +11869,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-07-04T23:35:58.565506Z",
+                      "created_at": "2026-07-07T19:19:03.639406Z",
                       "first_discovery_id": null,
-                      "id": "60fe67f5-3fc8-4bb8-ad13-5dfe88db5398",
+                      "id": "86954bec-c9b5-47e4-9e43-73e3474966b9",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-07-04T23:35:58.565506Z",
+                      "last_seen_at": "2026-07-07T19:19:03.639406Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-07-04T23:35:58.565506Z",
-                      "valid_from": "2026-07-04T23:35:58.565506Z",
+                      "updated_at": "2026-07-07T19:19:03.639406Z",
+                      "valid_from": "2026-07-07T19:19:03.639406Z",
                       "valid_to": null
                     }
                   ],
@@ -11895,7 +11895,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "OpenSpeedTest",
+                  "service_definition": "NTP Server",
                   "source": {
                     "type": "Manual"
                   },
@@ -12603,7 +12603,9 @@
               "public_url",
               "needs_cookie_consent",
               "deployment_type",
-              "license_in_grace_period"
+              "license_in_grace_period",
+              "org_limit_reached",
+              "server_admin_contact_email"
             ],
             "properties": {
               "billing_enabled": {
@@ -12664,6 +12666,10 @@
                   "$ref": "#/components/schemas/OidcProviderMetadata"
                 }
               },
+              "org_limit_reached": {
+                "type": "boolean",
+                "description": "True when this self-hosted instance has reached its licensed\norganization cap (`included_orgs`), so new-org registration is blocked.\nAlways false on cloud (multi-tenant) and on unlimited-org plans."
+              },
               "posthog_key": {
                 "type": [
                   "string",
@@ -12672,6 +12678,11 @@
               },
               "public_url": {
                 "type": "string"
+              },
+              "server_admin_contact_email": {
+                "type": "string",
+                "format": "email",
+                "description": "Admin contact email to show users blocked by `org_limit_reached`,\nfrom `SCANOPY_SERVER_ADMIN_CONTACT_EMAIL`."
               },
               "server_port": {
                 "type": "integer",
@@ -12893,19 +12904,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-07-04T23:35:58.579390Z",
+                  "created_at": "2026-07-07T19:19:03.653983Z",
                   "first_discovery_id": null,
-                  "id": "0cf63599-76ba-4301-9423-211cd25acc33",
+                  "id": "fdd7c3f3-df79-4349-85c3-b3a27b4e4e06",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-07-04T23:35:58.579390Z",
+                  "last_seen_at": "2026-07-07T19:19:03.653983Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-07-04T23:35:58.579390Z",
-                  "valid_from": "2026-07-04T23:35:58.579390Z",
+                  "updated_at": "2026-07-07T19:19:03.653983Z",
+                  "valid_from": "2026-07-07T19:19:03.653983Z",
                   "valid_to": null
                 }
               ],
@@ -12919,7 +12930,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "OpenSpeedTest",
+              "service_definition": "NTP Server",
               "source": {
                 "type": "Manual"
               },
@@ -13970,6 +13981,48 @@
                       }
                     }
                   ]
+                },
+                {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/PlanConfig"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "type"
+                      ],
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "enum": [
+                            "SelfHostedStandard"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/PlanConfig"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "type"
+                      ],
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "enum": [
+                            "SelfHostedPlus"
+                          ]
+                        }
+                      }
+                    }
+                  ]
                 }
               ]
             }
@@ -14613,6 +14666,48 @@
                 }
               }
             ]
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PlanConfig"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "SelfHostedStandard"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PlanConfig"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "SelfHostedPlus"
+                    ]
+                  }
+                }
+              }
+            ]
           }
         ]
       },
@@ -14698,19 +14793,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-07-04T23:35:58.565956Z",
+          "created_at": "2026-07-07T19:19:03.639880Z",
           "first_discovery_id": null,
-          "id": "ec52a491-2e9c-4e5d-9323-d0a73d2f158a",
+          "id": "4b055772-8b56-4b2d-9403-197214ebae6f",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-07-04T23:35:58.565956Z",
+          "last_seen_at": "2026-07-07T19:19:03.639880Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-07-04T23:35:58.565956Z",
-          "valid_from": "2026-07-04T23:35:58.565956Z",
+          "updated_at": "2026-07-07T19:19:03.639880Z",
+          "valid_from": "2026-07-07T19:19:03.639880Z",
           "valid_to": null
         }
       },
@@ -15301,7 +15396,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "OpenSpeedTest",
+              "service_definition": "NTP Server",
               "tags": [],
               "virtualization": null
             }
@@ -18152,19 +18247,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-07-04T23:35:58.565001Z",
+                  "created_at": "2026-07-07T19:19:03.638838Z",
                   "first_discovery_id": null,
-                  "id": "a9e2e320-c407-4ebc-b310-23c86c53eeca",
+                  "id": "4ada2baf-15ff-4234-b815-68e2c2cd8138",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-07-04T23:35:58.565001Z",
+                  "last_seen_at": "2026-07-07T19:19:03.638838Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-07-04T23:35:58.565001Z",
-                  "valid_from": "2026-07-04T23:35:58.565001Z",
+                  "updated_at": "2026-07-07T19:19:03.638838Z",
+                  "valid_from": "2026-07-07T19:19:03.638838Z",
                   "valid_to": null
                 }
               ],
@@ -18178,7 +18273,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "OpenSpeedTest",
+              "service_definition": "NTP Server",
               "source": {
                 "type": "Manual"
               },
@@ -20227,7 +20322,7 @@
           "server_version": {
             "type": "string",
             "description": "Server version (semver)",
-            "example": "0.17.2"
+            "example": "0.17.3"
           }
         },
         "example": {
@@ -20238,7 +20333,7 @@
             "offset": 0,
             "total_count": 142
           },
-          "server_version": "0.17.2"
+          "server_version": "0.17.3"
         }
       },
       "PaginatedApiResponse_Credential": {
@@ -20708,19 +20803,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-07-04T23:35:58.552973Z",
+                        "created_at": "2026-07-07T19:19:03.627043Z",
                         "first_discovery_id": null,
-                        "id": "31459f20-3add-4998-84e2-a8c705f6ec5b",
+                        "id": "e5887360-0643-4b8b-b87f-af0c98bed8df",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-07-04T23:35:58.552973Z",
+                        "last_seen_at": "2026-07-07T19:19:03.627043Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-07-04T23:35:58.552973Z",
-                        "valid_from": "2026-07-04T23:35:58.552973Z",
+                        "updated_at": "2026-07-07T19:19:03.627043Z",
+                        "valid_from": "2026-07-07T19:19:03.627043Z",
                         "valid_to": null
                       }
                     ],
@@ -20734,7 +20829,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "OpenSpeedTest",
+                    "service_definition": "NTP Server",
                     "source": {
                       "type": "Manual"
                     },
@@ -20855,19 +20950,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-07-04T23:35:58.578090Z",
+                    "created_at": "2026-07-07T19:19:03.652572Z",
                     "first_discovery_id": null,
-                    "id": "0be4c449-2043-4a92-a3af-d6213ac4aff3",
+                    "id": "e2eed050-bc6a-4c1c-8960-82826cea9046",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-07-04T23:35:58.578090Z",
+                    "last_seen_at": "2026-07-07T19:19:03.652572Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-07-04T23:35:58.578090Z",
-                    "valid_from": "2026-07-04T23:35:58.578090Z",
+                    "updated_at": "2026-07-07T19:19:03.652572Z",
+                    "valid_from": "2026-07-07T19:19:03.652572Z",
                     "valid_to": null
                   }
                 ],
@@ -20881,7 +20976,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "OpenSpeedTest",
+                "service_definition": "NTP Server",
                 "source": {
                   "type": "Manual"
                 },
@@ -21512,6 +21607,15 @@
             "format": "int64",
             "minimum": 0
           },
+          "included_orgs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Organizations allowed on one self-hosted server instance. `None` =\nunlimited. Only enforced for self-hosted deployments (see\n`provision_user`); cloud stays multi-tenant regardless. Defaulted so\nexisting stored plan JSON deserializes unchanged.",
+            "minimum": 0
+          },
           "included_seats": {
             "type": [
               "integer",
@@ -21914,7 +22018,9 @@
           "public_url",
           "needs_cookie_consent",
           "deployment_type",
-          "license_in_grace_period"
+          "license_in_grace_period",
+          "org_limit_reached",
+          "server_admin_contact_email"
         ],
         "properties": {
           "billing_enabled": {
@@ -21975,6 +22081,10 @@
               "$ref": "#/components/schemas/OidcProviderMetadata"
             }
           },
+          "org_limit_reached": {
+            "type": "boolean",
+            "description": "True when this self-hosted instance has reached its licensed\norganization cap (`included_orgs`), so new-org registration is blocked.\nAlways false on cloud (multi-tenant) and on unlimited-org plans."
+          },
           "posthog_key": {
             "type": [
               "string",
@@ -21983,6 +22093,11 @@
           },
           "public_url": {
             "type": "string"
+          },
+          "server_admin_contact_email": {
+            "type": "string",
+            "format": "email",
+            "description": "Admin contact email to show users blocked by `org_limit_reached`,\nfrom `SCANOPY_SERVER_ADMIN_CONTACT_EMAIL`."
           },
           "server_port": {
             "type": "integer",
@@ -22532,19 +22647,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-07-04T23:35:58.565862Z",
+              "created_at": "2026-07-07T19:19:03.639771Z",
               "first_discovery_id": null,
-              "id": "8b7fec68-5c56-4ab0-a343-20752fce29d6",
+              "id": "93185c61-7427-4689-84e8-08a4eb7bcaf3",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-07-04T23:35:58.565862Z",
+              "last_seen_at": "2026-07-07T19:19:03.639771Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-07-04T23:35:58.565862Z",
-              "valid_from": "2026-07-04T23:35:58.565862Z",
+              "updated_at": "2026-07-07T19:19:03.639771Z",
+              "valid_from": "2026-07-07T19:19:03.639771Z",
               "valid_to": null
             }
           ],
@@ -22558,7 +22673,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "OpenSpeedTest",
+          "service_definition": "NTP Server",
           "source": {
             "type": "Manual"
           },
@@ -23688,7 +23803,7 @@
             "default": {
               "Application": [
                 {
-                  "id": "6d7ab418-9b92-47e5-b0b6-92162157624d",
+                  "id": "ddc3274e-300f-4bfc-9df0-ef56d53a106f",
                   "rule": {
                     "ByApplication": {
                       "tag_ids": []
@@ -23698,23 +23813,23 @@
               ],
               "L2Physical": [
                 {
-                  "id": "338a0566-d354-4d12-a106-b24789bad930",
+                  "id": "e7a3c95b-1a43-4219-8779-77484a4e9f1c",
                   "rule": "ByHost"
                 }
               ],
               "L3Logical": [
                 {
-                  "id": "93b9420e-0daf-4e1d-be59-42ccb0d6bb9f",
+                  "id": "d16238c5-4428-44f7-ba73-e9e959561189",
                   "rule": "BySubnet"
                 },
                 {
-                  "id": "b69df42b-64ba-493e-9f1c-79be4ff05f65",
+                  "id": "423f24fa-8acb-402b-9f03-6fd550bba700",
                   "rule": "MergeContainerBridges"
                 }
               ],
               "Workloads": [
                 {
-                  "id": "338a0566-d354-4d12-a106-b24789bad930",
+                  "id": "e7a3c95b-1a43-4219-8779-77484a4e9f1c",
                   "rule": "ByHost"
                 }
               ]
@@ -23743,19 +23858,19 @@
             },
             "default": [
               {
-                "id": "fb13ef4c-db96-4adc-901d-7b8f25bb8c2c",
+                "id": "1aa0ad61-2d2b-4d7e-8e99-e83efdb4bab9",
                 "rule": "ByTrunkPort"
               },
               {
-                "id": "6eb842a2-f8af-4487-b7a2-b83d499400fc",
+                "id": "6faa7160-71c9-4dbc-8f69-21db2d837c4d",
                 "rule": "ByVLAN"
               },
               {
-                "id": "8079af3c-020d-42cf-a746-a1f264e66ebf",
+                "id": "2d2a3449-4217-4424-946c-170108ae2fef",
                 "rule": "ByPortOpStatus"
               },
               {
-                "id": "8810accc-d231-40ef-a7bc-73b954dc6193",
+                "id": "503bd4ed-95ba-44e1-9094-62bce46b7c06",
                 "rule": {
                   "ByServiceCategory": {
                     "categories": [
@@ -23773,7 +23888,7 @@
                 }
               },
               {
-                "id": "e98b243e-cea7-457b-b5c1-3c840dd9b645",
+                "id": "e287861c-8930-4d09-a51a-b79899fe4e03",
                 "rule": {
                   "ByTag": {
                     "tag_ids": [],
@@ -23782,15 +23897,15 @@
                 }
               },
               {
-                "id": "0152c228-e735-4cbe-aca9-57c406a75b53",
+                "id": "c2ffdab7-beb3-4b72-8653-3962298871dc",
                 "rule": "ByHypervisor"
               },
               {
-                "id": "90513175-a1b4-4d85-b212-e236641d4d5a",
+                "id": "d0e230f5-652e-45bf-8849-4eeee8fa4fa0",
                 "rule": "ByContainerRuntime"
               },
               {
-                "id": "d3d22be1-8e6d-432d-89b2-4ce3d3159ddd",
+                "id": "39633a83-7a03-4e4d-8e54-62aada17f46b",
                 "rule": "ByStack"
               }
             ]

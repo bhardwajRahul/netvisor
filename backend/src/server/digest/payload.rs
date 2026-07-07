@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use email_address::EmailAddress;
 use serde::{Deserialize, Serialize};
-use strum::EnumIter;
+use strum::{AsRefStr, EnumIter};
 use strum_macros::EnumDiscriminants;
 use uuid::Uuid;
 
@@ -191,7 +191,7 @@ impl DiscoveryDigestPayload {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, strum::Display, EnumDiscriminants)]
 #[serde(tag = "type")]
 #[strum(serialize_all = "snake_case")]
-#[strum_discriminants(derive(Hash, EnumIter, strum::Display, Serialize, Deserialize))]
+#[strum_discriminants(derive(Hash, EnumIter, strum::Display, Serialize, Deserialize, AsRefStr))]
 pub enum DiscoveryDigestOperation {
     Computed {
         payload: Box<DiscoveryDigestPayload>,
