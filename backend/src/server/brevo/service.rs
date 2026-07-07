@@ -3,7 +3,9 @@ use crate::server::{
     billing::types::base::PlanStatus,
     brevo::{
         client::BrevoClient,
-        domain_classification::classify_email_domain,
+        domain_classification::{
+            DomainClass, classify_email_domain, classify_email_domain_probed, domain_has_website,
+        },
         types::{CompanyAttributes, ContactAttributes},
     },
     credentials::{
@@ -279,7 +281,7 @@ impl BrevoService {
             _ => return Ok(()),
         };
 
-        let (domain_class, institution_type) = classify_email_domain(email.domain());
+        let (domain_class, institution_type) = classify_email_domain_probed(email.domain()).await;
         let contact_attrs = ContactAttributes::new()
             .with_email(email.to_string())
             .with_user_id(user_id)
@@ -919,9 +921,25 @@ impl BrevoService {
         tracing::info!(total, "Starting Brevo domain-classification backfill");
 
         let mut synced = 0usize;
+        // Memoize website probes: many users can share one company domain.
+        let mut has_website_cache: std::collections::HashMap<String, bool> =
+            std::collections::HashMap::new();
         for user in users {
             let email = &user.base.email;
-            let (domain_class, institution_type) = classify_email_domain(email.domain());
+            let (mut domain_class, institution_type) = classify_email_domain(email.domain());
+            if domain_class == DomainClass::Company {
+                let has_website = match has_website_cache.get(email.domain()) {
+                    Some(v) => *v,
+                    None => {
+                        let v = domain_has_website(email.domain()).await;
+                        has_website_cache.insert(email.domain().to_string(), v);
+                        v
+                    }
+                };
+                if !has_website {
+                    domain_class = DomainClass::Personal;
+                }
+            }
             let attrs = ContactAttributes::new()
                 .with_email(email.to_string())
                 .with_user_id(user.id)

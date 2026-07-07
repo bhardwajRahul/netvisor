@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use crate::server::{
     auth::middleware::auth::AuthenticatedEntity,
     billing::types::base::BillingReason,
-    brevo::domain_classification::{DomainClass, classify_email_domain},
+    brevo::domain_classification::{DomainClass, classify_email_domain_probed},
     digest::payload::{DiscoveryDigestOperation, DiscoveryDigestOperationDiscriminants},
     email::service::{EmailService, format_cents},
     shared::{
@@ -205,7 +205,8 @@ impl Subscriber<AuthOperation> for EmailService {
             if matches!(event.operation, AuthOperation::Register { .. })
                 && let AuthenticatedEntity::User { email, .. } = &event.authentication
             {
-                let (domain_class, institution_type) = classify_email_domain(email.domain());
+                let (domain_class, institution_type) =
+                    classify_email_domain_probed(email.domain()).await;
                 if domain_class == DomainClass::Institutional
                     && let Some(institution_type) = institution_type
                     && let Err(e) = self
