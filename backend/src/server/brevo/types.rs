@@ -582,13 +582,18 @@ pub struct CompanyItem {
 }
 
 /// PATCH /companies/link-unlink/{id}
+///
+/// Brevo's link-unlink endpoint uses `linkContactIds`/`unlinkContactIds`
+/// (singular "Contact") — distinct from the POST /companies body, which uses
+/// `linkedContactsIds`. Brevo silently ignores unknown body fields and still
+/// returns 2xx, so a misnamed field links nothing while reporting success.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LinkUnlinkRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub link_contacts_ids: Option<Vec<i64>>,
+    pub link_contact_ids: Option<Vec<i64>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub unlink_contacts_ids: Option<Vec<i64>>,
+    pub unlink_contact_ids: Option<Vec<i64>>,
 }
 
 /// POST /events - track event
