@@ -488,8 +488,6 @@ async fn main() -> anyhow::Result<()> {
                 tracing::error!(target: LOG_TARGET, error = %e, "Failed to backfill Brevo domain classifications");
             }
         });
-    } else {
-        tracing::info!(target: LOG_TARGET, "  Brevo service not configured, skipping org sync");
     }
 
     // Reconcile self-hosted org plan(s) to the license entitlement. The license

@@ -543,7 +543,7 @@ impl<Op: Operation> TypedChannel<Op> {
         let state = TypedSubscriberState::new(subscriber, name);
         let mut subs = self.subscribers.write().await;
         subs.push(state);
-        tracing::info!(
+        tracing::debug!(
             subscriber = name,
             debounce_ms = debounce_ms,
             "Registered typed subscriber",

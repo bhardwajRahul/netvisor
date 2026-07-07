@@ -65,7 +65,7 @@ impl BillingService {
             .await
         {
             Ok(p) => {
-                tracing::info!("Product {} already exists", p.id);
+                tracing::debug!("Product {} already exists", p.id);
                 p
             }
             Err(_) => {
@@ -76,7 +76,7 @@ impl BillingService {
 
                 let product = create_product.send(&self.stripe).await?;
 
-                tracing::info!("Created product: {}", SEAT_PRODUCT_NAME);
+                tracing::debug!("Created product: {}", SEAT_PRODUCT_NAME);
                 product
             }
         };
@@ -86,7 +86,7 @@ impl BillingService {
             .await
         {
             Ok(p) => {
-                tracing::info!("Product {} already exists", p.id);
+                tracing::debug!("Product {} already exists", p.id);
                 p
             }
             Err(_) => {
@@ -97,7 +97,7 @@ impl BillingService {
 
                 let product = create_product.send(&self.stripe).await?;
 
-                tracing::info!("Created product: {}", NETWORK_PRODUCT_NAME);
+                tracing::debug!("Created product: {}", NETWORK_PRODUCT_NAME);
                 product
             }
         };
@@ -123,7 +123,7 @@ impl BillingService {
                 .await
             {
                 Ok(p) => {
-                    tracing::info!("Product {} already exists", p.id);
+                    tracing::debug!("Product {} already exists", p.id);
                     p
                 }
                 Err(_) => {
@@ -140,7 +140,7 @@ impl BillingService {
 
                     let product = create_product.send(&self.stripe).await?;
 
-                    tracing::info!("Created product: {}", plan.name());
+                    tracing::debug!("Created product: {}", plan.name());
                     product
                 }
             };
@@ -151,7 +151,7 @@ impl BillingService {
                 .await?
             {
                 Some(p) => {
-                    tracing::info!("Price {} already exists", p.id);
+                    tracing::debug!("Price {} already exists", p.id);
                 }
                 None => {
                     // Create price
@@ -169,7 +169,7 @@ impl BillingService {
 
                     let price = create_base_price.send(&self.stripe).await?;
 
-                    tracing::info!("Created price: {}", price.id);
+                    tracing::debug!("Created price: {}", price.id);
                 }
             };
 
@@ -184,7 +184,7 @@ impl BillingService {
                     .await?
                 {
                     Some(p) => {
-                        tracing::info!("Price {} already exists", p.id);
+                        tracing::debug!("Price {} already exists", p.id);
                     }
                     None => {
                         // Create price
@@ -202,7 +202,7 @@ impl BillingService {
 
                         let price = create_seat_price.send(&self.stripe).await?;
 
-                        tracing::info!("Created price: {}", price.id);
+                        tracing::debug!("Created price: {}", price.id);
                     }
                 };
             }
@@ -218,7 +218,7 @@ impl BillingService {
                     .await?
                 {
                     Some(p) => {
-                        tracing::info!("Price {} already exists", p.id);
+                        tracing::debug!("Price {} already exists", p.id);
                     }
                     None => {
                         // Create price
@@ -236,7 +236,7 @@ impl BillingService {
 
                         let price = create_network_price.send(&self.stripe).await?;
 
-                        tracing::info!("Created price: {}", price.id);
+                        tracing::debug!("Created price: {}", price.id);
                     }
                 };
             }
