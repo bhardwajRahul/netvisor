@@ -314,23 +314,44 @@ impl BrevoService {
 
         // If the org's Brevo company already exists, link the contact now.
         // Otherwise handle_org_created links it once the company is created.
-        if let Some(contact_id) = contact_id
-            && let Some(org_id) = event.scope.organization_id
-        {
-            match self.get_brevo_company_id(org_id).await {
-                Ok(Some(company_id)) => {
-                    if let Err(e) = self
+        // Diagnostic logging on every branch so a missing link is traceable.
+        if let Some(contact_id) = contact_id {
+            match event.scope.organization_id {
+                Some(org_id) => match self.get_brevo_company_id(org_id).await {
+                    Ok(Some(company_id)) => match self
                         .client
                         .link_contact_to_company(&company_id, contact_id)
                         .await
                     {
-                        tracing::warn!(error = %e, "Failed to link Brevo contact to company at register");
-                    }
-                }
-                Ok(None) => {} // Company not created yet; handle_org_created will link.
-                Err(e) => {
-                    tracing::warn!(error = %e, "Failed to look up Brevo company id at register");
-                }
+                        Ok(()) => tracing::info!(
+                            brevo_contact_id = %contact_id,
+                            brevo_company_id = %company_id,
+                            organization_id = %org_id,
+                            "Linked Brevo contact to company at register"
+                        ),
+                        Err(e) => tracing::warn!(
+                            error = %e,
+                            brevo_contact_id = %contact_id,
+                            brevo_company_id = %company_id,
+                            organization_id = %org_id,
+                            "Failed to link Brevo contact to company at register"
+                        ),
+                    },
+                    Ok(None) => tracing::info!(
+                        brevo_contact_id = %contact_id,
+                        organization_id = %org_id,
+                        "Brevo company not created yet at register; org-created handler will link"
+                    ),
+                    Err(e) => tracing::warn!(
+                        error = %e,
+                        organization_id = %org_id,
+                        "Failed to look up Brevo company id at register"
+                    ),
+                },
+                None => tracing::warn!(
+                    brevo_contact_id = %contact_id,
+                    "Register event missing organization_id; cannot link Brevo contact to company"
+                ),
             }
         }
 
@@ -418,22 +439,41 @@ impl BrevoService {
         // Link the owner's contact to the new company. The contact is created on
         // the AuthOperation (Register) channel; if it isn't in Brevo yet,
         // handle_register links it once the company exists. Idempotent on Brevo's
-        // side, so linking from both handlers is safe.
-        if let Some(email) = &owner_email {
-            match self.client.get_contact_id_by_email(email).await {
-                Ok(contact_id) => {
-                    if let Err(e) = self
-                        .client
-                        .link_contact_to_company(&company_id, contact_id)
-                        .await
-                    {
-                        tracing::warn!(error = %e, "Failed to link owner contact to new Brevo company");
-                    }
-                }
-                Err(e) => {
-                    tracing::debug!(error = %e, "Owner contact not yet in Brevo; will link on register");
-                }
-            }
+        // side, so linking from both handlers is safe. Diagnostic logging on every
+        // branch so a missing link is traceable.
+        match &owner_email {
+            Some(email) => match self.client.get_contact_id_by_email(email).await {
+                Ok(contact_id) => match self
+                    .client
+                    .link_contact_to_company(&company_id, contact_id)
+                    .await
+                {
+                    Ok(()) => tracing::info!(
+                        brevo_contact_id = %contact_id,
+                        brevo_company_id = %company_id,
+                        organization_id = %event.scope.organization_id,
+                        "Linked owner contact to new Brevo company"
+                    ),
+                    Err(e) => tracing::warn!(
+                        error = %e,
+                        brevo_contact_id = %contact_id,
+                        brevo_company_id = %company_id,
+                        organization_id = %event.scope.organization_id,
+                        "Failed to link owner contact to new Brevo company"
+                    ),
+                },
+                Err(e) => tracing::info!(
+                    error = %e,
+                    brevo_company_id = %company_id,
+                    organization_id = %event.scope.organization_id,
+                    "Owner contact not yet in Brevo at org-created; register handler will link"
+                ),
+            },
+            None => tracing::warn!(
+                brevo_company_id = %company_id,
+                organization_id = %event.scope.organization_id,
+                "No owner email found for org; cannot link contact to new Brevo company"
+            ),
         }
 
         // Track event for automation (uses owner email; OK to skip if missing)
