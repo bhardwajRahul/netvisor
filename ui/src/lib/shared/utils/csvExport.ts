@@ -4,6 +4,7 @@
 
 import { getServerUrl } from '$lib/api/client';
 import { pushError } from '$lib/shared/stores/feedback';
+import { common_csvExportUnsupported, common_exportFailed } from '$lib/paraglide/messages';
 import { entityToExportPath, type EntityDiscriminants } from '$lib/api/entities';
 
 /**
@@ -27,7 +28,7 @@ export async function downloadCsv(
 ): Promise<void> {
 	const apiPath = entityToExportPath[entityType];
 	if (!apiPath) {
-		pushError(`CSV export not supported for ${entityType}`);
+		pushError(common_csvExportUnsupported({ entityType }));
 		return;
 	}
 
@@ -50,7 +51,7 @@ export async function downloadCsv(
 	});
 
 	if (!response.ok) {
-		pushError(`Export failed: ${response.statusText}`);
+		pushError(common_exportFailed({ error: response.statusText }));
 		throw new Error(`Export failed: ${response.statusText}`);
 	}
 
@@ -84,7 +85,7 @@ export async function downloadTopologyExport(
 	});
 
 	if (!response.ok) {
-		pushError(`Export failed: ${response.statusText}`);
+		pushError(common_exportFailed({ error: response.statusText }));
 		throw new Error(`Export failed: ${response.statusText}`);
 	}
 
@@ -125,7 +126,7 @@ export async function downloadHostsZip(params: CsvExportParams): Promise<void> {
 	});
 
 	if (!response.ok) {
-		pushError(`Export failed: ${response.statusText}`);
+		pushError(common_exportFailed({ error: response.statusText }));
 		throw new Error(`Export failed: ${response.statusText}`);
 	}
 

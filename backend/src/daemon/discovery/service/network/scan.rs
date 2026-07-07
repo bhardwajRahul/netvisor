@@ -513,6 +513,8 @@ impl NetworkScan {
                                         services: vec![],
                                         interfaces: vec![],
                                         subnets: vec![],
+                                        // Early host stub carries no ifTable; nothing to prune against.
+                                        interfaces_complete: true,
                                     };
                                     early_entity_buffer.push_host(request.clone()).await;
                                     let mode = early_config_store.get_mode().await?;
@@ -1156,6 +1158,7 @@ impl NetworkScan {
             .ok();
 
             // Extract final state from host_data
+            let interfaces_complete = host_data.interfaces_complete;
             let host = host_data.host;
             let ip_addresses = host_data.ip_addresses;
             let ports = host_data.ports;
@@ -1187,6 +1190,7 @@ impl NetworkScan {
                     services,
                     interfaces,
                     subnets,
+                    interfaces_complete,
                     &cancel,
                 )
                 .await

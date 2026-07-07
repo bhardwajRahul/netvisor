@@ -61,16 +61,18 @@
 	import {
 		appWizard_selectedCount,
 		topology_multiSelectReadOnlyHint,
-		topology_multiSelectGroupName,
 		common_clearSelection,
+		common_dependency,
+		common_entityName,
 		common_hub,
 		common_spokes,
 		common_makesRequestTo,
 		common_serves,
+		topology_hidePreview,
+		topology_showPreview,
 		common_cancel,
 		common_update,
 		dependencies_createDependency,
-		dependencies_dependencyName,
 		dependencies_editDependency,
 		dependencies_servicesOnly,
 		dependencies_servicesOnlyL3Hint,
@@ -996,7 +998,7 @@
 							<button
 								class="btn-secondary ml-auto flex items-center gap-1 p-1.5 text-xs"
 								onclick={togglePreview}
-								title={showPreview ? 'Hide preview' : 'Show preview'}
+								title={showPreview ? topology_hidePreview() : topology_showPreview()}
 							>
 								{#if showPreview}
 									<Eye class="h-3.5 w-3.5" />
@@ -1018,10 +1020,10 @@
 				>
 					{#snippet children(field)}
 						<TextInput
-							label={dependencies_dependencyName()}
+							label={common_entityName({ entity: common_dependency() })}
 							id="dependency-name"
 							{field}
-							placeholder={topology_multiSelectGroupName()}
+							placeholder={common_entityName({ entity: common_dependency() })}
 						/>
 					{/snippet}
 				</form.Field>

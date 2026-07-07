@@ -1,8 +1,8 @@
 [
   {
     "id": "ByServiceCategory",
-    "name": "Service category",
-    "description": "Group elements by service category",
+    "name": "Service Category",
+    "description": "Group services by category",
     "category": null,
     "icon": "layers",
     "color": "Purple",
@@ -21,7 +21,7 @@
   {
     "id": "ByTag",
     "name": "Tag",
-    "description": "Group elements by tag",
+    "description": "Group entities by tag",
     "category": null,
     "icon": "tag",
     "color": "Orange",
@@ -78,7 +78,7 @@
   {
     "id": "ByStack",
     "name": "Stack",
-    "description": "Group workloads deployed together as one unit",
+    "description": "Group containers deployed together as a stack (e.g., Docker Compose, Podman Compose)",
     "category": null,
     "icon": "box",
     "color": "Blue",

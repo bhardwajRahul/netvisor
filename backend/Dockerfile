@@ -28,12 +28,7 @@ COPY backend/ .
 # Download fresh OUI vendor database before compiling
 RUN curl -sf --max-time 60 -o assets/oui.csv https://standards-oui.ieee.org/oui/oui.csv || echo "Using bundled OUI database"
 
-ARG CARGO_FEATURES=""
-RUN if [ -n "$CARGO_FEATURES" ]; then \
-      cargo build --release --bin server --bin generate-fixtures --features "$CARGO_FEATURES"; \
-    else \
-      cargo build --release --bin server --bin generate-fixtures; \
-    fi
+RUN cargo build --release --bin server --bin generate-fixtures
 
 # Verify binary exists
 RUN test -f /app/target/release/server || (echo "Server binary not found" && exit 1)
@@ -88,9 +83,10 @@ FROM debian:bookworm-slim AS runtime
 LABEL service="scanopy"
 
 # OCI Image Spec labels — https://github.com/opencontainers/image-spec/blob/main/annotations.md
-# Values default to the community build; commercial CI overrides via --build-arg.
+# A single server image serves both the free community edition and the
+# commercial edition; commercial mode is enabled at runtime by a license key.
 ARG OCI_IMAGE_TITLE="Scanopy Server"
-ARG OCI_IMAGE_DESCRIPTION="Scanopy server (community edition) — Network diagrams that update themselves."
+ARG OCI_IMAGE_DESCRIPTION="Scanopy server — Network diagrams that update themselves."
 ARG OCI_IMAGE_LICENSES="AGPL-3.0-only"
 LABEL org.opencontainers.image.title="${OCI_IMAGE_TITLE}" \
       org.opencontainers.image.description="${OCI_IMAGE_DESCRIPTION}" \

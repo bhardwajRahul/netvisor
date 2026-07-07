@@ -12,7 +12,7 @@ use crate::server::topology::types::base::Topology;
 use crate::server::vlans::r#impl::base::Vlan;
 use crate::server::{dependencies::r#impl::base::Dependency, tags::r#impl::base::Tag};
 use serde::{Deserialize, Serialize};
-use strum_macros::{Display, EnumDiscriminants, EnumIter, IntoStaticStr, VariantNames};
+use strum_macros::{AsRefStr, Display, EnumDiscriminants, EnumIter, IntoStaticStr, VariantNames};
 use utoipa::ToSchema;
 
 use crate::server::{
@@ -51,6 +51,7 @@ pub trait ChangeTriggersTopologyStaleness<T> {
 )]
 #[strum_discriminants(derive(
     Display,
+    AsRefStr,
     Hash,
     EnumIter,
     IntoStaticStr,

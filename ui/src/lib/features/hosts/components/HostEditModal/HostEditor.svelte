@@ -392,7 +392,7 @@
 	}
 
 	// Wizard steps for progressive unlock in create mode
-	const wizardSteps = ['details', 'snmp', 'interfaces', 'ports', 'services'];
+	const wizardSteps = ['details', 'snmp', 'ip-addresses', 'ports', 'services'];
 	let isLastWizardStep = $derived(activeTab === wizardSteps[wizardSteps.length - 1]);
 
 	// Resolve form field paths to human-readable names for error messages

@@ -10,12 +10,46 @@
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import { Check, X, ChevronDown, ChevronUp, Loader2, Minus, Plus } from 'lucide-svelte';
 	import {
+		billing_compareAllFeatures,
+		billing_contactUs,
+		billing_dayFreeTrial,
+		billing_daysCount,
 		billing_everythingInPlanPlus,
 		billing_firstInvoiceOn,
+		billing_networkUnit,
+		billing_networkUnitPlural,
+		billing_notIncluded,
+		billing_perHostMonthly,
+		billing_perNetworkMonthly,
+		billing_perSeatMonthly,
+		billing_priceBase,
+		billing_rateMonthly,
+		billing_rateYearlyBilled,
+		billing_requestInformation,
+		billing_seatUnit,
+		billing_seatUnitPlural,
+		billing_selfHosted,
+		billing_selfHostedOrCloud,
 		billing_showFeatures,
 		billing_hideFeatures,
+		billing_snapshotRetention,
 		billing_startTrialNoCreditCard,
-		billing_yourCurrentPlan
+		billing_switchPlan,
+		billing_trialContinues,
+		billing_viewOnGithub,
+		billing_yourCurrentPlan,
+		common_comingSoon,
+		common_custom,
+		common_feature,
+		common_getStarted,
+		common_hide,
+		common_hosts,
+		common_monthly,
+		common_networks,
+		common_recommended,
+		common_seats,
+		common_unlimited,
+		common_yearly
 	} from '$lib/paraglide/messages';
 	import InlineInfo from '$lib/shared/components/feedback/InlineInfo.svelte';
 	import Tag from '$lib/shared/components/data/Tag.svelte';
@@ -97,8 +131,8 @@
 	let billingPeriod = $state<BillingPeriod>('yearly');
 
 	const billingPeriodOptions = [
-		{ value: 'monthly', label: 'Monthly' },
-		{ value: 'yearly', label: 'Yearly', badge: '-20%' }
+		{ value: 'monthly', label: common_monthly() },
+		{ value: 'yearly', label: common_yearly(), badge: '-20%' }
 	];
 
 	let filteredPlans = $derived.by(() => {
@@ -256,14 +290,14 @@
 	function formatRate(plan: BillingPlan): string {
 		const metadata = billingPlanHelpers.getMetadata(plan.type);
 		if (metadata?.custom_price) return '';
-		if (plan.rate === 'Year') return '/mo, billed yearly';
-		return '/mo';
+		if (plan.rate === 'Year') return billing_rateYearlyBilled();
+		return billing_rateMonthly();
 	}
 
 	function formatSeatAddonPricing(plan: BillingPlan): string {
 		if (plan.seat_cents) {
 			const monthly = plan.rate === 'Year' ? plan.seat_cents / 12 : plan.seat_cents;
-			return `+$${monthly / 100} / seat / mo`;
+			return billing_perSeatMonthly({ amount: String(monthly / 100) });
 		}
 		return '';
 	}
@@ -271,7 +305,7 @@
 	function formatNetworkAddonPricing(plan: BillingPlan): string {
 		if (plan.network_cents) {
 			const monthly = plan.rate === 'Year' ? plan.network_cents / 12 : plan.network_cents;
-			return `+$${monthly / 100} / network / mo`;
+			return billing_perNetworkMonthly({ amount: String(monthly / 100) });
 		}
 		return '';
 	}
@@ -279,7 +313,7 @@
 	function formatHostAddonPricing(plan: BillingPlan): string {
 		if (plan.host_cents) {
 			const monthly = plan.rate === 'Year' ? plan.host_cents / 12 : plan.host_cents;
-			return `+$${monthly / 100} / host / mo`;
+			return billing_perHostMonthly({ amount: String(monthly / 100) });
 		}
 		return '';
 	}
@@ -304,7 +338,7 @@
 		switch (hosting) {
 			case 'Cloud':
 				return 'Cyan';
-			case 'Managed':
+			case 'Any':
 				return 'Purple';
 			case 'SelfHosted':
 				return 'Green';
@@ -316,7 +350,9 @@
 	function getHostingLabel(hosting: string): string {
 		switch (hosting) {
 			case 'SelfHosted':
-				return 'Self-Hosted';
+				return billing_selfHosted();
+			case 'Any':
+				return billing_selfHostedOrCloud();
 			default:
 				return hosting;
 		}
@@ -336,13 +372,13 @@
 	}
 
 	function formatIncludedValue(value: number | null | undefined, plan?: BillingPlan): string {
-		if (value == null && plan && hasCustomPrice(plan)) return 'Custom';
-		return value == null ? 'Unlimited' : String(value);
+		if (value == null && plan && hasCustomPrice(plan)) return common_custom();
+		return value == null ? common_unlimited() : String(value);
 	}
 
 	function formatSnapshotRetention(value: boolean | string | number | null): string {
-		if (value === 0) return 'Not included';
-		if (typeof value === 'number') return `${value} days`;
+		if (value === 0) return billing_notIncluded();
+		if (typeof value === 'number') return billing_daysCount({ count: value });
 		return '—';
 	}
 
@@ -428,7 +464,7 @@
 						<!-- Recommended Badge -->
 						{#if isRecommended}
 							<div class="-mt-3 mb-1 flex justify-center">
-								<Tag label="Recommended" color="Yellow" />
+								<Tag label={common_recommended()} color="Yellow" />
 							</div>
 						{/if}
 
@@ -464,18 +500,20 @@
 							</div>
 							{#if hasExtras(plan)}
 								<div class="text-tertiary text-center text-xs">
-									Base {formatCents(plan.rate === 'Year' ? plan.base_cents / 12 : plan.base_cents)}
+									{billing_priceBase()}
+									{formatCents(plan.rate === 'Year' ? plan.base_cents / 12 : plan.base_cents)}
 									{#if getExtraSeats(plan.type) > 0}
 										{@const seatCost = getExtraSeats(plan.type) * (plan.seat_cents ?? 0)}
 										+ {getExtraSeats(plan.type)}
-										{getExtraSeats(plan.type) === 1 ? 'seat' : 'seats'} ({formatCents(
-											plan.rate === 'Year' ? seatCost / 12 : seatCost
-										)})
+										{getExtraSeats(plan.type) === 1 ? billing_seatUnit() : billing_seatUnitPlural()}
+										({formatCents(plan.rate === 'Year' ? seatCost / 12 : seatCost)})
 									{/if}
 									{#if getExtraNetworks(plan.type) > 0}
 										{@const netCost = getExtraNetworks(plan.type) * (plan.network_cents ?? 0)}
 										+ {getExtraNetworks(plan.type)}
-										{getExtraNetworks(plan.type) === 1 ? 'network' : 'networks'} ({formatCents(
+										{getExtraNetworks(plan.type) === 1
+											? billing_networkUnit()
+											: billing_networkUnitPlural()} ({formatCents(
 											plan.rate === 'Year' ? netCost / 12 : netCost
 										)})
 									{/if}
@@ -484,7 +522,9 @@
 							<div
 								class={`text-xs font-medium text-success ${(hasTrial(plan) || (isCurrentlyTrialing && plan.trial_days > 0)) && !hasCustomPrice(plan) ? 'opacity-100' : 'opacity-0'}`}
 							>
-								{isCurrentlyTrialing ? 'Your trial continues' : `${plan.trial_days}-day free trial`}
+								{isCurrentlyTrialing
+									? billing_trialContinues()
+									: billing_dayFreeTrial({ days: plan.trial_days })}
 							</div>
 						</div>
 
@@ -504,7 +544,7 @@
 									disabled={loadingPlanType !== null}
 									class="btn-primary w-full text-sm"
 								>
-									Request Information
+									{billing_requestInformation()}
 								</button>
 							{:else if hosting === 'Cloud'}
 								{#if plan.type === currentPlanType}
@@ -519,9 +559,9 @@
 										{#if loadingPlanType === plan.type}
 											<Loader2 class="mx-auto h-4 w-4 animate-spin" />
 										{:else if isCurrentlyTrialing}
-											Switch plan
+											{billing_switchPlan()}
 										{:else}
-											{trial ? billing_startTrialNoCreditCard() : 'Get Started'}
+											{trial ? billing_startTrialNoCreditCard() : common_getStarted()}
 										{/if}
 									</button>
 									{#if trial && !isCurrentlyTrialing}
@@ -538,7 +578,7 @@
 										disabled={loadingPlanType !== null}
 										class="btn-primary w-full text-sm"
 									>
-										Contact Us
+										{billing_contactUs()}
 									</button>
 								{:else}
 									<a
@@ -547,7 +587,7 @@
 										rel="noopener noreferrer"
 										class="btn-secondary inline-block w-full text-center text-sm"
 									>
-										View on GitHub
+										{billing_viewOnGithub()}
 									</a>
 								{/if}
 							{:else if commercial && onPlanInquiry}
@@ -567,7 +607,7 @@
 							<!-- Seats -->
 							<div class="flex items-center justify-between text-sm">
 								<div class="flex flex-col">
-									<span class="text-secondary">Seats</span>
+									<span class="text-secondary">{common_seats()}</span>
 									{#if plan.seat_cents}
 										<span class="text-tertiary text-xs">{formatSeatAddonPricing(plan)}</span>
 									{/if}
@@ -603,7 +643,7 @@
 							<!-- Networks -->
 							<div class="flex items-center justify-between text-sm">
 								<div class="flex flex-col">
-									<span class="text-secondary">Networks</span>
+									<span class="text-secondary">{common_networks()}</span>
 									{#if plan.network_cents}
 										<span class="text-tertiary text-xs">{formatNetworkAddonPricing(plan)}</span>
 									{/if}
@@ -639,7 +679,7 @@
 							<!-- Hosts -->
 							<div class="flex items-center justify-between text-sm">
 								<div class="flex flex-col">
-									<span class="text-secondary">Hosts</span>
+									<span class="text-secondary">{common_hosts()}</span>
 									{#if plan.host_cents}
 										<span class="text-tertiary text-xs">{formatHostAddonPricing(plan)}</span>
 									{/if}
@@ -651,7 +691,7 @@
 
 							<!-- Snapshot Retention -->
 							<div class="flex items-center justify-between text-sm">
-								<span class="text-secondary">Snapshot Retention</span>
+								<span class="text-secondary">{billing_snapshotRetention()}</span>
 								<span class="text-primary font-medium">
 									{formatSnapshotRetention(getFeatureValue(plan.type, 'snapshot_retention_days'))}
 								</span>
@@ -699,7 +739,7 @@
 											use:tooltip>{featureHelpers.getName(featureKey)}</span
 										>
 										{#if comingSoon}
-											<Tag label="Coming Soon" color="Gray" />
+											<Tag label={common_comingSoon()} color="Gray" />
 										{/if}
 									</li>
 								{/each}
@@ -717,7 +757,7 @@
 				class="btn-primary flex items-center gap-2 text-sm"
 				onclick={() => (showFullComparison = !showFullComparison)}
 			>
-				{showFullComparison ? 'Hide' : 'Compare all features'}
+				{showFullComparison ? common_hide() : billing_compareAllFeatures()}
 				{#if showFullComparison}
 					<ChevronUp class="h-4 w-4" />
 				{:else}
@@ -735,7 +775,7 @@
 					style="grid-template-columns: {gridColumns}"
 				>
 					<div class="comparison-label-cell">
-						<div class="text-xs font-medium lg:text-sm">Feature</div>
+						<div class="text-xs font-medium lg:text-sm">{common_feature()}</div>
 					</div>
 					{#each filteredPlans as plan (plan.type)}
 						<div class="comparison-value-cell">
@@ -772,7 +812,7 @@
 								{@const value = getFeatureValue(plan.type, featureKey)}
 								<div class="comparison-value-cell">
 									{#if comingSoon && value}
-										<Tag label="Coming Soon" color="Gray" />
+										<Tag label={common_comingSoon()} color="Gray" />
 									{:else if typeof value === 'boolean'}
 										{#if value}
 											<Check class="mx-auto h-4 w-4 text-success lg:h-5 lg:w-5" />

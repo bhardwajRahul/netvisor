@@ -1,5 +1,6 @@
 import { writable } from 'svelte/store';
 import { pushError } from '../stores/feedback';
+import { common_dataLoadingFailed } from '$lib/paraglide/messages';
 
 interface LoadDataOptions {
 	/** Delay before showing loading state (ms). Set to 0 to show immediately. Default: 500 */
@@ -33,7 +34,7 @@ export function loadData(loaders: (() => Promise<any>)[], options: LoadDataOptio
 
 			loading.set(false);
 		} catch (error) {
-			pushError(`Data loading failed: ${error}`);
+			pushError(common_dataLoadingFailed({ error: String(error) }));
 			if (loadingTimeout) clearTimeout(loadingTimeout);
 			loading.set(false);
 		}

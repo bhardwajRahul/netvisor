@@ -16,7 +16,7 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import { ArrowLeft, X } from 'lucide-svelte';
-	import { common_closeModal, common_modal } from '$lib/paraglide/messages';
+	import { common_closeModal, common_modal, common_modalTabs } from '$lib/paraglide/messages';
 	import ModalStepper from './ModalStepper.svelte';
 	import { get } from 'svelte/store';
 	import {
@@ -280,7 +280,7 @@
 					{#if tabs.length > 0 && tabStyle === 'stepper'}
 						<ModalStepper {tabs} {activeTab} onTabClick={handleTabClick} />
 					{:else if tabs.length > 0}
-						<nav class="flex w-full space-x-6 pt-4" aria-label="Modal tabs">
+						<nav class="flex w-full space-x-6 pt-4" aria-label={common_modalTabs()}>
 							{#each tabs as tab (tab.id)}
 								<button
 									type="button"

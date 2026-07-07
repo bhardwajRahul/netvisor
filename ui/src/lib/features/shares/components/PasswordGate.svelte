@@ -8,12 +8,12 @@
 	import TextInput from '$lib/shared/components/forms/input/TextInput.svelte';
 	import {
 		common_errorOccurred,
-		common_invalidPassword,
 		common_loading,
 		common_password,
 		common_viewTopology,
-		shares_passwordPlaceholder,
-		shares_passwordRequired
+		errors_auth_password_invalid,
+		errors_auth_password_required,
+		shares_passwordPlaceholder
 	} from '$lib/paraglide/messages';
 
 	interface Props {
@@ -25,7 +25,7 @@
 
 	let { isOpen = true, title, onSubmit, submitLabel }: Props = $props();
 
-	let displayTitle = $derived(title ?? shares_passwordRequired());
+	let displayTitle = $derived(title ?? errors_auth_password_required());
 	let displaySubmitLabel = $derived(submitLabel ?? common_viewTopology());
 
 	let loading = $state(false);
@@ -42,7 +42,7 @@
 			try {
 				const success = await onSubmit(value.password);
 				if (!success) {
-					serverError = common_invalidPassword();
+					serverError = errors_auth_password_invalid();
 					form.setFieldValue('password', '');
 				}
 			} catch {

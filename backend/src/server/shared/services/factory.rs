@@ -83,6 +83,17 @@ pub struct ServiceFactory {
 
 impl ServiceFactory {
     pub async fn new(storage: &StorageFactory, config: ServerConfig) -> Result<Self> {
+        // The plan a new self-hosted org is provisioned onto, resolved once from
+        // the license key (Standard/Plus/Commercial for a valid key, else the
+        // Community default). Its `included_orgs` also bounds the org-creation
+        // cap. `effective_license_key` is None on cloud, so the key is ignored
+        // there (new orgs get no plan until Stripe checkout). Computed up front,
+        // before `config`'s fields are moved out below.
+        let default_self_hosted_plan = config
+            .effective_license_key()
+            .map(|key| key.self_hosted_plan())
+            .unwrap_or_default();
+
         let event_bus = Arc::new(EventBus::new());
 
         let logging_service = Arc::new(LoggingService::new());
@@ -219,6 +230,7 @@ impl ServiceFactory {
             organization_service.clone(),
             user_service.clone(),
             daemon_api_key_service.clone(),
+            crate::server::config::get_deployment_type(&config),
         ));
 
         // HostService needs DaemonService
@@ -354,6 +366,7 @@ impl ServiceFactory {
             organization_service.clone(),
             email_service.is_some(),
             event_bus.clone(),
+            default_self_hosted_plan,
         ));
 
         // Create Brevo service if API key is configured (before config is consumed)

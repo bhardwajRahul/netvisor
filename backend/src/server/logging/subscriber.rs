@@ -1,8 +1,11 @@
 //! Logging subscriber for every operation type.
 //!
-//! Renders each event as JSON via `Display for Event<Op>` and emits at the
-//! event's declared `log_level`. Honours `flags.suppress_logs` to keep noisy
-//! emissions out of structured logs.
+//! Emits one line per event: a `log_label` field (e.g. `Subnet Created`) plus a
+//! `log_color` ANSI code, with the event rendered as JSON via
+//! `Display for Event<Op>` as the message, at the event's declared `log_level`.
+//! The `logging::format::LabelFields` formatter turns those into a color-coded
+//! `<label>: <json>` line. Honours `flags.suppress_logs` to keep noisy
+//! emissions out of the logs.
 
 use anyhow::Error;
 use async_trait::async_trait;
@@ -22,13 +25,28 @@ use crate::{
     },
 };
 
-fn log_at_level(level: EventLogLevel, message: impl std::fmt::Display) {
+fn log_at_level(
+    level: EventLogLevel,
+    log_label: &str,
+    log_color: &str,
+    message: impl std::fmt::Display,
+) {
     match level {
-        EventLogLevel::Error => tracing::error!("{}", message),
-        EventLogLevel::Warn => tracing::warn!("{}", message),
-        EventLogLevel::Info => tracing::info!("{}", message),
-        EventLogLevel::Debug => tracing::debug!("{}", message),
-        EventLogLevel::Trace => tracing::trace!("{}", message),
+        EventLogLevel::Error => {
+            tracing::error!(target: "events", log_label, log_color, "{}", message)
+        }
+        EventLogLevel::Warn => {
+            tracing::warn!(target: "events", log_label, log_color, "{}", message)
+        }
+        EventLogLevel::Info => {
+            tracing::info!(target: "events", log_label, log_color, "{}", message)
+        }
+        EventLogLevel::Debug => {
+            tracing::debug!(target: "events", log_label, log_color, "{}", message)
+        }
+        EventLogLevel::Trace => {
+            tracing::trace!(target: "events", log_label, log_color, "{}", message)
+        }
     }
 }
 
@@ -36,7 +54,12 @@ fn log_event<Op: Operation>(event: &Event<Op>, suppress: bool) {
     if suppress {
         return;
     }
-    log_at_level(event.operation.log_level(), event);
+    log_at_level(
+        event.operation.log_level(),
+        &event.log_label(),
+        event.operation.log_color().ansi_code(),
+        event,
+    );
 }
 
 #[async_trait]

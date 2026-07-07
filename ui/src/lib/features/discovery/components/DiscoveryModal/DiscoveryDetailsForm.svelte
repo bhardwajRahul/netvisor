@@ -25,9 +25,10 @@
 		discovery_bestService,
 		discovery_daemonHelp,
 		discovery_daemonSelect,
+		common_discovery,
+		common_entityName,
 		discovery_hostNameFallback,
 		discovery_hostNameFallbackHelp,
-		discovery_name,
 		discovery_namePlaceholder,
 		discovery_runType,
 		discovery_lastRun,
@@ -133,7 +134,7 @@
 	>
 		{#snippet children(field: AnyFieldApi)}
 			<TextInput
-				label={discovery_name()}
+				label={common_entityName({ entity: common_discovery() })}
 				id="name"
 				placeholder={discovery_namePlaceholder()}
 				required={true}

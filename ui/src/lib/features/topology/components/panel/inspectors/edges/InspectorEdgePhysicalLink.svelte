@@ -5,6 +5,7 @@
 	import { useTopology, selectedTopologyId } from '$lib/features/topology/context';
 	import Tag from '$lib/shared/components/data/Tag.svelte';
 	import type { RenderableTopology } from '$lib/features/topology/types/base';
+	import { common_source, common_target } from '$lib/paraglide/messages';
 
 	let {
 		sourceEntityId,
@@ -45,7 +46,7 @@
 	{/if}
 
 	{#if sourceHost || sourceInterface}
-		<span class="text-secondary mb-2 block text-sm font-medium">Source</span>
+		<span class="text-secondary mb-2 block text-sm font-medium">{common_source()}</span>
 		{#if sourceHost}
 			<div class="card card-static">
 				<EntityDisplayWrapper
@@ -70,7 +71,7 @@
 	{/if}
 
 	{#if targetHost || targetInterface}
-		<span class="text-secondary mb-2 block text-sm font-medium">Target</span>
+		<span class="text-secondary mb-2 block text-sm font-medium">{common_target()}</span>
 		{#if targetHost}
 			<div class="card card-static">
 				<EntityDisplayWrapper

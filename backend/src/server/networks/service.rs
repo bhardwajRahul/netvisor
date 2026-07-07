@@ -68,8 +68,6 @@ impl NetworkService {
         network_id: Uuid,
         authenticated: AuthenticatedEntity,
     ) -> Result<()> {
-        tracing::info!("Seeding default data...");
-
         let wan_subnet = create_wan_subnet(network_id);
         let remote_subnet = create_remote_subnet(network_id);
         // let (dns_host, dns_interfaces, dns_ports, dns_service) =

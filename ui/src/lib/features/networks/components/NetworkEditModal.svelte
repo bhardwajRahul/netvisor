@@ -32,10 +32,13 @@
 		common_saving,
 		common_update,
 		common_credentialDemoReadOnly,
+		common_credentials,
+		credentials_selectToAddPlaceholder,
 		networks_createNetwork,
 		networks_credentialHelp,
 		networks_credentialHelpLinkText,
-		networks_networkNamePlaceholder
+		networks_networkNamePlaceholder,
+		networks_noCredentialsAssigned
 	} from '$lib/paraglide/messages';
 
 	let {
@@ -232,11 +235,11 @@
 
 					<!-- Credentials Selection -->
 					<ListManager
-						label="Credentials"
+						label={common_credentials()}
 						helpSnippet={isNonOwnerInDemo ? undefined : networkCredentialHelpSnippet}
 						helpText={isNonOwnerInDemo ? common_credentialDemoReadOnly() : undefined}
-						placeholder="Select a credential to add"
-						emptyMessage="No credentials assigned"
+						placeholder={credentials_selectToAddPlaceholder()}
+						emptyMessage={networks_noCredentialsAssigned()}
 						allowReorder={false}
 						options={allCredentials}
 						items={selectedCredentials}

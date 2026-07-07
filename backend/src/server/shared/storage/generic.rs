@@ -137,6 +137,7 @@ where
             SqlValue::String(v) => query.bind(v),
             SqlValue::U16(v) => query.bind(Into::<i32>::into(*v)),
             SqlValue::I32(v) => query.bind(v),
+            SqlValue::I64(v) => query.bind(v),
             SqlValue::OptionalI64(v) => query.bind(v),
             SqlValue::Bool(v) => query.bind(v),
             SqlValue::Timestamp(v) => query.bind(v),

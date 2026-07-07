@@ -7,6 +7,7 @@
 	import DocsHint from '$lib/shared/components/feedback/DocsHint.svelte';
 	import InlineWarning from '$lib/shared/components/feedback/InlineWarning.svelte';
 	import { formatDurationHuman } from '$lib/shared/utils/formatting';
+	import { translateFieldDefinitions } from '$lib/i18n/metadata';
 	import {
 		discovery_scanSettingsHelp,
 		discovery_docsScanSettings,
@@ -37,7 +38,8 @@
 		category?: string;
 	};
 
-	const fields = scanSettingsFields as FieldDef[];
+	// Labels/placeholders/help text resolved via meta_* i18n keys with fixture fallback
+	const fields = translateFieldDefinitions('scan_settings', null, scanSettingsFields as FieldDef[]);
 
 	// Only include performance-related fields (exclude Detection category)
 	const performanceFields = fields.filter(

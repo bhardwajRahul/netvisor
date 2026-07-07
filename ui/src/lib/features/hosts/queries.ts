@@ -13,6 +13,7 @@ import {
 import { queryKeys } from '$lib/api/query-client';
 import { apiClient } from '$lib/api/client';
 import { pushSuccess } from '$lib/shared/stores/feedback';
+import { hosts_consolidatedToast } from '$lib/paraglide/messages';
 import type {
 	Host,
 	HostResponse,
@@ -596,7 +597,7 @@ export function useConsolidateHostsMutation() {
 			});
 
 			if (otherHostName) {
-				pushSuccess(`Consolidated host "${otherHostName}" into host "${response.name}"`);
+				pushSuccess(hosts_consolidatedToast({ source: otherHostName, destination: response.name }));
 			}
 		}
 	}));

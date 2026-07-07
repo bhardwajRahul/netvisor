@@ -321,7 +321,8 @@ export const discoveryFields = (
 		filterable: true,
 		groupable: true,
 		getValue: (item: Discovery) =>
-			daemons.find((d) => d.id == item.daemon_id)?.name ?? m.discovery_unknownDaemon()
+			daemons.find((d) => d.id == item.daemon_id)?.name ??
+			m.common_unknownEntity({ entity: m.common_daemon() })
 	},
 	{
 		key: 'network_id',
@@ -439,7 +440,7 @@ export function useCancelDiscoveryMutation() {
 			return sessionId;
 		},
 		onError: () => {
-			pushError('Failed to cancel discovery');
+			pushError(m.discovery_failedToCancel());
 		}
 		// Note: Success handling happens via SSE when the "Cancelled" phase is received
 	}));
@@ -515,7 +516,7 @@ class DiscoverySSEManager extends BaseSSEManager<DiscoveryUpdatePayload> {
 
 				// Handle terminal phases
 				if (update.phase === 'Complete') {
-					pushSuccess(`${update.discovery_type.type} discovery completed`);
+					pushSuccess(m.discovery_completed({ type: update.discovery_type.type }));
 					// Final refresh on completion - do this immediately, not throttled
 					await Promise.all([
 						queryClient.invalidateQueries({ queryKey: queryKeys.hosts.all }),
@@ -525,9 +526,9 @@ class DiscoverySSEManager extends BaseSSEManager<DiscoveryUpdatePayload> {
 						queryClient.invalidateQueries({ queryKey: queryKeys.discovery.all })
 					]);
 				} else if (update.phase === 'Cancelled') {
-					pushWarning(`Discovery cancelled`);
+					pushWarning(m.discovery_cancelled());
 				} else if (update.phase === 'Failed' && update.error) {
-					pushError(`Discovery error: ${update.error}`, -1);
+					pushError(m.discovery_error({ error: update.error }), -1);
 				}
 
 				// Invalidate org cache until FirstDiscoveryCompleted milestone appears
@@ -585,7 +586,7 @@ class DiscoverySSEManager extends BaseSSEManager<DiscoveryUpdatePayload> {
 			},
 			onError: (error) => {
 				console.error('Discovery SSE error:', error);
-				pushError('Lost connection to discovery updates');
+				pushError(m.discovery_lostConnection());
 			},
 			onOpen: () => {}
 		};

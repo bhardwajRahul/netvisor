@@ -350,6 +350,8 @@ impl DaemonService {
                 vec![],
                 vec![],
                 vec![],
+                // No interfaces in this registration stub; nothing to prune.
+                true,
                 None,
                 auth.clone(),
                 None,
@@ -578,6 +580,17 @@ impl DaemonService {
         for host_request in entities.hosts {
             let pending_id = host_request.host.id;
             let host_name = host_request.host.base.name.clone();
+            // GH #649 diagnostics: record the daemon version and the interface set it reported for
+            // this host. If a switch loses its L2 links while `interfaces_complete = true` with a
+            // large `incoming_interfaces`, the daemon was not upgraded (old daemons omit the field
+            // and it defaults to true), so the partial-walk prune fix cannot engage.
+            tracing::debug!(
+                daemon_version = auth.daemon_version().unwrap_or("unknown"),
+                host_name = %host_name,
+                interfaces_complete = host_request.interfaces_complete,
+                incoming_interfaces = host_request.interfaces.len(),
+                "Discovery host received"
+            );
             match host_service
                 .discover_host(
                     host_request.host,
@@ -586,6 +599,7 @@ impl DaemonService {
                     host_request.services,
                     host_request.interfaces,
                     host_request.subnets,
+                    host_request.interfaces_complete,
                     scan_ctx.as_ref(),
                     auth.clone(),
                     limit_ctx.as_ref(),

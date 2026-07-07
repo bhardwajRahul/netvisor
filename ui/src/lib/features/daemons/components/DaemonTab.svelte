@@ -22,17 +22,17 @@
 	import { downloadCsv } from '$lib/shared/utils/csvExport';
 	import {
 		common_create,
+		common_confirmBulkDelete,
+		common_confirmDeleteName,
 		common_created,
 		common_daemons,
 		common_name,
 		common_network,
 		common_tags,
+		common_noEntityYet,
 		common_unknownNetwork,
 		common_updated,
-		daemons_confirmBulkDelete,
-		daemons_confirmDelete,
-		daemons_lastSeen,
-		daemons_noDaemonsYet
+		daemons_lastSeen
 	} from '$lib/paraglide/messages';
 
 	type DaemonOrderField = components['schemas']['DaemonOrderField'];
@@ -66,7 +66,7 @@
 	});
 
 	function handleDeleteDaemon(daemon: Daemon) {
-		if (confirm(daemons_confirmDelete({ name: daemon.name }))) {
+		if (confirm(common_confirmDeleteName({ name: daemon.name }))) {
 			deleteDaemonMutation.mutate(daemon.id);
 		}
 	}
@@ -85,7 +85,7 @@
 	}
 
 	async function handleBulkDelete(ids: string[]) {
-		if (confirm(daemons_confirmBulkDelete({ count: ids.length }))) {
+		if (confirm(common_confirmBulkDelete({ count: ids.length, entity: common_daemons() }))) {
 			await bulkDeleteDaemonsMutation.mutateAsync(ids);
 		}
 	}
@@ -152,7 +152,7 @@
 	{:else if daemonsData.length === 0}
 		<!-- Empty state -->
 		<EmptyState
-			title={daemons_noDaemonsYet()}
+			title={common_noEntityYet({ entity: common_daemons() })}
 			subtitle=""
 			onClick={handleCreateDaemon}
 			cta={common_create()}

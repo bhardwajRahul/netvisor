@@ -12,9 +12,8 @@ name: 889 Evidence
 # rule, and the evidence reaches `main` automatically at the next dev->main
 # release merge. `dev` is the always-current copy; `main` reflects last release.
 #
-# Runs tools/889/889-evidence.sh in CI (so the private server-commercial image is
-# included via GITHUB_TOKEN), then overwrites compliance/ndaa-889/ with the
-# current bundle - latest only, no per-version history. Dispatch it before a deal
+# Runs tools/889/889-evidence.sh in CI, then overwrites compliance/ndaa-889/ with
+# the current bundle - latest only, no per-version history. Dispatch it before a deal
 # to refresh; the monthly schedule keeps it from going stale; it also auto-runs
 # after a promote-to-latest so the evidence tracks production.
 

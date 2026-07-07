@@ -24,7 +24,14 @@ use crate::server::shared::types::{Color, Icon};
     EnumDiscriminants,
     EnumIter,
 )]
-#[strum_discriminants(derive(Hash, EnumIter, strum::Display, Serialize, Deserialize))]
+#[strum_discriminants(derive(
+    Hash,
+    EnumIter,
+    strum::Display,
+    strum::AsRefStr,
+    Serialize,
+    Deserialize
+))]
 pub enum DiscoveryPhase {
     /// Blocked: a network snapshot is in progress on this network. The session
     /// can't enter the normal Queued/Pending decision until

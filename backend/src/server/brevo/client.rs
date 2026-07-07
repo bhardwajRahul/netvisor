@@ -126,7 +126,7 @@ impl BrevoClient {
     }
 
     /// Get a contact's ID by email (GET /contacts/{email})
-    async fn get_contact_id_by_email(&self, email: &str) -> Result<i64> {
+    pub(crate) async fn get_contact_id_by_email(&self, email: &str) -> Result<i64> {
         self.wait_for_rate_limit().await;
 
         let url = format!("{}/contacts/{}", BREVO_API_BASE, urlencoding::encode(email));
@@ -412,8 +412,8 @@ impl BrevoClient {
     pub async fn link_contact_to_company(&self, company_id: &str, contact_id: i64) -> Result<()> {
         let url = format!("{}/companies/link-unlink/{}", BREVO_API_BASE, company_id);
         let body = LinkUnlinkRequest {
-            link_contacts_ids: Some(vec![contact_id]),
-            unlink_contacts_ids: None,
+            link_contact_ids: Some(vec![contact_id]),
+            unlink_contact_ids: None,
         };
 
         let operation = || async {

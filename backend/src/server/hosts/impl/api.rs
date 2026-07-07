@@ -71,6 +71,19 @@ pub struct DiscoveryHostRequest {
     /// create_with_children after service dedup so virtualization.service_id is correct.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub subnets: Vec<crate::server::subnets::r#impl::base::Subnet>,
+    /// Whether `interfaces` is a complete, authoritative ifTable. When false (a partial SNMP walk
+    /// cut short by timeout/error), the server must NOT prune interfaces missing from this scan —
+    /// otherwise a transient partial walk tears down the host's L2 topology (#649). Daemons that
+    /// predate this field omit it; it defaults to true so their behavior is unchanged.
+    #[serde(default = "default_interfaces_complete")]
+    pub interfaces_complete: bool,
+}
+
+/// Serde default for `interfaces_complete`: absent (old daemon) ⇒ treat as a complete/authoritative
+/// interface set, preserving pre-#649-fix behavior. Only a new daemon that explicitly reports a
+/// partial walk sends `false`.
+fn default_interfaces_complete() -> bool {
+    true
 }
 
 /// Wire format for DiscoveryHostRequest — handles both old and new field layouts.
@@ -93,6 +106,8 @@ struct DiscoveryHostRequestWire {
     if_entries: Vec<crate::server::interfaces::r#impl::base::Interface>,
     #[serde(default)]
     subnets: Vec<crate::server::subnets::r#impl::base::Subnet>,
+    #[serde(default = "default_interfaces_complete")]
+    interfaces_complete: bool,
 }
 
 impl From<DiscoveryHostRequest> for DiscoveryHostRequestWire {
@@ -109,6 +124,7 @@ impl From<DiscoveryHostRequest> for DiscoveryHostRequestWire {
                 .collect(),
             if_entries: vec![],
             subnets: req.subnets,
+            interfaces_complete: req.interfaces_complete,
         }
     }
 }
@@ -135,6 +151,7 @@ impl<'de> serde::Deserialize<'de> for DiscoveryHostRequest {
                 services: wire.services,
                 interfaces,
                 subnets: wire.subnets,
+                interfaces_complete: wire.interfaces_complete,
             })
         } else {
             // Old format (< v0.16.0): interfaces = IPAddress data, if_entries = SNMP data
@@ -151,8 +168,51 @@ impl<'de> serde::Deserialize<'de> for DiscoveryHostRequest {
                 services: wire.services,
                 interfaces: wire.if_entries,
                 subnets: wire.subnets,
+                interfaces_complete: wire.interfaces_complete,
             })
         }
+    }
+}
+
+#[cfg(test)]
+mod discovery_request_interfaces_complete_tests {
+    use super::*;
+
+    fn request_with(interfaces_complete: bool) -> DiscoveryHostRequest {
+        DiscoveryHostRequest {
+            host: Host::default(),
+            ip_addresses: vec![],
+            ports: vec![],
+            services: vec![],
+            interfaces: vec![],
+            subnets: vec![],
+            interfaces_complete,
+        }
+    }
+
+    #[test]
+    fn absent_field_defaults_to_complete_for_old_daemons() {
+        // GH #649: daemons predating this field omit it. It must default to true so their behavior
+        // is identical to before the fix (server still prunes) — the no-regression contract.
+        let mut json = serde_json::to_value(request_with(false)).expect("serializes");
+        json.as_object_mut()
+            .expect("wire is a JSON object")
+            .remove("interfaces_complete");
+        let parsed: DiscoveryHostRequest =
+            serde_json::from_value(json).expect("deserializes without the field");
+        assert!(
+            parsed.interfaces_complete,
+            "an absent interfaces_complete must default to true (old-daemon compatibility)"
+        );
+    }
+
+    #[test]
+    fn explicit_incomplete_survives_wire_round_trip() {
+        // A new daemon signalling a partial walk must reach the server as false, or the prune gate
+        // can't protect the L2 topology.
+        let json = serde_json::to_value(request_with(false)).expect("serializes");
+        let parsed: DiscoveryHostRequest = serde_json::from_value(json).expect("deserializes");
+        assert!(!parsed.interfaces_complete);
     }
 }
 

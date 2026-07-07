@@ -4,6 +4,14 @@ import type { FormValue } from '$lib/shared/components/forms/validators';
 import type { TagProps } from '$lib/shared/components/data/types';
 import { toColor } from '$lib/shared/utils/styling';
 import { CircleHelp } from 'lucide-svelte';
+import {
+	common_deprecated,
+	common_healthy,
+	common_outdated,
+	common_standby,
+	common_unreachable,
+	daemons_awaitingConnection
+} from '$lib/paraglide/messages';
 
 export const DAEMON_STATUS_DOCS_URL = 'https://scanopy.net/docs/reference/daemon-status/';
 
@@ -15,21 +23,21 @@ export function getDaemonStatusTag(daemon: Daemon): TagProps {
 	const docsTag = { href: DAEMON_STATUS_DOCS_URL, icon: CircleHelp };
 
 	if (daemon.is_unreachable === true) {
-		return { label: 'Unreachable', color: toColor('red'), ...docsTag };
+		return { label: common_unreachable(), color: toColor('red'), ...docsTag };
 	}
 	if (daemon.standby === true) {
-		return { label: 'Standby', color: toColor('purple'), ...docsTag };
+		return { label: common_standby(), color: toColor('purple'), ...docsTag };
 	}
 	if (!daemon.last_seen) {
-		return { label: 'Awaiting Connection', color: toColor('blue'), ...docsTag };
+		return { label: daemons_awaitingConnection(), color: toColor('blue'), ...docsTag };
 	}
 	switch (daemon.version_status.status) {
 		case 'Deprecated':
-			return { label: 'Deprecated', color: toColor('orange'), ...docsTag };
+			return { label: common_deprecated(), color: toColor('orange'), ...docsTag };
 		case 'Outdated':
-			return { label: 'Outdated', color: toColor('yellow'), ...docsTag };
+			return { label: common_outdated(), color: toColor('yellow'), ...docsTag };
 		default:
-			return { label: 'Healthy', color: toColor('green') };
+			return { label: common_healthy(), color: toColor('green') };
 	}
 }
 

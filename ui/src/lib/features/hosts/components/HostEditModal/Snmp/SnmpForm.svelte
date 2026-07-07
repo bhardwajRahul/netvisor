@@ -29,11 +29,17 @@
 	import {
 		common_credentialDemoReadOnly,
 		credentials_addInterfaces,
+		credentials_ipScopeAllDefault,
+		credentials_ipScopeLabel,
+		credentials_ipScopePlaceholder,
 		credentials_noCredentialSelected,
 		credentials_selectCredentialSubtitle,
+		credentials_selectToAddPlaceholder,
 		hosts_credentialOverrideHelp,
 		hosts_credentialOverrideHelpLinkText,
 		hosts_credentialScopeSubtitle,
+		hosts_snmp_credentialOverride,
+		hosts_snmp_noOverrides,
 		daemons_credentialWizardNetworkCredentials
 	} from '$lib/paraglide/messages';
 
@@ -184,11 +190,11 @@
 		<svelte:fragment slot="list" let:items let:onEdit let:highlightedIndex>
 			<div class="space-y-4">
 				<ListManager
-					label="Credential Override"
+					label={hosts_snmp_credentialOverride()}
 					helpSnippet={isNonOwnerInDemo ? undefined : hostCredentialHelpSnippet}
 					helpText={isNonOwnerInDemo ? common_credentialDemoReadOnly() : undefined}
-					placeholder="Select a credential to add"
-					emptyMessage="No credential overrides — using network defaults"
+					placeholder={credentials_selectToAddPlaceholder()}
+					emptyMessage={hosts_snmp_noOverrides()}
 					allowReorder={false}
 					options={availableCredentials}
 					getOptionContext={(c) => ({
@@ -222,9 +228,9 @@
 				<div class="space-y-4">
 					<ConfigHeader title={selectedItem.name} subtitle={hosts_credentialScopeSubtitle()} />
 					<ListManager
-						label="IP address Scope"
-						emptyMessage="All IP addresses (default)"
-						placeholder="Select an IP address to restrict scope"
+						label={credentials_ipScopeLabel()}
+						emptyMessage={credentials_ipScopeAllDefault()}
+						placeholder={credentials_ipScopePlaceholder()}
 						allowReorder={false}
 						options={formData.ip_addresses}
 						items={getScopedInterfaces(selectedIndex)}

@@ -82,6 +82,7 @@
 	} from '$lib/paraglide/messages';
 	import InlineInfo from '$lib/shared/components/feedback/InlineInfo.svelte';
 	import viewsJson from '$lib/data/views.json';
+	import { metaName, metaDescription } from '$lib/i18n/metadata';
 
 	// Topology for edit state and option-saving
 	const topologiesQuery = useTopologiesQuery();
@@ -141,6 +142,25 @@
 	// Perspective name lookup for tooltip
 	const viewNames = Object.fromEntries(viewsJson.map((p) => [p.id, p.name ?? p.id]));
 
+	// Translated names/descriptions (meta_* i18n keys with fixture fallback)
+	function viewName(id: string): string {
+		return metaName('views', id, viewNames[id] ?? id);
+	}
+	function containerRuleName(id: string): string {
+		return metaName('container_rule_types', id, containerRuleMeta[id]?.name ?? id);
+	}
+	function containerRuleDescription(id: string): string | undefined {
+		const raw = containerRuleMeta[id]?.description;
+		return raw ? metaDescription('container_rule_types', id, raw) : undefined;
+	}
+	function elementRuleName(id: string): string {
+		return metaName('element_rule_types', id, elementRuleMeta[id]?.name ?? id);
+	}
+	function elementRuleDescription(id: string): string | undefined {
+		const raw = elementRuleMeta[id]?.description;
+		return raw ? metaDescription('element_rule_types', id, raw) : undefined;
+	}
+
 	/** Whether an element rule applies to the current view */
 	function isElementRuleApplicable(item: ElementGraphRule): boolean {
 		const ruleId = getElementRuleType(item.rule);
@@ -155,7 +175,7 @@
 		const ruleId = getElementRuleType(item.rule);
 		const meta = elementRuleMeta[ruleId];
 		const applicableViews = meta?.metadata?.views ?? [];
-		const names = applicableViews.map((p: string) => viewNames[p] ?? p);
+		const names = applicableViews.map((p: string) => viewName(p));
 		return topology_elementRuleNotApplicable({ perspectives: names.join(', ') });
 	}
 
@@ -207,16 +227,15 @@
 			)
 			.map((m) => ({
 				value: m.id,
-				label: m.name ?? m.id,
-				description: m.description ?? undefined
+				label: containerRuleName(m.id),
+				description: containerRuleDescription(m.id)
 			}));
 	});
 
 	const containerRuleDisplayComponent = {
 		getId: (item: ContainerGraphRule) => item.id,
 		getLabel: (item: ContainerGraphRule) =>
-			containerRuleMeta[getContainerRuleDiscriminant(item.rule)]?.name ??
-			getContainerRuleDiscriminant(item.rule)
+			containerRuleName(getContainerRuleDiscriminant(item.rule))
 	};
 
 	let currentView = $derived($activeView);
@@ -251,7 +270,7 @@
 
 	let byTagRuleDescription = $derived(
 		topology_byTagRuleDescription({
-			view: viewMeta?.name ?? currentView,
+			view: viewName(currentView),
 			entities: formatEntityLabel(viewTaggableEntities)
 		})
 	);
@@ -371,8 +390,8 @@
 
 			return {
 				value: m.id,
-				label: m.name ?? m.id,
-				description: m.description ?? undefined,
+				label: elementRuleName(m.id),
+				description: elementRuleDescription(m.id),
 				disabled,
 				disabledReason
 			};
@@ -387,7 +406,7 @@
 	function getElementRuleLabel(item: ElementGraphRule): string {
 		const ruleType = getElementRuleType(item.rule);
 		const title = getElementRuleTitle(item.rule);
-		const typeName = elementRuleMeta[ruleType]?.name ?? '';
+		const typeName = elementRuleMeta[ruleType]?.name ? elementRuleName(ruleType) : '';
 		return title ?? typeName;
 	}
 
@@ -559,7 +578,9 @@
 <!-- Container grouping section -->
 <div class="mb-4">
 	<ListManager
-		label={topology_containerGroupingPerspective({ perspective: viewMeta?.name ?? '' })}
+		label={topology_containerGroupingPerspective({
+			perspective: viewMeta ? viewName(currentView) : ''
+		})}
 		placeholder={topology_addContainerRule()}
 		items={containerRules}
 		options={containerAddOptions}
@@ -581,10 +602,8 @@
 		{/snippet}
 		{#snippet itemSnippet({ item })}
 			<GroupingRuleItem
-				label={containerRuleMeta[getContainerRuleDiscriminant(item.rule)]?.name ??
-					getContainerRuleDiscriminant(item.rule)}
-				description={containerRuleMeta[getContainerRuleDiscriminant(item.rule)]?.description ??
-					undefined}
+				label={containerRuleName(getContainerRuleDiscriminant(item.rule))}
+				description={containerRuleDescription(getContainerRuleDiscriminant(item.rule))}
 				locked={!canReorderContainerRule(item) && !canRemoveContainerRule(item)}
 			/>
 		{/snippet}
@@ -650,7 +669,7 @@
 				? topology_infraRuleDescription()
 				: getElementRuleType(item.rule) === 'ByTag'
 					? byTagRuleDescription
-					: (elementRuleMeta[getElementRuleType(item.rule)]?.description ?? undefined)}
+					: elementRuleDescription(getElementRuleType(item.rule))}
 			disabled={!isElementRuleApplicable(item)}
 			locked={isElementRuleLocked(item)}
 			disabledTooltip={getElementRuleDisabledTooltip(item)}

@@ -11,6 +11,11 @@
 		executeStepAction,
 		trackChecklistStepClicked
 	} from '$lib/shared/onboarding/checklist';
+	import {
+		gettingStarted_complete,
+		gettingStarted_havingTrouble,
+		gettingStarted_title
+	} from '$lib/paraglide/messages';
 	import DaemonTroubleshootingModal from './DaemonTroubleshootingModal.svelte';
 
 	type OnboardingOperation = components['schemas']['OnboardingOperationDiscriminants'];
@@ -70,7 +75,10 @@
 			<button
 				onclick={onExpandSidebar}
 				class="text-tertiary hover:text-secondary flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 text-[10px] font-bold transition-colors hover:bg-gray-100 dark:border-gray-700 dark:hover:bg-gray-800"
-				title="Getting Started: {completedCount} of {CHECKLIST_STEPS.length} complete"
+				title="{gettingStarted_title()}: {gettingStarted_complete({
+					completed: completedCount,
+					total: CHECKLIST_STEPS.length
+				})}"
 			>
 				{completedCount}/{CHECKLIST_STEPS.length}
 			</button>
@@ -82,7 +90,7 @@
 				onclick={toggleExpanded}
 				class="text-secondary hover:text-primary flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-xs font-semibold transition-colors hover:bg-gray-100 dark:hover:bg-gray-800"
 			>
-				<span class="whitespace-nowrap">Getting Started</span>
+				<span class="whitespace-nowrap">{gettingStarted_title()}</span>
 				<div class="flex items-center gap-2">
 					<div class="flex gap-0.5">
 						{#each CHECKLIST_STEPS as step (step.id)}
@@ -119,7 +127,7 @@
 										executeStepAction(step, onNavigate);
 									}}
 								>
-									{step.label}
+									{step.label()}
 								</button>
 								<button
 									class="ml-auto flex-shrink-0 rounded text-[10px] font-medium text-yellow-500 hover:underline"
@@ -127,7 +135,7 @@
 										showTroubleshootingModal = true;
 									}}
 								>
-									Having trouble?
+									{gettingStarted_havingTrouble()}
 								</button>
 							</div>
 						{:else}
@@ -159,7 +167,7 @@
 									class:text-primary={!complete && enabled}
 									class:text-disabled={!complete && !enabled}
 								>
-									{step.label}
+									{step.label()}
 								</span>
 							</button>
 						{/if}

@@ -1009,16 +1009,6 @@ async fn retry_connection(
 // Reachability Testing
 // ============================================================================
 
-/// Check if a URL is private/loopback (SSRF protection)
-fn is_private_ip(addr: &std::net::IpAddr) -> bool {
-    match addr {
-        std::net::IpAddr::V4(ip) => {
-            ip.is_loopback() || ip.is_private() || ip.is_link_local() || ip.is_unspecified()
-        }
-        std::net::IpAddr::V6(ip) => ip.is_loopback() || ip.is_unspecified(),
-    }
-}
-
 /// Test reachability of a daemon URL
 ///
 /// Performs a TCP connection test and optionally an HTTP health check
@@ -1075,7 +1065,7 @@ async fn test_reachability(
 
     if is_cloud {
         for addr in &addrs {
-            if is_private_ip(&addr.ip()) {
+            if crate::server::daemons::ssrf::is_private_ip(&addr.ip()) {
                 return Err(ApiError::bad_request(
                     "Cannot test reachability to private/loopback addresses",
                 ));
@@ -1132,9 +1122,14 @@ async fn test_reachability(
     // Optional health check
     let health = if request.check_health {
         let health_url = format!("{}/api/health", request.url.trim_end_matches('/'));
+        // Pin the request to the already-validated resolved address so reqwest
+        // does not independently re-resolve the hostname — this closes the
+        // DNS-rebinding TOCTOU where a name resolves to a public IP during the
+        // SSRF check above and to an internal IP for this request.
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(5))
             .redirect(reqwest::redirect::Policy::none())
+            .resolve(host, addrs[0])
             .build()
             .unwrap_or_default();
 

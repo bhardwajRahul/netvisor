@@ -17,6 +17,11 @@ impl DaemonService {
         let url = format!("{}{}", daemon.base.url, path);
         let daemon_id = daemon.id;
 
+        // SSRF guard: in cloud mode, refuse to call a daemon URL that resolves
+        // to an internal address (no-op for self-hosted LAN deployments).
+        crate::server::daemons::ssrf::guard_daemon_url(&daemon.base.url, self.deployment_type)
+            .await?;
+
         (|| async {
             let response = self
                 .client
@@ -81,6 +86,12 @@ impl DaemonService {
         let daemon_id = daemon.id;
         let body_json = serde_json::to_value(body)?;
         let api_key_owned = api_key.map(|s| s.to_owned());
+
+        // SSRF guard: in cloud mode, refuse to POST (including credential-bearing
+        // discovery payloads) to a daemon URL that resolves to an internal
+        // address (no-op for self-hosted LAN deployments).
+        crate::server::daemons::ssrf::guard_daemon_url(&daemon.base.url, self.deployment_type)
+            .await?;
 
         (|| async {
             let mut request = self.client.post(&url).json(&body_json);

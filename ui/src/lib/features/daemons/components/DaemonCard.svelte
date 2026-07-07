@@ -5,7 +5,7 @@
 	import { entities, subnetTypes } from '$lib/shared/stores/metadata';
 	import { formatTimestamp } from '$lib/shared/utils/formatting';
 	import { ArrowBigUp, RefreshCw, Trash2 } from 'lucide-svelte';
-	import { common_delete } from '$lib/paraglide/messages';
+	import { common_delete, common_tags } from '$lib/paraglide/messages';
 	import { getDaemonStatusTag } from '$lib/features/daemons/utils';
 	import { useNetworksQuery } from '$lib/features/networks/queries';
 	import { useHostsQuery } from '$lib/features/hosts/queries';
@@ -227,7 +227,7 @@
 
 {#snippet tagsSnippet()}
 	<div class="flex items-center gap-2">
-		<span class="text-secondary text-sm">Tags:</span>
+		<span class="text-secondary text-sm">{common_tags()}:</span>
 		<TagPickerInline selectedTagIds={daemon.tags} entityId={daemon.id} entityType="Daemon" />
 	</div>
 {/snippet}

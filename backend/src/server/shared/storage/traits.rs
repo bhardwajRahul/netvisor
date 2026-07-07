@@ -220,6 +220,7 @@ pub enum SqlValue {
     String(String),
     OptionalString(Option<String>),
     I32(i32),
+    I64(i64),
     OptionalI64(Option<i64>),
     U16(u16),
     Bool(bool),
@@ -526,6 +527,7 @@ impl SqlValue {
             | SqlValueDiscriminants::OptionalStringArray
             | SqlValueDiscriminants::OptionalFdbMacs => String::contribute(out),
             SqlValueDiscriminants::I32 => i32::contribute(out),
+            SqlValueDiscriminants::I64 => i64::contribute(out),
             SqlValueDiscriminants::OptionalI64 => i64::contribute(out),
             SqlValueDiscriminants::U16 | SqlValueDiscriminants::OptionVecU16 => {
                 u16::contribute(out)

@@ -27,6 +27,8 @@ pub enum BillingPlan {
     Enterprise(PlanConfig),
     Demo(PlanConfig),
     CommercialSelfHosted(PlanConfig),
+    SelfHostedStandard(PlanConfig),
+    SelfHostedPlus(PlanConfig),
 }
 
 impl PartialOrd for BillingPlanDiscriminants {
@@ -42,11 +44,26 @@ impl PartialOrd for BillingPlanDiscriminants {
                 _ => None,
             }
         }
-        match (cloud_tier(self), cloud_tier(other)) {
-            (Some(a), Some(b)) => Some(a.cmp(&b)),
-            _ if self == other => Some(std::cmp::Ordering::Equal),
-            _ => None,
+        // Self-hosted commercial tiers form a second ordered ladder, separate
+        // from and incomparable with the cloud ladder.
+        fn self_hosted_tier(d: &BillingPlanDiscriminants) -> Option<u8> {
+            match d {
+                BillingPlanDiscriminants::Community => Some(0),
+                BillingPlanDiscriminants::SelfHostedStandard => Some(1),
+                BillingPlanDiscriminants::SelfHostedPlus => Some(2),
+                _ => None,
+            }
         }
+        if let (Some(a), Some(b)) = (cloud_tier(self), cloud_tier(other)) {
+            return Some(a.cmp(&b));
+        }
+        if let (Some(a), Some(b)) = (self_hosted_tier(self), self_hosted_tier(other)) {
+            return Some(a.cmp(&b));
+        }
+        if self == other {
+            return Some(std::cmp::Ordering::Equal);
+        }
+        None
     }
 }
 
@@ -63,19 +80,15 @@ impl Hash for BillingPlan {
 }
 
 impl Default for BillingPlan {
+    /// The conservative fallback plan. Self-hosted org provisioning uses the
+    /// license-resolved plan (`AuthService::default_self_hosted_plan`), not this;
+    /// `default()` only backstops `Option<BillingPlan>::unwrap_or_default()` for
+    /// rows with no plan set, where Community (the least-privileged self-hosted
+    /// plan) is the safe choice.
     fn default() -> Self {
-        #[cfg(feature = "commercial")]
-        {
-            use crate::server::billing::plans::get_commercial_self_hosted_plan;
+        use crate::server::billing::plans::get_community_plan;
 
-            get_commercial_self_hosted_plan()
-        }
-        #[cfg(not(feature = "commercial"))]
-        {
-            use crate::server::billing::plans::get_community_plan;
-
-            get_community_plan()
-        }
+        get_community_plan()
     }
 }
 
@@ -134,14 +147,36 @@ pub struct PlanConfig {
     pub included_seats: Option<u64>,
     pub included_networks: Option<u64>,
     pub included_hosts: Option<u64>,
+    /// Organizations allowed on one self-hosted server instance. `None` =
+    /// unlimited. Only enforced for self-hosted deployments (see
+    /// `provision_user`); cloud stays multi-tenant regardless. Defaulted so
+    /// existing stored plan JSON deserializes unchanged.
+    #[serde(default)]
+    pub included_orgs: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Display, Copy, PartialEq, Eq, Default, Hash)]
 pub enum Hosting {
     SelfHosted,
-    Managed,
+    /// Hosting-agnostic: available managed or self-hosted (Enterprise).
+    Any,
     #[default]
     Cloud,
+}
+
+/// How a plan is acquired. Surfaced in plan metadata so the marketing site and
+/// app choose the right call to action. `Contact` flips to `Stripe` for the
+/// self-hosted paid tiers once the license-automation flow ships.
+#[derive(Debug, Clone, Serialize, Deserialize, Display, Copy, PartialEq, Eq, Default, Hash)]
+#[serde(rename_all = "lowercase")]
+pub enum PurchaseFlow {
+    /// Self-serve Stripe checkout.
+    Stripe,
+    /// Contact sales / founder-issued license.
+    Contact,
+    /// No purchase (free / open source).
+    #[default]
+    None,
 }
 
 #[derive(
@@ -178,6 +213,9 @@ pub struct BillingPlanFeatures {
     pub api_access: bool,
     pub onboarding_call: bool,
     pub custom_sso: bool,
+    pub saml: bool,
+    /// License validated fully offline (no phone-home). Deployable air-gapped.
+    pub air_gapped_deployment: bool,
     pub managed_deployment: bool,
     pub whitelabeling: bool,
     pub live_chat_support: bool,
@@ -214,6 +252,8 @@ impl BillingPlan {
             BillingPlan::Enterprise(plan_config) => *plan_config,
             BillingPlan::Demo(plan_config) => *plan_config,
             BillingPlan::CommercialSelfHosted(plan_config) => *plan_config,
+            BillingPlan::SelfHostedStandard(plan_config) => *plan_config,
+            BillingPlan::SelfHostedPlus(plan_config) => *plan_config,
         }
     }
 
@@ -228,6 +268,8 @@ impl BillingPlan {
             BillingPlan::Enterprise(plan_config) => *plan_config = config,
             BillingPlan::Demo(plan_config) => *plan_config = config,
             BillingPlan::CommercialSelfHosted(plan_config) => *plan_config = config,
+            BillingPlan::SelfHostedStandard(plan_config) => *plan_config = config,
+            BillingPlan::SelfHostedPlus(plan_config) => *plan_config = config,
         }
     }
 
@@ -239,6 +281,8 @@ impl BillingPlan {
                 | BillingPlan::Business(_)
                 | BillingPlan::Enterprise(_)
                 | BillingPlan::CommercialSelfHosted(_)
+                | BillingPlan::SelfHostedStandard(_)
+                | BillingPlan::SelfHostedPlus(_)
                 | BillingPlan::Demo(_)
         )
     }
@@ -256,7 +300,10 @@ impl BillingPlan {
     pub fn is_self_hosted(&self) -> bool {
         matches!(
             self,
-            BillingPlan::Community(_) | BillingPlan::CommercialSelfHosted(_)
+            BillingPlan::Community(_)
+                | BillingPlan::CommercialSelfHosted(_)
+                | BillingPlan::SelfHostedStandard(_)
+                | BillingPlan::SelfHostedPlus(_)
         )
     }
 
@@ -283,7 +330,9 @@ impl BillingPlan {
             BillingPlan::Free(_)
             | BillingPlan::Community(_)
             | BillingPlan::Demo(_)
-            | BillingPlan::CommercialSelfHosted(_) => false,
+            | BillingPlan::CommercialSelfHosted(_)
+            | BillingPlan::SelfHostedStandard(_)
+            | BillingPlan::SelfHostedPlus(_) => false,
         }
     }
 
@@ -312,13 +361,18 @@ impl BillingPlan {
         env_override.unwrap_or_else(|| self.features().snapshot_retention_days)
     }
 
+    /// Whether the plan supports having more than one member at all (a coarse
+    /// capability gate for the invite UI/endpoint). The actual seat cap is
+    /// enforced per-invite in the invites handler, so this only distinguishes
+    /// solo plans from team plans:
+    /// - unlimited seats (`None`) → yes
+    /// - a finite cap above one seat (e.g. Standard's 25) → yes
+    /// - can buy more seats (`seat_cents`) → yes
+    /// - a single-seat plan (Free/Community/Starter/Pro) → no
     pub fn can_invite_users(&self) -> bool {
-        // If there's an included amount, then there's a cap and seat_cents needs to be Some to buy more
-        if self.config().included_seats.is_some() {
-            self.config().seat_cents.is_some()
-        // If included is None, it's unlimited
-        } else {
-            true
+        match self.config().included_seats {
+            None => true,
+            Some(included_seats) => included_seats > 1 || self.config().seat_cents.is_some(),
         }
     }
 
@@ -326,28 +380,61 @@ impl BillingPlan {
         match self {
             BillingPlan::Community(_) => Hosting::SelfHosted,
             BillingPlan::CommercialSelfHosted(_) => Hosting::SelfHosted,
-            BillingPlan::Enterprise(_) => Hosting::Managed,
+            BillingPlan::SelfHostedStandard(_) => Hosting::SelfHosted,
+            BillingPlan::SelfHostedPlus(_) => Hosting::SelfHosted,
+            BillingPlan::Enterprise(_) => Hosting::Any,
             _ => Hosting::Cloud, // Free, Starter, Pro, Team, Business, Demo
         }
     }
 
-    /// Returns the next-lower-tier cloud plan, if this is a cloud plan.
-    /// Returns None for Free (no previous) and self-hosted/demo plans.
+    /// How a prospect acquires this plan, so the website/app can pick a CTA
+    /// from an explicit signal rather than inferring from hosting + commercial.
+    pub fn purchase_flow(&self) -> PurchaseFlow {
+        match self {
+            BillingPlan::Starter(_)
+            | BillingPlan::Pro(_)
+            | BillingPlan::Team(_)
+            | BillingPlan::Business(_) => PurchaseFlow::Stripe,
+            BillingPlan::Enterprise(_)
+            | BillingPlan::CommercialSelfHosted(_)
+            | BillingPlan::SelfHostedStandard(_)
+            | BillingPlan::SelfHostedPlus(_) => PurchaseFlow::Contact,
+            BillingPlan::Community(_) | BillingPlan::Free(_) | BillingPlan::Demo(_) => {
+                PurchaseFlow::None
+            }
+        }
+    }
+
+    /// Returns the next-lower-tier plan within this plan's ladder.
+    /// Two independent ladders: the cloud tiers (Free → … → Enterprise) and
+    /// the self-hosted commercial tiers (Community → Standard → Plus). Returns
+    /// None for the bottom of a ladder and for plans in no ladder (Team, Demo).
     pub fn previous_tier(&self) -> Option<BillingPlanDiscriminants> {
-        let cloud_tiers: Vec<BillingPlanDiscriminants> = vec![
-            BillingPlanDiscriminants::Free,
-            BillingPlanDiscriminants::Starter,
-            BillingPlanDiscriminants::Pro,
-            BillingPlanDiscriminants::Business,
-            BillingPlanDiscriminants::Enterprise,
+        let ladders: [&[BillingPlanDiscriminants]; 2] = [
+            &[
+                BillingPlanDiscriminants::Free,
+                BillingPlanDiscriminants::Starter,
+                BillingPlanDiscriminants::Pro,
+                BillingPlanDiscriminants::Business,
+                BillingPlanDiscriminants::Enterprise,
+            ],
+            &[
+                BillingPlanDiscriminants::Community,
+                BillingPlanDiscriminants::SelfHostedStandard,
+                BillingPlanDiscriminants::SelfHostedPlus,
+            ],
         ];
 
         let my_disc = self.discriminant();
-        let idx = cloud_tiers.iter().position(|d| *d == my_disc)?;
-        if idx == 0 {
-            return None;
+        for ladder in ladders {
+            if let Some(idx) = ladder.iter().position(|d| *d == my_disc) {
+                if idx == 0 {
+                    return None;
+                }
+                return Some(ladder[idx - 1]);
+            }
         }
-        Some(cloud_tiers[idx - 1])
+        None
     }
 
     /// Returns feature IDs added by this plan over its previous tier.
@@ -428,6 +515,8 @@ impl BillingPlan {
             BillingPlanDiscriminants::CommercialSelfHosted => {
                 Some(get_commercial_self_hosted_plan())
             }
+            BillingPlanDiscriminants::SelfHostedStandard => Some(get_self_hosted_standard_plan()),
+            BillingPlanDiscriminants::SelfHostedPlus => Some(get_self_hosted_plus_plan()),
             // For purchasable plans, find them from the default list
             _ => get_purchasable_plans()
                 .into_iter()
@@ -482,6 +571,8 @@ impl BillingPlan {
     pub fn features(&self) -> BillingPlanFeatures {
         match self {
             BillingPlan::Community { .. } => BillingPlanFeatures {
+                saml: false,
+                air_gapped_deployment: true,
                 share_views: true,
                 onboarding_call: false,
                 webhooks: false,
@@ -508,6 +599,8 @@ impl BillingPlan {
                 snapshot_retention_days: 90,
             },
             BillingPlan::Free { .. } => BillingPlanFeatures {
+                saml: false,
+                air_gapped_deployment: false,
                 share_views: false,
                 onboarding_call: false,
                 webhooks: false,
@@ -534,6 +627,8 @@ impl BillingPlan {
                 snapshot_retention_days: 0,
             },
             BillingPlan::Starter { .. } => BillingPlanFeatures {
+                saml: false,
+                air_gapped_deployment: false,
                 share_views: true,
                 onboarding_call: false,
                 webhooks: false,
@@ -560,6 +655,8 @@ impl BillingPlan {
                 snapshot_retention_days: 7,
             },
             BillingPlan::Pro { .. } => BillingPlanFeatures {
+                saml: false,
+                air_gapped_deployment: false,
                 share_views: true,
                 onboarding_call: false,
                 webhooks: false,
@@ -586,6 +683,8 @@ impl BillingPlan {
                 snapshot_retention_days: 30,
             },
             BillingPlan::Team { .. } => BillingPlanFeatures {
+                saml: false,
+                air_gapped_deployment: false,
                 share_views: true,
                 onboarding_call: true,
                 webhooks: false,
@@ -612,6 +711,8 @@ impl BillingPlan {
                 snapshot_retention_days: 90,
             },
             BillingPlan::Business { .. } => BillingPlanFeatures {
+                saml: false,
+                air_gapped_deployment: false,
                 share_views: true,
                 onboarding_call: true,
                 webhooks: true,
@@ -638,6 +739,8 @@ impl BillingPlan {
                 snapshot_retention_days: 90,
             },
             BillingPlan::Enterprise { .. } => BillingPlanFeatures {
+                saml: true,
+                air_gapped_deployment: true,
                 share_views: true,
                 onboarding_call: true,
                 webhooks: true,
@@ -664,6 +767,8 @@ impl BillingPlan {
                 snapshot_retention_days: 90,
             },
             BillingPlan::Demo { .. } => BillingPlanFeatures {
+                saml: true,
+                air_gapped_deployment: true,
                 share_views: true,
                 onboarding_call: true,
                 webhooks: true,
@@ -690,6 +795,64 @@ impl BillingPlan {
                 snapshot_retention_days: 90,
             },
             BillingPlan::CommercialSelfHosted { .. } => BillingPlanFeatures {
+                saml: true,
+                air_gapped_deployment: true,
+                share_views: true,
+                onboarding_call: true,
+                webhooks: true,
+                audit_logs: true,
+                remove_created_with: true,
+                api_access: true,
+                custom_sso: true,
+                managed_deployment: false,
+                whitelabeling: false,
+                live_chat_support: false,
+                embeds: true,
+                email_support: true,
+                priority_support: true,
+                network_mapping: true,
+                png_export: true,
+                svg_export: true,
+                mermaid_export: true,
+                confluence_export: true,
+                pdf_export: true,
+                html_export: true,
+                scheduled_discovery: true,
+                discovery_integrations: true,
+                csv_export: true,
+                snapshot_retention_days: 90,
+            },
+            BillingPlan::SelfHostedStandard { .. } => BillingPlanFeatures {
+                saml: false,
+                air_gapped_deployment: false,
+                share_views: true,
+                onboarding_call: false,
+                webhooks: true,
+                audit_logs: true,
+                remove_created_with: true,
+                api_access: true,
+                custom_sso: false,
+                managed_deployment: false,
+                whitelabeling: false,
+                live_chat_support: false,
+                embeds: true,
+                email_support: true,
+                priority_support: false,
+                network_mapping: true,
+                png_export: true,
+                svg_export: true,
+                mermaid_export: true,
+                confluence_export: true,
+                pdf_export: true,
+                html_export: true,
+                scheduled_discovery: true,
+                discovery_integrations: true,
+                csv_export: true,
+                snapshot_retention_days: 90,
+            },
+            BillingPlan::SelfHostedPlus { .. } => BillingPlanFeatures {
+                saml: true,
+                air_gapped_deployment: true,
                 share_views: true,
                 onboarding_call: true,
                 webhooks: true,
@@ -731,6 +894,8 @@ impl Into<Vec<Feature>> for BillingPlanFeatures {
             audit_logs,
             remove_created_with,
             custom_sso,
+            saml,
+            air_gapped_deployment,
             managed_deployment,
             whitelabeling,
             api_access,
@@ -757,6 +922,14 @@ impl Into<Vec<Feature>> for BillingPlanFeatures {
 
         if custom_sso {
             features.push(Feature::CustomSso)
+        }
+
+        if saml {
+            features.push(Feature::Saml)
+        }
+
+        if air_gapped_deployment {
+            features.push(Feature::AirGappedDeployment)
         }
 
         if api_access {
@@ -869,6 +1042,8 @@ impl EntityMetadataProvider for BillingPlan {
             BillingPlan::Enterprise { .. } => Icon::Building,
             BillingPlan::Demo { .. } => Icon::TestTube,
             BillingPlan::CommercialSelfHosted { .. } => Icon::ServerCog,
+            BillingPlan::SelfHostedStandard { .. } => Icon::Server,
+            BillingPlan::SelfHostedPlus { .. } => Icon::ServerCog,
         }
     }
 
@@ -883,6 +1058,8 @@ impl EntityMetadataProvider for BillingPlan {
             BillingPlan::Enterprise { .. } => Color::Teal,
             BillingPlan::Demo { .. } => Color::Purple,
             BillingPlan::CommercialSelfHosted { .. } => Color::Gray,
+            BillingPlan::SelfHostedStandard { .. } => Color::Blue,
+            BillingPlan::SelfHostedPlus { .. } => Color::Indigo,
         }
     }
 }
@@ -899,6 +1076,8 @@ impl TypeMetadataProvider for BillingPlan {
             BillingPlan::Enterprise { .. } => "Enterprise",
             BillingPlan::Demo { .. } => "Demo",
             BillingPlan::CommercialSelfHosted { .. } => "Commercial Edition",
+            BillingPlan::SelfHostedStandard { .. } => "Self-Hosted Standard",
+            BillingPlan::SelfHostedPlus { .. } => "Self-Hosted Plus",
         }
     }
 
@@ -918,6 +1097,12 @@ impl TypeMetadataProvider for BillingPlan {
             BillingPlan::Demo { .. } => "Demo mode",
             BillingPlan::CommercialSelfHosted { .. } => {
                 "Commercial edition for businesses with on-premise deployments"
+            }
+            BillingPlan::SelfHostedStandard { .. } => {
+                "Commercial self-hosted license for a single organization"
+            }
+            BillingPlan::SelfHostedPlus { .. } => {
+                "Multi-organization self-hosted license with offline keys and SAML"
             }
         }
     }
@@ -940,6 +1125,7 @@ impl TypeMetadataProvider for BillingPlan {
             "included_seats": config.included_seats,
             "included_networks": config.included_networks,
             "included_hosts": config.included_hosts,
+            "included_orgs": config.included_orgs,
             // Feature flags and metadata
             "features": self.features(),
             "is_commercial": self.is_commercial(),
@@ -949,6 +1135,7 @@ impl TypeMetadataProvider for BillingPlan {
             "is_enterprise": self.is_enterprise(),
             "hosting": self.hosting(),
             "custom_price": self.custom_price(),
+            "purchase_flow": self.purchase_flow(),
             // Tier relationship
             "incremental_features": self.incremental_features(),
             "previous_tier": previous_tier

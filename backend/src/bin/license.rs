@@ -2,7 +2,9 @@ use chrono::{Duration, Utc};
 use clap::{Parser, Subcommand};
 use jsonwebtoken::{Algorithm, Header};
 use scanopy::server::license::{
-    keys::encoding_key_from_env, service::LicenseService, types::LicenseClaims,
+    crypto::encoding_key_from_env,
+    key::LicenseKey,
+    types::{LicenseClaims, LicensePlan},
 };
 
 /// Silent grace window added past the user-visible expiry. Hard-coded —
@@ -24,6 +26,10 @@ enum Commands {
         /// License duration in days (default: 365)
         #[arg(long, default_value = "365")]
         days: u64,
+        /// Licensed self-hosted tier. Omit for a legacy/custom key, which
+        /// resolves to the unlimited Commercial (self-hosted) plan.
+        #[arg(long, value_enum)]
+        plan: Option<LicensePlan>,
     },
     /// Verify an existing license key
     Verify {
@@ -36,7 +42,7 @@ fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Create { days } => {
+        Commands::Create { days, plan } => {
             let now = Utc::now();
             // `intended_exp` is the user-visible expiry. `exp` is the hard
             // enforcement boundary, 7 days later — a silent grace window.
@@ -50,6 +56,7 @@ fn main() -> anyhow::Result<()> {
                 exp: exp.timestamp(),
                 intended_exp: intended_exp.timestamp(),
                 org_id: None,
+                plan,
             };
 
             let header = Header::new(Algorithm::EdDSA);
@@ -69,7 +76,7 @@ fn main() -> anyhow::Result<()> {
             Ok(())
         }
         Commands::Verify { key } => {
-            let status = LicenseService::validate_key(&key);
+            let status = LicenseKey::new(key).validate();
 
             match &status {
                 scanopy::server::license::types::LicenseStatus::Valid(claims) => {
@@ -90,6 +97,10 @@ fn main() -> anyhow::Result<()> {
                     if let Some(org_id) = &claims.org_id {
                         println!("Org ID:         {}", org_id);
                     }
+                    match &claims.plan {
+                        Some(plan) => println!("Plan:           {:?}", plan),
+                        None => println!("Plan:           Commercial (legacy/custom)"),
+                    }
                 }
                 scanopy::server::license::types::LicenseStatus::Expired(claims) => {
                     let exp = chrono::DateTime::from_timestamp(claims.exp, 0)
@@ -102,9 +113,6 @@ fn main() -> anyhow::Result<()> {
                 scanopy::server::license::types::LicenseStatus::Invalid(reason) => {
                     println!("Status:  INVALID");
                     println!("Reason:  {}", reason);
-                }
-                scanopy::server::license::types::LicenseStatus::NotRequired => {
-                    unreachable!("validate_key never returns NotRequired");
                 }
             }
 

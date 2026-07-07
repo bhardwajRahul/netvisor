@@ -3,6 +3,7 @@
 	import { onMount } from 'svelte';
 	import type { IconComponent } from '$lib/shared/utils/types';
 	import { trackEvent } from '$lib/shared/utils/analytics';
+	import { common_dismiss } from '$lib/paraglide/messages';
 
 	let {
 		id,
@@ -71,7 +72,7 @@
 				<button
 					onclick={dismiss}
 					class="text-tertiary shrink-0 rounded p-0.5 transition-colors hover:bg-white/10"
-					aria-label="Dismiss"
+					aria-label={common_dismiss()}
 				>
 					<X class="h-4 w-4" />
 				</button>

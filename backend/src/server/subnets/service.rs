@@ -66,14 +66,6 @@ impl CrudService<Subnet> for SubnetService {
             subnet
         };
 
-        tracing::debug!(
-            subnet_id = %subnet.id,
-            subnet_name = %subnet.base.name,
-            subnet_cidr = %subnet.base.cidr,
-            network_id = %subnet.base.network_id,
-            "Creating subnet"
-        );
-
         let subnet_from_storage = match all_subnets.iter().find(|existing_subnet| {
             // CIDR must match first
             if !subnet.eq(existing_subnet) {

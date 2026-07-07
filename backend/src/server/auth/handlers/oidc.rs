@@ -428,8 +428,12 @@ async fn handle_login_flow(
                 )));
             }
 
-            // Save user_id to session
-            if let Err(e) = session.insert("user_id", user.id).await {
+            // Save user_id + session epoch to session
+            if let Err(e) = session
+                .insert("session_epoch", user.base.session_epoch)
+                .await
+                .and(session.insert("user_id", user.id).await)
+            {
                 tracing::error!("Failed to save session: {}", e);
                 return Err(Redirect::to(&format!(
                     "{}?error={}",
@@ -558,8 +562,12 @@ async fn handle_register_flow(
                 )));
             }
 
-            // Save user_id to session
-            if let Err(e) = session.insert("user_id", user.id).await {
+            // Save user_id + session epoch to session
+            if let Err(e) = session
+                .insert("session_epoch", user.base.session_epoch)
+                .await
+                .and(session.insert("user_id", user.id).await)
+            {
                 tracing::error!("Failed to save session: {}", e);
                 return Err(Redirect::to(&format!(
                     "{}?error={}",

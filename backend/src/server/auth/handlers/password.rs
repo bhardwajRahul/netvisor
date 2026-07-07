@@ -1,5 +1,6 @@
 //! Password update, email-change request, and forgot/reset flows.
 use super::*;
+use validator::Validate;
 
 #[utoipa::path(
     post,
@@ -19,6 +20,12 @@ pub(crate) async fn update_password_auth(
     auth: Authorized<IsUser>,
     Json(request): Json<UpdatePasswordRequest>,
 ) -> ApiResult<Json<ApiResponse<User>>> {
+    // Enforce the password policy on change (length + complexity), matching
+    // registration — the service takes raw fields, so validate here.
+    request
+        .validate()
+        .map_err(|e| ApiError::bad_request(&format!("Validation failed: {}", e)))?;
+
     let user_id: Uuid = session
         .get("user_id")
         .await
@@ -39,6 +46,13 @@ pub(crate) async fn update_password_auth(
             auth.into_entity(),
         )
         .await?;
+
+    // Keep this session valid after the epoch bump that update_password applied
+    // to log out the user's other sessions.
+    session
+        .insert("session_epoch", user.base.session_epoch)
+        .await
+        .map_err(|e| ApiError::internal_error(&format!("Failed to save session: {}", e)))?;
 
     Ok(Json(ApiResponse::success(user)))
 }
@@ -122,6 +136,12 @@ pub(crate) async fn reset_password(
     session: Session,
     Json(request): Json<ResetPasswordRequest>,
 ) -> ApiResult<Json<ApiResponse<User>>> {
+    // Enforce the password policy on reset (length + complexity), matching
+    // registration — the service takes raw fields, so validate here.
+    request
+        .validate()
+        .map_err(|e| ApiError::bad_request(&format!("Validation failed: {}", e)))?;
+
     let user_agent = user_agent.map(|u| u.to_string());
 
     let user = state
@@ -136,6 +156,12 @@ pub(crate) async fn reset_password(
         .await
         .map_err(|e| ApiError::internal_error(&format!("Failed to cycle session: {}", e)))?;
 
+    // Store the post-reset epoch so this session survives the epoch bump that
+    // complete_password_reset applied to invalidate all other sessions.
+    session
+        .insert("session_epoch", user.base.session_epoch)
+        .await
+        .map_err(|e| ApiError::internal_error(&format!("Failed to save session: {}", e)))?;
     session
         .insert("user_id", user.id)
         .await

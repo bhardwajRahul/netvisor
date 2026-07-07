@@ -14,6 +14,7 @@
 	import cancelReasons from '$lib/data/cancel-reasons.json';
 	import saveOffers from '$lib/data/save-offers.json';
 	import { billingPlans } from '$lib/shared/stores/metadata';
+	import { metaName } from '$lib/i18n/metadata';
 	import { pushSuccess, pushWarning } from '$lib/shared/stores/feedback';
 	import { useConfigQuery } from '$lib/shared/stores/config-query';
 	import { waitForOrgUpdate } from '$lib/shared/billing/wait-for-org-update';
@@ -21,7 +22,7 @@
 	import type { AnyFieldApi } from '@tanstack/svelte-form';
 	import {
 		common_back,
-		settings_billing_cancelModal_title,
+		settings_billing_cancelSubscription,
 		settings_billing_cancelModal_reasonHeading,
 		settings_billing_cancelModal_reasonHelp,
 		settings_billing_cancelModal_commentLabel,
@@ -45,7 +46,10 @@
 		settings_billing_saveOffer_discountTitle,
 		settings_billing_saveOffer_discountSubtitleMonthly,
 		settings_billing_saveOffer_discountSubtitleYearly,
-		settings_billing_saveOffer_discountCta
+		settings_billing_saveOffer_discountCta,
+		billing_discountApplied,
+		billing_requestAccepted,
+		billing_subscriptionPausedUntil
 	} from '$lib/paraglide/messages';
 
 	type CancelReason = components['schemas']['CancelReason'];
@@ -145,7 +149,7 @@
 		{ value: '', label: '—', disabled: true },
 		...cancelReasons.map((r) => ({
 			value: r.id,
-			label: r.name ?? r.id
+			label: metaName('cancel_reasons', r.id, r.name ?? r.id)
 		}))
 	]);
 
@@ -256,9 +260,9 @@
 			await pauseMutation.mutateAsync(selectedPauseDuration);
 			const flipped = await waitForOrgUpdate((o) => o.plan_status === 'paused');
 			if (flipped) {
-				pushSuccess(`Subscription paused until ${fmtDate(pauseResumesAt)}.`);
+				pushSuccess(billing_subscriptionPausedUntil({ date: fmtDate(pauseResumesAt) }));
 			} else {
-				pushWarning('Pause request accepted. It may take a moment to reflect across your account.');
+				pushWarning(billing_requestAccepted());
 			}
 			onSubscriptionChanged?.();
 			handleClose();
@@ -272,11 +276,9 @@
 			await discountMutation.mutateAsync();
 			const flipped = await waitForOrgUpdate((o) => o.last_discount_at != null);
 			if (flipped) {
-				pushSuccess('Discount applied to your subscription.');
+				pushSuccess(billing_discountApplied());
 			} else {
-				pushWarning(
-					'Discount request accepted. It may take a moment to reflect across your account.'
-				);
+				pushWarning(billing_requestAccepted());
 			}
 			onSubscriptionChanged?.();
 			handleClose();
@@ -315,7 +317,12 @@
 	}
 </script>
 
-<GenericModal {isOpen} title={settings_billing_cancelModal_title()} size="md" onClose={handleClose}>
+<GenericModal
+	{isOpen}
+	title={settings_billing_cancelSubscription()}
+	size="md"
+	onClose={handleClose}
+>
 	<div class="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto p-6">
 		{#if currentStep === 1}
 			<div class="space-y-4">
@@ -357,7 +364,11 @@
 						<div class="card card-static space-y-3 p-4">
 							<div>
 								<h4 class="text-primary text-base font-semibold">
-									{offerMeta('pause')?.name ?? settings_billing_saveOffer_pauseTitle()}
+									{metaName(
+										'save_offers',
+										'pause',
+										offerMeta('pause')?.name ?? settings_billing_saveOffer_pauseTitle()
+									)}
 								</h4>
 								<p class="text-secondary mt-1 text-sm">
 									{settings_billing_saveOffer_pauseSubtitle()}
@@ -412,7 +423,11 @@
 						<div class="card card-static space-y-3 p-4">
 							<div>
 								<h4 class="text-primary text-base font-semibold">
-									{offerMeta('discount')?.name ?? settings_billing_saveOffer_discountTitle()}
+									{metaName(
+										'save_offers',
+										'discount',
+										offerMeta('discount')?.name ?? settings_billing_saveOffer_discountTitle()
+									)}
 								</h4>
 								<p class="text-secondary mt-1 text-sm">
 									{#if saveOfferCoupon?.billing_rate === 'Year'}

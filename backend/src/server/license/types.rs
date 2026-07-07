@@ -1,10 +1,22 @@
 use serde::{Deserialize, Serialize};
 
+/// The self-hosted commercial tier a license key entitles. Absent on legacy
+/// keys (issued before tiers existed) and on custom/grandfathered keys — those
+/// resolve to `CommercialSelfHosted` via `plan_for_license`. Enterprise deals
+/// stay off this enum: they are hand-issued and mapped separately.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, clap::ValueEnum)]
+#[serde(rename_all = "lowercase")]
+#[clap(rename_all = "lowercase")]
+pub enum LicensePlan {
+    Standard,
+    Plus,
+}
+
 /// JWT claims encoded in a Scanopy license key.
 ///
-/// The license key is purely an authorization gate — it proves the server
-/// is licensed to run. Plan entitlements come from the CommercialSelfHosted
-/// plan, not from the key itself.
+/// The license key is an authorization gate that also names the licensed tier
+/// (`plan`). Plan entitlements come from the resolved `BillingPlan`, not from
+/// arbitrary fields on the key.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LicenseClaims {
     /// Subject — always "scanopy-license"
@@ -24,13 +36,17 @@ pub struct LicenseClaims {
     /// Organization ID — populated when Cloud-provisioned (future)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub org_id: Option<String>,
+    /// Licensed self-hosted tier. Absent on legacy/custom keys, which resolve
+    /// to `CommercialSelfHosted`. See `plan_for_license`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan: Option<LicensePlan>,
 }
 
-/// Runtime license state, checked by middleware on every request.
+/// Runtime license state of a configured key, checked by middleware on every
+/// request. A deployment with no license key has no `LicenseService` at all
+/// (the community/cloud case), so there is no "not required" variant here.
 #[derive(Debug, Clone)]
 pub enum LicenseStatus {
-    /// License validation not required (community build)
-    NotRequired,
     /// Valid commercial license
     Valid(LicenseClaims),
     /// Valid signature but past expiry date
@@ -46,12 +62,11 @@ impl LicenseStatus {
     }
 
     /// Status string for the public config API response.
-    pub fn as_api_string(&self) -> Option<&'static str> {
+    pub fn as_api_string(&self) -> &'static str {
         match self {
-            LicenseStatus::NotRequired => None,
-            LicenseStatus::Valid(_) => Some("valid"),
-            LicenseStatus::Expired(_) => Some("expired"),
-            LicenseStatus::Invalid(_) => Some("invalid"),
+            LicenseStatus::Valid(_) => "valid",
+            LicenseStatus::Expired(_) => "expired",
+            LicenseStatus::Invalid(_) => "invalid",
         }
     }
 

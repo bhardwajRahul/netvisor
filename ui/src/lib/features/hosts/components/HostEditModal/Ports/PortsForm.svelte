@@ -14,13 +14,14 @@
 	import EntityMetadataSection from '$lib/shared/components/forms/EntityMetadataSection.svelte';
 	import {
 		common_cancel,
+		common_noEntitySelected,
+		common_port,
 		common_ports,
 		hosts_ports_customPort,
 		hosts_ports_deleteMessage,
 		hosts_ports_deleteTitle,
 		hosts_ports_emptyMessage,
 		hosts_ports_helpText,
-		hosts_ports_noSelected,
 		hosts_ports_placeholder,
 		hosts_ports_selectToConfig,
 		hosts_ports_wellKnownSubtitle,
@@ -211,7 +212,7 @@
 				/>
 			{:else}
 				<EntityConfigEmpty
-					title={hosts_ports_noSelected()}
+					title={common_noEntitySelected({ entity: common_port() })}
 					subtitle={hosts_ports_selectToConfig()}
 				/>
 			{/if}

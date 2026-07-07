@@ -8,6 +8,10 @@
 	import InspectorEdgeContainerRuntime from './edges/InspectorEdgeContainerRuntime.svelte';
 	import InspectorEdgePhysicalLink from './edges/InspectorEdgePhysicalLink.svelte';
 	import InspectorEdgeAggregated from './edges/InspectorEdgeAggregated.svelte';
+	import {
+		inspector_edgeDataUnavailable,
+		inspector_edgeDetailsUnavailable
+	} from '$lib/paraglide/messages';
 
 	let { edge }: { edge: Edge } = $props();
 
@@ -21,7 +25,7 @@
 <div class="w-full space-y-4">
 	{#if !edgeData}
 		<div class="space-y-3">
-			<p class="text-tertiary text-sm">Edge data not available</p>
+			<p class="text-tertiary text-sm">{inspector_edgeDataUnavailable()}</p>
 		</div>
 	{:else if edgeData.isAggregated && originalEdges}
 		<InspectorEdgeAggregated edges={originalEdges} />
@@ -46,7 +50,7 @@
 		/>
 	{:else}
 		<div class="space-y-3">
-			<p class="text-tertiary text-sm">Unable to display edge details</p>
+			<p class="text-tertiary text-sm">{inspector_edgeDetailsUnavailable()}</p>
 		</div>
 	{/if}
 </div>

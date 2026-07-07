@@ -19,6 +19,8 @@ pub enum Feature {
     RemoveCreatedWith,
     ApiAccess,
     CustomSso,
+    Saml,
+    AirGappedDeployment,
     ManagedDeployment,
     Whitelabeling,
     EmailSupport,
@@ -47,6 +49,8 @@ impl HasId for Feature {
             Feature::OnboardingCall => "onboarding_call",
             Feature::RemoveCreatedWith => "remove_created_with",
             Feature::CustomSso => "custom_sso",
+            Feature::Saml => "saml",
+            Feature::AirGappedDeployment => "air_gapped_deployment",
             Feature::ManagedDeployment => "managed_deployment",
             Feature::Whitelabeling => "whitelabeling",
             Feature::LiveChatSupport => "live_chat_support",
@@ -71,7 +75,7 @@ impl HasId for Feature {
 
 impl Feature {
     pub fn is_coming_soon(&self) -> bool {
-        matches!(self, Feature::Webhooks | Feature::AuditLogs)
+        matches!(self, Feature::Webhooks | Feature::AuditLogs | Feature::Saml)
     }
 
     /// Returns the ID of the lowest-tier cloud plan that includes this feature.
@@ -132,6 +136,8 @@ impl TypeMetadataProvider for Feature {
             | Feature::OnboardingCall => "Support",
 
             Feature::CustomSso
+            | Feature::Saml
+            | Feature::AirGappedDeployment
             | Feature::ManagedDeployment
             | Feature::Whitelabeling
             | Feature::AuditLogs => "Enterprise",
@@ -148,6 +154,8 @@ impl TypeMetadataProvider for Feature {
             Feature::OnboardingCall => "Onboarding Call",
             Feature::RemoveCreatedWith => "Remove Watermark",
             Feature::CustomSso => "Custom SSO",
+            Feature::Saml => "SAML",
+            Feature::AirGappedDeployment => "Air-gapped Deployment",
             Feature::ManagedDeployment => "Managed Deployment",
             Feature::Whitelabeling => "White Labeling",
             Feature::LiveChatSupport => "Live Chat Support",
@@ -189,6 +197,12 @@ impl TypeMetadataProvider for Feature {
             Feature::Embeds => "Embed live network diagrams in wikis, dashboards, or documentation",
             Feature::CustomSso => {
                 "Use your own identity provider (Okta, Azure AD, etc.) for single sign-on"
+            }
+            Feature::Saml => {
+                "Connect your SAML 2.0 identity provider for enterprise single sign-on"
+            }
+            Feature::AirGappedDeployment => {
+                "License validated fully offline. Deploy in networks with no outbound internet access"
             }
             Feature::ManagedDeployment => {
                 "We deploy, configure, and manage Scanopy for you on a dedicated instance"

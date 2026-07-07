@@ -32,8 +32,6 @@
 		auth_youreInvitedBody,
 		auth_youreInvitedTitle,
 		common_back,
-		common_demoEmail,
-		common_demoPassword,
 		common_email,
 		common_password
 	} from '$lib/paraglide/messages';
@@ -168,11 +166,11 @@
 						<InlineInfo title={auth_demoModeTitle()} body={auth_demoModeBody()} />
 						<div class="card mt-3 !rounded-md !p-3 font-mono text-sm">
 							<div class="text-secondary">
-								<span class="text-tertiary">{common_demoEmail()}</span>
+								<span class="text-tertiary">{common_email()}:</span>
 								<span class="text-primary ml-2">demo@scanopy.net</span>
 							</div>
 							<div class="text-secondary mt-1">
-								<span class="text-tertiary">{common_demoPassword()}</span>
+								<span class="text-tertiary">{common_password()}:</span>
 								<span class="text-primary ml-2">password123</span>
 							</div>
 						</div>

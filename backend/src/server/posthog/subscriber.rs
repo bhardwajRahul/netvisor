@@ -163,7 +163,7 @@ impl Subscriber<EntityOperation> for PosthogService {
                 continue;
             };
 
-            let entity_type_str = to_snake_case(&entity_disc.to_string());
+            let entity_type_str = to_snake_case(entity_disc.as_ref());
             let event_name = format!("{}_{}", entity_type_str, event.operation);
 
             let mut props = auth_properties(&event.authentication);

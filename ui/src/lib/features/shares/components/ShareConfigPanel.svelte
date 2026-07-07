@@ -51,7 +51,6 @@
 		shares_shareUrl,
 		shares_showExportButton,
 		shares_showInspectPanel,
-		shares_showMinimap,
 		shares_showZoomControls,
 		shares_upgradeForEmbeds,
 		shares_topologyViews,
@@ -59,7 +58,8 @@
 		shares_enabledViewsHelp,
 		shares_allViewsEnabled,
 		shares_urlAvailableAfterSaveTitle,
-		shares_urlAvailableAfterSaveBody
+		shares_urlAvailableAfterSaveBody,
+		topology_showMinimap
 	} from '$lib/paraglide/messages';
 
 	interface Props {
@@ -321,7 +321,7 @@
 			</form.Field>
 			<form.Field name={showMinimapFieldName}>
 				{#snippet children(field: AnyFieldApi)}
-					<Checkbox label={shares_showMinimap()} id="show-minimap-{index}" {field} />
+					<Checkbox label={topology_showMinimap()} id="show-minimap-{index}" {field} />
 				{/snippet}
 			</form.Field>
 			<div>

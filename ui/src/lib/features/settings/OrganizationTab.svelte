@@ -27,7 +27,9 @@
 		common_edit,
 		common_id,
 		common_loading,
+		common_entityName,
 		common_name,
+		common_organization,
 		common_plan,
 		common_populate,
 		common_populating,
@@ -43,7 +45,6 @@
 		settings_org_deleteTypeName,
 		settings_org_info,
 		settings_org_licenseExpiry,
-		settings_org_nameLabel,
 		settings_org_namePlaceholder,
 		settings_org_populateConfirm,
 		settings_org_populateDemo,
@@ -213,7 +214,9 @@
 					<InfoCard>
 						<div class="flex items-center justify-between">
 							<div>
-								<p class="text-primary text-sm font-medium">{settings_org_nameLabel()}</p>
+								<p class="text-primary text-sm font-medium">
+									{common_entityName({ entity: common_organization() })}
+								</p>
 								<p class="text-secondary text-xs">{settings_org_updateName()}</p>
 							</div>
 							<button
@@ -294,7 +297,7 @@
 					>
 						{#snippet children(field: AnyFieldApi)}
 							<TextInput
-								label={settings_org_nameLabel()}
+								label={common_entityName({ entity: common_organization() })}
 								id="name"
 								placeholder={settings_org_namePlaceholder()}
 								required={true}

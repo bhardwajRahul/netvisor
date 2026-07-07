@@ -23,7 +23,7 @@
 #
 #   --out DIR     Output directory (default: 889-evidence-<UTC-date>).
 #   --tag TAG     Image tag to assess (default: latest). Used to build the
-#                 default server / server-commercial / daemon image refs.
+#                 default server / daemon image refs.
 #   --image REF   Scan this exact image ref instead of the defaults. Repeatable.
 #   --repo SLUG   owner/repo for the ghcr image namespace (default: from remote).
 #   --no-images   Source tree only (e.g. offline, or images not published yet).
@@ -125,7 +125,6 @@ if [ "$WANT_IMAGES" -eq 1 ]; then
         for ref in $EXPLICIT_IMAGES; do i=$((i+1)); scan_image "$ref" "image$i"; done
     else
         scan_image "ghcr.io/$REPO_SLUG/server:$TAG" "server"
-        scan_image "ghcr.io/$REPO_SLUG/server-commercial:$TAG" "server-commercial"
         scan_image "ghcr.io/$REPO_SLUG/daemon:$TAG" "daemon"
     fi
 fi

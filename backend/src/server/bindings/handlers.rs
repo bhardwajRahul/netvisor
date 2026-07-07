@@ -14,6 +14,7 @@ use crate::server::shared::services::traits::CrudService;
 use crate::server::shared::storage::filter::StorableFilter;
 use crate::server::shared::storage::traits::Entity;
 use crate::server::shared::types::api::{ApiError, ApiErrorResponse, ApiResponse, ApiResult};
+use crate::server::shared::validation::validate_network_access;
 impl CrudHandlers for Binding {
     type Service = BindingService;
     type FilterQuery = BindingQuery;
@@ -152,6 +153,11 @@ async fn create_binding(
     auth: Authorized<Member>,
     Json(binding): Json<Binding>,
 ) -> ApiResult<Json<ApiResponse<Binding>>> {
+    // Guard tenancy before the supersede-delete below runs against a
+    // caller-supplied network_id (create_handler only validates access at the
+    // end, after the destructive deletes would already have fired).
+    validate_network_access(Some(binding.network_id()), &auth.network_ids(), "access")?;
+
     validate_no_binding_type_conflict(&state, &binding, None).await?;
 
     // If creating an all-interfaces port binding, remove any specific-interface bindings for the same port
@@ -218,6 +224,10 @@ async fn update_binding(
     path: Path<Uuid>,
     Json(binding): Json<Binding>,
 ) -> ApiResult<Json<ApiResponse<Binding>>> {
+    // Guard tenancy before the conflict scan reads by the caller-supplied
+    // network_id (update_handler validates access afterward).
+    validate_network_access(Some(binding.network_id()), &auth.network_ids(), "access")?;
+
     validate_no_binding_type_conflict(&state, &binding, Some(*path)).await?;
     update_handler::<Binding>(State(state), auth, path, Json(binding)).await
 }

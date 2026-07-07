@@ -15,14 +15,14 @@
 	import UpgradeButton from '$lib/shared/components/UpgradeButton.svelte';
 	import type { TabProps } from '$lib/shared/types';
 	import {
+		common_confirmBulkDelete,
 		common_create,
 		common_created,
 		common_name,
 		common_networks,
+		common_noEntityYet,
 		common_tags,
-		networks_confirmBulkDelete,
-		networks_confirmDelete,
-		networks_noNetworksYet
+		networks_confirmDelete
 	} from '$lib/paraglide/messages';
 
 	let { isReadOnly = false }: TabProps = $props();
@@ -124,7 +124,7 @@
 	}
 
 	async function handleBulkDelete(ids: string[]) {
-		if (confirm(networks_confirmBulkDelete({ count: ids.length }))) {
+		if (confirm(common_confirmBulkDelete({ count: ids.length, entity: common_networks() }))) {
 			await bulkDeleteNetworksMutation.mutateAsync(ids);
 		}
 	}
@@ -232,7 +232,7 @@
 	{:else if networksData.length === 0}
 		<!-- Empty state -->
 		<EmptyState
-			title={networks_noNetworksYet()}
+			title={common_noEntityYet({ entity: common_networks() })}
 			subtitle=""
 			onClick={handleCreateNetwork}
 			cta={common_create()}

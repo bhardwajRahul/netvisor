@@ -5,11 +5,10 @@
 //! `Flags` (cross-cutting emission hints like `suppress_logs`), and `Filter`
 //! (the shape of selection predicates a subscriber declares).
 
-use std::{collections::HashMap, fmt::Debug, hash::Hash, net::IpAddr};
-use std::{sync::Arc, time::Duration};
-
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use std::{collections::HashMap, fmt::Debug, hash::Hash, net::IpAddr};
+use std::{sync::Arc, time::Duration};
 use strum::IntoDiscriminant;
 use tokio::sync::{RwLock, broadcast};
 use uuid::Uuid;
@@ -23,8 +22,8 @@ use crate::server::{
         events::types::{
             AnalyticsOperation, AnalyticsOperationDiscriminants, AuthOperation,
             AuthOperationDiscriminants, BillingOperation, BillingOperationDiscriminants,
-            EntityOperation, EntityOperationDiscriminants, EventLogLevel, OnboardingOperation,
-            OnboardingOperationDiscriminants,
+            EntityOperation, EntityOperationDiscriminants, EventLogLevel, LabelColor,
+            OnboardingOperation, OnboardingOperationDiscriminants,
         },
     },
 };
@@ -54,6 +53,7 @@ pub trait Operation:
                           + Sync
                           + Serialize
                           + DeserializeOwned
+                          + AsRef<str>
                           + 'static,
     > + Serialize
     + DeserializeOwned
@@ -69,6 +69,21 @@ pub trait Operation:
     type Filter: SubscriberFilter<Self>;
 
     fn log_level(&self) -> EventLogLevel;
+
+    /// Human-scannable label prefixed to the event's log line, e.g.
+    /// `"Created"`. Receives the `Scope` because some operations (notably
+    /// entity events) carry the meaningful noun there rather than on the
+    /// operation itself. Default is the operation discriminant's name.
+    fn log_label(&self, _scope: &Self::Scope) -> String {
+        self.discriminant().as_ref().to_string()
+    }
+
+    /// Color for the label in the log line. Defaults to `Neutral`; operation
+    /// types with create/update/delete semantics override this (see
+    /// `EntityOperation`).
+    fn log_color(&self) -> LabelColor {
+        LabelColor::Neutral
+    }
 }
 
 // ===========================================================================
@@ -250,10 +265,15 @@ impl<Op: Operation> Event<Op> {
     pub fn discriminant(&self) -> <Op as IntoDiscriminant>::Discriminant {
         self.operation.discriminant()
     }
+
+    pub fn log_label(&self) -> String {
+        self.operation.log_label(&self.scope)
+    }
 }
 
-/// Render an event as JSON. Used by the logging subscriber so log lines are
-/// valid JSON; downstream consumers (vector / loki) parse them out of `message`.
+/// Render an event as JSON. The logging subscriber prefixes each line with a
+/// `<label>: ` tag, so the JSON payload begins after the first `": "`;
+/// downstream consumers (vector / loki) split on that before parsing.
 impl<Op: Operation> std::fmt::Display for Event<Op> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match serde_json::to_string(self) {
@@ -409,6 +429,25 @@ impl Operation for EntityOperation {
     fn log_level(&self) -> EventLogLevel {
         EventLogLevel::Info
     }
+
+    /// Entity events carry the noun in the scope, so compose it with the
+    /// operation, e.g. `"Subnet Created"`.
+    fn log_label(&self, scope: &Self::Scope) -> String {
+        format!(
+            "{} {}",
+            scope.entity_discriminant().as_ref(),
+            self.discriminant().as_ref()
+        )
+    }
+
+    fn log_color(&self) -> LabelColor {
+        match self {
+            EntityOperation::Created => LabelColor::Green,
+            EntityOperation::Updated => LabelColor::Blue,
+            EntityOperation::Deleted => LabelColor::Red,
+            EntityOperation::Get | EntityOperation::GetAll => LabelColor::Neutral,
+        }
+    }
 }
 
 impl Operation for DiscoveryPhase {
@@ -543,7 +582,7 @@ impl<Op: Operation> TypedChannel<Op> {
         let state = TypedSubscriberState::new(subscriber, name);
         let mut subs = self.subscribers.write().await;
         subs.push(state);
-        tracing::info!(
+        tracing::debug!(
             subscriber = name,
             debounce_ms = debounce_ms,
             "Registered typed subscriber",

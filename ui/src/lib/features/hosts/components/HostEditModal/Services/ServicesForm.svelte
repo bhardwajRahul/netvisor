@@ -14,7 +14,8 @@
 	import ListSelectItem from '$lib/shared/components/forms/selection/ListSelectItem.svelte';
 	import { ArrowRightLeft } from 'lucide-svelte';
 	import {
-		common_noServiceSelected,
+		common_noEntitySelected,
+		common_service,
 		common_services,
 		hosts_services_emptyMessage,
 		hosts_services_helpText,
@@ -204,7 +205,7 @@
 
 			{#if !selectedItem}
 				<EntityConfigEmpty
-					title={common_noServiceSelected()}
+					title={common_noEntitySelected({ entity: common_service() })}
 					subtitle={hosts_services_selectToConfig()}
 				/>
 			{/if}

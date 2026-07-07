@@ -1,6 +1,19 @@
 //! Host creation from API requests and the create-with-children path.
 use super::*;
 
+/// Decide whether the end-of-scan interface prune (delete interfaces no longer reported for a
+/// host) should run for this upsert. It runs only when BOTH hold:
+///   - `interfaces_complete`: the incoming set is an authoritative, complete ifTable. A partial
+///     SNMP walk cut short by timeout/error reports fewer interfaces than really exist; pruning
+///     against it deletes live interfaces and their server-resolved L2 neighbors (GH #649).
+///   - `incoming_count > 0`: a total SNMP failure / credential removal yields zero interfaces,
+///     which means "none observed", not "all removed".
+///
+/// Returning false preserves existing interface rows — the safe direction (stale beats deleted).
+pub(crate) fn should_prune_interfaces(interfaces_complete: bool, incoming_count: usize) -> bool {
+    interfaces_complete && incoming_count > 0
+}
+
 impl HostService {
     // =========================================================================
     // Host creation with children
@@ -112,6 +125,8 @@ impl HostService {
             ConflictBehavior::Error,
             authentication,
             None, // limit checked in handler
+            // A manual API create provides the full, authoritative interface list.
+            true,
         )
         .await
     }
@@ -149,6 +164,10 @@ impl HostService {
         conflict_behavior: ConflictBehavior,
         authentication: AuthenticatedEntity,
         limit_ctx: Option<&HostLimitContext>,
+        // Whether `interfaces` is an authoritative, complete ifTable. When false (a partial SNMP
+        // walk), the stale-interface prune is skipped so a transient partial scan cannot delete
+        // interfaces and their resolved L2 neighbors (GH #649).
+        interfaces_complete: bool,
     ) -> Result<HostResponse> {
         // Stage 1: IP-address-based collision detection
         // Compares MAC addresses and subnet+IP to find hosts that represent the same physical machine
@@ -315,6 +334,13 @@ impl HostService {
         let mut created_subnet_ids: std::collections::HashSet<Uuid> =
             std::collections::HashSet::new();
         for mut subnet in subnets {
+            // Force the subnet onto the resolved host's network. The daemon's
+            // discovery payload is only authenticated for its own network, but
+            // subnets ride in the host request with a caller-supplied
+            // network_id; without this a daemon could write subnets into any
+            // network. Mirrors how ports/interfaces force host_id + network_id.
+            subnet.base.network_id = created_host.base.network_id;
+
             if let Some(ref mut virt) = subnet.base.virtualization
                 && let Some(old_id) = virt.service_id()
                 && let Some(&new_id) = service_id_remap.get(&old_id)
@@ -359,6 +385,9 @@ impl HostService {
         let mut created_ip_addresses = Vec::new();
         for mut ip_address in ip_addresses {
             ip_address.base.host_id = created_host.id;
+            // Force onto the host's network (see subnet loop above): the payload
+            // network_id is caller-supplied and must not be trusted.
+            ip_address.base.network_id = created_host.base.network_id;
 
             // Remap subnet_id if the subnet was deduped to an existing one
             if let Some(&new_subnet_id) = subnet_id_remap.get(&ip_address.base.subnet_id) {
@@ -933,30 +962,66 @@ impl HostService {
 
         // Full-sweep prune of interfaces no longer reported for this host.
         //
-        // Scanopy has no partial-scan mode; a successful SNMP query returns the
-        // host's complete ifTable. Zero incoming interfaces none were found, NOT "all removed" —
-        // the empty-set guard below preserves existing rows in that case.
-        if !created_interfaces.is_empty() {
+        // Only runs when the incoming interface set is an authoritative, COMPLETE ifTable
+        // (`interfaces_complete`). An SNMP walk cut short by timeout/error returns a partial,
+        // smaller-than-real ifTable (see daemon `walk_if_table`); pruning against it would delete
+        // live interfaces and the server-resolved L2 neighbors on them, tearing switches off the
+        // L2 topology map on every scan that hiccups (GH #649). Two guards, both required:
+        //   - `interfaces_complete`: skip pruning on a partial walk (daemon-signalled).
+        //   - non-empty set: a total SNMP failure / credential removal yields zero interfaces,
+        //     which is "none observed", not "all removed".
+        if should_prune_interfaces(interfaces_complete, created_interfaces.len()) {
             let kept_ids: HashSet<Uuid> = created_interfaces.iter().map(|i| i.id).collect();
             let existing = self
                 .interface_service
                 .get_for_host(&created_host.id)
                 .await?;
+            let existing_count = existing.len();
+            let mut pruned = 0usize;
             for iface in existing {
-                if !kept_ids.contains(&iface.id)
-                    && let Err(e) = self
+                if !kept_ids.contains(&iface.id) {
+                    match self
                         .interface_service
                         .delete(&iface.id, authentication.clone())
                         .await
-                {
-                    tracing::warn!(
-                        host_id = %created_host.id,
-                        interface_id = %iface.id,
-                        error = %e,
-                        "Failed to prune orphan interface"
-                    );
+                    {
+                        Ok(_) => pruned += 1,
+                        Err(e) => tracing::warn!(
+                            host_id = %created_host.id,
+                            interface_id = %iface.id,
+                            error = %e,
+                            "Failed to prune orphan interface"
+                        ),
+                    }
                 }
             }
+            if pruned > 0 {
+                tracing::debug!(
+                    host_id = %created_host.id,
+                    interfaces_complete = true,
+                    incoming = created_interfaces.len(),
+                    existing = existing_count,
+                    pruned = pruned,
+                    "Pruned interfaces no longer reported by a complete ifTable scan"
+                );
+            }
+        } else if !created_interfaces.is_empty() {
+            // Non-empty incoming set that we chose NOT to prune against ⇒ an incomplete (partial)
+            // walk. Surface it so a self-hosted operator can see why stale interfaces persist —
+            // and how many interfaces this partial scan would have deleted had the fix not gated it.
+            let existing_count = self
+                .interface_service
+                .get_for_host(&created_host.id)
+                .await
+                .map(|v| v.len())
+                .unwrap_or_default();
+            tracing::debug!(
+                host_id = %created_host.id,
+                interfaces_complete = false,
+                incoming = created_interfaces.len(),
+                existing = existing_count,
+                "Skipped interface prune: SNMP ifTable walk was incomplete (partial scan) — preserving existing interfaces and L2 links"
+            );
         }
 
         // Remap credential assignment ip_address_ids from daemon UUIDs to server UUIDs
@@ -1105,5 +1170,27 @@ mod tests {
             resolve_dangling_subnet_id(&live, dangling, ip("192.168.1.1")),
             None
         );
+    }
+
+    // GH #649: the interface prune must NOT run on a partial SNMP walk, or a transient timeout
+    // deletes live switch ports and their resolved L2 neighbors every scan. These lock the gate.
+    #[test]
+    fn partial_walk_never_prunes_even_with_interfaces_present() {
+        // The bug: an incomplete walk reported some (but not all) interfaces; pruning against it
+        // would delete every interface it missed. It must be skipped.
+        assert!(!should_prune_interfaces(false, 5));
+    }
+
+    #[test]
+    fn complete_walk_with_interfaces_prunes() {
+        // An authoritative full ifTable is the only time stale interfaces may be removed.
+        assert!(should_prune_interfaces(true, 5));
+    }
+
+    #[test]
+    fn empty_set_never_prunes_regardless_of_completeness() {
+        // Zero interfaces = "none observed" (total SNMP failure / cred removal), not "all removed".
+        assert!(!should_prune_interfaces(true, 0));
+        assert!(!should_prune_interfaces(false, 0));
     }
 }

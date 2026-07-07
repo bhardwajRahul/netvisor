@@ -6,6 +6,7 @@
 	import { ChevronLeft } from 'lucide-svelte';
 	import Toast from '$lib/shared/components/feedback/Toast.svelte';
 	import OrgNetworksModal from '$lib/features/auth/components/onboarding/OrgNetworksModal.svelte';
+	import OrgLimitModal from '$lib/features/auth/components/OrgLimitModal.svelte';
 	import RegisterModal from '$lib/features/auth/components/RegisterModal.svelte';
 	import UseCaseStep from '$lib/features/auth/components/onboarding/UseCaseStep.svelte';
 	import type { RegisterRequest, SetupRequest, UseCase } from '$lib/features/auth/types/base';
@@ -21,7 +22,7 @@
 	import { onboardingStore } from '$lib/features/auth/stores/onboarding';
 	import { trackEvent } from '$lib/shared/utils/analytics';
 	import { pushError } from '$lib/shared/stores/feedback';
-	import { auth_emailAlreadyInUse } from '$lib/paraglide/messages';
+	import { auth_emailAlreadyInUse, common_goBack } from '$lib/paraglide/messages';
 	import { useConfigQuery, isCloud } from '$lib/shared/stores/config-query';
 	import { setLastLoginMethod } from '$lib/features/auth/components/LoginModal.svelte';
 
@@ -59,6 +60,11 @@
 
 	// Determine if this is an invite flow (skip to register)
 	let isInviteFlow = $derived(!!invitedBy);
+
+	// Block the whole new-org flow (before use-case selection) when the instance
+	// is at its org cap. Invited users join an existing org, so they are exempt.
+	let showOrgLimitGate = $derived((onboardingConfigData?.org_limit_reached ?? false) && !invitedBy);
+	let adminContactEmail = $derived(onboardingConfigData?.server_admin_contact_email ?? null);
 
 	// Step tracking
 	type Step = 'use_case' | 'setup' | 'register';
@@ -236,8 +242,9 @@
 		></div>
 	</div>
 
-	<!-- Progress Indicator - fixed position above modal (hidden for invite flow) -->
-	{#if !isInviteFlow}
+	<!-- Progress Indicator - fixed position above modal (hidden for invite flow
+	     and when the org-limit gate replaces the whole flow) -->
+	{#if !isInviteFlow && !showOrgLimitGate}
 		<div class="fixed left-1/2 top-2 z-[200] -translate-x-1/2 sm:top-6">
 			<div class="flex flex-col items-center gap-1">
 				<div
@@ -248,7 +255,7 @@
 							type="button"
 							onclick={handleBack}
 							class="text-secondary hover:text-primary -ml-1 flex items-center transition-colors"
-							aria-label="Go back"
+							aria-label={common_goBack()}
 						>
 							<ChevronLeft class="h-4 w-4" />
 						</button>
@@ -277,7 +284,14 @@
 	<!-- Content container -->
 	<div class="flex flex-1 items-center justify-center pt-8 sm:pt-0">
 		<div class="relative z-10 w-full">
-			{#if currentStep === 'use_case'}
+			{#if showOrgLimitGate}
+				<!-- Instance at its org cap: block the new-org flow up front -->
+				<OrgLimitModal
+					{adminContactEmail}
+					onClose={handleClose}
+					onSwitchToLogin={handleSwitchToLogin}
+				/>
+			{:else if currentStep === 'use_case'}
 				<!-- Use Case Selection Step -->
 				<UseCaseStep
 					isOpen={true}

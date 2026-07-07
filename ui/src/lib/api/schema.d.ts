@@ -3040,7 +3040,7 @@ export interface components {
          * @description API metadata included in all responses
          * @example {
          *       "api_version": 1,
-         *       "server_version": "0.17.2"
+         *       "server_version": "0.17.3"
          *     }
          */
         ApiMeta: {
@@ -3051,7 +3051,7 @@ export interface components {
             api_version: number;
             /**
              * @description Server version (semver)
-             * @example 0.17.2
+             * @example 0.17.3
              */
             server_version: string;
         };
@@ -3065,19 +3065,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-07-04T23:35:58.585816Z",
+             *       "created_at": "2026-07-07T19:19:03.661065Z",
              *       "first_discovery_id": null,
-             *       "id": "8f7cb854-52ca-470e-a147-0a9bd8cc2e00",
+             *       "id": "f7276a1e-cb92-4132-93b9-866d0ff47387",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-07-04T23:35:58.585816Z",
+             *       "last_seen_at": "2026-07-07T19:19:03.661065Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-07-04T23:35:58.585816Z",
-             *       "valid_from": "2026-07-04T23:35:58.585816Z",
+             *       "updated_at": "2026-07-07T19:19:03.661065Z",
+             *       "valid_from": "2026-07-07T19:19:03.661065Z",
              *       "valid_to": null
              *     }
              */
@@ -3424,19 +3424,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-07-04T23:35:58.565522Z",
+             *               "created_at": "2026-07-07T19:19:03.639467Z",
              *               "first_discovery_id": null,
-             *               "id": "bb2c8956-53eb-40f4-8749-f3c7a392d5d6",
+             *               "id": "60b14278-2a4b-4a78-9a15-934f7e23867b",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-07-04T23:35:58.565522Z",
+             *               "last_seen_at": "2026-07-07T19:19:03.639467Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-07-04T23:35:58.565522Z",
-             *               "valid_from": "2026-07-04T23:35:58.565522Z",
+             *               "updated_at": "2026-07-07T19:19:03.639467Z",
+             *               "valid_from": "2026-07-07T19:19:03.639467Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3450,7 +3450,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "OpenSpeedTest",
+             *           "service_definition": "NTP Server",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3751,8 +3751,20 @@ export interface components {
                 license_status?: string | null;
                 needs_cookie_consent: boolean;
                 oidc_providers: components["schemas"]["OidcProviderMetadata"][];
+                /**
+                 * @description True when this self-hosted instance has reached its licensed
+                 *     organization cap (`included_orgs`), so new-org registration is blocked.
+                 *     Always false on cloud (multi-tenant) and on unlimited-org plans.
+                 */
+                org_limit_reached: boolean;
                 posthog_key?: string | null;
                 public_url: string;
+                /**
+                 * Format: email
+                 * @description Admin contact email to show users blocked by `org_limit_reached`,
+                 *     from `SCANOPY_SERVER_ADMIN_CONTACT_EMAIL`.
+                 */
+                server_admin_contact_email: string;
                 /** Format: int32 */
                 server_port: number;
                 /**
@@ -3813,19 +3825,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-07-04T23:35:58.579382Z",
+             *           "created_at": "2026-07-07T19:19:03.653992Z",
              *           "first_discovery_id": null,
-             *           "id": "d8c91999-450a-4684-9153-1403f8e0100c",
+             *           "id": "1abfcd1a-7e3f-4e05-a5fe-0b1055b0fe5e",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-07-04T23:35:58.579382Z",
+             *           "last_seen_at": "2026-07-07T19:19:03.653992Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-07-04T23:35:58.579382Z",
-             *           "valid_from": "2026-07-04T23:35:58.579382Z",
+             *           "updated_at": "2026-07-07T19:19:03.653992Z",
+             *           "valid_from": "2026-07-07T19:19:03.653992Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -3839,7 +3851,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "OpenSpeedTest",
+             *       "service_definition": "NTP Server",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4167,6 +4179,12 @@ export interface components {
             }) | (components["schemas"]["PlanConfig"] & {
                 /** @enum {string} */
                 type: "CommercialSelfHosted";
+            }) | (components["schemas"]["PlanConfig"] & {
+                /** @enum {string} */
+                type: "SelfHostedStandard";
+            }) | (components["schemas"]["PlanConfig"] & {
+                /** @enum {string} */
+                type: "SelfHostedPlus";
             }))[];
             error?: string | null;
             meta: components["schemas"]["ApiMeta"];
@@ -4320,25 +4338,31 @@ export interface components {
         }) | (components["schemas"]["PlanConfig"] & {
             /** @enum {string} */
             type: "CommercialSelfHosted";
+        }) | (components["schemas"]["PlanConfig"] & {
+            /** @enum {string} */
+            type: "SelfHostedStandard";
+        }) | (components["schemas"]["PlanConfig"] & {
+            /** @enum {string} */
+            type: "SelfHostedPlus";
         });
         /** @enum {string} */
         BillingRate: "Month" | "Year";
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-07-04T23:35:58.565981Z",
+         *       "created_at": "2026-07-07T19:19:03.639950Z",
          *       "first_discovery_id": null,
-         *       "id": "d9507ba5-b0c9-47a9-8120-5205bd46f622",
+         *       "id": "f472b527-1886-4b1f-af61-fa85113b696b",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-07-04T23:35:58.565981Z",
+         *       "last_seen_at": "2026-07-07T19:19:03.639950Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-07-04T23:35:58.565981Z",
-         *       "valid_from": "2026-07-04T23:35:58.565981Z",
+         *       "updated_at": "2026-07-07T19:19:03.639950Z",
+         *       "valid_from": "2026-07-07T19:19:03.639950Z",
          *       "valid_to": null
          *     }
          */
@@ -4553,7 +4577,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "OpenSpeedTest",
+         *           "service_definition": "NTP Server",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -5079,6 +5103,13 @@ export interface components {
             host: components["schemas"]["Host"];
             /** @description SNMP interface entries (ifTable data) - optional, populated when SNMP is enabled. */
             interfaces?: components["schemas"]["Interface"][];
+            /**
+             * @description Whether `interfaces` is a complete, authoritative ifTable. When false (a partial SNMP walk
+             *     cut short by timeout/error), the server must NOT prune interfaces missing from this scan —
+             *     otherwise a transient partial walk tears down the host's L2 topology (#649). Daemons that
+             *     predate this field omit it; it defaults to true so their behavior is unchanged.
+             */
+            interfaces_complete?: boolean;
             ip_addresses: components["schemas"]["IPAddress"][];
             ports: components["schemas"]["Port"][];
             services: components["schemas"]["Service"][];
@@ -5589,19 +5620,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-07-04T23:35:58.565005Z",
+         *               "created_at": "2026-07-07T19:19:03.638885Z",
          *               "first_discovery_id": null,
-         *               "id": "1077edff-ed2a-4e81-8089-49190522dd27",
+         *               "id": "1ac619bc-04b0-4966-9ff0-91b814106c36",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-07-04T23:35:58.565005Z",
+         *               "last_seen_at": "2026-07-07T19:19:03.638885Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-07-04T23:35:58.565005Z",
-         *               "valid_from": "2026-07-04T23:35:58.565005Z",
+         *               "updated_at": "2026-07-07T19:19:03.638885Z",
+         *               "valid_from": "2026-07-07T19:19:03.638885Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -5615,7 +5646,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "OpenSpeedTest",
+         *           "service_definition": "NTP Server",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -6364,7 +6395,7 @@ export interface components {
          *         "offset": 0,
          *         "total_count": 142
          *       },
-         *       "server_version": "0.17.2"
+         *       "server_version": "0.17.3"
          *     }
          */
         PaginatedApiMeta: {
@@ -6377,7 +6408,7 @@ export interface components {
             pagination: components["schemas"]["PaginationMeta"];
             /**
              * @description Server version (semver)
-             * @example 0.17.2
+             * @example 0.17.3
              */
             server_version: string;
         };
@@ -6680,6 +6711,14 @@ export interface components {
             included_hosts?: number | null;
             /** Format: int64 */
             included_networks?: number | null;
+            /**
+             * Format: int64
+             * @description Organizations allowed on one self-hosted server instance. `None` =
+             *     unlimited. Only enforced for self-hosted deployments (see
+             *     `provision_user`); cloud stays multi-tenant regardless. Defaulted so
+             *     existing stored plan JSON deserializes unchanged.
+             */
+            included_orgs?: number | null;
             /** Format: int64 */
             included_seats?: number | null;
             /** Format: int64 */
@@ -6880,8 +6919,20 @@ export interface components {
             license_status?: string | null;
             needs_cookie_consent: boolean;
             oidc_providers: components["schemas"]["OidcProviderMetadata"][];
+            /**
+             * @description True when this self-hosted instance has reached its licensed
+             *     organization cap (`included_orgs`), so new-org registration is blocked.
+             *     Always false on cloud (multi-tenant) and on unlimited-org plans.
+             */
+            org_limit_reached: boolean;
             posthog_key?: string | null;
             public_url: string;
+            /**
+             * Format: email
+             * @description Admin contact email to show users blocked by `org_limit_reached`,
+             *     from `SCANOPY_SERVER_ADMIN_CONTACT_EMAIL`.
+             */
+            server_admin_contact_email: string;
             /** Format: int32 */
             server_port: number;
             /**
@@ -7096,19 +7147,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-07-04T23:35:58.565882Z",
+         *           "created_at": "2026-07-07T19:19:03.639838Z",
          *           "first_discovery_id": null,
-         *           "id": "3cad73b6-8aaa-4f64-87e2-7873c46d2608",
+         *           "id": "c86db2e2-9c9a-4794-8255-3f972a627adf",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-07-04T23:35:58.565882Z",
+         *           "last_seen_at": "2026-07-07T19:19:03.639838Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-07-04T23:35:58.565882Z",
-         *           "valid_from": "2026-07-04T23:35:58.565882Z",
+         *           "updated_at": "2026-07-07T19:19:03.639838Z",
+         *           "valid_from": "2026-07-07T19:19:03.639838Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -7122,7 +7173,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "OpenSpeedTest",
+         *       "service_definition": "NTP Server",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -7545,7 +7596,7 @@ export interface components {
              * @default {
              *       "Application": [
              *         {
-             *           "id": "b5493bd6-daeb-40c3-a567-7c83c74fe416",
+             *           "id": "d194d20b-5bdc-4bd4-aab9-db7a5fee16b4",
              *           "rule": {
              *             "ByApplication": {
              *               "tag_ids": []
@@ -7555,23 +7606,23 @@ export interface components {
              *       ],
              *       "L2Physical": [
              *         {
-             *           "id": "5b9911b1-4593-4d30-8c41-afe98d842f74",
+             *           "id": "b3a0eb01-6438-40a3-b83e-4eeb0fe4a4d4",
              *           "rule": "ByHost"
              *         }
              *       ],
              *       "L3Logical": [
              *         {
-             *           "id": "990a8a2d-ebd5-42b4-b6ca-b41f1cb2140f",
+             *           "id": "146fc5ae-fc46-4c3a-a4b5-35a94ecc8504",
              *           "rule": "BySubnet"
              *         },
              *         {
-             *           "id": "1990757a-7f25-422f-a4e6-4aac24431f1c",
+             *           "id": "23c3b514-4a1e-495e-aaf9-9557c855b7f9",
              *           "rule": "MergeContainerBridges"
              *         }
              *       ],
              *       "Workloads": [
              *         {
-             *           "id": "5b9911b1-4593-4d30-8c41-afe98d842f74",
+             *           "id": "b3a0eb01-6438-40a3-b83e-4eeb0fe4a4d4",
              *           "rule": "ByHost"
              *         }
              *       ]
@@ -7583,19 +7634,19 @@ export interface components {
             /**
              * @default [
              *       {
-             *         "id": "e1c0cb18-5c29-4abd-98ca-52befc17b7d4",
+             *         "id": "564342d5-fd33-47d1-9c85-8c6496a9a365",
              *         "rule": "ByTrunkPort"
              *       },
              *       {
-             *         "id": "c365a6c9-b232-40fe-a729-7686ba47709d",
+             *         "id": "2762b355-2efa-49fc-9abf-c4d9f88c722a",
              *         "rule": "ByVLAN"
              *       },
              *       {
-             *         "id": "26d05cf5-161f-4c1d-b667-483165a6304e",
+             *         "id": "d4d0250a-a672-4787-a929-cfc8ff3c5a8c",
              *         "rule": "ByPortOpStatus"
              *       },
              *       {
-             *         "id": "4c4574bd-4010-4d8d-92fb-96d4ae1b9660",
+             *         "id": "d44efc91-33d4-4acd-82d3-c4d146a47786",
              *         "rule": {
              *           "ByServiceCategory": {
              *             "categories": [
@@ -7613,7 +7664,7 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "0620ab6f-21dc-4bd6-9dba-21d41f206291",
+             *         "id": "991dcb08-3f68-4cda-beec-9d61b52a4cb8",
              *         "rule": {
              *           "ByTag": {
              *             "tag_ids": [],
@@ -7622,15 +7673,15 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "c57d3ece-917c-45bc-b511-06696cd03828",
+             *         "id": "f4cbb217-290d-4f62-9de1-2cbbe8802eaa",
              *         "rule": "ByHypervisor"
              *       },
              *       {
-             *         "id": "4b833bb7-459f-4fb8-99a8-28806080b8a4",
+             *         "id": "9e8ce81e-8c32-44c9-b9ef-1e6a9601bcfd",
              *         "rule": "ByContainerRuntime"
              *       },
              *       {
-             *         "id": "3ded2997-e3ab-488d-b4f6-ba371deb8396",
+             *         "id": "7ce4fa9a-eff3-4eba-bbef-da190713270a",
              *         "rule": "ByStack"
              *       }
              *     ]

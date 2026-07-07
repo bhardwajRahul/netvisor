@@ -19,10 +19,10 @@
 		common_open,
 		common_status,
 		common_topology,
+		common_unknownEntity,
 		common_unknownNetwork,
 		shares_allowedDomains,
-		shares_copyUrl,
-		shares_unknownTopology
+		shares_copyUrl
 	} from '$lib/paraglide/messages';
 
 	let {
@@ -76,8 +76,8 @@
 		// the rest of the legacy entity-blob columns). Fall back to the network
 		// name, which is what the live-view topology represents.
 		const topologyLabel = topology
-			? (network?.name ?? shares_unknownTopology())
-			: shares_unknownTopology();
+			? (network?.name ?? common_unknownEntity({ entity: common_topology() }))
+			: common_unknownEntity({ entity: common_topology() });
 
 		return {
 			title: share.name,
@@ -95,7 +95,7 @@
 									entityRef: entityRef('Topology', topology.id, topology)
 								}
 							]
-						: shares_unknownTopology()
+						: common_unknownEntity({ entity: common_topology() })
 				},
 				{
 					label: common_network(),

@@ -3,6 +3,9 @@ use crate::server::{
     billing::types::base::PlanStatus,
     brevo::{
         client::BrevoClient,
+        domain_classification::{
+            DomainClass, classify_email_domain, classify_email_domain_probed, domain_has_website,
+        },
         types::{CompanyAttributes, ContactAttributes},
     },
     credentials::{
@@ -278,6 +281,7 @@ impl BrevoService {
             _ => return Ok(()),
         };
 
+        let (domain_class, institution_type) = classify_email_domain_probed(email.domain()).await;
         let contact_attrs = ContactAttributes::new()
             .with_email(email.to_string())
             .with_user_id(user_id)
@@ -286,19 +290,69 @@ impl BrevoService {
             .with_last_login_date(event.timestamp)
             .with_email_blacklisted(false)
             .with_marketing_opt_in(marketing_opt_in)
-            .with_marketing_opt_in_date(event.timestamp);
+            .with_marketing_opt_in_date(event.timestamp)
+            .with_domain_classification(domain_class, institution_type);
 
         let doi_attributes = contact_attrs.to_attributes();
 
-        // Upsert the contact independently from the company (the company is
-        // created on OrgCreated; for invited users, no company is created and
-        // they're attached to an existing one elsewhere).
-        if let Err(e) = self
+        // Upsert the contact. The company is created on the OrgCreated channel;
+        // once both exist we link them. Because the two events arrive on separate
+        // subscriber channels with no ordering guarantee, we link idempotently
+        // from both sides (Brevo's link-unlink endpoint is idempotent) — whichever
+        // handler runs second finds the other party present and links.
+        let contact_id = match self
             .client
             .upsert_contact(email.as_ref(), contact_attrs)
             .await
         {
-            tracing::warn!(error = %e, "Failed to upsert Brevo contact at register");
+            Ok(id) => Some(id),
+            Err(e) => {
+                tracing::warn!(error = %e, "Failed to upsert Brevo contact at register");
+                None
+            }
+        };
+
+        // If the org's Brevo company already exists, link the contact now.
+        // Otherwise handle_org_created links it once the company is created.
+        // Diagnostic logging on every branch so a missing link is traceable.
+        if let Some(contact_id) = contact_id {
+            match event.scope.organization_id {
+                Some(org_id) => match self.get_brevo_company_id(org_id).await {
+                    Ok(Some(company_id)) => match self
+                        .client
+                        .link_contact_to_company(&company_id, contact_id)
+                        .await
+                    {
+                        Ok(()) => tracing::info!(
+                            brevo_contact_id = %contact_id,
+                            brevo_company_id = %company_id,
+                            organization_id = %org_id,
+                            "Linked Brevo contact to company at register"
+                        ),
+                        Err(e) => tracing::warn!(
+                            error = %e,
+                            brevo_contact_id = %contact_id,
+                            brevo_company_id = %company_id,
+                            organization_id = %org_id,
+                            "Failed to link Brevo contact to company at register"
+                        ),
+                    },
+                    Ok(None) => tracing::info!(
+                        brevo_contact_id = %contact_id,
+                        organization_id = %org_id,
+                        "Brevo company not created yet at register; org-created handler will link"
+                    ),
+                    Err(e) => tracing::warn!(
+                        error = %e,
+                        organization_id = %org_id,
+                        "Failed to look up Brevo company id at register"
+                    ),
+                },
+                None => tracing::warn!(
+                    brevo_contact_id = %contact_id,
+                    "Register event missing organization_id; cannot link Brevo contact to company"
+                ),
+            }
         }
 
         // Add to "Product Updates" and "Onboarding" lists (all signups)
@@ -380,6 +434,46 @@ impl BrevoService {
             self.organization_service
                 .update(&mut org, event.authentication.clone())
                 .await?;
+        }
+
+        // Link the owner's contact to the new company. The contact is created on
+        // the AuthOperation (Register) channel; if it isn't in Brevo yet,
+        // handle_register links it once the company exists. Idempotent on Brevo's
+        // side, so linking from both handlers is safe. Diagnostic logging on every
+        // branch so a missing link is traceable.
+        match &owner_email {
+            Some(email) => match self.client.get_contact_id_by_email(email).await {
+                Ok(contact_id) => match self
+                    .client
+                    .link_contact_to_company(&company_id, contact_id)
+                    .await
+                {
+                    Ok(()) => tracing::info!(
+                        brevo_contact_id = %contact_id,
+                        brevo_company_id = %company_id,
+                        organization_id = %event.scope.organization_id,
+                        "Linked owner contact to new Brevo company"
+                    ),
+                    Err(e) => tracing::warn!(
+                        error = %e,
+                        brevo_contact_id = %contact_id,
+                        brevo_company_id = %company_id,
+                        organization_id = %event.scope.organization_id,
+                        "Failed to link owner contact to new Brevo company"
+                    ),
+                },
+                Err(e) => tracing::info!(
+                    error = %e,
+                    brevo_company_id = %company_id,
+                    organization_id = %event.scope.organization_id,
+                    "Owner contact not yet in Brevo at org-created; register handler will link"
+                ),
+            },
+            None => tracing::warn!(
+                brevo_company_id = %company_id,
+                organization_id = %event.scope.organization_id,
+                "No owner email found for org; cannot link contact to new Brevo company"
+            ),
         }
 
         // Track event for automation (uses owner email; OK to skip if missing)
@@ -893,6 +987,66 @@ impl BrevoService {
             synced = synced_count,
             total = total,
             "Brevo organization sync complete"
+        );
+        Ok(())
+    }
+
+    /// One-shot backfill of `SCANOPY_DOMAIN_CLASS` / `SCANOPY_INSTITUTION_TYPE`
+    /// for every existing user, spawned once at server startup. Ephemeral
+    /// release code — remove (together with
+    /// `StorableFilter::new_for_brevo_backfill`) in the release after
+    /// email-domain classification ships.
+    ///
+    /// Idempotent: recomputes the same pure classification and upserts, so
+    /// re-running (every startup during this release) is safe. Only reachable
+    /// when the Brevo API key is configured — an unconfigured environment
+    /// never constructs `BrevoService`, so nothing syncs.
+    pub async fn backfill_domain_classifications(&self) -> Result<()> {
+        let users = self
+            .user_service
+            .get_all(StorableFilter::<User>::new_for_brevo_backfill())
+            .await?;
+        let total = users.len();
+        tracing::info!(total, "Starting Brevo domain-classification backfill");
+
+        let mut synced = 0usize;
+        // Memoize website probes: many users can share one company domain.
+        let mut has_website_cache: std::collections::HashMap<String, bool> =
+            std::collections::HashMap::new();
+        for user in users {
+            let email = &user.base.email;
+            let (mut domain_class, institution_type) = classify_email_domain(email.domain());
+            if domain_class == DomainClass::Company {
+                let has_website = match has_website_cache.get(email.domain()) {
+                    Some(v) => *v,
+                    None => {
+                        let v = domain_has_website(email.domain()).await;
+                        has_website_cache.insert(email.domain().to_string(), v);
+                        v
+                    }
+                };
+                if !has_website {
+                    domain_class = DomainClass::Personal;
+                }
+            }
+            let attrs = ContactAttributes::new()
+                .with_email(email.to_string())
+                .with_user_id(user.id)
+                .with_domain_classification(domain_class, institution_type);
+            match self.client.upsert_contact(email.as_ref(), attrs).await {
+                Ok(_) => synced += 1,
+                Err(e) => tracing::warn!(
+                    error = %e,
+                    domain = email.domain(),
+                    "Failed to backfill domain classification"
+                ),
+            }
+        }
+
+        tracing::info!(
+            synced,
+            total,
+            "Brevo domain-classification backfill complete"
         );
         Ok(())
     }

@@ -74,6 +74,12 @@ pub struct HostData {
     pub ip_addresses: Vec<IPAddress>,
     pub interfaces: Vec<Interface>,
     pub subnets: Vec<Subnet>,
+    /// Whether `interfaces` is a complete, authoritative view of the host's ifTable. Set to false
+    /// by the SNMP integration when the ifTable walk was cut short (timeout/error), so the server
+    /// skips the stale-interface prune and cannot tear down L2 topology on a partial scan (#649).
+    /// Defaults to true — integrations that don't walk the ifTable report an authoritative (usually
+    /// empty) interface set, and the empty set is guarded server-side regardless.
+    pub interfaces_complete: bool,
 }
 
 impl HostData {
@@ -92,6 +98,7 @@ impl HostData {
             ip_addresses,
             interfaces,
             subnets,
+            interfaces_complete: true,
         }
     }
 
@@ -207,6 +214,13 @@ impl HostData {
 
     pub fn add_if_entry(&mut self, ie: Interface) -> &mut Self {
         self.interfaces.push(ie);
+        self
+    }
+
+    /// Record whether the collected `interfaces` are a complete ifTable. A partial walk
+    /// (`false`) tells the server not to prune interfaces missing from this scan (#649).
+    pub fn set_interfaces_complete(&mut self, complete: bool) -> &mut Self {
+        self.interfaces_complete = complete;
         self
     }
 
@@ -632,6 +646,7 @@ impl DiscoveryOps {
         services: Vec<Service>,
         interfaces: Vec<Interface>,
         subnets: Vec<Subnet>,
+        interfaces_complete: bool,
         cancel: &CancellationToken,
     ) -> Result<HostResponse, Error> {
         let mode = self.config_store.get_mode().await?;
@@ -644,6 +659,7 @@ impl DiscoveryOps {
             services,
             interfaces,
             subnets,
+            interfaces_complete,
         };
 
         self.entity_buffer.push_host(request.clone()).await;

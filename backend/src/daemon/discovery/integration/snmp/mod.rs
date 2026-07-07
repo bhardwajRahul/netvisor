@@ -177,15 +177,23 @@ impl DiscoveryIntegration for SnmpIntegration {
             return Err(anyhow::anyhow!("Discovery was cancelled"));
         }
 
-        // Walk interface table
-        let snmp_if_entries = match walk_if_table(ip, credential, port).await {
-            Ok(entries) => {
-                tracing::debug!(ip = %ip, if_count = entries.len(), "SNMP ifTable walked");
-                entries
+        // Walk interface table. `if_table_complete` tells the server whether this is an
+        // authoritative full ifTable (safe to prune stale interfaces against) or a partial walk
+        // cut short by timeout/error (must NOT prune — see GH #649). A hard failure yields an
+        // empty set, which the server's existing empty-set guard already protects.
+        let (snmp_if_entries, if_table_complete) = match walk_if_table(ip, credential, port).await {
+            Ok((entries, complete)) => {
+                tracing::debug!(
+                    ip = %ip,
+                    if_count = entries.len(),
+                    complete = complete,
+                    "SNMP ifTable walked"
+                );
+                (entries, complete)
             }
             Err(e) => {
                 tracing::debug!(ip = %ip, error = %e, "SNMP ifTable walk failed");
-                Vec::new()
+                (Vec::new(), false)
             }
         };
 
@@ -200,6 +208,7 @@ impl DiscoveryIntegration for SnmpIntegration {
                 Vec::new()
             }
         };
+        let lldp_count = lldp_neighbors.len();
 
         // Query CDP neighbors (Cisco devices)
         let cdp_neighbors = match query_cdp_neighbors(ip, credential, port).await {
@@ -212,6 +221,7 @@ impl DiscoveryIntegration for SnmpIntegration {
                 Vec::new()
             }
         };
+        let cdp_count = cdp_neighbors.len();
 
         // Query ipAddrTable for IP->ifIndex+netMask mappings
         let ip_addr_table = query_ip_addr_table(ip, credential, port)
@@ -222,15 +232,17 @@ impl DiscoveryIntegration for SnmpIntegration {
         let arp_entries = query_arp_table(ip, credential, port)
             .await
             .unwrap_or_default();
-        tracing::info!(ip = %ip, count = arp_entries.len(), "ARP table entries collected");
+        let arp_count = arp_entries.len();
+        tracing::info!(ip = %ip, count = arp_count, "ARP table entries collected");
 
         // Query ENTITY-MIB for hardware inventory
         let device_inventory = query_entity_physical(ip, credential, port)
             .await
             .unwrap_or(None);
+        let has_entity_inventory = device_inventory.is_some();
         tracing::info!(
             ip = %ip,
-            has_inventory = device_inventory.is_some(),
+            has_inventory = has_entity_inventory,
             "ENTITY-MIB inventory queried"
         );
 
@@ -238,7 +250,8 @@ impl DiscoveryIntegration for SnmpIntegration {
         let bridge_fdb = query_bridge_fdb(ip, credential, port)
             .await
             .unwrap_or_default();
-        tracing::info!(ip = %ip, count = bridge_fdb.len(), "Bridge FDB entries collected");
+        let fdb_count = bridge_fdb.len();
+        tracing::info!(ip = %ip, count = fdb_count, "Bridge FDB entries collected");
 
         let network_id = host_data.host.base.network_id;
 
@@ -246,6 +259,8 @@ impl DiscoveryIntegration for SnmpIntegration {
         let vlan_table = query_vlan_table(ip, credential, port)
             .await
             .unwrap_or_default();
+        // Summary status for the per-host diagnostic line below: no VLANs, upserted, or failed.
+        let mut vlan_upsert = "no_vlans";
         let vlan_number_to_uuid: std::collections::HashMap<u16, Uuid> = if !vlan_table.is_empty() {
             tracing::info!(
                 ip = %ip,
@@ -254,8 +269,12 @@ impl DiscoveryIntegration for SnmpIntegration {
                 "VLAN table entries collected"
             );
             match ctx.ops.upsert_vlans(&vlan_table, network_id).await {
-                Ok(mapping) => mapping,
+                Ok(mapping) => {
+                    vlan_upsert = "ok";
+                    mapping
+                }
                 Err(e) => {
+                    vlan_upsert = "failed";
                     tracing::warn!(ip = %ip, error = %e, "Failed to upsert VLANs, VLAN IDs will not be resolved");
                     std::collections::HashMap::new()
                 }
@@ -372,6 +391,28 @@ impl DiscoveryIntegration for SnmpIntegration {
             );
             host_data.add_if_entry(interface);
         }
+        // Mark whether this SNMP interface set is a complete, authoritative ifTable. The server
+        // only prunes interfaces no longer reported when this is true, so a partial walk cannot
+        // tear down the host's L2 topology (GH #649).
+        host_data.set_interfaces_complete(if_table_complete);
+
+        // GH #649: one consolidated per-host collection record. Ties together the scattered
+        // per-query lines above so a self-hosted operator (and we, from their logs) can see, at a
+        // glance per switch: how many interfaces were collected and whether the walk was complete
+        // (a partial walk is why the server now skips pruning), and the L2 source signals
+        // (ARP/FDB/LLDP/CDP) plus VLAN upsert status that feed neighbor resolution.
+        tracing::debug!(
+            ip = %ip,
+            if_count = snmp_if_entries.len(),
+            if_table_complete = if_table_complete,
+            arp = arp_count,
+            fdb = fdb_count,
+            lldp = lldp_count,
+            cdp = cdp_count,
+            entity_inventory = has_entity_inventory,
+            vlan_upsert = vlan_upsert,
+            "SNMP host collection summary"
+        );
 
         // --- Discover remote subnets from ipAddrTable ---
         let scanning_subnet = ctx.scanning_subnet;
@@ -546,6 +587,8 @@ impl DiscoveryIntegration for SnmpIntegration {
                         vec![],
                         vec![],
                         vec![],
+                        // ARP-discovered remote host has no ifTable of its own; nothing to prune.
+                        true,
                         ctx.cancel,
                     )
                     .await
@@ -679,10 +722,11 @@ pub async fn poll_device(
         .await
         .map_err(|_| anyhow::anyhow!("System info query timeout"))??;
 
-    let interfaces = timeout(SNMP_WALK_TIMEOUT, walk_if_table(ip, credential, port))
-        .await
-        .map_err(|_| anyhow::anyhow!("ifTable walk timeout"))?
-        .unwrap_or_default();
+    let (interfaces, _if_table_complete) =
+        timeout(SNMP_WALK_TIMEOUT, walk_if_table(ip, credential, port))
+            .await
+            .map_err(|_| anyhow::anyhow!("ifTable walk timeout"))?
+            .unwrap_or_default();
 
     let lldp_neighbors = timeout(
         SNMP_WALK_TIMEOUT,

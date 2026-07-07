@@ -2,6 +2,7 @@
 	import posthog from 'posthog-js';
 	import { dev } from '$app/environment';
 	import { type CookiePreferences, COOKIE_NAME, getGdprPreferences } from './CookieConsent.svelte';
+	import { applyAttributionToPosthog } from '$lib/shared/utils/first-touch';
 	import InfoCard from '$lib/shared/components/data/InfoCard.svelte';
 	import {
 		common_analytics,
@@ -43,6 +44,7 @@
 		if (posthog.__loaded) {
 			if (preferences.analytics) {
 				posthog.opt_in_capturing();
+				applyAttributionToPosthog(posthog);
 			} else {
 				posthog.opt_out_capturing();
 			}

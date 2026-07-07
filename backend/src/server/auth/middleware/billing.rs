@@ -101,6 +101,8 @@ pub async fn require_billing_for_users(
         BillingPlan::Community(_)
             | BillingPlan::Free(_)
             | BillingPlan::CommercialSelfHosted(_)
+            | BillingPlan::SelfHostedStandard(_)
+            | BillingPlan::SelfHostedPlus(_)
             | BillingPlan::Demo(_)
     ) {
         return next.run(request).await;

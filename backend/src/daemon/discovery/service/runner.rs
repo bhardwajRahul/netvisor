@@ -367,6 +367,7 @@ impl DiscoveryRunner {
             host_data.services,
             host_data.interfaces,
             host_data.subnets,
+            host_data.interfaces_complete,
             cancel,
         )
         .await?;

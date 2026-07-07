@@ -19,6 +19,22 @@ pub fn validate_network_access(
     Ok(())
 }
 
+/// Validates that a user has access to every network in `network_ids`.
+/// Returns an error on the first id not in the caller's allowed networks.
+/// In-memory subset check — use for caller-supplied network-id sets that are
+/// validated directly against `auth.network_ids()` (no DB lookup needed).
+pub fn validate_network_ids_access(
+    network_ids: &[Uuid],
+    user_network_ids: &[Uuid],
+) -> Result<(), ApiError> {
+    for network_id in network_ids {
+        if !user_network_ids.contains(network_id) {
+            return Err(ApiError::entity_access_denied::<Network>(*network_id));
+        }
+    }
+    Ok(())
+}
+
 /// Validates that a user has access to an organization.
 /// Returns an error if the organization_id doesn't match the user's organization.
 pub fn validate_organization_access(

@@ -23,6 +23,10 @@
 	import CookieConsent, {
 		hasAnalyticsConsent
 	} from '$lib/shared/components/feedback/CookieConsent.svelte';
+	import {
+		applyAttributionToPosthog,
+		markLandingPageviewDropped
+	} from '$lib/shared/utils/first-touch';
 	import PaymentMethodModal from '$lib/features/billing/PaymentMethodModal.svelte';
 	import {
 		billing_paymentMethodAdded,
@@ -96,6 +100,19 @@
 
 					loaded: () => {
 						posthogInstance = posthog;
+						// Close the consent race: the user may have accepted the banner
+						// while posthog-js was still importing, in which case the panel's
+						// opt_in_capturing() call was skipped.
+						if (hasAnalyticsConsent() && posthog.has_opted_out_capturing()) {
+							posthog.opt_in_capturing();
+						}
+						if (posthog.has_opted_out_capturing()) {
+							// The landing $pageview was discarded; remember so it can be
+							// replayed with the true landing URL if the user opts in.
+							markLandingPageviewDropped();
+						} else {
+							applyAttributionToPosthog(posthog);
+						}
 						flushEventQueue();
 						flushStoredEvents();
 					}
@@ -180,7 +197,9 @@
 				} else if (isDemo) {
 					goto(resolve('/login'));
 				} else if (typeof localStorage !== 'undefined' && localStorage.getItem('hasAccount')) {
-					goto(resolve('/login'));
+					// Preserve the query string so UTM params survive for analytics
+					// eslint-disable-next-line svelte/no-navigation-without-resolve
+					goto(`${resolve('/login')}${$page.url.search}`);
 				} else {
 					// eslint-disable-next-line svelte/no-navigation-without-resolve
 					goto(`${resolve('/onboarding')}${$page.url.search}`);
