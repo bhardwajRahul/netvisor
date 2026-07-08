@@ -60,7 +60,7 @@ fetch() {
         fi
         install_if_sane "$tmp" "$dest" "$floor"
     else
-        echo "WARN: $dest download failed — keeping committed copy" >&2
+        echo "WARN: $dest download failed (curl exit $?) — keeping committed copy" >&2
         rm -f "$tmp"
     fi
 }
@@ -92,12 +92,21 @@ sites_query() { # instances (incl. subclasses) of $1 with an official website
 }
 
 # --- IEEE OUI registry (MAC-address vendor lookup) ---
+# IEEE sits behind bot protection that instantly rejects default-UA curl from
+# datacenter IPs (seen as a ~300ms failure on GitHub runners) — always send
+# the UA, and report HTTP status + curl exit on failure so the release log
+# says exactly why a refresh was skipped.
 tmp=$(mktemp)
-if "${CURL[@]}" -o "$tmp" "https://standards-oui.ieee.org/oui/oui.csv" \
-    && head -1 "$tmp" | grep -q "Registry"; then
+http_code=$("${CURL[@]}" -A "$UA" -o "$tmp" -w '%{http_code}' \
+    "https://standards-oui.ieee.org/oui/oui.csv")
+curl_exit=$?
+if [ "$curl_exit" = 0 ] && head -1 "$tmp" | grep -q "Registry"; then
     install_if_sane "$tmp" assets/oui.csv 20000
+elif [ "$curl_exit" != 0 ]; then
+    echo "WARN: assets/oui.csv download failed (curl exit $curl_exit, HTTP ${http_code:-?}) — keeping committed copy" >&2
+    rm -f "$tmp"
 else
-    echo "WARN: assets/oui.csv download failed or malformed — keeping committed copy" >&2
+    echo "WARN: assets/oui.csv malformed (HTTP $http_code, starts: $(head -c 60 "$tmp" | tr -d '\n')) — keeping committed copy" >&2
     rm -f "$tmp"
 fi
 
