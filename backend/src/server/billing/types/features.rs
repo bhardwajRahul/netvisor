@@ -75,7 +75,10 @@ impl HasId for Feature {
 
 impl Feature {
     pub fn is_coming_soon(&self) -> bool {
-        matches!(self, Feature::Webhooks | Feature::AuditLogs | Feature::Saml)
+        matches!(
+            self,
+            Feature::Webhooks | Feature::AuditLogs | Feature::Saml | Feature::Whitelabeling
+        )
     }
 
     /// Returns the ID of the lowest-tier cloud plan that includes this feature.
@@ -208,7 +211,7 @@ impl TypeMetadataProvider for Feature {
                 "We deploy, configure, and manage Scanopy for you on a dedicated instance"
             }
             Feature::EmailSupport => "Access to the Scanopy team via email support tickets",
-            Feature::Whitelabeling => "We deploy Scanopy to a custom domain with your branding",
+            Feature::Whitelabeling => "Deploy Scanopy with your logo and brand colors",
             Feature::LiveChatSupport => "Access to the Scanopy team via live chat",
             Feature::NetworkMapping => {
                 "Automatically discover hosts, services, and connections and map them as interactive topology diagrams"
