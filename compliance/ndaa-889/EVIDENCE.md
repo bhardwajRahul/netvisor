@@ -8,21 +8,20 @@
 | Field | Value |
 |-------|-------|
 | Standard | NDAA FY2019 Section 889 (covered-entity components) |
-| Generated (UTC) | 2026-07-05T13:33:39Z |
+| Generated (UTC) | 2026-07-08T13:58:33Z |
 | Repository | `scanopy/scanopy` |
-| Assessed commit | `32bb27669d6cea1cc7e51d7151338e9192f67b2e` (32bb276-dirty) |
-| Components assessed | 11375 |
+| Assessed commit | `5d730465404b3b70930fb8eb2b256fb57c08dd4c` (5d73046-dirty) |
+| Components assessed | 8026 |
 | Prohibited-entity hits | 0 |
 | Reviewed exceptions | 2 |
 | SBOM generator | syft 1.45.1 |
-| Matcher | `tools/889/check-889.sh` @ 32bb276 |
-| Vendor list | `tools/889/889-vendors.txt` @ 32bb276 (sha256 `7f018a32dda6755f02f07a70cd76bc3e0a07c180a4dcf1bf7b23a118a663d611`) |
+| Matcher | `tools/889/check-889.sh` @ 5d73046 |
+| Vendor list | `tools/889/889-vendors.txt` @ 5d73046 (sha256 `7f018a32dda6755f02f07a70cd76bc3e0a07c180a4dcf1bf7b23a118a663d611`) |
 
 ## Scope assessed
 
-- Source tree at commit `32bb27669d6cea1cc7e51d7151338e9192f67b2e`
+- Source tree at commit `5d730465404b3b70930fb8eb2b256fb57c08dd4c`
 - Image: `server` (`latest`)
-- Image: `server-commercial` (`latest`)
 - Image: `daemon` (`latest`)
 
 ## Statement
@@ -41,7 +40,6 @@ false positives (see [889-allow.txt](889-allow.txt) and [summary.txt](summary.tx
 - [summary.txt](summary.txt) - matcher human summary (counts + exceptions)
 - [sbom-source.cdx.json](sbom-source.cdx.json) - CycloneDX SBOM
 - [sbom-server.cdx.json](sbom-server.cdx.json) - CycloneDX SBOM
-- [sbom-server-commercial.cdx.json](sbom-server-commercial.cdx.json) - CycloneDX SBOM
 - [sbom-daemon.cdx.json](sbom-daemon.cdx.json) - CycloneDX SBOM
 - [889-vendors.txt](889-vendors.txt), [889-allow.txt](889-allow.txt) - the exact policy used
 - [SHA256SUMS](SHA256SUMS) - digests of every file above
