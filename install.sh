@@ -73,66 +73,16 @@ if [ ! -f "/usr/local/bin/scanopy-daemon" ]; then
 fi
 
 echo ""
-echo "✓ Scanopy daemon installed successfully!"
+echo "✓ Scanopy daemon binary installed successfully!"
 echo ""
 
-# Ask about systemd service installation (Linux only)
-if [ "$PLATFORM" = "linux" ] && command -v systemctl &> /dev/null; then
-    echo "Would you like to install Scanopy daemon as a systemd service?"
-    echo "This will allow the daemon to:"
-    echo "  - Start automatically on boot"
-    echo "  - Run in the background"
-    echo "  - Restart automatically if it crashes"
-    echo ""
-    read -p "Install as systemd service? [y/N]: " -n 1 -r
-    echo
-    
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        echo ""
-        echo "Installing systemd service..."
-        
-        # Download service file
-        SERVICE_URL="https://raw.githubusercontent.com/${REPO}/main/scanopy-daemon.service"
-        
-        if ! curl -fL "$SERVICE_URL" -o scanopy-daemon.service; then
-            echo "Warning: Failed to download service file from $SERVICE_URL"
-            echo "You can manually install the service later."
-        else
-            # Install service file
-            sudo mv scanopy-daemon.service /etc/systemd/system/ || {
-                echo "Error: Failed to install service file."
-                rm -f scanopy-daemon.service
-                exit 1
-            }
-            
-            echo ""
-            echo "✓ Systemd service file installed!"
-            echo ""
-            echo "⚠️  IMPORTANT: You must edit the service file with your daemon configuration:"
-            echo ""
-            echo "  sudo nano /etc/systemd/system/scanopy-daemon.service"
-            echo ""
-            echo "Add your daemon arguments to the ExecStart line:"
-            echo "  ExecStart=/usr/local/bin/scanopy-daemon --server-url http://YOUR_SERVER --server-port 60072 --network-id YOUR_NETWORK_ID --daemon-api-key YOUR_API_KEY"
-            echo ""
-            echo "Then enable and start the service:"
-            echo "  sudo systemctl daemon-reload"
-            echo "  sudo systemctl enable scanopy-daemon"
-            echo "  sudo systemctl start scanopy-daemon"
-            echo ""
-            echo "Check status:"
-            echo "  sudo systemctl status scanopy-daemon"
-            echo ""
-            echo "View logs:"
-            echo "  sudo journalctl -u scanopy-daemon -f"
-            echo ""
-        fi
-    fi
-fi
-
-# Show manual run instructions
+# Register the background service (systemd on Linux, launchd on macOS, rc.d on FreeBSD) via the
+# daemon's own `install` subcommand, which also writes config.json. It generates a fully-formed
+# service definition — no hand-editing required.
+echo "To register the daemon as a background service, run:"
+echo "  sudo scanopy-daemon install --server-url YOUR_SERVER_URL --daemon-api-key YOUR_API_KEY"
 echo ""
-echo "To run daemon manually:"
-echo "  scanopy-daemon --server-url YOUR_SERVER_URL"
+echo "The Scanopy web UI (Daemons → Add daemon) generates this command with your values"
+echo "filled in. To run in the foreground without a service, use \`scanopy-daemon\` directly."
 echo ""
 echo "Need help? Visit: https://github.com/${REPO}#readme"

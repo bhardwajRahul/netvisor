@@ -1555,7 +1555,6 @@
 	"onboarding_alreadyHaveAccount": "Already have an account?",
 	"onboarding_commercialNoticeBody": "Scanopy Community is licensed under AGPL-3.0. For commercial use, please ensure your use complies with the license terms, or consider our <a href=\"https://scanopy.net/pricing\" class=\"underline hover:no-underline\">commercial self-hosted offering</a>.",
 	"onboarding_commercialNoticeTitle": "Commercial Use Notice",
-	"onboarding_freebsdNotSupported": "Scanopy's daemon currently doesn't support FreeBSD. We recommend running the daemon on a Linux host or VM on your network instead.",
 	"onboarding_homelabDescription": "Home network, NAS, containers, smart devices",
 	"onboarding_homelabNetworkHelp": "Each network represents a scannable environment. Create additional networks to map separate environments.",
 	"onboarding_homelabNetworkPlaceholder": "Home Network",

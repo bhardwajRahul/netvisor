@@ -12,7 +12,6 @@
 		common_windows,
 		daemons_operatingSystem,
 		daemons_requestOsSupport,
-		onboarding_freebsdNotSupported,
 		onboarding_notSupportedTitle,
 		onboarding_openbsdNotSupported
 	} from '$lib/paraglide/messages';
@@ -121,20 +120,7 @@
 	</div>
 {/if}
 
-{#if selectedOS === 'freebsd'}
-	<InlineWarning title={onboarding_notSupportedTitle()} body={onboarding_freebsdNotSupported()} />
-	{#if hasPosthog}
-		<button
-			type="button"
-			class="btn-secondary btn-sm"
-			disabled={requestedOs.has('freebsd')}
-			onclick={() => handleRequestOsSupport('freebsd')}
-		>
-			{requestedOs.has('freebsd') ? '✓' : ''}
-			{daemons_requestOsSupport({ os: 'FreeBSD' })}
-		</button>
-	{/if}
-{:else if selectedOS === 'openbsd'}
+{#if selectedOS === 'openbsd'}
 	<InlineWarning title={onboarding_notSupportedTitle()} body={onboarding_openbsdNotSupported()} />
 	{#if hasPosthog}
 		<button

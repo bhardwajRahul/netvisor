@@ -12,6 +12,9 @@ use bollard::{API_DEFAULT_VERSION, Docker};
 use cidr::IpCidr;
 use local_ip_address::local_ip;
 use mac_address::MacAddress;
+// net-route has no BSD support; FreeBSD/OpenBSD use netdev instead (see
+// `get_own_routing_table_gateway_ips`). Keep the import off BSD so net-route is never compiled there.
+#[cfg(not(any(target_os = "freebsd", target_os = "openbsd")))]
 use net_route::Handle;
 use pnet::ipnetwork::IpNetwork;
 use std::collections::{HashMap, HashSet};
@@ -469,6 +472,12 @@ pub trait DaemonUtils {
         Ok(subnets)
     }
 
+    /// Collect all gateway IPs from the host routing table.
+    ///
+    /// Uses `net-route` on linux/macos/windows and `netdev` on FreeBSD/OpenBSD (net-route has no
+    /// BSD cfg arm). Both arms return the same shape — every distinct routing-table gateway — so
+    /// callers are platform-agnostic.
+    #[cfg(not(any(target_os = "freebsd", target_os = "openbsd")))]
     async fn get_own_routing_table_gateway_ips(&self) -> Result<Vec<IpAddr>, Error> {
         let routing_handle = Handle::new()?;
         let routes = routing_handle.list().await?;
@@ -480,6 +489,30 @@ pub trait DaemonUtils {
                 _ => None,
             })
             .collect())
+    }
+
+    /// BSD variant: net-route lacks BSD cfg arms, so use netdev, which does BSD gateway discovery
+    /// via `libc`/sysctl in-code. Each interface exposes its gateway's v4/v6 addresses; the union
+    /// reproduces the "all routing-table gateways" set the net-route arm returns.
+    ///
+    /// Hardware-validation note: confirm on a multi-homed FreeBSD host that this matches the full
+    /// gateway set; if netdev under-reports, fall back to a `sysctl(NET_RT_DUMP)` route reader
+    /// isolated to this cfg arm.
+    #[cfg(any(target_os = "freebsd", target_os = "openbsd"))]
+    async fn get_own_routing_table_gateway_ips(&self) -> Result<Vec<IpAddr>, Error> {
+        let gateways = netdev::get_interfaces()
+            .into_iter()
+            .filter_map(|iface| iface.gateway)
+            .flat_map(|gw| {
+                gw.ipv4
+                    .into_iter()
+                    .map(IpAddr::V4)
+                    .chain(gw.ipv6.into_iter().map(IpAddr::V6))
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+
+        Ok(gateways)
     }
 
     /// Get optimal concurrency for ARP scanning (OS-specific due to BPF limits on macOS)
@@ -540,6 +573,11 @@ pub type PlatformDaemonUtils = MacOsDaemonUtils;
 use crate::daemon::utils::windows::WindowsDaemonUtils;
 #[cfg(target_family = "windows")]
 pub type PlatformDaemonUtils = WindowsDaemonUtils;
+
+#[cfg(target_os = "freebsd")]
+use crate::daemon::utils::bsd::BsdDaemonUtils;
+#[cfg(target_os = "freebsd")]
+pub type PlatformDaemonUtils = BsdDaemonUtils;
 
 pub fn create_system_utils() -> PlatformDaemonUtils {
     PlatformDaemonUtils::new()

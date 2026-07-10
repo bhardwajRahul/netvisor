@@ -1,0 +1,5 @@
+# The daemon binary is copied here by CI before cargo-wix runs; never commit it.
+scanopy-daemon.exe
+*.msi
+*.wixobj
+*.wixpdb

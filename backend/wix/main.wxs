@@ -1,0 +1,181 @@
+<?xml version="1.0" encoding="windows-1252"?>
+
+<!--
+  Scanopy Daemon Windows MSI.
+
+  This MSI is a THIN FRONT-END over the daemon's own `install` subcommand — there is no
+  second config or service-registration system. Its wizard collects the same AppConfig fields
+  the daemon already understands, exposed as MSI PROPERTIES (Windows's native front door, so
+  silent installs work: `msiexec /qn /i scanopy-daemon.msi SERVERURL=... APIKEY=...`). A single
+  deferred custom action then invokes `scanopy-daemon.exe install <mapped flags>`, which registers
+  the Windows service and writes config.json. Uninstall invokes `scanopy-daemon.exe uninstall`.
+
+  Built by cargo-wix on the windows runner (see .github/workflows/release.yml), then signed
+  (exe first, then msi) with jsign + Certum SimplySign cloud.
+
+  NOTE: this authoring must be validated by a Windows CI run — it cannot be compiled on the
+  macOS/Linux dev host. The property/silent path is the guaranteed-supported flow; the attended
+  configuration dialog is layered on the standard WixUI_InstallDir dialog set.
+
+  Requires linking the WiX util + UI extensions: `-ext WixUtilExtension -ext WixUIExtension`.
+-->
+
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
+     xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
+
+    <Product
+        Id="*"
+        Name="Scanopy Daemon"
+        UpgradeCode="7C4E2F1A-9B3D-4A6E-8F2C-1D5B7A9E3C40"
+        Manufacturer="Scanopy"
+        Language="1033"
+        Codepage="1252"
+        Version="$(var.Version)">
+
+        <Package Id="*"
+            Keywords="Installer"
+            Description="Scanopy network discovery and test execution daemon"
+            Manufacturer="Scanopy"
+            InstallerVersion="500"
+            Languages="1033"
+            Compressed="yes"
+            InstallScope="perMachine"
+            SummaryCodepage="1252" />
+
+        <!-- Upgrade over any prior version in place. -->
+        <MajorUpgrade
+            AllowSameVersionUpgrades="yes"
+            DowngradeErrorMessage="A newer version of Scanopy Daemon is already installed." />
+
+        <MediaTemplate EmbedCab="yes" />
+
+        <!-- ============================================================
+             Configuration properties → daemon `install` flags (1:1).
+             Marked Secure so they survive the managed/silent elevation
+             hand-off for a per-machine install.
+             ============================================================ -->
+        <Property Id="DAEMONNAME" Value="scanopy-daemon" Secure="yes" />
+        <Property Id="SERVERURL" Secure="yes" />
+        <Property Id="APIKEY" Secure="yes" />
+        <Property Id="NETWORKID" Secure="yes" />
+        <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
+
+        <!-- ============================================================
+             Files: install the daemon binary to %ProgramFiles%\Scanopy.
+             The exe is copied next to this .wxs by the CI job before
+             cargo-wix runs, so $(sys.SOURCEFILEDIR) resolves it.
+             ============================================================ -->
+        <Directory Id="TARGETDIR" Name="SourceDir">
+            <Directory Id="ProgramFiles64Folder">
+                <Directory Id="INSTALLFOLDER" Name="Scanopy">
+                    <Component Id="ScanopyExeComponent" Guid="*">
+                        <File Id="ScanopyExe"
+                              Name="scanopy-daemon.exe"
+                              Source="$(sys.SOURCEFILEDIR)scanopy-daemon.exe"
+                              KeyPath="yes" />
+                    </Component>
+                </Directory>
+            </Directory>
+        </Directory>
+
+        <Feature Id="MainFeature" Title="Scanopy Daemon" Level="1">
+            <ComponentRef Id="ScanopyExeComponent" />
+        </Feature>
+
+        <!-- ============================================================
+             Delegate to the daemon's own install engine.
+             Deferred + no-impersonate so it runs elevated (service
+             registration needs admin). The command line is passed as
+             CustomActionData via the immediate SetProperty action whose
+             Property name matches the deferred action Id — the standard
+             WixQuietExec pattern.
+             ============================================================ -->
+        <CustomAction Id="InstallDaemon"
+            Property="InstallDaemonCmd"
+            Value="&quot;[INSTALLFOLDER]scanopy-daemon.exe&quot; install --server-url &quot;[SERVERURL]&quot; --daemon-api-key &quot;[APIKEY]&quot; --network-id &quot;[NETWORKID]&quot; --name &quot;[DAEMONNAME]&quot;"
+            Execute="immediate" />
+        <CustomAction Id="InstallDaemonCmd"
+            BinaryKey="WixCA"
+            DllEntry="WixQuietExec64"
+            Execute="deferred"
+            Impersonate="no"
+            Return="check" />
+
+        <CustomAction Id="UninstallDaemon"
+            Property="UninstallDaemonCmd"
+            Value="&quot;[INSTALLFOLDER]scanopy-daemon.exe&quot; uninstall --name &quot;[DAEMONNAME]&quot;"
+            Execute="immediate" />
+        <CustomAction Id="UninstallDaemonCmd"
+            BinaryKey="WixCA"
+            DllEntry="WixQuietExec64"
+            Execute="deferred"
+            Impersonate="no"
+            Return="ignore" />
+
+        <InstallExecuteSequence>
+            <!-- Register the service after the binary is on disk (install/upgrade only). -->
+            <Custom Action="InstallDaemon" After="InstallFiles">NOT REMOVE</Custom>
+            <Custom Action="InstallDaemonCmd" After="InstallDaemon">NOT REMOVE</Custom>
+            <!-- Deregister the service before the binary is removed (full uninstall only). -->
+            <Custom Action="UninstallDaemon" Before="RemoveFiles">REMOVE~="ALL"</Custom>
+            <Custom Action="UninstallDaemonCmd" After="UninstallDaemon">REMOVE~="ALL"</Custom>
+        </InstallExecuteSequence>
+
+        <!-- ============================================================
+             Attended wizard: standard install-dir dialogs + one custom
+             page collecting Server URL and API key. Silent installs skip
+             the UI entirely and read the properties directly.
+             ============================================================ -->
+        <UIRef Id="WixUI_InstallDir" />
+
+        <UI>
+            <Dialog Id="ScanopyConfigDlg" Width="370" Height="270" Title="Scanopy Daemon Setup">
+                <Control Id="Title" Type="Text" X="15" Y="6" Width="340" Height="15"
+                         Transparent="yes" NoPrefix="yes"
+                         Text="{\WixUI_Font_Title}Daemon configuration" />
+                <Control Id="Description" Type="Text" X="25" Y="23" Width="340" Height="15"
+                         Transparent="yes" NoPrefix="yes"
+                         Text="Enter the values from the Scanopy web UI (Daemons → Add daemon)." />
+                <Control Id="BannerBitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="44"
+                         TabSkip="no" Text="!(loc.InstallDirDlgBannerBitmap)" />
+                <Control Id="BannerLine" Type="Line" X="0" Y="44" Width="370" Height="0" />
+                <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
+
+                <Control Id="ServerUrlLabel" Type="Text" X="25" Y="60" Width="120" Height="12"
+                         Text="Server URL:" />
+                <Control Id="ServerUrlEdit" Type="Edit" X="25" Y="73" Width="320" Height="16"
+                         Property="SERVERURL" />
+
+                <Control Id="ApiKeyLabel" Type="Text" X="25" Y="98" Width="120" Height="12"
+                         Text="API key:" />
+                <Control Id="ApiKeyEdit" Type="Edit" X="25" Y="111" Width="320" Height="16"
+                         Property="APIKEY" />
+
+                <Control Id="NetworkIdLabel" Type="Text" X="25" Y="136" Width="200" Height="12"
+                         Text="Network ID (optional):" />
+                <Control Id="NetworkIdEdit" Type="Edit" X="25" Y="149" Width="320" Height="16"
+                         Property="NETWORKID" />
+
+                <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17"
+                         Text="!(loc.WixUIBack)">
+                    <Publish Event="NewDialog" Value="InstallDirDlg">1</Publish>
+                </Control>
+                <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17"
+                         Default="yes" Text="!(loc.WixUINext)">
+                    <Publish Event="NewDialog" Value="VerifyReadyDlg">1</Publish>
+                </Control>
+                <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17"
+                         Cancel="yes" Text="!(loc.WixUICancel)">
+                    <Publish Event="SpawnDialog" Value="CancelDlg">1</Publish>
+                </Control>
+            </Dialog>
+
+            <!-- Splice the config page between the install-dir page and the ready page. -->
+            <Publish Dialog="InstallDirDlg" Control="Next" Event="NewDialog"
+                     Value="ScanopyConfigDlg" Order="10">WIXUI_INSTALLDIR_VALID="1"</Publish>
+            <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog"
+                     Value="ScanopyConfigDlg" Order="10">NOT Installed</Publish>
+        </UI>
+
+    </Product>
+</Wix>

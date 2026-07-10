@@ -156,7 +156,9 @@ ipgen = "1.0.2"
 validator = { version = "0.20", features = ["derive"] }
 regex = "1.11.3"
 tempfile = "3.23.0"
-net-route = "0.4.6"
+# net-route (routing-table gateway discovery) lacks BSD support, so it is declared per-target
+# below: net-route on linux/macos/windows, netdev on FreeBSD/OpenBSD. See the
+# `[target.'cfg(...)']` sections near the end of this file.
 bollard = { version = "0.20.2", features = ["ssl"] }
 httparse = "1.10.1"
 async-stream = "0.3.6"
@@ -214,6 +216,15 @@ windows = { version = "0.52", features = [
     "Win32_NetworkManagement_IpHelper",
     "Win32_Foundation"
 ]}
+
+# Routing-table gateway discovery. net-route has no BSD cfg arm, so it stays on the three
+# desktop OSes; FreeBSD/OpenBSD use netdev (BSD gateway discovery via sysctl in-code, tested on
+# FreeBSD 14). Split per-target so net-route never compiles on BSD and netdev never on the others.
+[target.'cfg(not(any(target_os = "freebsd", target_os = "openbsd")))'.dependencies]
+net-route = "0.4.6"
+
+[target.'cfg(any(target_os = "freebsd", target_os = "openbsd"))'.dependencies]
+netdev = "0.45.0"
 
 [dev-dependencies]
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
