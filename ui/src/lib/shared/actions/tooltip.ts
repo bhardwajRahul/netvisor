@@ -41,7 +41,15 @@ export function tooltip(node: HTMLElement) {
 		} else {
 			tip.style.top = `${rect.top - 6}px`;
 		}
-		tip.style.left = `${rect.left + rect.width / 2}px`;
+
+		// The tooltip is centred on the node via translateX(-50%). Clamp that centre
+		// so a wide tooltip on an edge (first/last) element stays fully in the
+		// viewport instead of being clipped off the left/right edge.
+		const margin = 6;
+		const half = tip.offsetWidth / 2;
+		const centre = rect.left + rect.width / 2;
+		const clamped = Math.max(margin + half, Math.min(centre, window.innerWidth - margin - half));
+		tip.style.left = `${clamped}px`;
 	}
 
 	function hide() {

@@ -1733,6 +1733,7 @@
 	"shares_namePlaceholder": "My shared topology",
 	"shares_noSharesSubtitle": "Click 'Create New' to create a share link or embed",
 	"shares_noSharesYet": "No links or embeds created yet",
+	"shares_openInFullView": "Open in full view",
 	"shares_passwordHelpEdit": "Leave empty to keep the current password",
 	"shares_passwordPlaceholder": "Enter password",
 	"shares_selectToEdit": "Select a share from the list to edit its settings",
