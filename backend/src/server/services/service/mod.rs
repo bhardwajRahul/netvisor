@@ -18,18 +18,19 @@ use crate::server::{
         events::{bus::EventBus, types::EntityOperation},
         position::next_position,
         services::traits::{ChildCrudService, CrudService, EventBusService},
-        storage::{filter::StorableFilter, generic::GenericPostgresStorage, traits::Storage},
+        storage::{
+            filter::StorableFilter,
+            generic::GenericPostgresStorage,
+            lock::{DEFAULT_LOCK_TIMEOUT, LockKey},
+            traits::Storage,
+        },
         types::{api::ValidationError, entities::EntitySource},
     },
 };
 use anyhow::anyhow;
 use anyhow::{Error, Result};
 use async_trait::async_trait;
-use futures::lock::Mutex;
-use std::{
-    collections::HashMap,
-    sync::{Arc, OnceLock},
-};
+use std::sync::{Arc, OnceLock};
 use uuid::Uuid;
 
 pub struct ServiceService {
@@ -37,8 +38,6 @@ pub struct ServiceService {
     binding_service: Arc<BindingService>,
     host_service: OnceLock<Arc<HostService>>,
     dependency_service: Arc<DependencyService>,
-    dependency_update_lock: Arc<Mutex<()>>,
-    service_locks: Arc<Mutex<HashMap<Uuid, Arc<Mutex<()>>>>>,
     event_bus: Arc<EventBus>,
     entity_tag_service: Arc<EntityTagService>,
 }
@@ -155,8 +154,20 @@ impl CrudService<Service> for ServiceService {
         // Deduplicate bindings before validation
         service.base.bindings = Self::deduplicate_bindings(service.base.bindings);
 
-        let lock = self.get_service_lock(&service.id).await;
-        let _guard = lock.lock().await;
+        // DB-level lock, scoped to the host: serializes the natural-key
+        // dedup AND next_position across all backend instances. Keyed by
+        // host (not service id) because a new service's fresh UUID would
+        // never contend, and position assignment reads the whole per-host
+        // list. Error paths release via Drop.
+        let dedup_guard = self
+            .storage
+            .session_lock(
+                LockKey::ServiceDedup {
+                    host_id: service.base.host_id,
+                },
+                DEFAULT_LOCK_TIMEOUT,
+            )
+            .await?;
 
         // SCD2: only live services on this host are candidates for natural-key match.
         let filter = StorableFilter::<Service>::new_from_host_ids(&[service.base.host_id]).live();
@@ -272,6 +283,7 @@ impl CrudService<Service> for ServiceService {
             }
         };
 
+        dedup_guard.release().await?;
         Ok(service_from_storage)
     }
 
@@ -280,8 +292,10 @@ impl CrudService<Service> for ServiceService {
         service: &mut Service,
         authentication: AuthenticatedEntity,
     ) -> Result<Service> {
-        let lock = self.get_service_lock(&service.id).await;
-        let _guard = lock.lock().await;
+        let lock_guard = self
+            .storage
+            .session_lock(LockKey::Service(service.id), DEFAULT_LOCK_TIMEOUT)
+            .await?;
 
         tracing::trace!("Updating service: {:?}", service);
 
@@ -365,12 +379,15 @@ impl CrudService<Service> for ServiceService {
                 .await?;
         }
 
+        lock_guard.release().await?;
         Ok(updated)
     }
 
     async fn delete(&self, id: &Uuid, authentication: AuthenticatedEntity) -> Result<()> {
-        let lock = self.get_service_lock(id).await;
-        let _guard = lock.lock().await;
+        let lock_guard = self
+            .storage
+            .session_lock(LockKey::Service(*id), DEFAULT_LOCK_TIMEOUT)
+            .await?;
 
         let service = self
             .get_by_id(id)
@@ -408,6 +425,8 @@ impl CrudService<Service> for ServiceService {
                 )
                 .await?;
         }
+
+        lock_guard.release().await?;
         Ok(())
     }
 }

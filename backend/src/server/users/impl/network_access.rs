@@ -7,9 +7,11 @@ use sqlx::{PgPool, Row, postgres::PgRow};
 use std::fmt::Display;
 use uuid::Uuid;
 
+use crate::server::shared::entities::EntityDiscriminants;
 use crate::server::shared::storage::{
     filter::StorableFilter,
     generic::GenericPostgresStorage,
+    lock::{DEFAULT_LOCK_TIMEOUT, LockKey},
     traits::{SqlValue, Storable, Storage},
 };
 
@@ -155,6 +157,15 @@ impl UserNetworkAccessStorage {
     /// Uses a transaction to ensure atomicity - if any insert fails, the delete is rolled back.
     pub async fn save_for_user(&self, user_id: &Uuid, network_ids: &[Uuid]) -> Result<()> {
         let mut tx = self.storage.begin_transaction().await?;
+        // Serialize concurrent delete-all + re-insert syncs for one user.
+        tx.lock(
+            LockKey::JunctionSync {
+                parent: EntityDiscriminants::User,
+                parent_id: *user_id,
+            },
+            DEFAULT_LOCK_TIMEOUT,
+        )
+        .await?;
 
         // Delete existing access for this user
         let filter = StorableFilter::<UserNetworkAccess>::new_from_user_id(user_id);

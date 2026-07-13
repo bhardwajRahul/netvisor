@@ -14,8 +14,6 @@ impl ServiceService {
             binding_service,
             dependency_service,
             host_service: OnceLock::new(),
-            dependency_update_lock: Arc::new(Mutex::new(())),
-            service_locks: Arc::new(Mutex::new(HashMap::new())),
             event_bus,
             entity_tag_service,
         }
@@ -70,14 +68,6 @@ impl ServiceService {
         }
 
         Ok(paginated)
-    }
-
-    pub(crate) async fn get_service_lock(&self, service_id: &Uuid) -> Arc<Mutex<()>> {
-        let mut locks = self.service_locks.lock().await;
-        locks
-            .entry(*service_id)
-            .or_insert_with(|| Arc::new(Mutex::new(())))
-            .clone()
     }
 
     pub fn set_host_service(&self, host_service: Arc<HostService>) -> Result<(), Arc<HostService>> {

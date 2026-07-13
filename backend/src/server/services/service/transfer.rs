@@ -17,8 +17,26 @@ impl ServiceService {
         updated_ports: &[Port],
         interface_id_remap: &std::collections::HashMap<Uuid, Uuid>,
     ) -> Service {
-        let lock = self.get_service_lock(&service.id).await;
-        let _guard = lock.lock().await;
+        // Best-effort serialization vs concurrent update/delete of the same
+        // service during host transfer. This method is infallible by
+        // signature, so a lock failure logs and proceeds (the previous
+        // in-memory lock provided no cross-process protection at all).
+        // Held for the whole method; released via Drop (infallible signature).
+        let _lock_guard = match self
+            .storage
+            .session_lock(LockKey::Service(service.id), DEFAULT_LOCK_TIMEOUT)
+            .await
+        {
+            Ok(guard) => Some(guard),
+            Err(e) => {
+                tracing::warn!(
+                    service_id = %service.id,
+                    error = %e,
+                    "Proceeding with binding reassignment without DB lock"
+                );
+                None
+            }
+        };
 
         tracing::trace!(
             "Preparing service {:?} for transfer from host {:?} to host {:?}",

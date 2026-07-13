@@ -131,6 +131,112 @@ impl HostService {
         .await
     }
 
+    /// Create-or-upsert body of `CrudService::create`, WITHOUT the
+    /// `HostDedup` advisory lock. Only two callers:
+    /// - `CrudService::create` (mod.rs), which wraps it in the lock;
+    /// - `create_with_children`, which holds the same lock across the wider
+    ///   IP/MAC-match → create → IP-insertion window (re-acquiring here on a
+    ///   second connection would self-deadlock).
+    pub(crate) async fn create_unlocked(
+        &self,
+        host: Host,
+        authentication: AuthenticatedEntity,
+    ) -> Result<Host> {
+        let host = if host.id == Uuid::nil() {
+            Host::new(host.base.clone())
+        } else {
+            host
+        };
+
+        tracing::trace!("Creating host {:?}", host);
+
+        // SCD2: only live hosts are eligible for the natural-key match.
+        let filter = StorableFilter::<Host>::new_from_network_ids(&[host.base.network_id]).live();
+        let all_hosts = self.get_all(filter).await?;
+
+        // Find existing host by ID (Host::eq only compares IDs)
+        // For discovery, create_with_children already set host.id to the existing host's ID
+        // if an IP-address match was found, so this will find the match
+        let host_from_storage = match all_hosts.into_iter().find(|h| host.eq(h)) {
+            // Upsert if both are discovery sources, or if IDs match exactly
+            Some(existing_host)
+                if (host.base.source.discriminant() == EntitySourceDiscriminants::Discovery
+                    && existing_host.base.source.discriminant()
+                        == EntitySourceDiscriminants::Discovery)
+                    || host.id == existing_host.id =>
+            {
+                if host.id != existing_host.id {
+                    tracing::warn!(
+                        incoming_host_id = %host.id,
+                        matched_host_id = %existing_host.id,
+                        matched_host_name = %existing_host.base.name,
+                        "Host matched via MAC/IP address but discovery reported a different host ID. \
+                         This may indicate a daemon is using a stale configuration. \
+                         To fix, update the daemon's config file with: host_id = \"{}\"",
+                        existing_host.id
+                    );
+                }
+
+                tracing::debug!(
+                    "Duplicate host for {}: {} found, {}: {} - upserting discovery data...",
+                    host.base.name,
+                    host.id,
+                    existing_host.base.name,
+                    existing_host.id
+                );
+
+                self.upsert_host(existing_host, host, authentication)
+                    .await?
+            }
+            _ => {
+                if let Some(existing_host) = self.get_by_id(&host.id).await? {
+                    return Err(ValidationError::new(format!(
+                        "Network mismatch: Daemon is trying to update host '{}' (id: {}) but cannot proceed. \
+                        The host belongs to network {} while the daemon is assigned to network {}. \
+                        To resolve this, either reassign the daemon to the correct network or delete the mismatched host.",
+                        existing_host.base.name,
+                        host.id,
+                        existing_host.base.network_id,
+                        host.base.network_id
+                    )).into());
+                }
+
+                // SCD2 origin: this row is being inserted for the first
+                // time. Stamp created_at + valid_from to the entity's
+                // already-refreshed `last_seen_at` so all four temporal
+                // columns line up at one canonical scan_time. See
+                // `DiscoveryTracked::originate_scan_timestamps`.
+                use crate::server::shared::storage::snapshot::DiscoveryTracked;
+                let mut host = host;
+                host.originate_scan_timestamps(host.last_seen_at);
+                let created = self.storage().create(&host).await?;
+                let trigger_stale = created.triggers_staleness(None);
+
+                if let Some(scope) = EntityScope::from_ids(
+                    created.id(),
+                    created.clone().into(),
+                    self.get_network_id(&created),
+                    self.get_organization_id(&created),
+                ) {
+                    self.event_bus()
+                        .publish(
+                            Event::new(scope, EntityOperation::Created, authentication).with_flags(
+                                EntityEventFlags {
+                                    trigger_stale,
+                                    ..Default::default()
+                                },
+                            ),
+                        )
+                        .await?;
+                }
+
+                host
+            }
+        };
+
+        Ok(host_from_storage)
+    }
+
     /// Create a host with all children, handling conflicts according to behavior.
     /// This is the unified internal method used by both API and discovery paths.
     ///
@@ -144,9 +250,10 @@ impl HostService {
     ///    - For discovery (ConflictBehavior::Upsert): Sets `host.id = existing_host.id` so the
     ///      subsequent create() call will recognize this as an existing host.
     ///
-    /// 2. **ID-based matching** (in `create()`): Uses `Host::eq` which only compares IDs.
-    ///    Since we set `host.id = existing_host.id` in step 1, the create() method will find
-    ///    a match and call `upsert_host()` to merge discovery data.
+    /// 2. **ID-based matching** (in `create_unlocked()`): Uses `Host::eq` which only compares
+    ///    IDs. Since we set `host.id = existing_host.id` in step 1, it will find a match and
+    ///    call `upsert_host()` to merge discovery data. Both stages run under one
+    ///    `HostDedup` advisory lock held until children are persisted (see below).
     ///
     /// This two-stage approach means:
     /// - IP-address matching handles the "is this the same physical host?" question
@@ -169,6 +276,23 @@ impl HostService {
         // interfaces and their resolved L2 neighbors (GH #649).
         interfaces_complete: bool,
     ) -> Result<HostResponse> {
+        // DB-level dedup lock, held from the IP/MAC natural-key match until
+        // all children are persisted. The match reads the ip_addresses
+        // table, so a competing submission of the same NEW device only
+        // becomes visible once this one's host AND ip_addresses rows are
+        // inserted — locking `create_unlocked` alone (ID-based check) cannot
+        // catch two fresh-UUID submissions of one device. Error paths
+        // release via Drop.
+        let dedup_guard = self
+            .storage()
+            .session_lock(
+                LockKey::HostDedup {
+                    network_id: host.base.network_id,
+                },
+                DEFAULT_LOCK_TIMEOUT,
+            )
+            .await?;
+
         // Stage 1: IP-address-based collision detection
         // Compares MAC addresses and subnet+IP to find hosts that represent the same physical machine
         let matching_result = self
@@ -229,7 +353,8 @@ impl HostService {
 
         // Stage 2: Create or upsert host via ID matching
         // If host.id was set to an existing host's ID above, this will trigger upsert_host()
-        let mut created_host = self.create(host, authentication.clone()).await?;
+        // Unlocked variant: this task already holds the HostDedup lock.
+        let mut created_host = self.create_unlocked(host, authentication.clone()).await?;
 
         // Capture daemon interface ID → IP mapping before ip_addresses are consumed.
         // Used later to remap credential assignment ip_address_ids to server-assigned IDs.
@@ -1063,6 +1188,8 @@ impl HostService {
             );
         }
         created_host.base.credential_assignments = remapped_assignments;
+
+        dedup_guard.release().await?;
 
         Ok(HostResponse::from_host_with_children(
             created_host,

@@ -11,10 +11,14 @@ use uuid::Uuid;
 
 use crate::server::{
     credentials::r#impl::types::{CredentialAssignment, CredentialHostAssignment},
-    shared::storage::{
-        filter::StorableFilter,
-        generic::GenericPostgresStorage,
-        traits::{SqlValue, Storable, Storage},
+    shared::{
+        entities::EntityDiscriminants,
+        storage::{
+            filter::StorableFilter,
+            generic::GenericPostgresStorage,
+            lock::{DEFAULT_LOCK_TIMEOUT, LockKey},
+            traits::{SqlValue, Storable, Storage},
+        },
     },
 };
 
@@ -194,6 +198,15 @@ impl NetworkCredentialStorage {
     /// Replace all credentials for a network (atomic).
     pub async fn save_for_network(&self, network_id: &Uuid, credential_ids: &[Uuid]) -> Result<()> {
         let mut tx = self.storage.begin_transaction().await?;
+        // Serialize concurrent delete-all + re-insert syncs for one network.
+        tx.lock(
+            LockKey::JunctionSync {
+                parent: EntityDiscriminants::Network,
+                parent_id: *network_id,
+            },
+            DEFAULT_LOCK_TIMEOUT,
+        )
+        .await?;
 
         let filter =
             StorableFilter::<NetworkCredential>::new_from_uuid_column("network_id", network_id);
@@ -259,6 +272,15 @@ impl NetworkCredentialStorage {
         network_ids: &[Uuid],
     ) -> Result<()> {
         let mut tx = self.storage.begin_transaction().await?;
+        // Serialize concurrent delete-all + re-insert syncs for one credential.
+        tx.lock(
+            LockKey::JunctionSync {
+                parent: EntityDiscriminants::Credential,
+                parent_id: *credential_id,
+            },
+            DEFAULT_LOCK_TIMEOUT,
+        )
+        .await?;
 
         let filter = StorableFilter::<NetworkCredential>::new_from_uuid_column(
             "credential_id",
@@ -344,6 +366,15 @@ impl HostCredentialStorage {
         assignments: &[CredentialAssignment],
     ) -> Result<()> {
         let mut tx = self.storage.begin_transaction().await?;
+        // Serialize concurrent delete-all + re-insert syncs for one host.
+        tx.lock(
+            LockKey::JunctionSync {
+                parent: EntityDiscriminants::Host,
+                parent_id: *host_id,
+            },
+            DEFAULT_LOCK_TIMEOUT,
+        )
+        .await?;
 
         let filter = StorableFilter::<HostCredential>::new_from_uuid_column("host_id", host_id);
         tx.delete_by_filter(filter).await?;
@@ -416,6 +447,15 @@ impl HostCredentialStorage {
         assignments: &[CredentialHostAssignment],
     ) -> Result<()> {
         let mut tx = self.storage.begin_transaction().await?;
+        // Serialize concurrent delete-all + re-insert syncs for one credential.
+        tx.lock(
+            LockKey::JunctionSync {
+                parent: EntityDiscriminants::Credential,
+                parent_id: *credential_id,
+            },
+            DEFAULT_LOCK_TIMEOUT,
+        )
+        .await?;
 
         let filter =
             StorableFilter::<HostCredential>::new_from_uuid_column("credential_id", credential_id);

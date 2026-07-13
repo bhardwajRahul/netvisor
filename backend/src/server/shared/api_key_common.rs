@@ -22,7 +22,10 @@ use crate::server::{
             types::AuthOperation,
         },
         services::traits::{CrudService, EventBusService},
-        storage::traits::Entity,
+        storage::{
+            lock::{DEFAULT_LOCK_TIMEOUT, LockKey},
+            traits::Entity,
+        },
         types::api::ApiError,
     },
 };
@@ -199,6 +202,14 @@ pub trait ApiKeyService: CrudService<Self::Key> + EventBusService<Self::Key> {
         user_agent: Option<String>,
         entity: AuthenticatedEntity,
     ) -> Result<String> {
+        // Serialize concurrent rotations of one key: without this, last
+        // write wins and the losing caller is handed a plaintext that
+        // authenticates nothing. Error paths release via Drop.
+        let lock_guard = self
+            .storage()
+            .session_lock(LockKey::ApiKey(api_key_id), DEFAULT_LOCK_TIMEOUT)
+            .await?;
+
         let mut api_key = self
             .get_by_id(&api_key_id)
             .await?
@@ -231,6 +242,7 @@ pub trait ApiKeyService: CrudService<Self::Key> + EventBusService<Self::Key> {
         // Update the key in storage
         self.update(&mut api_key, entity).await?;
 
+        lock_guard.release().await?;
         Ok(plaintext)
     }
 }

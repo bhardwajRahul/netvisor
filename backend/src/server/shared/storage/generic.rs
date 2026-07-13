@@ -1,6 +1,7 @@
 use crate::server::shared::{
     storage::{
         filter::StorableFilter,
+        lock::{LockError, LockKey, SessionLockGuard},
         traits::{PaginatedResult, SqlValue, Storable, Storage},
     },
     types::api::ValidationError,
@@ -369,6 +370,25 @@ where
     // Transaction support
     // =========================================================================
 
+    /// Acquire a session-scoped DB advisory lock via this storage's pool.
+    /// See `shared/storage/lock.rs` — this keeps services off the raw pool.
+    pub async fn session_lock(
+        &self,
+        key: LockKey,
+        timeout: std::time::Duration,
+    ) -> Result<SessionLockGuard, LockError> {
+        super::lock::session_lock(&self.pool, key, timeout).await
+    }
+
+    /// Acquire several session-scoped DB advisory locks in canonical order.
+    pub async fn session_lock_many(
+        &self,
+        keys: &[LockKey],
+        timeout: std::time::Duration,
+    ) -> Result<Vec<SessionLockGuard>, LockError> {
+        super::lock::session_lock_many(&self.pool, keys, timeout).await
+    }
+
     /// Begin a new transaction. Use the returned `StorageTransaction` for
     /// transactional operations, then call `commit()` to persist changes.
     /// If dropped without committing, the transaction is automatically rolled back.
@@ -510,6 +530,42 @@ where
         }
         let row = query.fetch_optional(&mut *self.tx).await?;
         row.map(|r| T::from_row(&r)).transpose()
+    }
+
+    /// Get entity by ID within the transaction, taking a row-level
+    /// `FOR UPDATE` lock: concurrent readers of the same row block until
+    /// this transaction commits/rolls back, then re-read the updated row.
+    /// Use for single-row read-modify-writes (counter increments, SCD2
+    /// close-and-clone).
+    pub async fn get_by_id_for_update(&mut self, id: &Uuid) -> Result<Option<T>, anyhow::Error> {
+        let filter = StorableFilter::<T>::new_from_entity_id(id);
+        let query_str = format!(
+            "SELECT * FROM {} {} FOR UPDATE",
+            T::table_name(),
+            filter.to_where_clause()
+        );
+        let mut query = sqlx::query(&query_str);
+        for value in filter.values() {
+            query = GenericPostgresStorage::<T>::bind_value(query, value)?;
+        }
+        let row = query.fetch_optional(&mut *self.tx).await?;
+        row.map(|r| T::from_row(&r)).transpose()
+    }
+
+    /// Get all entities matching the filter within the transaction (sees
+    /// uncommitted writes from this transaction).
+    pub async fn get_all(&mut self, filter: StorableFilter<T>) -> Result<Vec<T>, anyhow::Error> {
+        GenericPostgresStorage::<T>::get_all_in_tx(filter, &mut self.tx).await
+    }
+
+    /// Acquire a transaction-scoped DB advisory lock (auto-released at
+    /// commit/rollback). See `shared/storage/lock.rs`.
+    pub async fn lock(
+        &mut self,
+        key: LockKey,
+        timeout: std::time::Duration,
+    ) -> Result<(), LockError> {
+        super::lock::xact_lock(&mut self.tx, key, timeout).await
     }
 
     /// Update an entity within the transaction

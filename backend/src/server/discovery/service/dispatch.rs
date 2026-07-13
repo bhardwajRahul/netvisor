@@ -243,6 +243,26 @@ impl DiscoveryService {
     /// Update progress for a session
     /// If the session doesn't exist (e.g., server restarted during discovery),
     /// auto-creates it from the payload context to maintain resilience.
+    /// Increment a discovery's `scan_count` (and clear `force_full_scan`)
+    /// atomically: the row is read `FOR UPDATE` inside a transaction so
+    /// concurrent session finalizations serialize instead of losing
+    /// increments.
+    async fn increment_scan_count(&self, discovery_id: &Uuid) -> Result<(), Error> {
+        let mut tx = self.discovery_storage.begin_transaction().await?;
+        let Some(mut parent_discovery) = tx.get_by_id_for_update(discovery_id).await? else {
+            return Ok(());
+        };
+        parent_discovery.scan_count += 1;
+        parent_discovery.force_full_scan = false;
+        // integration_targets persist across scans (per-daemon init-command
+        // targeting), so they are intentionally NOT cleared here — unlike the
+        // old one-shot pending_credential_ids.
+        parent_discovery.updated_at = Utc::now();
+        tx.update(&mut parent_discovery).await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
     pub async fn update_session(&self, mut update: DiscoveryUpdatePayload) -> Result<(), Error> {
         // Enrich discovery_id from authoritative server-side map.
         // Daemon-sent payloads won't have this; server always fills it in.
@@ -394,23 +414,17 @@ impl DiscoveryService {
                     .find(|(_, sid)| **sid == session.session_id)
                     .map(|(did, _)| *did);
 
+                // Increment inside one transaction with a row lock: two
+                // finalizations for the same discovery (possible across
+                // backend instances) must not both read N and write N+1.
                 if let Some(discovery_id) = discovery_id
-                    && let Ok(Some(mut parent_discovery)) =
-                        self.discovery_storage.get_by_id(&discovery_id).await
+                    && let Err(e) = self.increment_scan_count(&discovery_id).await
                 {
-                    parent_discovery.scan_count += 1;
-                    parent_discovery.force_full_scan = false;
-                    // integration_targets persist across scans (per-daemon init-command
-                    // targeting), so they are intentionally NOT cleared here — unlike the
-                    // old one-shot pending_credential_ids.
-                    parent_discovery.updated_at = Utc::now();
-                    if let Err(e) = self.discovery_storage.update(&mut parent_discovery).await {
-                        tracing::error!(
-                            "Failed to increment scan_count for discovery {}: {}",
-                            discovery_id,
-                            e
-                        );
-                    }
+                    tracing::error!(
+                        "Failed to increment scan_count for discovery {}: {}",
+                        discovery_id,
+                        e
+                    );
                 }
             }
 

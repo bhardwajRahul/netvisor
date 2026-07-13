@@ -2,6 +2,7 @@ pub mod child;
 pub mod factory;
 pub mod filter;
 pub mod generic;
+pub mod lock;
 pub mod migration_runner;
 pub mod seed_data;
 pub mod snapshot;
