@@ -42,3 +42,6 @@ CLAUDE.md
 CLAUDE-WORKER.md
 TASK.md
 STATE.md
+
+# Coordinator-local DB expand/contract tracking (not shipped in-repo)
+docs/db-expand-contract-ledger.md
