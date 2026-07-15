@@ -933,6 +933,7 @@
 		selectionKey="Shift"
 		panOnDrag={true}
 		zoomOnScroll={true}
+		proOptions={{ hideAttribution: isEmbed }}
 	>
 		<Background
 			variant={BackgroundVariant.Dots}

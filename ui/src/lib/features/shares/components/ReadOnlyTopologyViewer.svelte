@@ -10,7 +10,10 @@
 	import ExportButton from '$lib/features/topology/components/ExportButton.svelte';
 	import ExportModal from '$lib/features/topology/components/ExportModal.svelte';
 	import SegmentedControl from '$lib/shared/components/forms/SegmentedControl.svelte';
-	import { Share2 } from 'lucide-svelte';
+	import { Share2, ExternalLink } from 'lucide-svelte';
+	import { tooltip } from '$lib/shared/actions/tooltip';
+	import { shares_openInFullView } from '$lib/paraglide/messages';
+	import { resolve } from '$app/paths';
 	import type { ExportFeatures } from '../types/base';
 	import {
 		hydrateStoresFromTopology,
@@ -25,6 +28,7 @@
 	import { createTopologyKeydownHandler } from '$lib/features/topology/keyboard';
 	import { views } from '$lib/shared/stores/metadata';
 
+	export let shareId: string | undefined = undefined;
 	export let topology: RenderableTopology;
 	export let showControls: boolean = true;
 	export let showInspectPanel: boolean = true;
@@ -155,17 +159,32 @@
 						/>
 					{/if}
 				</div>
-				<a
-					href="https://scanopy.net?utm_source={isEmbed
-						? 'embed'
-						: 'share'}&utm_medium=referral&utm_campaign=created_with"
-					target="_blank"
-					rel="noopener noreferrer"
-					class="branding-badge"
-				>
-					<img src="/logos/scanopy-logo.png" alt="Scanopy" class="h-4 w-4" />
-					<span>Created with Scanopy</span>
-				</a>
+				<div class="bottom-bar-end">
+					{#if isEmbed && shareId}
+						<a
+							href={resolve('/share/[id]', { id: shareId })}
+							target="_blank"
+							rel="noopener noreferrer"
+							class="full-view-link"
+							aria-label={shares_openInFullView()}
+							use:tooltip
+							data-tooltip={shares_openInFullView()}
+						>
+							<ExternalLink class="h-4 w-4" />
+						</a>
+					{/if}
+					<a
+						href="https://scanopy.net?utm_source={isEmbed
+							? 'embed'
+							: 'share'}&utm_medium=referral&utm_campaign=created_with"
+						target="_blank"
+						rel="noopener noreferrer"
+						class="branding-badge"
+					>
+						<img src="/logos/scanopy-logo.png" alt="Scanopy" class="h-4 w-4" />
+						<span>Created with Scanopy</span>
+					</a>
+				</div>
 			</div>
 
 			<BaseTopologyViewer
@@ -217,6 +236,25 @@
 		display: flex;
 		align-items: center;
 		gap: 8px;
+	}
+
+	.bottom-bar-end {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		flex-shrink: 0;
+	}
+
+	.full-view-link {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		color: var(--color-text-muted);
+		transition: color 0.2s;
+	}
+
+	.full-view-link:hover {
+		color: var(--color-text-secondary);
 	}
 
 	.branding-badge {

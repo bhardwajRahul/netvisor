@@ -240,6 +240,7 @@
 	{:else if topologyData && renderableTopology}
 		<div class={isEmbed ? 'h-full' : 'h-screen'}>
 			<ReadOnlyTopologyViewer
+				{shareId}
 				topology={renderableTopology}
 				shareName={isEmbed ? undefined : topologyData.share.name}
 				showControls={topologyData.share.options.show_zoom_controls}
