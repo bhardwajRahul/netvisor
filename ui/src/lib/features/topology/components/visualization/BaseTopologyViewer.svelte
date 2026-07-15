@@ -986,7 +986,7 @@
 				class="branding-badge"
 			>
 				<img src="/logos/scanopy-logo.png" alt="Scanopy" class="h-4 w-4" />
-				<span>Created with Scanopy</span>
+				<span>Powered by Scanopy</span>
 			</a>
 		{/if}
 	</SvelteFlow>
