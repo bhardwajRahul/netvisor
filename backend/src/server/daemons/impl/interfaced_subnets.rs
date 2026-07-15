@@ -13,9 +13,11 @@ use std::collections::HashMap;
 use std::fmt::Display;
 use uuid::Uuid;
 
+use crate::server::shared::entities::EntityDiscriminants;
 use crate::server::shared::storage::{
     filter::StorableFilter,
     generic::GenericPostgresStorage,
+    lock::{DEFAULT_LOCK_TIMEOUT, LockKey},
     traits::{SqlValue, Storable, Storage},
 };
 
@@ -133,6 +135,15 @@ impl DaemonInterfacedSubnetStorage {
         subnet_ids: &[Uuid],
     ) -> Result<()> {
         let mut tx = self.storage.begin_transaction().await?;
+        // Serialize concurrent delete-all + re-insert syncs for one daemon.
+        tx.lock(
+            LockKey::JunctionSync {
+                parent: EntityDiscriminants::Daemon,
+                parent_id: *daemon_id,
+            },
+            DEFAULT_LOCK_TIMEOUT,
+        )
+        .await?;
 
         let filter =
             StorableFilter::<DaemonInterfacedSubnet>::new_from_uuid_column("daemon_id", daemon_id);

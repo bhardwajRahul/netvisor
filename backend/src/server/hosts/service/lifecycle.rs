@@ -26,7 +26,6 @@ impl HostService {
             credential_service,
             subnet_service,
             vlan_service,
-            host_locks: Arc::new(Mutex::new(HashMap::new())),
             event_bus,
             entity_tag_service,
         }

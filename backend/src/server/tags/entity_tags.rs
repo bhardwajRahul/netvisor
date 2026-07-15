@@ -15,6 +15,7 @@ use crate::server::shared::entities::EntityDiscriminants;
 use crate::server::shared::storage::{
     filter::StorableFilter,
     generic::GenericPostgresStorage,
+    lock::{DEFAULT_LOCK_TIMEOUT, LockKey},
     snapshot::{FkMaps, Snapshotable},
     traits::{Entity, SqlValue, Storable, Storage},
 };
@@ -316,29 +317,39 @@ impl EntityTagStorage {
     /// live junction rows that aren't in the new set, INSERTs new live
     /// rows for additions, and leaves rows that are unchanged alone.
     ///
-    /// Reads existing live rows OUTSIDE the transaction (one short SELECT)
-    /// then opens a transaction only for the writes. Tag sets per entity
-    /// are small (typically < 10), so per-row inside the transaction is
-    /// fine — the bulk-in-tx APIs used by SnapshotService aren't needed
-    /// here.
+    /// The whole read-diff-write runs inside one transaction holding a
+    /// per-parent advisory lock, so concurrent set calls for the same
+    /// entity can't interleave into duplicate or merged tag sets. Tag sets
+    /// per entity are small (typically < 10), so per-row inside the
+    /// transaction is fine — the bulk-in-tx APIs used by SnapshotService
+    /// aren't needed here.
     pub async fn set(
         &self,
         entity_id: Uuid,
         entity_type: EntityDiscriminants,
         tag_ids: Vec<Uuid>,
     ) -> Result<()> {
+        let mut tx = self.storage.begin_transaction().await?;
+        tx.lock(
+            LockKey::JunctionSync {
+                parent: entity_type,
+                parent_id: entity_id,
+            },
+            DEFAULT_LOCK_TIMEOUT,
+        )
+        .await?;
+
         let existing_filter =
             StorableFilter::<EntityTag>::new_from_uuid_column("entity_id", &entity_id)
                 .entity_type(&entity_type)
                 .live();
-        let existing = self.storage.get_all(existing_filter).await?;
+        let existing = tx.get_all(existing_filter).await?;
 
         let new_set: std::collections::HashSet<Uuid> = tag_ids.iter().copied().collect();
         let existing_tag_ids: std::collections::HashSet<Uuid> =
             existing.iter().map(|r| r.base.tag_id).collect();
 
         let now = chrono::Utc::now();
-        let mut tx = self.storage.begin_transaction().await?;
 
         // Soft-close rows for tags removed from the set.
         for row in existing

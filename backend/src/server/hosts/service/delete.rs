@@ -4,6 +4,23 @@ use super::*;
 impl HostService {
     /// Delete a host (children cascade via FK)
     pub async fn delete_host(&self, id: &Uuid, authentication: AuthenticatedEntity) -> Result<()> {
+        let lock_guard = self
+            .storage()
+            .session_lock(LockKey::Host(*id), DEFAULT_LOCK_TIMEOUT)
+            .await?;
+        self.delete_host_inner(id, authentication).await?;
+        lock_guard.release().await?;
+        Ok(())
+    }
+
+    /// Deletion body without the `Host(id)` lock. Callers that already hold
+    /// the host's lock (consolidation) use this directly — re-acquiring on a
+    /// second connection would self-deadlock.
+    pub(crate) async fn delete_host_inner(
+        &self,
+        id: &Uuid,
+        authentication: AuthenticatedEntity,
+    ) -> Result<()> {
         // Can't delete host with daemon
         if self
             .daemon_service
@@ -21,9 +38,6 @@ impl HostService {
             .get_by_id(id)
             .await?
             .ok_or_else(|| anyhow::anyhow!("Host {} not found", id))?;
-
-        let lock = self.get_host_lock(id).await;
-        let _guard = lock.lock().await;
 
         // Remove tags from junction table
         if let Some(tag_service) = self.entity_tag_service() {

@@ -12,9 +12,11 @@ use sqlx::postgres::PgRow;
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
+use crate::server::shared::entities::EntityDiscriminants;
 use crate::server::shared::storage::{
     filter::StorableFilter,
     generic::GenericPostgresStorage,
+    lock::{DEFAULT_LOCK_TIMEOUT, LockKey},
     snapshot::{FkMaps, Snapshotable},
     traits::{SqlValue, Storable, Storage},
 };
@@ -263,16 +265,27 @@ impl SubnetVlanStorage {
     /// the new set, INSERTs new live links for additions, leaves unchanged
     /// links alone.
     pub async fn save_for_subnet(&self, subnet_id: &Uuid, vlan_ids: &[Uuid]) -> Result<()> {
+        // Read-diff-write under a per-subnet advisory lock so concurrent
+        // saves can't interleave into duplicate/merged link sets.
+        let mut tx = self.storage.begin_transaction().await?;
+        tx.lock(
+            LockKey::JunctionSync {
+                parent: EntityDiscriminants::Subnet,
+                parent_id: *subnet_id,
+            },
+            DEFAULT_LOCK_TIMEOUT,
+        )
+        .await?;
+
         let existing_filter =
             StorableFilter::<SubnetVlanRecord>::new_from_uuid_column("subnet_id", subnet_id).live();
-        let existing = self.storage.get_all(existing_filter).await?;
+        let existing = tx.get_all(existing_filter).await?;
 
         let new_set: std::collections::HashSet<Uuid> = vlan_ids.iter().copied().collect();
         let existing_vlan_ids: std::collections::HashSet<Uuid> =
             existing.iter().map(|r| r.vlan_id()).collect();
 
         let now = Utc::now();
-        let mut tx = self.storage.begin_transaction().await?;
 
         // Soft-close removed links.
         for row in existing.iter().filter(|r| !new_set.contains(&r.vlan_id())) {

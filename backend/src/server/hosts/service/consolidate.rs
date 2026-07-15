@@ -94,14 +94,6 @@ impl HostService {
         Ok(None)
     }
 
-    pub(crate) async fn get_host_lock(&self, host_id: &Uuid) -> Arc<Mutex<()>> {
-        let mut locks = self.host_locks.lock().await;
-        locks
-            .entry(*host_id)
-            .or_insert_with(|| Arc::new(Mutex::new(())))
-            .clone()
-    }
-
     /// Merge new discovery data with existing host
     pub(crate) async fn upsert_host(
         &self,
@@ -263,8 +255,19 @@ impl HostService {
             .into());
         }
 
-        let lock = self.get_host_lock(&destination_host.id).await;
-        let _guard1 = lock.lock().await;
+        // Lock BOTH hosts (in canonical order via session_lock_many): a
+        // concurrent update/delete of either host must not interleave with
+        // the merge. `delete_host_inner` below runs under these guards.
+        let lock_guards = self
+            .storage()
+            .session_lock_many(
+                &[
+                    LockKey::Host(destination_host.id),
+                    LockKey::Host(other_host.id),
+                ],
+                CONSOLIDATE_LOCK_TIMEOUT,
+            )
+            .await?;
 
         tracing::trace!(
             "Consolidating host {:?} into host {:?}",
@@ -577,8 +580,10 @@ impl HostService {
             );
         }
 
-        // Delete other host (remaining children that weren't transferred will cascade)
-        self.delete_host(&other_host.id, authentication).await?;
+        // Delete other host (remaining children that weren't transferred will
+        // cascade). Inner variant: this task already holds Host(other_host.id).
+        self.delete_host_inner(&other_host.id, authentication)
+            .await?;
 
         tracing::info!(
             source_host_id = %other_host.id,
@@ -589,6 +594,8 @@ impl HostService {
             ports_mapped = %port_id_map.len(),
             "Hosts consolidated"
         );
+
+        crate::server::shared::storage::lock::release_all(lock_guards).await?;
 
         // Return response with hydrated children
         let (ip_addresses, ports, services, interfaces) =

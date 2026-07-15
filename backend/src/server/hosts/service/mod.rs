@@ -26,6 +26,7 @@ use crate::server::{
         storage::{
             filter::StorableFilter,
             generic::GenericPostgresStorage,
+            lock::{CONSOLIDATE_LOCK_TIMEOUT, DEFAULT_LOCK_TIMEOUT, LockKey},
             traits::{Entity, PaginatedResult, Storable, Storage},
         },
         types::{
@@ -48,7 +49,6 @@ use std::{
     sync::Arc,
 };
 use strum::IntoDiscriminant;
-use tokio::sync::Mutex;
 use uuid::Uuid;
 
 pub struct HostLimitContext {
@@ -68,7 +68,6 @@ pub struct HostService {
     credential_service: Arc<CredentialService>,
     subnet_service: Arc<SubnetService>,
     vlan_service: Arc<VlanService>,
-    host_locks: Arc<Mutex<HashMap<Uuid, Arc<Mutex<()>>>>>,
     event_bus: Arc<EventBus>,
     entity_tag_service: Arc<EntityTagService>,
 }
@@ -107,102 +106,28 @@ impl CrudService<Host> for HostService {
     /// - Both hosts are from discovery (merges discovery metadata)
     /// - OR the IDs already match (handles re-discovery of known hosts)
     async fn create(&self, host: Host, authentication: AuthenticatedEntity) -> Result<Host> {
-        let host = if host.id == Uuid::nil() {
-            Host::new(host.base.clone())
-        } else {
-            host
-        };
-
-        let lock = self.get_host_lock(&host.id).await;
-        let _guard = lock.lock().await;
-
-        tracing::trace!("Creating host {:?}", host);
-
-        // SCD2: only live hosts are eligible for the natural-key match.
-        let filter = StorableFilter::<Host>::new_from_network_ids(&[host.base.network_id]).live();
-        let all_hosts = self.get_all(filter).await?;
-
-        // Find existing host by ID (Host::eq only compares IDs)
-        // For discovery, create_with_children already set host.id to the existing host's ID
-        // if an IP-address match was found, so this will find the match
-        let host_from_storage = match all_hosts.into_iter().find(|h| host.eq(h)) {
-            // Upsert if both are discovery sources, or if IDs match exactly
-            Some(existing_host)
-                if (host.base.source.discriminant() == EntitySourceDiscriminants::Discovery
-                    && existing_host.base.source.discriminant()
-                        == EntitySourceDiscriminants::Discovery)
-                    || host.id == existing_host.id =>
-            {
-                if host.id != existing_host.id {
-                    tracing::warn!(
-                        incoming_host_id = %host.id,
-                        matched_host_id = %existing_host.id,
-                        matched_host_name = %existing_host.base.name,
-                        "Host matched via MAC/IP address but discovery reported a different host ID. \
-                         This may indicate a daemon is using a stale configuration. \
-                         To fix, update the daemon's config file with: host_id = \"{}\"",
-                        existing_host.id
-                    );
-                }
-
-                tracing::debug!(
-                    "Duplicate host for {}: {} found, {}: {} - upserting discovery data...",
-                    host.base.name,
-                    host.id,
-                    existing_host.base.name,
-                    existing_host.id
-                );
-
-                self.upsert_host(existing_host, host, authentication)
-                    .await?
-            }
-            _ => {
-                if let Some(existing_host) = self.get_by_id(&host.id).await? {
-                    return Err(ValidationError::new(format!(
-                        "Network mismatch: Daemon is trying to update host '{}' (id: {}) but cannot proceed. \
-                        The host belongs to network {} while the daemon is assigned to network {}. \
-                        To resolve this, either reassign the daemon to the correct network or delete the mismatched host.",
-                        existing_host.base.name,
-                        host.id,
-                        existing_host.base.network_id,
-                        host.base.network_id
-                    )).into());
-                }
-
-                // SCD2 origin: this row is being inserted for the first
-                // time. Stamp created_at + valid_from to the entity's
-                // already-refreshed `last_seen_at` so all four temporal
-                // columns line up at one canonical scan_time. See
-                // `DiscoveryTracked::originate_scan_timestamps`.
-                use crate::server::shared::storage::snapshot::DiscoveryTracked;
-                let mut host = host;
-                host.originate_scan_timestamps(host.last_seen_at);
-                let created = self.storage().create(&host).await?;
-                let trigger_stale = created.triggers_staleness(None);
-
-                if let Some(scope) = EntityScope::from_ids(
-                    created.id(),
-                    created.clone().into(),
-                    self.get_network_id(&created),
-                    self.get_organization_id(&created),
-                ) {
-                    self.event_bus()
-                        .publish(
-                            Event::new(scope, EntityOperation::Created, authentication).with_flags(
-                                EntityEventFlags {
-                                    trigger_stale,
-                                    ..Default::default()
-                                },
-                            ),
-                        )
-                        .await?;
-                }
-
-                host
-            }
-        };
-
-        Ok(host_from_storage)
+        // DB-level lock, scoped to the network: serializes the dedup in
+        // `create_unlocked` across all backend instances. Keyed by network
+        // (not host id) because two concurrent submissions of the same NEW
+        // device carry distinct fresh UUIDs. Error paths release via Drop.
+        //
+        // NOTE: this ID-based dedup alone cannot catch two fresh-UUID
+        // submissions of the same physical device — the IP/MAC natural-key
+        // match lives in `create_with_children`, which holds this same lock
+        // across match + create + IP insertion and therefore calls
+        // `create_unlocked` directly.
+        let dedup_guard = self
+            .storage()
+            .session_lock(
+                LockKey::HostDedup {
+                    network_id: host.base.network_id,
+                },
+                DEFAULT_LOCK_TIMEOUT,
+            )
+            .await?;
+        let created = self.create_unlocked(host, authentication).await?;
+        dedup_guard.release().await?;
+        Ok(created)
     }
 
     async fn update(
@@ -210,8 +135,10 @@ impl CrudService<Host> for HostService {
         updates: &mut Host,
         authentication: AuthenticatedEntity,
     ) -> Result<Host, Error> {
-        let lock = self.get_host_lock(&updates.id).await;
-        let _guard = lock.lock().await;
+        let lock_guard = self
+            .storage()
+            .session_lock(LockKey::Host(updates.id), DEFAULT_LOCK_TIMEOUT)
+            .await?;
 
         let current_host = self
             .get_by_id(&updates.id)
@@ -239,6 +166,7 @@ impl CrudService<Host> for HostService {
                 .await?;
         }
 
+        lock_guard.release().await?;
         Ok(updated)
     }
 }
