@@ -41,7 +41,7 @@ export function getDaemonStatusTag(daemon: Daemon): TagProps {
 	}
 }
 
-export type DaemonOS = 'linux' | 'macos' | 'windows' | 'freebsd' | 'openbsd';
+export type DaemonOS = 'linux' | 'macos' | 'windows' | 'freebsd';
 
 export function slugifyNetworkName(name: string): string {
 	return name
