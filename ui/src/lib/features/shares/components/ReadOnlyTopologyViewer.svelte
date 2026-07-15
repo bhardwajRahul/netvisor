@@ -158,33 +158,31 @@
 							disabled={viewLoading}
 						/>
 					{/if}
-				</div>
-				<div class="bottom-bar-end">
 					{#if isEmbed && shareId}
 						<a
 							href={resolve('/share/[id]', { id: shareId })}
 							target="_blank"
 							rel="noopener noreferrer"
-							class="full-view-link"
+							class="text-secondary hover:text-primary flex items-center justify-center rounded-md border border-gray-600 px-2 py-1 transition-colors"
 							aria-label={shares_openInFullView()}
 							use:tooltip
 							data-tooltip={shares_openInFullView()}
 						>
-							<ExternalLink class="h-4 w-4" />
+							<ExternalLink class="h-3.5 w-3.5" />
 						</a>
 					{/if}
-					<a
-						href="https://scanopy.net?utm_source={isEmbed
-							? 'embed'
-							: 'share'}&utm_medium=referral&utm_campaign=created_with"
-						target="_blank"
-						rel="noopener noreferrer"
-						class="branding-badge"
-					>
-						<img src="/logos/scanopy-logo.png" alt="Scanopy" class="h-4 w-4" />
-						<span>Created with Scanopy</span>
-					</a>
 				</div>
+				<a
+					href="https://scanopy.net?utm_source={isEmbed
+						? 'embed'
+						: 'share'}&utm_medium=referral&utm_campaign=created_with"
+					target="_blank"
+					rel="noopener noreferrer"
+					class="branding-badge"
+				>
+					<img src="/logos/scanopy-logo.png" alt="Scanopy" class="h-4 w-4" />
+					<span>Created with Scanopy</span>
+				</a>
 			</div>
 
 			<BaseTopologyViewer
@@ -193,6 +191,7 @@
 				readonly={true}
 				{showControls}
 				{isEmbed}
+				hideAttribution={true}
 				showBranding={false}
 				{showMinimap}
 				sidebarCollapsed={true}
@@ -236,25 +235,6 @@
 		display: flex;
 		align-items: center;
 		gap: 8px;
-	}
-
-	.bottom-bar-end {
-		display: flex;
-		align-items: center;
-		gap: 12px;
-		flex-shrink: 0;
-	}
-
-	.full-view-link {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		color: var(--color-text-muted);
-		transition: color 0.2s;
-	}
-
-	.full-view-link:hover {
-		color: var(--color-text-secondary);
 	}
 
 	.branding-badge {
