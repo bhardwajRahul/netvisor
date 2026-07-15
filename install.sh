@@ -6,10 +6,11 @@ PLATFORM=$(uname -s | tr '[:upper:]' '[:lower:]')
 
 case "$PLATFORM" in
     mingw*|msys*|cygwin*)
-        echo "Windows detected. This install script is for Linux and macOS."
+        echo "Windows detected. This install script is for Linux, macOS, and FreeBSD."
         echo ""
-        echo "To install on Windows, go to the Scanopy web UI and create a daemon — it will"
-        echo "generate the correct PowerShell download and run commands for you."
+        echo "On Windows, install with the signed MSI (attended wizard or silent"
+        echo "'msiexec /qn SERVERURL=... APIKEY=...'), or go to the Scanopy web UI and create a"
+        echo "daemon for the PowerShell download + 'scanopy-daemon install' commands."
         exit 1
         ;;
 esac

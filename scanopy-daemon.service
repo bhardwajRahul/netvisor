@@ -1,3 +1,7 @@
+# Manual-install reference unit. For new installs prefer `sudo scanopy-daemon install`, which
+# generates and registers its own config.json-driven unit automatically. This file is kept for
+# manual setups and older daemons: copy to /etc/systemd/system/, set ExecStart flags (or rely on
+# config.json), then `systemctl daemon-reload && systemctl enable --now scanopy-daemon`.
 [Unit]
 Description=Scanopy Network Discovery Daemon
 After=network-online.target
