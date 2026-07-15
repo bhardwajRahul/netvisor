@@ -420,6 +420,18 @@
 						onCopy={() => handleCopy('combined-install')}
 						preventSelect={true}
 					/>
+				{:else if selectedOS === 'freebsd'}
+					<p class="text-secondary text-sm">
+						{daemons_installCommandDescription()}
+					</p>
+					<CodeContainer
+						language="bash"
+						expandable={false}
+						maxHeight=""
+						code={combinedLinuxMacCommand}
+						onCopy={() => handleCopy('combined-install')}
+						preventSelect={true}
+					/>
 				{/if}
 			</OsSelector>
 		{/if}

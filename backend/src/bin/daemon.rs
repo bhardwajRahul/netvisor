@@ -8,9 +8,10 @@ use scanopy::{
     daemon::runtime::service::StartupOutcome,
     daemon::shared::api_client::ConnectionError,
     daemon::{
+        install::run_command,
         runtime::types::DaemonAppState,
         shared::{
-            config::{AppConfig, ConfigStore, DaemonCli},
+            config::{AppConfig, ConfigStore, DaemonCli, DaemonCommand},
             handlers::create_router,
             middleware::capture_fixtures_middleware,
         },
@@ -37,9 +38,15 @@ fn main() -> anyhow::Result<()> {
 }
 
 async fn async_main() -> anyhow::Result<()> {
-    // Parse CLI and load config
+    // Parse CLI. `install`/`uninstall` subcommands short-circuit here (own logging to stdout);
+    // with no subcommand we fall through to running the daemon exactly as before.
     let cli = DaemonCli::parse();
-    let config = AppConfig::load(cli)?;
+    if let Some(command @ (DaemonCommand::Install(_) | DaemonCommand::Uninstall(_))) = cli.command {
+        return run_command(command).await;
+    }
+
+    // Load config from the daemon run flags
+    let config = AppConfig::load(cli.run_args)?;
 
     // Initialize tracing with stdout + optional file appender
     let log_path = config.resolve_log_path();

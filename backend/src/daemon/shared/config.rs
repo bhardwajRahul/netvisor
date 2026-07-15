@@ -1,6 +1,6 @@
 use anyhow::{Context, Error, Result};
 use async_fs;
-use clap::{Parser, arg, command};
+use clap::{Args, Parser, Subcommand, arg, command};
 use directories_next::ProjectDirs;
 use figment::{
     Figment,
@@ -81,10 +81,76 @@ fn parse_credential_id(value: &str, token: &str) -> anyhow::Result<Uuid> {
     })
 }
 
+/// Top-level daemon CLI.
+///
+/// With no subcommand, `scanopy-daemon <flags>` runs the daemon using the flattened
+/// [`DaemonArgs`] exactly as before. `scanopy-daemon install [flags]` /
+/// `scanopy-daemon uninstall [flags]` dispatch to the installer.
+/// `args_conflicts_with_subcommands` keeps the bare-run and subcommand paths from mixing, so
+/// no existing invocation regresses.
 #[derive(Parser)]
 #[command(name = "scanopy-daemon")]
 #[command(about = "Scanopy network discovery and test execution daemon")]
+#[command(version)]
+#[command(args_conflicts_with_subcommands = true)]
 pub struct DaemonCli {
+    #[command(subcommand)]
+    pub command: Option<DaemonCommand>,
+
+    #[command(flatten)]
+    pub run_args: DaemonArgs,
+}
+
+/// Install/uninstall subcommands. Both reuse the daemon's own connection flags so there is a
+/// single source of truth for configuration (see [`DaemonArgs`]).
+// `Install` flattens the full `DaemonArgs` and so dwarfs `Uninstall`; boxing the variant (the usual
+// large_enum_variant remedy) is incompatible with clap's Subcommand derive, and this enum is only
+// ever constructed once at CLI parse time, so the size gap is harmless.
+#[allow(clippy::large_enum_variant)]
+#[derive(Subcommand)]
+pub enum DaemonCommand {
+    /// Install the daemon as a background service: place the binary, write `config.json`, and
+    /// register a system service (systemd / launchd / Windows SCM). Accepts the same
+    /// connection/identity flags as the daemon itself.
+    Install(InstallArgs),
+    /// Stop and remove the daemon's system service and delete its `config.json`.
+    Uninstall(UninstallArgs),
+}
+
+/// Flags for `scanopy-daemon install`: the shared daemon flags plus install-only options.
+#[derive(Args)]
+pub struct InstallArgs {
+    #[command(flatten)]
+    pub args: DaemonArgs,
+
+    /// Only place the binary and write config; do not register or start the system service.
+    #[arg(long)]
+    pub no_service: bool,
+
+    /// Directory to install the daemon binary into (defaults to the platform location,
+    /// e.g. `/usr/local/bin` on Unix).
+    #[arg(long)]
+    pub bin_dir: Option<PathBuf>,
+}
+
+/// Flags for `scanopy-daemon uninstall`.
+#[derive(Args)]
+pub struct UninstallArgs {
+    /// Name of the daemon instance to remove (must match the `--name` used at install time;
+    /// defaults to the standard install).
+    #[arg(long)]
+    pub name: Option<String>,
+
+    /// Also delete the installed binary from disk (by default the binary is left in place).
+    #[arg(long)]
+    pub purge: bool,
+}
+
+/// Connection and identity flags shared by the bare-daemon run and the `install` subcommand.
+/// This is the single input surface for daemon configuration — the installer feeds these same
+/// flags to [`AppConfig::load`], so there is no second config path.
+#[derive(Args)]
+pub struct DaemonArgs {
     /// Complete Server URL
     #[arg(long)]
     server_url: Option<String>,
@@ -346,7 +412,7 @@ impl AppConfig {
         Self::get_config_path_for_name(None)
     }
 
-    pub fn load(cli_args: DaemonCli) -> anyhow::Result<Self> {
+    pub fn load(cli_args: DaemonArgs) -> anyhow::Result<Self> {
         // Determine config path based on daemon name
         let (config_exists, config_path) =
             AppConfig::get_config_path_for_name(cli_args.name.as_deref())?;
@@ -589,6 +655,21 @@ impl ConfigStore {
             .context("Failed to move temp config to final location")?;
 
         Ok(())
+    }
+
+    /// Write the current config to disk, creating the parent directory if needed.
+    ///
+    /// Used by the `install` subcommand to persist `config.json` before starting the service.
+    /// Reuses the atomic temp-write+rename in [`ConfigStore::save`] rather than hand-rolling a
+    /// file write.
+    pub async fn persist(&self) -> Result<()> {
+        if let Some(parent) = self.path.parent() {
+            async_fs::create_dir_all(parent)
+                .await
+                .context("Failed to create config directory")?;
+        }
+        let config = self.config.read().await.clone();
+        self.save(&config).await
     }
 
     pub async fn get_id(&self) -> Result<Uuid> {
@@ -983,7 +1064,7 @@ mod tests {
 
         // Load config with empty CLI args (env var should take effect)
         let cli = DaemonCli::parse_from::<[&str; 0], &str>([]);
-        let config = AppConfig::load(cli).expect("Failed to load config");
+        let config = AppConfig::load(cli.run_args).expect("Failed to load config");
 
         // Restore original value
         // SAFETY: This test runs serially
@@ -1024,7 +1105,7 @@ mod tests {
 
         // Load config with empty CLI args (env var should take effect)
         let cli = DaemonCli::parse_from::<[&str; 0], &str>([]);
-        let config = AppConfig::load(cli).expect("Failed to load config");
+        let config = AppConfig::load(cli.run_args).expect("Failed to load config");
 
         // Restore original value
         // SAFETY: This test runs serially

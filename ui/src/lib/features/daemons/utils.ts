@@ -41,7 +41,7 @@ export function getDaemonStatusTag(daemon: Daemon): TagProps {
 	}
 }
 
-export type DaemonOS = 'linux' | 'macos' | 'windows' | 'freebsd' | 'openbsd';
+export type DaemonOS = 'linux' | 'macos' | 'windows' | 'freebsd';
 
 export function slugifyNetworkName(name: string): string {
 	return name
@@ -104,7 +104,9 @@ export function buildRunCommand(
 	const isWindows = os === 'windows';
 	const binary = isWindows ? '.\\scanopy-daemon-windows-amd64.exe' : 'scanopy-daemon';
 	const prefix = isWindows ? '' : 'sudo ';
-	let cmd = `${prefix}${binary} --server-url ${serverUrl}`;
+	// The `install` subcommand takes the same flags but also registers a system service and
+	// writes config.json, so the daemon starts on boot instead of running in the foreground.
+	let cmd = `${prefix}${binary} install --server-url ${serverUrl}`;
 
 	if (!daemon && networkId) {
 		cmd += ` --network-id ${networkId}`;

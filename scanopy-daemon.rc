@@ -1,0 +1,28 @@
+#!/bin/sh
+#
+# PROVIDE: scanopy_daemon
+# REQUIRE: NETWORKING SYSLOG
+# KEYWORD: shutdown
+#
+# FreeBSD rc.d script for the Scanopy daemon. `scanopy-daemon install` generates and installs an
+# equivalent script automatically; this file is a reference for manual installs. Copy it to
+# /usr/local/etc/rc.d/scanopy-daemon, `chmod 755`, then:
+#   sysrc scanopy_daemon_enable=YES
+#   service scanopy-daemon start
+#
+# rc.conf knobs:
+#   scanopy_daemon_enable (bool):  Set to YES to enable the Scanopy daemon.
+
+. /etc/rc.subr
+
+name="scanopy_daemon"
+rcvar="scanopy_daemon_enable"
+
+load_rc_config "$name"
+: ${scanopy_daemon_enable:="NO"}
+
+pidfile="/var/run/scanopy-daemon.pid"
+command="/usr/sbin/daemon"
+command_args="-P ${pidfile} -r -t \"Scanopy Daemon\" /usr/local/bin/scanopy-daemon --name scanopy-daemon"
+
+run_rc_command "$1"

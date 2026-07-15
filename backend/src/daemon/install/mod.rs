@@ -1,0 +1,261 @@
+//! `scanopy-daemon install` / `uninstall` — a single install engine shared across all desktop
+//! operating systems.
+//!
+//! One config model, one engine. The **only** configuration input is the same connection/identity
+//! flags the daemon already parses ([`DaemonArgs`](crate::daemon::shared::config::DaemonArgs)); the
+//! installer feeds them straight to [`AppConfig::load`] and persists the result with
+//! [`ConfigStore::persist`]. There is no blob, no prompt, and no second config store.
+//!
+//! Install performs three steps, in order:
+//! 1. **Place the binary** — copy the running executable to the platform location.
+//! 2. **Write `config.json`** — the full merged config, including secrets.
+//! 3. **Register a system service** — systemd / launchd / Windows SCM.
+//!
+//! The registered service runs `<binary> --name <name>` and reads everything else from
+//! `config.json`, so credentials never land in a unit file, plist, or process arguments.
+//!
+//! Uninstall reverses this (service → config → binary) and is idempotent: removing a daemon that
+//! was never installed succeeds with a "nothing to remove" message.
+
+use anyhow::{Context, Result};
+use std::path::Path;
+use std::process::Command;
+
+use crate::daemon::shared::config::{
+    AppConfig, ConfigStore, DaemonCommand, InstallArgs, UninstallArgs,
+};
+
+#[cfg(any(target_os = "freebsd", target_os = "openbsd"))]
+mod bsd;
+#[cfg(target_os = "linux")]
+mod linux;
+#[cfg(target_os = "macos")]
+mod macos;
+#[cfg(target_family = "windows")]
+mod windows;
+
+#[cfg(any(target_os = "freebsd", target_os = "openbsd"))]
+use bsd as platform;
+#[cfg(target_os = "linux")]
+use linux as platform;
+#[cfg(target_os = "macos")]
+use macos as platform;
+#[cfg(target_family = "windows")]
+use windows as platform;
+
+/// The default daemon name; kept unnamespaced for backward compatibility (see
+/// [`AppConfig::get_config_path_for_name`]).
+const DEFAULT_NAME: &str = "scanopy-daemon";
+
+#[cfg(target_family = "windows")]
+const BINARY_FILE_NAME: &str = "scanopy-daemon.exe";
+#[cfg(not(target_family = "windows"))]
+const BINARY_FILE_NAME: &str = "scanopy-daemon";
+
+/// Identity and paths for the system service. The service runs `{bin_path} --name {daemon_name}`
+/// and reads all other settings (including secrets) from `config.json`.
+pub struct ServiceSpec {
+    /// Service/unit identifier, e.g. `scanopy-daemon` or `scanopy-daemon-edge1`.
+    pub service_id: String,
+    /// Human-readable display name.
+    pub display_name: String,
+    /// Installed binary path the service should execute.
+    pub bin_path: std::path::PathBuf,
+    /// Value passed to `--name` so the service loads the right (possibly namespaced) config.
+    pub daemon_name: String,
+}
+
+/// Dispatch an `install`/`uninstall` subcommand.
+pub async fn run_command(command: DaemonCommand) -> Result<()> {
+    match command {
+        DaemonCommand::Install(args) => run_install(args).await,
+        DaemonCommand::Uninstall(args) => run_uninstall(args).await,
+    }
+}
+
+async fn run_install(args: InstallArgs) -> Result<()> {
+    require_elevation("install")?;
+
+    let InstallArgs {
+        args: daemon_args,
+        no_service,
+        bin_dir,
+    } = args;
+
+    // Same config layering the daemon itself uses — single source of truth.
+    let config = AppConfig::load(daemon_args)?;
+
+    // A server to connect to is the one thing an install genuinely needs.
+    if config.server_url.is_none() && config.server_target.is_none() {
+        anyhow::bail!(
+            "Missing --server-url: the daemon needs a server URL to connect to. \
+             Re-run: scanopy-daemon install --server-url <url> --daemon-api-key <key>"
+        );
+    }
+
+    // 1. Place the binary.
+    let bin_dir = bin_dir.unwrap_or_else(platform::default_bin_dir);
+    let bin_path = bin_dir.join(BINARY_FILE_NAME);
+    place_binary(&bin_path)?;
+
+    // 2. Write config.json (atomic, via ConfigStore).
+    let (_, config_path) = AppConfig::get_config_path_for_name(Some(&config.name))?;
+    let store = ConfigStore::new(config_path.clone(), config.clone());
+    store
+        .persist()
+        .await
+        .context("Failed to write daemon config")?;
+    println!("Wrote config to {}", config_path.display());
+
+    // 3. Register the service.
+    let spec = ServiceSpec {
+        service_id: service_id(&config.name),
+        display_name: display_name(&config.name),
+        bin_path: bin_path.clone(),
+        daemon_name: config.name.clone(),
+    };
+
+    if no_service {
+        println!(
+            "Skipping service registration (--no-service). Start the daemon manually with:\n  {} --name {}",
+            bin_path.display(),
+            config.name
+        );
+    } else {
+        platform::register_service(&spec).context("Failed to register the system service")?;
+        println!("Registered and started service '{}'.", spec.service_id);
+    }
+
+    println!("Scanopy daemon installed successfully.");
+    Ok(())
+}
+
+async fn run_uninstall(args: UninstallArgs) -> Result<()> {
+    require_elevation("uninstall")?;
+
+    let name = args.name.unwrap_or_else(|| DEFAULT_NAME.to_string());
+    let mut removed_anything = false;
+
+    // 1. Stop + deregister the service (tolerant of an already-absent service).
+    let spec = ServiceSpec {
+        service_id: service_id(&name),
+        display_name: display_name(&name),
+        bin_path: platform::default_bin_dir().join(BINARY_FILE_NAME),
+        daemon_name: name.clone(),
+    };
+    if platform::deregister_service(&spec).context("Failed to remove the system service")? {
+        removed_anything = true;
+        println!("Removed service '{}'.", spec.service_id);
+    } else {
+        println!("No service '{}' found.", spec.service_id);
+    }
+
+    // 2. Remove config.json.
+    let (config_exists, config_path) = AppConfig::get_config_path_for_name(Some(&name))?;
+    if config_exists {
+        std::fs::remove_file(&config_path)
+            .with_context(|| format!("Failed to delete config {}", config_path.display()))?;
+        removed_anything = true;
+        println!("Deleted config {}.", config_path.display());
+    }
+
+    // 3. Remove the binary only when explicitly requested.
+    if args.purge {
+        let bin_path = platform::default_bin_dir().join(BINARY_FILE_NAME);
+        if bin_path.exists() {
+            std::fs::remove_file(&bin_path)
+                .with_context(|| format!("Failed to delete binary {}", bin_path.display()))?;
+            removed_anything = true;
+            println!("Deleted binary {}.", bin_path.display());
+        }
+    }
+
+    if removed_anything {
+        println!("Scanopy daemon uninstalled.");
+    } else {
+        println!("Nothing to remove — no Scanopy daemon install found for '{name}'.");
+    }
+    Ok(())
+}
+
+/// Copy the running executable to `dest`, with an already-in-place fast path. Idempotent.
+fn place_binary(dest: &Path) -> Result<()> {
+    let src = std::env::current_exe().context("Failed to locate the running executable")?;
+
+    if let (Ok(s), Ok(d)) = (src.canonicalize(), dest.canonicalize())
+        && s == d
+    {
+        println!("Binary already in place at {}.", dest.display());
+        return Ok(());
+    }
+
+    if let Some(parent) = dest.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("Failed to create {}", parent.display()))?;
+    }
+    std::fs::copy(&src, dest)
+        .with_context(|| format!("Failed to copy binary to {}", dest.display()))?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(dest, std::fs::Permissions::from_mode(0o755))
+            .with_context(|| format!("Failed to set permissions on {}", dest.display()))?;
+    }
+
+    println!("Installed binary to {}.", dest.display());
+    Ok(())
+}
+
+/// Bail with the platform-specific elevated re-invocation hint when not running as root/admin.
+fn require_elevation(action: &str) -> Result<()> {
+    if platform::is_elevated() {
+        return Ok(());
+    }
+    eprintln!("{}", platform::elevation_hint());
+    anyhow::bail!("Insufficient privileges: re-run the {action} command with elevated permissions")
+}
+
+/// Service/unit identifier for a daemon name. The default name keeps its bare id for backward
+/// compatibility; custom names are namespaced under the `scanopy-daemon-` prefix.
+fn service_id(name: &str) -> String {
+    if name == DEFAULT_NAME {
+        DEFAULT_NAME.to_string()
+    } else {
+        format!("scanopy-daemon-{name}")
+    }
+}
+
+fn display_name(name: &str) -> String {
+    if name == DEFAULT_NAME {
+        "Scanopy Daemon".to_string()
+    } else {
+        format!("Scanopy Daemon ({name})")
+    }
+}
+
+/// The current command line, re-quoted well enough to paste after `sudo`.
+fn current_invocation() -> String {
+    std::env::args()
+        .map(|a| {
+            if a.is_empty() || a.contains(char::is_whitespace) {
+                format!("\"{a}\"")
+            } else {
+                a
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Run a command and fail if it exits non-zero. Shared by the platform service modules.
+fn run(cmd: &str, args: &[&str]) -> Result<()> {
+    let status = Command::new(cmd)
+        .args(args)
+        .status()
+        .with_context(|| format!("Failed to execute `{cmd}`"))?;
+    if !status.success() {
+        anyhow::bail!("`{cmd} {}` failed ({status})", args.join(" "));
+    }
+    Ok(())
+}
