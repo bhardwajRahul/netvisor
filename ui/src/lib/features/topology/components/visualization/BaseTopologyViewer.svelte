@@ -88,6 +88,7 @@
 		readonly = false,
 		showControls = true,
 		isEmbed = false,
+		hideAttribution = false,
 		showBranding = false,
 		showMinimap = undefined,
 		onNodeDragStop = null,
@@ -102,6 +103,7 @@
 		readonly?: boolean;
 		showControls?: boolean;
 		isEmbed?: boolean;
+		hideAttribution?: boolean;
 		showBranding?: boolean;
 		showMinimap?: boolean | undefined;
 		onNodeDragStop?: ((node: Node) => void) | null;
@@ -933,7 +935,7 @@
 		selectionKey="Shift"
 		panOnDrag={true}
 		zoomOnScroll={true}
-		proOptions={{ hideAttribution: isEmbed }}
+		proOptions={{ hideAttribution }}
 	>
 		<Background
 			variant={BackgroundVariant.Dots}
@@ -984,7 +986,7 @@
 				class="branding-badge"
 			>
 				<img src="/logos/scanopy-logo.png" alt="Scanopy" class="h-4 w-4" />
-				<span>Created with Scanopy</span>
+				<span>Powered by Scanopy</span>
 			</a>
 		{/if}
 	</SvelteFlow>
