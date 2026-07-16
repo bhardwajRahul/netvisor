@@ -26,6 +26,8 @@
 		daemons_fixValidationErrors,
 		daemons_fixValidationErrorsBody,
 		daemons_installCommandDescription,
+		daemons_orDownloadMsi,
+		daemons_msiRenameHint,
 		common_firstDiscoveryEmailHint,
 		common_viewTopology,
 		daemons_troubleshoot_waitingTitle,
@@ -54,6 +56,10 @@
 		runCommand: string;
 		/** Server-assembled per-platform install commands (single source of truth). */
 		serverCommands?: { platform: string; command: string }[];
+		/** Direct GitHub URL of the signed Windows MSI, and the filename to save it as
+		 *  (encodes this daemon's values so the installer pre-fills). */
+		msiUrl?: string;
+		msiFilename?: string;
 		dockerCompose: string;
 		hasErrors: boolean;
 		isFirstDaemon?: boolean;
@@ -80,6 +86,8 @@
 		onLinuxMethodChange,
 		runCommand,
 		serverCommands = [],
+		msiUrl = '',
+		msiFilename = '',
 		dockerCompose,
 		hasErrors,
 		isFirstDaemon = false,
@@ -432,6 +440,27 @@
 						onCopy={() => handleCopy('combined-install')}
 						preventSelect={true}
 					/>
+					{#if msiUrl}
+						<div class="text-secondary mt-3 text-sm">
+							<!-- eslint-disable svelte/no-navigation-without-resolve -->
+							<a
+								href={msiUrl}
+								target="_blank"
+								rel="external noopener noreferrer"
+								class="text-primary hover:underline"
+								download={msiFilename}
+							>
+								{daemons_orDownloadMsi()}
+							</a>
+							<!-- eslint-enable svelte/no-navigation-without-resolve -->
+							{#if msiFilename}
+								<div class="text-muted mt-1">
+									{daemons_msiRenameHint()}
+									<code class="text-secondary break-all">{msiFilename}</code>
+								</div>
+							{/if}
+						</div>
+					{/if}
 				{:else if selectedOS === 'freebsd'}
 					<p class="text-secondary text-sm">
 						{daemons_installCommandDescription()}

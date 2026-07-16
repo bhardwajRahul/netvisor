@@ -24,6 +24,7 @@ use std::process::Command;
 use crate::daemon::shared::config::{
     AppConfig, ConfigStore, DaemonCommand, InstallArgs, UninstallArgs,
 };
+use crate::server::daemons::r#impl::base::DaemonMode;
 
 #[cfg(any(target_os = "freebsd", target_os = "openbsd"))]
 mod bsd;
@@ -92,10 +93,15 @@ async fn run_install(args: InstallArgs) -> Result<()> {
     // Same config layering the daemon itself uses — single source of truth.
     let config = AppConfig::load(daemon_args)?;
 
-    // A server to connect to is the one thing an install genuinely needs.
-    if config.server_url.is_none() && config.server_target.is_none() {
+    // Only DaemonPoll dials out and needs a server URL. ServerPoll is dialed by the
+    // server (installed with just --daemon-api-key), so it must not require one. Mode is
+    // already resolved (inferred from server_url presence) by AppConfig::load above.
+    if config.mode == DaemonMode::DaemonPoll
+        && config.server_url.is_none()
+        && config.server_target.is_none()
+    {
         anyhow::bail!(
-            "Missing --server-url: the daemon needs a server URL to connect to. \
+            "Missing --server-url: a DaemonPoll daemon needs a server URL to connect to. \
              Re-run: scanopy-daemon install --server-url <url> --daemon-api-key <key>"
         );
     }

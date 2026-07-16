@@ -265,65 +265,6 @@ async fn email_install_command(
     Ok(Json(ApiResponse::success(())))
 }
 
-/// Download the Windows MSI, renamed with this daemon's non-secret values hex-encoded into
-/// the filename so the installer pre-fills mode/name/url (the api key is never in the name).
-/// Streams the signed release asset through, preserving its bytes (and signature); only the
-/// download filename differs, which Authenticode ignores.
-#[utoipa::path(
-    get,
-    path = "/{id}/installer.msi",
-    tag = Daemon::ENTITY_NAME_PLURAL,
-    operation_id = "download_installer_msi",
-    summary = "Download the daemon's Windows MSI with values pre-encoded in the filename",
-    params(("id" = Uuid, Path, description = "Daemon ID")),
-    responses(
-        (status = 200, description = "MSI installer stream"),
-        (status = 404, description = "Daemon not found", body = ApiErrorResponse),
-    ),
-    security(("user_api_key" = []), ("session" = []))
-)]
-async fn download_installer_msi(
-    State(state): State<Arc<AppState>>,
-    auth: Authorized<Member>,
-    Path(id): Path<Uuid>,
-) -> ApiResult<axum::response::Response> {
-    let network_ids = auth.network_ids();
-
-    let daemon = state
-        .services
-        .daemon_service
-        .get_by_id(&id)
-        .await?
-        .ok_or_else(|| ApiError::entity_not_found::<Daemon>(id))?;
-    if !network_ids.contains(&daemon.base.network_id) {
-        return Err(ApiError::entity_access_denied::<Daemon>(id));
-    }
-
-    let filename = crate::server::daemons::r#impl::install_artifacts::encode_msi_filename(&daemon);
-
-    let upstream = reqwest::Client::new()
-        .get(crate::server::daemons::r#impl::install_artifacts::WINDOWS_MSI_URL)
-        .send()
-        .await
-        .map_err(|e| ApiError::internal_error(&format!("Failed to fetch installer: {e}")))?;
-    if !upstream.status().is_success() {
-        return Err(ApiError::internal_error(&format!(
-            "Installer download unavailable (upstream status {})",
-            upstream.status()
-        )));
-    }
-
-    let body = axum::body::Body::from_stream(upstream.bytes_stream());
-    axum::response::Response::builder()
-        .header(axum::http::header::CONTENT_TYPE, "application/x-msi")
-        .header(
-            axum::http::header::CONTENT_DISPOSITION,
-            format!("attachment; filename=\"{filename}\""),
-        )
-        .body(body)
-        .map_err(|e| ApiError::internal_error(&format!("Failed to build response: {e}")))
-}
-
 /// User-facing daemon management endpoints (versioned at /api/v1/daemons)
 pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
     OpenApiRouter::new()
@@ -335,7 +276,6 @@ pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
         .routes(routes!(retry_connection))
         .routes(routes!(test_reachability))
         .routes(routes!(email_install_command))
-        .routes(routes!(download_installer_msi))
 }
 
 /// Daemon-internal endpoints (unversioned at /api/daemon)

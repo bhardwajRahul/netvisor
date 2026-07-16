@@ -130,17 +130,17 @@
             Execute="immediate"
             Return="ignore" />
 
-        <!-- Only pass --log-file when a path is actually set, so the service command doesn't
-             carry an empty flag. -->
+        <!-- Only pass a log-file flag when a path is actually set, so the service command
+             doesn't carry an empty flag. -->
         <CustomAction Id="SetLogFileArg"
             Property="LOGFILEARG"
             Value="--log-file &quot;[LOGFILE]&quot;"
             Execute="immediate" />
 
         <!-- Mode-gated install command. NETWORKID is gone (network comes from the 1:1 key).
-             DaemonPoll dials the server (needs --server-url); ServerPoll is dialed by the
-             server (listen bind/port, no --server-url). --mode is explicit so the daemon does
-             not have to infer it from a service-baked config. -->
+             DaemonPoll dials the server (needs a server url); ServerPoll is dialed by the
+             server (listen bind/port, no server url). The mode flag is explicit so the daemon
+             does not have to infer it from a service-baked config. -->
         <CustomAction Id="InstallCmdDaemonPoll"
             Property="InstallDaemonCmd"
             Value="&quot;[INSTALLFOLDER]scanopy-daemon.exe&quot; install --name &quot;[DAEMONNAME]&quot; --daemon-api-key &quot;[APIKEY]&quot; --server-url &quot;[SERVERURL]&quot; --mode daemon_poll --log-level &quot;[LOGLEVEL]&quot; [LOGFILEARG]"

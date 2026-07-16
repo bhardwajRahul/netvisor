@@ -24,37 +24,40 @@
 </script>
 
 <div>
-	<!-- Sub-tab navigation bar -->
-	<nav
-		class="mb-6 flex space-x-6 border-b"
-		style="border-color: var(--color-border)"
-		aria-label={common_contentTabs()}
-	>
-		{#each tabs as tab (tab.id)}
-			<button
-				type="button"
-				onclick={() => (activeTab = tab.id)}
-				class="border-b-2 px-1 pb-3 text-sm font-medium transition-colors
+	<!-- Sub-tab navigation bar. Hidden when only one tab is visible so the group renders
+	     as a plain single-entity page (no tab strip for a single item). -->
+	{#if tabs.length > 1}
+		<nav
+			class="mb-6 flex space-x-6 border-b"
+			style="border-color: var(--color-border)"
+			aria-label={common_contentTabs()}
+		>
+			{#each tabs as tab (tab.id)}
+				<button
+					type="button"
+					onclick={() => (activeTab = tab.id)}
+					class="border-b-2 px-1 pb-3 text-sm font-medium transition-colors
 				{activeTab === tab.id
-					? 'text-primary border-blue-500'
-					: 'text-muted hover:text-secondary border-transparent'}"
-				aria-current={activeTab === tab.id ? 'page' : undefined}
-			>
-				<div class="flex items-center gap-2">
-					<span class="relative">
-						<tab.icon class="h-4 w-4" />
-						{#if notifications?.[tab.id]}
-							<span
-								class="absolute -right-1 -top-1 h-2 w-2 rounded-full"
-								style="background-color: {notifications[tab.id]}"
-							></span>
-						{/if}
-					</span>
-					{tab.label}
-				</div>
-			</button>
-		{/each}
-	</nav>
+						? 'text-primary border-blue-500'
+						: 'text-muted hover:text-secondary border-transparent'}"
+					aria-current={activeTab === tab.id ? 'page' : undefined}
+				>
+					<div class="flex items-center gap-2">
+						<span class="relative">
+							<tab.icon class="h-4 w-4" />
+							{#if notifications?.[tab.id]}
+								<span
+									class="absolute -right-1 -top-1 h-2 w-2 rounded-full"
+									style="background-color: {notifications[tab.id]}"
+								></span>
+							{/if}
+						</span>
+						{tab.label}
+					</div>
+				</button>
+			{/each}
+		</nav>
+	{/if}
 
 	<!-- Sub-tab content -->
 	{#each tabs as tab (tab.id)}

@@ -46,9 +46,10 @@
 	const deleteApiKeyMutation = useDeleteApiKeyMutation();
 	const bulkDeleteApiKeysMutation = useBulkDeleteApiKeysMutation();
 
-	// Derived data
+	// Derived data. Only legacy keys are shown here — a key bound 1:1 to a daemon
+	// (daemon_id set) is managed from the daemon record, not this tab.
 	let tagsData = $derived(tagsQuery.data ?? []);
-	let apiKeysData = $derived(apiKeysQuery.data ?? []);
+	let apiKeysData = $derived((apiKeysQuery.data ?? []).filter((k) => k.daemon_id == null));
 	let networksData = $derived(networksQuery.data ?? []);
 	let isLoading = $derived(apiKeysQuery.isPending);
 	let apiKeyIdsInUse = $derived(

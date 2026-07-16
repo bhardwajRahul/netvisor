@@ -748,6 +748,8 @@
 							{hasEmailSupport}
 							onAdvanced={() => (showAdvanced = true)}
 							serverCommands={installArtifacts?.commands ?? []}
+							msiUrl={installArtifacts?.msi_url ?? ''}
+							msiFilename={installArtifacts?.msi_filename ?? ''}
 							daemonMode={(formValues.mode as DaemonMode) ?? 'daemon_poll'}
 							daemonName={String(formValues.name ?? 'scanopy-daemon')}
 							logFilePath={String(formValues.logFile ?? '')}
