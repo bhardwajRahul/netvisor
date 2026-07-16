@@ -107,6 +107,12 @@ pub struct DaemonDiscoveryService {
     /// between polls, we need to retain the terminal state so the server can receive it.
     /// This is cleared when a new session starts.
     pub terminal_payload: Arc<RwLock<Option<DiscoveryUpdatePayload>>>,
+    /// Shared gate that staggers the start of DaemonPoll host-create requests so
+    /// a burst of near-simultaneous deep-scan completions doesn't hammer the
+    /// server's host-create endpoint (where they'd otherwise queue on the
+    /// per-network `HostDedup` advisory lock). Holds the earliest instant the
+    /// next host submission may start; each submission reserves and advances it.
+    pub host_submit_gate: Arc<tokio::sync::Mutex<tokio::time::Instant>>,
 }
 
 impl DaemonDiscoveryService {
@@ -118,6 +124,7 @@ impl DaemonDiscoveryService {
             current_session: Arc::new(RwLock::new(None)),
             entity_buffer,
             terminal_payload: Arc::new(RwLock::new(None)),
+            host_submit_gate: Arc::new(tokio::sync::Mutex::new(tokio::time::Instant::now())),
         }
     }
 
