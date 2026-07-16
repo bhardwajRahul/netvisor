@@ -777,11 +777,41 @@ fn is_ip_allowed(ip: IpAddr, allowed: &[String]) -> bool {
 }
 
 /// Publish a failed API key authentication event
-/// Resolve a daemon's identity from its key shape (see the coexistence spine):
-/// a 1:1 provisioned key (`key_daemon_id = Some`) is authoritative and a present
-/// non-nil header must match it (else the key is being reused from another daemon);
-/// a legacy network-shared key (`None`) still requires the header as its only
-/// identity source. Shared by the cache fast-path and the DB path.
+/// The outcome of resolving a daemon's identity from its key shape and the
+/// presented header. Pure and side-effect free so the coexistence matrix is
+/// unit-testable; [`resolve_daemon_identity`] maps it to auth events/errors.
+#[derive(Debug, PartialEq, Eq)]
+enum DaemonIdentityDecision {
+    /// Identity resolved to this daemon.
+    Resolved(Uuid),
+    /// 1:1 key, but the header names a different daemon — the key is being
+    /// reused from another daemon. Reject.
+    Mismatch,
+    /// Legacy network-shared key with no header — identity is unknowable. Reject.
+    MissingHeader,
+}
+
+/// See the coexistence spine: a 1:1 provisioned key (`key_daemon_id = Some`) is
+/// authoritative and a present header must match it; a legacy network-shared key
+/// (`None`) takes identity from the required header.
+fn decide_daemon_identity(
+    key_daemon_id: Option<Uuid>,
+    header_daemon_id: Option<Uuid>,
+) -> DaemonIdentityDecision {
+    match key_daemon_id {
+        Some(bound_daemon_id) => match header_daemon_id {
+            Some(hdr) if hdr != bound_daemon_id => DaemonIdentityDecision::Mismatch,
+            _ => DaemonIdentityDecision::Resolved(bound_daemon_id),
+        },
+        None => match header_daemon_id {
+            Some(hdr) => DaemonIdentityDecision::Resolved(hdr),
+            None => DaemonIdentityDecision::MissingHeader,
+        },
+    }
+}
+
+/// Resolve daemon identity, emitting an auth-failed event on a key-reuse mismatch.
+/// Shared by the cache fast-path and the DB path.
 #[allow(clippy::too_many_arguments)]
 async fn resolve_daemon_identity(
     key_daemon_id: Option<Uuid>,
@@ -792,25 +822,21 @@ async fn resolve_daemon_identity(
     key_type: ApiKeyType,
     key_prefix: Option<&str>,
 ) -> Result<Uuid, AuthError> {
-    match key_daemon_id {
-        Some(bound_daemon_id) => {
-            if let Some(hdr) = header_daemon_id
-                && hdr != bound_daemon_id
-            {
-                publish_api_key_auth_failed(
-                    app_state,
-                    ip,
-                    user_agent,
-                    key_type,
-                    "daemon_mismatch",
-                    key_prefix,
-                )
-                .await;
-                return Err(AuthError(ApiError::not_authenticated()));
-            }
-            Ok(bound_daemon_id)
+    match decide_daemon_identity(key_daemon_id, header_daemon_id) {
+        DaemonIdentityDecision::Resolved(id) => Ok(id),
+        DaemonIdentityDecision::Mismatch => {
+            publish_api_key_auth_failed(
+                app_state,
+                ip,
+                user_agent,
+                key_type,
+                "daemon_mismatch",
+                key_prefix,
+            )
+            .await;
+            Err(AuthError(ApiError::not_authenticated()))
         }
-        None => header_daemon_id.ok_or_else(|| AuthError(ApiError::daemon_required())),
+        DaemonIdentityDecision::MissingHeader => Err(AuthError(ApiError::daemon_required())),
     }
 }
 
@@ -893,5 +919,61 @@ where
             }),
             _ => Err(AuthError(ApiError::api_key_required())),
         }
+    }
+}
+
+#[cfg(test)]
+mod daemon_identity_tests {
+    use super::{DaemonIdentityDecision, decide_daemon_identity};
+    use uuid::Uuid;
+
+    // Coexistence matrix: identity resolution must hold across old/new daemons
+    // (which do or don't send a header) and old/new keys (legacy shared vs 1:1).
+
+    #[test]
+    fn one_to_one_key_matching_header_resolves_to_the_bound_daemon() {
+        let bound = Uuid::new_v4();
+        assert_eq!(
+            decide_daemon_identity(Some(bound), Some(bound)),
+            DaemonIdentityDecision::Resolved(bound)
+        );
+    }
+
+    #[test]
+    fn one_to_one_key_without_header_resolves_from_the_key_for_bootstrap() {
+        // A freshly provisioned daemon has no cached id yet on its first request.
+        let bound = Uuid::new_v4();
+        assert_eq!(
+            decide_daemon_identity(Some(bound), None),
+            DaemonIdentityDecision::Resolved(bound)
+        );
+    }
+
+    #[test]
+    fn one_to_one_key_with_mismatched_header_is_rejected_as_key_reuse() {
+        // Daemon B pasted daemon A's key: B still sends its own id.
+        let bound = Uuid::new_v4();
+        let other = Uuid::new_v4();
+        assert_eq!(
+            decide_daemon_identity(Some(bound), Some(other)),
+            DaemonIdentityDecision::Mismatch
+        );
+    }
+
+    #[test]
+    fn legacy_key_takes_identity_from_the_required_header() {
+        let hdr = Uuid::new_v4();
+        assert_eq!(
+            decide_daemon_identity(None, Some(hdr)),
+            DaemonIdentityDecision::Resolved(hdr)
+        );
+    }
+
+    #[test]
+    fn legacy_key_without_a_header_is_rejected() {
+        assert_eq!(
+            decide_daemon_identity(None, None),
+            DaemonIdentityDecision::MissingHeader
+        );
     }
 }
