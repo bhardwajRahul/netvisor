@@ -33,17 +33,32 @@ pub fn default_bin_dir() -> PathBuf {
 }
 
 pub fn register_service(spec: &ServiceSpec) -> Result<()> {
-    // The service reads secrets from config.json; only the binary path + --name go to the SCM.
+    // The service reads secrets from config.json. It runs as LocalSystem (a different profile than
+    // the installing user), so --config-dir/--log-file point it at the system paths the installer
+    // wrote — %APPDATA% would otherwise resolve to LocalSystem's profile, not the user's.
+    // `--service` tells the launched binary the SCM started it, so it runs under the service
+    // control dispatcher (reports RUNNING/STOPPED) instead of as a plain console process — without
+    // it, `sc start` times out with error 1053.
     let bin_path_value = format!(
-        "\"{}\" --name {}",
+        "\"{}\" --service --name {} --config-dir \"{}\" --log-file \"{}\"",
         spec.bin_path.display(),
-        spec.daemon_name
+        spec.daemon_name,
+        spec.config_dir.display(),
+        spec.log_file.display(),
     );
 
-    // Idempotent: remove any prior registration first.
-    let _ = Command::new("sc").args(["stop", &spec.service_id]).status();
+    // Idempotent: remove any prior registration first. Silence the best-effort stop/delete —
+    // on a fresh install they print "[SC] OpenService FAILED 1060" (service does not exist),
+    // which is expected here and only confuses users.
+    let _ = Command::new("sc")
+        .args(["stop", &spec.service_id])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
     let _ = Command::new("sc")
         .args(["delete", &spec.service_id])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
         .status();
 
     // `sc create` requires a space after each `key=`, so the value is a separate argument.
@@ -74,9 +89,15 @@ pub fn deregister_service(spec: &ServiceSpec) -> Result<bool> {
         .map(|s| s.success())
         .unwrap_or(false);
 
-    let _ = Command::new("sc").args(["stop", &spec.service_id]).status();
+    let _ = Command::new("sc")
+        .args(["stop", &spec.service_id])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
     let _ = Command::new("sc")
         .args(["delete", &spec.service_id])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
         .status();
 
     Ok(existed)

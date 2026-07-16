@@ -52,8 +52,11 @@ const BINARY_FILE_NAME: &str = "scanopy-daemon.exe";
 #[cfg(not(target_family = "windows"))]
 const BINARY_FILE_NAME: &str = "scanopy-daemon";
 
-/// Identity and paths for the system service. The service runs `{bin_path} --name {daemon_name}`
-/// and reads all other settings (including secrets) from `config.json`.
+/// Identity and paths for the system service. The service runs
+/// `{bin_path} --name {daemon_name} --config-dir {config_dir} --log-file {log_file}` and reads all
+/// other settings (including secrets) from `config.json`. The explicit `--config-dir`/`--log-file`
+/// are what let the service (running under a different profile than the installer) find the config
+/// and logs the installer wrote — without depending on the runtime `$HOME`/`%APPDATA%`.
 pub struct ServiceSpec {
     /// Service/unit identifier, e.g. `scanopy-daemon` or `scanopy-daemon-edge1`.
     pub service_id: String,
@@ -63,6 +66,10 @@ pub struct ServiceSpec {
     pub bin_path: std::path::PathBuf,
     /// Value passed to `--name` so the service loads the right (possibly namespaced) config.
     pub daemon_name: String,
+    /// System config directory to bake into the launch command (`--config-dir`).
+    pub config_dir: std::path::PathBuf,
+    /// System log file to bake into the launch command (`--log-file`).
+    pub log_file: std::path::PathBuf,
 }
 
 /// Dispatch an `install`/`uninstall` subcommand.
@@ -98,8 +105,18 @@ async fn run_install(args: InstallArgs) -> Result<()> {
     let bin_path = bin_dir.join(BINARY_FILE_NAME);
     place_binary(&bin_path)?;
 
-    // 2. Write config.json (atomic, via ConfigStore).
-    let (_, config_path) = AppConfig::get_config_path_for_name(Some(&config.name))?;
+    // 2. Write config.json. A registered service runs under a different profile than this
+    //    installer, so its config must live at a fixed *system* path it can always resolve — not
+    //    the per-user $HOME/%APPDATA% path. `--no-service` installs keep the per-user path since
+    //    the user runs the daemon themselves.
+    let config_dir = system_config_dir(&config.name);
+    let config_override = if no_service {
+        None
+    } else {
+        Some(config_dir.as_path())
+    };
+    let (_, config_path) =
+        AppConfig::get_config_path_for_name(Some(&config.name), config_override)?;
     let store = ConfigStore::new(config_path.clone(), config.clone());
     store
         .persist()
@@ -107,12 +124,15 @@ async fn run_install(args: InstallArgs) -> Result<()> {
         .context("Failed to write daemon config")?;
     println!("Wrote config to {}", config_path.display());
 
-    // 3. Register the service.
+    // 3. Register the service. The launch command carries --config-dir/--log-file so the service
+    //    reads exactly what we just wrote, independent of its runtime profile.
     let spec = ServiceSpec {
         service_id: service_id(&config.name),
         display_name: display_name(&config.name),
         bin_path: bin_path.clone(),
         daemon_name: config.name.clone(),
+        config_dir,
+        log_file: AppConfig::default_system_log_path(&config.name),
     };
 
     if no_service {
@@ -137,11 +157,14 @@ async fn run_uninstall(args: UninstallArgs) -> Result<()> {
     let mut removed_anything = false;
 
     // 1. Stop + deregister the service (tolerant of an already-absent service).
+    let config_dir = system_config_dir(&name);
     let spec = ServiceSpec {
         service_id: service_id(&name),
         display_name: display_name(&name),
         bin_path: platform::default_bin_dir().join(BINARY_FILE_NAME),
         daemon_name: name.clone(),
+        config_dir: config_dir.clone(),
+        log_file: AppConfig::default_system_log_path(&name),
     };
     if platform::deregister_service(&spec).context("Failed to remove the system service")? {
         removed_anything = true;
@@ -150,13 +173,18 @@ async fn run_uninstall(args: UninstallArgs) -> Result<()> {
         println!("No service '{}' found.", spec.service_id);
     }
 
-    // 2. Remove config.json.
-    let (config_exists, config_path) = AppConfig::get_config_path_for_name(Some(&name))?;
-    if config_exists {
-        std::fs::remove_file(&config_path)
-            .with_context(|| format!("Failed to delete config {}", config_path.display()))?;
-        removed_anything = true;
-        println!("Deleted config {}.", config_path.display());
+    // 2. Remove config.json from both the system location (service installs) and the per-user
+    //    profile location (--no-service / manual installs).
+    let system_cfg =
+        AppConfig::get_config_path_for_name(Some(&name), Some(config_dir.as_path()))?.1;
+    let profile_cfg = AppConfig::get_config_path_for_name(Some(&name), None)?.1;
+    for config_path in [system_cfg, profile_cfg] {
+        if config_path.exists() {
+            std::fs::remove_file(&config_path)
+                .with_context(|| format!("Failed to delete config {}", config_path.display()))?;
+            removed_anything = true;
+            println!("Deleted config {}.", config_path.display());
+        }
     }
 
     // 3. Remove the binary only when explicitly requested.
@@ -232,6 +260,14 @@ fn display_name(name: &str) -> String {
     } else {
         format!("Scanopy Daemon ({name})")
     }
+}
+
+/// The system config directory for a daemon instance — a fixed, profile-independent location
+/// (`{default_system_config_dir}/{name}`) that a system service can always resolve. Baked into the
+/// service via `--config-dir`, this replaces the old `$HOME`-pinning approach and works uniformly
+/// across systemd/launchd/rc.d and the Windows LocalSystem service (which has no `$HOME` lever).
+fn system_config_dir(name: &str) -> std::path::PathBuf {
+    AppConfig::default_system_config_dir().join(name)
 }
 
 /// The current command line, re-quoted well enough to paste after `sudo`.

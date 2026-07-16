@@ -3,7 +3,7 @@
 
 use anyhow::{Context, Result};
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use super::{ServiceSpec, run};
 
@@ -37,7 +37,7 @@ fn unit_contents(spec: &ServiceSpec) -> String {
          \n\
          [Service]\n\
          Type=simple\n\
-         ExecStart={bin} --name {name}\n\
+         ExecStart={bin} --name {name} --config-dir {config_dir} --log-file {log_file}\n\
          Restart=always\n\
          RestartSec=10\n\
          User=root\n\
@@ -50,6 +50,8 @@ fn unit_contents(spec: &ServiceSpec) -> String {
         desc = spec.display_name,
         bin = spec.bin_path.display(),
         name = spec.daemon_name,
+        config_dir = spec.config_dir.display(),
+        log_file = spec.log_file.display(),
         id = spec.service_id,
     )
 }
@@ -74,6 +76,8 @@ pub fn deregister_service(spec: &ServiceSpec) -> Result<bool> {
 
     let _ = Command::new("systemctl")
         .args(["disable", "--now", &unit])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
         .status();
 
     if existed {

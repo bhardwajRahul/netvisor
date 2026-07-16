@@ -7,7 +7,10 @@ use figment::{
     providers::{Env, Format, Json, Serialized},
 };
 use serde::{Deserialize, Serialize};
-use std::{path::PathBuf, sync::Arc};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
@@ -99,6 +102,12 @@ pub struct DaemonCli {
 
     #[command(flatten)]
     pub run_args: DaemonArgs,
+
+    /// Internal marker: `daemon install` bakes this into the Windows service binPath so the
+    /// daemon knows the SCM launched it and should run under the service control dispatcher.
+    /// Not a config value; hidden from `--help`. Ignored on non-Windows platforms.
+    #[arg(long, hide = true)]
+    pub service: bool,
 }
 
 /// Install/uninstall subcommands. Both reuse the daemon's own connection flags so there is a
@@ -252,6 +261,14 @@ pub struct DaemonArgs {
     /// Restrict daemon to specific network interface(s). Comma-separated for multiple (e.g., eth0,eth1). Leave empty for all interfaces
     #[arg(long, value_delimiter = ',')]
     interfaces: Option<Vec<String>>,
+
+    /// Directory that holds this daemon's `config.json`. Overrides the default per-user location.
+    /// The `install` command bakes this into the generated system service (pointing at a system
+    /// directory) so the service reads config from the exact path the installer wrote — a system
+    /// service runs under a different profile than the installer, so relying on the per-user
+    /// `$HOME`/`%APPDATA%` path would leave the service unable to find its config.
+    #[arg(long)]
+    config_dir: Option<PathBuf>,
 }
 
 /// Unified configuration struct that handles both startup and runtime config
@@ -329,6 +346,11 @@ pub struct AppConfig {
     /// Set to true after the first self-report completes
     #[serde(default)]
     pub has_self_reported: bool,
+    /// Resolved on-disk path of this config, computed once by [`AppConfig::load`]. Runtime-only
+    /// (never serialized): the daemon and installer use it instead of re-deriving the path, so the
+    /// `--config-dir` override is honored consistently by both the write and read sides.
+    #[serde(skip)]
+    pub config_path: Option<PathBuf>,
 }
 
 fn default_accept_invalid_scan_certs() -> bool {
@@ -386,36 +408,80 @@ impl Default for AppConfig {
             capabilities: LegacyCapabilities::default(),
             integration_targets: Vec::new(),
             has_self_reported: false,
+            config_path: None,
         }
     }
 }
 
 impl AppConfig {
-    /// Get config path, optionally namespaced by daemon name.
-    /// If name is None or "scanopy-daemon" (default), uses legacy path for backward compat.
-    pub fn get_config_path_for_name(name: Option<&str>) -> Result<(bool, PathBuf)> {
-        let proj_dirs = ProjectDirs::from("com", "scanopy", "daemon")
-            .ok_or_else(|| anyhow::anyhow!("Unable to determine config directory"))?;
-
-        let config_path = match name {
-            // Use namespaced path for custom daemon names
-            Some(n) if n != "scanopy-daemon" => proj_dirs.config_dir().join(n).join("config.json"),
-            // Legacy path for default name or None
-            _ => proj_dirs.config_dir().join("config.json"),
+    /// Resolve the `config.json` path.
+    ///
+    /// When `config_dir` is `Some` (e.g. the `--config-dir` baked into a system service), the
+    /// config lives at `<config_dir>/config.json` — an explicit, profile-independent location.
+    /// Otherwise it falls back to the per-user [`ProjectDirs`] location, namespaced by daemon name
+    /// (default name / `None` uses the legacy un-namespaced path for backward compat).
+    pub fn get_config_path_for_name(
+        name: Option<&str>,
+        config_dir: Option<&Path>,
+    ) -> Result<(bool, PathBuf)> {
+        let config_path = if let Some(dir) = config_dir {
+            dir.join("config.json")
+        } else {
+            let proj_dirs = ProjectDirs::from("com", "scanopy", "daemon")
+                .ok_or_else(|| anyhow::anyhow!("Unable to determine config directory"))?;
+            match name {
+                // Use namespaced path for custom daemon names
+                Some(n) if n != "scanopy-daemon" => {
+                    proj_dirs.config_dir().join(n).join("config.json")
+                }
+                // Legacy path for default name or None
+                _ => proj_dirs.config_dir().join("config.json"),
+            }
         };
 
         Ok((config_path.exists(), config_path))
     }
 
-    /// Get config path using default (legacy) location
+    /// Get config path using default (legacy) per-user location.
     pub fn get_config_path() -> Result<(bool, PathBuf)> {
-        Self::get_config_path_for_name(None)
+        Self::get_config_path_for_name(None, None)
+    }
+
+    /// Platform default **system** config directory for service installs — a fixed location the
+    /// service can read regardless of the user profile it runs under (unlike the per-user
+    /// [`ProjectDirs`] path). Mirrors [`AppConfig::default_log_path`]'s per-OS scheme; the installer
+    /// namespaces this by daemon name.
+    pub fn default_system_config_dir() -> PathBuf {
+        #[cfg(target_os = "linux")]
+        {
+            PathBuf::from("/etc/scanopy/daemon")
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            PathBuf::from("/Library/Application Support/Scanopy/daemon")
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            let program_data =
+                std::env::var("ProgramData").unwrap_or_else(|_| r"C:\ProgramData".to_string());
+            PathBuf::from(program_data).join("Scanopy").join("daemon")
+        }
+
+        // FreeBSD / OpenBSD and other unixes: ports/pkg convention.
+        #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+        {
+            PathBuf::from("/usr/local/etc/scanopy/daemon")
+        }
     }
 
     pub fn load(cli_args: DaemonArgs) -> anyhow::Result<Self> {
-        // Determine config path based on daemon name
-        let (config_exists, config_path) =
-            AppConfig::get_config_path_for_name(cli_args.name.as_deref())?;
+        // Determine config path from the daemon name and any explicit --config-dir override.
+        let (config_exists, config_path) = AppConfig::get_config_path_for_name(
+            cli_args.name.as_deref(),
+            cli_args.config_dir.as_deref(),
+        )?;
 
         // Standard configuration layering: Defaults → Config file → Env → CLI (highest priority)
         let mut figment = Figment::from(Serialized::defaults(AppConfig::default()));
@@ -545,6 +611,10 @@ impl AppConfig {
             config.integration_targets = parse_integration_target_tokens(&tokens)?;
         }
 
+        // Record the resolved path so the runtime read/write side uses it verbatim instead of
+        // re-deriving (which would re-read `$HOME`/`--config-dir` and could diverge).
+        config.config_path = Some(config_path);
+
         Ok(config)
     }
 
@@ -589,6 +659,26 @@ impl AppConfig {
         #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
         {
             PathBuf::from("/tmp/scanopy").join(&filename)
+        }
+    }
+
+    /// Platform default **system** log file for service installs — a fixed, root-writable path
+    /// (unlike [`default_log_path`], which is `$HOME`-relative on macOS/BSD). The installer bakes
+    /// this into the service via `--log-file` so logs land somewhere deterministic regardless of
+    /// the service's runtime profile.
+    pub fn default_system_log_path(name: &str) -> PathBuf {
+        let filename = format!("{}.log", name);
+
+        #[cfg(target_os = "windows")]
+        {
+            let program_data =
+                std::env::var("ProgramData").unwrap_or_else(|_| r"C:\ProgramData".to_string());
+            PathBuf::from(program_data).join("scanopy").join(&filename)
+        }
+
+        #[cfg(not(target_os = "windows"))]
+        {
+            PathBuf::from("/var/log/scanopy").join(&filename)
         }
     }
 }
@@ -926,10 +1016,15 @@ mod tests {
         help_text: String,
     }
 
-    const EXCLUDED_FIELDS: [&str; 16] = [
+    const EXCLUDED_FIELDS: [&str; 18] = [
         "daemon_api_key",
         "network_id",
         "server_url",
+        // Locator baked into system services by `install`, not a user-facing config field
+        "config_dir",
+        // Internal marker baked into the Windows service binPath so the daemon runs under the
+        // SCM dispatcher; not a user-facing config field
+        "service",
         // Automatically set by install command, not user-configurable
         "user_id",
         "credential_ids",

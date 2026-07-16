@@ -4,7 +4,7 @@
 
 use anyhow::{Context, Result};
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use super::{ServiceSpec, run};
 
@@ -56,7 +56,7 @@ fn script_contents(spec: &ServiceSpec) -> String {
          \n\
          pidfile=\"/var/run/{svc}.pid\"\n\
          command=\"/usr/sbin/daemon\"\n\
-         command_args=\"-P ${{pidfile}} -r -t \\\"{desc}\\\" {bin} --name {daemon_name}\"\n\
+         command_args=\"-P ${{pidfile}} -r -t \\\"{desc}\\\" {bin} --name {daemon_name} --config-dir {config_dir} --log-file {log_file}\"\n\
          \n\
          run_rc_command \"$1\"\n",
         name = name,
@@ -64,11 +64,18 @@ fn script_contents(spec: &ServiceSpec) -> String {
         desc = spec.display_name,
         bin = spec.bin_path.display(),
         daemon_name = spec.daemon_name,
+        config_dir = spec.config_dir.display(),
+        log_file = spec.log_file.display(),
     )
 }
 
 pub fn register_service(spec: &ServiceSpec) -> Result<()> {
     let path = script_path(spec);
+    // /usr/local/etc/rc.d may not exist on a fresh FreeBSD (no port has created it yet).
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("Failed to create {}", parent.display()))?;
+    }
     std::fs::write(&path, script_contents(spec))
         .with_context(|| format!("Failed to write rc.d script {}", path.display()))?;
 
@@ -92,9 +99,13 @@ pub fn deregister_service(spec: &ServiceSpec) -> Result<bool> {
 
     let _ = Command::new("service")
         .args([&spec.service_id, "stop"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
         .status();
     let _ = Command::new("sysrc")
         .args(["-x", &format!("{}_enable", rcvar(spec))])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
         .status();
 
     if existed {

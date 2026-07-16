@@ -11,7 +11,7 @@ use scanopy::{
         install::run_command,
         runtime::types::DaemonAppState,
         shared::{
-            config::{AppConfig, ConfigStore, DaemonCli, DaemonCommand},
+            config::{AppConfig, ConfigStore, DaemonArgs, DaemonCli, DaemonCommand},
             handlers::create_router,
             middleware::capture_fixtures_middleware,
         },
@@ -29,24 +29,48 @@ use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 fn main() -> anyhow::Result<()> {
-    let runtime = tokio::runtime::Builder::new_multi_thread()
-        .thread_stack_size(4 * 1024 * 1024) // 4MB stack for deep async scanning
-        .enable_all()
-        .build()?;
-
-    runtime.block_on(async_main())
-}
-
-async fn async_main() -> anyhow::Result<()> {
     // Parse CLI. `install`/`uninstall` subcommands short-circuit here (own logging to stdout);
-    // with no subcommand we fall through to running the daemon exactly as before.
+    // with no subcommand we fall through to running the daemon.
     let cli = DaemonCli::parse();
     if let Some(command @ (DaemonCommand::Install(_) | DaemonCommand::Uninstall(_))) = cli.command {
-        return run_command(command).await;
+        return build_runtime()?.block_on(run_command(command));
     }
 
+    // On Windows, when the Service Control Manager launched us (signalled by the hidden `--service`
+    // marker that `daemon install` bakes into the service binPath), run under the service control
+    // dispatcher: it reports RUNNING/STOPPED to the SCM and maps the STOP control to shutdown. We
+    // gate on the marker rather than always probing the SCM, because StartServiceCtrlDispatcher
+    // blocks for ~30s before failing when not launched by the SCM — which would stall every
+    // foreground run. If the dispatcher unexpectedly reports we're not under the SCM, fall through.
+    #[cfg(windows)]
+    if cli.service {
+        match win_service::try_dispatch() {
+            win_service::Dispatch::RanAsService(result) => return result,
+            win_service::Dispatch::NotUnderScm => {}
+        }
+    }
+
+    // Foreground/console: run the daemon, shutting down on Ctrl+C.
+    build_runtime()?.block_on(run_daemon(cli.run_args, async {
+        let _ = tokio::signal::ctrl_c().await;
+    }))
+}
+
+fn build_runtime() -> anyhow::Result<tokio::runtime::Runtime> {
+    Ok(tokio::runtime::Builder::new_multi_thread()
+        .thread_stack_size(4 * 1024 * 1024) // 4MB stack for deep async scanning
+        .enable_all()
+        .build()?)
+}
+
+/// Run the daemon until `shutdown` resolves. The foreground path passes Ctrl+C; the Windows
+/// service path passes the SCM stop signal.
+async fn run_daemon<F: std::future::Future<Output = ()>>(
+    run_args: DaemonArgs,
+    shutdown: F,
+) -> anyhow::Result<()> {
     // Load config from the daemon run flags
-    let config = AppConfig::load(cli.run_args)?;
+    let config = AppConfig::load(run_args)?;
 
     // Initialize tracing with stdout + optional file appender
     let log_path = config.resolve_log_path();
@@ -97,8 +121,12 @@ async fn async_main() -> anyhow::Result<()> {
             .init();
     }
 
-    // Get config path using daemon name for namespaced configs
-    let (_, path) = AppConfig::get_config_path_for_name(Some(&config.name))?;
+    // Use the path AppConfig::load already resolved (honors --config-dir); don't re-derive, which
+    // would re-read $HOME and could point somewhere the config wasn't written.
+    let path = config
+        .config_path
+        .clone()
+        .ok_or_else(|| anyhow::anyhow!("config path was not resolved during load"))?;
     let path_str = path.to_str().unwrap_or("<invalid path>");
 
     // Initialize unified storage with full config
@@ -364,11 +392,134 @@ async fn async_main() -> anyhow::Result<()> {
         }
     }
 
-    // Keep process alive until shutdown signal
-    tokio::signal::ctrl_c().await?;
+    // Keep process alive until the shutdown signal (Ctrl+C in the foreground, or the SCM STOP
+    // control when running as a Windows service).
+    shutdown.await;
 
     tracing::info!("Shutdown signal received");
     tracing::info!("Daemon stopped");
 
     Ok(())
+}
+
+/// Windows Service Control Manager integration. Only compiled on Windows; the daemon runs here
+/// when `daemon install` registered it as a service and the SCM launched the binary.
+#[cfg(windows)]
+mod win_service {
+    use super::{DaemonArgs, build_runtime, run_daemon};
+    use clap::Parser;
+    use scanopy::daemon::shared::config::DaemonCli;
+    use std::{
+        ffi::OsString,
+        sync::{Arc, Mutex},
+        time::Duration,
+    };
+    use windows_service::{
+        define_windows_service,
+        service::{
+            ServiceControl, ServiceControlAccept, ServiceExitCode, ServiceState, ServiceStatus,
+            ServiceType,
+        },
+        service_control_handler::{self, ServiceControlHandlerResult},
+        service_dispatcher,
+    };
+
+    /// The service name is only meaningful for shared-process services; ours is OWN_PROCESS, so
+    /// the SCM ignores it, but the API still requires a value.
+    const SERVICE_NAME: &str = "scanopy-daemon";
+    const SERVICE_TYPE: ServiceType = ServiceType::OWN_PROCESS;
+    /// ERROR_FAILED_SERVICE_CONTROLLER_CONNECT — returned by StartServiceCtrlDispatcher when the
+    /// process was not launched by the SCM (i.e. we're running from a normal console).
+    const ERROR_FAILED_SERVICE_CONTROLLER_CONNECT: i32 = 1063;
+
+    pub enum Dispatch {
+        /// The SCM launched us and the service ran to completion (or failed).
+        RanAsService(anyhow::Result<()>),
+        /// Not launched by the SCM — the caller should run the daemon in the foreground.
+        NotUnderScm,
+    }
+
+    /// Attempt to connect to the SCM and run as a service. Blocks until the service stops when it
+    /// is a service; returns `NotUnderScm` immediately when running from a console.
+    pub fn try_dispatch() -> Dispatch {
+        match service_dispatcher::start(SERVICE_NAME, ffi_service_main) {
+            Ok(()) => Dispatch::RanAsService(Ok(())),
+            Err(windows_service::Error::Winapi(io))
+                if io.raw_os_error() == Some(ERROR_FAILED_SERVICE_CONTROLLER_CONNECT) =>
+            {
+                Dispatch::NotUnderScm
+            }
+            Err(e) => Dispatch::RanAsService(Err(e.into())),
+        }
+    }
+
+    define_windows_service!(ffi_service_main, service_main);
+
+    fn service_main(_arguments: Vec<OsString>) {
+        // Errors here can't reach the SCM meaningfully; the daemon's own file log (via --log-file
+        // in the service binPath) captures startup failures.
+        if let Err(e) = run_service() {
+            eprintln!("scanopy-daemon service error: {e}");
+        }
+    }
+
+    fn run_service() -> anyhow::Result<()> {
+        // Bridge the SCM STOP control (delivered on an SCM thread) to the async shutdown future.
+        let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+        let shutdown_tx = Arc::new(Mutex::new(Some(shutdown_tx)));
+
+        let event_handler = {
+            let shutdown_tx = shutdown_tx.clone();
+            move |control_event| -> ServiceControlHandlerResult {
+                match control_event {
+                    ServiceControl::Stop => {
+                        if let Some(tx) = shutdown_tx.lock().unwrap().take() {
+                            let _ = tx.send(());
+                        }
+                        ServiceControlHandlerResult::NoError
+                    }
+                    ServiceControl::Interrogate => ServiceControlHandlerResult::NoError,
+                    _ => ServiceControlHandlerResult::NotImplemented,
+                }
+            }
+        };
+
+        let status_handle = service_control_handler::register(SERVICE_NAME, event_handler)?;
+
+        // Report RUNNING promptly so the SCM start handshake succeeds. The daemon's own
+        // connect/retry loop happens afterwards inside `run_daemon` and must not block this.
+        let running_status = ServiceStatus {
+            service_type: SERVICE_TYPE,
+            current_state: ServiceState::Running,
+            controls_accepted: ServiceControlAccept::STOP,
+            exit_code: ServiceExitCode::Win32(0),
+            checkpoint: 0,
+            wait_hint: Duration::default(),
+            process_id: None,
+        };
+        status_handle.set_service_status(running_status)?;
+
+        // The service binPath carries the daemon flags (--name, --config-dir, --log-file, ...),
+        // so re-parse them from the process command line.
+        let cli = DaemonCli::parse();
+        let run_args: DaemonArgs = cli.run_args;
+
+        let result = build_runtime()?.block_on(run_daemon(run_args, async move {
+            let _ = shutdown_rx.await;
+        }));
+
+        // Always report STOPPED so the SCM doesn't leave the service stuck in STOP_PENDING.
+        let stopped_status = ServiceStatus {
+            service_type: SERVICE_TYPE,
+            current_state: ServiceState::Stopped,
+            controls_accepted: ServiceControlAccept::empty(),
+            exit_code: ServiceExitCode::Win32(if result.is_ok() { 0 } else { 1 }),
+            checkpoint: 0,
+            wait_hint: Duration::default(),
+            process_id: None,
+        };
+        status_handle.set_service_status(stopped_status)?;
+
+        result
+    }
 }

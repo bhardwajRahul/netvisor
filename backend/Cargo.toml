@@ -216,6 +216,9 @@ windows = { version = "0.52", features = [
     "Win32_NetworkManagement_IpHelper",
     "Win32_Foundation"
 ]}
+# Windows Service Control Manager integration: lets the daemon run under the SCM (report
+# RUNNING/STOPPED, handle the STOP control) when launched as a service by `daemon install`.
+windows-service = "0.7"
 
 # Routing-table gateway discovery. net-route has no BSD cfg arm, so it stays on the three
 # desktop OSes; FreeBSD/OpenBSD use netdev (BSD gateway discovery via sysctl in-code, tested on

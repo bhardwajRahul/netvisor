@@ -4,7 +4,7 @@
 
 use anyhow::{Context, Result};
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use super::{ServiceSpec, run};
 
@@ -51,6 +51,10 @@ fn plist_contents(spec: &ServiceSpec, log_file: &str) -> String {
         <string>{bin}</string>
         <string>--name</string>
         <string>{name}</string>
+        <string>--config-dir</string>
+        <string>{config_dir}</string>
+        <string>--log-file</string>
+        <string>{daemon_log}</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
@@ -66,6 +70,8 @@ fn plist_contents(spec: &ServiceSpec, log_file: &str) -> String {
         label = label(spec),
         bin = spec.bin_path.display(),
         name = spec.daemon_name,
+        config_dir = spec.config_dir.display(),
+        daemon_log = spec.log_file.display(),
         log = log_file,
     )
 }
@@ -81,10 +87,14 @@ pub fn register_service(spec: &ServiceSpec) -> Result<()> {
         .with_context(|| format!("Failed to write plist {}", path.display()))?;
 
     // Idempotent (re)load: bootout first (ignore if not loaded), then bootstrap + enable.
+    // Silence bootout: when nothing is loaded it prints "Boot-out failed: 5: Input/output error",
+    // which is expected here and only confuses users during a fresh install.
     let label = label(spec);
     let service_target = format!("system/{label}");
     let _ = Command::new("launchctl")
         .args(["bootout", "system", &path.to_string_lossy()])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
         .status();
     run(
         "launchctl",
@@ -104,6 +114,8 @@ pub fn deregister_service(spec: &ServiceSpec) -> Result<bool> {
 
     let _ = Command::new("launchctl")
         .args(["bootout", "system", &path.to_string_lossy()])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
         .status();
 
     if existed {
