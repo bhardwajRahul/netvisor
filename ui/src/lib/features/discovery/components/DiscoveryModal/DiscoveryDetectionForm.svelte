@@ -177,8 +177,7 @@
 				id="scan_max_discovery_duration"
 				type="number"
 				value={getScanValue('max_discovery_duration')}
-				oninput={(e) =>
-					updateScanSetting('max_discovery_duration', Number(e.currentTarget.value))}
+				oninput={(e) => updateScanSetting('max_discovery_duration', Number(e.currentTarget.value))}
 				placeholder={maxDiscoveryDurationField.placeholder ?? ''}
 				disabled={readOnly}
 				class="input-field"

@@ -370,7 +370,11 @@ mod tests {
     }
 
     fn winners(
-        entries: Vec<(CredentialQueryPayloadDiscriminants, Option<Uuid>, CredentialQueryPayload)>,
+        entries: Vec<(
+            CredentialQueryPayloadDiscriminants,
+            Option<Uuid>,
+            CredentialQueryPayload,
+        )>,
     ) -> HashMap<CredentialQueryPayloadDiscriminants, (Option<Uuid>, CredentialQueryPayload)> {
         entries
             .into_iter()
@@ -391,7 +395,10 @@ mod tests {
         )]);
 
         let keys = dedup_execution_keys(&mappings, &w);
-        assert_eq!(keys, vec![(CredentialQueryPayloadDiscriminants::Snmp, cred_id)]);
+        assert_eq!(
+            keys,
+            vec![(CredentialQueryPayloadDiscriminants::Snmp, cred_id)]
+        );
     }
 
     #[test]

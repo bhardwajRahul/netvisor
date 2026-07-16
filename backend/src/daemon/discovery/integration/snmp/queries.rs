@@ -72,9 +72,9 @@ where
             )
             .await
             {
-                Ok(Ok(mut pdu)) => {
+                Ok(Ok(pdu)) => {
                     let mut saw_varbind = false;
-                    while let Some((resp_oid, value)) = pdu.varbinds.next() {
+                    for (resp_oid, value) in pdu.varbinds {
                         saw_varbind = true;
                         if matches!(
                             value,
@@ -184,7 +184,7 @@ where
 pub async fn query_system_info(
     session: &mut Box<snmp2::AsyncSession>,
     ip: IpAddr,
-) ->Result<SystemInfo> {
+) -> Result<SystemInfo> {
     let mut info = SystemInfo::default();
 
     // Query each system OID
@@ -244,7 +244,7 @@ pub async fn query_system_info(
 pub async fn walk_if_table(
     session: &mut Box<snmp2::AsyncSession>,
     ip: IpAddr,
-) ->Result<(Vec<IfTableEntry>, bool)> {
+) -> Result<(Vec<IfTableEntry>, bool)> {
     let mut entries: HashMap<i32, IfTableEntry> = HashMap::new();
     // Cleared to false the moment any column walk is cut short (error/timeout/limit).
     let mut complete = true;
@@ -346,7 +346,7 @@ pub async fn walk_if_table(
 pub async fn query_lldp_neighbors(
     session: &mut Box<snmp2::AsyncSession>,
     ip: IpAddr,
-) ->Result<Vec<LldpNeighbor>> {
+) -> Result<Vec<LldpNeighbor>> {
     let mut neighbors: HashMap<(i32, i32), LldpNeighbor> = HashMap::new();
 
     // LLDP remote table uses a complex index: lldpRemTimeMark.lldpRemLocalPortNum.lldpRemIndex
@@ -383,19 +383,20 @@ pub async fn query_lldp_neighbors(
             }
             let local_port = suffix[1] as i32;
             let rem_index = suffix[2] as i32;
-            let neighbor = neighbors
-                .entry((local_port, rem_index))
-                .or_insert_with(|| LldpNeighbor {
-                    local_port_index: local_port,
-                    remote_chassis_id_subtype: None,
-                    remote_chassis_id_bytes: None,
-                    remote_port_id_subtype: None,
-                    remote_port_id_bytes: None,
-                    remote_port_desc: None,
-                    remote_sys_name: None,
-                    remote_sys_desc: None,
-                    remote_mgmt_addr: None,
-                });
+            let neighbor =
+                neighbors
+                    .entry((local_port, rem_index))
+                    .or_insert_with(|| LldpNeighbor {
+                        local_port_index: local_port,
+                        remote_chassis_id_subtype: None,
+                        remote_chassis_id_bytes: None,
+                        remote_port_id_subtype: None,
+                        remote_port_id_bytes: None,
+                        remote_port_desc: None,
+                        remote_sys_name: None,
+                        remote_sys_desc: None,
+                        remote_mgmt_addr: None,
+                    });
             match column_name {
                 "remChassisIdSubtype" => {
                     neighbor.remote_chassis_id_subtype = value_to_i32(value).map(|v| v as u8)
@@ -469,7 +470,7 @@ pub async fn query_lldp_neighbors(
 pub async fn query_lldp_local_ports(
     session: &mut Box<snmp2::AsyncSession>,
     ip: IpAddr,
-) ->Result<HashMap<i32, LldpLocalPort>> {
+) -> Result<HashMap<i32, LldpLocalPort>> {
     let mut ports: HashMap<i32, LldpLocalPort> = HashMap::new();
 
     let columns = [
@@ -507,7 +508,7 @@ pub async fn query_lldp_local_ports(
 pub async fn query_ip_addr_table(
     session: &mut Box<snmp2::AsyncSession>,
     ip: IpAddr,
-) ->Result<HashMap<IpAddr, IpAddrEntry>> {
+) -> Result<HashMap<IpAddr, IpAddrEntry>> {
     let mut if_index_map: HashMap<IpAddr, i32> = HashMap::new();
     let mut net_mask_map: HashMap<IpAddr, IpAddr> = HashMap::new();
 
@@ -573,7 +574,7 @@ pub async fn query_ip_addr_table(
 pub async fn query_cdp_neighbors(
     session: &mut Box<snmp2::AsyncSession>,
     ip: IpAddr,
-) ->Result<Vec<CdpNeighbor>> {
+) -> Result<Vec<CdpNeighbor>> {
     let mut neighbors: HashMap<(i32, i32), CdpNeighbor> = HashMap::new();
 
     let columns = [
@@ -591,16 +592,15 @@ pub async fn query_cdp_neighbors(
             }
             let if_index = suffix[0] as i32;
             let device_index = suffix[1] as i32;
-            let neighbor =
-                neighbors
-                    .entry((if_index, device_index))
-                    .or_insert_with(|| CdpNeighbor {
-                        local_port_index: if_index,
-                        remote_device_id: None,
-                        remote_port_id: None,
-                        remote_platform: None,
-                        remote_address: None,
-                    });
+            let neighbor = neighbors
+                .entry((if_index, device_index))
+                .or_insert_with(|| CdpNeighbor {
+                    local_port_index: if_index,
+                    remote_device_id: None,
+                    remote_port_id: None,
+                    remote_platform: None,
+                    remote_address: None,
+                });
             match column_name {
                 "deviceId" => neighbor.remote_device_id = value_to_string(value),
                 "devicePort" => neighbor.remote_port_id = value_to_string(value),
@@ -631,8 +631,7 @@ pub async fn query_cdp_neighbors(
 pub async fn query_arp_table(
     session: &mut Box<snmp2::AsyncSession>,
     ip: IpAddr,
-) ->Result<Vec<ArpEntry>> {
-
+) -> Result<Vec<ArpEntry>> {
     // We need to walk 4 columns: ifIndex, physAddress, netAddress, type
     // OID suffix format: ifIndex.A.B.C.D
     struct ArpEntryBuilder {
@@ -713,8 +712,7 @@ pub async fn query_arp_table(
 pub async fn query_entity_physical(
     session: &mut Box<snmp2::AsyncSession>,
     ip: IpAddr,
-) ->Result<Option<DeviceInventory>> {
-
+) -> Result<Option<DeviceInventory>> {
     struct PhysicalEntry {
         description: Option<String>,
         class: Option<i32>,
@@ -741,14 +739,16 @@ pub async fn query_entity_physical(
             let Some(&index_u64) = suffix.last() else {
                 return;
             };
-            let entry = entries.entry(index_u64 as i32).or_insert_with(|| PhysicalEntry {
-                description: None,
-                class: None,
-                name: None,
-                serial_number: None,
-                manufacturer: None,
-                model: None,
-            });
+            let entry = entries
+                .entry(index_u64 as i32)
+                .or_insert_with(|| PhysicalEntry {
+                    description: None,
+                    class: None,
+                    name: None,
+                    serial_number: None,
+                    manufacturer: None,
+                    model: None,
+                });
             match column_name {
                 "descr" => entry.description = value_to_string(value),
                 "class" => entry.class = value_to_i32(value),
@@ -756,9 +756,7 @@ pub async fn query_entity_physical(
                 "serialNum" => {
                     entry.serial_number = value_to_string(value).filter(|s| !s.is_empty())
                 }
-                "mfgName" => {
-                    entry.manufacturer = value_to_string(value).filter(|s| !s.is_empty())
-                }
+                "mfgName" => entry.manufacturer = value_to_string(value).filter(|s| !s.is_empty()),
                 "modelName" => entry.model = value_to_string(value).filter(|s| !s.is_empty()),
                 _ => {}
             }
@@ -832,8 +830,7 @@ struct FdbBuilder {
 pub async fn query_bridge_fdb(
     session: &mut Box<snmp2::AsyncSession>,
     ip: IpAddr,
-) ->Result<Vec<BridgeFdbEntry>> {
-
+) -> Result<Vec<BridgeFdbEntry>> {
     // Step 1: Walk dot1dBasePortIfIndex to build bridge_port → ifIndex map.
     // Both FDB tables reference this same dot1dBasePort space.
     let port_to_if_index = walk_bridge_port_mapping(session).await?;
@@ -966,8 +963,7 @@ async fn walk_qbridge_fdb(
 pub async fn query_lldp_local(
     session: &mut Box<snmp2::AsyncSession>,
     ip: IpAddr,
-) ->Result<Option<LldpLocalInfo>> {
-
+) -> Result<Option<LldpLocalInfo>> {
     // GET lldpLocChassisIdSubtype
     let subtype_oid = parse_oid(oids::lldp::local::LLDP_LOC_CHASSIS_ID_SUBTYPE)?;
     let subtype = match timeout(SNMP_TIMEOUT, session.get(&subtype_oid)).await {
@@ -1034,7 +1030,7 @@ pub async fn query_lldp_local(
 pub async fn query_vlan_table(
     session: &mut Box<snmp2::AsyncSession>,
     ip: IpAddr,
-) ->Result<Vec<VlanInfo>> {
+) -> Result<Vec<VlanInfo>> {
     let mut vlans: Vec<VlanInfo> = Vec::new();
 
     // Try Q-BRIDGE dot1qVlanStaticName first. OID suffix is the VLAN ID.
@@ -1089,8 +1085,7 @@ pub async fn query_vlan_table(
 pub async fn query_port_vlan_membership(
     session: &mut Box<snmp2::AsyncSession>,
     ip: IpAddr,
-) ->Result<Vec<PortVlanMembership>> {
-
+) -> Result<Vec<PortVlanMembership>> {
     // Step 1: Get bridge port → ifIndex mapping
     let port_to_if_index = walk_bridge_port_mapping(session).await?;
 
@@ -1105,13 +1100,17 @@ pub async fn query_port_vlan_membership(
     // Step 2: Walk dot1qPvid for native VLAN per bridge port. OID suffix is the
     // bridge port number; value is the native VLAN ID.
     let mut native_vlans: HashMap<i32, u16> = HashMap::new();
-    walk_subtree(session, oids::vlan::q_bridge::DOT1Q_PVID, |suffix, value| {
-        if let Some(&port_u64) = suffix.last()
-            && let Some(vlan_id) = value_to_u16(value)
-        {
-            native_vlans.insert(port_u64 as i32, vlan_id);
-        }
-    })
+    walk_subtree(
+        session,
+        oids::vlan::q_bridge::DOT1Q_PVID,
+        |suffix, value| {
+            if let Some(&port_u64) = suffix.last()
+                && let Some(vlan_id) = value_to_u16(value)
+            {
+                native_vlans.insert(port_u64 as i32, vlan_id);
+            }
+        },
+    )
     .await?;
 
     // Step 3: Walk dot1qVlanCurrentEgressPorts — PortList bitmap per VLAN, indexed

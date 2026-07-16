@@ -1348,7 +1348,7 @@
 	"meta_features_svg_export_name": "SVG Export",
 	"meta_features_webhooks_description": "Push real-time events to external systems when hosts, services, or topology changes",
 	"meta_features_webhooks_name": "Webhooks",
-	"meta_features_whitelabeling_description": "We deploy Scanopy to a custom domain with your branding",
+	"meta_features_whitelabeling_description": "Deploy Scanopy with your logo and brand colors",
 	"meta_features_whitelabeling_name": "White Labeling",
 	"meta_permissions_Admin_description": "Manage users and invites, create and modify all entities, but cannot access billing",
 	"meta_permissions_Admin_name": "Admin",

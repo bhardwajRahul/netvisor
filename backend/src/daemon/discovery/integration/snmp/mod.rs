@@ -268,12 +268,10 @@ impl DiscoveryIntegration for SnmpIntegration {
             });
 
         // Query ARP table for remote host discovery
-        let arp_entries = query_arp_table(&mut session, ip)
-            .await
-            .unwrap_or_else(|e| {
-                tracing::debug!(ip = %ip, error = %e, "ARP table query failed");
-                Default::default()
-            });
+        let arp_entries = query_arp_table(&mut session, ip).await.unwrap_or_else(|e| {
+            tracing::debug!(ip = %ip, error = %e, "ARP table query failed");
+            Default::default()
+        });
         let arp_count = arp_entries.len();
         tracing::info!(ip = %ip, count = arp_count, "ARP table entries collected");
 
@@ -344,10 +342,12 @@ impl DiscoveryIntegration for SnmpIntegration {
         tracing::info!(ip = %ip, count = port_vlan_membership.len(), "Port VLAN memberships collected");
 
         // Query local LLDP identity
-        let lldp_local = query_lldp_local(&mut session, ip).await.unwrap_or_else(|e| {
-            tracing::debug!(ip = %ip, error = %e, "LLDP local identity query failed");
-            None
-        });
+        let lldp_local = query_lldp_local(&mut session, ip)
+            .await
+            .unwrap_or_else(|e| {
+                tracing::debug!(ip = %ip, error = %e, "LLDP local identity query failed");
+                None
+            });
         tracing::info!(
             ip = %ip,
             has_lldp_local = lldp_local.is_some(),
@@ -854,13 +854,10 @@ pub async fn poll_device(
             .map_err(|_| anyhow::anyhow!("ifTable walk timeout"))?
             .unwrap_or_default();
 
-    let lldp_neighbors = timeout(
-        SNMP_WALK_TIMEOUT,
-        query_lldp_neighbors(&mut session, ip),
-    )
-    .await
-    .unwrap_or(Ok(vec![]))
-    .unwrap_or_default();
+    let lldp_neighbors = timeout(SNMP_WALK_TIMEOUT, query_lldp_neighbors(&mut session, ip))
+        .await
+        .unwrap_or(Ok(vec![]))
+        .unwrap_or_default();
 
     let cdp_neighbors = timeout(SNMP_WALK_TIMEOUT, query_cdp_neighbors(&mut session, ip))
         .await
