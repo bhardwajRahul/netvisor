@@ -747,6 +747,7 @@
 							onViewDiscovery={handleViewDiscovery}
 							{hasEmailSupport}
 							onAdvanced={() => (showAdvanced = true)}
+							serverCommands={installArtifacts?.commands ?? []}
 							daemonMode={(formValues.mode as DaemonMode) ?? 'daemon_poll'}
 							daemonName={String(formValues.name ?? 'scanopy-daemon')}
 							logFilePath={String(formValues.logFile ?? '')}
