@@ -16,7 +16,8 @@
 		common_never,
 		common_no,
 		common_tags,
-		common_yes
+		common_yes,
+		daemons_apiKeyLegacyBadge
 	} from '$lib/paraglide/messages';
 
 	let {
@@ -38,8 +39,13 @@
 	} = $props();
 
 	// Build card data
+	// Keys not bound 1:1 to a daemon predate server-provisioned identity. Since new
+	// keys are only minted through provisioning, an unbound key is a legacy one.
+	let isLegacy = $derived(!apiKey.daemon_id);
+
 	let cardData = $derived({
 		title: apiKey.name,
+		subtitle: isLegacy ? daemons_apiKeyLegacyBadge() : '',
 		iconColor: entities.getColorHelper('DaemonApiKey').icon,
 		Icon: entities.getIconComponent('DaemonApiKey'),
 		fields: [

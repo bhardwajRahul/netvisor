@@ -7,7 +7,6 @@
 	import CreateApiKeyModal from './ApiKeyModal.svelte';
 	import type { ApiKey } from '../types/base';
 	import ApiKeyCard from './ApiKeyCard.svelte';
-	import { Plus } from 'lucide-svelte';
 	import { useTagsQuery } from '$lib/features/tags/queries';
 	import {
 		useApiKeysQuery,
@@ -23,14 +22,14 @@
 	import {
 		common_confirmBulkDelete,
 		common_confirmDeleteName,
-		common_create,
 		common_created,
 		common_name,
 		common_network,
 		common_noEntityYet,
 		common_tags,
 		common_unknownNetwork,
-		daemonApiKeys_title
+		daemonApiKeys_title,
+		daemonApiKeys_provisionOnlyHint
 	} from '$lib/paraglide/messages';
 
 	let { isReadOnly = false }: TabProps = $props();
@@ -86,11 +85,6 @@
 	async function handleUpdateApiKey(apiKey: ApiKey) {
 		await updateApiKeyMutation.mutateAsync(apiKey);
 		showCreateApiKeyModal = false;
-		editingApiKey = null;
-	}
-
-	function handleCreateApiKey() {
-		showCreateApiKeyModal = true;
 		editingApiKey = null;
 	}
 
@@ -160,16 +154,9 @@
 </script>
 
 <div class="space-y-6">
-	<!-- Header -->
-	<TabHeader title={daemonApiKeys_title()}>
-		<svelte:fragment slot="actions">
-			{#if !isReadOnly}
-				<button class="btn-primary flex items-center" onclick={handleCreateApiKey}
-					><Plus class="h-5 w-5" />{common_create()}</button
-				>
-			{/if}
-		</svelte:fragment>
-	</TabHeader>
+	<!-- Header. No create action: daemon keys are now minted 1:1 through daemon
+	     provisioning, so this tab only lists (and lets you manage) existing keys. -->
+	<TabHeader title={daemonApiKeys_title()} />
 	<!-- Loading state -->
 	{#if isLoading}
 		<Loading />
@@ -177,9 +164,7 @@
 		<!-- Empty state -->
 		<EmptyState
 			title={common_noEntityYet({ entity: daemonApiKeys_title() })}
-			subtitle=""
-			onClick={handleCreateApiKey}
-			cta={common_create()}
+			subtitle={daemonApiKeys_provisionOnlyHint()}
 		/>
 	{:else}
 		<DataControls
