@@ -4,8 +4,8 @@
 	import { useRetryDaemonConnectionMutation } from '$lib/features/daemons/queries';
 	import { entities, subnetTypes } from '$lib/shared/stores/metadata';
 	import { formatTimestamp } from '$lib/shared/utils/formatting';
-	import { ArrowBigUp, RefreshCw, Trash2 } from 'lucide-svelte';
-	import { common_delete, common_tags } from '$lib/paraglide/messages';
+	import { ArrowBigUp, KeyRound, RefreshCw, Trash2 } from 'lucide-svelte';
+	import { common_delete, common_tags, daemons_manageKey } from '$lib/paraglide/messages';
 	import { getDaemonStatusTag } from '$lib/features/daemons/utils';
 	import { useNetworksQuery } from '$lib/features/networks/queries';
 	import { useHostsQuery } from '$lib/features/hosts/queries';
@@ -193,6 +193,17 @@
 							icon: Trash2,
 							class: 'btn-icon-danger',
 							onClick: () => onDelete(daemon)
+						}
+					]
+				: []),
+			// Manage the daemon's 1:1 key (view / rotate) via the existing key modal.
+			...(daemon.api_key_id
+				? [
+						{
+							label: daemons_manageKey(),
+							icon: KeyRound,
+							class: 'btn-icon',
+							onClick: () => openModal('daemon-api-key', { id: daemon.api_key_id! })
 						}
 					]
 				: []),

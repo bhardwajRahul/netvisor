@@ -629,6 +629,7 @@
 	"daemons_installIveRunCommand": "I've run the install command",
 	"daemons_installIveStartedDocker": "I've started the Docker container",
 	"daemons_installPromptDiscoveries": "Install a daemon to start running discoveries on your network.",
+	"daemons_manageKey": "Manage key",
 	"daemons_installPromptHosts": "Install a daemon to start discovering hosts on your network.",
 	"daemons_installPromptServices": "Install a daemon to start discovering services on your network.",
 	"daemons_installPromptSubnets": "Install a daemon to start discovering subnets on your network.",
