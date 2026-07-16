@@ -48,7 +48,7 @@ pub struct InstallArtifacts {
 /// Build the config query string the MSI filename encodes. Keys match the property map in
 /// `backend/wix/parse-filename.js`; values are percent-encoded so `&`/`=`/specials are safe.
 /// The api key is deliberately absent — a live credential must never sit in a filename.
-fn msi_config_query(daemon: &Daemon) -> String {
+fn msi_config_query(public_url: &str, daemon: &Daemon) -> String {
     let mode = match daemon.base.mode {
         DaemonMode::ServerPoll => "server_poll",
         DaemonMode::DaemonPoll => "daemon_poll",
@@ -57,10 +57,11 @@ fn msi_config_query(daemon: &Daemon) -> String {
         format!("mode={}", urlencoding::encode(mode)),
         format!("name={}", urlencoding::encode(&daemon.base.name)),
     ];
-    // ServerPoll is dialed by the server at its reachable URL; DaemonPoll dials out, so
-    // its url is unused and not encoded.
-    if daemon.base.mode == DaemonMode::ServerPoll && !daemon.base.url.is_empty() {
-        pairs.push(format!("url={}", urlencoding::encode(&daemon.base.url)));
+    // Only DaemonPoll needs a server url to pre-fill (it dials the server → SERVERURL →
+    // --server-url). ServerPoll is dialed by the server, so SERVERURL is unused and its
+    // reachable url stays server-side; nothing url-related is encoded for it.
+    if daemon.base.mode == DaemonMode::DaemonPoll && !public_url.is_empty() {
+        pairs.push(format!("url={}", urlencoding::encode(public_url)));
     }
     pairs.join("&")
 }
@@ -68,8 +69,8 @@ fn msi_config_query(daemon: &Daemon) -> String {
 /// Build the MSI download filename: the whole config query string as ONE base64url segment,
 /// so the name stays short even as more config fields are added (vs one `~~field=hex~~` per
 /// field, which would blow past the ~255-char filename limit). Decoded by parse-filename.js.
-pub fn encode_msi_filename(daemon: &Daemon) -> String {
-    let blob = Base64UrlUnpadded::encode_string(msi_config_query(daemon).as_bytes());
+pub fn encode_msi_filename(public_url: &str, daemon: &Daemon) -> String {
+    let blob = Base64UrlUnpadded::encode_string(msi_config_query(public_url, daemon).as_bytes());
     format!("scanopy-daemon-{blob}.msi")
 }
 
@@ -123,7 +124,7 @@ pub fn build_install_artifacts(
     InstallArtifacts {
         commands,
         msi_url: WINDOWS_MSI_URL.to_string(),
-        msi_filename: encode_msi_filename(daemon),
+        msi_filename: encode_msi_filename(public_url, daemon),
     }
 }
 
@@ -195,25 +196,32 @@ mod tests {
 
     #[test]
     fn msi_filename_is_one_base64_segment_that_round_trips() {
-        let name = encode_msi_filename(&daemon(DaemonMode::ServerPoll, "https://edge.corp:60073"));
+        // DaemonPoll pre-fills the server url it dials.
+        let name = encode_msi_filename(
+            "https://app.scanopy.net:60072",
+            &daemon(DaemonMode::DaemonPoll, ""),
+        );
         // One compact segment, no per-field `~~` markers.
         assert!(name.starts_with("scanopy-daemon-"));
         assert!(name.ends_with(".msi"));
         assert!(!name.contains("~~"));
 
         let fields = decode_msi_filename(&name);
-        assert_eq!(fields.get("mode").map(String::as_str), Some("server_poll"));
+        assert_eq!(fields.get("mode").map(String::as_str), Some("daemon_poll"));
         assert_eq!(fields.get("name").map(String::as_str), Some("edge-01"));
         // The url survives its :// and : intact through percent-encode + base64.
         assert_eq!(
             fields.get("url").map(String::as_str),
-            Some("https://edge.corp:60073")
+            Some("https://app.scanopy.net:60072")
         );
 
-        // DaemonPoll dials out → no url encoded.
-        let dp = decode_msi_filename(&encode_msi_filename(&daemon(DaemonMode::DaemonPoll, "")));
-        assert_eq!(dp.get("mode").map(String::as_str), Some("daemon_poll"));
-        assert!(!dp.contains_key("url"));
+        // ServerPoll is dialed by the server → no server url encoded.
+        let sp = decode_msi_filename(&encode_msi_filename(
+            "https://app.scanopy.net",
+            &daemon(DaemonMode::ServerPoll, "https://edge.corp"),
+        ));
+        assert_eq!(sp.get("mode").map(String::as_str), Some("server_poll"));
+        assert!(!sp.contains_key("url"));
     }
 
     #[test]
