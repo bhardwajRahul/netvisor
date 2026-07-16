@@ -3712,6 +3712,8 @@ export interface components {
                  *     This is shown only once - store it securely.
                  */
                 daemon_api_key: string;
+                /** @description Ready-to-run install commands + MSI download link, assembled server-side. */
+                install_artifacts: components["schemas"]["InstallArtifacts"];
             };
             error?: string | null;
             meta: components["schemas"]["ApiMeta"];
@@ -6886,6 +6888,19 @@ export interface components {
          * @description Response from provisioning a daemon.
          *     Contains the daemon record and the API key (shown only once).
          */
+        InstallArtifacts: {
+            /** @description Per-platform binary install commands (the api key is embedded — shown once). */
+            commands: components["schemas"]["PlatformInstallCommand"][];
+            /** @description URL that downloads the Windows MSI renamed with this daemon's values hex-encoded
+             *     into the filename, so the installer pre-fills everything but the api key. */
+            msi_url: string;
+        };
+        PlatformInstallCommand: {
+            /** @description The full command, including fetching the binary. */
+            command: string;
+            /** @description Platform key matching the UI's OS selector: `linux` | `macos` | `windows` | `freebsd`. */
+            platform: string;
+        };
         ProvisionDaemonResponse: {
             /** @description The created daemon record (with version status). */
             daemon: components["schemas"]["DaemonResponse"];
@@ -6894,6 +6909,8 @@ export interface components {
              *     This is shown only once - store it securely.
              */
             daemon_api_key: string;
+            /** @description Ready-to-run install commands + MSI download link, assembled server-side. */
+            install_artifacts: components["schemas"]["InstallArtifacts"];
         };
         ProxmoxVirtualization: {
             /** Format: uuid */

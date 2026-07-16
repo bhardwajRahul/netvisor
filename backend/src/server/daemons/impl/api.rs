@@ -421,6 +421,8 @@ pub struct ProvisionDaemonResponse {
     /// The API key (plaintext) for daemon authentication.
     /// This is shown only once - store it securely.
     pub daemon_api_key: String,
+    /// Ready-to-run install commands + MSI download link, assembled server-side.
+    pub install_artifacts: crate::server::daemons::r#impl::install_artifacts::InstallArtifacts,
 }
 
 /// Request to test reachability of a daemon URL.

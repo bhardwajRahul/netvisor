@@ -21,6 +21,7 @@
 	} from 'lucide-svelte';
 	import confetti from 'canvas-confetti';
 	import type { DaemonMode } from '../../types/base';
+	import type { components } from '$lib/api/schema';
 	import {
 		useProvisionDaemonMutation,
 		useDaemonQuery,
@@ -114,9 +115,14 @@
 	const windowsDownloadUrl =
 		'https://github.com/scanopy/scanopy/releases/latest/download/scanopy-daemon-windows-amd64.exe';
 	let currentInstallCommand = $derived.by(() => {
+		// Docker is client-assembled (compose file); the server assembles binary commands.
+		if (selectedOS === 'linux' && linuxMethod === 'docker' && dockerCompose) return dockerCompose;
+		// Prefer the server-assembled command for this platform (single source of truth).
+		const serverCmd = installArtifacts?.commands.find((c) => c.platform === selectedOS)?.command;
+		if (serverCmd) return serverCmd;
+		// Fallback (e.g. before provisioning completes) to the client-built command.
 		if (selectedOS === 'windows')
 			return `Invoke-WebRequest -Uri "${windowsDownloadUrl}" -OutFile "scanopy-daemon-windows-amd64.exe"; ${runCommand}`;
-		if (selectedOS === 'linux' && linuxMethod === 'docker' && dockerCompose) return dockerCompose;
 		return `${installScript} && ${runCommand}`;
 	});
 	let currentOsLabel = $derived.by(() => {
@@ -215,6 +221,9 @@
 	let isTestingReachability = $state(false);
 	let serverPollReachabilityResult = $state<{ reachable: boolean; error?: string } | null>(null);
 	const testReachabilityMutation = useTestReachabilityMutation();
+
+	// Install commands assembled server-side (single source of truth), captured at provision.
+	let installArtifacts = $state<components['schemas']['InstallArtifacts'] | null>(null);
 
 	// Connection waiting state
 	let provisionedDaemonId = $state('');
@@ -391,6 +400,7 @@
 			});
 			keyState = result.daemon_api_key;
 			provisionedDaemonId = result.daemon.id;
+			installArtifacts = result.install_artifacts;
 		} catch {
 			pushError(common_failedGenerateApiKey());
 		}
