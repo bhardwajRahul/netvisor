@@ -15,13 +15,14 @@ pub mod values;
 // Re-export commonly used items
 pub use queries::{
     query_arp_table, query_bridge_fdb, query_cdp_neighbors, query_entity_physical,
-    query_ip_addr_table, query_lldp_local, query_lldp_neighbors, query_port_vlan_membership,
-    query_system_info, query_vlan_table, walk_if_table,
+    query_ip_addr_table, query_lldp_local, query_lldp_local_ports, query_lldp_neighbors,
+    query_port_vlan_membership, query_system_info, query_vlan_table, walk_if_table,
 };
 pub use session::SNMP_WALK_TIMEOUT;
+use session::create_session;
 pub use types::{
     ArpEntry, BridgeFdbEntry, CdpNeighbor, DeviceInventory, IfTableEntry, IpAddrEntry,
-    LldpLocalInfo, LldpNeighbor, PortVlanMembership, SystemInfo, VlanInfo,
+    LldpLocalInfo, LldpLocalPort, LldpNeighbor, PortVlanMembership, SystemInfo, VlanInfo,
 };
 
 use std::net::IpAddr;
@@ -149,8 +150,24 @@ impl DiscoveryIntegration for SnmpIntegration {
         let port = handle.port;
         let ip = ctx.ip;
 
+        // Open one SNMP session per host and reuse it across every query below.
+        // Previously each of the ~12 queries opened its own session — and for v3 each
+        // repeated the full engine-discovery handshake — so a single collection did
+        // ~12 session setups. Reusing one session removes that per-query cost.
+        let mut session = match create_session(ip, credential, port).await {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::warn!(
+                    ip = %ip,
+                    error = %e,
+                    "Failed to open SNMP session; skipping SNMP collection"
+                );
+                return Ok(());
+            }
+        };
+
         // Query system info
-        let system_info = match query_system_info(ip, credential, port).await {
+        let system_info = match query_system_info(&mut session, ip).await {
             Ok(info)
                 if info.sys_descr.is_some()
                     || info.sys_name.is_some()
@@ -181,7 +198,7 @@ impl DiscoveryIntegration for SnmpIntegration {
         // authoritative full ifTable (safe to prune stale interfaces against) or a partial walk
         // cut short by timeout/error (must NOT prune — see GH #649). A hard failure yields an
         // empty set, which the server's existing empty-set guard already protects.
-        let (snmp_if_entries, if_table_complete) = match walk_if_table(ip, credential, port).await {
+        let (snmp_if_entries, if_table_complete) = match walk_if_table(&mut session, ip).await {
             Ok((entries, complete)) => {
                 tracing::debug!(
                     ip = %ip,
@@ -198,7 +215,7 @@ impl DiscoveryIntegration for SnmpIntegration {
         };
 
         // Query LLDP neighbors
-        let lldp_neighbors = match query_lldp_neighbors(ip, credential, port).await {
+        let mut lldp_neighbors = match query_lldp_neighbors(&mut session, ip).await {
             Ok(neighbors) => {
                 tracing::debug!(ip = %ip, count = neighbors.len(), "LLDP neighbors discovered");
                 neighbors
@@ -211,7 +228,7 @@ impl DiscoveryIntegration for SnmpIntegration {
         let lldp_count = lldp_neighbors.len();
 
         // Query CDP neighbors (Cisco devices)
-        let cdp_neighbors = match query_cdp_neighbors(ip, credential, port).await {
+        let cdp_neighbors = match query_cdp_neighbors(&mut session, ip).await {
             Ok(neighbors) => {
                 tracing::debug!(ip = %ip, count = neighbors.len(), "CDP neighbors discovered");
                 neighbors
@@ -223,22 +240,48 @@ impl DiscoveryIntegration for SnmpIntegration {
         };
         let cdp_count = cdp_neighbors.len();
 
+        // Translate LLDP local-port indices (which are lldpLocPortNum values, a
+        // separate namespace from ifIndex on vendors like ExtremeXOS) to real ifIndex
+        // values so neighbours attach to the correct interface. Resolved via
+        // lldpLocPortTable; falls back to identity (correct for VOSS and any device
+        // that reports lldpLocPortNum == ifIndex or omits the table). CDP is not
+        // remapped: cdpCacheIfIndex is already a real ifIndex.
+        let lldp_local_ports = if lldp_count > 0 {
+            match query_lldp_local_ports(&mut session, ip).await {
+                Ok(map) => map,
+                Err(e) => {
+                    tracing::debug!(ip = %ip, error = %e, "lldpLocPortTable query failed");
+                    std::collections::HashMap::new()
+                }
+            }
+        } else {
+            std::collections::HashMap::new()
+        };
+        remap_lldp_local_ports(&mut lldp_neighbors, &lldp_local_ports, &snmp_if_entries);
+
         // Query ipAddrTable for IP->ifIndex+netMask mappings
-        let ip_addr_table = query_ip_addr_table(ip, credential, port)
+        let ip_addr_table = query_ip_addr_table(&mut session, ip)
             .await
-            .unwrap_or_default();
+            .unwrap_or_else(|e| {
+                tracing::debug!(ip = %ip, error = %e, "ipAddrTable query failed");
+                Default::default()
+            });
 
         // Query ARP table for remote host discovery
-        let arp_entries = query_arp_table(ip, credential, port)
-            .await
-            .unwrap_or_default();
+        let arp_entries = query_arp_table(&mut session, ip).await.unwrap_or_else(|e| {
+            tracing::debug!(ip = %ip, error = %e, "ARP table query failed");
+            Default::default()
+        });
         let arp_count = arp_entries.len();
         tracing::info!(ip = %ip, count = arp_count, "ARP table entries collected");
 
         // Query ENTITY-MIB for hardware inventory
-        let device_inventory = query_entity_physical(ip, credential, port)
+        let device_inventory = query_entity_physical(&mut session, ip)
             .await
-            .unwrap_or(None);
+            .unwrap_or_else(|e| {
+                tracing::debug!(ip = %ip, error = %e, "ENTITY-MIB query failed");
+                None
+            });
         let has_entity_inventory = device_inventory.is_some();
         tracing::info!(
             ip = %ip,
@@ -247,18 +290,24 @@ impl DiscoveryIntegration for SnmpIntegration {
         );
 
         // Query bridge FDB for MAC-to-port mappings
-        let bridge_fdb = query_bridge_fdb(ip, credential, port)
+        let bridge_fdb = query_bridge_fdb(&mut session, ip)
             .await
-            .unwrap_or_default();
+            .unwrap_or_else(|e| {
+                tracing::debug!(ip = %ip, error = %e, "Bridge FDB query failed");
+                Default::default()
+            });
         let fdb_count = bridge_fdb.len();
         tracing::info!(ip = %ip, count = fdb_count, "Bridge FDB entries collected");
 
         let network_id = host_data.host.base.network_id;
 
         // Query VLAN table for VLAN names and persist as VLAN entities
-        let vlan_table = query_vlan_table(ip, credential, port)
+        let vlan_table = query_vlan_table(&mut session, ip)
             .await
-            .unwrap_or_default();
+            .unwrap_or_else(|e| {
+                tracing::debug!(ip = %ip, error = %e, "VLAN table query failed");
+                Default::default()
+            });
         // Summary status for the per-host diagnostic line below: no VLANs, upserted, or failed.
         let mut vlan_upsert = "no_vlans";
         let vlan_number_to_uuid: std::collections::HashMap<u16, Uuid> = if !vlan_table.is_empty() {
@@ -284,13 +333,21 @@ impl DiscoveryIntegration for SnmpIntegration {
         };
 
         // Query per-port VLAN membership
-        let port_vlan_membership = query_port_vlan_membership(ip, credential, port)
+        let port_vlan_membership = query_port_vlan_membership(&mut session, ip)
             .await
-            .unwrap_or_default();
+            .unwrap_or_else(|e| {
+                tracing::debug!(ip = %ip, error = %e, "Port VLAN membership query failed");
+                Default::default()
+            });
         tracing::info!(ip = %ip, count = port_vlan_membership.len(), "Port VLAN memberships collected");
 
         // Query local LLDP identity
-        let lldp_local = query_lldp_local(ip, credential, port).await.unwrap_or(None);
+        let lldp_local = query_lldp_local(&mut session, ip)
+            .await
+            .unwrap_or_else(|e| {
+                tracing::debug!(ip = %ip, error = %e, "LLDP local identity query failed");
+                None
+            });
         tracing::info!(
             ip = %ip,
             has_lldp_local = lldp_local.is_some(),
@@ -606,6 +663,73 @@ impl DiscoveryIntegration for SnmpIntegration {
     }
 }
 
+/// Translate each LLDP neighbour's `local_port_index` from an `lldpLocPortNum` to the
+/// device's real `ifIndex`, using `lldpLocPortTable` (`loc_ports`) resolved against the
+/// interface table (`if_entries`). Neighbours whose port cannot be resolved keep their
+/// original index. An empty `loc_ports` is identity — correct for devices where
+/// `lldpLocPortNum == ifIndex` (e.g. Extreme VOSS) or that omit the table.
+fn remap_lldp_local_ports(
+    neighbors: &mut [LldpNeighbor],
+    loc_ports: &std::collections::HashMap<i32, LldpLocalPort>,
+    if_entries: &[IfTableEntry],
+) {
+    if loc_ports.is_empty() {
+        return;
+    }
+    for neighbor in neighbors.iter_mut() {
+        if let Some(if_index) =
+            resolve_lldp_local_port(neighbor.local_port_index, loc_ports, if_entries)
+        {
+            neighbor.local_port_index = if_index;
+        }
+    }
+}
+
+/// Resolve a single `lldpLocPortNum` to an `ifIndex`. Returns `None` to keep the
+/// original value (no confident match).
+fn resolve_lldp_local_port(
+    local_port_num: i32,
+    loc_ports: &std::collections::HashMap<i32, LldpLocalPort>,
+    if_entries: &[IfTableEntry],
+) -> Option<i32> {
+    let entry = loc_ports.get(&local_port_num)?;
+
+    // interfaceIndex(2): the port id is literally the ifIndex.
+    if entry.port_id_subtype == Some(2)
+        && let Some(id) = entry.port_id.as_deref()
+        && let Ok(idx) = id.trim().parse::<i32>()
+    {
+        return Some(idx);
+    }
+
+    let id = entry.port_id.as_deref()?.trim();
+    if id.is_empty() {
+        return None;
+    }
+
+    // Exact match against ifName / ifDescr (VOSS: "1/1" == ifName "1/1").
+    for e in if_entries {
+        if e.if_name.as_deref() == Some(id) || e.if_descr.as_deref() == Some(id) {
+            return Some(e.if_index);
+        }
+    }
+
+    // Suffix match for vendors whose lldpLocPortId drops the slot prefix (EXOS: id
+    // "4" vs ifName "1:4"). Anchor on a ':' or '/' boundary so "4" does not match
+    // "14".
+    let colon = format!(":{id}");
+    let slash = format!("/{id}");
+    let ends_at_boundary =
+        |name: Option<&str>| name.is_some_and(|n| n.ends_with(&colon) || n.ends_with(&slash));
+    for e in if_entries {
+        if ends_at_boundary(e.if_name.as_deref()) || ends_at_boundary(e.if_descr.as_deref()) {
+            return Some(e.if_index);
+        }
+    }
+
+    None
+}
+
 /// Convert SNMP ifTable entry to Interface entity with LLDP/CDP/FDB neighbor data.
 /// Uses Uuid::nil() for host_id as placeholder - server will set correct host_id.
 fn convert_snmp_if_entry(
@@ -718,25 +842,24 @@ pub async fn poll_device(
 )> {
     debug!("Starting SNMP poll of {}", ip);
 
-    let system_info = timeout(SNMP_WALK_TIMEOUT, query_system_info(ip, credential, port))
+    let mut session = create_session(ip, credential, port).await?;
+
+    let system_info = timeout(SNMP_WALK_TIMEOUT, query_system_info(&mut session, ip))
         .await
         .map_err(|_| anyhow::anyhow!("System info query timeout"))??;
 
     let (interfaces, _if_table_complete) =
-        timeout(SNMP_WALK_TIMEOUT, walk_if_table(ip, credential, port))
+        timeout(SNMP_WALK_TIMEOUT, walk_if_table(&mut session, ip))
             .await
             .map_err(|_| anyhow::anyhow!("ifTable walk timeout"))?
             .unwrap_or_default();
 
-    let lldp_neighbors = timeout(
-        SNMP_WALK_TIMEOUT,
-        query_lldp_neighbors(ip, credential, port),
-    )
-    .await
-    .unwrap_or(Ok(vec![]))
-    .unwrap_or_default();
+    let lldp_neighbors = timeout(SNMP_WALK_TIMEOUT, query_lldp_neighbors(&mut session, ip))
+        .await
+        .unwrap_or(Ok(vec![]))
+        .unwrap_or_default();
 
-    let cdp_neighbors = timeout(SNMP_WALK_TIMEOUT, query_cdp_neighbors(ip, credential, port))
+    let cdp_neighbors = timeout(SNMP_WALK_TIMEOUT, query_cdp_neighbors(&mut session, ip))
         .await
         .unwrap_or(Ok(vec![]))
         .unwrap_or_default();
@@ -874,5 +997,127 @@ mod tests {
         assert_eq!(result.base.native_vlan_id, None);
         // Empty tagged_vlans should be stored as None (filtered)
         assert_eq!(result.base.vlan_ids, None);
+    }
+
+    // --- LLDP local-port remap (Issue 2: ExtremeXOS vs VOSS) ---
+
+    use super::types::{IfTableEntry, LldpLocalPort, LldpNeighbor};
+
+    /// Minimal LldpNeighbor carrying only a local-port index + a marker sys name.
+    fn lldp_neighbor(local_port_index: i32, sys_name: &str) -> LldpNeighbor {
+        LldpNeighbor {
+            local_port_index,
+            remote_chassis_id_subtype: None,
+            remote_chassis_id_bytes: None,
+            remote_port_id_subtype: None,
+            remote_port_id_bytes: None,
+            remote_port_desc: None,
+            remote_sys_name: Some(sys_name.to_string()),
+            remote_sys_desc: None,
+            remote_mgmt_addr: None,
+        }
+    }
+
+    fn if_entry(if_index: i32, if_name: &str) -> IfTableEntry {
+        IfTableEntry {
+            if_index,
+            if_name: Some(if_name.to_string()),
+            ..Default::default()
+        }
+    }
+
+    fn loc_port(subtype: u8, id: &str) -> LldpLocalPort {
+        LldpLocalPort {
+            port_id_subtype: Some(subtype),
+            port_id: Some(id.to_string()),
+        }
+    }
+
+    #[test]
+    fn test_remap_lldp_exos_suffix_match() {
+        use super::remap_lldp_local_ports;
+        // ExtremeXOS X435: lldpRemTable local-port is an lldpLocPortNum (4, 11) in a
+        // 1..N space; real ifIndex is 1001+, ifName "1:N". lldpLocPortId is "N",
+        // subtype interfaceName(5) — must suffix-match against ifName "1:N".
+        let if_entries = [
+            if_entry(1001, "1:1"),
+            if_entry(1004, "1:4"),
+            if_entry(1011, "1:11"),
+        ];
+        let mut loc_ports = std::collections::HashMap::new();
+        loc_ports.insert(4, loc_port(5, "4"));
+        loc_ports.insert(11, loc_port(5, "11"));
+
+        let mut neighbors = vec![lldp_neighbor(4, "peer-a"), lldp_neighbor(11, "peer-b")];
+        remap_lldp_local_ports(&mut neighbors, &loc_ports, &if_entries);
+
+        assert_eq!(neighbors[0].local_port_index, 1004);
+        assert_eq!(neighbors[1].local_port_index, 1011);
+    }
+
+    #[test]
+    fn test_remap_lldp_voss_exact_match_identity() {
+        use super::remap_lldp_local_ports;
+        // Extreme VOSS: lldpLocPortNum == ifIndex and lldpLocPortId ("1/1") matches
+        // ifName exactly, so the resolved ifIndex equals the original index.
+        let if_entries = [if_entry(192, "1/1"), if_entry(193, "1/2")];
+        let mut loc_ports = std::collections::HashMap::new();
+        loc_ports.insert(192, loc_port(5, "1/1"));
+        loc_ports.insert(193, loc_port(5, "1/2"));
+
+        let mut neighbors = vec![lldp_neighbor(192, "peer")];
+        remap_lldp_local_ports(&mut neighbors, &loc_ports, &if_entries);
+
+        assert_eq!(neighbors[0].local_port_index, 192);
+    }
+
+    #[test]
+    fn test_remap_lldp_no_loc_table_is_identity() {
+        use super::remap_lldp_local_ports;
+        // No lldpLocPortTable (e.g. devices that report lldpLocPortNum == ifIndex):
+        // indices are left untouched so existing behaviour is preserved.
+        let if_entries = [if_entry(5, "Gi0/5")];
+        let empty = std::collections::HashMap::new();
+        let mut neighbors = vec![lldp_neighbor(5, "peer")];
+        remap_lldp_local_ports(&mut neighbors, &empty, &if_entries);
+        assert_eq!(neighbors[0].local_port_index, 5);
+    }
+
+    #[test]
+    fn test_remap_lldp_interface_index_subtype() {
+        use super::remap_lldp_local_ports;
+        // lldpLocPortId subtype interfaceIndex(2): the id is literally the ifIndex.
+        let if_entries = [if_entry(1007, "1:7")];
+        let mut loc_ports = std::collections::HashMap::new();
+        loc_ports.insert(7, loc_port(2, "1007"));
+        let mut neighbors = vec![lldp_neighbor(7, "peer")];
+        remap_lldp_local_ports(&mut neighbors, &loc_ports, &if_entries);
+        assert_eq!(neighbors[0].local_port_index, 1007);
+    }
+
+    #[test]
+    fn test_remap_then_convert_attaches_exos_neighbor() {
+        use super::{convert_snmp_if_entry, remap_lldp_local_ports};
+        use uuid::Uuid;
+        // End-to-end at the convert layer: after remap, the EXOS neighbour attaches
+        // to the correct interface (which it would NOT before the fix, since
+        // local_port_index 4 != ifIndex 1004).
+        let if_entries = [if_entry(1004, "1:4")];
+        let mut loc_ports = std::collections::HashMap::new();
+        loc_ports.insert(4, loc_port(5, "4"));
+
+        let mut neighbors = vec![lldp_neighbor(4, "switch-peer")];
+        remap_lldp_local_ports(&mut neighbors, &loc_ports, &if_entries);
+
+        let result = convert_snmp_if_entry(
+            &if_entries[0],
+            Uuid::nil(),
+            &neighbors,
+            &[],
+            &[],
+            &[],
+            &std::collections::HashMap::new(),
+        );
+        assert_eq!(result.base.lldp_sys_name, Some("switch-peer".to_string()));
     }
 }

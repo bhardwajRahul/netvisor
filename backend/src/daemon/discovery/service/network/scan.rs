@@ -35,8 +35,8 @@ use uuid::Uuid;
 
 use super::{
     DeepScanParams, DiscoveredHostData, FULL_SCAN_COST_CS, LATE_ARRIVAL_GRACE_PERIOD,
-    LIGHT_SCAN_COST_CS, MAX_DISCOVERY_DURATION, MAX_PROGRESS_REPORT_INTERVAL, NetworkScan,
-    PROGRESS_ARP_PHASE, PROGRESS_DEEP_SCAN_PHASE, PROGRESS_GRACE_PHASE,
+    LIGHT_SCAN_COST_CS, MAX_PROGRESS_REPORT_INTERVAL, NetworkScan, PROGRESS_ARP_PHASE,
+    PROGRESS_DEEP_SCAN_PHASE, PROGRESS_GRACE_PHASE,
 };
 
 impl NetworkScan {
@@ -372,6 +372,13 @@ impl NetworkScan {
         let hosts_scanned = Arc::new(AtomicUsize::new(0));
         let last_activity = Arc::new(std::sync::Mutex::new(Instant::now()));
         let mut results: Vec<(IpAddr, Host, DiscoveredHostData)> = Vec::new();
+
+        // Server-configurable hard ceiling for this run (default = the historical 6h).
+        let max_discovery_duration = Duration::from_secs(
+            self.scan_settings
+                .max_discovery_duration
+                .unwrap_or(defaults::max_discovery_duration()) as u64,
+        );
 
         // Batch-level progress tracking for smoother UX
         // TCP port scanning is the bulk of deep scan work
@@ -796,16 +803,52 @@ impl NetworkScan {
             }
 
             // Global timeout safety net
-            if pipeline_start.elapsed() >= MAX_DISCOVERY_DURATION {
+            if pipeline_start.elapsed() >= max_discovery_duration {
+                let discovered = hosts_discovered.load(Ordering::Relaxed);
+                let scanned = hosts_scanned.load(Ordering::Relaxed);
+                // Hosts that were discovered but never deep-scanned (queued work + the
+                // discovered/scanned gap), so the user sees what was left behind.
+                let not_scanned = pending_scans
+                    .len()
+                    .saturating_add(pending_hosts.len())
+                    .max(discovered.saturating_sub(scanned));
                 tracing::error!(
                     elapsed_secs = pipeline_start.elapsed().as_secs(),
-                    hosts_discovered = hosts_discovered.load(Ordering::Relaxed),
-                    hosts_scanned = hosts_scanned.load(Ordering::Relaxed),
+                    hosts_discovered = discovered,
+                    hosts_scanned = scanned,
                     pending_scans = pending_scans.len(),
                     pending_hosts = pending_hosts.len(),
                     channel_closed,
                     "Discovery hit global timeout, forcing completion"
                 );
+                if not_scanned > 0 {
+                    // Reuse the estimate already computed this tick to say how much
+                    // work was left, without any new estimation plumbing.
+                    let remaining = ops
+                        .get_session()
+                        .await
+                        .ok()
+                        .map(|s| s.estimated_remaining_secs.load(Ordering::Relaxed))
+                        .filter(|&s| s != u32::MAX && s > 0);
+                    let msg = match remaining {
+                        Some(secs) => format!(
+                            "Scan hit its time limit ({}h) — {} host(s) not scanned (~{} min of estimated work remaining). Raise Max Discovery Duration or rescan.",
+                            max_discovery_duration.as_secs() / 3600,
+                            not_scanned,
+                            secs.div_ceil(60),
+                        ),
+                        None => format!(
+                            "Scan hit its time limit ({}h) — {} host(s) not scanned. Raise Max Discovery Duration or rescan.",
+                            max_discovery_duration.as_secs() / 3600,
+                            not_scanned,
+                        ),
+                    };
+                    if let Ok(session) = ops.get_session().await
+                        && let Ok(mut warnings) = session.warnings.lock()
+                    {
+                        warnings.push(msg);
+                    }
+                }
                 break;
             }
 
@@ -1182,7 +1225,7 @@ impl NetworkScan {
                 );
             }
 
-            if let Ok(host_response) = ops
+            match ops
                 .create_host(
                     host,
                     ip_addresses,
@@ -1195,23 +1238,29 @@ impl NetworkScan {
                 )
                 .await
             {
-                tracing::info!(
-                    ip = %ip,
-                    services = services_count,
-                    interfaces = if_entries_count,
-                    "Host created"
-                );
-                let host_data = DiscoveredHostData {
-                    docker_service_id: host_response
-                        .services
-                        .iter()
-                        .find(|s| s.base.service_definition.id() == "Docker")
-                        .map(|s| s.id),
-                    ip_addresses: host_response.ip_addresses.clone(),
-                };
-                return Ok(Some((ip, host_response.to_host(), host_data)));
-            } else {
-                tracing::warn!(ip = %ip, "Host creation failed");
+                Ok(host_response) => {
+                    tracing::info!(
+                        ip = %ip,
+                        services = services_count,
+                        interfaces = if_entries_count,
+                        "Host created"
+                    );
+                    let host_data = DiscoveredHostData {
+                        docker_service_id: host_response
+                            .services
+                            .iter()
+                            .find(|s| s.base.service_definition.id() == "Docker")
+                            .map(|s| s.id),
+                        ip_addresses: host_response.ip_addresses.clone(),
+                    };
+                    return Ok(Some((ip, host_response.to_host(), host_data)));
+                }
+                Err(e) => {
+                    // Include the server error so create rejections are diagnosable
+                    // from the daemon log alone (create_host does not retry on
+                    // ApiErrorResponse, so the reason otherwise lives only server-side).
+                    tracing::warn!(ip = %ip, error = %e, "Host creation failed");
+                }
             }
         } else {
             tracing::debug!(ip = %ip, "Host processing returned None");

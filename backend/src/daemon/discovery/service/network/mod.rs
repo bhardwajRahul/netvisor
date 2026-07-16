@@ -33,8 +33,8 @@ pub struct DiscoveredHostData {
 /// Grace period to wait for late ARP arrivals after the last deep scan completes
 const LATE_ARRIVAL_GRACE_PERIOD: Duration = Duration::from_secs(30);
 
-/// Hard maximum duration for a single discovery run (safety net)
-const MAX_DISCOVERY_DURATION: Duration = Duration::from_secs(21600); // 6 hours
+// The hard maximum duration for a single discovery run is now server-configurable
+// via ScanSettings::max_discovery_duration (default 21600s = 6h); see scan.rs.
 
 /// Maximum interval between progress reports (heartbeat even if progress unchanged)
 const MAX_PROGRESS_REPORT_INTERVAL: Duration = Duration::from_secs(30);

@@ -211,6 +211,7 @@ impl DaemonState {
                 discovery_type: s.info.discovery_type.clone(),
                 progress,
                 error: None,
+                warnings: Vec::new(),
                 started_at: s.info.started_at,
                 finished_at: None,
                 hosts_discovered: {

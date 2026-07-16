@@ -141,6 +141,17 @@ pub mod lldp {
 
         /// lldpLocSysDesc - Local system description
         pub const LLDP_LOC_SYS_DESC: &str = "1.0.8802.1.1.2.1.3.4.0";
+
+        // lldpLocPortTable (lldpLocPortEntry, indexed by lldpLocPortNum) — maps the
+        // LLDP-local port number (used as the local-port index in lldpRemTable) to a
+        // textual port id, which we resolve back to the real ifIndex. Some vendors
+        // (e.g. ExtremeXOS) use a lldpLocPortNum space distinct from ifIndex.
+
+        /// lldpLocPortIdSubtype - subtype of lldpLocPortId (5 = interfaceName, 2 = interfaceIndex)
+        pub const LLDP_LOC_PORT_ID_SUBTYPE: &str = "1.0.8802.1.1.2.1.3.7.1.2";
+
+        /// lldpLocPortId - textual identifier of the local port
+        pub const LLDP_LOC_PORT_ID: &str = "1.0.8802.1.1.2.1.3.7.1.3";
     }
 
     /// lldpRemTable - Remote device information table

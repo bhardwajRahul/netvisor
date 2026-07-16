@@ -182,6 +182,47 @@ pub struct ExecuteParams<'a> {
 
 /// Execute integrations whose probe succeeded and whose associated service was matched.
 ///
+/// Derive the integration discriminant a mapping resolves to (from its default
+/// credential, else its first ip-override).
+fn mapping_discriminant(
+    mapping: &CredentialMapping<CredentialQueryPayload>,
+) -> Option<CredentialQueryPayloadDiscriminants> {
+    mapping
+        .default_credential
+        .as_ref()
+        .map(|c| c.into())
+        .or_else(|| mapping.ip_overrides.first().map(|o| (&o.credential).into()))
+}
+
+/// Collapse credential mappings to the distinct `(integration, winning credential id)`
+/// collections `execute_integrations` should run, preserving first-seen order and
+/// dropping mappings with no probe winner. Deduping by the winning credential (not the
+/// mapping) means N mappings that share one integration + winner run once, while a
+/// distinct winning credential still runs.
+fn dedup_execution_keys(
+    credential_mappings: &[CredentialMapping<CredentialQueryPayload>],
+    working_credential_ids: &HashMap<
+        CredentialQueryPayloadDiscriminants,
+        (Option<Uuid>, CredentialQueryPayload),
+    >,
+) -> Vec<(CredentialQueryPayloadDiscriminants, Option<Uuid>)> {
+    let mut seen = std::collections::HashSet::new();
+    let mut keys = Vec::new();
+    for mapping in credential_mappings {
+        let Some(discriminant) = mapping_discriminant(mapping) else {
+            continue;
+        };
+        let Some((cred_id, _)) = working_credential_ids.get(&discriminant) else {
+            continue;
+        };
+        let key = (discriminant, *cred_id);
+        if seen.insert(key) {
+            keys.push(key);
+        }
+    }
+    keys
+}
+
 /// Enriches host_data with integration-discovered services, ports, ip_addresses.
 /// Also populates credential_assignments for successful integrations.
 pub async fn execute_integrations(
@@ -190,17 +231,16 @@ pub async fn execute_integrations(
     host_data: &mut HostData,
     params: &ExecuteParams<'_>,
 ) -> Result<(), Error> {
-    for mapping in credential_mappings {
-        let discriminant: Option<CredentialQueryPayloadDiscriminants> = mapping
-            .default_credential
-            .as_ref()
-            .map(|c| c.into())
-            .or_else(|| mapping.ip_overrides.first().map(|o| (&o.credential).into()));
-
-        let Some(discriminant) = discriminant else {
-            continue;
-        };
-
+    // Multiple credential mappings can resolve to the same integration + winning
+    // credential (e.g. SnmpV1/V2c/V3 credentials plus the injected public default all
+    // collapse to the single Snmp discriminant, which has one probe winner). Running
+    // execute() once per mapping re-does the full collection against the same host
+    // with the same credential — pure repetition. dedup_execution_keys() collapses
+    // the mappings to the distinct (integration, winning credential) collections that
+    // actually need to run; a genuinely different winning credential still runs.
+    for (discriminant, _cred_id) in
+        dedup_execution_keys(credential_mappings, &probe_results.working_credential_ids)
+    {
         let Some(integration) = IntegrationRegistry::get(discriminant) else {
             continue;
         };
@@ -306,4 +346,97 @@ pub async fn execute_integrations(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::server::credentials::r#impl::mapping::ContainerSocketQueryCredential;
+
+    fn snmp_mapping() -> CredentialMapping<CredentialQueryPayload> {
+        CredentialMapping {
+            default_credential: Some(CredentialQueryPayload::default()), // Snmp
+            ip_overrides: Vec::new(),
+        }
+    }
+
+    fn docker_socket_mapping() -> CredentialMapping<CredentialQueryPayload> {
+        CredentialMapping {
+            default_credential: Some(CredentialQueryPayload::DockerSocket(
+                ContainerSocketQueryCredential { socket_path: None },
+            )),
+            ip_overrides: Vec::new(),
+        }
+    }
+
+    fn winners(
+        entries: Vec<(
+            CredentialQueryPayloadDiscriminants,
+            Option<Uuid>,
+            CredentialQueryPayload,
+        )>,
+    ) -> HashMap<CredentialQueryPayloadDiscriminants, (Option<Uuid>, CredentialQueryPayload)> {
+        entries
+            .into_iter()
+            .map(|(d, id, payload)| (d, (id, payload)))
+            .collect()
+    }
+
+    #[test]
+    fn dedup_collapses_duplicate_snmp_mappings_to_one() {
+        // SnmpV1/V2c/V3 + injected public default all resolve to the single Snmp
+        // discriminant with one probe winner: three mappings, one collection.
+        let mappings = vec![snmp_mapping(), snmp_mapping(), snmp_mapping()];
+        let cred_id = Some(Uuid::new_v4());
+        let w = winners(vec![(
+            CredentialQueryPayloadDiscriminants::Snmp,
+            cred_id,
+            CredentialQueryPayload::default(),
+        )]);
+
+        let keys = dedup_execution_keys(&mappings, &w);
+        assert_eq!(
+            keys,
+            vec![(CredentialQueryPayloadDiscriminants::Snmp, cred_id)]
+        );
+    }
+
+    #[test]
+    fn dedup_drops_mappings_without_probe_winner() {
+        // No probe winner for the mapping's integration => nothing to execute.
+        let mappings = vec![snmp_mapping()];
+        let w = winners(vec![]);
+        assert!(dedup_execution_keys(&mappings, &w).is_empty());
+    }
+
+    #[test]
+    fn dedup_preserves_distinct_integrations_in_order() {
+        // Different integrations each keep their own collection; first-seen order.
+        let mappings = vec![snmp_mapping(), docker_socket_mapping(), snmp_mapping()];
+        let snmp_id = Some(Uuid::new_v4());
+        let docker_id = Some(Uuid::new_v4());
+        let w = winners(vec![
+            (
+                CredentialQueryPayloadDiscriminants::Snmp,
+                snmp_id,
+                CredentialQueryPayload::default(),
+            ),
+            (
+                CredentialQueryPayloadDiscriminants::DockerSocket,
+                docker_id,
+                CredentialQueryPayload::DockerSocket(ContainerSocketQueryCredential {
+                    socket_path: None,
+                }),
+            ),
+        ]);
+
+        let keys = dedup_execution_keys(&mappings, &w);
+        assert_eq!(
+            keys,
+            vec![
+                (CredentialQueryPayloadDiscriminants::Snmp, snmp_id),
+                (CredentialQueryPayloadDiscriminants::DockerSocket, docker_id),
+            ]
+        );
+    }
 }

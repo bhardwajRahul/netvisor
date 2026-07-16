@@ -181,6 +181,10 @@ pub struct DiscoveryUpdatePayload {
     pub discovery_type: DiscoveryType,
     pub progress: u8,
     pub error: Option<String>,
+    /// Non-fatal warnings for a completed run (e.g. the scan hit its time limit
+    /// and left hosts un-scanned). Unlike `error`, these do not mark the run failed.
+    #[serde(default)]
+    pub warnings: Vec<String>,
     pub started_at: Option<DateTime<Utc>>,
     pub finished_at: Option<DateTime<Utc>>,
     #[serde(default)]
@@ -244,6 +248,7 @@ impl DiscoveryUpdatePayload {
             progress: 0,
             discovery_type,
             error: None,
+            warnings: Vec::new(),
             started_at: None,
             finished_at: None,
             hosts_discovered: None,
@@ -266,6 +271,7 @@ impl DiscoveryUpdatePayload {
             phase: update.phase,
             progress: update.progress,
             error: update.error,
+            warnings: update.warnings,
             started_at: info.started_at,
             finished_at: update.finished_at,
             hosts_discovered: None,

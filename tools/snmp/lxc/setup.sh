@@ -5,21 +5,24 @@ set -euo pipefail
 # SNMP Test Environment — Proxmox VM setup (self-contained)
 #
 # Paste this entire script into a Debian/Ubuntu VM terminal.
-# Creates 6 snmpd instances on secondary IPs, each simulating a
+# Creates 10 snmpd instances on secondary IPs, each simulating a
 # different network device with its own community string.
 #
 # Edit HOSTS/CIDR/IFACE below to match your network.
 # ══════════════════════════════════════════════════════════════════════
 
-HOSTS=(192.168.7.230 192.168.7.231 192.168.7.232 192.168.7.233 192.168.7.234 192.168.7.235 192.168.7.236 192.168.7.237)
+HOSTS=(192.168.7.230 192.168.7.231 192.168.7.232 192.168.7.233 192.168.7.234 192.168.7.235 192.168.7.236 192.168.7.237 192.168.7.238 192.168.7.239)
 CIDR="22"
 IFACE="eth0"
 
-# Per-host SNMP version. The first six are v2c (community string); the last two
-# exercise the v1-only and v3-only code paths added for #557. Per-host
-# communities are written directly into each snmpd config below.
-VERSIONS=(v2c v2c v2c v2c v2c v2c v1 v3)
-SYSNAMES=(switch-core-01 switch-access-01 router-gw-01 firewall-01 printer-lobby ap-wireless-01 legacy-switch-01 secure-switch-01)
+# Per-host SNMP version. Most are v2c (community string); .236/.237 exercise the
+# v1-only and v3-only code paths (#557). .238 (EXOS) and .239 (VOSS) exercise the
+# LLDP local-port remap (Issue 2, July 2026): EXOS reports lldpRemTable local-port
+# numbers in a namespace distinct from ifIndex and needs lldpLocPortTable to
+# resolve; VOSS reports local-port == ifIndex. Per-host communities are written
+# directly into each snmpd config below.
+VERSIONS=(v2c v2c v2c v2c v2c v2c v1 v3 v2c v2c)
+SYSNAMES=(switch-core-01 switch-access-01 router-gw-01 firewall-01 printer-lobby ap-wireless-01 legacy-switch-01 secure-switch-01 switch-exos-01 switch-voss-01)
 
 # SNMPv3 USM credentials for secure-switch-01 (192.168.7.237).
 # AuthPriv with SHA-256 / AES-128 — the broadly-supported pure-Rust default.
@@ -181,6 +184,40 @@ cat > "$DATA_DIR/switch-core-01-lldp.txt" << 'EOF'
 .1.0.8802.1.1.2.1.4.1.1.8.0.2.1 string ge-0/0/0
 .1.0.8802.1.1.2.1.4.1.1.9.0.2.1 string router-gw-01
 .1.0.8802.1.1.2.1.4.1.1.10.0.2.1 string Juniper Networks, Inc. JunOS 21.4R3-S5, MX204
+EOF
+
+# switch-core-01 extra tables — make a scan exercise the getbulk walks (and the
+# shared per-host session) for the subtrees stock snmpd does NOT answer itself:
+# BRIDGE-MIB/Q-BRIDGE (17), ENTITY-MIB (47) and CDP (enterprise). ipAddrTable and
+# ipNetToMedia (ARP) are already answered by snmpd's built-in IP module, so those
+# walks are exercised on every device without extra data here.
+# (net-snmp `pass` can't emit binary MAC octet-strings, so dot1dTpFdb/dot1qTpFdb
+# rows and ARP MACs are not simulated; the daemon still walks those subtrees via
+# getbulk and terminates cleanly — the walk mechanism is what we're covering.)
+cat > "$DATA_DIR/switch-core-01-bridge.txt" << 'EOF'
+.1.3.6.1.2.1.17.1.4.1.2.1 integer 1
+.1.3.6.1.2.1.17.1.4.1.2.2 integer 2
+.1.3.6.1.2.1.17.1.4.1.2.3 integer 3
+.1.3.6.1.2.1.17.7.1.4.3.1.1.10 string DATA
+.1.3.6.1.2.1.17.7.1.4.3.1.1.20 string VOICE
+.1.3.6.1.2.1.17.7.1.4.5.1.1.1 integer 10
+.1.3.6.1.2.1.17.7.1.4.5.1.1.2 integer 10
+.1.3.6.1.2.1.17.7.1.4.5.1.1.3 integer 20
+EOF
+
+cat > "$DATA_DIR/switch-core-01-entity.txt" << 'EOF'
+.1.3.6.1.2.1.47.1.1.1.1.2.1 string Cisco Catalyst 2960-24TC-L
+.1.3.6.1.2.1.47.1.1.1.1.5.1 integer 3
+.1.3.6.1.2.1.47.1.1.1.1.7.1 string Chassis
+.1.3.6.1.2.1.47.1.1.1.1.11.1 string FOC1234X5YZ
+.1.3.6.1.2.1.47.1.1.1.1.12.1 string Cisco
+.1.3.6.1.2.1.47.1.1.1.1.13.1 string WS-C2960-24TC-L
+EOF
+
+cat > "$DATA_DIR/switch-core-01-cdp.txt" << 'EOF'
+.1.3.6.1.4.1.9.9.23.1.2.1.1.6.2.1 string router-gw-01
+.1.3.6.1.4.1.9.9.23.1.2.1.1.7.2.1 string ge-0/0/0
+.1.3.6.1.4.1.9.9.23.1.2.1.1.8.2.1 string Juniper MX204
 EOF
 
 # switch-access-01 IF-MIB
@@ -456,6 +493,15 @@ cat > "$DATA_DIR/legacy-switch-01-lldp.txt" << 'EOF'
 .1.0.8802.1.1.2.1.4.1.1.10.0.1.1 string Cisco IOS Software, C3750 Software (C3750-IPSERVICESK9-M), Version 15.0(2)SE11
 EOF
 
+# legacy-switch-01 BRIDGE — gives the v1-only device a non-ifTable table to walk,
+# so a scan exercises the getbulk -> getnext fallback (v1 rejects getbulk) across
+# more than just ifTable/LLDP.
+cat > "$DATA_DIR/legacy-switch-01-bridge.txt" << 'EOF'
+.1.3.6.1.2.1.17.1.4.1.2.1 integer 1
+.1.3.6.1.2.1.17.1.4.1.2.2 integer 2
+.1.3.6.1.2.1.17.7.1.4.3.1.1.1 string default
+EOF
+
 # secure-switch-01 IF-MIB (SNMPv3-only device — hardened, mirrors Huawei S5000)
 cat > "$DATA_DIR/secure-switch-01-iftable.txt" << 'EOF'
 .1.3.6.1.2.1.2.2.1.1.1 integer 1
@@ -505,6 +551,123 @@ cat > "$DATA_DIR/secure-switch-01-lldp.txt" << 'EOF'
 .1.0.8802.1.1.2.1.4.1.1.10.0.1.1 string Cisco IOS Software, C2960 Software (C2960-LANBASEK9-M), Version 15.2(7)E3
 EOF
 
+# switch-exos-01 IF-MIB (ExtremeXOS — ifIndex 1001+, ifName "1:N")
+cat > "$DATA_DIR/switch-exos-01-iftable.txt" << 'EOF'
+.1.3.6.1.2.1.2.2.1.1.1001 integer 1001
+.1.3.6.1.2.1.2.2.1.1.1002 integer 1002
+.1.3.6.1.2.1.2.2.1.1.1003 integer 1003
+.1.3.6.1.2.1.2.2.1.2.1001 string 1:1
+.1.3.6.1.2.1.2.2.1.2.1002 string 1:2
+.1.3.6.1.2.1.2.2.1.2.1003 string 1:3
+.1.3.6.1.2.1.2.2.1.3.1001 integer 6
+.1.3.6.1.2.1.2.2.1.3.1002 integer 6
+.1.3.6.1.2.1.2.2.1.3.1003 integer 6
+.1.3.6.1.2.1.2.2.1.5.1001 gauge 1000000000
+.1.3.6.1.2.1.2.2.1.5.1002 gauge 1000000000
+.1.3.6.1.2.1.2.2.1.5.1003 gauge 1000000000
+.1.3.6.1.2.1.2.2.1.6.1001 string 0:4:96:1:e0:01
+.1.3.6.1.2.1.2.2.1.6.1002 string 0:4:96:1:e0:02
+.1.3.6.1.2.1.2.2.1.6.1003 string 0:4:96:1:e0:03
+.1.3.6.1.2.1.2.2.1.7.1001 integer 1
+.1.3.6.1.2.1.2.2.1.7.1002 integer 1
+.1.3.6.1.2.1.2.2.1.7.1003 integer 1
+.1.3.6.1.2.1.2.2.1.8.1001 integer 1
+.1.3.6.1.2.1.2.2.1.8.1002 integer 1
+.1.3.6.1.2.1.2.2.1.8.1003 integer 1
+.1.3.6.1.2.1.31.1.1.1.1.1001 string 1:1
+.1.3.6.1.2.1.31.1.1.1.1.1002 string 1:2
+.1.3.6.1.2.1.31.1.1.1.1.1003 string 1:3
+EOF
+
+# switch-exos-01 LLDP — lldpRemTable local-port numbers (1, 3) are lldpLocPortNum
+# values in a namespace distinct from ifIndex (1001+). lldpLocPortTable maps
+# lldpLocPortNum -> lldpLocPortId ("1".."3", subtype interfaceName(5)), which
+# suffix-matches ifName "1:N". Before the Issue 2 fix these neighbours are dropped.
+cat > "$DATA_DIR/switch-exos-01-lldp.txt" << 'EOF'
+.1.0.8802.1.1.2.1.3.1.0 integer 4
+.1.0.8802.1.1.2.1.3.2.0 string 0:4:96:1:e0:0
+.1.0.8802.1.1.2.1.3.3.0 string switch-exos-01
+.1.0.8802.1.1.2.1.3.4.0 string ExtremeXOS version 31.7 X435-24P
+.1.0.8802.1.1.2.1.3.7.1.2.1 integer 5
+.1.0.8802.1.1.2.1.3.7.1.2.2 integer 5
+.1.0.8802.1.1.2.1.3.7.1.2.3 integer 5
+.1.0.8802.1.1.2.1.3.7.1.3.1 string 1
+.1.0.8802.1.1.2.1.3.7.1.3.2 string 2
+.1.0.8802.1.1.2.1.3.7.1.3.3 string 3
+.1.0.8802.1.1.2.1.4.1.1.4.0.1.1 integer 4
+.1.0.8802.1.1.2.1.4.1.1.4.0.3.1 integer 4
+.1.0.8802.1.1.2.1.4.1.1.5.0.1.1 string 0:1a:2b:0:10:0
+.1.0.8802.1.1.2.1.4.1.1.5.0.3.1 string 0:1a:2b:0:12:0
+.1.0.8802.1.1.2.1.4.1.1.6.0.1.1 integer 5
+.1.0.8802.1.1.2.1.4.1.1.6.0.3.1 integer 5
+.1.0.8802.1.1.2.1.4.1.1.7.0.1.1 string 1
+.1.0.8802.1.1.2.1.4.1.1.7.0.3.1 string 3
+.1.0.8802.1.1.2.1.4.1.1.8.0.1.1 string 1:1
+.1.0.8802.1.1.2.1.4.1.1.8.0.3.1 string 1:3
+.1.0.8802.1.1.2.1.4.1.1.9.0.1.1 string switch-core-01
+.1.0.8802.1.1.2.1.4.1.1.9.0.3.1 string router-gw-01
+.1.0.8802.1.1.2.1.4.1.1.10.0.1.1 string Cisco IOS Software, C2960
+.1.0.8802.1.1.2.1.4.1.1.10.0.3.1 string Juniper Networks JunOS MX204
+EOF
+
+# switch-voss-01 IF-MIB (Extreme VOSS — ifIndex 192+, ifName "1/N"; local-port == ifIndex)
+cat > "$DATA_DIR/switch-voss-01-iftable.txt" << 'EOF'
+.1.3.6.1.2.1.2.2.1.1.192 integer 192
+.1.3.6.1.2.1.2.2.1.1.193 integer 193
+.1.3.6.1.2.1.2.2.1.1.194 integer 194
+.1.3.6.1.2.1.2.2.1.2.192 string 1/1
+.1.3.6.1.2.1.2.2.1.2.193 string 1/2
+.1.3.6.1.2.1.2.2.1.2.194 string 1/3
+.1.3.6.1.2.1.2.2.1.3.192 integer 6
+.1.3.6.1.2.1.2.2.1.3.193 integer 6
+.1.3.6.1.2.1.2.2.1.3.194 integer 6
+.1.3.6.1.2.1.2.2.1.5.192 gauge 10000000000
+.1.3.6.1.2.1.2.2.1.5.193 gauge 10000000000
+.1.3.6.1.2.1.2.2.1.5.194 gauge 10000000000
+.1.3.6.1.2.1.2.2.1.6.192 string 0:4:38:2:e0:01
+.1.3.6.1.2.1.2.2.1.6.193 string 0:4:38:2:e0:02
+.1.3.6.1.2.1.2.2.1.6.194 string 0:4:38:2:e0:03
+.1.3.6.1.2.1.2.2.1.7.192 integer 1
+.1.3.6.1.2.1.2.2.1.7.193 integer 1
+.1.3.6.1.2.1.2.2.1.7.194 integer 1
+.1.3.6.1.2.1.2.2.1.8.192 integer 1
+.1.3.6.1.2.1.2.2.1.8.193 integer 1
+.1.3.6.1.2.1.2.2.1.8.194 integer 1
+.1.3.6.1.2.1.31.1.1.1.1.192 string 1/1
+.1.3.6.1.2.1.31.1.1.1.1.193 string 1/2
+.1.3.6.1.2.1.31.1.1.1.1.194 string 1/3
+EOF
+
+# switch-voss-01 LLDP — here lldpRemTable local-port == ifIndex (192, 194) and
+# lldpLocPortId ("1/N") matches ifName exactly, so resolution is the identity/exact
+# path. Confirms the Issue 2 fix keeps VOSS correct.
+cat > "$DATA_DIR/switch-voss-01-lldp.txt" << 'EOF'
+.1.0.8802.1.1.2.1.3.1.0 integer 4
+.1.0.8802.1.1.2.1.3.2.0 string 0:4:38:2:e0:0
+.1.0.8802.1.1.2.1.3.3.0 string switch-voss-01
+.1.0.8802.1.1.2.1.3.4.0 string Extreme Networks VSP-7400, VOSS 8.10
+.1.0.8802.1.1.2.1.3.7.1.2.192 integer 5
+.1.0.8802.1.1.2.1.3.7.1.2.193 integer 5
+.1.0.8802.1.1.2.1.3.7.1.2.194 integer 5
+.1.0.8802.1.1.2.1.3.7.1.3.192 string 1/1
+.1.0.8802.1.1.2.1.3.7.1.3.193 string 1/2
+.1.0.8802.1.1.2.1.3.7.1.3.194 string 1/3
+.1.0.8802.1.1.2.1.4.1.1.4.0.192.1 integer 4
+.1.0.8802.1.1.2.1.4.1.1.4.0.194.1 integer 4
+.1.0.8802.1.1.2.1.4.1.1.5.0.192.1 string 0:1a:2b:0:10:0
+.1.0.8802.1.1.2.1.4.1.1.5.0.194.1 string 0:1a:2b:0:11:0
+.1.0.8802.1.1.2.1.4.1.1.6.0.192.1 integer 5
+.1.0.8802.1.1.2.1.4.1.1.6.0.194.1 integer 5
+.1.0.8802.1.1.2.1.4.1.1.7.0.192.1 string 1/1
+.1.0.8802.1.1.2.1.4.1.1.7.0.194.1 string 1/3
+.1.0.8802.1.1.2.1.4.1.1.8.0.192.1 string 1/1
+.1.0.8802.1.1.2.1.4.1.1.8.0.194.1 string 1/3
+.1.0.8802.1.1.2.1.4.1.1.9.0.192.1 string switch-core-01
+.1.0.8802.1.1.2.1.4.1.1.9.0.194.1 string switch-access-01
+.1.0.8802.1.1.2.1.4.1.1.10.0.192.1 string Cisco IOS Software, C2960
+.1.0.8802.1.1.2.1.4.1.1.10.0.194.1 string Cisco IOS Software, C3750
+EOF
+
 # ── 5. Write snmpd configs ───────────────────────────────────────────
 echo "Writing snmpd configs..."
 
@@ -523,6 +686,9 @@ sysservices 6
 pass .1.3.6.1.2.1.2.2 /bin/bash $H $D/switch-core-01-iftable.txt
 pass .1.3.6.1.2.1.31.1.1 /bin/bash $H $D/switch-core-01-iftable.txt
 pass .1.0.8802.1.1.2 /bin/bash $H $D/switch-core-01-lldp.txt
+pass .1.3.6.1.2.1.17 /bin/bash $H $D/switch-core-01-bridge.txt
+pass .1.3.6.1.2.1.47 /bin/bash $H $D/switch-core-01-entity.txt
+pass .1.3.6.1.4.1.9.9.23 /bin/bash $H $D/switch-core-01-cdp.txt
 EOF
 
 cat > "$CONF_DIR/snmpd-switch-access-01.conf" << EOF
@@ -612,6 +778,7 @@ sysservices 6
 pass .1.3.6.1.2.1.2.2 /bin/bash $H $D/legacy-switch-01-iftable.txt
 pass .1.3.6.1.2.1.31.1.1 /bin/bash $H $D/legacy-switch-01-iftable.txt
 pass .1.0.8802.1.1.2 /bin/bash $H $D/legacy-switch-01-lldp.txt
+pass .1.3.6.1.2.1.17 /bin/bash $H $D/legacy-switch-01-bridge.txt
 EOF
 
 # secure-switch-01 — SNMPv3-ONLY (AuthPriv). No rocommunity, so v1/v2c are
@@ -632,6 +799,34 @@ sysservices 6
 pass .1.3.6.1.2.1.2.2 /bin/bash $H $D/secure-switch-01-iftable.txt
 pass .1.3.6.1.2.1.31.1.1 /bin/bash $H $D/secure-switch-01-iftable.txt
 pass .1.0.8802.1.1.2 /bin/bash $H $D/secure-switch-01-lldp.txt
+EOF
+
+cat > "$CONF_DIR/snmpd-switch-exos-01.conf" << EOF
+agentAddress udp:${HOSTS[8]}:161
+rocommunity netdefault
+sysdescr ExtremeXOS version 31.7 X435-24P
+syscontact netops@example.com
+sysname switch-exos-01
+syslocation Floor 3, IDF C
+sysobjectid .1.3.6.1.4.1.1916.2.219
+sysservices 6
+pass .1.3.6.1.2.1.2.2 /bin/bash $H $D/switch-exos-01-iftable.txt
+pass .1.3.6.1.2.1.31.1.1 /bin/bash $H $D/switch-exos-01-iftable.txt
+pass .1.0.8802.1.1.2 /bin/bash $H $D/switch-exos-01-lldp.txt
+EOF
+
+cat > "$CONF_DIR/snmpd-switch-voss-01.conf" << EOF
+agentAddress udp:${HOSTS[9]}:161
+rocommunity netdefault
+sysdescr Extreme Networks VSP-7400, VOSS 8.10
+syscontact netops@example.com
+sysname switch-voss-01
+syslocation Server Room A, Rack 5
+sysobjectid .1.3.6.1.4.1.2272.30
+sysservices 6
+pass .1.3.6.1.2.1.2.2 /bin/bash $H $D/switch-voss-01-iftable.txt
+pass .1.3.6.1.2.1.31.1.1 /bin/bash $H $D/switch-voss-01-iftable.txt
+pass .1.0.8802.1.1.2 /bin/bash $H $D/switch-voss-01-lldp.txt
 EOF
 
 # ── 6. Create systemd services ───────────────────────────────────────
