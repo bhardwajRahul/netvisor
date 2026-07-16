@@ -245,19 +245,28 @@ impl DiscoveryIntegration for SnmpIntegration {
         // Query ipAddrTable for IP->ifIndex+netMask mappings
         let ip_addr_table = query_ip_addr_table(ip, credential, port)
             .await
-            .unwrap_or_default();
+            .unwrap_or_else(|e| {
+                tracing::debug!(ip = %ip, error = %e, "ipAddrTable query failed");
+                Default::default()
+            });
 
         // Query ARP table for remote host discovery
         let arp_entries = query_arp_table(ip, credential, port)
             .await
-            .unwrap_or_default();
+            .unwrap_or_else(|e| {
+                tracing::debug!(ip = %ip, error = %e, "ARP table query failed");
+                Default::default()
+            });
         let arp_count = arp_entries.len();
         tracing::info!(ip = %ip, count = arp_count, "ARP table entries collected");
 
         // Query ENTITY-MIB for hardware inventory
         let device_inventory = query_entity_physical(ip, credential, port)
             .await
-            .unwrap_or(None);
+            .unwrap_or_else(|e| {
+                tracing::debug!(ip = %ip, error = %e, "ENTITY-MIB query failed");
+                None
+            });
         let has_entity_inventory = device_inventory.is_some();
         tracing::info!(
             ip = %ip,
@@ -268,7 +277,10 @@ impl DiscoveryIntegration for SnmpIntegration {
         // Query bridge FDB for MAC-to-port mappings
         let bridge_fdb = query_bridge_fdb(ip, credential, port)
             .await
-            .unwrap_or_default();
+            .unwrap_or_else(|e| {
+                tracing::debug!(ip = %ip, error = %e, "Bridge FDB query failed");
+                Default::default()
+            });
         let fdb_count = bridge_fdb.len();
         tracing::info!(ip = %ip, count = fdb_count, "Bridge FDB entries collected");
 
@@ -277,7 +289,10 @@ impl DiscoveryIntegration for SnmpIntegration {
         // Query VLAN table for VLAN names and persist as VLAN entities
         let vlan_table = query_vlan_table(ip, credential, port)
             .await
-            .unwrap_or_default();
+            .unwrap_or_else(|e| {
+                tracing::debug!(ip = %ip, error = %e, "VLAN table query failed");
+                Default::default()
+            });
         // Summary status for the per-host diagnostic line below: no VLANs, upserted, or failed.
         let mut vlan_upsert = "no_vlans";
         let vlan_number_to_uuid: std::collections::HashMap<u16, Uuid> = if !vlan_table.is_empty() {
@@ -305,11 +320,17 @@ impl DiscoveryIntegration for SnmpIntegration {
         // Query per-port VLAN membership
         let port_vlan_membership = query_port_vlan_membership(ip, credential, port)
             .await
-            .unwrap_or_default();
+            .unwrap_or_else(|e| {
+                tracing::debug!(ip = %ip, error = %e, "Port VLAN membership query failed");
+                Default::default()
+            });
         tracing::info!(ip = %ip, count = port_vlan_membership.len(), "Port VLAN memberships collected");
 
         // Query local LLDP identity
-        let lldp_local = query_lldp_local(ip, credential, port).await.unwrap_or(None);
+        let lldp_local = query_lldp_local(ip, credential, port).await.unwrap_or_else(|e| {
+            tracing::debug!(ip = %ip, error = %e, "LLDP local identity query failed");
+            None
+        });
         tracing::info!(
             ip = %ip,
             has_lldp_local = lldp_local.is_some(),

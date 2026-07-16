@@ -382,7 +382,14 @@ pub async fn query_lldp_neighbors(
                         break;
                     }
                 }
-                Ok(Err(_)) | Err(_) => break,
+                Ok(Err(e)) => {
+                    debug!(oid = %current_oid, error = %e, "SNMP walk column stopped on error");
+                    break;
+                }
+                Err(_) => {
+                    debug!(oid = %current_oid, "SNMP walk column stopped on timeout");
+                    break;
+                }
             }
         }
     }
@@ -813,7 +820,14 @@ pub async fn query_cdp_neighbors(
                         break;
                     }
                 }
-                Ok(Err(_)) | Err(_) => break,
+                Ok(Err(e)) => {
+                    debug!(oid = %current_oid, error = %e, "SNMP walk column stopped on error");
+                    break;
+                }
+                Err(_) => {
+                    debug!(oid = %current_oid, "SNMP walk column stopped on timeout");
+                    break;
+                }
             }
         }
     }
@@ -927,7 +941,14 @@ pub async fn query_arp_table(
                         break;
                     }
                 }
-                Ok(Err(_)) | Err(_) => break,
+                Ok(Err(e)) => {
+                    debug!(oid = %current_oid, error = %e, "SNMP walk column stopped on error");
+                    break;
+                }
+                Err(_) => {
+                    debug!(oid = %current_oid, "SNMP walk column stopped on timeout");
+                    break;
+                }
             }
         }
     }
@@ -1066,7 +1087,14 @@ pub async fn query_entity_physical(
                         break;
                     }
                 }
-                Ok(Err(_)) | Err(_) => break,
+                Ok(Err(e)) => {
+                    debug!(oid = %current_oid, error = %e, "SNMP walk column stopped on error");
+                    break;
+                }
+                Err(_) => {
+                    debug!(oid = %current_oid, "SNMP walk column stopped on timeout");
+                    break;
+                }
             }
         }
     }
@@ -1149,7 +1177,14 @@ async fn walk_bridge_port_mapping(
                     break;
                 }
             }
-            Ok(Err(_)) | Err(_) => break,
+            Ok(Err(e)) => {
+                debug!(oid = %current_oid, error = %e, "SNMP walk column stopped on error");
+                break;
+            }
+            Err(_) => {
+                debug!(oid = %current_oid, "SNMP walk column stopped on timeout");
+                break;
+            }
         }
     }
 
@@ -1259,7 +1294,14 @@ pub async fn query_bridge_fdb(
                         break;
                     }
                 }
-                Ok(Err(_)) | Err(_) => break,
+                Ok(Err(e)) => {
+                    debug!(oid = %current_oid, error = %e, "SNMP walk column stopped on error");
+                    break;
+                }
+                Err(_) => {
+                    debug!(oid = %current_oid, "SNMP walk column stopped on timeout");
+                    break;
+                }
             }
         }
     }
@@ -1394,7 +1436,14 @@ async fn walk_qbridge_fdb(
                         break;
                     }
                 }
-                Ok(Err(_)) | Err(_) => break,
+                Ok(Err(e)) => {
+                    debug!(oid = %current_oid, error = %e, "SNMP walk column stopped on error");
+                    break;
+                }
+                Err(_) => {
+                    debug!(oid = %current_oid, "SNMP walk column stopped on timeout");
+                    break;
+                }
             }
         }
     }
@@ -1531,7 +1580,14 @@ pub async fn query_vlan_table(
                     break;
                 }
             }
-            Ok(Err(_)) | Err(_) => break,
+            Ok(Err(e)) => {
+                debug!(oid = %current_oid, error = %e, "SNMP walk column stopped on error");
+                break;
+            }
+            Err(_) => {
+                debug!(oid = %current_oid, "SNMP walk column stopped on timeout");
+                break;
+            }
         }
     }
 
@@ -1585,7 +1641,14 @@ pub async fn query_vlan_table(
                         break;
                     }
                 }
-                Ok(Err(_)) | Err(_) => break,
+                Ok(Err(e)) => {
+                    debug!(oid = %current_oid, error = %e, "SNMP walk column stopped on error");
+                    break;
+                }
+                Err(_) => {
+                    debug!(oid = %current_oid, "SNMP walk column stopped on timeout");
+                    break;
+                }
             }
         }
     }
@@ -1671,7 +1734,14 @@ pub async fn query_port_vlan_membership(
                         break;
                     }
                 }
-                Ok(Err(_)) | Err(_) => break,
+                Ok(Err(e)) => {
+                    debug!(oid = %current_oid, error = %e, "SNMP walk column stopped on error");
+                    break;
+                }
+                Err(_) => {
+                    debug!(oid = %current_oid, "SNMP walk column stopped on timeout");
+                    break;
+                }
             }
         }
     }
@@ -1734,7 +1804,14 @@ pub async fn query_port_vlan_membership(
                         break;
                     }
                 }
-                Ok(Err(_)) | Err(_) => break,
+                Ok(Err(e)) => {
+                    debug!(oid = %current_oid, error = %e, "SNMP walk column stopped on error");
+                    break;
+                }
+                Err(_) => {
+                    debug!(oid = %current_oid, "SNMP walk column stopped on timeout");
+                    break;
+                }
             }
         }
     }
@@ -1794,7 +1871,14 @@ pub async fn query_port_vlan_membership(
                         break;
                     }
                 }
-                Ok(Err(_)) | Err(_) => break,
+                Ok(Err(e)) => {
+                    debug!(oid = %current_oid, error = %e, "SNMP walk column stopped on error");
+                    break;
+                }
+                Err(_) => {
+                    debug!(oid = %current_oid, "SNMP walk column stopped on timeout");
+                    break;
+                }
             }
         }
     }

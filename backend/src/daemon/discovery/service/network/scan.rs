@@ -1182,7 +1182,7 @@ impl NetworkScan {
                 );
             }
 
-            if let Ok(host_response) = ops
+            match ops
                 .create_host(
                     host,
                     ip_addresses,
@@ -1195,23 +1195,29 @@ impl NetworkScan {
                 )
                 .await
             {
-                tracing::info!(
-                    ip = %ip,
-                    services = services_count,
-                    interfaces = if_entries_count,
-                    "Host created"
-                );
-                let host_data = DiscoveredHostData {
-                    docker_service_id: host_response
-                        .services
-                        .iter()
-                        .find(|s| s.base.service_definition.id() == "Docker")
-                        .map(|s| s.id),
-                    ip_addresses: host_response.ip_addresses.clone(),
-                };
-                return Ok(Some((ip, host_response.to_host(), host_data)));
-            } else {
-                tracing::warn!(ip = %ip, "Host creation failed");
+                Ok(host_response) => {
+                    tracing::info!(
+                        ip = %ip,
+                        services = services_count,
+                        interfaces = if_entries_count,
+                        "Host created"
+                    );
+                    let host_data = DiscoveredHostData {
+                        docker_service_id: host_response
+                            .services
+                            .iter()
+                            .find(|s| s.base.service_definition.id() == "Docker")
+                            .map(|s| s.id),
+                        ip_addresses: host_response.ip_addresses.clone(),
+                    };
+                    return Ok(Some((ip, host_response.to_host(), host_data)));
+                }
+                Err(e) => {
+                    // Include the server error so create rejections are diagnosable
+                    // from the daemon log alone (create_host does not retry on
+                    // ApiErrorResponse, so the reason otherwise lives only server-side).
+                    tracing::warn!(ip = %ip, error = %e, "Host creation failed");
+                }
             }
         } else {
             tracing::debug!(ip = %ip, "Host processing returned None");
