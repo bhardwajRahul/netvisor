@@ -251,7 +251,7 @@
                          Transparent="yes" NoPrefix="yes"
                          Text="{\WixUI_Font_Title}Advanced (optional)" />
                 <Control Id="ListenPortLabel" Type="Text" X="25" Y="158" Width="120" Height="12"
-                         Text="Listen port (ServerPoll):" />
+                         Text="Listen port:" />
                 <Control Id="ListenPortEdit" Type="Edit" X="150" Y="156" Width="80" Height="16"
                          Property="LISTENPORT" />
                 <Control Id="LogLevelLabel" Type="Text" X="25" Y="180" Width="120" Height="12"
