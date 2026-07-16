@@ -135,7 +135,11 @@ async fn run_daemon<F: std::future::Future<Output = ()>>(
 
     let daemon_id = config_store.get_id().await?;
     let daemon_name = config_store.get_name().await?;
-    let server_addr = config_store.get_server_url().await?;
+    // ServerPoll daemons have no server URL (the server dials them), so this must not
+    // hard-fail — a `?` here would crash-loop a ServerPoll daemon under the service's
+    // KeepAlive before the mode is even checked. It's only needed for the DaemonPoll
+    // connect path (guaranteed present there by mode inference) and the banner.
+    let server_addr = config_store.get_server_url().await.ok();
     let network_id = config_store.get_network_id().await?;
     let api_key = config_store.get_api_key().await?;
     let mode = config_store.get_mode().await?;
@@ -219,7 +223,9 @@ async fn run_daemon<F: std::future::Future<Output = ()>>(
 
     // Configuration summary
     tracing::info!("Configuration:");
-    tracing::info!("  Server:          {}", server_addr);
+    if let Some(addr) = &server_addr {
+        tracing::info!("  Server:          {}", addr);
+    }
     if let Some(nid) = &network_id {
         tracing::info!("  Network ID:      {}", nid);
     }
@@ -279,7 +285,10 @@ async fn run_daemon<F: std::future::Future<Output = ()>>(
                 // returns it (cached on the register response). Use nil as a
                 // placeholder network id; a legacy daemon still passes its own.
                 let effective_network_id = network_id.unwrap_or_else(uuid::Uuid::nil);
-                tracing::info!("Connecting to server at {}...", server_addr);
+                tracing::info!(
+                    "Connecting to server at {}...",
+                    server_addr.as_deref().unwrap_or("<server url>")
+                );
                 let mut result = runtime_service
                     .initialize_services(effective_network_id, api_key.clone())
                     .await?;
@@ -329,7 +338,7 @@ async fn run_daemon<F: std::future::Future<Output = ()>>(
             } else if network_id.is_some() {
                 tracing::error!(
                     "Daemon is missing an API key. Fix: re-run the install command from the Scanopy UI. Server: {}",
-                    server_addr
+                    server_addr.as_deref().unwrap_or("<server url>")
                 );
                 Err(())
             } else {
