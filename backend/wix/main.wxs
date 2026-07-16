@@ -64,7 +64,19 @@
         </Property>
         <Property Id="SERVERURL" Secure="yes" />
         <Property Id="APIKEY" Secure="yes" />
-        <Property Id="NETWORKID" Secure="yes" />
+        <!-- Communication mode, baked into the download filename (default DaemonPoll for a
+             plain manual download). NETWORKID is gone: a provisioned daemon gets its network
+             from the 1:1 key, so the install command no longer passes it. -->
+        <Property Id="MODE" Value="daemon_poll" Secure="yes" />
+        <!-- Advanced, pre-filled, all optional. Silent installs and filename-encoded downloads
+             can override them; the attended wizard exposes them on the Advanced page. -->
+        <Property Id="LISTENADDRESS" Value="0.0.0.0" Secure="yes" />
+        <Property Id="LISTENPORT" Value="60073" Secure="yes" />
+        <Property Id="LOGLEVEL" Value="info" Secure="yes" />
+        <Property Id="LOGFILE" Secure="yes" />
+        <!-- Optional-flag helpers: set to a real flag only when the value is non-default, so the
+             install command doesn't pass empty/pointless flags. Defaults are empty. -->
+        <Property Id="LOGFILEARG" Secure="yes" />
         <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
 
         <!-- Scanopy mark shown for the product in Add/Remove Programs / Settings > Apps. -->
@@ -108,12 +120,34 @@
              Property name matches the deferred action Id - the standard
              WixQuietExec pattern.
              ============================================================ -->
-        <!-- Server URL, API key, and Network ID are all required (enforced by the wizard's Next
-             conditions and the RequireConfig check below), so the install command always passes a
-             non-empty network id. -->
-        <CustomAction Id="InstallDaemon"
+        <!-- Prefill per-tenant values encoded into the download filename (mode, name, server
+             url, listen bind/port, log settings). Runs first so both the attended dialogs and
+             the silent path see the values. Ignored (no-op) for a plain manual download. -->
+        <Binary Id="ParseFilenameCA" SourceFile="$(sys.SOURCEFILEDIR)parse-filename.js" />
+        <CustomAction Id="ParseFilename"
+            BinaryKey="ParseFilenameCA"
+            JScriptCall="ParseFilename"
+            Execute="immediate"
+            Return="ignore" />
+
+        <!-- Only pass --log-file when a path is actually set, so the service command doesn't
+             carry an empty flag. -->
+        <CustomAction Id="SetLogFileArg"
+            Property="LOGFILEARG"
+            Value="--log-file &quot;[LOGFILE]&quot;"
+            Execute="immediate" />
+
+        <!-- Mode-gated install command. NETWORKID is gone (network comes from the 1:1 key).
+             DaemonPoll dials the server (needs --server-url); ServerPoll is dialed by the
+             server (listen bind/port, no --server-url). --mode is explicit so the daemon does
+             not have to infer it from a service-baked config. -->
+        <CustomAction Id="InstallCmdDaemonPoll"
             Property="InstallDaemonCmd"
-            Value="&quot;[INSTALLFOLDER]scanopy-daemon.exe&quot; install --server-url &quot;[SERVERURL]&quot; --daemon-api-key &quot;[APIKEY]&quot; --network-id &quot;[NETWORKID]&quot; --name &quot;[DAEMONNAME]&quot;"
+            Value="&quot;[INSTALLFOLDER]scanopy-daemon.exe&quot; install --name &quot;[DAEMONNAME]&quot; --daemon-api-key &quot;[APIKEY]&quot; --server-url &quot;[SERVERURL]&quot; --mode daemon_poll --log-level &quot;[LOGLEVEL]&quot; [LOGFILEARG]"
+            Execute="immediate" />
+        <CustomAction Id="InstallCmdServerPoll"
+            Property="InstallDaemonCmd"
+            Value="&quot;[INSTALLFOLDER]scanopy-daemon.exe&quot; install --name &quot;[DAEMONNAME]&quot; --daemon-api-key &quot;[APIKEY]&quot; --mode server_poll --bind-address &quot;[LISTENADDRESS]&quot; --daemon-port &quot;[LISTENPORT]&quot; --log-level &quot;[LOGLEVEL]&quot; [LOGFILEARG]"
             Execute="immediate" />
         <CustomAction Id="InstallDaemonCmd"
             BinaryKey="WixCA"
@@ -133,19 +167,27 @@
             Impersonate="no"
             Return="ignore" />
 
-        <!-- Fail a fresh install early, with a clear message, if any required property is missing.
-             The attended wizard can't reach here empty (Next is gated on all three below), so this
-             guards silent installs that omit SERVERURL / APIKEY / NETWORKID - instead of the daemon
-             failing later on an empty-UUID parse (a cryptic 1603 + rollback). -->
+        <!-- Fail a fresh install early, with a clear message, if a required property is missing.
+             API key is always required; server url is required only for DaemonPoll (ServerPoll is
+             dialed by the server). Guards silent installs; the attended wizard's Next is gated too. -->
         <CustomAction Id="RequireConfig"
-            Error="Scanopy Daemon requires SERVERURL, APIKEY, and NETWORKID. Re-run, e.g.: msiexec /i scanopy-daemon.msi /qn SERVERURL=https://app.scanopy.net APIKEY=... NETWORKID=..." />
+            Error="Scanopy Daemon requires APIKEY (and SERVERURL for DaemonPoll mode). Re-run, e.g.: msiexec /i scanopy-daemon.msi /qn SERVERURL=https://app.scanopy.net APIKEY=..." />
+
+        <!-- Parse the filename in the UI sequence too, so the attended dialogs open pre-filled.
+             (Properties set here don't survive into execute, so ParseFilename runs again there.) -->
+        <InstallUISequence>
+            <Custom Action="ParseFilename" Before="AppSearch">NOT Installed</Custom>
+        </InstallUISequence>
 
         <InstallExecuteSequence>
-            <!-- Abort a fresh install that is missing required config, before anything is written. -->
-            <Custom Action="RequireConfig" Before="InstallInitialize"><![CDATA[NOT Installed AND (SERVERURL="" OR APIKEY="" OR NETWORKID="")]]></Custom>
+            <!-- Prefill from filename, then compute optional/mode-gated command, before validation. -->
+            <Custom Action="ParseFilename" Before="RequireConfig">NOT Installed</Custom>
+            <Custom Action="RequireConfig" Before="InstallInitialize"><![CDATA[NOT Installed AND (APIKEY="" OR (MODE="daemon_poll" AND SERVERURL=""))]]></Custom>
+            <Custom Action="SetLogFileArg" Before="InstallFiles"><![CDATA[NOT REMOVE AND LOGFILE<>""]]></Custom>
+            <Custom Action="InstallCmdServerPoll" After="SetLogFileArg"><![CDATA[NOT REMOVE AND MODE="server_poll"]]></Custom>
+            <Custom Action="InstallCmdDaemonPoll" After="SetLogFileArg"><![CDATA[NOT REMOVE AND MODE<>"server_poll"]]></Custom>
             <!-- Register the service after the binary is on disk (install/upgrade only). -->
-            <Custom Action="InstallDaemon" After="InstallFiles">NOT REMOVE</Custom>
-            <Custom Action="InstallDaemonCmd" After="InstallDaemon">NOT REMOVE</Custom>
+            <Custom Action="InstallDaemonCmd" After="InstallFiles">NOT REMOVE</Custom>
             <!-- Deregister the service before the binary is removed (full uninstall only). -->
             <Custom Action="UninstallDaemon" Before="RemoveFiles">REMOVE~="ALL"</Custom>
             <Custom Action="UninstallDaemonCmd" After="UninstallDaemon">REMOVE~="ALL"</Custom>
@@ -186,10 +228,23 @@
                 <Control Id="ApiKeyEdit" Type="Edit" X="25" Y="111" Width="320" Height="16"
                          Property="APIKEY" />
 
-                <Control Id="NetworkIdLabel" Type="Text" X="25" Y="136" Width="200" Height="12"
-                         Text="Network ID:" />
-                <Control Id="NetworkIdEdit" Type="Edit" X="25" Y="149" Width="320" Height="16"
-                         Property="NETWORKID" />
+                <!-- Advanced, all pre-filled with defaults (and from the download filename when
+                     provisioned). Listen port applies to ServerPoll; log settings to both. -->
+                <Control Id="AdvancedLabel" Type="Text" X="25" Y="140" Width="320" Height="12"
+                         Transparent="yes" NoPrefix="yes"
+                         Text="{\WixUI_Font_Title}Advanced (optional)" />
+                <Control Id="ListenPortLabel" Type="Text" X="25" Y="158" Width="120" Height="12"
+                         Text="Listen port (ServerPoll):" />
+                <Control Id="ListenPortEdit" Type="Edit" X="150" Y="156" Width="80" Height="16"
+                         Property="LISTENPORT" />
+                <Control Id="LogLevelLabel" Type="Text" X="25" Y="180" Width="120" Height="12"
+                         Text="Log level:" />
+                <Control Id="LogLevelEdit" Type="Edit" X="150" Y="178" Width="80" Height="16"
+                         Property="LOGLEVEL" />
+                <Control Id="LogFileLabel" Type="Text" X="25" Y="202" Width="120" Height="12"
+                         Text="Log file (blank = default):" />
+                <Control Id="LogFileEdit" Type="Edit" X="150" Y="200" Width="195" Height="16"
+                         Property="LOGFILE" />
 
                 <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17"
                          Text="!(loc.WixUIBack)">
@@ -197,9 +252,9 @@
                 </Control>
                 <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17"
                          Default="yes" Text="!(loc.WixUINext)">
-                    <!-- All three fields are required: keep Next disabled until each is non-empty. -->
-                    <Condition Action="disable"><![CDATA[SERVERURL = "" OR APIKEY = "" OR NETWORKID = ""]]></Condition>
-                    <Condition Action="enable"><![CDATA[SERVERURL <> "" AND APIKEY <> "" AND NETWORKID <> ""]]></Condition>
+                    <!-- API key always required; server url required only for DaemonPoll. -->
+                    <Condition Action="disable"><![CDATA[APIKEY = "" OR (SERVERURL = "" AND MODE <> "server_poll")]]></Condition>
+                    <Condition Action="enable"><![CDATA[APIKEY <> "" AND (SERVERURL <> "" OR MODE = "server_poll")]]></Condition>
                     <Publish Event="NewDialog" Value="VerifyReadyDlg">1</Publish>
                 </Control>
                 <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17"

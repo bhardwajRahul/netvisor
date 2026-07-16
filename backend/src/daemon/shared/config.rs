@@ -1120,6 +1120,59 @@ mod tests {
         );
     }
 
+    /// Every `--flag` the Windows MSI passes to `scanopy-daemon install` must be a real
+    /// `DaemonArgs` long flag. This catches drift across the Rust↔WiX-XML boundary (a
+    /// compile-time check isn't possible there) — e.g. renaming a flag in Rust without
+    /// updating `backend/wix/main.wxs`, or a typo'd flag in the installer.
+    #[test]
+    fn msi_install_flags_are_valid_cli_flags() {
+        let wxs = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/wix/main.wxs"))
+            .expect("read backend/wix/main.wxs");
+
+        let cmd = DaemonCli::command();
+        let valid: std::collections::HashSet<String> = cmd
+            .get_arguments()
+            .filter_map(|a| a.get_long().map(|s| s.to_string()))
+            .collect();
+
+        // Collect every `--flag` token in the file. The .wxs only uses `--` for daemon
+        // CLI flags (HTML comment `<!--`/`-->` markers decode to an empty token and are
+        // skipped), so any token that isn't a known flag is real drift.
+        let bytes = wxs.as_bytes();
+        let mut msi_flags = std::collections::HashSet::new();
+        let mut i = 0;
+        while i + 2 < bytes.len() {
+            if bytes[i] == b'-' && bytes[i + 1] == b'-' {
+                let start = i + 2;
+                let mut j = start;
+                while j < bytes.len() && (bytes[j].is_ascii_alphanumeric() || bytes[j] == b'-') {
+                    j += 1;
+                }
+                if j > start {
+                    msi_flags.insert(wxs[start..j].to_string());
+                }
+                i = j.max(i + 2);
+            } else {
+                i += 1;
+            }
+        }
+
+        let unknown: Vec<&String> = msi_flags.iter().filter(|f| !valid.contains(*f)).collect();
+        assert!(
+            unknown.is_empty(),
+            "backend/wix/main.wxs references daemon flags that don't exist in DaemonArgs: {:?}",
+            unknown
+        );
+
+        // Sanity: the install commands must actually carry the identity flags.
+        for required in ["--daemon-api-key", "--name", "--mode"] {
+            assert!(
+                wxs.contains(required),
+                "MSI install command is missing {required}"
+            );
+        }
+    }
+
     fn extract_rust_fields() -> HashMap<String, FieldInfo> {
         let cmd = DaemonCli::command();
         cmd.get_arguments()
