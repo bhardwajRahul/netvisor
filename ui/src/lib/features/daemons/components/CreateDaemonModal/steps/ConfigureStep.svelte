@@ -11,24 +11,19 @@
 	import RadioGroup from '$lib/shared/components/forms/input/RadioGroup.svelte';
 	import { fieldDefs } from '../../../config';
 	import {
-		common_apiKey,
 		common_name,
 		common_port,
 		daemons_config_daemonUrl,
 		daemons_config_daemonUrlHelpNoPort,
 		daemons_config_mode,
+		daemons_config_modeDaemonPollHelp,
+		daemons_config_modeServerPollHelp,
 		daemons_config_namePlaceholder,
 		daemons_config_portHelpServerPoll,
-		daemons_generateNewKey,
-		daemons_generateNewKeyHelp,
 		daemons_networkCannotChange,
-		daemons_pasteApiKey,
 		daemons_docsPollingMode,
 		daemons_docsPollingModeLinkText,
 		daemons_httpDaemonUrlWarning,
-		daemons_useExistingKey,
-		daemons_useExistingKeyHelp,
-		daemons_useKey,
 		daemons_configureReachabilityFailed,
 		daemons_portReachable
 	} from '$lib/paraglide/messages';
@@ -42,7 +37,6 @@
 		onNameInput?: () => void;
 		keySet: boolean;
 		isFirstDaemon?: boolean;
-		onUseExistingKey?: () => void;
 		onReachabilityChange?: (reachable: boolean | null) => void;
 		reachabilityResult?: { reachable: boolean; error?: string } | null;
 	}
@@ -55,7 +49,6 @@
 		onNameInput,
 		keySet,
 		isFirstDaemon = false,
-		onUseExistingKey,
 		onReachabilityChange,
 		reachabilityResult = $bindable(null)
 	}: Props = $props();
@@ -147,14 +140,12 @@
 					{
 						value: 'daemon_poll',
 						label: (modeDef.options ?? [])[0]?.label() ?? 'Daemon Poll',
-						helpText:
-							'Recommended. Daemon connects to the server — works behind NAT/firewalls without opening ports.'
+						helpText: daemons_config_modeDaemonPollHelp()
 					},
 					{
 						value: 'server_poll',
 						label: (modeDef.options ?? [])[1]?.label() ?? 'Server Poll',
-						helpText:
-							'Server connects to the daemon — requires the daemon to be reachable at a public URL.'
+						helpText: daemons_config_modeServerPollHelp()
 					}
 				]}
 				disabled={keySet}
@@ -219,59 +210,5 @@
 				/>
 			{/if}
 		{/if}
-	{/if}
-
-	<!-- Inline API key source for DaemonPoll (subsequent daemons only) -->
-	{#if !isFirstDaemon && !isServerPoll}
-		<div class="border-primary/10 space-y-3 border-t pt-4">
-			<form.Field name="keySource">
-				{#snippet children(field: AnyFieldApi)}
-					<RadioGroup
-						label={common_apiKey()}
-						id="key-source"
-						{field}
-						options={[
-							{
-								value: 'generate',
-								label: daemons_generateNewKey(),
-								helpText: daemons_generateNewKeyHelp()
-							},
-							{
-								value: 'existing',
-								label: daemons_useExistingKey(),
-								helpText: daemons_useExistingKeyHelp()
-							}
-						]}
-						disabled={keySet}
-					/>
-				{/snippet}
-			</form.Field>
-
-			{#if formValues.keySource === 'existing'}
-				<form.Field name="existingKeyInput">
-					{#snippet children(field: AnyFieldApi)}
-						<div class="flex items-center gap-2">
-							<div class="flex-1">
-								<TextInput
-									label=""
-									{field}
-									id="existing-key-input"
-									placeholder={daemons_pasteApiKey()}
-									disabled={keySet}
-								/>
-							</div>
-							<button
-								class="btn-primary flex-shrink-0"
-								disabled={keySet || !String(formValues.existingKeyInput ?? '').trim()}
-								type="button"
-								onclick={() => onUseExistingKey?.()}
-							>
-								<span>{daemons_useKey()}</span>
-							</button>
-						</div>
-					{/snippet}
-				</form.Field>
-			{/if}
-		</div>
 	{/if}
 </div>

@@ -35,6 +35,21 @@ pub fn supports_unified_discovery(version: Option<&Version>) -> bool {
     version.is_some_and(|v| v >= &minimum_unified_discovery())
 }
 
+/// Minimum daemon version that ships with server-provisioned identity: it is
+/// installed against a pre-provisioned record bound to a 1:1 api key, learns its
+/// identity from the register / first-contact handshake, and no longer relies on
+/// the client-supplied X-Daemon-ID header. Below this, daemons self-register with
+/// a shared network key. Coexistence is enforced by key shape (1:1 vs NULL), not
+/// by this floor — this documents the boundary and gates any version-specific UI.
+pub fn minimum_server_provisioned_identity() -> Version {
+    Version::new(0, 17, 5)
+}
+
+/// Returns true if the daemon version supports server-provisioned identity (>= 0.17.5).
+pub fn supports_server_provisioned_identity(version: Option<&Version>) -> bool {
+    version.is_some_and(|v| v >= &minimum_server_provisioned_identity())
+}
+
 /// Returns true if the daemon predates the Interface → IPAddress binding type rename (< 0.16.0).
 /// These daemons expect `"type": "Interface"` / `"interface_id"` in binding responses.
 /// Legacy cleanup: remove once minimum_supported >= 0.16.0

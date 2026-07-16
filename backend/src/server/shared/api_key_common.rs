@@ -92,6 +92,11 @@ pub trait ApiKeyCommon {
     fn set_is_enabled(&mut self, enabled: bool);
     fn set_last_used(&mut self, time: Option<DateTime<Utc>>);
 
+    /// Refresh the server-held plaintext copy after a rotation, for key types
+    /// that keep one (ServerPoll daemon keys, so the poller can present the key).
+    /// Default: no-op — user and DaemonPoll keys never store plaintext.
+    fn refresh_stored_plaintext(&mut self, _plaintext: &str) {}
+
     /// Check if the key has expired
     fn is_expired(&self) -> bool {
         self.expires_at()
@@ -221,6 +226,9 @@ pub trait ApiKeyService: CrudService<Self::Key> + EventBusService<Self::Key> {
         // Generate new key with correct prefix based on key type
         let (plaintext, hashed) = generate_api_key_for_storage(Self::Key::KEY_TYPE);
         api_key.set_key(hashed);
+        // Keep the server-held plaintext in sync for ServerPoll keys, or the poller
+        // would present the old (now invalid) key after a rotation.
+        api_key.refresh_stored_plaintext(&plaintext);
 
         // Publish auth event for audit trail
         self.api_key_event_bus()

@@ -570,6 +570,13 @@ impl AppConfig {
         if let Some(docker_proxy_ssl_chain) = cli_args.docker_proxy_ssl_chain {
             figment = figment.merge(("docker_proxy_ssl_chain", docker_proxy_ssl_chain));
         }
+        // Whether the mode was explicitly chosen (CLI or env). If not, it is
+        // inferred from server_url presence after extraction below, so the
+        // two-flag install works: `--server-url … --api-key …` => DaemonPoll,
+        // `--api-key …` (no server url) => ServerPoll.
+        let mode_explicitly_set = cli_args.mode.is_some()
+            || std::env::var("SCANOPY_MODE").is_ok()
+            || std::env::var("NETVISOR_MODE").is_ok();
         if let Some(mode) = cli_args.mode {
             figment = figment.merge(("mode", mode));
         }
@@ -603,6 +610,17 @@ impl AppConfig {
         let mut config: AppConfig = figment
             .extract()
             .map_err(|e| Error::msg(format!("Configuration error: {}", e)))?;
+
+        // Infer mode from server_url when it was not explicitly set: DaemonPoll
+        // dials the server (needs a server_url), ServerPoll is dialed by the
+        // server (no server_url). An explicit --mode / SCANOPY_MODE still wins.
+        if !mode_explicitly_set {
+            config.mode = if config.server_url.is_some() {
+                DaemonMode::DaemonPoll
+            } else {
+                DaemonMode::ServerPoll
+            };
+        }
 
         // Parse integration-target tokens last so CLI > env > config-file precedence holds:
         // CLI tokens win if provided, else env tokens; if neither, keep whatever the config file
@@ -770,6 +788,12 @@ impl ConfigStore {
     pub async fn get_name(&self) -> Result<String> {
         let config = self.config.read().await;
         Ok(config.name.clone())
+    }
+
+    pub async fn set_name(&self, name: String) -> Result<()> {
+        let mut config = self.config.write().await;
+        config.name = name;
+        self.save(&config.clone()).await
     }
 
     pub async fn set_id(&self, id: Uuid) -> Result<()> {
@@ -1094,6 +1118,59 @@ mod tests {
             "Config sync errors:\n{}",
             errors.join("\n")
         );
+    }
+
+    /// Every `--flag` the Windows MSI passes to `scanopy-daemon install` must be a real
+    /// `DaemonArgs` long flag. This catches drift across the Rust↔WiX-XML boundary (a
+    /// compile-time check isn't possible there) — e.g. renaming a flag in Rust without
+    /// updating `backend/wix/main.wxs`, or a typo'd flag in the installer.
+    #[test]
+    fn msi_install_flags_are_valid_cli_flags() {
+        let wxs = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/wix/main.wxs"))
+            .expect("read backend/wix/main.wxs");
+
+        let cmd = DaemonCli::command();
+        let valid: std::collections::HashSet<String> = cmd
+            .get_arguments()
+            .filter_map(|a| a.get_long().map(|s| s.to_string()))
+            .collect();
+
+        // Collect every `--flag` token in the file. The .wxs only uses `--` for daemon
+        // CLI flags (HTML comment `<!--`/`-->` markers decode to an empty token and are
+        // skipped), so any token that isn't a known flag is real drift.
+        let bytes = wxs.as_bytes();
+        let mut msi_flags = std::collections::HashSet::new();
+        let mut i = 0;
+        while i + 2 < bytes.len() {
+            if bytes[i] == b'-' && bytes[i + 1] == b'-' {
+                let start = i + 2;
+                let mut j = start;
+                while j < bytes.len() && (bytes[j].is_ascii_alphanumeric() || bytes[j] == b'-') {
+                    j += 1;
+                }
+                if j > start {
+                    msi_flags.insert(wxs[start..j].to_string());
+                }
+                i = j.max(i + 2);
+            } else {
+                i += 1;
+            }
+        }
+
+        let unknown: Vec<&String> = msi_flags.iter().filter(|f| !valid.contains(*f)).collect();
+        assert!(
+            unknown.is_empty(),
+            "backend/wix/main.wxs references daemon flags that don't exist in DaemonArgs: {:?}",
+            unknown
+        );
+
+        // Sanity: the install commands must actually carry the identity flags.
+        for required in ["--daemon-api-key", "--name", "--mode"] {
+            assert!(
+                wxs.contains(required),
+                "MSI install command is missing {required}"
+            );
+        }
     }
 
     fn extract_rust_fields() -> HashMap<String, FieldInfo> {

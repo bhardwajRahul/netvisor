@@ -126,8 +126,16 @@ pub async fn update_daemon_api_key(
     // Preserve the key hash - don't allow it to be changed via update
     request.preserve_immutable_fields(&existing);
 
+    // Evict the auth resolution cache so a disable / expiry change on this key
+    // takes effect immediately rather than waiting out the TTL. The key hash is
+    // immutable, so `existing.base.key` is the cache key both before and after.
+    let service = state.services.daemon_api_key_service.clone();
+    let hashed_key = existing.base.key.clone();
+
     // Delegate to generic handler
-    update_handler::<DaemonApiKey>(State(state), auth, Path(id), Json(request)).await
+    let result = update_handler::<DaemonApiKey>(State(state), auth, Path(id), Json(request)).await;
+    service.invalidate_resolution(&hashed_key).await;
+    result
 }
 
 /// Rotate a Daemon API Key
@@ -153,6 +161,17 @@ pub async fn rotate_key_handler(
     let user_id = auth.user_id();
 
     let service = DaemonApiKey::get_service(&state);
+
+    // Capture the pre-rotation hash so we can evict it: after rotation the old
+    // plaintext must stop authenticating immediately, not linger in the cache
+    // until the TTL. The new hash is uncached (populated on its next auth).
+    let old_hashed_key = service
+        .get_by_id(&api_key_id)
+        .await
+        .ok()
+        .flatten()
+        .map(|k| k.base.key);
+
     let key = service
         .rotate_key(api_key_id, ip, user_agent, auth.into_entity())
         .await
@@ -165,6 +184,10 @@ pub async fn rotate_key_handler(
             );
             ApiError::internal_error(&e.to_string())
         })?;
+
+    if let Some(old_hashed_key) = old_hashed_key {
+        service.invalidate_resolution(&old_hashed_key).await;
+    }
 
     Ok(Json(ApiResponse::success(key)))
 }
@@ -207,7 +230,20 @@ pub async fn delete_daemon_api_key(
         )));
     }
 
-    delete_handler::<DaemonApiKey>(state, auth, Path(id)).await
+    // Evict the deleted key's resolution so it can't authenticate from cache.
+    let service = state.services.daemon_api_key_service.clone();
+    let hashed_key = service
+        .get_by_id(&id)
+        .await
+        .ok()
+        .flatten()
+        .map(|k| k.base.key);
+
+    let result = delete_handler::<DaemonApiKey>(state, auth, Path(id)).await;
+    if let Some(hashed_key) = hashed_key {
+        service.invalidate_resolution(&hashed_key).await;
+    }
+    result
 }
 
 /// Bulk delete Daemon API Keys

@@ -281,6 +281,8 @@ impl DaemonService {
 
         let request = FirstContactRequest {
             daemon_id: daemon.id,
+            network_id: Some(daemon.base.network_id),
+            name: Some(daemon.base.name.clone()),
             server_capabilities,
         };
 

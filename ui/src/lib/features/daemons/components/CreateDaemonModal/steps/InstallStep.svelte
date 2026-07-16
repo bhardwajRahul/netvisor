@@ -7,6 +7,7 @@
 	import TroubleshootingChecklist from './TroubleshootingChecklist.svelte';
 	import { useConfigQuery } from '$lib/shared/stores/config-query';
 	import type { DaemonOS } from '../../../utils';
+	import type { DaemonMode } from '../../../types/base';
 	import { trackEvent } from '$lib/shared/utils/analytics';
 	import { useTestReachabilityMutation, useRetryDaemonConnectionMutation } from '../../../queries';
 	import AnimatedProgressBar from '$lib/features/discovery/components/cards/AnimatedProgressBar.svelte';
@@ -51,6 +52,8 @@
 		linuxMethod?: LinuxMethod;
 		onLinuxMethodChange?: (method: LinuxMethod) => void;
 		runCommand: string;
+		/** Server-assembled per-platform install commands (single source of truth). */
+		serverCommands?: { platform: string; command: string }[];
 		dockerCompose: string;
 		hasErrors: boolean;
 		isFirstDaemon?: boolean;
@@ -58,7 +61,7 @@
 		onViewDiscovery?: () => void;
 		hasEmailSupport?: boolean;
 		onAdvanced?: (() => void) | null;
-		daemonMode?: string;
+		daemonMode?: DaemonMode;
 		daemonName?: string;
 		logFilePath?: string;
 		daemonUrl?: string;
@@ -76,6 +79,7 @@
 		linuxMethod = 'binary',
 		onLinuxMethodChange,
 		runCommand,
+		serverCommands = [],
 		dockerCompose,
 		hasErrors,
 		isFirstDaemon = false,
@@ -104,9 +108,17 @@
 	const windowsInstallCommand = `Invoke-WebRequest -Uri "${windowsDownloadUrl}" -OutFile "scanopy-daemon-windows-amd64.exe"`;
 	const installScript = `bash -c "$(curl -fsSL https://raw.githubusercontent.com/scanopy/scanopy/refs/heads/main/install.sh)"`;
 
-	// Combined install commands
-	let combinedLinuxMacCommand = $derived(`${installScript} && ${runCommand}`);
-	let combinedWindowsCommand = $derived(`${windowsInstallCommand}; ${runCommand}`);
+	// Combined install commands — prefer the server-assembled command for the platform
+	// (single source of truth), falling back to the client-built one.
+	let serverCommandForOs = $derived(
+		(os: string) => serverCommands.find((c) => c.platform === os)?.command
+	);
+	let combinedLinuxMacCommand = $derived(
+		serverCommandForOs(selectedOS) ?? `${installScript} && ${runCommand}`
+	);
+	let combinedWindowsCommand = $derived(
+		serverCommandForOs('windows') ?? `${windowsInstallCommand}; ${runCommand}`
+	);
 
 	// ServerPoll health check
 	const healthCheckMutation = useTestReachabilityMutation();

@@ -7,6 +7,7 @@
 	import InlineDanger from '$lib/shared/components/feedback/InlineDanger.svelte';
 	import { Loader2 } from 'lucide-svelte';
 	import type { DaemonOS } from '../../../utils';
+	import type { DaemonMode } from '../../../types/base';
 	import {
 		daemons_troubleshoot_isDaemonRunning,
 		daemons_troubleshoot_isDaemonRunningDesc,
@@ -68,7 +69,7 @@
 	type LinuxMethod = 'binary' | 'docker';
 
 	interface Props {
-		mode: 'daemon_poll' | 'server_poll';
+		mode: DaemonMode;
 		serverUrl: string;
 		daemonUrl?: string;
 		daemonName?: string;

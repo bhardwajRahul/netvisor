@@ -265,6 +265,65 @@ async fn email_install_command(
     Ok(Json(ApiResponse::success(())))
 }
 
+/// Download the Windows MSI, renamed with this daemon's non-secret values hex-encoded into
+/// the filename so the installer pre-fills mode/name/url (the api key is never in the name).
+/// Streams the signed release asset through, preserving its bytes (and signature); only the
+/// download filename differs, which Authenticode ignores.
+#[utoipa::path(
+    get,
+    path = "/{id}/installer.msi",
+    tag = Daemon::ENTITY_NAME_PLURAL,
+    operation_id = "download_installer_msi",
+    summary = "Download the daemon's Windows MSI with values pre-encoded in the filename",
+    params(("id" = Uuid, Path, description = "Daemon ID")),
+    responses(
+        (status = 200, description = "MSI installer stream"),
+        (status = 404, description = "Daemon not found", body = ApiErrorResponse),
+    ),
+    security(("user_api_key" = []), ("session" = []))
+)]
+async fn download_installer_msi(
+    State(state): State<Arc<AppState>>,
+    auth: Authorized<Member>,
+    Path(id): Path<Uuid>,
+) -> ApiResult<axum::response::Response> {
+    let network_ids = auth.network_ids();
+
+    let daemon = state
+        .services
+        .daemon_service
+        .get_by_id(&id)
+        .await?
+        .ok_or_else(|| ApiError::entity_not_found::<Daemon>(id))?;
+    if !network_ids.contains(&daemon.base.network_id) {
+        return Err(ApiError::entity_access_denied::<Daemon>(id));
+    }
+
+    let filename = crate::server::daemons::r#impl::install_artifacts::encode_msi_filename(&daemon);
+
+    let upstream = reqwest::Client::new()
+        .get(crate::server::daemons::r#impl::install_artifacts::WINDOWS_MSI_URL)
+        .send()
+        .await
+        .map_err(|e| ApiError::internal_error(&format!("Failed to fetch installer: {e}")))?;
+    if !upstream.status().is_success() {
+        return Err(ApiError::internal_error(&format!(
+            "Installer download unavailable (upstream status {})",
+            upstream.status()
+        )));
+    }
+
+    let body = axum::body::Body::from_stream(upstream.bytes_stream());
+    axum::response::Response::builder()
+        .header(axum::http::header::CONTENT_TYPE, "application/x-msi")
+        .header(
+            axum::http::header::CONTENT_DISPOSITION,
+            format!("attachment; filename=\"{filename}\""),
+        )
+        .body(body)
+        .map_err(|e| ApiError::internal_error(&format!("Failed to build response: {e}")))
+}
+
 /// User-facing daemon management endpoints (versioned at /api/v1/daemons)
 pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
     OpenApiRouter::new()
@@ -276,6 +335,7 @@ pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
         .routes(routes!(retry_connection))
         .routes(routes!(test_reachability))
         .routes(routes!(email_install_command))
+        .routes(routes!(download_installer_msi))
 }
 
 /// Daemon-internal endpoints (unversioned at /api/daemon)
@@ -804,6 +864,16 @@ async fn provision_daemon(
     // Validate network access
     validate_network_access(Some(request.network_id), &network_ids, "provision daemon")?;
 
+    // A ServerPoll daemon never dials out, so the server can only reach it at a URL
+    // supplied now. DaemonPoll dials the server, so its url is unused.
+    let is_server_poll = request.mode == DaemonMode::ServerPoll;
+    let reachable_url = request.url.clone().unwrap_or_default();
+    if is_server_poll && reachable_url.trim().is_empty() {
+        return Err(ApiError::bad_request(
+            "A reachable url is required to provision a ServerPoll daemon",
+        ));
+    }
+
     // Check daemon limit for unverified orgs (allows 1st daemon)
     let org_id = auth.require_organization_id()?;
     state
@@ -824,7 +894,12 @@ async fn provision_daemon(
         network_id: request.network_id,
         is_enabled: true,
         tags: Vec::new(),
-        plaintext: Some(SecretString::from(plaintext.clone())),
+        // Bound to the daemon 1:1 below, once the daemon record exists (circular:
+        // the daemon needs api_key_id, the key needs daemon_id).
+        daemon_id: None,
+        // Only ServerPoll needs the server to hold the plaintext (to present it when
+        // it dials the daemon). A DaemonPoll daemon carries its own key and dials out.
+        plaintext: is_server_poll.then(|| SecretString::from(plaintext.clone())),
     });
 
     let created_api_key = state
@@ -893,9 +968,9 @@ async fn provision_daemon(
     let daemon = Daemon::new(DaemonBase {
         host_id: created_host.id,
         network_id: request.network_id,
-        url: request.url,
+        url: reachable_url,
         last_seen: None,
-        mode: DaemonMode::ServerPoll,
+        mode: request.mode,
         name: request.name,
         tags: Vec::new(),
         version: Some(version),
@@ -916,16 +991,76 @@ async fn provision_daemon(
             ApiError::internal_error(&format!("Failed to create daemon: {}", e))
         })?;
 
+    // Complete the 1:1 binding now that the daemon exists: point the api key at its daemon.
+    // The DB partial-UNIQUE on api_keys.daemon_id makes this binding exclusive; the service
+    // update bypasses preserve_immutable_fields (that guard runs only in the HTTP handler).
+    let mut api_key_to_bind = created_api_key.clone();
+    api_key_to_bind.base.daemon_id = Some(created_daemon.id);
+    if let Err(e) = state
+        .services
+        .daemon_api_key_service
+        .update(&mut api_key_to_bind, auth.entity.clone())
+        .await
+    {
+        tracing::error!(error = %e, daemon_id = %created_daemon.id, "Failed to bind api key to provisioned daemon");
+        return Err(ApiError::internal_error(&format!(
+            "Failed to bind api key to daemon: {}",
+            e
+        )));
+    }
+
+    // Seed the daemon's first discovery: persist the credential refs on the daemon's
+    // Discovery row so they are PROBED on that run and only assigned to a host once the
+    // probe succeeds (including refs targeted at the daemon host / 127.0.0.1). We do NOT
+    // write the host_credentials junction directly here — a seeded credential must earn
+    // its assignment. create_default_discovery_jobs is idempotent, so the later
+    // registration / first-contact paths won't duplicate this.
+    let is_free_plan = state
+        .services
+        .organization_service
+        .get_by_id(&org_id)
+        .await
+        .ok()
+        .flatten()
+        .and_then(|o| o.base.plan)
+        .map(|p| p.is_free())
+        .unwrap_or(true);
+
+    if let Err(e) = state
+        .services
+        .daemon_service
+        .create_default_discovery_jobs(
+            created_daemon.id,
+            request.network_id,
+            created_host.id,
+            is_free_plan,
+            &request.seed_credential_refs,
+        )
+        .await
+    {
+        tracing::warn!(daemon_id = %created_daemon.id, error = ?e, "Failed to create default discovery jobs at provision");
+    }
+
     tracing::info!(
         daemon_id = %created_daemon.id,
         network_id = %request.network_id,
         user_id = %user_id,
-        "Daemon provisioned for ServerPoll mode"
+        mode = ?created_daemon.base.mode,
+        "Daemon provisioned"
     );
 
     // Compute version status for response
     let policy = DaemonVersionPolicy::default();
     let version_status = policy.evaluate(created_daemon.base.version.as_ref());
+
+    // Assemble install artifacts server-side (single source of truth) while we still have
+    // the api-key plaintext. The command embeds it (shown once); the MSI link does not.
+    let install_artifacts =
+        crate::server::daemons::r#impl::install_artifacts::build_install_artifacts(
+            &state.config.public_url,
+            &created_daemon,
+            &plaintext,
+        );
 
     Ok(Json(ApiResponse::success(ProvisionDaemonResponse {
         daemon: DaemonResponse {
@@ -938,6 +1073,7 @@ async fn provision_daemon(
             interfaced_subnet_ids: Vec::new(),
         },
         daemon_api_key: plaintext,
+        install_artifacts,
     })))
 }
 

@@ -20,10 +20,8 @@
 		KeyRound
 	} from 'lucide-svelte';
 	import confetti from 'canvas-confetti';
-	import {
-		createEmptyApiKeyFormData,
-		useCreateApiKeyMutation
-	} from '$lib/features/daemon_api_keys/queries';
+	import type { DaemonMode } from '../../types/base';
+	import type { components } from '$lib/api/schema';
 	import {
 		useProvisionDaemonMutation,
 		useDaemonQuery,
@@ -66,7 +64,6 @@
 		daemons_createDaemon,
 		daemons_credentialWizardReturn,
 		daemons_credentialWizardReturnToInstall,
-		daemons_enterApiKey,
 		daemons_emailInstallCommand,
 		daemons_installCommandEmailed,
 		daemons_installIveRunCommand,
@@ -94,7 +91,6 @@
 	const configQuery = useConfigQuery();
 	const currentUserQuery = useCurrentUserQuery();
 	const organizationQuery = useOrganizationQuery();
-	const createApiKeyMutation = useCreateApiKeyMutation();
 	const provisionDaemonMutation = useProvisionDaemonMutation();
 	const credentialsQuery = useCredentialsQuery();
 
@@ -119,9 +115,14 @@
 	const windowsDownloadUrl =
 		'https://github.com/scanopy/scanopy/releases/latest/download/scanopy-daemon-windows-amd64.exe';
 	let currentInstallCommand = $derived.by(() => {
+		// Docker is client-assembled (compose file); the server assembles binary commands.
+		if (selectedOS === 'linux' && linuxMethod === 'docker' && dockerCompose) return dockerCompose;
+		// Prefer the server-assembled command for this platform (single source of truth).
+		const serverCmd = installArtifacts?.commands.find((c) => c.platform === selectedOS)?.command;
+		if (serverCmd) return serverCmd;
+		// Fallback (e.g. before provisioning completes) to the client-built command.
 		if (selectedOS === 'windows')
 			return `Invoke-WebRequest -Uri "${windowsDownloadUrl}" -OutFile "scanopy-daemon-windows-amd64.exe"; ${runCommand}`;
-		if (selectedOS === 'linux' && linuxMethod === 'docker' && dockerCompose) return dockerCompose;
 		return `${installScript} && ${runCommand}`;
 	});
 	let currentOsLabel = $derived.by(() => {
@@ -220,6 +221,9 @@
 	let isTestingReachability = $state(false);
 	let serverPollReachabilityResult = $state<{ reachable: boolean; error?: string } | null>(null);
 	const testReachabilityMutation = useTestReachabilityMutation();
+
+	// Install commands assembled server-side (single source of truth), captured at provision.
+	let installArtifacts = $state<components['schemas']['InstallArtifacts'] | null>(null);
 
 	// Connection waiting state
 	let provisionedDaemonId = $state('');
@@ -376,49 +380,30 @@
 		if (!isValid) return;
 
 		const daemonName = (form.state.values['name'] as string) ?? 'daemon';
-		const mode = (form.state.values['mode'] as string) ?? 'daemon_poll';
+		const mode = (form.state.values['mode'] as DaemonMode) ?? 'daemon_poll';
 		const daemonUrlBase = (form.state.values['daemonUrl'] as string) ?? '';
 		const daemonPort = (() => {
 			const port = form.state.values['daemonPort'];
 			return typeof port === 'number' ? port : 60073;
 		})();
 
-		if (mode === 'server_poll') {
-			const fullDaemonUrl = constructDaemonUrl(daemonUrlBase, daemonPort);
-			try {
-				const result = await provisionDaemonMutation.mutateAsync({
-					name: daemonName,
-					network_id: selectedNetworkId,
-					url: fullDaemonUrl
-				});
-				keyState = result.daemon_api_key;
-				provisionedDaemonId = result.daemon.id;
-			} catch {
-				pushError(common_failedGenerateApiKey());
-			}
-		} else {
-			let newApiKey = createEmptyApiKeyFormData(selectedNetworkId);
-			newApiKey.name = `${daemonName} Api Key`;
-			try {
-				const result = await createApiKeyMutation.mutateAsync(newApiKey);
-				keyState = result.keyString;
-			} catch {
-				pushError(common_failedGenerateApiKey());
-			}
+		// Both modes provision a record bound 1:1 to a fresh key. ServerPoll also
+		// captures the reachable URL the server dials; DaemonPoll dials out, so it
+		// has none.
+		const isServerPoll = mode === 'server_poll';
+		try {
+			const result = await provisionDaemonMutation.mutateAsync({
+				name: daemonName,
+				network_id: selectedNetworkId,
+				mode,
+				url: isServerPoll ? constructDaemonUrl(daemonUrlBase, daemonPort) : null
+			});
+			keyState = result.daemon_api_key;
+			provisionedDaemonId = result.daemon.id;
+			installArtifacts = result.install_artifacts;
+		} catch {
+			pushError(common_failedGenerateApiKey());
 		}
-	}
-
-	async function handleUseExistingKey() {
-		const fields = getVisibleFieldIds(formValues);
-		const isValid = await validateForm(form, fields);
-		if (!isValid) return;
-
-		const trimmedKey = ((form.state.values['existingKeyInput'] as string) ?? '').trim();
-		if (!trimmedKey) {
-			pushError(daemons_enterApiKey());
-			return;
-		}
-		keyState = trimmedKey;
 	}
 
 	// --- Navigation handlers ---
@@ -461,13 +446,9 @@
 
 			trackEvent('daemon_wizard_step_completed', { step: 'configure' });
 
-			// Auto-generate key for: first daemon (any mode), or server_poll, or daemon_poll with generate source
-			const mode = formValues.mode as string;
-			const keySource = formValues.keySource as string;
-			const needsAutoGenerate =
-				!key && (isFirstDaemon || mode === 'server_poll' || keySource === 'generate');
-
-			if (needsAutoGenerate) {
+			// Every daemon is provisioned server-side with a fresh 1:1 key — there is
+			// no "use existing key" path anymore.
+			if (!key) {
 				isAutoGenerating = true;
 				try {
 					await handleCreateNewApiKey();
@@ -475,12 +456,6 @@
 					isAutoGenerating = false;
 				}
 				if (!keyState) return; // generation failed
-			}
-
-			// For daemon_poll with existing key source, key must be set already
-			if (!isFirstDaemon && mode === 'daemon_poll' && keySource === 'existing' && !key) {
-				pushError(daemons_enterApiKey());
-				return;
 			}
 
 			// Snapshot daemon IDs NOW, before showing install commands.
@@ -752,7 +727,6 @@
 							onNameInput={() => (nameManuallyEdited = true)}
 							{keySet}
 							{isFirstDaemon}
-							onUseExistingKey={handleUseExistingKey}
 							onReachabilityChange={(r) => {
 								serverPollReachable = r;
 								if (r === null) serverPollReachabilityResult = null;
@@ -773,7 +747,8 @@
 							onViewDiscovery={handleViewDiscovery}
 							{hasEmailSupport}
 							onAdvanced={() => (showAdvanced = true)}
-							daemonMode={String(formValues.mode ?? 'daemon_poll')}
+							serverCommands={installArtifacts?.commands ?? []}
+							daemonMode={(formValues.mode as DaemonMode) ?? 'daemon_poll'}
 							daemonName={String(formValues.name ?? 'scanopy-daemon')}
 							logFilePath={String(formValues.logFile ?? '')}
 							daemonUrl={constructDaemonUrl(

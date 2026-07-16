@@ -209,12 +209,23 @@ impl DaemonService {
             .get()
             .ok_or_else(|| ApiError::internal_error("HostService not initialized"))?;
 
+        // Resolve the network from the authenticated key rather than trusting the
+        // request body. A provisioned DaemonPoll daemon starts without a network_id
+        // and sends nil; the server derives it from the 1:1 key. For a legacy
+        // shared-key daemon the key's network equals request.network_id, so this is
+        // a no-op there (and it stops a daemon claiming a network its key can't reach).
+        let effective_network_id = auth
+            .network_ids()
+            .first()
+            .copied()
+            .unwrap_or(request.network_id);
+
         // Check if this is a demo organization - block daemon registration
         let network = self
             .network_service
-            .get_by_id(&request.network_id)
+            .get_by_id(&effective_network_id)
             .await?
-            .ok_or_else(|| ApiError::entity_not_found::<Network>(request.network_id))?;
+            .ok_or_else(|| ApiError::entity_not_found::<Network>(effective_network_id))?;
 
         let org_id = network.base.organization_id;
         let organization =
@@ -236,6 +247,13 @@ impl DaemonService {
         }
 
         tracing::info!("{:?}", request);
+
+        // For a 1:1 provisioned key the auth layer resolved the daemon from the key,
+        // so that is the authoritative id — the client-sent request.daemon_id is
+        // untrusted and, for a freshly provisioned daemon, not yet known. For a legacy
+        // shared-key daemon, auth resolves to the header id, which equals
+        // request.daemon_id, so this is a no-op there.
+        let effective_daemon_id = auth.daemon_id().unwrap_or(request.daemon_id);
 
         // Parse version early for use in server_capabilities
         let daemon_version = request
@@ -266,9 +284,9 @@ impl DaemonService {
         });
 
         // Check if daemon already exists (re-registration scenario)
-        if let Some(mut existing_daemon) = self.get_by_id(&request.daemon_id).await? {
+        if let Some(mut existing_daemon) = self.get_by_id(&effective_daemon_id).await? {
             tracing::info!(
-                daemon_id = %request.daemon_id,
+                daemon_id = %effective_daemon_id,
                 host_id = %existing_daemon.base.host_id,
                 "Daemon already registered, updating registration"
             );
@@ -321,7 +339,7 @@ impl DaemonService {
 
         // New registration - create host and daemon
         let dummy_host = Host::new(HostBase {
-            network_id: request.network_id,
+            network_id: effective_network_id,
             name: request.name.clone(),
             hostname: None,
             description: None,
@@ -361,7 +379,7 @@ impl DaemonService {
         // Seed the daemon host's loopback so a daemon-host socket/proxy credential is probed on the
         // very first scan (the credential mapping is snapshotted before the daemon self-reports).
         if let Err(e) = host_service
-            .seed_loopback(host_response.id, request.network_id, auth.clone())
+            .seed_loopback(host_response.id, effective_network_id, auth.clone())
             .await
         {
             tracing::warn!(host_id = %host_response.id, error = %e, "Failed to seed daemon host loopback");
@@ -425,7 +443,7 @@ impl DaemonService {
 
         let mut daemon = Daemon::new(DaemonBase {
             host_id: host_response.id,
-            network_id: request.network_id,
+            network_id: effective_network_id,
             // DaemonPoll mode: URL not needed (server never connects to daemon)
             // ServerPoll mode: URL is set during provisioning, not during registration
             url: String::new(),
@@ -441,7 +459,7 @@ impl DaemonService {
             standby_cleared_at: None,
         });
 
-        daemon.id = request.daemon_id;
+        daemon.id = effective_daemon_id;
 
         let registered_daemon = self.create(daemon, auth.clone()).await?;
 
@@ -452,8 +470,8 @@ impl DaemonService {
         // Create default discovery jobs
         let is_free_plan = plan.is_free();
         self.create_default_discovery_jobs(
-            request.daemon_id,
-            request.network_id,
+            effective_daemon_id,
+            effective_network_id,
             host_response.id,
             is_free_plan,
             &remaining_targets,
@@ -771,6 +789,25 @@ impl DaemonService {
         is_free_plan: bool,
         integration_targets: &[IntegrationTarget],
     ) -> Result<(), ApiError> {
+        // Idempotency guard: a daemon gets exactly one set of default discovery
+        // jobs. This is now called from provision (where seed refs are known),
+        // legacy self-registration, and ServerPoll first-contact — so without this
+        // guard a provisioned daemon that later registers / is first-contacted
+        // would get a duplicate discovery. Skip if any live discovery exists.
+        let existing = self
+            .discovery_service
+            .get_all(
+                StorableFilter::new_from_uuid_column("daemon_id", &daemon_id).exclude_historical(),
+            )
+            .await?;
+        if !existing.is_empty() {
+            tracing::info!(
+                daemon_id = %daemon_id,
+                "Daemon already has discoveries; skipping default discovery creation"
+            );
+            return Ok(());
+        }
+
         tracing::info!(
             daemon_id = %daemon_id,
             network_id = %network_id,
