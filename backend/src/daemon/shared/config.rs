@@ -384,7 +384,12 @@ impl Default for AppConfig {
             log_level: "info".to_string(),
             log_file: None,
             heartbeat_interval: 30,
-            id: Uuid::new_v4(),
+            // Start with no id — a provisioned daemon learns its server-assigned id from the
+            // register / first-contact handshake, and sends a nil X-Daemon-ID until then. A
+            // self-generated random id here would NOT match the provisioned record and the
+            // server's 1:1 anti-reuse check would reject it as a daemon mismatch. (Legacy
+            // daemons that self-registered keep their persisted id in config.json, unaffected.)
+            id: Uuid::nil(),
             last_heartbeat: None,
             host_id: None,
             daemon_api_key: None,
