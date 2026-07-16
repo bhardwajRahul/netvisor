@@ -9,10 +9,8 @@ use std::net::IpAddr;
 use tokio::time::timeout;
 use tracing::{debug, trace, warn};
 
-use crate::server::credentials::r#impl::mapping::SnmpQueryCredential;
-
 use super::oids::{self, oid_to_vec, parse_oid};
-use super::session::{MAX_WALK_ENTRIES, SNMP_TIMEOUT, create_session};
+use super::session::{MAX_WALK_ENTRIES, SNMP_TIMEOUT};
 use super::types::{
     ArpEntry, BridgeFdbEntry, CdpNeighbor, DeviceInventory, IfTableEntry, IpAddrEntry,
     LldpLocalInfo, LldpLocalPort, LldpNeighbor, PortVlanMembership, SystemInfo, VlanInfo,
@@ -24,11 +22,9 @@ use super::values::{
 
 /// Query system MIB information from a device
 pub async fn query_system_info(
+    session: &mut Box<snmp2::AsyncSession>,
     ip: IpAddr,
-    credential: &SnmpQueryCredential,
-    port: u16,
-) -> Result<SystemInfo> {
-    let mut session = create_session(ip, credential, port).await?;
+) ->Result<SystemInfo> {
     let mut info = SystemInfo::default();
 
     // Query each system OID
@@ -86,11 +82,9 @@ pub async fn query_system_info(
 /// a partial view of the host's real ifTable — the server uses it to skip the interface prune so
 /// a transient partial walk cannot delete interfaces (and their resolved L2 neighbors). See #649.
 pub async fn walk_if_table(
+    session: &mut Box<snmp2::AsyncSession>,
     ip: IpAddr,
-    credential: &SnmpQueryCredential,
-    port: u16,
-) -> Result<(Vec<IfTableEntry>, bool)> {
-    let mut session = create_session(ip, credential, port).await?;
+) ->Result<(Vec<IfTableEntry>, bool)> {
     let mut entries: HashMap<i32, IfTableEntry> = HashMap::new();
     // Cleared to false the moment any column walk is cut short (error/timeout/limit).
     let mut complete = true;
@@ -251,11 +245,9 @@ pub async fn walk_if_table(
 
 /// Query LLDP remote table for neighbor information
 pub async fn query_lldp_neighbors(
+    session: &mut Box<snmp2::AsyncSession>,
     ip: IpAddr,
-    credential: &SnmpQueryCredential,
-    port: u16,
-) -> Result<Vec<LldpNeighbor>> {
-    let mut session = create_session(ip, credential, port).await?;
+) ->Result<Vec<LldpNeighbor>> {
     let mut neighbors: HashMap<(i32, i32), LldpNeighbor> = HashMap::new();
 
     // LLDP remote table uses a complex index: lldpRemTimeMark.lldpRemLocalPortNum.lldpRemIndex
@@ -476,11 +468,9 @@ pub async fn query_lldp_neighbors(
 /// back to the real ifIndex. Returns an empty map if the device does not expose the
 /// table (callers fall back to treating the local-port number as the ifIndex).
 pub async fn query_lldp_local_ports(
+    session: &mut Box<snmp2::AsyncSession>,
     ip: IpAddr,
-    credential: &SnmpQueryCredential,
-    port: u16,
-) -> Result<HashMap<i32, LldpLocalPort>> {
-    let mut session = create_session(ip, credential, port).await?;
+) ->Result<HashMap<i32, LldpLocalPort>> {
     let mut ports: HashMap<i32, LldpLocalPort> = HashMap::new();
 
     let columns = [
@@ -562,11 +552,9 @@ pub async fn query_lldp_local_ports(
 /// Walks ipAdEntIfIndex and ipAdEntNetMask columns where the OID suffix
 /// encodes the IP address as A.B.C.D.
 pub async fn query_ip_addr_table(
+    session: &mut Box<snmp2::AsyncSession>,
     ip: IpAddr,
-    credential: &SnmpQueryCredential,
-    port: u16,
-) -> Result<HashMap<IpAddr, IpAddrEntry>> {
-    let mut session = create_session(ip, credential, port).await?;
+) ->Result<HashMap<IpAddr, IpAddrEntry>> {
     let mut if_index_map: HashMap<IpAddr, i32> = HashMap::new();
     let mut net_mask_map: HashMap<IpAddr, IpAddr> = HashMap::new();
 
@@ -724,11 +712,9 @@ pub async fn query_ip_addr_table(
 
 /// Query CDP cache table for neighbor information (Cisco devices)
 pub async fn query_cdp_neighbors(
+    session: &mut Box<snmp2::AsyncSession>,
     ip: IpAddr,
-    credential: &SnmpQueryCredential,
-    port: u16,
-) -> Result<Vec<CdpNeighbor>> {
-    let mut session = create_session(ip, credential, port).await?;
+) ->Result<Vec<CdpNeighbor>> {
     let mut neighbors: HashMap<(i32, i32), CdpNeighbor> = HashMap::new();
 
     let columns = [
@@ -841,11 +827,9 @@ pub async fn query_cdp_neighbors(
 /// Query ARP table (ipNetToMediaTable) for IP-to-MAC mappings.
 /// Returns entries with ifIndex, MAC, and IP for each ARP cache entry.
 pub async fn query_arp_table(
+    session: &mut Box<snmp2::AsyncSession>,
     ip: IpAddr,
-    credential: &SnmpQueryCredential,
-    port: u16,
-) -> Result<Vec<ArpEntry>> {
-    let mut session = create_session(ip, credential, port).await?;
+) ->Result<Vec<ArpEntry>> {
 
     // We need to walk 4 columns: ifIndex, physAddress, netAddress, type
     // OID suffix format: ifIndex.A.B.C.D
@@ -982,11 +966,9 @@ pub async fn query_arp_table(
 /// Query ENTITY-MIB entPhysicalTable for hardware inventory.
 /// Returns the best-match physical entity (chassis > stack > module).
 pub async fn query_entity_physical(
+    session: &mut Box<snmp2::AsyncSession>,
     ip: IpAddr,
-    credential: &SnmpQueryCredential,
-    port: u16,
-) -> Result<Option<DeviceInventory>> {
-    let mut session = create_session(ip, credential, port).await?;
+) ->Result<Option<DeviceInventory>> {
 
     struct PhysicalEntry {
         description: Option<String>,
@@ -1208,15 +1190,13 @@ struct FdbBuilder {
 /// leave the legacy table empty, so relying on dot1d alone silently produced no
 /// L2 adjacency for them (GH #649).
 pub async fn query_bridge_fdb(
+    session: &mut Box<snmp2::AsyncSession>,
     ip: IpAddr,
-    credential: &SnmpQueryCredential,
-    port: u16,
-) -> Result<Vec<BridgeFdbEntry>> {
-    let mut session = create_session(ip, credential, port).await?;
+) ->Result<Vec<BridgeFdbEntry>> {
 
     // Step 1: Walk dot1dBasePortIfIndex to build bridge_port → ifIndex map.
     // Both FDB tables reference this same dot1dBasePort space.
-    let port_to_if_index = walk_bridge_port_mapping(&mut session).await?;
+    let port_to_if_index = walk_bridge_port_mapping(session).await?;
 
     // Step 2: Walk legacy dot1dTpFdbTable columns.
     let mut fdb_entries: HashMap<String, FdbBuilder> = HashMap::new();
@@ -1310,7 +1290,7 @@ pub async fn query_bridge_fdb(
     // win; Q-BRIDGE fills in MACs the legacy table didn't report (or all of them,
     // on switches that populate only the Q-BRIDGE table).
     let legacy_count = fdb_entries.len();
-    let qbridge = walk_qbridge_fdb(&mut session).await.unwrap_or_default();
+    let qbridge = walk_qbridge_fdb(session).await.unwrap_or_default();
     let qbridge_count = qbridge.len();
     for (key, builder) in qbridge {
         fdb_entries.entry(key).or_insert(builder);
@@ -1454,11 +1434,9 @@ async fn walk_qbridge_fdb(
 /// Query local LLDP chassis ID (scalar GETs, not walks).
 /// Returns the device's own LLDP identity.
 pub async fn query_lldp_local(
+    session: &mut Box<snmp2::AsyncSession>,
     ip: IpAddr,
-    credential: &SnmpQueryCredential,
-    port: u16,
-) -> Result<Option<LldpLocalInfo>> {
-    let mut session = create_session(ip, credential, port).await?;
+) ->Result<Option<LldpLocalInfo>> {
 
     // GET lldpLocChassisIdSubtype
     let subtype_oid = parse_oid(oids::lldp::local::LLDP_LOC_CHASSIS_ID_SUBTYPE)?;
@@ -1524,11 +1502,9 @@ pub async fn query_lldp_local(
 /// Query VLAN table for VLAN IDs and names.
 /// Tries Q-BRIDGE dot1qVlanStaticName first, falls back to Cisco VTP vtpVlanName.
 pub async fn query_vlan_table(
+    session: &mut Box<snmp2::AsyncSession>,
     ip: IpAddr,
-    credential: &SnmpQueryCredential,
-    port: u16,
-) -> Result<Vec<VlanInfo>> {
-    let mut session = create_session(ip, credential, port).await?;
+) ->Result<Vec<VlanInfo>> {
     let mut vlans: Vec<VlanInfo> = Vec::new();
 
     // Try Q-BRIDGE dot1qVlanStaticName first
@@ -1666,14 +1642,12 @@ pub async fn query_vlan_table(
 /// Uses dot1qPvid for native VLANs and dot1qVlanCurrentEgressPorts/UntaggedPorts
 /// for tagged VLAN membership. Resolves bridge ports to ifIndex.
 pub async fn query_port_vlan_membership(
+    session: &mut Box<snmp2::AsyncSession>,
     ip: IpAddr,
-    credential: &SnmpQueryCredential,
-    port: u16,
-) -> Result<Vec<PortVlanMembership>> {
-    let mut session = create_session(ip, credential, port).await?;
+) ->Result<Vec<PortVlanMembership>> {
 
     // Step 1: Get bridge port → ifIndex mapping
-    let port_to_if_index = walk_bridge_port_mapping(&mut session).await?;
+    let port_to_if_index = walk_bridge_port_mapping(session).await?;
 
     if port_to_if_index.is_empty() {
         debug!(

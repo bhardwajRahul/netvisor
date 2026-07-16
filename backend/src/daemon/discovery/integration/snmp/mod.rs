@@ -19,6 +19,7 @@ pub use queries::{
     query_port_vlan_membership, query_system_info, query_vlan_table, walk_if_table,
 };
 pub use session::SNMP_WALK_TIMEOUT;
+use session::create_session;
 pub use types::{
     ArpEntry, BridgeFdbEntry, CdpNeighbor, DeviceInventory, IfTableEntry, IpAddrEntry,
     LldpLocalInfo, LldpLocalPort, LldpNeighbor, PortVlanMembership, SystemInfo, VlanInfo,
@@ -149,8 +150,24 @@ impl DiscoveryIntegration for SnmpIntegration {
         let port = handle.port;
         let ip = ctx.ip;
 
+        // Open one SNMP session per host and reuse it across every query below.
+        // Previously each of the ~12 queries opened its own session — and for v3 each
+        // repeated the full engine-discovery handshake — so a single collection did
+        // ~12 session setups. Reusing one session removes that per-query cost.
+        let mut session = match create_session(ip, credential, port).await {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::warn!(
+                    ip = %ip,
+                    error = %e,
+                    "Failed to open SNMP session; skipping SNMP collection"
+                );
+                return Ok(());
+            }
+        };
+
         // Query system info
-        let system_info = match query_system_info(ip, credential, port).await {
+        let system_info = match query_system_info(&mut session, ip).await {
             Ok(info)
                 if info.sys_descr.is_some()
                     || info.sys_name.is_some()
@@ -181,7 +198,7 @@ impl DiscoveryIntegration for SnmpIntegration {
         // authoritative full ifTable (safe to prune stale interfaces against) or a partial walk
         // cut short by timeout/error (must NOT prune — see GH #649). A hard failure yields an
         // empty set, which the server's existing empty-set guard already protects.
-        let (snmp_if_entries, if_table_complete) = match walk_if_table(ip, credential, port).await {
+        let (snmp_if_entries, if_table_complete) = match walk_if_table(&mut session, ip).await {
             Ok((entries, complete)) => {
                 tracing::debug!(
                     ip = %ip,
@@ -198,7 +215,7 @@ impl DiscoveryIntegration for SnmpIntegration {
         };
 
         // Query LLDP neighbors
-        let mut lldp_neighbors = match query_lldp_neighbors(ip, credential, port).await {
+        let mut lldp_neighbors = match query_lldp_neighbors(&mut session, ip).await {
             Ok(neighbors) => {
                 tracing::debug!(ip = %ip, count = neighbors.len(), "LLDP neighbors discovered");
                 neighbors
@@ -211,7 +228,7 @@ impl DiscoveryIntegration for SnmpIntegration {
         let lldp_count = lldp_neighbors.len();
 
         // Query CDP neighbors (Cisco devices)
-        let cdp_neighbors = match query_cdp_neighbors(ip, credential, port).await {
+        let cdp_neighbors = match query_cdp_neighbors(&mut session, ip).await {
             Ok(neighbors) => {
                 tracing::debug!(ip = %ip, count = neighbors.len(), "CDP neighbors discovered");
                 neighbors
@@ -230,7 +247,7 @@ impl DiscoveryIntegration for SnmpIntegration {
         // that reports lldpLocPortNum == ifIndex or omits the table). CDP is not
         // remapped: cdpCacheIfIndex is already a real ifIndex.
         let lldp_local_ports = if lldp_count > 0 {
-            match query_lldp_local_ports(ip, credential, port).await {
+            match query_lldp_local_ports(&mut session, ip).await {
                 Ok(map) => map,
                 Err(e) => {
                     tracing::debug!(ip = %ip, error = %e, "lldpLocPortTable query failed");
@@ -243,7 +260,7 @@ impl DiscoveryIntegration for SnmpIntegration {
         remap_lldp_local_ports(&mut lldp_neighbors, &lldp_local_ports, &snmp_if_entries);
 
         // Query ipAddrTable for IP->ifIndex+netMask mappings
-        let ip_addr_table = query_ip_addr_table(ip, credential, port)
+        let ip_addr_table = query_ip_addr_table(&mut session, ip)
             .await
             .unwrap_or_else(|e| {
                 tracing::debug!(ip = %ip, error = %e, "ipAddrTable query failed");
@@ -251,7 +268,7 @@ impl DiscoveryIntegration for SnmpIntegration {
             });
 
         // Query ARP table for remote host discovery
-        let arp_entries = query_arp_table(ip, credential, port)
+        let arp_entries = query_arp_table(&mut session, ip)
             .await
             .unwrap_or_else(|e| {
                 tracing::debug!(ip = %ip, error = %e, "ARP table query failed");
@@ -261,7 +278,7 @@ impl DiscoveryIntegration for SnmpIntegration {
         tracing::info!(ip = %ip, count = arp_count, "ARP table entries collected");
 
         // Query ENTITY-MIB for hardware inventory
-        let device_inventory = query_entity_physical(ip, credential, port)
+        let device_inventory = query_entity_physical(&mut session, ip)
             .await
             .unwrap_or_else(|e| {
                 tracing::debug!(ip = %ip, error = %e, "ENTITY-MIB query failed");
@@ -275,7 +292,7 @@ impl DiscoveryIntegration for SnmpIntegration {
         );
 
         // Query bridge FDB for MAC-to-port mappings
-        let bridge_fdb = query_bridge_fdb(ip, credential, port)
+        let bridge_fdb = query_bridge_fdb(&mut session, ip)
             .await
             .unwrap_or_else(|e| {
                 tracing::debug!(ip = %ip, error = %e, "Bridge FDB query failed");
@@ -287,7 +304,7 @@ impl DiscoveryIntegration for SnmpIntegration {
         let network_id = host_data.host.base.network_id;
 
         // Query VLAN table for VLAN names and persist as VLAN entities
-        let vlan_table = query_vlan_table(ip, credential, port)
+        let vlan_table = query_vlan_table(&mut session, ip)
             .await
             .unwrap_or_else(|e| {
                 tracing::debug!(ip = %ip, error = %e, "VLAN table query failed");
@@ -318,7 +335,7 @@ impl DiscoveryIntegration for SnmpIntegration {
         };
 
         // Query per-port VLAN membership
-        let port_vlan_membership = query_port_vlan_membership(ip, credential, port)
+        let port_vlan_membership = query_port_vlan_membership(&mut session, ip)
             .await
             .unwrap_or_else(|e| {
                 tracing::debug!(ip = %ip, error = %e, "Port VLAN membership query failed");
@@ -327,7 +344,7 @@ impl DiscoveryIntegration for SnmpIntegration {
         tracing::info!(ip = %ip, count = port_vlan_membership.len(), "Port VLAN memberships collected");
 
         // Query local LLDP identity
-        let lldp_local = query_lldp_local(ip, credential, port).await.unwrap_or_else(|e| {
+        let lldp_local = query_lldp_local(&mut session, ip).await.unwrap_or_else(|e| {
             tracing::debug!(ip = %ip, error = %e, "LLDP local identity query failed");
             None
         });
@@ -825,25 +842,27 @@ pub async fn poll_device(
 )> {
     debug!("Starting SNMP poll of {}", ip);
 
-    let system_info = timeout(SNMP_WALK_TIMEOUT, query_system_info(ip, credential, port))
+    let mut session = create_session(ip, credential, port).await?;
+
+    let system_info = timeout(SNMP_WALK_TIMEOUT, query_system_info(&mut session, ip))
         .await
         .map_err(|_| anyhow::anyhow!("System info query timeout"))??;
 
     let (interfaces, _if_table_complete) =
-        timeout(SNMP_WALK_TIMEOUT, walk_if_table(ip, credential, port))
+        timeout(SNMP_WALK_TIMEOUT, walk_if_table(&mut session, ip))
             .await
             .map_err(|_| anyhow::anyhow!("ifTable walk timeout"))?
             .unwrap_or_default();
 
     let lldp_neighbors = timeout(
         SNMP_WALK_TIMEOUT,
-        query_lldp_neighbors(ip, credential, port),
+        query_lldp_neighbors(&mut session, ip),
     )
     .await
     .unwrap_or(Ok(vec![]))
     .unwrap_or_default();
 
-    let cdp_neighbors = timeout(SNMP_WALK_TIMEOUT, query_cdp_neighbors(ip, credential, port))
+    let cdp_neighbors = timeout(SNMP_WALK_TIMEOUT, query_cdp_neighbors(&mut session, ip))
         .await
         .unwrap_or(Ok(vec![]))
         .unwrap_or_default();
