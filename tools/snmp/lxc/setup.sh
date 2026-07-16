@@ -186,6 +186,40 @@ cat > "$DATA_DIR/switch-core-01-lldp.txt" << 'EOF'
 .1.0.8802.1.1.2.1.4.1.1.10.0.2.1 string Juniper Networks, Inc. JunOS 21.4R3-S5, MX204
 EOF
 
+# switch-core-01 extra tables — make a scan exercise the getbulk walks (and the
+# shared per-host session) for the subtrees stock snmpd does NOT answer itself:
+# BRIDGE-MIB/Q-BRIDGE (17), ENTITY-MIB (47) and CDP (enterprise). ipAddrTable and
+# ipNetToMedia (ARP) are already answered by snmpd's built-in IP module, so those
+# walks are exercised on every device without extra data here.
+# (net-snmp `pass` can't emit binary MAC octet-strings, so dot1dTpFdb/dot1qTpFdb
+# rows and ARP MACs are not simulated; the daemon still walks those subtrees via
+# getbulk and terminates cleanly — the walk mechanism is what we're covering.)
+cat > "$DATA_DIR/switch-core-01-bridge.txt" << 'EOF'
+.1.3.6.1.2.1.17.1.4.1.2.1 integer 1
+.1.3.6.1.2.1.17.1.4.1.2.2 integer 2
+.1.3.6.1.2.1.17.1.4.1.2.3 integer 3
+.1.3.6.1.2.1.17.7.1.4.3.1.1.10 string DATA
+.1.3.6.1.2.1.17.7.1.4.3.1.1.20 string VOICE
+.1.3.6.1.2.1.17.7.1.4.5.1.1.1 integer 10
+.1.3.6.1.2.1.17.7.1.4.5.1.1.2 integer 10
+.1.3.6.1.2.1.17.7.1.4.5.1.1.3 integer 20
+EOF
+
+cat > "$DATA_DIR/switch-core-01-entity.txt" << 'EOF'
+.1.3.6.1.2.1.47.1.1.1.1.2.1 string Cisco Catalyst 2960-24TC-L
+.1.3.6.1.2.1.47.1.1.1.1.5.1 integer 3
+.1.3.6.1.2.1.47.1.1.1.1.7.1 string Chassis
+.1.3.6.1.2.1.47.1.1.1.1.11.1 string FOC1234X5YZ
+.1.3.6.1.2.1.47.1.1.1.1.12.1 string Cisco
+.1.3.6.1.2.1.47.1.1.1.1.13.1 string WS-C2960-24TC-L
+EOF
+
+cat > "$DATA_DIR/switch-core-01-cdp.txt" << 'EOF'
+.1.3.6.1.4.1.9.9.23.1.2.1.1.6.2.1 string router-gw-01
+.1.3.6.1.4.1.9.9.23.1.2.1.1.7.2.1 string ge-0/0/0
+.1.3.6.1.4.1.9.9.23.1.2.1.1.8.2.1 string Juniper MX204
+EOF
+
 # switch-access-01 IF-MIB
 cat > "$DATA_DIR/switch-access-01-iftable.txt" << 'EOF'
 .1.3.6.1.2.1.2.2.1.1.1 integer 1
@@ -459,6 +493,15 @@ cat > "$DATA_DIR/legacy-switch-01-lldp.txt" << 'EOF'
 .1.0.8802.1.1.2.1.4.1.1.10.0.1.1 string Cisco IOS Software, C3750 Software (C3750-IPSERVICESK9-M), Version 15.0(2)SE11
 EOF
 
+# legacy-switch-01 BRIDGE — gives the v1-only device a non-ifTable table to walk,
+# so a scan exercises the getbulk -> getnext fallback (v1 rejects getbulk) across
+# more than just ifTable/LLDP.
+cat > "$DATA_DIR/legacy-switch-01-bridge.txt" << 'EOF'
+.1.3.6.1.2.1.17.1.4.1.2.1 integer 1
+.1.3.6.1.2.1.17.1.4.1.2.2 integer 2
+.1.3.6.1.2.1.17.7.1.4.3.1.1.1 string default
+EOF
+
 # secure-switch-01 IF-MIB (SNMPv3-only device — hardened, mirrors Huawei S5000)
 cat > "$DATA_DIR/secure-switch-01-iftable.txt" << 'EOF'
 .1.3.6.1.2.1.2.2.1.1.1 integer 1
@@ -643,6 +686,9 @@ sysservices 6
 pass .1.3.6.1.2.1.2.2 /bin/bash $H $D/switch-core-01-iftable.txt
 pass .1.3.6.1.2.1.31.1.1 /bin/bash $H $D/switch-core-01-iftable.txt
 pass .1.0.8802.1.1.2 /bin/bash $H $D/switch-core-01-lldp.txt
+pass .1.3.6.1.2.1.17 /bin/bash $H $D/switch-core-01-bridge.txt
+pass .1.3.6.1.2.1.47 /bin/bash $H $D/switch-core-01-entity.txt
+pass .1.3.6.1.4.1.9.9.23 /bin/bash $H $D/switch-core-01-cdp.txt
 EOF
 
 cat > "$CONF_DIR/snmpd-switch-access-01.conf" << EOF
@@ -732,6 +778,7 @@ sysservices 6
 pass .1.3.6.1.2.1.2.2 /bin/bash $H $D/legacy-switch-01-iftable.txt
 pass .1.3.6.1.2.1.31.1.1 /bin/bash $H $D/legacy-switch-01-iftable.txt
 pass .1.0.8802.1.1.2 /bin/bash $H $D/legacy-switch-01-lldp.txt
+pass .1.3.6.1.2.1.17 /bin/bash $H $D/legacy-switch-01-bridge.txt
 EOF
 
 # secure-switch-01 — SNMPv3-ONLY (AuthPriv). No rocommunity, so v1/v2c are
