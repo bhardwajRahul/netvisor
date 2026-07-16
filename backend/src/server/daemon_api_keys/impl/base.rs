@@ -149,4 +149,11 @@ impl ApiKeyCommon for DaemonApiKey {
     fn set_last_used(&mut self, time: Option<DateTime<Utc>>) {
         self.base.last_used = time;
     }
+
+    fn refresh_stored_plaintext(&mut self, plaintext: &str) {
+        // Only ServerPoll keys hold a plaintext copy; leave DaemonPoll keys (None) alone.
+        if self.base.plaintext.is_some() {
+            self.base.plaintext = Some(SecretString::from(plaintext.to_string()));
+        }
+    }
 }
