@@ -533,6 +533,7 @@ impl DiscoveryService {
             phase: DiscoveryPhase::Cancelled,
             progress: 0,
             error: None,
+            warnings: Vec::new(),
             started_at: session.started_at,
             finished_at: Some(Utc::now()),
             discovery_type: session.discovery_type,

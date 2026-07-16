@@ -365,6 +365,7 @@ impl DiscoveryOps {
             phase: DiscoveryPhase::Started,
             progress: 0,
             error: None,
+            warnings: Vec::new(),
             finished_at: None,
         })
         .await?;
@@ -394,18 +395,27 @@ impl DiscoveryOps {
             .last_progress
             .load(std::sync::atomic::Ordering::Relaxed);
 
+        // Non-fatal warnings accumulated during the run (e.g. hit the time limit).
+        let warnings = session
+            .warnings
+            .lock()
+            .map(|w| w.clone())
+            .unwrap_or_default();
+
         // Build the terminal update based on result
         let terminal_update = match &discovery_result {
             Ok(_) => {
                 tracing::info!(
                     session_id = %session_id,
                     progress = 100,
+                    warnings = warnings.len(),
                     "Discovery session completed successfully"
                 );
                 DiscoverySessionUpdate {
                     phase: DiscoveryPhase::Complete,
                     progress: 100,
                     error: None,
+                    warnings,
                     finished_at: Some(Utc::now()),
                 }
             }
@@ -419,6 +429,7 @@ impl DiscoveryOps {
                     phase: DiscoveryPhase::Cancelled,
                     progress: final_progress,
                     error: None,
+                    warnings,
                     finished_at: Some(Utc::now()),
                 }
             }
@@ -439,6 +450,7 @@ impl DiscoveryOps {
                     phase: DiscoveryPhase::Failed,
                     progress: final_progress,
                     error: Some(error),
+                    warnings,
                     finished_at: Some(Utc::now()),
                 }
             }

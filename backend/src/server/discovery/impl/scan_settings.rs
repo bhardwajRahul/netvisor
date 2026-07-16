@@ -48,6 +48,13 @@ pub struct ScanSettings {
     /// Lower values scan more IPs — increase arp_rate_pps accordingly.
     #[serde(default)]
     pub arp_scan_cutoff: Option<u8>,
+
+    /// Hard ceiling on how long a single discovery run may take, in seconds
+    /// (default: 21600 = 6h). When hit, the run force-completes and any hosts
+    /// still queued are left un-scanned until the next run. Raise this for very
+    /// large networks that legitimately need more than the default window.
+    #[serde(default)]
+    pub max_discovery_duration: Option<u32>,
 }
 
 pub mod defaults {
@@ -68,6 +75,10 @@ pub mod defaults {
     }
     pub fn arp_scan_cutoff() -> u8 {
         15
+    }
+    /// 6 hours — matches the daemon's historical hardcoded ceiling.
+    pub fn max_discovery_duration() -> u32 {
+        21600
     }
 }
 
@@ -171,6 +182,7 @@ impl ScanSettings {
             full_scan_interval: _,
             is_full_scan: _, // Server-set, not a UI field
             arp_scan_cutoff: _,
+            max_discovery_duration: _,
         } = Self::default();
 
         vec![
@@ -280,6 +292,20 @@ impl ScanSettings {
                 ),
                 options: None,
                 default_value: Some("3"),
+                category: Some("Detection"),
+            },
+            FieldDefinition {
+                id: "max_discovery_duration",
+                label: "Max Discovery Duration (seconds)",
+                field_type: FieldType::Number,
+                placeholder: Some("21600"),
+                secret: false,
+                optional: true,
+                help_text: Some(
+                    "Hard time limit for a single discovery run, in seconds (default 21600 = 6 hours). When reached, the run stops and any hosts not yet scanned are left for the next run. Raise this for very large networks that need a longer window.",
+                ),
+                options: None,
+                default_value: Some("21600"),
                 category: Some("Detection"),
             },
         ]

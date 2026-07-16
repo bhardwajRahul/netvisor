@@ -19,6 +19,7 @@ export interface DiscoveryUpdatePayload {
 	phase: DiscoveryPhase;
 	progress: number;
 	error?: string | null;
+	warnings?: string[];
 	started_at?: string | null;
 	finished_at?: string | null;
 	hosts_discovered?: number | null;

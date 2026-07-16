@@ -3328,6 +3328,11 @@ export interface components {
                 session_id: string;
                 /** Format: date-time */
                 started_at?: string | null;
+                /**
+                 * @description Non-fatal warnings for a completed run (e.g. the scan hit its time limit
+                 *     and left hosts un-scanned). Unlike `error`, these do not mark the run failed.
+                 */
+                warnings?: string[];
             };
             error?: string | null;
             meta: components["schemas"]["ApiMeta"];
@@ -4231,6 +4236,11 @@ export interface components {
                 session_id: string;
                 /** Format: date-time */
                 started_at?: string | null;
+                /**
+                 * @description Non-fatal warnings for a completed run (e.g. the scan hit its time limit
+                 *     and left hosts un-scanned). Unlike `error`, these do not mark the run failed.
+                 */
+                warnings?: string[];
             }[];
             error?: string | null;
             meta: components["schemas"]["ApiMeta"];
@@ -5190,6 +5200,11 @@ export interface components {
             session_id: string;
             /** Format: date-time */
             started_at?: string | null;
+            /**
+             * @description Non-fatal warnings for a completed run (e.g. the scan hit its time limit
+             *     and left hosts un-scanned). Unlike `error`, these do not mark the run failed.
+             */
+            warnings?: string[];
         };
         DockerSubnetVirtualization: {
             /**
@@ -7080,6 +7095,13 @@ export interface components {
              *     Set by the server before dispatching to the daemon — not user-configurable.
              */
             is_full_scan?: boolean;
+            /**
+             * @description Hard ceiling on how long a single discovery run may take, in seconds
+             *     (default: 21600 = 6h). When hit, the run force-completes and any hosts
+             *     still queued are left un-scanned until the next run. Raise this for very
+             *     large networks that legitimately need more than the default window.
+             */
+            max_discovery_duration?: number | null;
             /** @description Ports scanned concurrently per host (default: 200, clamped 16-1000) */
             port_scan_batch_size?: number | null;
             /**
