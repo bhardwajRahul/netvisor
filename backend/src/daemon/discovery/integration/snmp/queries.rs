@@ -15,7 +15,7 @@ use super::oids::{self, oid_to_vec, parse_oid};
 use super::session::{MAX_WALK_ENTRIES, SNMP_TIMEOUT, create_session};
 use super::types::{
     ArpEntry, BridgeFdbEntry, CdpNeighbor, DeviceInventory, IfTableEntry, IpAddrEntry,
-    LldpLocalInfo, LldpNeighbor, PortVlanMembership, SystemInfo, VlanInfo,
+    LldpLocalInfo, LldpLocalPort, LldpNeighbor, PortVlanMembership, SystemInfo, VlanInfo,
 };
 use super::values::{
     parse_lldp_mgmt_addr, parse_portlist_bitmap, qbridge_fdb_index_to_mac, value_to_i32,
@@ -278,7 +278,10 @@ pub async fn query_lldp_neighbors(
         (oids::lldp::remote::entry::LLDP_REM_PORT_DESC, "remPortDesc"),
         (oids::lldp::remote::entry::LLDP_REM_SYS_NAME, "remSysName"),
         (oids::lldp::remote::entry::LLDP_REM_SYS_DESC, "remSysDesc"),
-        (oids::lldp::remote::entry::LLDP_REM_MAN_ADDR, "remManAddr"),
+        // NOTE: lldpRemManAddr is intentionally NOT walked here. It lives in the
+        // separate lldpRemManAddrTable whose index carries extra trailing sub-ids
+        // (addrSubtype.addrLen.addr), so the 3-element index parse below does not
+        // apply. It is resolved by walk_lldp_rem_man_addr() after this loop.
     ];
 
     for (base_oid_str, column_name) in columns {
@@ -368,12 +371,6 @@ pub async fn query_lldp_neighbors(
                                 }
                                 "remSysName" => neighbor.remote_sys_name = value_to_string(&value),
                                 "remSysDesc" => neighbor.remote_sys_desc = value_to_string(&value),
-                                "remManAddr" => {
-                                    // Management address is encoded as address family + address bytes
-                                    if let Value::OctetString(bytes) = &value {
-                                        neighbor.remote_mgmt_addr = parse_lldp_mgmt_addr(bytes);
-                                    }
-                                }
                                 _ => {}
                             }
                         }
@@ -390,10 +387,168 @@ pub async fn query_lldp_neighbors(
         }
     }
 
+    // Resolve remote management addresses from the separate lldpRemManAddrTable.
+    // Its index is timeMark.localPortNum.remIndex.addrSubtype.addrLen.addr, so the
+    // address lives in the OID *index*, not the column value. We walk an accessible
+    // column (lldpRemManAddrIfSubtype) and reconstruct the address from the index.
+    let man_base_oid_str = oids::lldp::remote::entry::LLDP_REM_MAN_ADDR_IF_SUBTYPE;
+    if let Ok(man_base_oid) = parse_oid(man_base_oid_str) {
+        let man_base_parts: Vec<u64> = man_base_oid_str
+            .split('.')
+            .filter(|s| !s.is_empty())
+            .filter_map(|s| s.parse().ok())
+            .collect();
+        let mut current_oid = man_base_oid.clone();
+        let mut count = 0;
+        loop {
+            if count >= MAX_WALK_ENTRIES {
+                break;
+            }
+            match timeout(SNMP_TIMEOUT, session.getnext(&current_oid)).await {
+                Ok(Ok(mut response)) => {
+                    let Some((resp_oid, value)) = response.varbinds.next() else {
+                        break;
+                    };
+                    if matches!(
+                        value,
+                        Value::EndOfMibView | Value::NoSuchObject | Value::NoSuchInstance
+                    ) {
+                        break;
+                    }
+                    let response_parts = oid_to_vec(&resp_oid);
+                    if response_parts.len() <= man_base_parts.len()
+                        || !response_parts.starts_with(&man_base_parts)
+                    {
+                        break;
+                    }
+                    // suffix = timeMark, localPortNum, remIndex, addrSubtype, addrLen, addr...
+                    let suffix = &response_parts[man_base_parts.len()..];
+                    if suffix.len() >= 5 {
+                        let local_port = suffix[1] as i32;
+                        let rem_index = suffix[2] as i32;
+                        let addr_subtype = suffix[3];
+                        let addr_len = suffix[4] as usize;
+                        if suffix.len() >= 5 + addr_len && addr_len > 0 {
+                            // parse_lldp_mgmt_addr expects [ianaFamily, addr bytes...]
+                            let mut buf = Vec::with_capacity(1 + addr_len);
+                            buf.push(addr_subtype as u8);
+                            buf.extend(suffix[5..5 + addr_len].iter().map(|&b| b as u8));
+                            if let Some(addr) = parse_lldp_mgmt_addr(&buf)
+                                && let Some(neighbor) = neighbors.get_mut(&(local_port, rem_index))
+                            {
+                                neighbor.remote_mgmt_addr = Some(addr);
+                            }
+                        }
+                    }
+                    current_oid = match Oid::from(response_parts.as_slice()) {
+                        Ok(o) => o,
+                        Err(_) => break,
+                    };
+                    count += 1;
+                }
+                Ok(Err(e)) => {
+                    debug!(oid = %man_base_oid_str, error = %e, "LLDP mgmt-addr walk error");
+                    break;
+                }
+                Err(_) => break,
+            }
+        }
+    }
+
     let result: Vec<LldpNeighbor> = neighbors.into_values().collect();
     debug!("LLDP query from {} returned {} neighbors", ip, result.len());
 
     Ok(result)
+}
+
+/// Walk lldpLocPortTable, returning `lldpLocPortNum -> LldpLocalPort`.
+///
+/// The local-port index reported in `lldpRemTable` is an `lldpLocPortNum`, which on
+/// some vendors (e.g. ExtremeXOS) is a separate namespace from `ifIndex`. This table
+/// maps that number to a textual port id (`lldpLocPortId`), which the caller resolves
+/// back to the real ifIndex. Returns an empty map if the device does not expose the
+/// table (callers fall back to treating the local-port number as the ifIndex).
+pub async fn query_lldp_local_ports(
+    ip: IpAddr,
+    credential: &SnmpQueryCredential,
+    port: u16,
+) -> Result<HashMap<i32, LldpLocalPort>> {
+    let mut session = create_session(ip, credential, port).await?;
+    let mut ports: HashMap<i32, LldpLocalPort> = HashMap::new();
+
+    let columns = [
+        (oids::lldp::local::LLDP_LOC_PORT_ID_SUBTYPE, "subtype"),
+        (oids::lldp::local::LLDP_LOC_PORT_ID, "id"),
+    ];
+
+    for (base_oid_str, column_name) in columns {
+        let base_oid = match parse_oid(base_oid_str) {
+            Ok(o) => o,
+            Err(e) => {
+                debug!("Failed to parse lldpLocPort OID {}: {}", base_oid_str, e);
+                continue;
+            }
+        };
+        let base_parts: Vec<u64> = base_oid_str
+            .split('.')
+            .filter(|s| !s.is_empty())
+            .filter_map(|s| s.parse().ok())
+            .collect();
+
+        let mut current_oid = base_oid.clone();
+        let mut count = 0;
+        loop {
+            if count >= MAX_WALK_ENTRIES {
+                break;
+            }
+            match timeout(SNMP_TIMEOUT, session.getnext(&current_oid)).await {
+                Ok(Ok(mut response)) => {
+                    let Some((resp_oid, value)) = response.varbinds.next() else {
+                        break;
+                    };
+                    if matches!(
+                        value,
+                        Value::EndOfMibView | Value::NoSuchObject | Value::NoSuchInstance
+                    ) {
+                        break;
+                    }
+                    let response_parts = oid_to_vec(&resp_oid);
+                    if response_parts.len() <= base_parts.len()
+                        || !response_parts.starts_with(&base_parts)
+                    {
+                        break;
+                    }
+                    // Index is a single sub-id: lldpLocPortNum
+                    let local_port_num = response_parts[base_parts.len()] as i32;
+                    let entry = ports.entry(local_port_num).or_default();
+                    match column_name {
+                        "subtype" => {
+                            entry.port_id_subtype = value_to_i32(&value).map(|v| v as u8)
+                        }
+                        "id" => entry.port_id = value_to_string(&value),
+                        _ => {}
+                    }
+                    current_oid = match Oid::from(response_parts.as_slice()) {
+                        Ok(o) => o,
+                        Err(_) => break,
+                    };
+                    count += 1;
+                }
+                Ok(Err(e)) => {
+                    debug!(oid = %base_oid_str, error = %e, "lldpLocPortTable walk error");
+                    break;
+                }
+                Err(_) => break,
+            }
+        }
+    }
+
+    debug!(
+        "lldpLocPortTable from {} returned {} local ports",
+        ip,
+        ports.len()
+    );
+    Ok(ports)
 }
 
 /// Query ipAddrTable for IP address to ifIndex + subnet mask mappings.
