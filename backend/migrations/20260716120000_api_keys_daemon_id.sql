@@ -10,10 +10,13 @@
 -- (The reverse, daemons.api_key_id, stays ON DELETE SET NULL: deleting a key disables the
 -- daemon but keeps its record + history so it can be re-provisioned.)
 --
--- The partial UNIQUE index that enforces 1:1 is created CONCURRENTLY in the paired
--- 20260716120001 migration (CONCURRENTLY cannot run inside a transaction).
+-- The FK is VALIDATEd in the paired 20260716120001 migration (a separate transaction —
+-- validating in the same transaction as the ADD would hold a lock blocking reads), and the
+-- partial UNIQUE index that enforces 1:1 is created CONCURRENTLY in 20260716120002
+-- (CONCURRENTLY cannot run inside a transaction).
 
 SET lock_timeout = '5s';
+SET statement_timeout = '30s';
 
 -- Additive, nullable: safe on a populated table, no rewrite, no default backfill.
 ALTER TABLE api_keys ADD COLUMN daemon_id UUID;
@@ -34,5 +37,3 @@ SET daemon_id = d.id
 FROM daemons d
 WHERE d.api_key_id = ak.id
   AND ak.daemon_id IS NULL;
-
-ALTER TABLE api_keys VALIDATE CONSTRAINT api_keys_daemon_id_fkey;

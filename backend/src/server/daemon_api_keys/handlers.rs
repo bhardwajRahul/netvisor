@@ -165,7 +165,12 @@ pub async fn rotate_key_handler(
     // Capture the pre-rotation hash so we can evict it: after rotation the old
     // plaintext must stop authenticating immediately, not linger in the cache
     // until the TTL. The new hash is uncached (populated on its next auth).
-    let old_hashed_key = service.get_by_id(&api_key_id).await.ok().flatten().map(|k| k.base.key);
+    let old_hashed_key = service
+        .get_by_id(&api_key_id)
+        .await
+        .ok()
+        .flatten()
+        .map(|k| k.base.key);
 
     let key = service
         .rotate_key(api_key_id, ip, user_agent, auth.into_entity())
@@ -227,7 +232,12 @@ pub async fn delete_daemon_api_key(
 
     // Evict the deleted key's resolution so it can't authenticate from cache.
     let service = state.services.daemon_api_key_service.clone();
-    let hashed_key = service.get_by_id(&id).await.ok().flatten().map(|k| k.base.key);
+    let hashed_key = service
+        .get_by_id(&id)
+        .await
+        .ok()
+        .flatten()
+        .map(|k| k.base.key);
 
     let result = delete_handler::<DaemonApiKey>(state, auth, Path(id)).await;
     if let Some(hashed_key) = hashed_key {

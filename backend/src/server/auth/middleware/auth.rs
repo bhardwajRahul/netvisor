@@ -508,7 +508,8 @@ impl AuthenticatedEntity {
                     // resolution without touching the DB. Validity is re-evaluated here
                     // (not cached as a verdict); a stale/invalid entry is evicted and we
                     // fall through to the DB path (which also handles auto-disable).
-                    if let Some(resolved) = daemon_api_key_service.cached_resolution(&hashed_key).await
+                    if let Some(resolved) =
+                        daemon_api_key_service.cached_resolution(&hashed_key).await
                     {
                         let expired = resolved
                             .expires_at

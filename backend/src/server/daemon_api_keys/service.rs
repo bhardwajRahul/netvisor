@@ -91,9 +91,7 @@ impl DaemonApiKeyService {
             storage,
             event_bus,
             entity_tag_service,
-            resolution_cache: Cache::builder()
-                .time_to_live(RESOLUTION_CACHE_TTL)
-                .build(),
+            resolution_cache: Cache::builder().time_to_live(RESOLUTION_CACHE_TTL).build(),
         }
     }
 
