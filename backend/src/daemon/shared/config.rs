@@ -790,6 +790,12 @@ impl ConfigStore {
         Ok(config.name.clone())
     }
 
+    pub async fn set_name(&self, name: String) -> Result<()> {
+        let mut config = self.config.write().await;
+        config.name = name;
+        self.save(&config.clone()).await
+    }
+
     pub async fn set_id(&self, id: Uuid) -> Result<()> {
         let mut config = self.config.write().await;
         config.id = id;

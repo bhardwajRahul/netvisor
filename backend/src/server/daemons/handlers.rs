@@ -949,21 +949,12 @@ async fn provision_daemon(
         )));
     }
 
-    // Seed the daemon's first discovery. Host-scoped refs (local sockets / loopback)
-    // apply immediately to the host_credentials junction; the remainder are persisted
-    // on the daemon's Discovery row, created here so the seeded credentials are in place
-    // before first contact. create_default_discovery_jobs is idempotent, so the later
+    // Seed the daemon's first discovery: persist the credential refs on the daemon's
+    // Discovery row so they are PROBED on that run and only assigned to a host once the
+    // probe succeeds (including refs targeted at the daemon host / 127.0.0.1). We do NOT
+    // write the host_credentials junction directly here — a seeded credential must earn
+    // its assignment. create_default_discovery_jobs is idempotent, so the later
     // registration / first-contact paths won't duplicate this.
-    let remaining_targets = state
-        .services
-        .credential_service
-        .apply_integration_targets(created_host.id, request.seed_credential_refs.clone())
-        .await
-        .unwrap_or_else(|e| {
-            tracing::warn!(host_id = %created_host.id, error = ?e, "Failed to apply seed credential refs at provision");
-            request.seed_credential_refs.clone()
-        });
-
     let is_free_plan = state
         .services
         .organization_service
@@ -983,7 +974,7 @@ async fn provision_daemon(
             request.network_id,
             created_host.id,
             is_free_plan,
-            &remaining_targets,
+            &request.seed_credential_refs,
         )
         .await
     {
