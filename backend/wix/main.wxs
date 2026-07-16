@@ -74,9 +74,19 @@
         <Property Id="LISTENPORT" Value="60073" Secure="yes" />
         <Property Id="LOGLEVEL" Value="info" Secure="yes" />
         <Property Id="LOGFILE" Secure="yes" />
+        <!-- Restrict discovery to specific interface(s), comma-separated. Empty = all. -->
+        <Property Id="INTERFACES" Secure="yes" />
+        <!-- Accept invalid TLS certs when scanning endpoints (default on — scanners probe
+             arbitrary internal services). Both modes. -->
+        <Property Id="ACCEPTINVALIDSCANCERTS" Value="true" Secure="yes" />
+        <!-- Allow self-signed certs for the daemon->server connection (DaemonPoll only). -->
+        <Property Id="ALLOWSELFSIGNEDCERTS" Value="false" Secure="yes" />
+        <!-- Seconds between heartbeats to the server (DaemonPoll only). -->
+        <Property Id="HEARTBEATINTERVAL" Value="30" Secure="yes" />
         <!-- Optional-flag helpers: set to a real flag only when the value is non-default, so the
              install command doesn't pass empty/pointless flags. Defaults are empty. -->
         <Property Id="LOGFILEARG" Secure="yes" />
+        <Property Id="INTERFACESARG" Secure="yes" />
         <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
 
         <!-- Scanopy mark shown for the product in Add/Remove Programs / Settings > Apps. -->
@@ -136,18 +146,24 @@
             Property="LOGFILEARG"
             Value="--log-file &quot;[LOGFILE]&quot;"
             Execute="immediate" />
+        <!-- Likewise interfaces: only restrict when a value is given (empty = all interfaces). -->
+        <CustomAction Id="SetInterfacesArg"
+            Property="INTERFACESARG"
+            Value="--interfaces &quot;[INTERFACES]&quot;"
+            Execute="immediate" />
 
         <!-- Mode-gated install command. NETWORKID is gone (network comes from the 1:1 key).
-             DaemonPoll dials the server (needs a server url); ServerPoll is dialed by the
-             server (listen bind/port, no server url). The mode flag is explicit so the daemon
-             does not have to infer it from a service-baked config. -->
+             DaemonPoll dials the server (needs a server url + heartbeat + self-signed-cert
+             option); ServerPoll is dialed by the server (listen bind/port, no server url). The
+             mode flag is explicit so the daemon does not have to infer it from a service config.
+             accept-invalid-scan-certs + interfaces apply to both. -->
         <CustomAction Id="InstallCmdDaemonPoll"
             Property="InstallDaemonCmd"
-            Value="&quot;[INSTALLFOLDER]scanopy-daemon.exe&quot; install --name &quot;[DAEMONNAME]&quot; --daemon-api-key &quot;[APIKEY]&quot; --server-url &quot;[SERVERURL]&quot; --mode daemon_poll --log-level &quot;[LOGLEVEL]&quot; [LOGFILEARG]"
+            Value="&quot;[INSTALLFOLDER]scanopy-daemon.exe&quot; install --name &quot;[DAEMONNAME]&quot; --daemon-api-key &quot;[APIKEY]&quot; --server-url &quot;[SERVERURL]&quot; --mode daemon_poll --log-level &quot;[LOGLEVEL]&quot; --heartbeat-interval &quot;[HEARTBEATINTERVAL]&quot; --allow-self-signed-certs &quot;[ALLOWSELFSIGNEDCERTS]&quot; --accept-invalid-scan-certs &quot;[ACCEPTINVALIDSCANCERTS]&quot; [LOGFILEARG] [INTERFACESARG]"
             Execute="immediate" />
         <CustomAction Id="InstallCmdServerPoll"
             Property="InstallDaemonCmd"
-            Value="&quot;[INSTALLFOLDER]scanopy-daemon.exe&quot; install --name &quot;[DAEMONNAME]&quot; --daemon-api-key &quot;[APIKEY]&quot; --mode server_poll --bind-address &quot;[LISTENADDRESS]&quot; --daemon-port &quot;[LISTENPORT]&quot; --log-level &quot;[LOGLEVEL]&quot; [LOGFILEARG]"
+            Value="&quot;[INSTALLFOLDER]scanopy-daemon.exe&quot; install --name &quot;[DAEMONNAME]&quot; --daemon-api-key &quot;[APIKEY]&quot; --mode server_poll --bind-address &quot;[LISTENADDRESS]&quot; --daemon-port &quot;[LISTENPORT]&quot; --log-level &quot;[LOGLEVEL]&quot; --accept-invalid-scan-certs &quot;[ACCEPTINVALIDSCANCERTS]&quot; [LOGFILEARG] [INTERFACESARG]"
             Execute="immediate" />
         <CustomAction Id="InstallDaemonCmd"
             BinaryKey="WixCA"
@@ -183,9 +199,10 @@
             <!-- Prefill from filename, then compute optional/mode-gated command, before validation. -->
             <Custom Action="ParseFilename" Before="RequireConfig">NOT Installed</Custom>
             <Custom Action="RequireConfig" Before="InstallInitialize"><![CDATA[NOT Installed AND (APIKEY="" OR (MODE="daemon_poll" AND SERVERURL=""))]]></Custom>
-            <Custom Action="SetLogFileArg" Before="InstallFiles"><![CDATA[NOT REMOVE AND LOGFILE<>""]]></Custom>
-            <Custom Action="InstallCmdServerPoll" After="SetLogFileArg"><![CDATA[NOT REMOVE AND MODE="server_poll"]]></Custom>
-            <Custom Action="InstallCmdDaemonPoll" After="SetLogFileArg"><![CDATA[NOT REMOVE AND MODE<>"server_poll"]]></Custom>
+            <Custom Action="SetLogFileArg" Before="SetInterfacesArg"><![CDATA[NOT REMOVE AND LOGFILE<>""]]></Custom>
+            <Custom Action="SetInterfacesArg" Before="InstallFiles"><![CDATA[NOT REMOVE AND INTERFACES<>""]]></Custom>
+            <Custom Action="InstallCmdServerPoll" After="SetInterfacesArg"><![CDATA[NOT REMOVE AND MODE="server_poll"]]></Custom>
+            <Custom Action="InstallCmdDaemonPoll" After="SetInterfacesArg"><![CDATA[NOT REMOVE AND MODE<>"server_poll"]]></Custom>
             <!-- Register the service after the binary is on disk (install/upgrade only). -->
             <Custom Action="InstallDaemonCmd" After="InstallFiles">NOT REMOVE</Custom>
             <!-- Deregister the service before the binary is removed (full uninstall only). -->
@@ -206,7 +223,7 @@
         <UIRef Id="WixUI_InstallDir" />
 
         <UI>
-            <Dialog Id="ScanopyConfigDlg" Width="370" Height="270" Title="Scanopy Daemon Setup">
+            <Dialog Id="ScanopyConfigDlg" Width="370" Height="300" Title="Scanopy Daemon Setup">
                 <Control Id="Title" Type="Text" X="15" Y="6" Width="340" Height="15"
                          Transparent="yes" NoPrefix="yes"
                          Text="{\WixUI_Font_Title}Daemon configuration" />
@@ -216,7 +233,7 @@
                 <Control Id="BannerBitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="44"
                          TabSkip="no" Text="!(loc.InstallDirDlgBannerBitmap)" />
                 <Control Id="BannerLine" Type="Line" X="0" Y="44" Width="370" Height="0" />
-                <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
+                <Control Id="BottomLine" Type="Line" X="0" Y="264" Width="370" Height="0" />
 
                 <Control Id="ServerUrlLabel" Type="Text" X="25" Y="60" Width="120" Height="12"
                          Text="Server URL:" />
@@ -245,19 +262,27 @@
                          Text="Log file (blank = default):" />
                 <Control Id="LogFileEdit" Type="Edit" X="150" Y="200" Width="195" Height="16"
                          Property="LOGFILE" />
+                <Control Id="InterfacesLabel" Type="Text" X="25" Y="224" Width="120" Height="12"
+                         Text="Interfaces (blank = all):" />
+                <Control Id="InterfacesEdit" Type="Edit" X="150" Y="222" Width="195" Height="16"
+                         Property="INTERFACES" />
+                <Control Id="HeartbeatLabel" Type="Text" X="25" Y="246" Width="140" Height="12"
+                         Text="Heartbeat secs (DaemonPoll):" />
+                <Control Id="HeartbeatEdit" Type="Edit" X="170" Y="244" Width="60" Height="16"
+                         Property="HEARTBEATINTERVAL" />
 
-                <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17"
+                <Control Id="Back" Type="PushButton" X="180" Y="273" Width="56" Height="17"
                          Text="!(loc.WixUIBack)">
                     <Publish Event="NewDialog" Value="InstallDirDlg">1</Publish>
                 </Control>
-                <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17"
+                <Control Id="Next" Type="PushButton" X="236" Y="273" Width="56" Height="17"
                          Default="yes" Text="!(loc.WixUINext)">
                     <!-- API key always required; server url required only for DaemonPoll. -->
                     <Condition Action="disable"><![CDATA[APIKEY = "" OR (SERVERURL = "" AND MODE <> "server_poll")]]></Condition>
                     <Condition Action="enable"><![CDATA[APIKEY <> "" AND (SERVERURL <> "" OR MODE = "server_poll")]]></Condition>
                     <Publish Event="NewDialog" Value="VerifyReadyDlg">1</Publish>
                 </Control>
-                <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17"
+                <Control Id="Cancel" Type="PushButton" X="304" Y="273" Width="56" Height="17"
                          Cancel="yes" Text="!(loc.WixUICancel)">
                     <Publish Event="SpawnDialog" Value="CancelDlg">1</Publish>
                 </Control>
