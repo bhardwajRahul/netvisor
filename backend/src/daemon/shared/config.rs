@@ -1169,13 +1169,40 @@ mod tests {
             unknown
         );
 
-        // Sanity: the install commands must actually carry the identity flags.
-        for required in ["--daemon-api-key", "--name", "--mode"] {
-            assert!(
-                wxs.contains(required),
-                "MSI install command is missing {required}"
-            );
-        }
+        // COMPLETENESS: the MSI must expose every config field the UI does (the UI's fieldDefs
+        // == DaemonArgs minus EXCLUDED_FIELDS, enforced by config_fields_are_in_sync), except
+        // the ones a Windows service install genuinely can't/shouldn't carry: network + user
+        // come from the 1:1 key, the reachable url is captured at provision, credential refs are
+        // seeded at provision, and config-dir is baked by the installer. Without this direction,
+        // a field could be dropped from the MSI silently (the validity check above only rejects
+        // *extra* flags, not missing ones).
+        const MSI_EXCLUDED_FLAGS: &[&str] = &[
+            "network-id",
+            "user-id",
+            "daemon-url",
+            "credential-id",
+            "config-dir",
+        ];
+        let expected: std::collections::HashSet<String> = cmd
+            .get_arguments()
+            .filter(|a| {
+                let id = a.get_id().to_string();
+                id != "help" && id != "version" && !EXCLUDED_FIELDS.contains(&id.as_str())
+            })
+            .filter_map(|a| a.get_long().map(|s| s.to_string()))
+            .filter(|f| !MSI_EXCLUDED_FLAGS.contains(&f.as_str()))
+            .collect();
+        let missing: Vec<&String> = expected
+            .iter()
+            .filter(|f| !msi_flags.contains(*f))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "backend/wix/main.wxs is missing config flags the UI exposes: {:?}. \
+             Add them as MSI properties + install-command flags, or list them in \
+             MSI_EXCLUDED_FLAGS if a service install intentionally can't carry them.",
+            missing
+        );
     }
 
     fn extract_rust_fields() -> HashMap<String, FieldInfo> {

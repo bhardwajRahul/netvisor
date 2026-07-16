@@ -309,6 +309,14 @@ impl DaemonService {
 
             let updated_daemon = self.update(&mut existing_daemon, auth).await?;
 
+            // A provisioned daemon's FIRST contact lands here (its record already exists from
+            // provisioning), not in the new-registration branch — so emit the onboarding
+            // milestone here too, or the org never records FirstDaemonRegistered and the UI
+            // keeps showing "install a daemon" while discovery actually runs. Idempotent: the
+            // emit is guarded by org.not_onboarded, so restarts don't re-fire it.
+            self.emit_first_daemon_telemetry(updated_daemon.id, updated_daemon.base.network_id)
+                .await?;
+
             // Migrate legacy discoveries if daemon just upgraded to unified-capable version
             if was_pre_unified
                 && supports_unified_discovery(existing_daemon.base.version.as_ref())

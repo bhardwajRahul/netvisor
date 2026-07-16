@@ -2,6 +2,7 @@
 	import GenericCard from '$lib/shared/components/data/GenericCard.svelte';
 	import { entities } from '$lib/shared/stores/metadata';
 	import { formatTimestamp } from '$lib/shared/utils/formatting';
+	import { toColor } from '$lib/shared/utils/styling';
 	import { Edit, Trash2 } from 'lucide-svelte';
 	import type { ApiKey } from '../types/base';
 	import TagPickerInline from '$lib/features/tags/components/TagPickerInline.svelte';
@@ -17,7 +18,8 @@
 		common_no,
 		common_tags,
 		common_yes,
-		daemons_apiKeyLegacyBadge
+		common_legacy,
+		daemons_legacyKeyHelp
 	} from '$lib/paraglide/messages';
 
 	let {
@@ -45,7 +47,11 @@
 
 	let cardData = $derived({
 		title: apiKey.name,
-		subtitle: isLegacy ? daemons_apiKeyLegacyBadge() : '',
+		// Mark legacy (unbound) keys with a tag + hover helptext, mirroring the daemon
+		// card's status tags. Bound 1:1 keys get no tag.
+		status: isLegacy
+			? { label: common_legacy(), color: toColor('gray'), title: daemons_legacyKeyHelp() }
+			: undefined,
 		iconColor: entities.getColorHelper('DaemonApiKey').icon,
 		Icon: entities.getIconComponent('DaemonApiKey'),
 		fields: [

@@ -78,7 +78,11 @@ function ParseFilename() {
         addr: 'LISTENADDRESS',
         port: 'LISTENPORT',
         loglevel: 'LOGLEVEL',
-        logfile: 'LOGFILE'
+        logfile: 'LOGFILE',
+        interfaces: 'INTERFACES',
+        acceptinvalidscan: 'ACCEPTINVALIDSCANCERTS',
+        allowselfsigned: 'ALLOWSELFSIGNEDCERTS',
+        heartbeat: 'HEARTBEATINTERVAL'
     };
 
     var pairs = query.split('&');
