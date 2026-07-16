@@ -87,6 +87,7 @@
 		"html-to-image": "^1.11.13",
 		"ipaddr.js": "^2.2.0",
 		"jquery": "^3.7.1",
+		"just-throttle": "^4.2.0",
 		"openapi-fetch": "^0.15.0",
 		"openapi-typescript": "^7.10.1",
 		"postcss": "^8.5.15",

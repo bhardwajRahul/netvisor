@@ -65,6 +65,29 @@ const ENTITY_CREATION_MAX_RETRIES: usize = 5;
 /// Timeout for waiting for server confirmation in ServerPoll mode.
 const SERVER_POLL_CONFIRMATION_TIMEOUT: Duration = Duration::from_secs(120);
 
+/// Minimum spacing between the *start* of consecutive DaemonPoll host-create
+/// requests. Deep scans complete in near-simultaneous bursts; without this the
+/// daemon fires many host-creates at once and they pile up on the server's
+/// per-network `HostDedup` advisory lock, spiking the endpoint. ~40 req/s steady
+/// ceiling — matched to the server's serialized create throughput, so this
+/// flattens the arrival burst without costing real throughput.
+const MIN_HOST_SUBMIT_INTERVAL: Duration = Duration::from_millis(25);
+
+/// Reserve the next submission slot on `gate`, advancing it by `interval`, and
+/// return the instant this caller may start. Concurrent callers each get a
+/// distinct slot spaced `interval` apart. Reservation is O(1) under the lock —
+/// a slow/retrying request that already reserved its slot never blocks later
+/// callers from reserving theirs (they stagger the *start*, not the completion).
+async fn reserve_submit_slot(
+    gate: &tokio::sync::Mutex<tokio::time::Instant>,
+    interval: Duration,
+) -> tokio::time::Instant {
+    let mut next = gate.lock().await;
+    let at = (*next).max(tokio::time::Instant::now());
+    *next = at + interval;
+    at
+}
+
 /// Mutable host state passed to integration execute() methods.
 /// Integrations enrich the host via builder methods.
 pub struct HostData {
@@ -267,6 +290,9 @@ pub struct DiscoveryOps {
     /// between polls, we need to retain the terminal state so the server can receive it.
     /// This is cleared when a new session starts.
     pub terminal_payload: Arc<RwLock<Option<DiscoveryUpdatePayload>>>,
+    /// Shared with `DaemonDiscoveryService`: staggers DaemonPoll host-create
+    /// request starts. See `create_host`.
+    host_submit_gate: Arc<tokio::sync::Mutex<tokio::time::Instant>>,
 }
 
 impl DiscoveryOps {
@@ -278,6 +304,7 @@ impl DiscoveryOps {
             discovery_type,
             session: service.current_session.clone(),
             terminal_payload: service.terminal_payload.clone(),
+            host_submit_gate: service.host_submit_gate.clone(),
         }
     }
 
@@ -678,6 +705,13 @@ impl DiscoveryOps {
 
         match mode {
             DaemonMode::DaemonPoll => {
+                // Stagger request starts so a burst of near-simultaneous deep-scan
+                // completions doesn't hammer the host-create endpoint (where they
+                // serialize on the server's per-network `HostDedup` lock).
+                let scheduled =
+                    reserve_submit_slot(&self.host_submit_gate, MIN_HOST_SUBMIT_INTERVAL).await;
+                tokio::time::sleep_until(scheduled).await;
+
                 let api_client = &self.api_client;
                 let response: HostResponse = (|| async {
                     api_client
@@ -1019,4 +1053,52 @@ fn map_progress(raw: u8, start: u8, end: u8) -> u8 {
         return raw;
     }
     start + (raw as f64 * (end - start) as f64 / 100.0) as u8
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::sync::Mutex;
+    use tokio::time::Instant;
+
+    /// A burst of back-to-back reservations must be handed distinct start slots
+    /// spaced at least `interval` apart — this is the property that staggers the
+    /// host-create requests instead of firing them all at once.
+    #[tokio::test]
+    async fn reserve_submit_slot_spaces_a_burst_by_interval() {
+        let interval = Duration::from_millis(25);
+        let gate = Mutex::new(Instant::now());
+
+        // Reserve in a tight loop (the real clock barely moves), the worst case
+        // that would otherwise produce one instantaneous burst of requests.
+        let mut slots = Vec::new();
+        for _ in 0..10 {
+            slots.push(reserve_submit_slot(&gate, interval).await);
+        }
+
+        // Consecutive reserved slots are at least `interval` apart, and the
+        // whole burst is spread across ~(N-1)*interval rather than fired at once.
+        for pair in slots.windows(2) {
+            assert!(
+                pair[1] - pair[0] >= interval,
+                "consecutive slots must be spaced >= interval apart",
+            );
+        }
+        assert!(*slots.last().unwrap() - slots[0] >= interval * (slots.len() as u32 - 1));
+    }
+
+    /// A caller that arrives when the gate has already drained (no recent
+    /// traffic) starts immediately — the stagger never accrues idle delay.
+    #[tokio::test]
+    async fn reserve_submit_slot_no_delay_when_gate_idle() {
+        // Seed the gate in the past to simulate "last submission was a while ago".
+        let gate = Mutex::new(Instant::now() - Duration::from_secs(1));
+
+        let before = Instant::now();
+        let slot = reserve_submit_slot(&gate, Duration::from_millis(25)).await;
+
+        // The reserved slot is "now", not the stale past value — no artificial
+        // wait is imposed on the first request after an idle period.
+        assert!(slot >= before);
+    }
 }
