@@ -382,16 +382,23 @@ pub struct DaemonResponse {
     pub interfaced_subnet_ids: Vec<Uuid>,
 }
 
-/// Request to pre-provision a ServerPoll mode daemon.
-/// This creates the daemon record on the server before the daemon is installed.
+/// Request to pre-provision a daemon (either mode) before it is installed.
+/// This creates the daemon record + its 1:1 API key on the server so the install
+/// command shrinks to two flags.
 #[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct ProvisionDaemonRequest {
     /// Human-readable name for the daemon.
     pub name: String,
     /// Network this daemon will be associated with.
     pub network_id: Uuid,
-    /// URL where the server can reach the daemon (required for ServerPoll mode).
-    pub url: String,
+    /// How the daemon communicates with the server. Defaults to DaemonPoll
+    /// (the daemon dials out) for forward-compat with older clients.
+    #[serde(default)]
+    pub mode: DaemonMode,
+    /// Reachable URL where the *server* can dial the daemon. Required for
+    /// ServerPoll, unused for DaemonPoll (the daemon dials out instead).
+    #[serde(default)]
+    pub url: Option<String>,
 }
 
 /// Response from provisioning a daemon.

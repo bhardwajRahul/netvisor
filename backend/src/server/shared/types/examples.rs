@@ -297,6 +297,7 @@ pub fn daemon_api_key() -> DaemonApiKey {
             expires_at: None,
             is_enabled: true,
             tags: vec![],
+            daemon_id: None,
             plaintext: None,
         },
     }

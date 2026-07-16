@@ -804,6 +804,16 @@ async fn provision_daemon(
     // Validate network access
     validate_network_access(Some(request.network_id), &network_ids, "provision daemon")?;
 
+    // A ServerPoll daemon never dials out, so the server can only reach it at a URL
+    // supplied now. DaemonPoll dials the server, so its url is unused.
+    let is_server_poll = request.mode == DaemonMode::ServerPoll;
+    let reachable_url = request.url.clone().unwrap_or_default();
+    if is_server_poll && reachable_url.trim().is_empty() {
+        return Err(ApiError::bad_request(
+            "A reachable url is required to provision a ServerPoll daemon",
+        ));
+    }
+
     // Check daemon limit for unverified orgs (allows 1st daemon)
     let org_id = auth.require_organization_id()?;
     state
@@ -824,7 +834,12 @@ async fn provision_daemon(
         network_id: request.network_id,
         is_enabled: true,
         tags: Vec::new(),
-        plaintext: Some(SecretString::from(plaintext.clone())),
+        // Bound to the daemon 1:1 below, once the daemon record exists (circular:
+        // the daemon needs api_key_id, the key needs daemon_id).
+        daemon_id: None,
+        // Only ServerPoll needs the server to hold the plaintext (to present it when
+        // it dials the daemon). A DaemonPoll daemon carries its own key and dials out.
+        plaintext: is_server_poll.then(|| SecretString::from(plaintext.clone())),
     });
 
     let created_api_key = state
@@ -893,9 +908,9 @@ async fn provision_daemon(
     let daemon = Daemon::new(DaemonBase {
         host_id: created_host.id,
         network_id: request.network_id,
-        url: request.url,
+        url: reachable_url,
         last_seen: None,
-        mode: DaemonMode::ServerPoll,
+        mode: request.mode,
         name: request.name,
         tags: Vec::new(),
         version: Some(version),
@@ -916,11 +931,30 @@ async fn provision_daemon(
             ApiError::internal_error(&format!("Failed to create daemon: {}", e))
         })?;
 
+    // Complete the 1:1 binding now that the daemon exists: point the api key at its daemon.
+    // The DB partial-UNIQUE on api_keys.daemon_id makes this binding exclusive; the service
+    // update bypasses preserve_immutable_fields (that guard runs only in the HTTP handler).
+    let mut api_key_to_bind = created_api_key.clone();
+    api_key_to_bind.base.daemon_id = Some(created_daemon.id);
+    if let Err(e) = state
+        .services
+        .daemon_api_key_service
+        .update(&mut api_key_to_bind, auth.entity.clone())
+        .await
+    {
+        tracing::error!(error = %e, daemon_id = %created_daemon.id, "Failed to bind api key to provisioned daemon");
+        return Err(ApiError::internal_error(&format!(
+            "Failed to bind api key to daemon: {}",
+            e
+        )));
+    }
+
     tracing::info!(
         daemon_id = %created_daemon.id,
         network_id = %request.network_id,
         user_id = %user_id,
-        "Daemon provisioned for ServerPoll mode"
+        mode = ?created_daemon.base.mode,
+        "Daemon provisioned"
     );
 
     // Compute version status for response

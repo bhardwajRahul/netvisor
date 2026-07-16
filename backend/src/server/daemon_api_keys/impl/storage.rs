@@ -65,6 +65,7 @@ impl Storable for DaemonApiKey {
                     network_id,
                     is_enabled,
                     tags: _, // Stored in entity_tags junction table
+                    daemon_id,
                     plaintext,
                 },
         } = self.clone();
@@ -83,6 +84,7 @@ impl Storable for DaemonApiKey {
                 "name",
                 "is_enabled",
                 "key",
+                "daemon_id",
                 "plaintext",
             ],
             vec![
@@ -95,6 +97,7 @@ impl Storable for DaemonApiKey {
                 SqlValue::String(name),
                 SqlValue::Bool(is_enabled),
                 SqlValue::String(key),
+                SqlValue::OptionalUuid(daemon_id),
                 SqlValue::OptionalString(plaintext_value),
             ],
         ))
@@ -118,6 +121,7 @@ impl Storable for DaemonApiKey {
                 is_enabled: row.get("is_enabled"),
                 network_id: row.get("network_id"),
                 tags: Vec::new(), // Hydrated from entity_tags junction table
+                daemon_id: row.get("daemon_id"),
                 plaintext,
             },
         })
@@ -189,6 +193,10 @@ impl Entity for DaemonApiKey {
         self.base.key = existing.base.key.clone();
         // last_used is server-set only
         self.base.last_used = existing.base.last_used;
+        // daemon_id is the 1:1 binding, set at provision only. It is read_only in the
+        // schema so a tab PUT omits it; without this it would deserialize to None and
+        // silently unbind the key from its daemon.
+        self.base.daemon_id = existing.base.daemon_id;
     }
 
     fn get_tags(&self) -> Option<&Vec<Uuid>> {
