@@ -237,6 +237,13 @@ impl DaemonService {
 
         tracing::info!("{:?}", request);
 
+        // For a 1:1 provisioned key the auth layer resolved the daemon from the key,
+        // so that is the authoritative id — the client-sent request.daemon_id is
+        // untrusted and, for a freshly provisioned daemon, not yet known. For a legacy
+        // shared-key daemon, auth resolves to the header id, which equals
+        // request.daemon_id, so this is a no-op there.
+        let effective_daemon_id = auth.daemon_id().unwrap_or(request.daemon_id);
+
         // Parse version early for use in server_capabilities
         let daemon_version = request
             .version
@@ -266,9 +273,9 @@ impl DaemonService {
         });
 
         // Check if daemon already exists (re-registration scenario)
-        if let Some(mut existing_daemon) = self.get_by_id(&request.daemon_id).await? {
+        if let Some(mut existing_daemon) = self.get_by_id(&effective_daemon_id).await? {
             tracing::info!(
-                daemon_id = %request.daemon_id,
+                daemon_id = %effective_daemon_id,
                 host_id = %existing_daemon.base.host_id,
                 "Daemon already registered, updating registration"
             );
@@ -441,7 +448,7 @@ impl DaemonService {
             standby_cleared_at: None,
         });
 
-        daemon.id = request.daemon_id;
+        daemon.id = effective_daemon_id;
 
         let registered_daemon = self.create(daemon, auth.clone()).await?;
 
@@ -452,7 +459,7 @@ impl DaemonService {
         // Create default discovery jobs
         let is_free_plan = plan.is_free();
         self.create_default_discovery_jobs(
-            request.daemon_id,
+            effective_daemon_id,
             request.network_id,
             host_response.id,
             is_free_plan,
@@ -771,6 +778,25 @@ impl DaemonService {
         is_free_plan: bool,
         integration_targets: &[IntegrationTarget],
     ) -> Result<(), ApiError> {
+        // Idempotency guard: a daemon gets exactly one set of default discovery
+        // jobs. This is now called from provision (where seed refs are known),
+        // legacy self-registration, and ServerPoll first-contact — so without this
+        // guard a provisioned daemon that later registers / is first-contacted
+        // would get a duplicate discovery. Skip if any live discovery exists.
+        let existing = self
+            .discovery_service
+            .get_all(
+                StorableFilter::new_from_uuid_column("daemon_id", &daemon_id).exclude_historical(),
+            )
+            .await?;
+        if !existing.is_empty() {
+            tracing::info!(
+                daemon_id = %daemon_id,
+                "Daemon already has discoveries; skipping default discovery creation"
+            );
+            return Ok(());
+        }
+
         tracing::info!(
             daemon_id = %daemon_id,
             network_id = %network_id,

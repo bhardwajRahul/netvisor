@@ -355,11 +355,18 @@ impl ServerCapabilities {
 }
 
 /// First contact request from server to ServerPoll daemon.
-/// Sent on first poll to assign the daemon its server-side ID.
+/// Sent on first poll to hand the daemon its server-side identity.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct FirstContactRequest {
     /// The daemon's server-assigned ID
     pub daemon_id: Uuid,
+    /// The network the daemon belongs to (server-provisioned identity). Additive:
+    /// an older daemon that ignores this field still works off its cached id.
+    #[serde(default)]
+    pub network_id: Option<Uuid>,
+    /// The daemon's server-assigned name.
+    #[serde(default)]
+    pub name: Option<String>,
     /// Server capabilities (version, deprecation warnings)
     pub server_capabilities: ServerCapabilities,
 }
@@ -399,6 +406,10 @@ pub struct ProvisionDaemonRequest {
     /// ServerPoll, unused for DaemonPoll (the daemon dials out instead).
     #[serde(default)]
     pub url: Option<String>,
+    /// Credential/integration references to seed onto the daemon's first
+    /// discovery run. References only — never secret material. Empty by default.
+    #[serde(default)]
+    pub seed_credential_refs: Vec<IntegrationTarget>,
 }
 
 /// Response from provisioning a daemon.
