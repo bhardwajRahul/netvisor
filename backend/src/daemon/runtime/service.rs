@@ -438,7 +438,10 @@ impl DaemonRuntimeService {
                     tracing::warn!(target: LOG_TARGET, error = %e, "Failed to cache server-assigned network ID");
                 }
                 if response.daemon.base.name != name
-                    && let Err(e) = self.config.set_name(response.daemon.base.name.clone()).await
+                    && let Err(e) = self
+                        .config
+                        .set_name(response.daemon.base.name.clone())
+                        .await
                 {
                     tracing::warn!(target: LOG_TARGET, error = %e, "Failed to cache server-assigned daemon name");
                 }
