@@ -542,15 +542,27 @@ impl AuthenticatedEntity {
                             .await;
                     }
 
-                    // Check if key exists
+                    // Check if key exists. Distinguish a genuine lookup ERROR (DB /
+                    // tag-hydration failure) from "no such key": a transient error must not
+                    // be reported as invalid_key, or a daemon would treat a blip as a bad
+                    // key and give up. Only Ok(None) falls through to the not-found path.
                     let api_key_filter =
                         StorableFilter::<DaemonApiKey>::new_from_api_key(hashed_key.clone());
-                    if let Ok(Some(mut api_key)) = app_state
+                    let key_lookup = app_state
                         .services
                         .daemon_api_key_service
                         .get_one(api_key_filter)
-                        .await
-                    {
+                        .await;
+                    let found_key = match key_lookup {
+                        Ok(found) => found,
+                        Err(e) => {
+                            tracing::error!(error = %e, "Daemon api key lookup failed");
+                            return Err(AuthError(ApiError::internal_error(
+                                "Daemon API key lookup failed",
+                            )));
+                        }
+                    };
+                    if let Some(mut api_key) = found_key {
                         let network_id = api_key.base.network_id;
                         let service = app_state.services.daemon_api_key_service.clone();
                         let api_key_id = api_key.id;

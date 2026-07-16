@@ -36,9 +36,12 @@ pub struct PlatformInstallCommand {
 pub struct InstallArtifacts {
     /// Per-platform binary install commands (the api key is embedded — shown once).
     pub commands: Vec<PlatformInstallCommand>,
-    /// URL that downloads the Windows MSI renamed with this daemon's values hex-encoded
-    /// into the filename, so the installer pre-fills everything but the api key.
+    /// Direct URL of the signed Windows MSI release artifact (a GitHub asset).
     pub msi_url: String,
+    /// Filename encoding this daemon's non-secret values (mode/name/url). Save or rename
+    /// the downloaded MSI to this name to pre-fill the installer — parse-filename.js decodes
+    /// it. The api key is never encoded. Renaming a signed MSI doesn't affect its signature.
+    pub msi_filename: String,
 }
 
 /// Hex-encode a value for a filename segment (see `backend/wix/parse-filename.js`).
@@ -66,17 +69,15 @@ pub fn encode_msi_filename(daemon: &Daemon) -> String {
 }
 
 /// The `install` flags for the canonical two-flag form: DaemonPoll dials the server (needs
-/// `--server-url`), ServerPoll is dialed by the server (no `--server-url`). `--name` keeps
-/// the service name aligned with the provisioned record; the network comes from the key.
+/// `--server-url`), ServerPoll is dialed by the server (no `--server-url`). Name and network
+/// both come from the provisioned record (the daemon learns its name via the handshake), so
+/// the command carries neither — just the server url (DaemonPoll) and the key.
 fn install_flags(public_url: &str, daemon: &Daemon, api_key: &str) -> String {
-    let name = &daemon.base.name;
     match daemon.base.mode {
         DaemonMode::DaemonPoll => {
-            format!("--server-url {public_url} --daemon-api-key {api_key} --name \"{name}\"")
+            format!("--server-url {public_url} --daemon-api-key {api_key}")
         }
-        DaemonMode::ServerPoll => {
-            format!("--daemon-api-key {api_key} --name \"{name}\"")
-        }
+        DaemonMode::ServerPoll => format!("--daemon-api-key {api_key}"),
     }
 }
 
@@ -116,7 +117,8 @@ pub fn build_install_artifacts(
 
     InstallArtifacts {
         commands,
-        msi_url: format!("{public_url}/api/v1/daemons/{}/installer.msi", daemon.id),
+        msi_url: WINDOWS_MSI_URL.to_string(),
+        msi_filename: encode_msi_filename(daemon),
     }
 }
 
@@ -184,16 +186,28 @@ mod tests {
     }
 
     #[test]
-    fn msi_url_points_at_the_download_endpoint() {
+    fn msi_url_is_the_github_artifact_and_filename_is_encoded() {
+        let a = build_install_artifacts(
+            "https://app.scanopy.net",
+            &daemon(DaemonMode::ServerPoll, "https://edge.corp"),
+            "sk",
+        );
+        // Direct release asset, not a server path.
+        assert_eq!(a.msi_url, WINDOWS_MSI_URL);
+        assert!(!a.msi_url.contains("app.scanopy.net"));
+        // Filename carries the encoded values for a rename-to-prefill.
+        assert!(a.msi_filename.starts_with("scanopy-daemon~~"));
+        assert!(a.msi_filename.ends_with(".msi"));
+    }
+
+    #[test]
+    fn install_command_omits_name() {
         let a = build_install_artifacts(
             "https://app.scanopy.net",
             &daemon(DaemonMode::DaemonPoll, ""),
             "sk",
         );
-        assert!(a.msi_url.ends_with("/installer.msi"));
-        assert!(
-            a.msi_url
-                .starts_with("https://app.scanopy.net/api/v1/daemons/")
-        );
+        let linux = a.commands.iter().find(|c| c.platform == "linux").unwrap();
+        assert!(!linux.command.contains("--name"));
     }
 }
