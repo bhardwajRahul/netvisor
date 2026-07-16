@@ -209,12 +209,23 @@ impl DaemonService {
             .get()
             .ok_or_else(|| ApiError::internal_error("HostService not initialized"))?;
 
+        // Resolve the network from the authenticated key rather than trusting the
+        // request body. A provisioned DaemonPoll daemon starts without a network_id
+        // and sends nil; the server derives it from the 1:1 key. For a legacy
+        // shared-key daemon the key's network equals request.network_id, so this is
+        // a no-op there (and it stops a daemon claiming a network its key can't reach).
+        let effective_network_id = auth
+            .network_ids()
+            .first()
+            .copied()
+            .unwrap_or(request.network_id);
+
         // Check if this is a demo organization - block daemon registration
         let network = self
             .network_service
-            .get_by_id(&request.network_id)
+            .get_by_id(&effective_network_id)
             .await?
-            .ok_or_else(|| ApiError::entity_not_found::<Network>(request.network_id))?;
+            .ok_or_else(|| ApiError::entity_not_found::<Network>(effective_network_id))?;
 
         let org_id = network.base.organization_id;
         let organization =
@@ -328,7 +339,7 @@ impl DaemonService {
 
         // New registration - create host and daemon
         let dummy_host = Host::new(HostBase {
-            network_id: request.network_id,
+            network_id: effective_network_id,
             name: request.name.clone(),
             hostname: None,
             description: None,
@@ -368,7 +379,7 @@ impl DaemonService {
         // Seed the daemon host's loopback so a daemon-host socket/proxy credential is probed on the
         // very first scan (the credential mapping is snapshotted before the daemon self-reports).
         if let Err(e) = host_service
-            .seed_loopback(host_response.id, request.network_id, auth.clone())
+            .seed_loopback(host_response.id, effective_network_id, auth.clone())
             .await
         {
             tracing::warn!(host_id = %host_response.id, error = %e, "Failed to seed daemon host loopback");
@@ -432,7 +443,7 @@ impl DaemonService {
 
         let mut daemon = Daemon::new(DaemonBase {
             host_id: host_response.id,
-            network_id: request.network_id,
+            network_id: effective_network_id,
             // DaemonPoll mode: URL not needed (server never connects to daemon)
             // ServerPoll mode: URL is set during provisioning, not during registration
             url: String::new(),
@@ -460,7 +471,7 @@ impl DaemonService {
         let is_free_plan = plan.is_free();
         self.create_default_discovery_jobs(
             effective_daemon_id,
-            request.network_id,
+            effective_network_id,
             host_response.id,
             is_free_plan,
             &remaining_targets,

@@ -141,6 +141,17 @@ async fn handle_first_contact(
         );
     }
 
+    // Cache the server-provisioned network identity (additive; older servers omit it).
+    if let Some(network_id) = request.network_id
+        && let Err(e) = state.config.set_network_id(network_id).await
+    {
+        tracing::error!(
+            target: LOG_TARGET,
+            error = %e,
+            "Failed to store assigned network ID"
+        );
+    }
+
     // Log server capabilities
     tracing::info!(
         target: LOG_TARGET,

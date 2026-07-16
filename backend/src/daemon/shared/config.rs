@@ -570,6 +570,13 @@ impl AppConfig {
         if let Some(docker_proxy_ssl_chain) = cli_args.docker_proxy_ssl_chain {
             figment = figment.merge(("docker_proxy_ssl_chain", docker_proxy_ssl_chain));
         }
+        // Whether the mode was explicitly chosen (CLI or env). If not, it is
+        // inferred from server_url presence after extraction below, so the
+        // two-flag install works: `--server-url … --api-key …` => DaemonPoll,
+        // `--api-key …` (no server url) => ServerPoll.
+        let mode_explicitly_set = cli_args.mode.is_some()
+            || std::env::var("SCANOPY_MODE").is_ok()
+            || std::env::var("NETVISOR_MODE").is_ok();
         if let Some(mode) = cli_args.mode {
             figment = figment.merge(("mode", mode));
         }
@@ -603,6 +610,17 @@ impl AppConfig {
         let mut config: AppConfig = figment
             .extract()
             .map_err(|e| Error::msg(format!("Configuration error: {}", e)))?;
+
+        // Infer mode from server_url when it was not explicitly set: DaemonPoll
+        // dials the server (needs a server_url), ServerPoll is dialed by the
+        // server (no server_url). An explicit --mode / SCANOPY_MODE still wins.
+        if !mode_explicitly_set {
+            config.mode = if config.server_url.is_some() {
+                DaemonMode::DaemonPoll
+            } else {
+                DaemonMode::ServerPoll
+            };
+        }
 
         // Parse integration-target tokens last so CLI > env > config-file precedence holds:
         // CLI tokens win if provided, else env tokens; if neither, keep whatever the config file

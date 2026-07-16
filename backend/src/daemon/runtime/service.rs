@@ -421,6 +421,22 @@ impl DaemonRuntimeService {
                     tracing::info!(target: LOG_TARGET, "  Server version:  {}", caps.server_version);
                     tracing::info!(target: LOG_TARGET, "  Min daemon ver:  {}", caps.minimum_daemon_version);
                 }
+                // Cache the server-authoritative identity. For a provisioned daemon the
+                // server resolves the record from the 1:1 key (ignoring the id/network we
+                // sent), so persist what it returns for subsequent starts.
+                if response.daemon.id != daemon_id
+                    && let Err(e) = self.config.set_id(response.daemon.id).await
+                {
+                    tracing::warn!(target: LOG_TARGET, error = %e, "Failed to cache server-assigned daemon ID");
+                }
+                if response.daemon.base.network_id != network_id
+                    && let Err(e) = self
+                        .config
+                        .set_network_id(response.daemon.base.network_id)
+                        .await
+                {
+                    tracing::warn!(target: LOG_TARGET, error = %e, "Failed to cache server-assigned network ID");
+                }
                 Ok(())
             }
             Err(e) => Self::handle_registration_error(&e, daemon_id, &self.config).await,

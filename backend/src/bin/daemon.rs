@@ -273,62 +273,65 @@ async fn run_daemon<F: std::future::Future<Output = ()>>(
 
     let startup_result: Result<(), ()> = match mode {
         DaemonMode::DaemonPoll => {
-            if let Some(network_id) = network_id {
-                if let Some(api_key) = api_key {
-                    tracing::info!("Connecting to server at {}...", server_addr);
-                    let mut result = runtime_service
-                        .initialize_services(network_id, api_key.clone())
-                        .await?;
+            if let Some(api_key) = api_key {
+                // A server-provisioned daemon starts with just a 1:1 key and no
+                // network id — the server derives its identity from the key and
+                // returns it (cached on the register response). Use nil as a
+                // placeholder network id; a legacy daemon still passes its own.
+                let effective_network_id = network_id.unwrap_or_else(uuid::Uuid::nil);
+                tracing::info!("Connecting to server at {}...", server_addr);
+                let mut result = runtime_service
+                    .initialize_services(effective_network_id, api_key.clone())
+                    .await?;
 
-                    if let StartupOutcome::ConnectionFailed(ref e) = result {
-                        log_connection_error(e);
-                        tracing::info!("Retrying connection...");
+                if let StartupOutcome::ConnectionFailed(ref e) = result {
+                    log_connection_error(e);
+                    tracing::info!("Retrying connection...");
 
-                        const RETRY_DELAYS: &[u64] = &[5, 10, 20, 40, 60];
-                        for (i, &delay) in RETRY_DELAYS.iter().enumerate() {
-                            tokio::time::sleep(Duration::from_secs(delay)).await;
-                            tracing::info!(
-                                "Connection attempt {}/{}...",
-                                i + 2,
-                                RETRY_DELAYS.len() + 1
-                            );
-                            result = runtime_service
-                                .initialize_services(network_id, api_key.clone())
-                                .await?;
-                            match &result {
-                                StartupOutcome::Ok => {
-                                    tracing::info!("Connected successfully");
-                                    break;
-                                }
-                                StartupOutcome::ConnectionFailed(e) => {
-                                    tracing::warn!("Still unreachable: {e}");
-                                    if let Some(conn_err) = e.downcast_ref::<ConnectionError>() {
-                                        tracing::warn!("{}", conn_err.cause_and_fix());
-                                    }
-                                }
-                                StartupOutcome::AuthFailed(_) => break,
+                    const RETRY_DELAYS: &[u64] = &[5, 10, 20, 40, 60];
+                    for (i, &delay) in RETRY_DELAYS.iter().enumerate() {
+                        tokio::time::sleep(Duration::from_secs(delay)).await;
+                        tracing::info!(
+                            "Connection attempt {}/{}...",
+                            i + 2,
+                            RETRY_DELAYS.len() + 1
+                        );
+                        result = runtime_service
+                            .initialize_services(effective_network_id, api_key.clone())
+                            .await?;
+                        match &result {
+                            StartupOutcome::Ok => {
+                                tracing::info!("Connected successfully");
+                                break;
                             }
+                            StartupOutcome::ConnectionFailed(e) => {
+                                tracing::warn!("Still unreachable: {e}");
+                                if let Some(conn_err) = e.downcast_ref::<ConnectionError>() {
+                                    tracing::warn!("{}", conn_err.cause_and_fix());
+                                }
+                            }
+                            StartupOutcome::AuthFailed(_) => break,
                         }
                     }
-
-                    match result {
-                        StartupOutcome::Ok => Ok(()),
-                        StartupOutcome::ConnectionFailed(_) => Err(()),
-                        StartupOutcome::AuthFailed(e) => {
-                            tracing::error!(
-                                "API key rejected. Cause: key is invalid or was regenerated. Fix: re-run the install command from the Scanopy UI."
-                            );
-                            tracing::debug!("Auth error detail: {e}");
-                            Err(())
-                        }
-                    }
-                } else {
-                    tracing::error!(
-                        "Daemon is missing an API key. Fix: re-run the install command from the Scanopy UI. Server: {}",
-                        server_addr
-                    );
-                    Err(())
                 }
+
+                match result {
+                    StartupOutcome::Ok => Ok(()),
+                    StartupOutcome::ConnectionFailed(_) => Err(()),
+                    StartupOutcome::AuthFailed(e) => {
+                        tracing::error!(
+                            "API key rejected. Cause: key is invalid or was regenerated. Fix: re-run the install command from the Scanopy UI."
+                        );
+                        tracing::debug!("Auth error detail: {e}");
+                        Err(())
+                    }
+                }
+            } else if network_id.is_some() {
+                tracing::error!(
+                    "Daemon is missing an API key. Fix: re-run the install command from the Scanopy UI. Server: {}",
+                    server_addr
+                );
+                Err(())
             } else {
                 tracing::info!("Missing network ID — waiting for server to hit /api/initialize...");
                 Ok(())
