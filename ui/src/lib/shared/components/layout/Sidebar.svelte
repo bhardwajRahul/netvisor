@@ -6,6 +6,7 @@
 	import SupportModal from '$lib/features/support/SupportModal.svelte';
 	import { billingPlans, entities } from '$lib/shared/stores/metadata';
 	import { useActiveSessionsQuery } from '$lib/features/discovery/queries';
+	import { useApiKeysQuery } from '$lib/features/daemon_api_keys/queries';
 	import { modalState } from '$lib/shared/stores/modal-registry';
 	import { entityUIConfig, TAB_LABELS } from '$lib/shared/entity-ui-config';
 	import type { EntityDiscriminants } from '$lib/api/entities';
@@ -146,6 +147,28 @@
 	// Active discovery sessions — used for notification dot on sidebar and sub-tabs
 	const activeSessionsQuery = useActiveSessionsQuery(() => true);
 	let hasActiveSessions = $derived((activeSessionsQuery.data?.length ?? 0) > 0);
+
+	// Legacy (unbound) daemon API keys. When none exist, the Daemon API Keys sub-tab is
+	// hidden and the Daemons group collapses to a single-entity page (no tab strip).
+	const daemonApiKeysQuery = useApiKeysQuery();
+	let hasLegacyDaemonKeys = $derived(
+		(daemonApiKeysQuery.data ?? []).some((k) => k.daemon_id == null)
+	);
+
+	// Whether a content sub-tab should be shown: permission-gated, plus data gates
+	// (the Daemon API Keys sub-tab only appears while legacy keys exist).
+	function isSubTabVisible(st: {
+		id: string;
+		requiredPermissions?: UserOrgPermissions[];
+	}): boolean {
+		const permitted =
+			!st.requiredPermissions ||
+			st.requiredPermissions.length === 0 ||
+			!!(userPermissions && st.requiredPermissions.includes(userPermissions));
+		if (!permitted) return false;
+		if (st.id === entityUIConfig.DaemonApiKey!.tabId && !hasLegacyDaemonKeys) return false;
+		return true;
+	}
 
 	// Onboarding checklist state
 	let onboarding = $derived((organization?.onboarding ?? []) as OnboardingOperation[]);
@@ -367,12 +390,7 @@
 		function extractTabsFromItem(item: NavItem) {
 			if (item.subTabs && item.subTabs.length > 0) {
 				// Emit a single entry with all sub-tab IDs and defs
-				const visibleSubTabs = item.subTabs.filter(
-					(st) =>
-						!st.requiredPermissions ||
-						st.requiredPermissions.length === 0 ||
-						(userPermissions && st.requiredPermissions.includes(userPermissions))
-				);
+				const visibleSubTabs = item.subTabs.filter(isSubTabVisible);
 				if (visibleSubTabs.length > 0) {
 					tabs.push({
 						id: item.id,
@@ -463,14 +481,9 @@
 			return null;
 		}
 
-		// If item has subTabs, filter by permissions
+		// If item has subTabs, filter by permissions + data gates
 		if (item.subTabs) {
-			const visibleSubTabs = item.subTabs.filter(
-				(st) =>
-					!st.requiredPermissions ||
-					st.requiredPermissions.length === 0 ||
-					(userPermissions && st.requiredPermissions.includes(userPermissions))
-			);
+			const visibleSubTabs = item.subTabs.filter(isSubTabVisible);
 			if (visibleSubTabs.length === 0) {
 				return null;
 			}

@@ -638,6 +638,8 @@
 	"daemons_lastSeen": "Last Seen",
 	"daemons_latestVersion": "Latest version:",
 	"daemons_manageKey": "Manage key",
+	"daemons_orDownloadMsi": "Prefer a graphical installer? Download the MSI",
+	"daemons_msiRenameHint": "Save it as this filename to pre-fill the installer:",
 	"daemons_mode_daemonPoll": "Daemon Poll",
 	"daemons_mode_serverPoll": "Server Poll",
 	"daemons_networkCannotChange": "Network cannot be changed after API key is generated",
