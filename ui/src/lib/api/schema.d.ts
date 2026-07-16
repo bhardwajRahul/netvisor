@@ -4764,6 +4764,13 @@ export interface components {
             readonly updated_at: string;
         };
         DaemonApiKeyBase: {
+            /**
+             * Format: uuid
+             * @description Daemon this key is bound to 1:1, when provisioned server-side.
+             *     NULL for legacy network-shared keys created before 1:1 provisioning,
+             *     which resolve daemon identity from the X-Daemon-ID header instead.
+             */
+            readonly daemon_id?: string | null;
             /** Format: date-time */
             expires_at?: string | null;
             is_enabled?: boolean;
@@ -6853,10 +6860,14 @@ export interface components {
             job_title?: string | null;
         };
         /**
-         * @description Request to pre-provision a ServerPoll mode daemon.
-         *     This creates the daemon record on the server before the daemon is installed.
+         * @description Request to pre-provision a daemon (either mode) before it is installed.
+         *     This creates the daemon record + its 1:1 API key on the server so the install
+         *     command shrinks to two flags.
          */
         ProvisionDaemonRequest: {
+            /** @description How the daemon communicates with the server. Defaults to DaemonPoll
+             *     (the daemon dials out) for forward-compat with older clients. */
+            mode?: components["schemas"]["DaemonMode"];
             /** @description Human-readable name for the daemon. */
             name: string;
             /**
@@ -6864,8 +6875,12 @@ export interface components {
              * @description Network this daemon will be associated with.
              */
             network_id: string;
-            /** @description URL where the server can reach the daemon (required for ServerPoll mode). */
-            url: string;
+            /** @description Credential/integration references to seed onto the daemon's first
+             *     discovery run. References only — never secret material. Empty by default. */
+            seed_credential_refs?: components["schemas"]["IntegrationTarget"][];
+            /** @description Reachable URL where the *server* can dial the daemon. Required for
+             *     ServerPoll, unused for DaemonPoll (the daemon dials out instead). */
+            url?: string | null;
         };
         /**
          * @description Response from provisioning a daemon.

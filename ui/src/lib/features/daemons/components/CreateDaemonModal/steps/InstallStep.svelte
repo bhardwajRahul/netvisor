@@ -7,6 +7,7 @@
 	import TroubleshootingChecklist from './TroubleshootingChecklist.svelte';
 	import { useConfigQuery } from '$lib/shared/stores/config-query';
 	import type { DaemonOS } from '../../../utils';
+	import type { DaemonMode } from '../../../types/base';
 	import { trackEvent } from '$lib/shared/utils/analytics';
 	import { useTestReachabilityMutation, useRetryDaemonConnectionMutation } from '../../../queries';
 	import AnimatedProgressBar from '$lib/features/discovery/components/cards/AnimatedProgressBar.svelte';
@@ -58,7 +59,7 @@
 		onViewDiscovery?: () => void;
 		hasEmailSupport?: boolean;
 		onAdvanced?: (() => void) | null;
-		daemonMode?: string;
+		daemonMode?: DaemonMode;
 		daemonName?: string;
 		logFilePath?: string;
 		daemonUrl?: string;

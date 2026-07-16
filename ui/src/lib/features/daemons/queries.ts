@@ -98,7 +98,8 @@ export function useBulkDeleteDaemonsMutation() {
 }
 
 /**
- * Mutation hook for provisioning a ServerPoll mode daemon
+ * Mutation hook for provisioning a daemon (either mode) before install.
+ * Creates the daemon record + its 1:1 API key server-side.
  */
 export function useProvisionDaemonMutation() {
 	const queryClient = useQueryClient();

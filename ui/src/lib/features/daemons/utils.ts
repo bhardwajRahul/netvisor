@@ -105,9 +105,6 @@ export function buildDefaultValues(
 			defaults[def.id] = def.defaultValue ?? '';
 		}
 	}
-	// UI state fields (not part of daemon config, just for form interaction)
-	defaults.keySource = 'generate';
-	defaults.existingKeyInput = '';
 	return defaults;
 }
 
