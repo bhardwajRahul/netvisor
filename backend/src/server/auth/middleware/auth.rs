@@ -4,7 +4,7 @@ use cidr::IpCidr;
 
 use crate::server::{
     config::AppState,
-    daemon_api_keys::r#impl::base::DaemonApiKey,
+    daemon_api_keys::{r#impl::base::DaemonApiKey, service::ResolvedDaemonKey},
     networks::r#impl::Network,
     shared::{
         api_key_common::{ApiKeyCommon, ApiKeyType, check_key_validity, hash_api_key},
@@ -481,17 +481,69 @@ impl AuthenticatedEntity {
                     return Err(AuthError(ApiError::not_authenticated()));
                 }
                 ApiKeyType::Daemon => {
-                    // Daemon API key authentication - requires X-Daemon-ID header
-                    let daemon_id = parts
+                    // Daemon identity comes from the X-Daemon-ID header for legacy
+                    // network-shared keys, and from the key itself for 1:1 provisioned
+                    // keys. Read the header optionally here (a freshly provisioned daemon
+                    // has no id yet on its bootstrap request); requiredness and validation
+                    // are decided below, once we know the key's shape. Nil is treated as
+                    // absent (the daemon sends nil before it has cached its id).
+                    let header_daemon_id = parts
                         .headers
                         .get("X-Daemon-ID")
                         .and_then(|h| h.to_str().ok())
                         .and_then(|s| Uuid::parse_str(s).ok())
-                        .ok_or_else(|| AuthError(ApiError::daemon_required()))?;
+                        .filter(|id| !id.is_nil());
+
+                    // Daemon version header (introduced in v0.14.10) — read once, used
+                    // by both the cache fast-path and the DB path below.
+                    let daemon_version = parts
+                        .headers
+                        .get("X-Daemon-Version")
+                        .and_then(|h| h.to_str().ok())
+                        .map(|s| s.to_string());
+
+                    let daemon_api_key_service = &app_state.services.daemon_api_key_service;
+
+                    // Fast path: a hot poll loop hits this every ~30s; serve the cached
+                    // resolution without touching the DB. Validity is re-evaluated here
+                    // (not cached as a verdict); a stale/invalid entry is evicted and we
+                    // fall through to the DB path (which also handles auto-disable).
+                    if let Some(resolved) = daemon_api_key_service.cached_resolution(&hashed_key).await
+                    {
+                        let expired = resolved
+                            .expires_at
+                            .is_some_and(|expires_at| expires_at < Utc::now());
+                        if resolved.is_enabled && !expired {
+                            match resolve_daemon_identity(
+                                resolved.daemon_id,
+                                header_daemon_id,
+                                app_state,
+                                ip,
+                                user_agent.clone(),
+                                key_type,
+                                key_prefix,
+                            )
+                            .await
+                            {
+                                Ok(daemon_id) => {
+                                    return Ok(AuthenticatedEntity::Daemon {
+                                        network_id: resolved.network_id,
+                                        api_key_id: resolved.api_key_id,
+                                        daemon_id,
+                                        version: daemon_version,
+                                    });
+                                }
+                                Err(e) => return Err(e),
+                            }
+                        }
+                        daemon_api_key_service
+                            .invalidate_resolution(&hashed_key)
+                            .await;
+                    }
 
                     // Check if key exists
                     let api_key_filter =
-                        StorableFilter::<DaemonApiKey>::new_from_api_key(hashed_key);
+                        StorableFilter::<DaemonApiKey>::new_from_api_key(hashed_key.clone());
                     if let Ok(Some(mut api_key)) = app_state
                         .services
                         .daemon_api_key_service
@@ -501,6 +553,11 @@ impl AuthenticatedEntity {
                         let network_id = api_key.base.network_id;
                         let service = app_state.services.daemon_api_key_service.clone();
                         let api_key_id = api_key.id;
+                        // Snapshot the fields the cache needs before `api_key` is moved
+                        // into the last-used spawn below.
+                        let key_daemon_id = api_key.base.daemon_id;
+                        let is_enabled = api_key.base.is_enabled;
+                        let expires_at = api_key.base.expires_at;
 
                         // Check validity using shared trait
                         if let Err(e) = check_key_validity(&api_key) {
@@ -531,7 +588,9 @@ impl AuthenticatedEntity {
                             return Err(AuthError(e));
                         }
 
-                        // Update last used asynchronously (don't block auth)
+                        // Update last used asynchronously (don't block auth). This goes
+                        // through the generic update, which does NOT evict the resolution
+                        // cache, so a hot poll loop stays cached between last-used writes.
                         api_key.set_last_used(Some(Utc::now()));
                         tokio::spawn(async move {
                             let _ = service
@@ -539,17 +598,31 @@ impl AuthenticatedEntity {
                                 .await;
                         });
 
-                        // Extract daemon version from header (introduced in v0.14.10)
-                        let daemon_version = parts
-                            .headers
-                            .get("X-Daemon-Version")
-                            .and_then(|h| h.to_str().ok())
-                            .map(|s| s.to_string());
+                        // Populate the resolution cache so the next poll skips the DB.
+                        daemon_api_key_service
+                            .cache_resolution(
+                                &hashed_key,
+                                ResolvedDaemonKey {
+                                    api_key_id,
+                                    network_id,
+                                    daemon_id: key_daemon_id,
+                                    is_enabled,
+                                    expires_at,
+                                },
+                            )
+                            .await;
 
-                        // Note: We don't validate that the daemon exists here because:
-                        // 1. The daemon may be registering for the first time (doesn't exist yet)
-                        // 2. The API key's network_id is the source of truth for authorization
-                        // 3. Individual handlers validate daemon-network consistency as needed
+                        let daemon_id = resolve_daemon_identity(
+                            key_daemon_id,
+                            header_daemon_id,
+                            app_state,
+                            ip,
+                            user_agent.clone(),
+                            key_type,
+                            key_prefix,
+                        )
+                        .await?;
+
                         return Ok(AuthenticatedEntity::Daemon {
                             network_id,
                             api_key_id,
@@ -560,14 +633,18 @@ impl AuthenticatedEntity {
 
                     // Check if this daemon exists to provide a better error message
                     // - If daemon exists: key was rotated/revoked, fail immediately
-                    // - If daemon doesn't exist: onboarding scenario, daemon should retry
-                    let daemon_exists = app_state
-                        .services
-                        .daemon_service
-                        .get_by_id(&daemon_id)
-                        .await
-                        .map(|d| d.is_some())
-                        .unwrap_or(false);
+                    // - If daemon doesn't exist (or no id was presented): onboarding
+                    //   scenario, daemon should retry
+                    let daemon_exists = match header_daemon_id {
+                        Some(id) => app_state
+                            .services
+                            .daemon_service
+                            .get_by_id(&id)
+                            .await
+                            .map(|d| d.is_some())
+                            .unwrap_or(false),
+                        None => false,
+                    };
 
                     publish_api_key_auth_failed(
                         app_state,
@@ -700,6 +777,43 @@ fn is_ip_allowed(ip: IpAddr, allowed: &[String]) -> bool {
 }
 
 /// Publish a failed API key authentication event
+/// Resolve a daemon's identity from its key shape (see the coexistence spine):
+/// a 1:1 provisioned key (`key_daemon_id = Some`) is authoritative and a present
+/// non-nil header must match it (else the key is being reused from another daemon);
+/// a legacy network-shared key (`None`) still requires the header as its only
+/// identity source. Shared by the cache fast-path and the DB path.
+#[allow(clippy::too_many_arguments)]
+async fn resolve_daemon_identity(
+    key_daemon_id: Option<Uuid>,
+    header_daemon_id: Option<Uuid>,
+    app_state: &AppState,
+    ip: IpAddr,
+    user_agent: Option<String>,
+    key_type: ApiKeyType,
+    key_prefix: Option<&str>,
+) -> Result<Uuid, AuthError> {
+    match key_daemon_id {
+        Some(bound_daemon_id) => {
+            if let Some(hdr) = header_daemon_id
+                && hdr != bound_daemon_id
+            {
+                publish_api_key_auth_failed(
+                    app_state,
+                    ip,
+                    user_agent,
+                    key_type,
+                    "daemon_mismatch",
+                    key_prefix,
+                )
+                .await;
+                return Err(AuthError(ApiError::not_authenticated()));
+            }
+            Ok(bound_daemon_id)
+        }
+        None => header_daemon_id.ok_or_else(|| AuthError(ApiError::daemon_required())),
+    }
+}
+
 async fn publish_api_key_auth_failed(
     app_state: &AppState,
     ip: IpAddr,
