@@ -6894,8 +6894,6 @@ export interface components {
             /** @description Filename encoding this daemon's non-secret values (mode/name/url). Save or rename
              *     the downloaded MSI to this name to pre-fill the installer. The api key is never encoded. */
             msi_filename: string;
-            /** @description Direct URL of the signed Windows MSI release artifact (a GitHub asset). */
-            msi_url: string;
         };
         PlatformInstallCommand: {
             /** @description The full command, including fetching the binary. */

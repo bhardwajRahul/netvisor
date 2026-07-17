@@ -1,11 +1,12 @@
 //! Server-side assembly of daemon install artifacts.
 //!
 //! The server is the single source of truth for the install command (it knows its own
-//! public URL, the release-asset locations, and the canonical two-flag format), so the
-//! provision response hands back ready-to-run commands and a download link instead of
-//! the UI/MCP/email each re-deriving them. Commands that embed the api key are built here
-//! at provision time (the plaintext is only available then, and never stored for
-//! DaemonPoll); the MSI link carries no secret and is re-derivable later.
+//! public URL and the canonical two-flag format), so the provision response hands back
+//! ready-to-run commands instead of the UI/MCP/email each re-deriving them. Commands that
+//! embed the api key are built here at provision time (the plaintext is only available
+//! then, and never stored for DaemonPoll). The MSI itself is a static release asset the UI
+//! links to directly; only its per-daemon pre-fill filename ([`encode_msi_filename`], no
+//! secret) travels in the response.
 
 use base64ct::{Base64UrlUnpadded, Encoding};
 use serde::{Deserialize, Serialize};
@@ -18,8 +19,10 @@ const UNIX_INSTALL_SCRIPT: &str = "bash -c \"$(curl -fsSL https://raw.githubuser
 /// Windows daemon exe (matches the UI's hardcoded release URL).
 const WINDOWS_EXE_URL: &str =
     "https://github.com/scanopy/scanopy/releases/latest/download/scanopy-daemon-windows-amd64.exe";
-/// The signed Windows MSI release asset. The installer-download endpoint streams this,
-/// renamed with the per-tenant [`encode_msi_filename`] name.
+/// The signed Windows MSI release asset. A static GitHub asset URL — the UI hardcodes it as a
+/// const rather than the server sending it per-provision (it's the same for every tenant). Kept
+/// here for reuse by any server-side MSI tooling; only the per-daemon [`encode_msi_filename`]
+/// name is tenant-specific and travels in the provision response.
 pub const WINDOWS_MSI_URL: &str =
     "https://github.com/scanopy/scanopy/releases/latest/download/scanopy-daemon-windows-amd64.msi";
 
@@ -37,8 +40,6 @@ pub struct PlatformInstallCommand {
 pub struct InstallArtifacts {
     /// Per-platform binary install commands (the api key is embedded — shown once).
     pub commands: Vec<PlatformInstallCommand>,
-    /// Direct URL of the signed Windows MSI release artifact (a GitHub asset).
-    pub msi_url: String,
     /// Filename encoding this daemon's non-secret values (mode/name/url). Save or rename
     /// the downloaded MSI to this name to pre-fill the installer — parse-filename.js decodes
     /// it. The api key is never encoded. Renaming a signed MSI doesn't affect its signature.
@@ -123,7 +124,6 @@ pub fn build_install_artifacts(
 
     InstallArtifacts {
         commands,
-        msi_url: WINDOWS_MSI_URL.to_string(),
         msi_filename: encode_msi_filename(public_url, daemon),
     }
 }
@@ -225,16 +225,14 @@ mod tests {
     }
 
     #[test]
-    fn msi_url_is_the_github_artifact_and_filename_is_encoded() {
+    fn msi_filename_is_encoded_for_rename_prefill() {
         let a = build_install_artifacts(
             "https://app.scanopy.net",
             &daemon(DaemonMode::ServerPoll, "https://edge.corp"),
             "sk",
         );
-        // Direct release asset, not a server path.
-        assert_eq!(a.msi_url, WINDOWS_MSI_URL);
-        assert!(!a.msi_url.contains("app.scanopy.net"));
-        // Filename carries the encoded values for a rename-to-prefill.
+        // Filename carries the encoded values for a rename-to-prefill; the static MSI URL
+        // is a UI-side const, not part of the per-tenant provision response.
         assert!(a.msi_filename.starts_with("scanopy-daemon-"));
         assert!(a.msi_filename.ends_with(".msi"));
     }
