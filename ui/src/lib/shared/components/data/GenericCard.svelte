@@ -267,28 +267,34 @@
 								: 'group'} relative overflow-visible transition-all duration-200 ease-in-out {cls}"
 							title={tooltipText ? undefined : action.label}
 						>
-							<div
-								class="flex items-center justify-center {action.forceLabel
-									? 'opacity-0'
-									: 'transition-opacity duration-200 group-hover:opacity-0'}"
-							>
-								<action.icon size={16} class="flex-shrink-0 {action.animation || ''}" />
-							</div>
+							{#if action.forceLabel}
+								<!-- Always-labelled action: render the label IN FLOW so the button sizes to
+								     its content. An absolutely-positioned label (as used for hover-reveal
+								     below) overflows the icon-width button and overlaps the adjacent action. -->
+								<div class="flex items-center justify-center whitespace-nowrap">
+									<action.icon size={16} class="flex-shrink-0 {action.animation || ''}" />
+									<span class="ml-2">{action.label}</span>
+								</div>
+							{:else}
+								<div
+									class="flex items-center justify-center transition-opacity duration-200 group-hover:opacity-0"
+								>
+									<action.icon size={16} class="flex-shrink-0 {action.animation || ''}" />
+								</div>
 
-							<div
-								class="absolute top-1/2 flex -translate-y-1/2 items-center justify-center whitespace-nowrap {action.disabled
-									? 'opacity-0'
-									: action.forceLabel
-										? 'opacity-100'
+								<div
+									class="absolute top-1/2 flex -translate-y-1/2 items-center justify-center whitespace-nowrap {action.disabled
+										? 'opacity-0'
 										: 'opacity-0 transition-all duration-200 ease-in-out group-hover:opacity-100'} {isLeftEdge
-									? 'left-0'
-									: isRightEdge
-										? 'right-0'
-										: 'left-1/2 -translate-x-1/2'} {cls}"
-							>
-								<action.icon size={16} class="flex-shrink-0 {action.animation || ''}" />
-								<span class="ml-2">{action.label}</span>
-							</div>
+										? 'left-0'
+										: isRightEdge
+											? 'right-0'
+											: 'left-1/2 -translate-x-1/2'} {cls}"
+								>
+									<action.icon size={16} class="flex-shrink-0 {action.animation || ''}" />
+									<span class="ml-2">{action.label}</span>
+								</div>
+							{/if}
 						</button>
 					</div>
 				{:else}

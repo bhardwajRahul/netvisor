@@ -36,7 +36,8 @@ use crate::server::daemons::r#impl::api::{
 use crate::server::daemons::r#impl::base::{Daemon, DaemonBase};
 use crate::server::daemons::r#impl::interfaced_subnets::DaemonInterfacedSubnetStorage;
 use crate::server::daemons::r#impl::version::{
-    DaemonVersionPolicy, pre_interface_to_ip_address_rename, supports_unified_discovery,
+    DaemonVersionPolicy, pre_interface_to_ip_address_rename, supports_server_provisioned_identity,
+    supports_unified_discovery,
 };
 use crate::server::discovery::r#impl::base::{Discovery, DiscoveryBase};
 use crate::server::discovery::r#impl::scan_settings::ScanSettings;

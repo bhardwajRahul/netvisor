@@ -61,11 +61,14 @@
 	let showCreateApiKeyModal = $state(false);
 	let editingApiKey = $state<ApiKey | null>(null);
 
-	// Deep-link: open daemon API key editor from URL
+	// Deep-link: open daemon API key editor from URL. Resolve the id against the FULL,
+	// unfiltered key list — the daemon card's "Manage key" action deep-links a key bound
+	// 1:1 to a daemon (daemon_id set), which is deliberately excluded from `apiKeysData`
+	// (the legacy-only tab list). Resolving against the filtered list would never find it.
 	$effect(() => {
 		if ($modalState.name === 'daemon-api-key' && !showCreateApiKeyModal) {
 			if ($modalState.id) {
-				const entity = apiKeysData.find((e) => e.id === $modalState.id);
+				const entity = (apiKeysQuery.data ?? []).find((e) => e.id === $modalState.id);
 				if (entity) {
 					editingApiKey = entity;
 					showCreateApiKeyModal = true;
