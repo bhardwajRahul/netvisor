@@ -10,7 +10,6 @@
 	import { useNetworksQuery } from '$lib/features/networks/queries';
 	import { useHostsQuery } from '$lib/features/hosts/queries';
 	import { useSubnetsQuery } from '$lib/features/subnets/queries';
-	import { useApiKeysQuery } from '$lib/features/daemon_api_keys/queries';
 	import { useCredentialsQuery } from '$lib/features/credentials/queries';
 	import type { TagProps } from '$lib/shared/components/data/types';
 	import { entityRef } from '$lib/shared/components/data/types';
@@ -48,14 +47,12 @@
 	// Use limit: 0 to get all hosts for daemon card lookups
 	const hostsQuery = useHostsQuery({ limit: 0 });
 	const subnetsQuery = useSubnetsQuery();
-	const apiKeysQuery = useApiKeysQuery();
 	const credentialsQuery = useCredentialsQuery();
 
 	// Derived data
 	let networksData = $derived(networksQuery.data ?? []);
 	let hostsData = $derived(hostsQuery.data?.items ?? []);
 	let subnetsData = $derived(subnetsQuery.data ?? []);
-	let apiKeysData = $derived(apiKeysQuery.data ?? []);
 	let credentialsData = $derived(credentialsQuery.data ?? []);
 
 	let {
@@ -73,9 +70,6 @@
 	} = $props();
 
 	let host = $derived(hostsData.find((h) => h.id === daemon.host_id) ?? null);
-	let linkedApiKey = $derived(
-		daemon.api_key_id ? apiKeysData.find((k) => k.id === daemon.api_key_id) : null
-	);
 
 	let status: TagProps = $derived(getDaemonStatusTag(daemon));
 
@@ -149,26 +143,6 @@
 				label: 'Mode',
 				value: daemon.mode
 			},
-			...(linkedApiKey
-				? [
-						{
-							label: 'API Key',
-							value: [
-								{
-									id: linkedApiKey.id,
-									label: linkedApiKey.name,
-									color: entities.getColorHelper('DaemonApiKey').color,
-									entityRef: entityRef('DaemonApiKey', linkedApiKey.id, linkedApiKey)
-								}
-							]
-						}
-					]
-				: [
-						{
-							label: 'API Key',
-							value: daemon.mode == 'server_poll' ? 'Not Found' : 'N/A'
-						}
-					]),
 			{
 				label: 'Interfaces With',
 				value: daemon.interfaced_subnet_ids
