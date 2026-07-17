@@ -1,17 +1,17 @@
 #!/bin/bash
 set -euo pipefail
 
-# SNMP Test Environment — manages 8 snmpd instances on a Proxmox LXC
-# Subnet: 192.168.4.0/22 (hosts at 192.168.7.230–237)
+# SNMP Test Environment — manages 10 snmpd instances on a Proxmox LXC
+# Subnet: 192.168.4.0/22 (hosts at 192.168.7.230–239)
 # Usage: tools/snmp/snmp-test-env.sh verify|status|ssh-setup
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SNMPGET="${SNMPGET:-/opt/homebrew/opt/net-snmp/bin/snmpget}"
 
-HOSTS=(192.168.7.230 192.168.7.231 192.168.7.232 192.168.7.233 192.168.7.234 192.168.7.235 192.168.7.236 192.168.7.237)
-VERSIONS=(v2c v2c v2c v2c v2c v2c v1 v3)
-COMMUNITIES=(netdefault netdefault secret42 secret42 public netdefault legacyv1 -)
-SYSNAMES=("switch-core-01" "switch-access-01" "router-gw-01" "firewall-01" "printer-lobby" "ap-wireless-01" "legacy-switch-01" "secure-switch-01")
+HOSTS=(192.168.7.230 192.168.7.231 192.168.7.232 192.168.7.233 192.168.7.234 192.168.7.235 192.168.7.236 192.168.7.237 192.168.7.238 192.168.7.239)
+VERSIONS=(v2c v2c v2c v2c v2c v2c v1 v3 v2c v2c)
+COMMUNITIES=(netdefault netdefault secret42 secret42 public netdefault legacyv1 - netdefault netdefault)
+SYSNAMES=("switch-core-01" "switch-access-01" "router-gw-01" "firewall-01" "printer-lobby" "ap-wireless-01" "legacy-switch-01" "secure-switch-01" "switch-exos-01" "switch-voss-01")
 
 # SNMPv3 USM credentials for secure-switch-01 (must match lxc/setup.sh).
 V3_USER="${V3_USER:-scanopyv3}"
