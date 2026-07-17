@@ -150,6 +150,10 @@ async fn run_install(args: InstallArgs) -> Result<()> {
     } else {
         platform::register_service(&spec).context("Failed to register the system service")?;
         println!("Registered and started service '{}'.", spec.service_id);
+        // Tell the operator where to find the config and logs — the first thing they need
+        // when a freshly installed service isn't behaving.
+        println!("  Config: {}", config_path.display());
+        println!("  Logs:   {}", spec.log_file.display());
     }
 
     println!("Scanopy daemon installed successfully.");
