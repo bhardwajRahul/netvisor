@@ -102,27 +102,45 @@ impl NetworkScan {
     }
 
     /// Compute the total integration cost (centiseconds) for a specific IP.
-    /// Sums estimated_seconds for each integration that has a credential covering this IP.
+    /// Thin delegator to [`integration_cost_for_ip`].
     fn compute_integration_cost_for_ip(&self, ip: IpAddr) -> usize {
-        self.credential_mappings
-            .iter()
-            .filter_map(|m| {
-                let discriminant: CredentialQueryPayloadDiscriminants = m
-                    .default_credential
-                    .as_ref()
-                    .map(|c| c.into())
-                    .or_else(|| m.ip_overrides.first().map(|o| (&o.credential).into()))?;
-                let has_cred =
-                    m.ip_overrides.iter().any(|o| o.ip == ip) || m.default_credential.is_some();
-                if has_cred {
-                    let integration = IntegrationRegistry::get(discriminant)?;
-                    Some(integration.estimated_seconds() as usize * 100)
-                } else {
-                    None
-                }
-            })
-            .sum()
+        integration_cost_for_ip(&self.credential_mappings, ip)
     }
+}
+
+/// Total integration cost (centiseconds) the daemon attributes to `ip`, counting each
+/// integration **once** regardless of how many credentials of that type cover the IP.
+///
+/// SNMP now runs a single collection per host (see `execute_integrations`' dedup), so
+/// N SNMP credentials (v1/v2c/v3 + the injected "public" default) must cost the same as
+/// one. This is used symmetrically for both the total-cost estimate and the completed-
+/// cost accrual (`scan.rs`) so `completed_cost` converges to `total_cost` and the scan
+/// ETA/progress stay accurate instead of over-counting per-credential.
+pub(super) fn integration_cost_for_ip(
+    credential_mappings: &[crate::server::credentials::r#impl::mapping::CredentialMapping<
+        crate::server::credentials::r#impl::mapping::CredentialQueryPayload,
+    >],
+    ip: IpAddr,
+) -> usize {
+    let mut seen: HashSet<CredentialQueryPayloadDiscriminants> = HashSet::new();
+    credential_mappings
+        .iter()
+        .filter_map(|m| {
+            let discriminant: CredentialQueryPayloadDiscriminants = m
+                .default_credential
+                .as_ref()
+                .map(|c| c.into())
+                .or_else(|| m.ip_overrides.first().map(|o| (&o.credential).into()))?;
+            let has_cred =
+                m.ip_overrides.iter().any(|o| o.ip == ip) || m.default_credential.is_some();
+            // Count each integration discriminant at most once per IP.
+            if !has_cred || !seen.insert(discriminant) {
+                return None;
+            }
+            let integration = IntegrationRegistry::get(discriminant)?;
+            Some(integration.estimated_seconds() as usize * 100)
+        })
+        .sum()
 }
 
 pub(super) struct DeepScanParams<'a> {
@@ -147,4 +165,69 @@ pub(super) struct DeepScanParams<'a> {
         crate::server::credentials::r#impl::mapping::CredentialQueryPayload,
     >],
     created_subnets: Vec<Subnet>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::integration_cost_for_ip;
+    use crate::server::credentials::r#impl::mapping::{
+        ContainerSocketQueryCredential, CredentialMapping, CredentialQueryPayload,
+    };
+    use std::net::{IpAddr, Ipv4Addr};
+
+    fn snmp_mapping() -> CredentialMapping<CredentialQueryPayload> {
+        CredentialMapping {
+            default_credential: Some(CredentialQueryPayload::default()), // Snmp
+            ip_overrides: Vec::new(),
+        }
+    }
+
+    fn docker_mapping() -> CredentialMapping<CredentialQueryPayload> {
+        CredentialMapping {
+            default_credential: Some(CredentialQueryPayload::DockerSocket(
+                ContainerSocketQueryCredential { socket_path: None },
+            )),
+            ip_overrides: Vec::new(),
+        }
+    }
+
+    // The estimate must count each integration ONCE per host regardless of how many
+    // credentials of that type are configured — SNMP now runs one collection per host,
+    // so v1+v2c+v3 (+ the injected public default) must cost the same as a single SNMP
+    // credential. This is the ETA-inflation regression guard.
+    #[test]
+    fn snmp_counted_once_regardless_of_credential_count() {
+        let ip = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1));
+        let one = integration_cost_for_ip(&[snmp_mapping()], ip);
+        let four = integration_cost_for_ip(
+            &[
+                snmp_mapping(),
+                snmp_mapping(),
+                snmp_mapping(),
+                snmp_mapping(),
+            ],
+            ip,
+        );
+        assert!(
+            one > 0,
+            "SNMP integration should have a non-zero estimated cost"
+        );
+        assert_eq!(
+            one, four,
+            "N SNMP credentials must cost the same as one (deduped by integration)"
+        );
+    }
+
+    #[test]
+    fn distinct_integrations_each_count_once() {
+        let ip = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1));
+        let snmp = integration_cost_for_ip(&[snmp_mapping()], ip);
+        let docker = integration_cost_for_ip(&[docker_mapping()], ip);
+        let both = integration_cost_for_ip(&[snmp_mapping(), docker_mapping()], ip);
+        assert_eq!(
+            both,
+            snmp + docker,
+            "distinct integrations should each be counted once and summed"
+        );
+    }
 }

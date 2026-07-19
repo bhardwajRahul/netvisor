@@ -1,12 +1,10 @@
 use super::arp::{self, ArpScanResult};
-use crate::daemon::discovery::integration::IntegrationRegistry;
 use crate::daemon::discovery::service::ops::DiscoveryOps;
 use crate::daemon::discovery::types::base::DiscoveryCriticalError;
 use crate::daemon::utils::base::{DaemonUtils, PlatformDaemonUtils};
 use crate::daemon::utils::scanner::{
     ScanConcurrencyController, can_arp_scan, scan_endpoints, scan_tcp_ports, scan_udp_ports,
 };
-use crate::server::credentials::r#impl::mapping::CredentialQueryPayloadDiscriminants;
 use crate::server::discovery::r#impl::scan_settings::defaults;
 use crate::server::ip_addresses::r#impl::base::{IPAddress, IPAddressBase};
 use crate::server::ports::r#impl::base::PortType;
@@ -36,7 +34,7 @@ use uuid::Uuid;
 use super::{
     DeepScanParams, DiscoveredHostData, FULL_SCAN_COST_CS, LATE_ARRIVAL_GRACE_PERIOD,
     LIGHT_SCAN_COST_CS, MAX_PROGRESS_REPORT_INTERVAL, NetworkScan, PROGRESS_ARP_PHASE,
-    PROGRESS_DEEP_SCAN_PHASE, PROGRESS_GRACE_PHASE,
+    PROGRESS_DEEP_SCAN_PHASE, PROGRESS_GRACE_PHASE, integration_cost_for_ip,
 };
 
 impl NetworkScan {
@@ -960,25 +958,9 @@ impl NetworkScan {
                 discovered.fetch_add(1, Ordering::Relaxed);
             }
             if let Some(total) = total_cost {
-                // Compute integration cost from credential mappings for this IP
-                let integration_cost_cs: usize = credential_mappings
-                    .iter()
-                    .filter_map(|m| {
-                        let discriminant: CredentialQueryPayloadDiscriminants = m
-                            .default_credential
-                            .as_ref()
-                            .map(|c| c.into())
-                            .or_else(|| m.ip_overrides.first().map(|o| (&o.credential).into()))?;
-                        let has_cred = m.ip_overrides.iter().any(|o| o.ip == ip)
-                            || m.default_credential.is_some();
-                        if has_cred {
-                            let integration = IntegrationRegistry::get(discriminant)?;
-                            Some(integration.estimated_seconds() as usize * 100)
-                        } else {
-                            None
-                        }
-                    })
-                    .sum();
+                // Integration cost, counted once per distinct integration for this IP
+                // (see integration_cost_for_ip) so it matches the completed-cost accrual.
+                let integration_cost_cs = integration_cost_for_ip(credential_mappings, ip);
                 total.fetch_add(scan_cost_cs + integration_cost_cs, Ordering::Relaxed);
             }
 
@@ -1085,17 +1067,15 @@ impl NetworkScan {
         )
         .await?;
         open_ports.extend(probe_results.additional_ports.iter());
-        // Mark integration probe costs as completed
+        // Mark this host's integration cost as completed once its probes resolve. Uses
+        // the SAME per-distinct-integration cost that total_cost accrued for the host,
+        // so completed_cost converges to total_cost (the scan ETA/progress stay accurate
+        // even when several SNMP credentials cover the host).
         if let Some(counter) = completed_cost {
-            for discriminant in probe_results.working_credential_ids.keys() {
-                let Some(integration) = IntegrationRegistry::get(*discriminant) else {
-                    continue;
-                };
-                counter.fetch_add(
-                    integration.estimated_seconds() as usize * 100,
-                    Ordering::Relaxed,
-                );
-            }
+            counter.fetch_add(
+                integration_cost_for_ip(credential_mappings, ip),
+                Ordering::Relaxed,
+            );
         }
         let client_responses = &probe_results.client_responses;
 
