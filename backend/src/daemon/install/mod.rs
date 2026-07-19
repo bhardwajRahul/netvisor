@@ -198,6 +198,34 @@ async fn run_uninstall(args: UninstallArgs) -> Result<()> {
         }
     }
 
+    // 4. Log files. The service logs to a known, installer-baked path
+    //    (`--log-file`, always `default_system_log_path` == `spec.log_file`);
+    //    macOS also has the launchd stdout/stderr capture. Deleted only under
+    //    `--purge` (logs are useful for a post-mortem otherwise); either way we
+    //    tell the user, so uninstall is never silent about them.
+    let mut log_files = vec![spec.log_file.clone()];
+    #[cfg(target_os = "macos")]
+    log_files.push(
+        std::path::PathBuf::from("/var/log/scanopy").join(format!("{}.out.log", spec.service_id)),
+    );
+    let existing_logs: Vec<std::path::PathBuf> =
+        log_files.into_iter().filter(|p| p.exists()).collect();
+    if args.purge {
+        for log_path in &existing_logs {
+            std::fs::remove_file(log_path)
+                .with_context(|| format!("Failed to delete log {}", log_path.display()))?;
+            removed_anything = true;
+            println!("Deleted log {}.", log_path.display());
+        }
+    } else if !existing_logs.is_empty() {
+        let joined = existing_logs
+            .iter()
+            .map(|p| p.display().to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+        println!("Kept log file(s): {joined} (re-run with --purge to delete).");
+    }
+
     if removed_anything {
         println!("Scanopy daemon uninstalled.");
     } else {
