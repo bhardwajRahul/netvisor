@@ -210,13 +210,29 @@ impl DaemonService {
             match self.poll_status(daemon, &api_key).await {
                 Ok(status) => status,
                 Err(e) => {
-                    // Backon exhausted retries - mark daemon unreachable
-                    tracing::warn!(
-                        daemon_id = %daemon.id,
-                        daemon_name = %daemon.base.name,
-                        "Marking daemon unreachable after {} failures",
-                        UNREACHABLE_THRESHOLD
-                    );
+                    // A 4xx (e.g. 401 key mismatch) is a definitive misconfiguration, not a
+                    // transient network failure — say so, instead of the generic "unreachable
+                    // after N failures". Either way we mark the daemon unreachable to stop the
+                    // poll loop from hammering a daemon that can't currently be polled.
+                    let is_auth_failure = e
+                        .downcast_ref::<super::http::DaemonHttpError>()
+                        .is_some_and(|h| h.status.is_client_error());
+                    if is_auth_failure {
+                        tracing::warn!(
+                            daemon_id = %daemon.id,
+                            daemon_name = %daemon.base.name,
+                            "Daemon rejected the poll ({e}) — likely an API key mismatch. \
+                             Re-provision/re-install the daemon so its key matches the server. \
+                             Pausing polling of this daemon."
+                        );
+                    } else {
+                        tracing::warn!(
+                            daemon_id = %daemon.id,
+                            daemon_name = %daemon.base.name,
+                            "Marking daemon unreachable after {} failures",
+                            UNREACHABLE_THRESHOLD
+                        );
+                    }
                     if let Err(mark_err) =
                         self.mark_daemon_unreachable(daemon.id, email_service).await
                     {
