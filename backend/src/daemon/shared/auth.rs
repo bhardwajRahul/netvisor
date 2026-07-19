@@ -70,7 +70,11 @@ pub async fn server_auth_middleware(
     let expected_hash = hash_api_key(&expected_key);
 
     if incoming_hash != expected_hash {
-        tracing::debug!("API key validation failed");
+        tracing::warn!(
+            "Rejected server poll: API key mismatch — the server presented a key that doesn't \
+             match this daemon's configured key. Re-provision/re-install this daemon so its key \
+             matches the server."
+        );
         return (StatusCode::UNAUTHORIZED, "Invalid API key").into_response();
     }
 
