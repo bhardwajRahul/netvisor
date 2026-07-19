@@ -34,7 +34,8 @@ use uuid::Uuid;
 use super::{
     DeepScanParams, DiscoveredHostData, FULL_SCAN_COST_CS, LATE_ARRIVAL_GRACE_PERIOD,
     LIGHT_SCAN_COST_CS, MAX_PROGRESS_REPORT_INTERVAL, NetworkScan, PROGRESS_ARP_PHASE,
-    PROGRESS_DEEP_SCAN_PHASE, PROGRESS_GRACE_PHASE, integration_cost_for_ip,
+    PROGRESS_DEEP_SCAN_PHASE, PROGRESS_GRACE_PHASE, RESPONSIVENESS_COST_CS,
+    integration_cost_for_ip,
 };
 
 impl NetworkScan {
@@ -394,6 +395,13 @@ impl NetworkScan {
         };
         let total_cost = Arc::new(AtomicUsize::new(0));
         let completed_cost = Arc::new(AtomicUsize::new(0));
+        // Seed total_cost with the responsiveness-check work for every non-interfaced IP
+        // (checked whether or not it responds), so progress/ETA account for draining that
+        // range instead of pinning at ~95% while it's still being scanned.
+        total_cost.fetch_add(
+            non_interfaced_ip_count as usize * RESPONSIVENESS_COST_CS,
+            Ordering::Relaxed,
+        );
 
         // Collect hosts into a stream and process with concurrency limit
         // Use trait objects to allow spawning from different code paths
@@ -770,14 +778,27 @@ impl NetworkScan {
                         session.hosts_discovered.store(hosts_discovered_val as u32, Ordering::Relaxed);
 
                         if channel_closed && hosts_scanned_val > 0 {
-                            // Host-based estimation: uses actual per-host completion time
-                            // which includes TCP + endpoints + SNMP + host creation — the
-                            // real bottleneck, not just TCP port scanning batches.
                             let started = deep_scan_started_at.get_or_insert(Instant::now());
                             let deep_scan_elapsed = started.elapsed();
+                            // Host-based estimate: real per-host completion time for the
+                            // responsive hosts (TCP + endpoints + SNMP + host creation).
                             let time_per_host = deep_scan_elapsed.as_secs_f64() / hosts_scanned_val as f64;
                             let remaining_hosts = hosts_discovered_val.saturating_sub(hosts_scanned_val);
-                            let remaining_secs = (remaining_hosts as f64 * time_per_host) as u32
+                            let host_based = (remaining_hosts as f64 * time_per_host) as u32;
+                            // Cost-based estimate also captures pending non-interfaced
+                            // responsiveness work — dead IPs never increment
+                            // hosts_discovered, so host-based alone collapses to "<1 min"
+                            // while a large non-interfaced range is still draining. Take
+                            // the larger so the ETA reflects whichever work dominates.
+                            let cost_based = if completed_cost_val > 0 {
+                                let time_per_cost_unit =
+                                    deep_scan_elapsed.as_secs_f64() / completed_cost_val as f64;
+                                let remaining_cost = total_cost_val.saturating_sub(completed_cost_val);
+                                (remaining_cost as f64 * time_per_cost_unit) as u32
+                            } else {
+                                0
+                            };
+                            let remaining_secs = host_based.max(cost_based)
                                 + LATE_ARRIVAL_GRACE_PERIOD.as_secs() as u32;
                             session.estimated_remaining_secs.store(remaining_secs, Ordering::Relaxed);
                         } else if completed_cost_val > 0 {
@@ -963,6 +984,13 @@ impl NetworkScan {
                 scan_controller.clone(),
             )
             .await?;
+
+            // The responsiveness check itself is accounted work (seeded into total_cost
+            // up front for every non-interfaced IP); mark it complete now, on both the
+            // responsive and unresponsive paths.
+            if let Some(counter) = completed_cost {
+                counter.fetch_add(RESPONSIVENESS_COST_CS, Ordering::Relaxed);
+            }
 
             if responsive_ports.is_empty() {
                 tracing::debug!(ip = %ip, "Host unresponsive, skipping deep scan");

@@ -49,6 +49,13 @@ const FULL_SCAN_COST_CS: usize = 9000; // ~90 seconds
 /// Cost of a light scan per host in centiseconds
 const LIGHT_SCAN_COST_CS: usize = 800; // ~8 seconds
 
+/// Cost (centiseconds) of a non-interfaced IP's TCP responsiveness check (an ~2s
+/// multi-port connect scan a dead IP still has to be probed with). Counted in the cost
+/// model — seeded into total_cost up front and accrued into completed_cost as each
+/// check finishes — so progress/ETA reflect draining a large non-interfaced range
+/// instead of pinning at ~95%/"<1 min" while those IPs are still being checked.
+const RESPONSIVENESS_COST_CS: usize = 200; // ~2 seconds
+
 #[derive(Default)]
 pub struct NetworkScan {
     subnet_ids: Option<Vec<Uuid>>,
