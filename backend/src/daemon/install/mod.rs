@@ -160,13 +160,30 @@ async fn run_install(args: InstallArgs) -> Result<()> {
     Ok(())
 }
 
+/// Print a uniform per-item disposition line for uninstall, e.g.
+/// `Config at /etc/…/config.json: Deleted` or
+/// `Binary at /usr/local/bin/scanopy-daemon: Kept (re-run with --purge to delete)`.
+fn report_disposition(label: &str, deleted: bool) {
+    if deleted {
+        println!("{label}: Deleted");
+    } else {
+        println!("{label}: Kept (re-run with --purge to delete)");
+    }
+}
+
 async fn run_uninstall(args: UninstallArgs) -> Result<()> {
     require_elevation("uninstall")?;
 
     let name = args.name.unwrap_or_else(|| DEFAULT_NAME.to_string());
+    // `removed_anything`: something was actually deregistered/deleted.
+    // `found_anything`: an artifact was present (even if kept). These drive the
+    // final summary so a plain uninstall that only finds a kept binary/log
+    // doesn't claim "no install found".
     let mut removed_anything = false;
+    let mut found_anything = false;
 
     // 1. Stop + deregister the service (tolerant of an already-absent service).
+    //    Always removed in both modes.
     let config_dir = system_config_dir(&name);
     let spec = ServiceSpec {
         service_id: service_id(&name),
@@ -178,13 +195,14 @@ async fn run_uninstall(args: UninstallArgs) -> Result<()> {
     };
     if platform::deregister_service(&spec).context("Failed to remove the system service")? {
         removed_anything = true;
-        println!("Removed service '{}'.", spec.service_id);
+        found_anything = true;
+        println!("Service '{}': Removed", spec.service_id);
     } else {
-        println!("No service '{}' found.", spec.service_id);
+        println!("Service '{}': Not found", spec.service_id);
     }
 
     // 2. Remove config.json from both the system location (service installs) and the per-user
-    //    profile location (--no-service / manual installs).
+    //    profile location (--no-service / manual installs). Always removed in both modes.
     let system_cfg =
         AppConfig::get_config_path_for_name(Some(&name), Some(config_dir.as_path()))?.1;
     let profile_cfg = AppConfig::get_config_path_for_name(Some(&name), None)?.1;
@@ -193,51 +211,47 @@ async fn run_uninstall(args: UninstallArgs) -> Result<()> {
             std::fs::remove_file(&config_path)
                 .with_context(|| format!("Failed to delete config {}", config_path.display()))?;
             removed_anything = true;
-            println!("Deleted config {}.", config_path.display());
+            found_anything = true;
+            report_disposition(&format!("Config at {}", config_path.display()), true);
         }
     }
 
-    // 3. Remove the binary only when explicitly requested.
-    if args.purge {
-        let bin_path = platform::default_bin_dir().join(BINARY_FILE_NAME);
-        if bin_path.exists() {
+    // 3. Binary: kept by default, deleted only under --purge. Always reported
+    //    when present so a plain uninstall states it was kept.
+    let bin_path = platform::default_bin_dir().join(BINARY_FILE_NAME);
+    if bin_path.exists() {
+        found_anything = true;
+        if args.purge {
             std::fs::remove_file(&bin_path)
                 .with_context(|| format!("Failed to delete binary {}", bin_path.display()))?;
             removed_anything = true;
-            println!("Deleted binary {}.", bin_path.display());
         }
+        report_disposition(&format!("Binary at {}", bin_path.display()), args.purge);
     }
 
     // 4. Log files. The service logs to a known, installer-baked path
     //    (`--log-file`, always `default_system_log_path` == `spec.log_file`);
-    //    macOS also has the launchd stdout/stderr capture. Deleted only under
-    //    `--purge` (logs are useful for a post-mortem otherwise); either way we
-    //    tell the user, so uninstall is never silent about them.
+    //    macOS also has the launchd stdout/stderr capture. Kept by default
+    //    (useful for a post-mortem), deleted only under --purge.
     let mut log_files = vec![spec.log_file.clone()];
     #[cfg(target_os = "macos")]
     log_files.push(
         std::path::PathBuf::from("/var/log/scanopy").join(format!("{}.out.log", spec.service_id)),
     );
-    let existing_logs: Vec<std::path::PathBuf> =
-        log_files.into_iter().filter(|p| p.exists()).collect();
-    if args.purge {
-        for log_path in &existing_logs {
+    for log_path in log_files.iter().filter(|p| p.exists()) {
+        found_anything = true;
+        if args.purge {
             std::fs::remove_file(log_path)
                 .with_context(|| format!("Failed to delete log {}", log_path.display()))?;
             removed_anything = true;
-            println!("Deleted log {}.", log_path.display());
         }
-    } else if !existing_logs.is_empty() {
-        let joined = existing_logs
-            .iter()
-            .map(|p| p.display().to_string())
-            .collect::<Vec<_>>()
-            .join(", ");
-        println!("Kept log file(s): {joined} (re-run with --purge to delete).");
+        report_disposition(&format!("Log at {}", log_path.display()), args.purge);
     }
 
     if removed_anything {
         println!("Scanopy daemon uninstalled.");
+    } else if found_anything {
+        println!("Nothing removed — re-run with --purge to delete the kept file(s).");
     } else {
         println!("Nothing to remove — no Scanopy daemon install found for '{name}'.");
     }
