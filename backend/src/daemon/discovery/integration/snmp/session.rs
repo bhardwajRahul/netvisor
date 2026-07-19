@@ -37,6 +37,12 @@ pub const SNMP_TIMEOUT: Duration = Duration::from_secs(5);
 /// Timeout for SNMP session creation (UDP socket setup)
 pub const SNMP_SESSION_TIMEOUT: Duration = Duration::from_secs(5);
 
+/// Overall timeout for a single SNMP liveness probe (one credential, one port). Caps
+/// the whole create-session + sysDescr GET so a non-responder — especially v3, whose
+/// engine-discovery handshake otherwise waits the full 5s SNMP_SESSION_TIMEOUT — costs
+/// ~2s instead of up to 7s. A responsive device answers in well under this on a LAN.
+pub const SNMP_PROBE_TIMEOUT: Duration = Duration::from_secs(2);
+
 /// Default timeout for table walks (longer since they involve multiple requests)
 pub const SNMP_WALK_TIMEOUT: Duration = Duration::from_secs(30);
 

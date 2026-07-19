@@ -19,7 +19,7 @@ pub use queries::{
     query_port_vlan_membership, query_system_info, query_vlan_table, walk_if_table,
 };
 pub use session::SNMP_WALK_TIMEOUT;
-use session::create_session;
+use session::{SNMP_PROBE_TIMEOUT, create_session};
 pub use types::{
     ArpEntry, BridgeFdbEntry, CdpNeighbor, DeviceInventory, IfTableEntry, IpAddrEntry,
     LldpLocalInfo, LldpLocalPort, LldpNeighbor, PortVlanMembership, SystemInfo, VlanInfo,
@@ -106,7 +106,17 @@ impl DiscoveryIntegration for SnmpIntegration {
             // TEMP instrumentation: per-port SNMP probe timing. Isolates the v3
             // create_session/engine-discovery cost (161 vs 1161) on non-responders.
             let port_probe_start = std::time::Instant::now();
-            let port_outcome = try_snmp_with_credential_on_port(ctx.ip, snmp_cred, port).await;
+            // Cap the whole probe (create-session + GET) so a non-responder — v3's
+            // engine-discovery especially — costs ~2s instead of up to 7s.
+            let port_outcome = match timeout(
+                SNMP_PROBE_TIMEOUT,
+                try_snmp_with_credential_on_port(ctx.ip, snmp_cred, port),
+            )
+            .await
+            {
+                Ok(res) => res,
+                Err(_) => Ok(None), // probe timed out → treat as no answer
+            };
             tracing::debug!(
                 ip = %ctx.ip,
                 port = port,
