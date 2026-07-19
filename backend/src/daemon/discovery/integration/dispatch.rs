@@ -25,7 +25,8 @@ use crate::server::services::r#impl::patterns::ClientProbe;
 use crate::server::subnets::r#impl::base::Subnet;
 
 use super::{
-    IntegrationContext, IntegrationRegistry, ProbeContext, execute_with_progress_reporting,
+    DiscoveryIntegration, IntegrationContext, IntegrationRegistry, ProbeContext, ProbeSuccess,
+    execute_with_progress_reporting,
 };
 
 /// Results from probing all integrations for a single host IP.
@@ -69,115 +70,132 @@ pub async fn probe_integrations(
     // Combine caller's open ports with probe-discovered ports for gate checks
     let mut all_open_ports: Vec<PortType> = open_ports.to_vec();
 
-    // TEMP instrumentation: measure how long per-host integration probing takes and
-    // which credential dominates (diagnosing the slow scan tail with many SNMP creds).
+    // TEMP instrumentation: measure how long per-host integration probing takes.
     let host_probe_start = std::time::Instant::now();
-    let mut mappings_probed = 0usize;
 
+    // First pass (synchronous, cheap): resolve each mapping to a probe task, applying
+    // the discriminant / integration / credentials / gate checks. Gate checks use the
+    // port-scan `open_ports`; probe-discovered ports don't feed later gates (negligible
+    // in practice — probes surface their own service's ports — and it lets the probes
+    // run concurrently below).
+    struct ProbeTask<'a> {
+        discriminant: CredentialQueryPayloadDiscriminants,
+        integration: Box<dyn DiscoveryIntegration>,
+        credentials: Vec<(&'a CredentialQueryPayload, Option<Uuid>)>,
+    }
+    let mut tasks: Vec<ProbeTask> = Vec::new();
     for mapping in credential_mappings {
-        let discriminant: Option<CredentialQueryPayloadDiscriminants> = mapping
+        let Some(discriminant) = mapping
             .default_credential
             .as_ref()
             .map(|c| c.into())
-            .or_else(|| mapping.ip_overrides.first().map(|o| (&o.credential).into()));
-
-        let Some(discriminant) = discriminant else {
+            .or_else(|| mapping.ip_overrides.first().map(|o| (&o.credential).into()))
+        else {
             continue;
         };
-
-        if cancel.is_cancelled() {
-            return Err(Error::msg("Discovery was cancelled"));
-        }
-
         let Some(integration) = IntegrationRegistry::get(discriminant) else {
             tracing::warn!(integration = ?discriminant, "Skipping unrecognized credential type from newer server");
             continue;
         };
-
         let credentials = resolve_credentials_for_ip(mapping, ip);
         if credentials.is_empty() {
-            tracing::debug!(ip = %ip, integration = ?discriminant, "No credentials for this IP, skipping");
             continue;
         }
-
-        tracing::debug!(ip = %ip, integration = ?discriminant, credentials = credentials.len(), "Probing integration");
-
-        // Check probe gate ports (skipped on the daemon's own host, where there's
-        // no port scan and integrations probe directly).
         if !skip_gate {
             let gate_ports = integration.probe_gate_ports(credentials[0].0);
             if !gate_ports.is_empty() && !gate_ports.iter().all(|gp| all_open_ports.contains(gp)) {
                 continue;
             }
         }
+        tasks.push(ProbeTask {
+            discriminant,
+            integration,
+            credentials,
+        });
+    }
 
-        // Try each credential until probe succeeds
-        for (credential, cred_id) in &credentials {
-            if cancel.is_cancelled() {
-                return Err(Error::msg("Discovery was cancelled"));
+    if cancel.is_cancelled() {
+        return Err(Error::msg("Discovery was cancelled"));
+    }
+
+    // Probe all mappings concurrently. Each task tries its credentials in order and
+    // returns the first success (or None). This collapses the previously-serial
+    // per-credential probe latency (e.g. v1+v2c+v3 SNMP + the public default, each with
+    // multi-second UDP timeouts on non-responders) into roughly one probe's wall-clock.
+    let mappings_probed = tasks.len();
+    let outcomes = futures::future::join_all(tasks.into_iter().map(|task| {
+        let ProbeTask {
+            discriminant,
+            integration,
+            credentials,
+        } = task;
+        async move {
+            for (credential, cred_id) in &credentials {
+                if cancel.is_cancelled() {
+                    return None;
+                }
+                // TEMP instrumentation: per-credential probe timing.
+                let probe_start = std::time::Instant::now();
+                let outcome = integration
+                    .probe(&ProbeContext {
+                        ip,
+                        credential,
+                        credential_id: *cred_id,
+                        cancel,
+                        utils,
+                    })
+                    .await;
+                tracing::debug!(
+                    ip = %ip,
+                    integration = ?discriminant,
+                    credential_id = ?cred_id,
+                    probe_ms = probe_start.elapsed().as_millis() as u64,
+                    succeeded = outcome.is_ok(),
+                    "PROBE_TIMING credential"
+                );
+                match outcome {
+                    Ok(success) => {
+                        return Some((discriminant, *cred_id, (*credential).clone(), success));
+                    }
+                    Err(failure) => {
+                        tracing::debug!(ip = %ip, integration = ?discriminant, error = %failure, "Integration probe failed, trying next credential");
+                    }
+                }
             }
+            None
+        }
+    }))
+    .await;
 
-            let probe_ctx = ProbeContext {
-                ip,
-                credential,
-                credential_id: *cred_id,
-                cancel,
-                utils,
-            };
+    if cancel.is_cancelled() {
+        return Err(Error::msg("Discovery was cancelled"));
+    }
 
-            // TEMP instrumentation: per-credential probe timing.
-            let probe_start = std::time::Instant::now();
-            let probe_outcome = integration.probe(&probe_ctx).await;
-            mappings_probed += 1;
-            tracing::debug!(
-                ip = %ip,
-                integration = ?discriminant,
-                credential_id = ?cred_id,
-                probe_ms = probe_start.elapsed().as_millis() as u64,
-                succeeded = probe_outcome.is_ok(),
-                "PROBE_TIMING credential"
-            );
-
-            match probe_outcome {
-                Ok(success) => {
-                    tracing::info!(
-                        ip = %ip,
-                        integration = ?discriminant,
-                        ports = ?success.ports,
-                        "Integration probe succeeded"
-                    );
-                    // Track probe-discovered ports
-                    for port in &success.ports {
-                        if !all_open_ports.contains(port) {
-                            all_open_ports.push(*port);
-                            results.additional_ports.push(*port);
-                        }
-                    }
-                    results
-                        .client_responses
-                        .insert(success.client_probe, success.ports);
-                    if let Some(handle) = success.handle {
-                        results.probe_handles.insert(discriminant, handle);
-                    }
-                    // Record the winning credential for this integration.
-                    // `cred_id` is Some for user-configured creds (host assignments)
-                    // and None for network-default fallbacks; execute needs the
-                    // payload either way, so we insert unconditionally.
-                    results
-                        .working_credential_ids
-                        .insert(discriminant, (*cred_id, (*credential).clone()));
-                    break;
-                }
-                Err(failure) => {
-                    tracing::debug!(
-                        ip = %ip,
-                        integration = ?discriminant,
-                        error = %failure,
-                        "Integration probe failed, trying next credential"
-                    );
-                }
+    // Merge in original mapping order so winner-selection is unchanged from the serial
+    // version: for a given integration the last successful mapping's credential wins
+    // (overwrite), and probe-discovered ports are unioned.
+    for (discriminant, cred_id, credential, success) in outcomes.into_iter().flatten() {
+        let ProbeSuccess {
+            client_probe,
+            ports,
+            handle,
+        } = success;
+        tracing::info!(ip = %ip, integration = ?discriminant, ports = ?ports, "Integration probe succeeded");
+        for port in &ports {
+            if !all_open_ports.contains(port) {
+                all_open_ports.push(*port);
+                results.additional_ports.push(*port);
             }
         }
+        results.client_responses.insert(client_probe, ports);
+        if let Some(handle) = handle {
+            results.probe_handles.insert(discriminant, handle);
+        }
+        // `cred_id` is Some for user-configured creds and None for network-default
+        // fallbacks; execute needs the payload either way, so we insert unconditionally.
+        results
+            .working_credential_ids
+            .insert(discriminant, (cred_id, credential));
     }
 
     // TEMP instrumentation: total per-host probing wall-clock.

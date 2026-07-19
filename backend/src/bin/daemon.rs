@@ -56,6 +56,53 @@ fn main() -> anyhow::Result<()> {
     }))
 }
 
+/// Raise the process open-file-descriptor soft limit toward its hard limit so discovery
+/// deep-scan concurrency isn't clamped (macOS' 256 default soft limit leaves too few FDs
+/// after reserves, forcing concurrency to 1). Best-effort: logs and continues on failure.
+/// No-op on Windows (handle-based, no RLIMIT_NOFILE).
+#[cfg(unix)]
+fn raise_fd_limit() {
+    // Generous cap. macOS clamps setrlimit at kern.maxfilesperproc and rejects
+    // RLIM_INFINITY, so request min(hard, TARGET) rather than "unlimited".
+    const TARGET: libc::rlim_t = 10_240;
+    let mut lim = libc::rlimit {
+        rlim_cur: 0,
+        rlim_max: 0,
+    };
+    if unsafe { libc::getrlimit(libc::RLIMIT_NOFILE, &mut lim) } != 0 {
+        tracing::warn!("Could not read RLIMIT_NOFILE; leaving FD limit unchanged");
+        return;
+    }
+    let old_soft = lim.rlim_cur;
+    let desired = TARGET.min(lim.rlim_max);
+    if old_soft >= desired {
+        tracing::debug!(
+            soft = old_soft,
+            hard = lim.rlim_max,
+            "FD limit already sufficient"
+        );
+        return;
+    }
+    lim.rlim_cur = desired;
+    if unsafe { libc::setrlimit(libc::RLIMIT_NOFILE, &lim) } == 0 {
+        tracing::info!(
+            old_soft,
+            new_soft = desired,
+            hard = lim.rlim_max,
+            "Raised open-file-descriptor limit for scan concurrency"
+        );
+    } else {
+        tracing::warn!(
+            attempted = desired,
+            hard = lim.rlim_max,
+            "Failed to raise FD soft limit; deep-scan concurrency may stay low"
+        );
+    }
+}
+
+#[cfg(not(unix))]
+fn raise_fd_limit() {}
+
 fn build_runtime() -> anyhow::Result<tokio::runtime::Runtime> {
     Ok(tokio::runtime::Builder::new_multi_thread()
         .thread_stack_size(4 * 1024 * 1024) // 4MB stack for deep async scanning
@@ -120,6 +167,11 @@ async fn run_daemon<F: std::future::Future<Output = ()>>(
             )
             .init();
     }
+
+    // Raise the open-file-descriptor soft limit before anything opens FDs, so discovery's
+    // deep-scan concurrency isn't starved (macOS defaults the soft limit to 256, which
+    // forces deep-scan concurrency down to 1 on large scans — every host scans serially).
+    raise_fd_limit();
 
     // Use the path AppConfig::load already resolved (honors --config-dir); don't re-derive, which
     // would re-read $HOME and could point somewhere the config wasn't written.
