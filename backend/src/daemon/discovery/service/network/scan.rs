@@ -573,6 +573,9 @@ impl NetworkScan {
                                         None => Uuid::new_v4(),
                                     };
 
+                                    // TEMP instrumentation: per-host deep-scan wall-clock
+                                    // to locate the slow scan tail.
+                                    let deep_scan_start = Instant::now();
                                     let result = self
                                         .deep_scan_host(DeepScanParams {
                                             ip,
@@ -596,6 +599,11 @@ impl NetworkScan {
                                             created_subnets: all_subnets_ref,
                                         }, ops, utils)
                                         .await;
+                                    tracing::debug!(
+                                        ip = %ip,
+                                        deep_scan_ms = deep_scan_start.elapsed().as_millis() as u64,
+                                        "PROBE_TIMING deep_scan_host"
+                                    );
 
                                     hosts_scanned.fetch_add(1, Ordering::Relaxed);
                                     *last_activity.lock().unwrap() = Instant::now();
@@ -685,6 +693,9 @@ impl NetworkScan {
                                 None => Uuid::new_v4(),
                             };
 
+                            // TEMP instrumentation: per-host deep-scan wall-clock
+                            // (buffered/drain path — the scan tail).
+                            let deep_scan_start = Instant::now();
                             let result = self
                                 .deep_scan_host(DeepScanParams {
                                     ip,
@@ -708,6 +719,12 @@ impl NetworkScan {
                                     created_subnets: all_subnets_ref,
                                 }, ops, utils)
                                 .await;
+                            tracing::debug!(
+                                ip = %ip,
+                                deep_scan_ms = deep_scan_start.elapsed().as_millis() as u64,
+                                drain = true,
+                                "PROBE_TIMING deep_scan_host"
+                            );
 
                             hosts_scanned.fetch_add(1, Ordering::Relaxed);
                             *last_activity.lock().unwrap() = Instant::now();

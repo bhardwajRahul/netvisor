@@ -69,6 +69,11 @@ pub async fn probe_integrations(
     // Combine caller's open ports with probe-discovered ports for gate checks
     let mut all_open_ports: Vec<PortType> = open_ports.to_vec();
 
+    // TEMP instrumentation: measure how long per-host integration probing takes and
+    // which credential dominates (diagnosing the slow scan tail with many SNMP creds).
+    let host_probe_start = std::time::Instant::now();
+    let mut mappings_probed = 0usize;
+
     for mapping in credential_mappings {
         let discriminant: Option<CredentialQueryPayloadDiscriminants> = mapping
             .default_credential
@@ -120,7 +125,20 @@ pub async fn probe_integrations(
                 utils,
             };
 
-            match integration.probe(&probe_ctx).await {
+            // TEMP instrumentation: per-credential probe timing.
+            let probe_start = std::time::Instant::now();
+            let probe_outcome = integration.probe(&probe_ctx).await;
+            mappings_probed += 1;
+            tracing::debug!(
+                ip = %ip,
+                integration = ?discriminant,
+                credential_id = ?cred_id,
+                probe_ms = probe_start.elapsed().as_millis() as u64,
+                succeeded = probe_outcome.is_ok(),
+                "PROBE_TIMING credential"
+            );
+
+            match probe_outcome {
                 Ok(success) => {
                     tracing::info!(
                         ip = %ip,
@@ -161,6 +179,14 @@ pub async fn probe_integrations(
             }
         }
     }
+
+    // TEMP instrumentation: total per-host probing wall-clock.
+    tracing::debug!(
+        ip = %ip,
+        total_probe_ms = host_probe_start.elapsed().as_millis() as u64,
+        mappings_probed,
+        "PROBE_TIMING host_total"
+    );
 
     Ok(results)
 }
