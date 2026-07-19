@@ -361,10 +361,9 @@ impl DaemonService {
         // re-install. Reject instead. Self-registration below is a back-compat path for
         // legacy (< 0.17.5) daemons that join with a shared network key.
         if supports_server_provisioned_identity(daemon_version.as_ref()) {
-            return Err(ApiError::bad_request(
-                "This daemon must be provisioned before it can register. \
-                 Provision it in the Scanopy UI and re-run the install command.",
-            ));
+            // Coded (not bad_request) so the daemon can recognize this as a terminal
+            // registration rejection and stop retrying it as if the server were unreachable.
+            return Err(ApiError::daemon_not_provisioned());
         }
 
         // Check daemon limit for unverified orgs (allows 1st daemon)

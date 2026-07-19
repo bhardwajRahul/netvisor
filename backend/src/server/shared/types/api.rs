@@ -392,6 +392,12 @@ impl ApiError {
         Self::coded(StatusCode::UNAUTHORIZED, ErrorCode::AuthDaemonKeyNotCreated)
     }
 
+    /// Forbidden (403) - a modern daemon tried to self-register but isn't provisioned.
+    /// Terminal (the server answered definitively); the daemon must not retry as unreachable.
+    pub fn daemon_not_provisioned() -> Self {
+        Self::coded(StatusCode::FORBIDDEN, ErrorCode::AuthDaemonNotProvisioned)
+    }
+
     /// Forbidden (403) - action blocked in demo mode
     pub fn demo_mode_blocked() -> Self {
         Self::coded(StatusCode::FORBIDDEN, ErrorCode::AuthDemoMode)

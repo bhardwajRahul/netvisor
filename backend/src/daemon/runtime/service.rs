@@ -353,6 +353,13 @@ impl DaemonRuntimeService {
 
         match self.register_with_server(daemon_id, network_id).await {
             Ok(()) => Ok(StartupOutcome::Ok),
+            // A definitive server response (any ApiErrorResponse — "must be provisioned",
+            // version too old, key not active, demo mode) is terminal: the server is reachable
+            // and answered, so retrying it as "unreachable" is wrong. Only transport failures
+            // (which are NOT an ApiErrorResponse) fall through to the retryable ConnectionFailed.
+            Err(e) if e.downcast_ref::<ApiErrorResponse>().is_some() => {
+                Ok(StartupOutcome::AuthFailed(e))
+            }
             Err(e) => Ok(StartupOutcome::ConnectionFailed(e)),
         }
     }
@@ -457,7 +464,10 @@ impl DaemonRuntimeService {
         daemon_id: Uuid,
         config: &Arc<ConfigStore>,
     ) -> Result<()> {
-        // Check for API error responses first
+        // Check for API error responses first. Any of these means the server is REACHABLE and
+        // answered definitively — log a case-specific message, then return the typed error
+        // PRESERVED (not flattened to a string) so the caller can classify it as a terminal
+        // registration failure instead of retrying it as if the server were unreachable.
         if let Some(api_err) = e.downcast_ref::<ApiErrorResponse>() {
             if api_err.matches_error(&ApiError::daemon_version_too_old("", "")) {
                 tracing::error!(
@@ -467,11 +477,13 @@ impl DaemonRuntimeService {
                      Please update the daemon binary to match the server. \
                      Download the latest version from the Scanopy UI under Discover > Daemons."
                 );
-                return Err(anyhow::anyhow!(
-                    "Daemon version is older than server — update required"
-                ));
-            }
-            if api_err.matches_error(&ApiError::daemon_key_not_yet_active()) {
+            } else if api_err.matches_error(&ApiError::daemon_not_provisioned()) {
+                tracing::error!(
+                    target: LOG_TARGET,
+                    daemon_id = %daemon_id,
+                    "This daemon is not provisioned. Provision it in the Scanopy UI and re-run the install command."
+                );
+            } else if api_err.matches_error(&ApiError::daemon_key_not_yet_active()) {
                 let server_url = config.get_server_url().await.unwrap_or_default();
                 tracing::error!(
                     target: LOG_TARGET,
@@ -479,18 +491,21 @@ impl DaemonRuntimeService {
                     "API key rejected by server at {}. Re-run the install command from the Scanopy UI to generate a new key.",
                     server_url
                 );
-                return Err(anyhow::anyhow!("API key rejected by server"));
-            }
-            if api_err.matches_error(&ApiError::demo_mode_blocked()) {
+            } else if api_err.matches_error(&ApiError::demo_mode_blocked()) {
                 tracing::error!(
                     target: LOG_TARGET,
                     daemon_id = %daemon_id,
                     "This Scanopy instance is running in demo mode. Daemon registration is disabled."
                 );
-                return Err(anyhow::anyhow!(
-                    "Demo mode: Daemon registration is disabled"
-                ));
+            } else {
+                tracing::error!(
+                    target: LOG_TARGET,
+                    daemon_id = %daemon_id,
+                    "Registration rejected by server: {}",
+                    api_err
+                );
             }
+            return Err(anyhow::Error::new(api_err.clone()));
         }
 
         // Connection errors still need string matching (not API responses)
