@@ -328,10 +328,10 @@ async fn run_daemon<F: std::future::Future<Output = ()>>(
                     StartupOutcome::Ok => Ok(()),
                     StartupOutcome::ConnectionFailed(_) => Err(()),
                     StartupOutcome::AuthFailed(e) => {
-                        tracing::error!(
-                            "API key rejected. Cause: key is invalid or was regenerated. Fix: re-run the install command from the Scanopy UI."
-                        );
-                        tracing::debug!("Auth error detail: {e}");
+                        // Terminal, server-reachable rejection (bad/regenerated key, or the
+                        // daemon isn't provisioned). Surface the server's actual reason and let
+                        // it speak for itself — it already carries any remedy.
+                        tracing::error!("Registration rejected by the server: {e}");
                         Err(())
                     }
                 }

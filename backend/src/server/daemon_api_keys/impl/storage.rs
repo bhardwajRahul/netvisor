@@ -197,6 +197,14 @@ impl Entity for DaemonApiKey {
         // schema so a tab PUT omits it; without this it would deserialize to None and
         // silently unbind the key from its daemon.
         self.base.daemon_id = existing.base.daemon_id;
+        // plaintext is #[serde(skip)], so an inbound update request always deserializes it
+        // to None. Without preserving it here, any PUT (rename, enable/disable, the Manage-key
+        // modal) would persist NULL and break ServerPoll polling, which needs the stored
+        // plaintext to dial the daemon. It's only ever (re)set by provisioning and rotate,
+        // which write it explicitly and don't go through this update path.
+        if self.base.plaintext.is_none() {
+            self.base.plaintext = existing.base.plaintext.clone();
+        }
     }
 
     fn get_tags(&self) -> Option<&Vec<Uuid>> {
@@ -205,5 +213,56 @@ impl Entity for DaemonApiKey {
 
     fn set_tags(&mut self, tags: Vec<Uuid>) {
         self.base.tags = tags;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use secrecy::ExposeSecret;
+
+    fn key(name: &str, plaintext: Option<&str>) -> DaemonApiKey {
+        DaemonApiKey {
+            base: DaemonApiKeyBase {
+                name: name.to_string(),
+                plaintext: plaintext.map(|s| SecretString::from(s.to_string())),
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+    }
+
+    /// A ServerPoll key stores its plaintext so the server can dial the daemon. Update
+    /// requests omit it (`#[serde(skip)]` => None), so preserve_immutable_fields must
+    /// restore it from the stored record — otherwise a rename/enable-disable/Manage-key PUT
+    /// would persist NULL and break ServerPoll polling ("has no stored plaintext").
+    #[test]
+    fn update_preserves_stored_plaintext_when_request_omits_it() {
+        let existing = key("old-name", Some("scp_d_secret"));
+        let mut incoming = key("new-name", None); // rename; serde dropped the plaintext
+        incoming.preserve_immutable_fields(&existing);
+        assert_eq!(incoming.base.name, "new-name"); // mutable field still applies
+        assert_eq!(
+            incoming
+                .base
+                .plaintext
+                .as_ref()
+                .expect("plaintext preserved across update")
+                .expose_secret(),
+            "scp_d_secret"
+        );
+    }
+
+    /// An explicit new plaintext (as rotate sets before persisting) is not clobbered by the
+    /// old stored value.
+    #[test]
+    fn update_keeps_explicit_new_plaintext() {
+        let existing = key("k", Some("old-secret"));
+        let mut incoming = key("k", Some("new-secret"));
+        incoming.preserve_immutable_fields(&existing);
+        assert_eq!(
+            incoming.base.plaintext.as_ref().unwrap().expose_secret(),
+            "new-secret"
+        );
     }
 }
