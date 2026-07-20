@@ -176,7 +176,7 @@ pub async fn register_all_subscribers(
             if services.optional_absent.contains(&target) {
                 tracing::debug!(
                     subscriber = name,
-                    "optional service not constructed (e.g. Brevo disabled); skipping subscriber",
+                    "optional service not constructed; skipping subscriber",
                 );
                 continue;
             }
