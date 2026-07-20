@@ -23,6 +23,61 @@ use super::values::{
 /// Varbinds requested per getbulk round when walking a table subtree.
 const BULK_MAX_REPETITIONS: u32 = 20;
 
+/// A single `getbulk` round-trip's non-error outcome. Transport failures (timeouts,
+/// session errors) are the `Err` arm of the returned `Result`; the one legitimate
+/// non-error signal is an agent that refuses getbulk, which the walk retries via getnext.
+/// Varbinds borrow the session's response buffer (`snmp2::Value<'a>` holds `&'a [u8]`
+/// for octet strings), so a page is only valid while the session stays borrowed.
+type Varbinds<'a> = Vec<(Vec<u64>, Value<'a>)>;
+
+enum WalkPage<'a> {
+    /// Decoded varbinds in wire order, OIDs as sub-id vectors.
+    Varbinds(Varbinds<'a>),
+    /// Agent rejected getbulk (e.g. SNMPv1) — retry from the same OID with getnext.
+    BulkUnsupported,
+}
+
+/// The two SNMP operations `walk_subtree` needs. Abstracting them keeps the walk loop
+/// transport-agnostic so its termination logic is unit-testable without a live UDP
+/// socket. Two implementors only: `Box<AsyncSession>` in production (below) and a
+/// canned-page mock under `#[cfg(test)]`.
+#[async_trait::async_trait]
+trait SnmpWalkTransport: Send {
+    async fn walk_getbulk<'a>(
+        &'a mut self,
+        from: &[u64],
+        max_repetitions: u32,
+    ) -> Result<WalkPage<'a>>;
+    async fn walk_getnext<'a>(&'a mut self, from: &[u64]) -> Result<Varbinds<'a>>;
+}
+
+#[async_trait::async_trait]
+impl SnmpWalkTransport for Box<snmp2::AsyncSession> {
+    async fn walk_getbulk<'a>(
+        &'a mut self,
+        from: &[u64],
+        max_repetitions: u32,
+    ) -> Result<WalkPage<'a>> {
+        let oid = Oid::from(from).map_err(|_| anyhow::anyhow!("invalid walk OID"))?;
+        match timeout(SNMP_TIMEOUT, self.getbulk(&[&oid], 0, max_repetitions)).await {
+            Ok(Ok(pdu)) => Ok(WalkPage::Varbinds(
+                pdu.varbinds.map(|(o, v)| (oid_to_vec(&o), v)).collect(),
+            )),
+            Ok(Err(_)) => Ok(WalkPage::BulkUnsupported),
+            Err(_) => Err(anyhow::anyhow!("getbulk timed out")),
+        }
+    }
+
+    async fn walk_getnext<'a>(&'a mut self, from: &[u64]) -> Result<Varbinds<'a>> {
+        let oid = Oid::from(from).map_err(|_| anyhow::anyhow!("invalid walk OID"))?;
+        match timeout(SNMP_TIMEOUT, self.getnext(&oid)).await {
+            Ok(Ok(pdu)) => Ok(pdu.varbinds.map(|(o, v)| (oid_to_vec(&o), v)).collect()),
+            Ok(Err(e)) => Err(anyhow::anyhow!("getnext failed: {e}")),
+            Err(_) => Err(anyhow::anyhow!("getnext timed out")),
+        }
+    }
+}
+
 /// Walk the OID subtree rooted at `base_oid_str`, invoking `on_entry(suffix, value)`
 /// for every varbind under it, where `suffix` is the OID sub-ids after the base.
 ///
@@ -32,24 +87,21 @@ const BULK_MAX_REPETITIONS: u32 = 20;
 ///
 /// Returns `Ok(true)` when the subtree was walked to its natural end (or `EndOfMibView`)
 /// and `Ok(false)` when it was cut short by `MAX_WALK_ENTRIES`, a session error, a
-/// timeout, or an abnormal empty response — callers that prune against a full table
-/// (see `walk_if_table`, GH #649) must treat `false` as a partial walk.
-async fn walk_subtree<F>(
-    session: &mut Box<snmp2::AsyncSession>,
-    base_oid_str: &str,
-    mut on_entry: F,
-) -> Result<bool>
+/// timeout, a non-advancing OID, or an abnormal empty response — callers that prune
+/// against a full table (see `walk_if_table`, GH #649) must treat `false` as a partial
+/// walk.
+async fn walk_subtree<T, F>(session: &mut T, base_oid_str: &str, mut on_entry: F) -> Result<bool>
 where
+    T: SnmpWalkTransport,
     F: FnMut(&[u64], &Value),
 {
-    let base_oid = parse_oid(base_oid_str)?;
     let base_parts: Vec<u64> = base_oid_str
         .split('.')
         .filter(|s| !s.is_empty())
         .filter_map(|s| s.parse().ok())
         .collect();
 
-    let mut current_oid = base_oid;
+    let mut current_parts = base_parts.clone();
     let mut count = 0usize;
     let mut use_bulk = true;
     let mut truncated = false;
@@ -60,115 +112,88 @@ where
             break;
         }
 
-        // Process one request's varbinds while borrowed, remembering the last
-        // in-subtree OID to continue the walk from.
-        let mut next_oid_parts: Option<Vec<u64>> = None;
-        let mut done = false;
-
-        if use_bulk {
-            match timeout(
-                SNMP_TIMEOUT,
-                session.getbulk(&[&current_oid], 0, BULK_MAX_REPETITIONS),
-            )
-            .await
+        let varbinds = if use_bulk {
+            match session
+                .walk_getbulk(&current_parts, BULK_MAX_REPETITIONS)
+                .await
             {
-                Ok(Ok(pdu)) => {
-                    let mut saw_varbind = false;
-                    for (resp_oid, value) in pdu.varbinds {
-                        saw_varbind = true;
-                        if matches!(
-                            value,
-                            Value::EndOfMibView | Value::NoSuchObject | Value::NoSuchInstance
-                        ) {
-                            done = true;
-                            break;
-                        }
-                        let resp_parts = oid_to_vec(&resp_oid);
-                        if resp_parts.len() <= base_parts.len()
-                            || !resp_parts.starts_with(&base_parts)
-                        {
-                            done = true;
-                            break;
-                        }
-                        on_entry(&resp_parts[base_parts.len()..], &value);
-                        count += 1;
-                        next_oid_parts = Some(resp_parts);
-                        if count >= MAX_WALK_ENTRIES {
-                            truncated = true;
-                            done = true;
-                            break;
-                        }
-                    }
-                    if !saw_varbind {
-                        // Empty response mid-walk is abnormal — treat as partial.
-                        truncated = true;
-                        done = true;
-                    }
-                }
-                Ok(Err(_)) => {
+                Ok(WalkPage::Varbinds(v)) => v,
+                Ok(WalkPage::BulkUnsupported) => {
                     // Agent rejected getbulk (e.g. v1) — retry from the same OID with
                     // getnext and stay on getnext for the rest of this walk.
                     use_bulk = false;
                     continue 'walk;
                 }
-                Err(_) => {
-                    debug!(oid = %current_oid, "SNMP walk getbulk stopped on timeout");
+                Err(e) => {
+                    debug!(?current_parts, error = %e, "SNMP walk getbulk stopped");
                     truncated = true;
                     break;
                 }
             }
         } else {
-            match timeout(SNMP_TIMEOUT, session.getnext(&current_oid)).await {
-                Ok(Ok(mut pdu)) => match pdu.varbinds.next() {
-                    Some((resp_oid, value)) => {
-                        if matches!(
-                            value,
-                            Value::EndOfMibView | Value::NoSuchObject | Value::NoSuchInstance
-                        ) {
-                            done = true;
-                        } else {
-                            let resp_parts = oid_to_vec(&resp_oid);
-                            if resp_parts.len() <= base_parts.len()
-                                || !resp_parts.starts_with(&base_parts)
-                            {
-                                done = true;
-                            } else {
-                                on_entry(&resp_parts[base_parts.len()..], &value);
-                                count += 1;
-                                next_oid_parts = Some(resp_parts);
-                            }
-                        }
-                    }
-                    None => {
-                        truncated = true;
-                        done = true;
-                    }
-                },
-                Ok(Err(e)) => {
-                    debug!(oid = %current_oid, error = %e, "SNMP walk column stopped on error");
-                    truncated = true;
-                    break;
-                }
-                Err(_) => {
-                    debug!(oid = %current_oid, "SNMP walk column stopped on timeout");
+            match session.walk_getnext(&current_parts).await {
+                Ok(v) => v,
+                Err(e) => {
+                    debug!(?current_parts, error = %e, "SNMP walk column stopped");
                     truncated = true;
                     break;
                 }
             }
+        };
+
+        // Empty response mid-walk is abnormal (getbulk) or an exhausted column
+        // (getnext) — treat as partial either way.
+        if varbinds.is_empty() {
+            truncated = true;
+            break;
         }
 
+        // Process the response, remembering the last in-subtree OID to continue from.
+        let mut next_parts: Option<Vec<u64>> = None;
+        let mut done = false;
+        for (resp_parts, value) in varbinds {
+            if matches!(
+                value,
+                Value::EndOfMibView | Value::NoSuchObject | Value::NoSuchInstance
+            ) {
+                done = true;
+                break;
+            }
+            if resp_parts.len() <= base_parts.len() || !resp_parts.starts_with(&base_parts) {
+                // Walked past the subtree — natural end, not truncation.
+                done = true;
+                break;
+            }
+            on_entry(&resp_parts[base_parts.len()..], &value);
+            count += 1;
+            next_parts = Some(resp_parts);
+            if count >= MAX_WALK_ENTRIES {
+                truncated = true;
+                done = true;
+                break;
+            }
+        }
         if done {
             break;
         }
-        match next_oid_parts {
+
+        match next_parts {
             Some(parts) => {
-                current_oid = match Oid::from(parts.as_slice()) {
-                    Ok(o) => o,
-                    Err(_) => {
-                        truncated = true;
-                        break;
-                    }
-                };
+                // The walk must strictly advance. A device that answers with a tail OID
+                // that doesn't lexicographically exceed the one we asked from (observed
+                // on Ubiquiti bridge-FDB) would otherwise have us re-request the same
+                // page until MAX_WALK_ENTRIES or the integration timeout. `Vec<u64>`
+                // compares lexicographically, matching SNMP OID ordering.
+                if parts <= current_parts {
+                    debug!(
+                        ?parts,
+                        ?current_parts,
+                        "SNMP walk stopped: OID did not advance"
+                    );
+                    truncated = true;
+                    break;
+                }
+                current_parts = parts;
             }
             None => {
                 truncated = true;
@@ -1191,4 +1216,108 @@ pub async fn query_port_vlan_membership(
     );
 
     Ok(result)
+}
+
+#[cfg(test)]
+mod walk_tests {
+    use super::*;
+    use std::collections::VecDeque;
+
+    const BASE: &str = "1.3.6.1.2.1.2.2.1.1";
+
+    fn page(oids: &[&str]) -> Vec<Vec<u64>> {
+        oids.iter()
+            .map(|s| s.split('.').map(|p| p.parse().unwrap()).collect())
+            .collect()
+    }
+
+    /// Serves canned pages of OIDs to `walk_subtree`. Once `pages` is drained it repeats
+    /// `repeat` forever, which is how a device that never advances its OID is modelled.
+    /// Only OIDs are stored — `Value` isn't `Clone`, and the walk's termination logic
+    /// only cares about OID progression — so each page mints fresh integer values.
+    struct MockTransport {
+        pages: VecDeque<Vec<Vec<u64>>>,
+        repeat: Option<Vec<Vec<u64>>>,
+    }
+
+    impl MockTransport {
+        fn scripted(pages: &[Vec<Vec<u64>>]) -> Self {
+            Self {
+                pages: pages.iter().cloned().collect(),
+                repeat: None,
+            }
+        }
+
+        fn stalling(p: Vec<Vec<u64>>) -> Self {
+            Self {
+                pages: VecDeque::new(),
+                repeat: Some(p),
+            }
+        }
+
+        fn next_page(&mut self) -> Varbinds<'static> {
+            self.pages
+                .pop_front()
+                .or_else(|| self.repeat.clone())
+                .unwrap_or_default()
+                .into_iter()
+                .map(|o| (o, Value::Integer(1)))
+                .collect()
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl SnmpWalkTransport for MockTransport {
+        async fn walk_getbulk<'a>(&'a mut self, _from: &[u64], _max: u32) -> Result<WalkPage<'a>> {
+            Ok(WalkPage::Varbinds(self.next_page()))
+        }
+
+        async fn walk_getnext<'a>(&'a mut self, _from: &[u64]) -> Result<Varbinds<'a>> {
+            Ok(self.next_page())
+        }
+    }
+
+    /// A device that keeps answering with the same in-subtree OID must not walk to the
+    /// entry cap (which on a live host burns the whole integration budget) — the
+    /// strict-advance guard has to cut it short and report a partial walk.
+    #[tokio::test]
+    async fn walk_terminates_when_oid_does_not_advance() {
+        let mut session = MockTransport::stalling(page(&["1.3.6.1.2.1.2.2.1.1.5"]));
+
+        let mut seen = 0usize;
+        let complete = walk_subtree(&mut session, BASE, |_suffix, _v| seen += 1)
+            .await
+            .unwrap();
+
+        assert!(!complete, "a non-advancing walk must report as partial");
+        assert!(
+            seen < MAX_WALK_ENTRIES,
+            "guard must stop the walk, not run to the cap (saw {seen} entries)"
+        );
+    }
+
+    /// The guard must not fire on a normal multi-page walk: each page's tail OID
+    /// strictly exceeds the OID it was requested from.
+    #[tokio::test]
+    async fn walk_completes_across_advancing_pages() {
+        let mut session = MockTransport::scripted(&[
+            page(&["1.3.6.1.2.1.2.2.1.1.1", "1.3.6.1.2.1.2.2.1.1.2"]),
+            page(&["1.3.6.1.2.1.2.2.1.1.3", "1.3.6.1.2.1.2.2.1.1.4"]),
+            // Next column — outside the base subtree, so the walk ends naturally.
+            page(&["1.3.6.1.2.1.2.2.1.2.1"]),
+        ]);
+
+        let mut suffixes = Vec::new();
+        let complete = walk_subtree(&mut session, BASE, |suffix, _v| {
+            suffixes.push(suffix.to_vec())
+        })
+        .await
+        .unwrap();
+
+        assert!(
+            complete,
+            "a walk that reaches the end of the subtree is complete"
+        );
+        assert_eq!(suffixes, vec![vec![1], vec![2], vec![3], vec![4]]);
+    }
 }

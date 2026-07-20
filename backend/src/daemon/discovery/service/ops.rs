@@ -240,6 +240,18 @@ impl HostData {
         self
     }
 
+    /// Replace the whole interface set.
+    ///
+    /// SNMP collection persists a bare interface set as soon as the ifTable walk finishes —
+    /// before the slower neighbour/FDB/VLAN queries — so that a query that hangs or times out
+    /// can't leave the host with zero interfaces. It then swaps in the enriched set once those
+    /// queries return. Replacing rather than appending keeps the second pass from doubling the
+    /// interface list.
+    pub fn replace_interfaces(&mut self, interfaces: Vec<Interface>) -> &mut Self {
+        self.interfaces = interfaces;
+        self
+    }
+
     /// Record whether the collected `interfaces` are a complete ifTable. A partial walk
     /// (`false`) tells the server not to prune interfaces missing from this scan (#649).
     pub fn set_interfaces_complete(&mut self, complete: bool) -> &mut Self {

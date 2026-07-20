@@ -65,6 +65,32 @@ pub struct SnmpProbeHandle {
     pub port: u16,
 }
 
+/// Run one SNMP query under `SNMP_WALK_TIMEOUT`, collapsing both a query error and a
+/// timeout into `T::default()` — the empty/`None` fallback every call site already used
+/// for errors alone.
+///
+/// Without this, a single query that never returns consumes the whole
+/// `SnmpIntegration::timeout()` budget and the integration is aborted mid-sequence,
+/// discarding everything collected so far. Observed on Ubiquiti switches, where
+/// `query_bridge_fdb` hangs and the host ends up created with zero interfaces.
+async fn query_or_default<T, Fut>(ip: IpAddr, query: &str, fut: Fut) -> T
+where
+    T: Default,
+    Fut: std::future::Future<Output = Result<T>>,
+{
+    match timeout(SNMP_WALK_TIMEOUT, fut).await {
+        Ok(Ok(v)) => v,
+        Ok(Err(e)) => {
+            debug!(ip = %ip, query, error = %e, "SNMP query failed");
+            T::default()
+        }
+        Err(_) => {
+            debug!(ip = %ip, query, "SNMP query timed out");
+            T::default()
+        }
+    }
+}
+
 pub struct SnmpIntegration;
 
 #[async_trait]
@@ -178,27 +204,20 @@ impl DiscoveryIntegration for SnmpIntegration {
         };
 
         // Query system info
-        let system_info = match query_system_info(&mut session, ip).await {
-            Ok(info)
-                if info.sys_descr.is_some()
-                    || info.sys_name.is_some()
-                    || info.sys_object_id.is_some() =>
-            {
-                tracing::debug!(
-                    ip = %ip,
-                    sys_name = ?info.sys_name,
-                    "SNMP system info retrieved"
-                );
-                Some(info)
-            }
-            Ok(_) => {
-                tracing::debug!(ip = %ip, "SNMP system_info returned no data");
-                None
-            }
-            Err(e) => {
-                tracing::debug!(ip = %ip, error = %e, "SNMP system_info query failed");
-                None
-            }
+        let info = query_or_default(ip, "system_info", query_system_info(&mut session, ip)).await;
+        let system_info = if info.sys_descr.is_some()
+            || info.sys_name.is_some()
+            || info.sys_object_id.is_some()
+        {
+            tracing::debug!(
+                ip = %ip,
+                sys_name = ?info.sys_name,
+                "SNMP system info retrieved"
+            );
+            Some(info)
+        } else {
+            tracing::debug!(ip = %ip, "SNMP system_info returned no data");
+            None
         };
 
         if ctx.cancel.is_cancelled() {
@@ -209,46 +228,58 @@ impl DiscoveryIntegration for SnmpIntegration {
         // authoritative full ifTable (safe to prune stale interfaces against) or a partial walk
         // cut short by timeout/error (must NOT prune — see GH #649). A hard failure yields an
         // empty set, which the server's existing empty-set guard already protects.
-        let (snmp_if_entries, if_table_complete) = match walk_if_table(&mut session, ip).await {
-            Ok((entries, complete)) => {
-                tracing::debug!(
-                    ip = %ip,
-                    if_count = entries.len(),
-                    complete = complete,
-                    "SNMP ifTable walked"
-                );
-                (entries, complete)
-            }
-            Err(e) => {
-                tracing::debug!(ip = %ip, error = %e, "SNMP ifTable walk failed");
-                (Vec::new(), false)
-            }
-        };
+        let (snmp_if_entries, if_table_complete) =
+            query_or_default(ip, "if_table", walk_if_table(&mut session, ip)).await;
+        tracing::debug!(
+            ip = %ip,
+            if_count = snmp_if_entries.len(),
+            complete = if_table_complete,
+            "SNMP ifTable walked"
+        );
+
+        // Persist the interface set before the slower enrichment queries below. `host_data` is
+        // `&mut`, and mutations made before a timeout-abort of `execute()` survive in the caller
+        // (the integration-timeout wrapper swallows the error but keeps `host_data`), so a hang
+        // in any later query can no longer strand the host with zero interfaces. Enrichment data
+        // isn't collected yet, so these are bare; the enriched set replaces them at the end.
+        let network_id = host_data.host.base.network_id;
+        let no_vlan_uuids = std::collections::HashMap::new();
+        host_data.replace_interfaces(
+            snmp_if_entries
+                .iter()
+                .map(|entry| {
+                    convert_snmp_if_entry(entry, network_id, &[], &[], &[], &[], &no_vlan_uuids)
+                })
+                .collect(),
+        );
+        host_data.set_interfaces_complete(if_table_complete);
+
+        // A truncated ifTable means interfaces are missing from this scan. Surface it on the
+        // session so the operator sees it, rather than leaving it to debug logs (it also
+        // suppresses server-side pruning — GH #649).
+        if !if_table_complete
+            && !snmp_if_entries.is_empty()
+            && let Ok(session_state) = ctx.ops.get_session().await
+            && let Ok(mut warnings) = session_state.warnings.lock()
+        {
+            warnings.push(format!(
+                "SNMP interface collection for {ip} was incomplete — the device stopped \
+                 responding partway through its interface table, so some interfaces may be \
+                 missing. Collected {} so far.",
+                snmp_if_entries.len()
+            ));
+        }
 
         // Query LLDP neighbors
-        let mut lldp_neighbors = match query_lldp_neighbors(&mut session, ip).await {
-            Ok(neighbors) => {
-                tracing::debug!(ip = %ip, count = neighbors.len(), "LLDP neighbors discovered");
-                neighbors
-            }
-            Err(e) => {
-                tracing::debug!(ip = %ip, error = %e, "LLDP query failed");
-                Vec::new()
-            }
-        };
+        let mut lldp_neighbors =
+            query_or_default(ip, "lldp", query_lldp_neighbors(&mut session, ip)).await;
+        tracing::debug!(ip = %ip, count = lldp_neighbors.len(), "LLDP neighbors discovered");
         let lldp_count = lldp_neighbors.len();
 
         // Query CDP neighbors (Cisco devices)
-        let cdp_neighbors = match query_cdp_neighbors(&mut session, ip).await {
-            Ok(neighbors) => {
-                tracing::debug!(ip = %ip, count = neighbors.len(), "CDP neighbors discovered");
-                neighbors
-            }
-            Err(e) => {
-                tracing::debug!(ip = %ip, error = %e, "CDP query failed");
-                Vec::new()
-            }
-        };
+        let cdp_neighbors =
+            query_or_default(ip, "cdp", query_cdp_neighbors(&mut session, ip)).await;
+        tracing::debug!(ip = %ip, count = cdp_neighbors.len(), "CDP neighbors discovered");
         let cdp_count = cdp_neighbors.len();
 
         // Translate LLDP local-port indices (which are lldpLocPortNum values, a
@@ -258,41 +289,29 @@ impl DiscoveryIntegration for SnmpIntegration {
         // that reports lldpLocPortNum == ifIndex or omits the table). CDP is not
         // remapped: cdpCacheIfIndex is already a real ifIndex.
         let lldp_local_ports = if lldp_count > 0 {
-            match query_lldp_local_ports(&mut session, ip).await {
-                Ok(map) => map,
-                Err(e) => {
-                    tracing::debug!(ip = %ip, error = %e, "lldpLocPortTable query failed");
-                    std::collections::HashMap::new()
-                }
-            }
+            query_or_default(
+                ip,
+                "lldp_local_ports",
+                query_lldp_local_ports(&mut session, ip),
+            )
+            .await
         } else {
             std::collections::HashMap::new()
         };
         remap_lldp_local_ports(&mut lldp_neighbors, &lldp_local_ports, &snmp_if_entries);
 
         // Query ipAddrTable for IP->ifIndex+netMask mappings
-        let ip_addr_table = query_ip_addr_table(&mut session, ip)
-            .await
-            .unwrap_or_else(|e| {
-                tracing::debug!(ip = %ip, error = %e, "ipAddrTable query failed");
-                Default::default()
-            });
+        let ip_addr_table =
+            query_or_default(ip, "ip_addr_table", query_ip_addr_table(&mut session, ip)).await;
 
         // Query ARP table for remote host discovery
-        let arp_entries = query_arp_table(&mut session, ip).await.unwrap_or_else(|e| {
-            tracing::debug!(ip = %ip, error = %e, "ARP table query failed");
-            Default::default()
-        });
+        let arp_entries = query_or_default(ip, "arp", query_arp_table(&mut session, ip)).await;
         let arp_count = arp_entries.len();
         tracing::info!(ip = %ip, count = arp_count, "ARP table entries collected");
 
         // Query ENTITY-MIB for hardware inventory
-        let device_inventory = query_entity_physical(&mut session, ip)
-            .await
-            .unwrap_or_else(|e| {
-                tracing::debug!(ip = %ip, error = %e, "ENTITY-MIB query failed");
-                None
-            });
+        let device_inventory =
+            query_or_default(ip, "entity_mib", query_entity_physical(&mut session, ip)).await;
         let has_entity_inventory = device_inventory.is_some();
         tracing::info!(
             ip = %ip,
@@ -301,24 +320,14 @@ impl DiscoveryIntegration for SnmpIntegration {
         );
 
         // Query bridge FDB for MAC-to-port mappings
-        let bridge_fdb = query_bridge_fdb(&mut session, ip)
-            .await
-            .unwrap_or_else(|e| {
-                tracing::debug!(ip = %ip, error = %e, "Bridge FDB query failed");
-                Default::default()
-            });
+        let bridge_fdb =
+            query_or_default(ip, "bridge_fdb", query_bridge_fdb(&mut session, ip)).await;
         let fdb_count = bridge_fdb.len();
         tracing::info!(ip = %ip, count = fdb_count, "Bridge FDB entries collected");
 
-        let network_id = host_data.host.base.network_id;
-
         // Query VLAN table for VLAN names and persist as VLAN entities
-        let vlan_table = query_vlan_table(&mut session, ip)
-            .await
-            .unwrap_or_else(|e| {
-                tracing::debug!(ip = %ip, error = %e, "VLAN table query failed");
-                Default::default()
-            });
+        let vlan_table =
+            query_or_default(ip, "vlan_table", query_vlan_table(&mut session, ip)).await;
         // Summary status for the per-host diagnostic line below: no VLANs, upserted, or failed.
         let mut vlan_upsert = "no_vlans";
         let vlan_number_to_uuid: std::collections::HashMap<u16, Uuid> = if !vlan_table.is_empty() {
@@ -344,28 +353,22 @@ impl DiscoveryIntegration for SnmpIntegration {
         };
 
         // Query per-port VLAN membership
-        let port_vlan_membership = query_port_vlan_membership(&mut session, ip)
-            .await
-            .unwrap_or_else(|e| {
-                tracing::debug!(ip = %ip, error = %e, "Port VLAN membership query failed");
-                Default::default()
-            });
+        let port_vlan_membership = query_or_default(
+            ip,
+            "port_vlan_membership",
+            query_port_vlan_membership(&mut session, ip),
+        )
+        .await;
         tracing::info!(ip = %ip, count = port_vlan_membership.len(), "Port VLAN memberships collected");
 
         // Query local LLDP identity
-        let lldp_local = query_lldp_local(&mut session, ip)
-            .await
-            .unwrap_or_else(|e| {
-                tracing::debug!(ip = %ip, error = %e, "LLDP local identity query failed");
-                None
-            });
+        let lldp_local =
+            query_or_default(ip, "lldp_local", query_lldp_local(&mut session, ip)).await;
         tracing::info!(
             ip = %ip,
             has_lldp_local = lldp_local.is_some(),
             "LLDP local identity queried"
         );
-
-        let network_id = host_data.host.base.network_id;
 
         // --- Hostname enrichment: use SNMP sysName as fallback if DNS didn't provide one ---
         if let Some(ref info) = system_info
@@ -447,18 +450,24 @@ impl DiscoveryIntegration for SnmpIntegration {
         }
 
         // --- Convert SNMP ifTable entries to Interface entities ---
-        for entry in &snmp_if_entries {
-            let interface = convert_snmp_if_entry(
-                entry,
-                network_id,
-                &lldp_neighbors,
-                &cdp_neighbors,
-                &bridge_fdb,
-                &port_vlan_membership,
-                &vlan_number_to_uuid,
-            );
-            host_data.add_if_entry(interface);
-        }
+        // Replaces (not appends to) the bare set persisted right after the ifTable walk, now that
+        // the neighbour/FDB/VLAN queries have supplied the enrichment those bare entries lacked.
+        host_data.replace_interfaces(
+            snmp_if_entries
+                .iter()
+                .map(|entry| {
+                    convert_snmp_if_entry(
+                        entry,
+                        network_id,
+                        &lldp_neighbors,
+                        &cdp_neighbors,
+                        &bridge_fdb,
+                        &port_vlan_membership,
+                        &vlan_number_to_uuid,
+                    )
+                })
+                .collect(),
+        );
         // Mark whether this SNMP interface set is a complete, authoritative ifTable. The server
         // only prunes interfaces no longer reported when this is true, so a partial walk cannot
         // tear down the host's L2 topology (GH #649).
@@ -890,6 +899,53 @@ pub async fn poll_device(
 mod tests {
     use super::values::{value_to_i32, value_to_mac, value_to_string};
     use snmp2::Value;
+
+    /// The interface set is persisted as soon as the ifTable walk finishes, before the
+    /// neighbour/FDB/VLAN queries have run — so it is built with no enrichment available.
+    /// Those bare interfaces still have to be complete, usable entities (the host is created
+    /// from them if a later query hangs), carrying every ifTable field and simply no
+    /// LLDP/CDP/FDB/VLAN data.
+    #[test]
+    fn interfaces_built_without_enrichment_keep_their_iftable_identity() {
+        use super::*;
+
+        let entry = types::IfTableEntry {
+            if_index: 7,
+            if_descr: Some("Port 7".to_string()),
+            if_name: Some("swp7".to_string()),
+            if_type: Some(6),
+            if_speed: Some(1_000_000_000),
+            if_admin_status: Some(1),
+            if_oper_status: Some(1),
+            ..Default::default()
+        };
+        let network_id = Uuid::new_v4();
+
+        let interface = convert_snmp_if_entry(
+            &entry,
+            network_id,
+            &[],
+            &[],
+            &[],
+            &[],
+            &std::collections::HashMap::new(),
+        );
+
+        // ifTable data survives the enrichment-free conversion.
+        assert_eq!(interface.base.if_index, 7);
+        assert_eq!(interface.base.if_descr, "Port 7");
+        assert_eq!(interface.base.if_name.as_deref(), Some("swp7"));
+        assert_eq!(interface.base.if_type, 6);
+        assert_eq!(interface.base.speed_bps, Some(1_000_000_000));
+        assert_eq!(interface.base.network_id, network_id);
+
+        // Enrichment that hasn't been collected yet is absent, not fabricated.
+        assert!(interface.base.lldp_chassis_id.is_none());
+        assert!(interface.base.cdp_device_id.is_none());
+        assert!(interface.base.fdb_macs.is_none());
+        assert!(interface.base.native_vlan_id.is_none());
+        assert!(interface.base.vlan_ids.is_none());
+    }
 
     #[test]
     fn test_value_to_string() {
