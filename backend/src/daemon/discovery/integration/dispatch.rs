@@ -70,9 +70,6 @@ pub async fn probe_integrations(
     // Combine caller's open ports with probe-discovered ports for gate checks
     let mut all_open_ports: Vec<PortType> = open_ports.to_vec();
 
-    // TEMP instrumentation: measure how long per-host integration probing takes.
-    let host_probe_start = std::time::Instant::now();
-
     // First pass (synchronous, cheap): resolve each mapping to a probe task, applying
     // the discriminant / integration / credentials / gate checks. Gate checks use the
     // port-scan `open_ports`; probe-discovered ports don't feed later gates (negligible
@@ -122,7 +119,6 @@ pub async fn probe_integrations(
     // returns the first success (or None). This collapses the previously-serial
     // per-credential probe latency (e.g. v1+v2c+v3 SNMP + the public default, each with
     // multi-second UDP timeouts on non-responders) into roughly one probe's wall-clock.
-    let mappings_probed = tasks.len();
     let outcomes = futures::future::join_all(tasks.into_iter().map(|task| {
         let ProbeTask {
             discriminant,
@@ -134,9 +130,7 @@ pub async fn probe_integrations(
                 if cancel.is_cancelled() {
                     return None;
                 }
-                // TEMP instrumentation: per-credential probe timing.
-                let probe_start = std::time::Instant::now();
-                let outcome = integration
+                match integration
                     .probe(&ProbeContext {
                         ip,
                         credential,
@@ -144,16 +138,8 @@ pub async fn probe_integrations(
                         cancel,
                         utils,
                     })
-                    .await;
-                tracing::debug!(
-                    ip = %ip,
-                    integration = ?discriminant,
-                    credential_id = ?cred_id,
-                    probe_ms = probe_start.elapsed().as_millis() as u64,
-                    succeeded = outcome.is_ok(),
-                    "PROBE_TIMING credential"
-                );
-                match outcome {
+                    .await
+                {
                     Ok(success) => {
                         return Some((discriminant, *cred_id, (*credential).clone(), success));
                     }
@@ -197,14 +183,6 @@ pub async fn probe_integrations(
             .working_credential_ids
             .insert(discriminant, (cred_id, credential));
     }
-
-    // TEMP instrumentation: total per-host probing wall-clock.
-    tracing::debug!(
-        ip = %ip,
-        total_probe_ms = host_probe_start.elapsed().as_millis() as u64,
-        mappings_probed,
-        "PROBE_TIMING host_total"
-    );
 
     Ok(results)
 }
