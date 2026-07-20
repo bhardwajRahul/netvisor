@@ -1,0 +1,345 @@
+<script lang="ts">
+	/**
+	 * Daemon management modal: edit the server-side record, and manage the daemon's 1:1 API key.
+	 *
+	 * Deliberately SEPARATE from CreateDaemonModal, counter to the usual shared create/edit
+	 * modal pattern — installing a daemon and administering an installed one are different
+	 * jobs with different affordances. Do not unify them.
+	 */
+	import { createForm } from '@tanstack/svelte-form';
+	import { submitForm } from '$lib/shared/components/forms/form-context';
+	import { required, max } from '$lib/shared/components/forms/validators';
+	import GenericModal from '$lib/shared/components/layout/GenericModal.svelte';
+	import type { ModalTab } from '$lib/shared/components/layout/GenericModal.svelte';
+	import ModalHeaderIcon from '$lib/shared/components/layout/ModalHeaderIcon.svelte';
+	import EntityMetadataSection from '$lib/shared/components/forms/EntityMetadataSection.svelte';
+	import TextInput from '$lib/shared/components/forms/input/TextInput.svelte';
+	import SelectInput from '$lib/shared/components/forms/input/SelectInput.svelte';
+	import TagPicker from '$lib/features/tags/components/TagPicker.svelte';
+	import { entities } from '$lib/shared/stores/metadata';
+	import { pushError } from '$lib/shared/stores/feedback';
+	import { Info, KeyRound } from 'lucide-svelte';
+	import type { Daemon } from '$lib/features/daemons/types/base';
+	import type { ApiKey } from '$lib/features/daemon_api_keys/types/base';
+	import { useUpdateDaemonMutation } from '$lib/features/daemons/queries';
+	import {
+		useApiKeysQuery,
+		useUpdateApiKeyMutation,
+		useRotateApiKeyMutation
+	} from '$lib/features/daemon_api_keys/queries';
+	import { useUsersQuery } from '$lib/features/users/queries';
+	import ApiKeyFormFields from '$lib/features/daemon_api_keys/components/ApiKeyFormFields.svelte';
+	import { createApiKeyForm } from '$lib/features/daemon_api_keys/form';
+	import DaemonKeyAssociation from './DaemonKeyAssociation.svelte';
+	import { constructDaemonUrl } from '$lib/features/daemons/utils';
+	import {
+		common_apiKey,
+		common_cancel,
+		common_close,
+		common_details,
+		common_editName,
+		common_failedRotateApiKey,
+		common_name,
+		common_port,
+		common_save,
+		common_saving,
+		common_tags,
+		daemons_config_daemonUrl,
+		daemons_config_daemonUrlHelpNoPort,
+		daemons_config_mode,
+		daemons_config_modeImmutable,
+		daemons_config_portHelpServerPoll,
+		daemons_legacyNameFromDaemon,
+		common_maintainer,
+		common_maintainerHelp
+	} from '$lib/paraglide/messages';
+
+	interface Props {
+		isOpen?: boolean;
+		onClose: () => void;
+		daemon: Daemon | null;
+		name?: string;
+	}
+
+	let { isOpen = false, onClose, daemon = null, name = undefined }: Props = $props();
+
+	const updateDaemonMutation = useUpdateDaemonMutation();
+	const updateApiKeyMutation = useUpdateApiKeyMutation();
+	const rotateApiKeyMutation = useRotateApiKeyMutation();
+	const apiKeysQuery = useApiKeysQuery();
+	const usersQuery = useUsersQuery();
+
+	let activeTab = $state('details');
+	let loading = $state(false);
+	let generatedKey = $state<string | null>(null);
+
+	let tabs: ModalTab[] = $derived([
+		{ id: 'details', label: common_details(), icon: Info },
+		{ id: 'apiKey', label: common_apiKey(), icon: KeyRound }
+	]);
+
+	let isServerPoll = $derived(daemon?.mode === 'server_poll');
+	// A daemon with no bound key predates 1:1 provisioning. Until it has one, its own
+	// handshake is authoritative for name and mode (see daemons/service/processing.rs), so
+	// editing the name here would be silently overwritten on the next contact.
+	let isLegacy = $derived(daemon != null && !daemon.api_key_id);
+
+	// The daemon record already carries api_key_id, so the bound key resolves from the list
+	// the keys tab already loads — no per-daemon endpoint needed.
+	let daemonKey = $derived<ApiKey | null>(
+		daemon?.api_key_id
+			? ((apiKeysQuery.data ?? []).find((k) => k.id === daemon.api_key_id) ?? null)
+			: null
+	);
+
+	let userOptions = $derived(
+		(usersQuery.data ?? []).map((u) => ({ value: u.id, label: u.email ?? u.id }))
+	);
+
+	const DEFAULT_DAEMON_PORT = 60073;
+
+	// ServerPoll stores one url; the form edits host and port separately (as the create modal
+	// does) and recombines them on submit.
+	function splitUrl(url: string): { base: string; port: number } {
+		try {
+			const parsed = new globalThis.URL(url);
+			const port = parsed.port ? Number(parsed.port) : parsed.protocol === 'https:' ? 443 : 80;
+			const path = parsed.pathname === '/' ? '' : parsed.pathname;
+			return { base: `${parsed.protocol}//${parsed.hostname}${path}`, port };
+		} catch {
+			return { base: url, port: DEFAULT_DAEMON_PORT };
+		}
+	}
+
+	const detailsForm = createForm(() => ({
+		defaultValues: {
+			name: '',
+			url: '',
+			port: DEFAULT_DAEMON_PORT,
+			user_id: '',
+			tags: [] as string[]
+		},
+		onSubmit: async ({ value }) => {
+			if (!daemon) return;
+			loading = true;
+			try {
+				await updateDaemonMutation.mutateAsync({
+					...daemon,
+					name: value.name,
+					user_id: value.user_id,
+					tags: value.tags,
+					// Only ServerPoll has a meaningful url; the server rejects changing it otherwise.
+					url: isServerPoll ? constructDaemonUrl(value.url, Number(value.port)) : daemon.url
+				});
+				onClose();
+			} finally {
+				loading = false;
+			}
+		}
+	}));
+
+	const keyForm = createApiKeyForm(async (value) => {
+		loading = true;
+		try {
+			await updateApiKeyMutation.mutateAsync(value);
+			onClose();
+		} finally {
+			loading = false;
+		}
+	});
+
+	// Which key the key form currently holds. TanStack form values aren't tracked by
+	// `$derived`, so the effect below can't read them back to decide whether to seed.
+	let seededKeyId = $state<string | null>(null);
+
+	function handleOpen() {
+		activeTab = 'details';
+		generatedKey = null;
+		seededKeyId = null;
+		if (!daemon) return;
+
+		const { base, port } = splitUrl(daemon.url);
+		detailsForm.reset({
+			name: daemon.name,
+			url: isServerPoll ? base : '',
+			port,
+			user_id: daemon.user_id,
+			tags: daemon.tags ?? []
+		});
+	}
+
+	// The key list is fetched separately and can arrive after the modal opens, so seed the
+	// key form whenever the resolved key changes rather than only on open.
+	$effect(() => {
+		if (isOpen && daemonKey && daemonKey.id !== seededKeyId) {
+			seededKeyId = daemonKey.id;
+			keyForm.reset({ ...daemonKey });
+		}
+	});
+
+	async function handleRotateKey() {
+		if (!daemonKey) return;
+		loading = true;
+		try {
+			generatedKey = await rotateApiKeyMutation.mutateAsync(daemonKey.id);
+		} catch {
+			pushError(common_failedRotateApiKey());
+		} finally {
+			loading = false;
+		}
+	}
+
+	async function handleSubmit() {
+		await submitForm(activeTab === 'details' ? detailsForm : keyForm);
+	}
+
+	// Saving only applies to a tab with an editable form — the association CTA has its own action.
+	let canSave = $derived(activeTab === 'details' || daemonKey != null);
+
+	let colorHelper = $derived(entities.getColorHelper('Daemon'));
+</script>
+
+<GenericModal
+	{isOpen}
+	{name}
+	title={common_editName({ name: daemon?.name ?? '' })}
+	entityId={daemon?.id}
+	size="xl"
+	{onClose}
+	onOpen={handleOpen}
+	showCloseButton={true}
+	{tabs}
+	{activeTab}
+	onTabChange={(id) => (activeTab = id)}
+>
+	{#snippet headerIcon()}
+		<ModalHeaderIcon Icon={entities.getIconComponent('Daemon')} color={colorHelper.color} />
+	{/snippet}
+
+	{#if daemon}
+		<form
+			onsubmit={(e) => {
+				e.preventDefault();
+				e.stopPropagation();
+				handleSubmit();
+			}}
+			class="flex min-h-0 flex-1 flex-col"
+		>
+			<div class="min-h-0 flex-1 overflow-auto p-6">
+				<!-- Details -->
+				<div class="space-y-4" class:hidden={activeTab !== 'details'}>
+					<detailsForm.Field
+						name="name"
+						validators={{ onBlur: ({ value }) => required(value) || max(100)(value) }}
+					>
+						{#snippet children(field)}
+							<TextInput
+								label={common_name()}
+								id="daemon-name"
+								{field}
+								disabled={isLegacy}
+								helpText={isLegacy ? daemons_legacyNameFromDaemon() : ''}
+								required
+							/>
+						{/snippet}
+					</detailsForm.Field>
+
+					<!-- Mode is fixed at install time: it decides how the daemon and server reach
+					     each other, and the daemon's own handshake would overwrite any change.
+					     Shown (not hidden) so the record reads completely, but never editable —
+					     it is not a form value, so it is a plain disabled control. -->
+					<div class="space-y-2">
+						<label for="daemon-mode" class="text-secondary block text-sm font-medium">
+							{daemons_config_mode()}
+						</label>
+						<select id="daemon-mode" class="input-field" disabled value={daemon.mode}>
+							<option value="daemon_poll">daemon_poll</option>
+							<option value="server_poll">server_poll</option>
+						</select>
+						<p class="text-tertiary text-xs">{daemons_config_modeImmutable()}</p>
+					</div>
+
+					{#if isServerPoll}
+						<detailsForm.Field name="url" validators={{ onBlur: ({ value }) => required(value) }}>
+							{#snippet children(field)}
+								<TextInput
+									label={daemons_config_daemonUrl()}
+									id="daemon-url"
+									{field}
+									helpText={daemons_config_daemonUrlHelpNoPort()}
+									required
+								/>
+							{/snippet}
+						</detailsForm.Field>
+
+						<detailsForm.Field name="port">
+							{#snippet children(field)}
+								<TextInput
+									label={common_port()}
+									id="daemon-port"
+									type="number"
+									{field}
+									helpText={daemons_config_portHelpServerPoll()}
+								/>
+							{/snippet}
+						</detailsForm.Field>
+					{/if}
+
+					<detailsForm.Field name="user_id">
+						{#snippet children(field)}
+							<SelectInput
+								label={common_maintainer()}
+								id="daemon-user"
+								{field}
+								options={userOptions}
+								helpText={common_maintainerHelp()}
+							/>
+						{/snippet}
+					</detailsForm.Field>
+
+					<detailsForm.Field name="tags">
+						{#snippet children(field)}
+							<TagPicker
+								label={common_tags()}
+								selectedTagIds={field.state.value || []}
+								onChange={(tags) => field.handleChange(tags)}
+							/>
+						{/snippet}
+					</detailsForm.Field>
+				</div>
+
+				<!-- API key -->
+				<div class:hidden={activeTab !== 'apiKey'}>
+					{#if daemonKey}
+						<ApiKeyFormFields
+							form={keyForm}
+							isEditing={true}
+							{generatedKey}
+							{loading}
+							onGenerate={() => {}}
+							onRotate={handleRotateKey}
+							showNetwork={false}
+						/>
+					{:else}
+						<DaemonKeyAssociation {daemon} />
+					{/if}
+				</div>
+			</div>
+
+			<EntityMetadataSection entities={[daemon]} />
+
+			<div class="modal-footer">
+				<div class="flex items-center justify-end gap-3">
+					<button type="button" disabled={loading} onclick={onClose} class="btn-secondary">
+						{canSave ? common_cancel() : common_close()}
+					</button>
+					{#if canSave}
+						<button type="submit" disabled={loading} class="btn-primary">
+							{loading ? common_saving() : common_save()}
+						</button>
+					{/if}
+				</div>
+			</div>
+		</form>
+	{/if}
+</GenericModal>

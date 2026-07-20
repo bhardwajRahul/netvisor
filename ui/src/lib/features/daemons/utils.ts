@@ -1,5 +1,6 @@
 import { fieldDefs } from './config';
 import type { Daemon } from './types/base';
+import type { components } from '$lib/api/schema';
 import type { FormValue } from '$lib/shared/components/forms/validators';
 import type { TagProps } from '$lib/shared/components/data/types';
 import { toColor } from '$lib/shared/utils/styling';
@@ -106,6 +107,50 @@ export function buildDefaultValues(
 		}
 	}
 	return defaults;
+}
+
+/**
+ * Collect the advanced daemon settings to send with a provision request, so the server can
+ * bake them into the install command and the MSI pre-fill filename.
+ *
+ * Only advanced fields (those with a `section`) are included — everything else the server
+ * owns and derives from the daemon record. Values equal to their default are skipped, which
+ * matches `buildRunCommand` and matters more here: the whole MSI config has to fit inside a
+ * 255-character filename.
+ *
+ * The key names are the Rust field names on `DaemonArgs`, which is the wire type.
+ */
+export function buildInstallConfig(
+	values: Record<string, string | number | boolean>
+): components['schemas']['DaemonArgs'] {
+	const config: Record<string, string | number | boolean | string[]> = {};
+
+	for (const def of fieldDefs) {
+		if (!def.section || def.docsOnly) continue;
+
+		const value = values[def.id];
+		if (value === '' || value === null || value === undefined) continue;
+		if (value === def.defaultValue) continue;
+		if (!fieldPassesValidation(def, value)) continue;
+
+		// `--interfaces` is comma-delimited on the CLI but a list on the wire.
+		if (def.id === 'interfaces') {
+			const list = String(value)
+				.split(',')
+				.map((s) => s.trim())
+				.filter(Boolean);
+			if (list.length > 0) config.interfaces = list;
+			continue;
+		}
+
+		config[camelToSnake(def.id)] = value;
+	}
+
+	return config as components['schemas']['DaemonArgs'];
+}
+
+function camelToSnake(id: string): string {
+	return id.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
 }
 
 export function buildRunCommand(

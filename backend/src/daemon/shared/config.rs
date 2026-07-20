@@ -158,117 +158,333 @@ pub struct UninstallArgs {
 /// Connection and identity flags shared by the bare-daemon run and the `install` subcommand.
 /// This is the single input surface for daemon configuration — the installer feeds these same
 /// flags to [`AppConfig::load`], so there is no second config path.
-#[derive(Args)]
+///
+/// It doubles as the **API wire type** for install configuration: the server accepts one of these
+/// on `POST /daemons/provision` and emits it into the install command and the MSI filename hash
+/// (see [`DaemonArgs::install_config_pairs`]). Rather than mirroring these fields into a separate
+/// request struct — which would be a third copy of a list already duplicated into
+/// `ui/src/lib/features/daemons/config.ts` — the struct is reused directly.
+///
+/// Every field that the *server* controls (identity, mode, connection target) or that is a secret
+/// is `#[serde(skip)]`, so it can never be set from the wire while remaining a normal CLI flag.
+/// The deserializable set is therefore exactly the advanced daemon settings the UI exposes; the
+/// server fills the rest in from the daemon record before emitting. `serde` and `clap` attributes
+/// are independent, so this does not affect CLI parsing.
+#[derive(Args, Serialize, Deserialize, Default, Clone, utoipa::ToSchema)]
 pub struct DaemonArgs {
     /// Complete Server URL
+    // Server-controlled: comes from the server's own public URL at provision time.
+    #[serde(skip)]
     #[arg(long)]
-    server_url: Option<String>,
+    pub server_url: Option<String>,
 
     /// Network ID to join
+    // Server-controlled: the tenancy boundary, taken from the provisioned record.
+    #[serde(skip)]
     #[arg(long)]
-    network_id: Option<String>,
+    pub network_id: Option<String>,
 
     /// Port the daemon listens on.
+    // Server-controlled: derived from the daemon record's `url` for ServerPoll daemons.
+    #[serde(skip)]
     #[arg(short, long)]
-    daemon_port: Option<u16>,
+    pub daemon_port: Option<u16>,
 
     /// Name for this daemon
+    // Server-controlled: the daemon learns its name via the handshake.
+    #[serde(skip)]
     #[arg(long)]
-    name: Option<String>,
+    pub name: Option<String>,
 
     /// Logging verbosity
     #[arg(long)]
-    log_level: Option<String>,
+    pub log_level: Option<String>,
 
     /// Seconds between heartbeat updates to the server
     #[arg(long)]
-    heartbeat_interval: Option<u64>,
+    pub heartbeat_interval: Option<u64>,
 
     /// IP address to bind daemon to
     #[arg(long)]
-    bind_address: Option<String>,
+    pub bind_address: Option<String>,
 
     /// API key
+    // Secret: minted server-side, never accepted from a client.
+    #[serde(skip)]
     #[arg(long)]
-    daemon_api_key: Option<String>,
+    pub daemon_api_key: Option<String>,
 
     /// Optional local proxy for Docker API on the daemon host. Supports non-SSL and SSL; SSL requires additional config vars
+    // Configured via the credentials/discovery UI, not daemon install config.
+    #[serde(skip)]
     #[arg(long)]
-    docker_proxy: Option<String>,
+    pub docker_proxy: Option<String>,
 
     /// Path to SSL certificate if using a docker proxy with SSL
+    #[serde(skip)]
     #[arg(long)]
-    docker_proxy_ssl_cert: Option<String>,
+    pub docker_proxy_ssl_cert: Option<String>,
 
     /// Path to SSL private key if using a docker proxy with SSL
+    // Secret.
+    #[serde(skip)]
     #[arg(long)]
-    docker_proxy_ssl_key: Option<String>,
+    pub docker_proxy_ssl_key: Option<String>,
 
     /// Path to SSL chain if using a docker proxy with SSL
+    #[serde(skip)]
     #[arg(long)]
-    docker_proxy_ssl_chain: Option<String>,
+    pub docker_proxy_ssl_chain: Option<String>,
 
     /// DaemonPoll: Daemon connects to server; works behind NAT/firewall without opening ports. ServerPoll: Server connects to daemon, for deployments where daemon cannot make outbound connections - requires providing Daemon URL
+    // Server-controlled: immutable post-provision, taken from the daemon record.
+    #[serde(skip)]
     #[arg(long)]
-    mode: Option<DaemonMode>,
+    pub mode: Option<DaemonMode>,
 
     /// Allow self-signed certs for daemon -> server connections
     #[arg(long)]
-    allow_self_signed_certs: Option<bool>,
+    pub allow_self_signed_certs: Option<bool>,
 
     /// Base URL where server can reach daemon
+    // Server-controlled: captured on the daemon record at provision time.
+    #[serde(skip)]
     #[arg(long)]
-    daemon_url: Option<String>,
+    pub daemon_url: Option<String>,
 
     /// User ID of the person who installed this daemon. Used for deprecation notifications.
+    // Server-controlled: the provisioning member.
+    #[serde(skip)]
     #[arg(long)]
-    user_id: Option<Uuid>,
+    pub user_id: Option<Uuid>,
 
     /// Accept invalid TLS certificates when scanning endpoints. Enabled by default since scanners probe arbitrary internal services.
     #[arg(long)]
-    accept_invalid_scan_certs: Option<bool>,
+    pub accept_invalid_scan_certs: Option<bool>,
 
     /// Integration target tokens (repeatable). Each is `<uuid>` (credential, no specific IP),
     /// `<uuid>@<ip>[+<ip>...]` (credential pinned to IP(s)), or `docker-socket` / `podman-socket`
     /// (credential-less local socket on the daemon host).
+    // Server-controlled: seeded from `seed_credential_refs` on the provision request.
+    #[serde(skip)]
     #[arg(long = "credential-id")]
-    credential_ids: Option<Vec<String>>,
+    pub credential_ids: Option<Vec<String>>,
 
     /// Path to log file. Defaults to platform-specific path. Set to "none" to disable file logging.
     #[arg(long)]
-    log_file: Option<String>,
+    pub log_file: Option<String>,
 
     /// Enable faster ARP scanning on Windows by using broadcast ARP via Npcap instead of native SendARP, which doesn't support broadcast. **Requires Npcap installation**. Ignored on Linux/macOS.
+    // Deprecated: scan settings are now per-discovery via ScanSettings, and not UI-exposed.
+    #[serde(skip)]
     #[arg(long)]
-    use_npcap_arp: Option<bool>,
+    pub use_npcap_arp: Option<bool>,
 
     /// Number of ARP retry rounds for non-responding hosts (default: 2, meaning 3 total attempts)
+    #[serde(skip)]
     #[arg(long)]
-    arp_retries: Option<u32>,
+    pub arp_retries: Option<u32>,
 
     /// Maximum ARP packets per second (default: 50, go more conservative for networks with enterprise switches)
+    #[serde(skip)]
     #[arg(long)]
-    arp_rate_pps: Option<u32>,
+    pub arp_rate_pps: Option<u32>,
 
     /// Maximum port scan probes per second (default: 500, controls rate of TCP/UDP connection attempts to avoid overwhelming target hosts)
+    #[serde(skip)]
     #[arg(long)]
-    scan_rate_pps: Option<u32>,
+    pub scan_rate_pps: Option<u32>,
 
     /// Number of ports scanned concurrently per host. Higher values scan faster but may overwhelm some hosts
+    #[serde(skip)]
     #[arg(long)]
-    port_scan_batch_size: Option<usize>,
+    pub port_scan_batch_size: Option<usize>,
 
     /// Restrict daemon to specific network interface(s). Comma-separated for multiple (e.g., eth0,eth1). Leave empty for all interfaces
     #[arg(long, value_delimiter = ',')]
-    interfaces: Option<Vec<String>>,
+    pub interfaces: Option<Vec<String>>,
 
     /// Directory that holds this daemon's `config.json`. Overrides the default per-user location.
     /// The `install` command bakes this into the generated system service (pointing at a system
     /// directory) so the service reads config from the exact path the installer wrote — a system
     /// service runs under a different profile than the installer, so relying on the per-user
     /// `$HOME`/`%APPDATA%` path would leave the service unable to find its config.
+    // Locator baked into system services by `install`, not a user-facing config field.
+    #[serde(skip)]
     #[arg(long)]
-    config_dir: Option<PathBuf>,
+    pub config_dir: Option<PathBuf>,
+}
+
+/// One emittable install-config value, paired with the key it takes in each install artifact.
+/// A `None` key means the field is deliberately absent from that artifact.
+pub struct InstallConfigPair {
+    /// Long flag for the CLI `install` command, e.g. `--log-level`.
+    pub cli_flag: Option<&'static str>,
+    /// Query key for the MSI pre-fill filename. Must match the property map in
+    /// `backend/wix/parse-filename.js`.
+    pub msi_key: Option<&'static str>,
+    /// Rendered value.
+    pub value: String,
+}
+
+impl DaemonArgs {
+    /// The set values of this config, rendered once for both install artifacts.
+    ///
+    /// Having a single table is what keeps the CLI command, the MSI filename hash, and
+    /// `backend/wix/parse-filename.js` from drifting — the two artifacts key the same field
+    /// differently (`--log-level` vs `loglevel`, `--bind-address` vs `addr`), and previously
+    /// only the JS side knew the MSI names.
+    ///
+    /// `None` fields are skipped entirely, which keeps commands terse and keeps the base64 MSI
+    /// filename clear of the ~255-character filename limit.
+    pub fn install_config_pairs(&self) -> Vec<InstallConfigPair> {
+        fn push(
+            pairs: &mut Vec<InstallConfigPair>,
+            cli_flag: Option<&'static str>,
+            msi_key: Option<&'static str>,
+            value: Option<String>,
+        ) {
+            if let Some(value) = value {
+                pairs.push(InstallConfigPair {
+                    cli_flag,
+                    msi_key,
+                    value,
+                });
+            }
+        }
+
+        // Exhaustive destructure (no `..`) so that adding a field to `DaemonArgs` fails to
+        // compile until it is either emitted here or explicitly marked as not emitted.
+        let Self {
+            server_url,
+            network_id: _, // Identity travels via the 1:1 api key binding, not a flag
+            daemon_port,
+            name,
+            log_level,
+            heartbeat_interval,
+            bind_address,
+            daemon_api_key,
+            docker_proxy: _, // Configured via the credentials/discovery UI
+            docker_proxy_ssl_cert: _,
+            docker_proxy_ssl_key: _,
+            docker_proxy_ssl_chain: _,
+            mode,
+            allow_self_signed_certs,
+            daemon_url: _, // Captured on the daemon record at provision time
+            user_id: _,    // Server-set from the provisioning member
+            accept_invalid_scan_certs,
+            credential_ids: _, // Seeded server-side from `seed_credential_refs`
+            log_file,
+            use_npcap_arp: _, // Deprecated: scan settings are per-discovery via ScanSettings
+            arp_retries: _,
+            arp_rate_pps: _,
+            scan_rate_pps: _,
+            port_scan_batch_size: _,
+            interfaces,
+            config_dir: _, // Install-time locator, baked into the service definition
+        } = self;
+
+        let mut pairs = Vec::new();
+
+        // The daemon infers ServerPoll from the *absence* of a server url, so the CLI command
+        // needs no `--mode`; the MSI has no such inference and pre-fills MODE explicitly.
+        push(&mut pairs, None, Some("mode"), render_mode(mode.as_ref()));
+        // The daemon learns its name via the handshake, so the CLI command omits it; the MSI
+        // needs it up front because the service id is derived from it at install time.
+        push(&mut pairs, None, Some("name"), name.clone());
+        push(
+            &mut pairs,
+            Some("--server-url"),
+            Some("url"),
+            server_url.clone(),
+        );
+        // A live credential must never sit in a filename.
+        push(
+            &mut pairs,
+            Some("--daemon-api-key"),
+            None,
+            daemon_api_key.clone(),
+        );
+        push(
+            &mut pairs,
+            Some("--daemon-port"),
+            Some("port"),
+            daemon_port.map(|v| v.to_string()),
+        );
+        push(
+            &mut pairs,
+            Some("--bind-address"),
+            Some("addr"),
+            bind_address.clone(),
+        );
+        push(
+            &mut pairs,
+            Some("--log-level"),
+            Some("loglevel"),
+            log_level.clone(),
+        );
+        push(
+            &mut pairs,
+            Some("--log-file"),
+            Some("logfile"),
+            log_file.clone(),
+        );
+        push(
+            &mut pairs,
+            Some("--heartbeat-interval"),
+            Some("heartbeat"),
+            heartbeat_interval.map(|v| v.to_string()),
+        );
+        push(
+            &mut pairs,
+            Some("--interfaces"),
+            Some("interfaces"),
+            interfaces
+                .as_ref()
+                .filter(|v| !v.is_empty())
+                .map(|v| v.join(",")),
+        );
+        push(
+            &mut pairs,
+            Some("--allow-self-signed-certs"),
+            Some("allowselfsigned"),
+            allow_self_signed_certs.map(|v| v.to_string()),
+        );
+        push(
+            &mut pairs,
+            Some("--accept-invalid-scan-certs"),
+            Some("acceptinvalidscan"),
+            accept_invalid_scan_certs.map(|v| v.to_string()),
+        );
+
+        pairs
+    }
+}
+
+/// Debug is written in terms of [`DaemonArgs::install_config_pairs`] rather than derived, so it
+/// cannot leak secrets: the api key is redacted explicitly, and the fields that never reach an
+/// install artifact at all (the docker proxy TLS material among them) are simply not enumerated.
+impl std::fmt::Debug for DaemonArgs {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut out = f.debug_struct("DaemonArgs");
+        for pair in self.install_config_pairs() {
+            let key = pair.cli_flag.or(pair.msi_key).unwrap_or("?");
+            if pair.cli_flag == Some("--daemon-api-key") {
+                out.field(key, &"<redacted>");
+            } else {
+                out.field(key, &pair.value);
+            }
+        }
+        out.finish_non_exhaustive()
+    }
+}
+
+/// Render a mode using clap's own `ValueEnum` naming, so the emitted value is by construction
+/// one the daemon's `--mode` parser accepts.
+fn render_mode(mode: Option<&DaemonMode>) -> Option<String> {
+    use clap::ValueEnum;
+    mode.and_then(|m| m.to_possible_value())
+        .map(|v| v.get_name().to_string())
 }
 
 /// Unified configuration struct that handles both startup and runtime config

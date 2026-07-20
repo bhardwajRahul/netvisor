@@ -16,7 +16,8 @@
 	} from '$lib/features/daemons/queries';
 	import { useNetworksQuery } from '$lib/features/networks/queries';
 	import { useHostsQuery } from '$lib/features/hosts/queries';
-	import { modalState } from '$lib/shared/stores/modal-registry';
+	import { modalState, resolveModalDeepLink } from '$lib/shared/stores/modal-registry';
+	import DaemonEditModal from './DaemonEditModal.svelte';
 	import type { TabProps } from '$lib/shared/types';
 	import type { components } from '$lib/api/schema';
 	import { downloadCsv } from '$lib/shared/utils/csvExport';
@@ -57,6 +58,8 @@
 	let isLoading = $derived(daemonsQuery.isPending || networksQuery.isPending);
 
 	let showCreateDaemonModal = $state(false);
+	let showDaemonEditor = $state(false);
+	let editingDaemon = $state<Daemon | null>(null);
 
 	// Auto-open modal when deep-linked via ?modal=create-daemon
 	$effect(() => {
@@ -64,6 +67,31 @@
 			showCreateDaemonModal = true;
 		}
 	});
+
+	// Deep-link the daemon editor via ?modal=daemon-editor&id=<daemon-id>
+	$effect(() => {
+		const resolved = resolveModalDeepLink(
+			$modalState,
+			'daemon-editor',
+			daemonsData,
+			showDaemonEditor,
+			editingDaemon?.id
+		);
+		if (resolved !== undefined) {
+			editingDaemon = resolved;
+			showDaemonEditor = true;
+		}
+	});
+
+	function handleEditDaemon(daemon: Daemon) {
+		editingDaemon = daemon;
+		showDaemonEditor = true;
+	}
+
+	function handleCloseDaemonEditor() {
+		showDaemonEditor = false;
+		editingDaemon = null;
+	}
 
 	function handleDeleteDaemon(daemon: Daemon) {
 		if (confirm(common_confirmDeleteName({ name: daemon.name }))) {
@@ -178,6 +206,7 @@
 					daemon={item}
 					{viewMode}
 					onDelete={isReadOnly ? undefined : handleDeleteDaemon}
+					onEdit={isReadOnly ? undefined : handleEditDaemon}
 					selected={isSelected}
 					{onSelectionChange}
 				/>
@@ -193,4 +222,11 @@
 	onNavigate={(tab) => {
 		window.location.hash = tab;
 	}}
+/>
+
+<DaemonEditModal
+	isOpen={showDaemonEditor}
+	name="daemon-editor"
+	daemon={editingDaemon}
+	onClose={handleCloseDaemonEditor}
 />

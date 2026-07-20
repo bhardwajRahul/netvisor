@@ -78,7 +78,7 @@ export const entityUIConfig: Record<EntityDiscriminants, EntityUIConfig | null> 
 		displayComponent: BindingDisplay
 	},
 	Subnet: { tabId: 'subnets', modalName: 'subnet-editor', displayComponent: SubnetDisplay },
-	Daemon: { tabId: 'daemons', displayComponent: DaemonDisplay },
+	Daemon: { tabId: 'daemons', modalName: 'daemon-editor', displayComponent: DaemonDisplay },
 	DaemonApiKey: {
 		tabId: 'daemon-api-keys',
 		modalName: 'daemon-api-key',

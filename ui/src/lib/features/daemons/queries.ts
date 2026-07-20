@@ -50,6 +50,30 @@ export function useDaemonQuery(id: () => string | null, options?: { enabled?: ()
 }
 
 /**
+ * Mutation hook for updating a daemon's server-side record (name, maintainer, tags, and
+ * the ServerPoll url). Identity and server-managed fields are restored server-side.
+ */
+export function useUpdateDaemonMutation() {
+	const queryClient = useQueryClient();
+
+	return createMutation(() => ({
+		mutationFn: async (daemon: Daemon) => {
+			const { data } = await apiClient.PUT('/api/v1/daemons/{id}', {
+				params: { path: { id: daemon.id } },
+				body: daemon
+			});
+			if (!data?.success || !data.data) {
+				throw new Error(data?.error || 'Failed to update daemon');
+			}
+			return data.data;
+		},
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: queryKeys.daemons.all });
+		}
+	}));
+}
+
+/**
  * Mutation hook for deleting a daemon
  */
 export function useDeleteDaemonMutation() {
@@ -115,11 +139,14 @@ export function useProvisionDaemonMutation() {
 			return data.data;
 		},
 		onSuccess: (response: ProvisionDaemonResponse) => {
-			// Add the newly created daemon to the cache
-			queryClient.setQueryData<Daemon[]>(queryKeys.daemons.all, (old) => [
-				...(old ?? []),
-				response.daemon
-			]);
+			// Re-provisioning returns an existing daemon, so replace it in place rather than
+			// appending a duplicate; a fresh provision appends.
+			queryClient.setQueryData<Daemon[]>(queryKeys.daemons.all, (old) => {
+				const existing = old ?? [];
+				return existing.some((d) => d.id === response.daemon.id)
+					? existing.map((d) => (d.id === response.daemon.id ? response.daemon : d))
+					: [...existing, response.daemon];
+			});
 		}
 	}));
 }

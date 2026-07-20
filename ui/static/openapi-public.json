@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Scanopy API",
-    "description": "\nNetwork topology discovery and visualization API.\n\n## Authentication\n\nTwo authentication methods are supported:\n\n| Method | Header | Use Case |\n|--------|--------|----------|\n| User API key | `Authorization: Bearer scp_u_...` | Programmatic access, integrations |\n| Session cookie | `Cookie: session_id=...` | Web UI (via `/api/auth/login`) |\n\nUser API keys require your organization to have API access enabled. Create keys at **Platform > API Keys**.\n\n## Rate Limiting\n\nLimit: 300 requests/minute\n\nBurst: 150\n\nResponse headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`\n\nWhen rate limited, you'll receive HTTP `429 Too Many Requests` with a `Retry-After` header.\n\n## Pagination\n\nList endpoints support pagination via query parameters:\n\n| Parameter | Type | Default | Description |\n|-----------|------|---------|-------------|\n| `limit` | integer | 50 | Maximum results to return (1-1000). Use 0 for no limit. |\n| `offset` | integer | 0 | Number of results to skip |\n\nExample: `GET /api/v1/hosts?limit=10&offset=20`\n\n## Response Format\n\nAll responses use a standard envelope:\n\n```json\n{\n  \"success\": true,\n  \"data\": { ... },\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.17.3\"\n  }\n}\n```\n\n**Paginated list responses** include pagination metadata:\n\n```json\n{\n  \"success\": true,\n  \"data\": [ ... ],\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.17.3\",\n    \"pagination\": {\n      \"total_count\": 142,\n      \"limit\": 50,\n      \"offset\": 0,\n      \"has_more\": true\n    }\n  }\n}\n```\n\n| Field | Description |\n|-------|-------------|\n| `total_count` | Total items matching your query (ignoring pagination) |\n| `limit` | Applied limit (your request or default) |\n| `offset` | Applied offset |\n| `has_more` | `true` if more results exist beyond this page |\n\n**Error responses** include an `error` field instead of `data`:\n\n```json\n{\n  \"success\": false,\n  \"error\": \"Resource not found\",\n  \"meta\": { ... }\n}\n```\n\n**Common status codes:** `400` validation error, `401` unauthorized, `403` forbidden, `404` not found, `409` conflict, `429` rate limited.\n\n## Versioning\n\nEndpoints are prefixed with `/api/v1/`. The API version is an integer (`api_version: 1`) returned in every response, versioned independently from the application. Check `GET /api/version` for current versions.\n\n**While Scanopy is pre-v1.0 (current: 0.17.3)**, the API should be considered unstable. Breaking changes may be introduced in any release without incrementing the API version. We recommend pinning to a specific Scanopy release if you depend on API stability, and reviewing the [changelog](/changelog) before upgrading. After Scanopy reaches v1.0, breaking API changes will only occur with an API version increment.\n\n## Multi-Tenancy\n\nResources are scoped to your **organization** and **network(s)**:\n\n- You can only access entities within your organization\n- Network-level entities (hosts, services, etc.) are filtered to networks you have access to\n- Use `?network_id=<UUID>` to filter list endpoints to a specific network\n- API keys can be scoped to a subset of your accessible networks\n",
+    "description": "\nNetwork topology discovery and visualization API.\n\n## Authentication\n\nTwo authentication methods are supported:\n\n| Method | Header | Use Case |\n|--------|--------|----------|\n| User API key | `Authorization: Bearer scp_u_...` | Programmatic access, integrations |\n| Session cookie | `Cookie: session_id=...` | Web UI (via `/api/auth/login`) |\n\nUser API keys require your organization to have API access enabled. Create keys at **Platform > API Keys**.\n\n## Rate Limiting\n\nLimit: 300 requests/minute\n\nBurst: 150\n\nResponse headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`\n\nWhen rate limited, you'll receive HTTP `429 Too Many Requests` with a `Retry-After` header.\n\n## Pagination\n\nList endpoints support pagination via query parameters:\n\n| Parameter | Type | Default | Description |\n|-----------|------|---------|-------------|\n| `limit` | integer | 50 | Maximum results to return (1-1000). Use 0 for no limit. |\n| `offset` | integer | 0 | Number of results to skip |\n\nExample: `GET /api/v1/hosts?limit=10&offset=20`\n\n## Response Format\n\nAll responses use a standard envelope:\n\n```json\n{\n  \"success\": true,\n  \"data\": { ... },\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.17.5\"\n  }\n}\n```\n\n**Paginated list responses** include pagination metadata:\n\n```json\n{\n  \"success\": true,\n  \"data\": [ ... ],\n  \"meta\": {\n    \"api_version\": 1,\n    \"server_version\": \"0.17.5\",\n    \"pagination\": {\n      \"total_count\": 142,\n      \"limit\": 50,\n      \"offset\": 0,\n      \"has_more\": true\n    }\n  }\n}\n```\n\n| Field | Description |\n|-------|-------------|\n| `total_count` | Total items matching your query (ignoring pagination) |\n| `limit` | Applied limit (your request or default) |\n| `offset` | Applied offset |\n| `has_more` | `true` if more results exist beyond this page |\n\n**Error responses** include an `error` field instead of `data`:\n\n```json\n{\n  \"success\": false,\n  \"error\": \"Resource not found\",\n  \"meta\": { ... }\n}\n```\n\n**Common status codes:** `400` validation error, `401` unauthorized, `403` forbidden, `404` not found, `409` conflict, `429` rate limited.\n\n## Versioning\n\nEndpoints are prefixed with `/api/v1/`. The API version is an integer (`api_version: 1`) returned in every response, versioned independently from the application. Check `GET /api/version` for current versions.\n\n**While Scanopy is pre-v1.0 (current: 0.17.5)**, the API should be considered unstable. Breaking changes may be introduced in any release without incrementing the API version. We recommend pinning to a specific Scanopy release if you depend on API stability, and reviewing the [changelog](/changelog) before upgrading. After Scanopy reaches v1.0, breaking API changes will only occur with an API version increment.\n\n## Multi-Tenancy\n\nResources are scoped to your **organization** and **network(s)**:\n\n- You can only access entities within your organization\n- Network-level entities (hosts, services, etc.) are filtered to networks you have access to\n- Use `?network_id=<UUID>` to filter list endpoints to a specific network\n- API keys can be scoped to a subset of your accessible networks\n",
     "license": {
       "name": "Dual (AGPL3.0, Commercial License Available)"
     },
@@ -2552,6 +2552,76 @@
           },
           "404": {
             "description": "Daemon not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "user_api_key": []
+          },
+          {
+            "session": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "daemons"
+        ],
+        "summary": "Update daemon",
+        "description": "Edits the server-side daemon record: its name, maintainer, tags, and — for ServerPoll —\nthe url the server dials. Identity and server-managed fields (network, mode, host, key\nbinding, version, liveness) are restored from the existing record by\n`preserve_immutable_fields`.",
+        "operationId": "update_daemon",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "daemon ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Daemon"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "daemon updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_Daemon"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "daemon not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -10741,12 +10811,12 @@
           "server_version": {
             "type": "string",
             "description": "Server version (semver)",
-            "example": "0.17.3"
+            "example": "0.17.5"
           }
         },
         "example": {
           "api_version": 1,
-          "server_version": "0.17.3"
+          "server_version": "0.17.5"
         }
       },
       "ApiResponse": {
@@ -10862,19 +10932,19 @@
             ],
             "description": "Association between a service and a port / interface that the service is listening on",
             "example": {
-              "created_at": "2026-07-07T19:19:03.661060Z",
+              "created_at": "2026-07-20T17:42:27.431792Z",
               "first_discovery_id": null,
-              "id": "db5d5781-c07d-448e-99bc-7d4ad21f1e77",
+              "id": "e84d24e4-7e47-48ca-96c3-c724dea30594",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-07-07T19:19:03.661060Z",
+              "last_seen_at": "2026-07-20T17:42:27.431792Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-07-07T19:19:03.661060Z",
-              "valid_from": "2026-07-07T19:19:03.661060Z",
+              "updated_at": "2026-07-20T17:42:27.431792Z",
+              "valid_from": "2026-07-20T17:42:27.431792Z",
               "valid_to": null
             }
           },
@@ -11062,6 +11132,59 @@
                   "id",
                   "created_at",
                   "updated_at"
+                ],
+                "properties": {
+                  "created_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  },
+                  "id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "readOnly": true
+                  },
+                  "updated_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                  }
+                }
+              }
+            ]
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ApiMeta"
+          },
+          "success": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ApiResponse_Daemon": {
+        "type": "object",
+        "required": [
+          "success",
+          "meta"
+        ],
+        "properties": {
+          "data": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DaemonBase"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "id",
+                  "updated_at",
+                  "created_at"
                 ],
                 "properties": {
                   "created_at": {
@@ -11618,6 +11741,13 @@
                   "null"
                 ],
                 "format": "date-time"
+              },
+              "warnings": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Non-fatal warnings for a completed run (e.g. the scan hit its time limit\nand left hosts un-scanned). Unlike `error`, these do not mark the run failed."
               }
             }
           },
@@ -11869,19 +11999,19 @@
                 {
                   "bindings": [
                     {
-                      "created_at": "2026-07-07T19:19:03.639406Z",
+                      "created_at": "2026-07-20T17:42:27.414285Z",
                       "first_discovery_id": null,
-                      "id": "86954bec-c9b5-47e4-9e43-73e3474966b9",
+                      "id": "e76c3dce-1345-4874-b3cd-cc1384774b6e",
                       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                       "last_discovery_id": null,
-                      "last_seen_at": "2026-07-07T19:19:03.639406Z",
+                      "last_seen_at": "2026-07-20T17:42:27.414285Z",
                       "lineage_id": null,
                       "network_id": "550e8400-e29b-41d4-a716-446655440002",
                       "port_id": "550e8400-e29b-41d4-a716-446655440006",
                       "service_id": "550e8400-e29b-41d4-a716-446655440007",
                       "type": "Port",
-                      "updated_at": "2026-07-07T19:19:03.639406Z",
-                      "valid_from": "2026-07-07T19:19:03.639406Z",
+                      "updated_at": "2026-07-20T17:42:27.414285Z",
+                      "valid_from": "2026-07-20T17:42:27.414285Z",
                       "valid_to": null
                     }
                   ],
@@ -11895,7 +12025,7 @@
                   "name": "nginx",
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "position": 0,
-                  "service_definition": "NTP Server",
+                  "service_definition": "Prowlarr",
                   "source": {
                     "type": "Manual"
                   },
@@ -12554,7 +12684,8 @@
             "description": "Response from provisioning a daemon.\nContains the daemon record and the API key (shown only once).",
             "required": [
               "daemon",
-              "daemon_api_key"
+              "daemon_api_key",
+              "install_artifacts"
             ],
             "properties": {
               "daemon": {
@@ -12564,6 +12695,10 @@
               "daemon_api_key": {
                 "type": "string",
                 "description": "The API key (plaintext) for daemon authentication.\nThis is shown only once - store it securely."
+              },
+              "install_artifacts": {
+                "$ref": "#/components/schemas/InstallArtifacts",
+                "description": "Ready-to-run install commands + MSI download link, assembled server-side."
               }
             }
           },
@@ -12904,19 +13039,19 @@
             "example": {
               "bindings": [
                 {
-                  "created_at": "2026-07-07T19:19:03.653983Z",
+                  "created_at": "2026-07-20T17:42:27.425970Z",
                   "first_discovery_id": null,
-                  "id": "fdd7c3f3-df79-4349-85c3-b3a27b4e4e06",
+                  "id": "22d441d2-4441-4688-a11a-033e2e665e44",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-07-07T19:19:03.653983Z",
+                  "last_seen_at": "2026-07-20T17:42:27.425970Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-07-07T19:19:03.653983Z",
-                  "valid_from": "2026-07-07T19:19:03.653983Z",
+                  "updated_at": "2026-07-20T17:42:27.425970Z",
+                  "valid_from": "2026-07-20T17:42:27.425970Z",
                   "valid_to": null
                 }
               ],
@@ -12930,7 +13065,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "NTP Server",
+              "service_definition": "Prowlarr",
               "source": {
                 "type": "Manual"
               },
@@ -14195,6 +14330,13 @@
                     "null"
                   ],
                   "format": "date-time"
+                },
+                "warnings": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Non-fatal warnings for a completed run (e.g. the scan hit its time limit\nand left hosts un-scanned). Unlike `error`, these do not mark the run failed."
                 }
               }
             }
@@ -14793,19 +14935,19 @@
         ],
         "description": "Association between a service and a port / interface that the service is listening on",
         "example": {
-          "created_at": "2026-07-07T19:19:03.639880Z",
+          "created_at": "2026-07-20T17:42:27.414643Z",
           "first_discovery_id": null,
-          "id": "4b055772-8b56-4b2d-9403-197214ebae6f",
+          "id": "4c320914-90d2-4066-b71d-5e9f7b0487f1",
           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
           "last_discovery_id": null,
-          "last_seen_at": "2026-07-07T19:19:03.639880Z",
+          "last_seen_at": "2026-07-20T17:42:27.414643Z",
           "lineage_id": null,
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "port_id": "550e8400-e29b-41d4-a716-446655440006",
           "service_id": "550e8400-e29b-41d4-a716-446655440007",
           "type": "Port",
-          "updated_at": "2026-07-07T19:19:03.639880Z",
-          "valid_from": "2026-07-07T19:19:03.639880Z",
+          "updated_at": "2026-07-20T17:42:27.414643Z",
+          "valid_from": "2026-07-20T17:42:27.414643Z",
           "valid_to": null
         }
       },
@@ -15396,7 +15538,7 @@
               "id": "550e8400-e29b-41d4-a716-446655440007",
               "name": "nginx",
               "position": 0,
-              "service_definition": "NTP Server",
+              "service_definition": "Prowlarr",
               "tags": [],
               "virtualization": null
             }
@@ -15969,6 +16111,15 @@
           "tags"
         ],
         "properties": {
+          "daemon_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Daemon this key is bound to 1:1, when provisioned server-side.\nNULL for legacy network-shared keys created before 1:1 provisioning,\nwhich resolve daemon identity from the X-Daemon-ID header instead.",
+            "readOnly": true
+          },
           "expires_at": {
             "type": [
               "string",
@@ -16019,6 +16170,66 @@
           },
           "key": {
             "type": "string"
+          }
+        }
+      },
+      "DaemonArgs": {
+        "type": "object",
+        "description": "Connection and identity flags shared by the bare-daemon run and the `install` subcommand.\nThis is the single input surface for daemon configuration — the installer feeds these same\nflags to [`AppConfig::load`], so there is no second config path.\n\nIt doubles as the **API wire type** for install configuration: the server accepts one of these\non `POST /daemons/provision` and emits it into the install command and the MSI filename hash\n(see [`DaemonArgs::install_config_pairs`]). Rather than mirroring these fields into a separate\nrequest struct — which would be a third copy of a list already duplicated into\n`ui/src/lib/features/daemons/config.ts` — the struct is reused directly.\n\nEvery field that the *server* controls (identity, mode, connection target) or that is a secret\nis `#[serde(skip)]`, so it can never be set from the wire while remaining a normal CLI flag.\nThe deserializable set is therefore exactly the advanced daemon settings the UI exposes; the\nserver fills the rest in from the daemon record before emitting. `serde` and `clap` attributes\nare independent, so this does not affect CLI parsing.",
+        "properties": {
+          "accept_invalid_scan_certs": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Accept invalid TLS certificates when scanning endpoints. Enabled by default since scanners probe arbitrary internal services."
+          },
+          "allow_self_signed_certs": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Allow self-signed certs for daemon -> server connections"
+          },
+          "bind_address": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "IP address to bind daemon to"
+          },
+          "heartbeat_interval": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Seconds between heartbeat updates to the server",
+            "minimum": 0
+          },
+          "interfaces": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Restrict daemon to specific network interface(s). Comma-separated for multiple (e.g., eth0,eth1). Leave empty for all interfaces"
+          },
+          "log_file": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Path to log file. Defaults to platform-specific path. Set to \"none\" to disable file logging."
+          },
+          "log_level": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Logging verbosity"
           }
         }
       },
@@ -16092,7 +16303,7 @@
           },
           "url": {
             "type": "string",
-            "readOnly": true
+            "description": "Address the *server* dials for a ServerPoll daemon. Editable (a daemon can move);\nunused and not editable for DaemonPoll, which dials out instead."
           },
           "user_id": {
             "type": "string",
@@ -17025,6 +17236,13 @@
               "null"
             ],
             "format": "date-time"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Non-fatal warnings for a completed run (e.g. the scan hit its time limit\nand left hosts un-scanned). Unlike `error`, these do not mark the run failed."
           }
         }
       },
@@ -18247,19 +18465,19 @@
             {
               "bindings": [
                 {
-                  "created_at": "2026-07-07T19:19:03.638838Z",
+                  "created_at": "2026-07-20T17:42:27.413848Z",
                   "first_discovery_id": null,
-                  "id": "4ada2baf-15ff-4234-b815-68e2c2cd8138",
+                  "id": "83db80fc-9099-4fe1-b86b-a5028a57beae",
                   "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                   "last_discovery_id": null,
-                  "last_seen_at": "2026-07-07T19:19:03.638838Z",
+                  "last_seen_at": "2026-07-20T17:42:27.413848Z",
                   "lineage_id": null,
                   "network_id": "550e8400-e29b-41d4-a716-446655440002",
                   "port_id": "550e8400-e29b-41d4-a716-446655440006",
                   "service_id": "550e8400-e29b-41d4-a716-446655440007",
                   "type": "Port",
-                  "updated_at": "2026-07-07T19:19:03.638838Z",
-                  "valid_from": "2026-07-07T19:19:03.638838Z",
+                  "updated_at": "2026-07-20T17:42:27.413848Z",
+                  "valid_from": "2026-07-20T17:42:27.413848Z",
                   "valid_to": null
                 }
               ],
@@ -18273,7 +18491,7 @@
               "name": "nginx",
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "position": 0,
-              "service_definition": "NTP Server",
+              "service_definition": "Prowlarr",
               "source": {
                 "type": "Manual"
               },
@@ -18764,6 +18982,35 @@
           "Header",
           "Member"
         ]
+      },
+      "InstallArtifacts": {
+        "type": "object",
+        "description": "Everything the UI needs to install a just-provisioned daemon.",
+        "required": [
+          "commands",
+          "msi_filename",
+          "msi_omitted_config_keys"
+        ],
+        "properties": {
+          "commands": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlatformInstallCommand"
+            },
+            "description": "Per-platform binary install commands (the api key is embedded — shown once)."
+          },
+          "msi_filename": {
+            "type": "string",
+            "description": "Filename encoding this daemon's non-secret config. Save or rename the downloaded MSI\nto this name to pre-fill the installer — parse-filename.js decodes it. The api key is\nnever encoded. Renaming a signed MSI doesn't affect its signature."
+          },
+          "msi_omitted_config_keys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Config keys that did not fit in `msi_filename` (a filename is capped at 255\ncharacters). Empty for any ordinary config. The MSI falls back to its built-in\ndefaults for these, so the UI should tell the user to set them in the installer —\nthe binary install commands are unaffected and carry the full config."
+          }
+        }
       },
       "IntegrationTarget": {
         "oneOf": [
@@ -20322,7 +20569,7 @@
           "server_version": {
             "type": "string",
             "description": "Server version (semver)",
-            "example": "0.17.3"
+            "example": "0.17.5"
           }
         },
         "example": {
@@ -20333,7 +20580,7 @@
             "offset": 0,
             "total_count": 142
           },
-          "server_version": "0.17.3"
+          "server_version": "0.17.5"
         }
       },
       "PaginatedApiResponse_Credential": {
@@ -20803,19 +21050,19 @@
                   {
                     "bindings": [
                       {
-                        "created_at": "2026-07-07T19:19:03.627043Z",
+                        "created_at": "2026-07-20T17:42:27.403949Z",
                         "first_discovery_id": null,
-                        "id": "e5887360-0643-4b8b-b87f-af0c98bed8df",
+                        "id": "3fc984fe-b40b-415c-bf4c-67ad18f53d85",
                         "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                         "last_discovery_id": null,
-                        "last_seen_at": "2026-07-07T19:19:03.627043Z",
+                        "last_seen_at": "2026-07-20T17:42:27.403949Z",
                         "lineage_id": null,
                         "network_id": "550e8400-e29b-41d4-a716-446655440002",
                         "port_id": "550e8400-e29b-41d4-a716-446655440006",
                         "service_id": "550e8400-e29b-41d4-a716-446655440007",
                         "type": "Port",
-                        "updated_at": "2026-07-07T19:19:03.627043Z",
-                        "valid_from": "2026-07-07T19:19:03.627043Z",
+                        "updated_at": "2026-07-20T17:42:27.403949Z",
+                        "valid_from": "2026-07-20T17:42:27.403949Z",
                         "valid_to": null
                       }
                     ],
@@ -20829,7 +21076,7 @@
                     "name": "nginx",
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "position": 0,
-                    "service_definition": "NTP Server",
+                    "service_definition": "Prowlarr",
                     "source": {
                       "type": "Manual"
                     },
@@ -20950,19 +21197,19 @@
               "example": {
                 "bindings": [
                   {
-                    "created_at": "2026-07-07T19:19:03.652572Z",
+                    "created_at": "2026-07-20T17:42:27.424792Z",
                     "first_discovery_id": null,
-                    "id": "e2eed050-bc6a-4c1c-8960-82826cea9046",
+                    "id": "24653004-b764-4d82-b703-5b5d3b19a5ee",
                     "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
                     "last_discovery_id": null,
-                    "last_seen_at": "2026-07-07T19:19:03.652572Z",
+                    "last_seen_at": "2026-07-20T17:42:27.424792Z",
                     "lineage_id": null,
                     "network_id": "550e8400-e29b-41d4-a716-446655440002",
                     "port_id": "550e8400-e29b-41d4-a716-446655440006",
                     "service_id": "550e8400-e29b-41d4-a716-446655440007",
                     "type": "Port",
-                    "updated_at": "2026-07-07T19:19:03.652572Z",
-                    "valid_from": "2026-07-07T19:19:03.652572Z",
+                    "updated_at": "2026-07-20T17:42:27.424792Z",
+                    "valid_from": "2026-07-20T17:42:27.424792Z",
                     "valid_to": null
                   }
                 ],
@@ -20976,7 +21223,7 @@
                 "name": "nginx",
                 "network_id": "550e8400-e29b-41d4-a716-446655440002",
                 "position": 0,
-                "service_definition": "NTP Server",
+                "service_definition": "Prowlarr",
                 "source": {
                   "type": "Manual"
                 },
@@ -21710,6 +21957,24 @@
           }
         }
       },
+      "PlatformInstallCommand": {
+        "type": "object",
+        "description": "One ready-to-paste install command for a platform.",
+        "required": [
+          "platform",
+          "command"
+        ],
+        "properties": {
+          "command": {
+            "type": "string",
+            "description": "The full command, including fetching the binary."
+          },
+          "platform": {
+            "type": "string",
+            "description": "Platform key matching the UI's OS selector: `linux` | `macos` | `windows` | `freebsd`."
+          }
+        }
+      },
       "PodmanSubnetVirtualization": {
         "type": "object",
         "required": [
@@ -21939,25 +22204,59 @@
       },
       "ProvisionDaemonRequest": {
         "type": "object",
-        "description": "Request to pre-provision a ServerPoll mode daemon.\nThis creates the daemon record on the server before the daemon is installed.",
-        "required": [
-          "name",
-          "network_id",
-          "url"
-        ],
+        "description": "Request to pre-provision a daemon (either mode) before it is installed.\nThis creates the daemon record + its 1:1 API key on the server so the install\ncommand shrinks to two flags.",
         "properties": {
+          "daemon_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Re-provision this existing daemon instead of creating a new record: mint a fresh\n1:1 key for it and re-issue its install artifacts, keeping its host, discovery jobs\nand history. Used to re-emit artifacts after install config changes, and to give a\nlegacy daemon (no bound key) a dedicated one. When set, `name`/`network_id`/`mode`/\n`url` are ignored — those come from the existing record.\n\nOnly accepted for a daemon that has never checked in or has no bound key; a live\nprovisioned daemon is refused, since it has no way to learn the new key."
+          },
+          "install_config": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DaemonArgs",
+                "description": "Advanced daemon settings to bake into the emitted install artifacts (log level,\ninterfaces, connectivity, …). Server-controlled and secret fields on this type are\nnot deserializable, so only the advanced settings can be set here."
+              }
+            ]
+          },
+          "mode": {
+            "$ref": "#/components/schemas/DaemonMode",
+            "description": "How the daemon communicates with the server. Defaults to DaemonPoll\n(the daemon dials out) for forward-compat with older clients."
+          },
           "name": {
-            "type": "string",
-            "description": "Human-readable name for the daemon."
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable name for the daemon. Required unless `daemon_id` is set, in which case\nthe existing record's name is kept."
           },
           "network_id": {
-            "type": "string",
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "uuid",
-            "description": "Network this daemon will be associated with."
+            "description": "Network this daemon will be associated with. Required unless `daemon_id` is set, in\nwhich case the existing record's network is kept."
+          },
+          "seed_credential_refs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IntegrationTarget"
+            },
+            "description": "Credential/integration references to seed onto the daemon's first\ndiscovery run. References only — never secret material. Empty by default."
           },
           "url": {
-            "type": "string",
-            "description": "URL where the server can reach the daemon (required for ServerPoll mode)."
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Reachable URL where the *server* can dial the daemon. Required for\nServerPoll, unused for DaemonPoll (the daemon dials out instead)."
           }
         }
       },
@@ -21966,7 +22265,8 @@
         "description": "Response from provisioning a daemon.\nContains the daemon record and the API key (shown only once).",
         "required": [
           "daemon",
-          "daemon_api_key"
+          "daemon_api_key",
+          "install_artifacts"
         ],
         "properties": {
           "daemon": {
@@ -21976,6 +22276,10 @@
           "daemon_api_key": {
             "type": "string",
             "description": "The API key (plaintext) for daemon authentication.\nThis is shown only once - store it securely."
+          },
+          "install_artifacts": {
+            "$ref": "#/components/schemas/InstallArtifacts",
+            "description": "Ready-to-run install commands + MSI download link, assembled server-side."
           }
         }
       },
@@ -22416,6 +22720,15 @@
             "type": "boolean",
             "description": "Whether this specific scan run should do a full 65k port scan.\nSet by the server before dispatching to the daemon — not user-configurable."
           },
+          "max_discovery_duration": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Hard ceiling on how long a single discovery run may take, in seconds\n(default: 21600 = 6h). When hit, the run force-completes and any hosts\nstill queued are left un-scanned until the next run. Raise this for very\nlarge networks that legitimately need more than the default window.",
+            "minimum": 0
+          },
           "port_scan_batch_size": {
             "type": [
               "integer",
@@ -22647,19 +22960,19 @@
         "example": {
           "bindings": [
             {
-              "created_at": "2026-07-07T19:19:03.639771Z",
+              "created_at": "2026-07-20T17:42:27.414566Z",
               "first_discovery_id": null,
-              "id": "93185c61-7427-4689-84e8-08a4eb7bcaf3",
+              "id": "160f7e19-9566-4dd4-bc65-804e02f0f067",
               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
               "last_discovery_id": null,
-              "last_seen_at": "2026-07-07T19:19:03.639771Z",
+              "last_seen_at": "2026-07-20T17:42:27.414566Z",
               "lineage_id": null,
               "network_id": "550e8400-e29b-41d4-a716-446655440002",
               "port_id": "550e8400-e29b-41d4-a716-446655440006",
               "service_id": "550e8400-e29b-41d4-a716-446655440007",
               "type": "Port",
-              "updated_at": "2026-07-07T19:19:03.639771Z",
-              "valid_from": "2026-07-07T19:19:03.639771Z",
+              "updated_at": "2026-07-20T17:42:27.414566Z",
+              "valid_from": "2026-07-20T17:42:27.414566Z",
               "valid_to": null
             }
           ],
@@ -22673,7 +22986,7 @@
           "name": "nginx",
           "network_id": "550e8400-e29b-41d4-a716-446655440002",
           "position": 0,
-          "service_definition": "NTP Server",
+          "service_definition": "Prowlarr",
           "source": {
             "type": "Manual"
           },
@@ -23803,7 +24116,7 @@
             "default": {
               "Application": [
                 {
-                  "id": "ddc3274e-300f-4bfc-9df0-ef56d53a106f",
+                  "id": "9a131db1-a83f-41c2-b9de-a8c11fec14a1",
                   "rule": {
                     "ByApplication": {
                       "tag_ids": []
@@ -23813,23 +24126,23 @@
               ],
               "L2Physical": [
                 {
-                  "id": "e7a3c95b-1a43-4219-8779-77484a4e9f1c",
+                  "id": "4fbc406c-7ba1-4190-8803-1770522a6248",
                   "rule": "ByHost"
                 }
               ],
               "L3Logical": [
                 {
-                  "id": "d16238c5-4428-44f7-ba73-e9e959561189",
+                  "id": "537e00f3-24f8-4f3c-a7b9-48f7dc34d1f5",
                   "rule": "BySubnet"
                 },
                 {
-                  "id": "423f24fa-8acb-402b-9f03-6fd550bba700",
+                  "id": "bcd2ff2d-fa97-4140-bf4d-974d5f8bc90f",
                   "rule": "MergeContainerBridges"
                 }
               ],
               "Workloads": [
                 {
-                  "id": "e7a3c95b-1a43-4219-8779-77484a4e9f1c",
+                  "id": "4fbc406c-7ba1-4190-8803-1770522a6248",
                   "rule": "ByHost"
                 }
               ]
@@ -23858,19 +24171,19 @@
             },
             "default": [
               {
-                "id": "1aa0ad61-2d2b-4d7e-8e99-e83efdb4bab9",
+                "id": "df35d495-7c3f-41af-88b6-fd31fc386e0b",
                 "rule": "ByTrunkPort"
               },
               {
-                "id": "6faa7160-71c9-4dbc-8f69-21db2d837c4d",
+                "id": "c312eecd-f2eb-4496-8497-a0f961e4bb23",
                 "rule": "ByVLAN"
               },
               {
-                "id": "2d2a3449-4217-4424-946c-170108ae2fef",
+                "id": "e263b202-a28c-4a6d-ba2c-a7cae321c94c",
                 "rule": "ByPortOpStatus"
               },
               {
-                "id": "503bd4ed-95ba-44e1-9094-62bce46b7c06",
+                "id": "a97ce2b7-4efb-467c-9be9-bfb08de6f965",
                 "rule": {
                   "ByServiceCategory": {
                     "categories": [
@@ -23888,7 +24201,7 @@
                 }
               },
               {
-                "id": "e287861c-8930-4d09-a51a-b79899fe4e03",
+                "id": "7e0c6145-0ff5-4a18-a8ef-8048b492b5d5",
                 "rule": {
                   "ByTag": {
                     "tag_ids": [],
@@ -23897,15 +24210,15 @@
                 }
               },
               {
-                "id": "c2ffdab7-beb3-4b72-8653-3962298871dc",
+                "id": "e981d8b3-8d73-4acc-af90-614f6d6d823c",
                 "rule": "ByHypervisor"
               },
               {
-                "id": "d0e230f5-652e-45bf-8849-4eeee8fa4fa0",
+                "id": "73d07ab9-202b-4188-82f2-fdf38148df46",
                 "rule": "ByContainerRuntime"
               },
               {
-                "id": "39633a83-7a03-4e4d-8e54-62aada17f46b",
+                "id": "cc7c686c-ed38-4422-b6dd-eb6a41ff0d99",
                 "rule": "ByStack"
               }
             ]

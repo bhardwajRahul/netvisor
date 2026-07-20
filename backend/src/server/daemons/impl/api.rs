@@ -400,10 +400,14 @@ pub struct DaemonResponse {
 /// command shrinks to two flags.
 #[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct ProvisionDaemonRequest {
-    /// Human-readable name for the daemon.
-    pub name: String,
-    /// Network this daemon will be associated with.
-    pub network_id: Uuid,
+    /// Human-readable name for the daemon. Required unless `daemon_id` is set, in which case
+    /// the existing record's name is kept.
+    #[serde(default)]
+    pub name: Option<String>,
+    /// Network this daemon will be associated with. Required unless `daemon_id` is set, in
+    /// which case the existing record's network is kept.
+    #[serde(default)]
+    pub network_id: Option<Uuid>,
     /// How the daemon communicates with the server. Defaults to DaemonPoll
     /// (the daemon dials out) for forward-compat with older clients.
     #[serde(default)]
@@ -416,6 +420,21 @@ pub struct ProvisionDaemonRequest {
     /// discovery run. References only — never secret material. Empty by default.
     #[serde(default)]
     pub seed_credential_refs: Vec<IntegrationTarget>,
+    /// Re-provision this existing daemon instead of creating a new record: mint a fresh
+    /// 1:1 key for it and re-issue its install artifacts, keeping its host, discovery jobs
+    /// and history. Used to re-emit artifacts after install config changes, and to give a
+    /// legacy daemon (no bound key) a dedicated one. When set, `name`/`network_id`/`mode`/
+    /// `url` are ignored — those come from the existing record.
+    ///
+    /// Only accepted for a daemon that has never checked in or has no bound key; a live
+    /// provisioned daemon is refused, since it has no way to learn the new key.
+    #[serde(default)]
+    pub daemon_id: Option<Uuid>,
+    /// Advanced daemon settings to bake into the emitted install artifacts (log level,
+    /// interfaces, connectivity, …). Server-controlled and secret fields on this type are
+    /// not deserializable, so only the advanced settings can be set here.
+    #[serde(default)]
+    pub install_config: Option<crate::daemon::shared::config::DaemonArgs>,
 }
 
 /// Response from provisioning a daemon.
