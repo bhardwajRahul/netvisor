@@ -17,8 +17,10 @@ use crate::server::shared::entities::ChangeTriggersTopologyStaleness;
 pub struct DaemonBase {
     pub host_id: Uuid,
     pub network_id: Uuid,
+    /// Address the *server* dials for a ServerPoll daemon. Editable (a daemon can move);
+    /// unused and not editable for DaemonPoll, which dials out instead.
     #[serde(default)]
-    #[schema(read_only, required)]
+    #[schema(required)]
     pub url: String,
     /// Timestamp of last successful contact with daemon.
     /// NULL for provisioned ServerPoll daemons that haven't been contacted yet.

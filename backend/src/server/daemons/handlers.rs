@@ -14,6 +14,7 @@ use crate::server::shared::handlers::ordering::OrderField;
 use crate::server::shared::handlers::query::{
     FilterQueryExtractor, OrderDirection, PaginationParams,
 };
+use crate::server::shared::handlers::traits::{CrudHandlers, update_handler};
 use crate::server::shared::services::traits::CrudService;
 use crate::server::shared::storage::filter::StorableFilter;
 use crate::server::shared::storage::traits::{Entity, Storable};
@@ -156,6 +157,57 @@ fn active_session_error() -> ApiError {
     )
 }
 
+/// Update a Daemon
+///
+/// Edits the server-side daemon record: its name, maintainer, tags, and — for ServerPoll —
+/// the url the server dials. Identity and server-managed fields (network, mode, host, key
+/// binding, version, liveness) are restored from the existing record by
+/// `preserve_immutable_fields`.
+#[utoipa::path(
+    put,
+    path = "/{id}",
+    tag = "daemons",
+    operation_id = "update_daemon",
+    summary = "Update daemon",
+    params(("id" = Uuid, Path, description = "daemon ID")),
+    request_body = Daemon,
+    responses(
+        (status = 200, description = "daemon updated", body = ApiResponse<Daemon>),
+        (status = 400, description = "Invalid request", body = ApiErrorResponse),
+        (status = 404, description = "daemon not found", body = ApiErrorResponse),
+    ),
+    security(("user_api_key" = []), ("session" = []))
+)]
+async fn update_daemon(
+    State(state): State<Arc<AppState>>,
+    auth: Authorized<Member>,
+    Path(id): Path<Uuid>,
+    Json(mut request): Json<Daemon>,
+) -> ApiResult<Json<ApiResponse<Daemon>>> {
+    let network_ids = auth.network_ids();
+
+    let existing = Daemon::get_service(&state)
+        .get_by_id(&id)
+        .await?
+        .ok_or_else(|| ApiError::entity_not_found::<Daemon>(id))?;
+
+    // Tenant isolation: the caller must have access to the daemon's *current* network.
+    // network_id is restored below, so an update cannot move a daemon between networks.
+    validate_network_access(Some(existing.base.network_id), &network_ids, "update")?;
+
+    // A DaemonPoll daemon dials out and is never dialed, so its url is unused — silently
+    // storing one would suggest a reachability that does not exist.
+    if existing.base.mode == DaemonMode::DaemonPoll && request.base.url != existing.base.url {
+        return Err(ApiError::bad_request(
+            "url only applies to ServerPoll daemons; a DaemonPoll daemon dials the server",
+        ));
+    }
+
+    request.preserve_immutable_fields(&existing);
+
+    update_handler::<Daemon>(State(state), auth, Path(id), Json(request)).await
+}
+
 /// Delete daemon — blocks if daemon has active discovery sessions.
 #[utoipa::path(
     delete,
@@ -269,7 +321,7 @@ async fn email_install_command(
 pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
     OpenApiRouter::new()
         .routes(routes!(get_all))
-        .routes(routes!(get_by_id, delete_daemon))
+        .routes(routes!(get_by_id, update_daemon, delete_daemon))
         .routes(routes!(bulk_delete_daemons))
         .routes(routes!(generated::export_csv))
         .routes(routes!(provision_daemon))
@@ -772,11 +824,51 @@ async fn receive_heartbeat(
 // Pre-provisioning (ServerPoll mode only)
 // ============================================================================
 
-/// Pre-provision a ServerPoll mode Daemon
+/// Load the daemon a re-provision request targets, enforcing tenant access and the
+/// mint-a-fresh-key safety guard.
 ///
-/// Creates a daemon record on the server before the daemon is installed.
-/// This is only for ServerPoll mode where the server initiates connections to the daemon.
-/// For DaemonPoll mode, daemons self-register on startup.
+/// Re-provisioning always mints a new key, which is safe in exactly two situations: a daemon
+/// that has never checked in (the create flow re-running because advanced settings changed),
+/// and a legacy daemon with no bound key (its separate network-shared key row is untouched, so
+/// it keeps authenticating until it is reconfigured). For a live provisioned daemon the new key
+/// would take effect with no way for the daemon to learn it — silently cutting it off — so that
+/// case is refused. Rotating a live daemon's key has its own endpoint.
+async fn load_reprovision_target(
+    state: &AppState,
+    daemon_id: Uuid,
+    network_ids: &[Uuid],
+) -> ApiResult<Daemon> {
+    let daemon = state
+        .services
+        .daemon_service
+        .get_by_id(&daemon_id)
+        .await?
+        .ok_or_else(|| ApiError::entity_not_found::<Daemon>(daemon_id))?;
+
+    validate_network_access(
+        Some(daemon.base.network_id),
+        network_ids,
+        "re-provision daemon",
+    )?;
+
+    if daemon.base.last_seen.is_some() && daemon.base.api_key_id.is_some() {
+        return Err(ApiError::conflict(
+            "This daemon is already connected with its own API key. Rotate its key instead of re-provisioning it.",
+        ));
+    }
+
+    Ok(daemon)
+}
+
+/// Provision a Daemon, or re-provision an existing one
+///
+/// Creates a daemon record on the server before the daemon is installed, mints an API key bound
+/// to it 1:1, and returns ready-to-run install artifacts.
+///
+/// When `daemon_id` is supplied the existing record is reused instead of creating a new one —
+/// this both re-issues install artifacts after install config changes and gives a legacy daemon
+/// (one with no bound key) a pathway to a dedicated key without losing its host, discovery jobs,
+/// or history.
 ///
 /// Returns the daemon record and an API key that must be configured on the daemon.
 #[utoipa::path(
@@ -784,12 +876,13 @@ async fn receive_heartbeat(
     path = "/provision",
     tags = ["internal", Daemon::ENTITY_NAME_PLURAL],
     operation_id = "provision_daemon",
-    summary = "Pre-provision a ServerPoll mode daemon",
+    summary = "Provision a daemon, or re-provision an existing one",
     request_body = ProvisionDaemonRequest,
     responses(
         (status = 201, description = "Daemon provisioned successfully", body = ApiResponse<ProvisionDaemonResponse>),
         (status = 400, description = "Invalid request", body = ApiErrorResponse),
         (status = 403, description = "Forbidden", body = ApiErrorResponse),
+        (status = 409, description = "Daemon is live and already has a bound key", body = ApiErrorResponse),
     ),
     security(("user_api_key" = []), ("session" = []))
 )]
@@ -800,27 +893,91 @@ async fn provision_daemon(
 ) -> ApiResult<Json<ApiResponse<ProvisionDaemonResponse>>> {
     let network_ids = auth.network_ids();
     let user_id = auth.user_id().ok_or_else(ApiError::user_required)?;
+    let org_id = auth.require_organization_id()?;
 
-    // Validate network access
-    validate_network_access(Some(request.network_id), &network_ids, "provision daemon")?;
+    // ---- Phase 1: resolve the target daemon -------------------------------------------
+    let existing_daemon = match request.daemon_id {
+        Some(daemon_id) => Some(load_reprovision_target(&state, daemon_id, &network_ids).await?),
+        None => None,
+    };
 
-    // A ServerPoll daemon never dials out, so the server can only reach it at a URL
-    // supplied now. DaemonPoll dials the server, so its url is unused.
-    let is_server_poll = request.mode == DaemonMode::ServerPoll;
-    let reachable_url = request.url.clone().unwrap_or_default();
-    if is_server_poll && reachable_url.trim().is_empty() {
-        return Err(ApiError::bad_request(
-            "A reachable url is required to provision a ServerPoll daemon",
-        ));
+    // Identity is server-owned. On the re-provision path it comes from the record — the
+    // request's name/network/mode/url are ignored, since those are immutable post-provision
+    // and the record already holds whatever the daemon last reported.
+    let (network_id, name, mode, reachable_url) = match &existing_daemon {
+        Some(daemon) => (
+            daemon.base.network_id,
+            daemon.base.name.clone(),
+            daemon.base.mode,
+            daemon.base.url.clone(),
+        ),
+        // A fresh provision must say what it is creating; only the re-provision path can
+        // inherit these from a record.
+        None => (
+            request.network_id.ok_or_else(|| {
+                ApiError::bad_request("network_id is required when provisioning a new daemon")
+            })?,
+            request.name.clone().ok_or_else(|| {
+                ApiError::bad_request("name is required when provisioning a new daemon")
+            })?,
+            request.mode,
+            request.url.clone().unwrap_or_default(),
+        ),
+    };
+    let is_server_poll = mode == DaemonMode::ServerPoll;
+
+    if existing_daemon.is_none() {
+        validate_network_access(Some(network_id), &network_ids, "provision daemon")?;
+
+        // A ServerPoll daemon never dials out, so the server can only reach it at a URL
+        // supplied now. DaemonPoll dials the server, so its url is unused.
+        if is_server_poll && reachable_url.trim().is_empty() {
+            return Err(ApiError::bad_request(
+                "A reachable url is required to provision a ServerPoll daemon",
+            ));
+        }
+
+        // Check daemon limit for unverified orgs (allows 1st daemon). Re-provisioning an
+        // existing record adds no daemons, so it is exempt.
+        state
+            .services
+            .daemon_service
+            .check_unverified_daemon_limit(org_id)
+            .await?;
     }
 
-    // Check daemon limit for unverified orgs (allows 1st daemon)
-    let org_id = auth.require_organization_id()?;
-    state
-        .services
-        .daemon_service
-        .check_unverified_daemon_limit(org_id)
-        .await?;
+    // ---- Phase 2: mint the key and bind it 1:1 ----------------------------------------
+
+    // The partial-UNIQUE on api_keys.daemon_id makes the binding exclusive, so any key
+    // already bound to this daemon has to go before the new one can take its place. Only a
+    // *bound* key is removed: a legacy daemon's network-shared key has daemon_id = NULL, is
+    // shared with every other legacy daemon on the network, and must survive untouched —
+    // that is exactly what keeps the daemon running until it is reconfigured.
+    if let Some(old_key_id) = existing_daemon.as_ref().and_then(|d| d.base.api_key_id) {
+        let old_key = state
+            .services
+            .daemon_api_key_service
+            .get_by_id(&old_key_id)
+            .await?;
+        state
+            .services
+            .daemon_api_key_service
+            .delete(&old_key_id, auth.entity.clone())
+            .await
+            .map_err(|e| {
+                tracing::error!(error = %e, api_key_id = %old_key_id, "Failed to remove superseded daemon api key");
+                ApiError::internal_error(&format!("Failed to remove superseded api key: {}", e))
+            })?;
+        // Evict the auth resolution cache so the deleted key stops resolving immediately
+        // rather than waiting out the TTL.
+        if let Some(old_key) = old_key {
+            state
+                .services
+                .daemon_api_key_service
+                .invalidate_resolution(&old_key.base.key)
+                .await;
+        }
+    }
 
     // Generate API key (plaintext + hash)
     let (plaintext, hashed) = generate_api_key_for_storage(ApiKeyType::Daemon);
@@ -828,15 +985,16 @@ async fn provision_daemon(
     // Create API key record with plaintext stored (for ServerPoll mode)
     let api_key = DaemonApiKey::new(DaemonApiKeyBase {
         key: hashed,
-        name: format!("{} API Key", request.name),
+        name: format!("{} API Key", name),
         last_used: None,
         expires_at: None,
-        network_id: request.network_id,
+        network_id,
         is_enabled: true,
         tags: Vec::new(),
-        // Bound to the daemon 1:1 below, once the daemon record exists (circular:
-        // the daemon needs api_key_id, the key needs daemon_id).
-        daemon_id: None,
+        // When the daemon already exists the binding can be set outright. On the create path
+        // it is completed below, once the daemon record exists (circular: the daemon needs
+        // api_key_id, the key needs daemon_id).
+        daemon_id: existing_daemon.as_ref().map(|d| d.id),
         // Only ServerPoll needs the server to hold the plaintext (to present it when
         // it dials the daemon). A DaemonPoll daemon carries its own key and dials out.
         plaintext: is_server_poll.then(|| SecretString::from(plaintext.clone())),
@@ -852,10 +1010,119 @@ async fn provision_daemon(
             ApiError::internal_error(&format!("Failed to create API key: {}", e))
         })?;
 
+    // ---- Phase 3: create or update the daemon record -----------------------------------
+    let created_daemon = match existing_daemon {
+        // Re-provision: point the existing record at its new key. Everything else — host,
+        // discovery jobs, history — is left in place. Setting api_key_id also promotes the
+        // daemon to "provisioned", after which the server-side name and mode become
+        // authoritative instead of the daemon's self-reported ones; those already match,
+        // since the record holds what the daemon last reported.
+        Some(mut daemon) => {
+            daemon.base.api_key_id = Some(created_api_key.id);
+            state
+                .services
+                .daemon_service
+                .update(&mut daemon, auth.entity.clone())
+                .await
+                .map_err(|e| {
+                    tracing::error!(error = %e, daemon_id = %daemon.id, "Failed to bind api key to existing daemon");
+                    ApiError::internal_error(&format!("Failed to bind api key to daemon: {}", e))
+                })?;
+            daemon
+        }
+        None => {
+            let created_daemon = create_provisioned_daemon(
+                &state,
+                &auth,
+                &request,
+                network_id,
+                name,
+                mode,
+                reachable_url,
+                user_id,
+                created_api_key.id,
+                org_id,
+            )
+            .await?;
+
+            // Complete the 1:1 binding now that the daemon exists: point the api key at its
+            // daemon. The service update bypasses preserve_immutable_fields (that guard runs
+            // only in the HTTP handler).
+            let mut api_key_to_bind = created_api_key.clone();
+            api_key_to_bind.base.daemon_id = Some(created_daemon.id);
+            if let Err(e) = state
+                .services
+                .daemon_api_key_service
+                .update(&mut api_key_to_bind, auth.entity.clone())
+                .await
+            {
+                tracing::error!(error = %e, daemon_id = %created_daemon.id, "Failed to bind api key to provisioned daemon");
+                return Err(ApiError::internal_error(&format!(
+                    "Failed to bind api key to daemon: {}",
+                    e
+                )));
+            }
+            created_daemon
+        }
+    };
+
+    tracing::info!(
+        daemon_id = %created_daemon.id,
+        network_id = %network_id,
+        user_id = %user_id,
+        mode = ?created_daemon.base.mode,
+        reprovisioned = request.daemon_id.is_some(),
+        "Daemon provisioned"
+    );
+
+    // Compute version status for response
+    let policy = DaemonVersionPolicy::default();
+    let version_status = policy.evaluate(created_daemon.base.version.as_ref());
+
+    // Assemble install artifacts server-side (single source of truth) while we still have
+    // the api-key plaintext. The command embeds it (shown once); the MSI link does not.
+    let install_artifacts =
+        crate::server::daemons::r#impl::install_artifacts::build_install_artifacts(
+            &state.config.public_url,
+            &created_daemon,
+            &plaintext,
+            request.install_config.as_ref(),
+        );
+
+    Ok(Json(ApiResponse::success(ProvisionDaemonResponse {
+        daemon: DaemonResponse {
+            id: created_daemon.id,
+            created_at: created_daemon.created_at,
+            updated_at: created_daemon.updated_at,
+            base: created_daemon.base,
+            version_status,
+            // Freshly provisioned; interfaced subnets populate on first heartbeat.
+            interfaced_subnet_ids: Vec::new(),
+        },
+        daemon_api_key: plaintext,
+        install_artifacts,
+    })))
+}
+
+/// Create the host + daemon records and seed the daemon's first discovery. Only used on the
+/// create path — re-provisioning reuses the existing records.
+#[allow(clippy::too_many_arguments)]
+async fn create_provisioned_daemon(
+    state: &AppState,
+    auth: &Authorized<Member>,
+    request: &ProvisionDaemonRequest,
+    network_id: Uuid,
+    name: String,
+    mode: DaemonMode,
+    reachable_url: String,
+    user_id: Uuid,
+    api_key_id: Uuid,
+    org_id: Uuid,
+) -> ApiResult<Daemon> {
     // Create host record for the daemon
     let host = Host::new(HostBase {
-        name: request.name.clone(),
-        network_id: request.network_id,
+        name: name.clone(),
+        network_id,
         hostname: None,
         description: None,
         source: EntitySource::System,
@@ -890,7 +1157,7 @@ async fn provision_daemon(
     if let Err(e) = state
         .services
         .host_service
-        .seed_loopback(created_host.id, request.network_id, auth.entity.clone())
+        .seed_loopback(created_host.id, network_id, auth.entity.clone())
         .await
     {
         tracing::warn!(host_id = %created_host.id, error = %e, "Failed to seed daemon host loopback");
@@ -903,19 +1170,19 @@ async fn provision_daemon(
         ))
     })?;
 
-    // Create daemon record with mode=ServerPoll and linked API key
+    // Create daemon record with the linked API key.
     // last_seen is None until first successful contact from poller
     let daemon = Daemon::new(DaemonBase {
         host_id: created_host.id,
-        network_id: request.network_id,
+        network_id,
         url: reachable_url,
         last_seen: None,
-        mode: request.mode,
-        name: request.name,
+        mode,
+        name,
         tags: Vec::new(),
         version: Some(version),
         user_id,
-        api_key_id: Some(created_api_key.id),
+        api_key_id: Some(api_key_id),
         is_unreachable: false,
         standby: false,
         standby_cleared_at: None,
@@ -930,24 +1197,6 @@ async fn provision_daemon(
             tracing::error!(error = %e, "Failed to create provisioned daemon");
             ApiError::internal_error(&format!("Failed to create daemon: {}", e))
         })?;
-
-    // Complete the 1:1 binding now that the daemon exists: point the api key at its daemon.
-    // The DB partial-UNIQUE on api_keys.daemon_id makes this binding exclusive; the service
-    // update bypasses preserve_immutable_fields (that guard runs only in the HTTP handler).
-    let mut api_key_to_bind = created_api_key.clone();
-    api_key_to_bind.base.daemon_id = Some(created_daemon.id);
-    if let Err(e) = state
-        .services
-        .daemon_api_key_service
-        .update(&mut api_key_to_bind, auth.entity.clone())
-        .await
-    {
-        tracing::error!(error = %e, daemon_id = %created_daemon.id, "Failed to bind api key to provisioned daemon");
-        return Err(ApiError::internal_error(&format!(
-            "Failed to bind api key to daemon: {}",
-            e
-        )));
-    }
 
     // Seed the daemon's first discovery: persist the credential refs on the daemon's
     // Discovery row so they are PROBED on that run and only assigned to a host once the
@@ -971,7 +1220,7 @@ async fn provision_daemon(
         .daemon_service
         .create_default_discovery_jobs(
             created_daemon.id,
-            request.network_id,
+            network_id,
             created_host.id,
             is_free_plan,
             &request.seed_credential_refs,
@@ -981,40 +1230,7 @@ async fn provision_daemon(
         tracing::warn!(daemon_id = %created_daemon.id, error = ?e, "Failed to create default discovery jobs at provision");
     }
 
-    tracing::info!(
-        daemon_id = %created_daemon.id,
-        network_id = %request.network_id,
-        user_id = %user_id,
-        mode = ?created_daemon.base.mode,
-        "Daemon provisioned"
-    );
-
-    // Compute version status for response
-    let policy = DaemonVersionPolicy::default();
-    let version_status = policy.evaluate(created_daemon.base.version.as_ref());
-
-    // Assemble install artifacts server-side (single source of truth) while we still have
-    // the api-key plaintext. The command embeds it (shown once); the MSI link does not.
-    let install_artifacts =
-        crate::server::daemons::r#impl::install_artifacts::build_install_artifacts(
-            &state.config.public_url,
-            &created_daemon,
-            &plaintext,
-        );
-
-    Ok(Json(ApiResponse::success(ProvisionDaemonResponse {
-        daemon: DaemonResponse {
-            id: created_daemon.id,
-            created_at: created_daemon.created_at,
-            updated_at: created_daemon.updated_at,
-            base: created_daemon.base,
-            version_status,
-            // Freshly provisioned; interfaced subnets populate on first heartbeat.
-            interfaced_subnet_ids: Vec::new(),
-        },
-        daemon_api_key: plaintext,
-        install_artifacts,
-    })))
+    Ok(created_daemon)
 }
 
 /// Retry connection to an unreachable Daemon

@@ -1182,10 +1182,14 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Pre-provision a ServerPoll mode daemon
-         * @description Creates a daemon record on the server before the daemon is installed.
-         *     This is only for ServerPoll mode where the server initiates connections to the daemon.
-         *     For DaemonPoll mode, daemons self-register on startup.
+         * Provision a daemon, or re-provision an existing one
+         * @description Creates a daemon record on the server before the daemon is installed, mints an API key bound
+         *     to it 1:1, and returns ready-to-run install artifacts.
+         *
+         *     When `daemon_id` is supplied the existing record is reused instead of creating a new one —
+         *     this both re-issues install artifacts after install config changes and gives a legacy daemon
+         *     (one with no bound key) a pathway to a dedicated key without losing its host, discovery jobs,
+         *     or history.
          *
          *     Returns the daemon record and an API key that must be configured on the daemon.
          */
@@ -1229,7 +1233,14 @@ export interface paths {
          * @description Returns a specific daemon with computed version status.
          */
         get: operations["get_daemon_by_id"];
-        put?: never;
+        /**
+         * Update daemon
+         * @description Edits the server-side daemon record: its name, maintainer, tags, and — for ServerPoll —
+         *     the url the server dials. Identity and server-managed fields (network, mode, host, key
+         *     binding, version, liveness) are restored from the existing record by
+         *     `preserve_immutable_fields`.
+         */
+        put: operations["update_daemon"];
         post?: never;
         /** Delete daemon */
         delete: operations["delete_daemon"];
@@ -3040,7 +3051,7 @@ export interface components {
          * @description API metadata included in all responses
          * @example {
          *       "api_version": 1,
-         *       "server_version": "0.17.3"
+         *       "server_version": "0.17.5"
          *     }
          */
         ApiMeta: {
@@ -3051,7 +3062,7 @@ export interface components {
             api_version: number;
             /**
              * @description Server version (semver)
-             * @example 0.17.3
+             * @example 0.17.5
              */
             server_version: string;
         };
@@ -3065,19 +3076,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-07-07T19:19:03.661065Z",
+             *       "created_at": "2026-07-20T17:42:27.431790Z",
              *       "first_discovery_id": null,
-             *       "id": "f7276a1e-cb92-4132-93b9-866d0ff47387",
+             *       "id": "c3fe346d-1db2-47d9-8a67-f0b1861eb248",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-07-07T19:19:03.661065Z",
+             *       "last_seen_at": "2026-07-20T17:42:27.431790Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-07-07T19:19:03.661065Z",
-             *       "valid_from": "2026-07-07T19:19:03.661065Z",
+             *       "updated_at": "2026-07-20T17:42:27.431790Z",
+             *       "valid_from": "2026-07-20T17:42:27.431790Z",
              *       "valid_to": null
              *     }
              */
@@ -3148,6 +3159,19 @@ export interface components {
         };
         ApiResponse_Credential: {
             data?: components["schemas"]["CredentialBase"] & {
+                /** Format: date-time */
+                readonly created_at: string;
+                /** Format: uuid */
+                readonly id: string;
+                /** Format: date-time */
+                readonly updated_at: string;
+            };
+            error?: string | null;
+            meta: components["schemas"]["ApiMeta"];
+            success: boolean;
+        };
+        ApiResponse_Daemon: {
+            data?: components["schemas"]["DaemonBase"] & {
                 /** Format: date-time */
                 readonly created_at: string;
                 /** Format: uuid */
@@ -3429,19 +3453,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-07-07T19:19:03.639467Z",
+             *               "created_at": "2026-07-20T17:42:27.414292Z",
              *               "first_discovery_id": null,
-             *               "id": "60b14278-2a4b-4a78-9a15-934f7e23867b",
+             *               "id": "ee5b2e69-a61d-4ae5-b2fe-9e176a87b327",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-07-07T19:19:03.639467Z",
+             *               "last_seen_at": "2026-07-20T17:42:27.414292Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-07-07T19:19:03.639467Z",
-             *               "valid_from": "2026-07-07T19:19:03.639467Z",
+             *               "updated_at": "2026-07-20T17:42:27.414292Z",
+             *               "valid_from": "2026-07-20T17:42:27.414292Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3455,7 +3479,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "NTP Server",
+             *           "service_definition": "Prowlarr",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3717,6 +3741,8 @@ export interface components {
                  *     This is shown only once - store it securely.
                  */
                 daemon_api_key: string;
+                /** @description Ready-to-run install commands + MSI download link, assembled server-side. */
+                install_artifacts: components["schemas"]["InstallArtifacts"];
             };
             error?: string | null;
             meta: components["schemas"]["ApiMeta"];
@@ -3830,19 +3856,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-07-07T19:19:03.653992Z",
+             *           "created_at": "2026-07-20T17:42:27.425969Z",
              *           "first_discovery_id": null,
-             *           "id": "1abfcd1a-7e3f-4e05-a5fe-0b1055b0fe5e",
+             *           "id": "19eb1a10-0334-4439-8cb6-9214fa1a2a49",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-07-07T19:19:03.653992Z",
+             *           "last_seen_at": "2026-07-20T17:42:27.425969Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-07-07T19:19:03.653992Z",
-             *           "valid_from": "2026-07-07T19:19:03.653992Z",
+             *           "updated_at": "2026-07-20T17:42:27.425969Z",
+             *           "valid_from": "2026-07-20T17:42:27.425969Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -3856,7 +3882,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "NTP Server",
+             *       "service_definition": "Prowlarr",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4360,19 +4386,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-07-07T19:19:03.639950Z",
+         *       "created_at": "2026-07-20T17:42:27.414655Z",
          *       "first_discovery_id": null,
-         *       "id": "f472b527-1886-4b1f-af61-fa85113b696b",
+         *       "id": "94394f08-1b1e-4eed-8635-fb9c684b948b",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-07-07T19:19:03.639950Z",
+         *       "last_seen_at": "2026-07-20T17:42:27.414655Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-07-07T19:19:03.639950Z",
-         *       "valid_from": "2026-07-07T19:19:03.639950Z",
+         *       "updated_at": "2026-07-20T17:42:27.414655Z",
+         *       "valid_from": "2026-07-20T17:42:27.414655Z",
          *       "valid_to": null
          *     }
          */
@@ -4587,7 +4613,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "NTP Server",
+         *           "service_definition": "Prowlarr",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -4774,6 +4800,13 @@ export interface components {
             readonly updated_at: string;
         };
         DaemonApiKeyBase: {
+            /**
+             * Format: uuid
+             * @description Daemon this key is bound to 1:1, when provisioned server-side.
+             *     NULL for legacy network-shared keys created before 1:1 provisioning,
+             *     which resolve daemon identity from the X-Daemon-ID header instead.
+             */
+            readonly daemon_id?: string | null;
             /** Format: date-time */
             expires_at?: string | null;
             is_enabled?: boolean;
@@ -4788,6 +4821,42 @@ export interface components {
         DaemonApiKeyResponse: {
             api_key: components["schemas"]["DaemonApiKey"];
             key: string;
+        };
+        /**
+         * @description Connection and identity flags shared by the bare-daemon run and the `install` subcommand.
+         *     This is the single input surface for daemon configuration — the installer feeds these same
+         *     flags to [`AppConfig::load`], so there is no second config path.
+         *
+         *     It doubles as the **API wire type** for install configuration: the server accepts one of these
+         *     on `POST /daemons/provision` and emits it into the install command and the MSI filename hash
+         *     (see [`DaemonArgs::install_config_pairs`]). Rather than mirroring these fields into a separate
+         *     request struct — which would be a third copy of a list already duplicated into
+         *     `ui/src/lib/features/daemons/config.ts` — the struct is reused directly.
+         *
+         *     Every field that the *server* controls (identity, mode, connection target) or that is a secret
+         *     is `#[serde(skip)]`, so it can never be set from the wire while remaining a normal CLI flag.
+         *     The deserializable set is therefore exactly the advanced daemon settings the UI exposes; the
+         *     server fills the rest in from the daemon record before emitting. `serde` and `clap` attributes
+         *     are independent, so this does not affect CLI parsing.
+         */
+        DaemonArgs: {
+            /** @description Accept invalid TLS certificates when scanning endpoints. Enabled by default since scanners probe arbitrary internal services. */
+            accept_invalid_scan_certs?: boolean | null;
+            /** @description Allow self-signed certs for daemon -> server connections */
+            allow_self_signed_certs?: boolean | null;
+            /** @description IP address to bind daemon to */
+            bind_address?: string | null;
+            /**
+             * Format: int64
+             * @description Seconds between heartbeat updates to the server
+             */
+            heartbeat_interval?: number | null;
+            /** @description Restrict daemon to specific network interface(s). Comma-separated for multiple (e.g., eth0,eth1). Leave empty for all interfaces */
+            interfaces?: string[] | null;
+            /** @description Path to log file. Defaults to platform-specific path. Set to "none" to disable file logging. */
+            log_file?: string | null;
+            /** @description Logging verbosity */
+            log_level?: string | null;
         };
         DaemonBase: {
             /**
@@ -4826,7 +4895,11 @@ export interface components {
              */
             readonly standby_cleared_at?: string | null;
             tags: string[];
-            readonly url: string;
+            /**
+             * @description Address the *server* dials for a ServerPoll daemon. Editable (a daemon can move);
+             *     unused and not editable for DaemonPoll, which dials out instead.
+             */
+            url: string;
             /**
              * Format: uuid
              * @description User responsible for maintaining this daemon
@@ -5635,19 +5708,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-07-07T19:19:03.638885Z",
+         *               "created_at": "2026-07-20T17:42:27.413852Z",
          *               "first_discovery_id": null,
-         *               "id": "1ac619bc-04b0-4966-9ff0-91b814106c36",
+         *               "id": "75d7cf20-0167-410d-bb03-9ac6ea472d3e",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-07-07T19:19:03.638885Z",
+         *               "last_seen_at": "2026-07-20T17:42:27.413852Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-07-07T19:19:03.638885Z",
-         *               "valid_from": "2026-07-07T19:19:03.638885Z",
+         *               "updated_at": "2026-07-20T17:42:27.413852Z",
+         *               "valid_from": "2026-07-20T17:42:27.413852Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -5661,7 +5734,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "NTP Server",
+         *           "service_definition": "Prowlarr",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -5873,6 +5946,24 @@ export interface components {
          * @enum {string}
          */
         InlineGroupRole: "Header" | "Member";
+        /** @description Everything the UI needs to install a just-provisioned daemon. */
+        InstallArtifacts: {
+            /** @description Per-platform binary install commands (the api key is embedded — shown once). */
+            commands: components["schemas"]["PlatformInstallCommand"][];
+            /**
+             * @description Filename encoding this daemon's non-secret config. Save or rename the downloaded MSI
+             *     to this name to pre-fill the installer — parse-filename.js decodes it. The api key is
+             *     never encoded. Renaming a signed MSI doesn't affect its signature.
+             */
+            msi_filename: string;
+            /**
+             * @description Config keys that did not fit in `msi_filename` (a filename is capped at 255
+             *     characters). Empty for any ordinary config. The MSI falls back to its built-in
+             *     defaults for these, so the UI should tell the user to set them in the installer —
+             *     the binary install commands are unaffected and carry the full config.
+             */
+            msi_omitted_config_keys: string[];
+        };
         /**
          * @description Per-daemon integration targeting, stored on the `Discovery` entity and delivered via the
          *     init command at registration. Each entry references exactly one stored credential and says
@@ -6410,7 +6501,7 @@ export interface components {
          *         "offset": 0,
          *         "total_count": 142
          *       },
-         *       "server_version": "0.17.3"
+         *       "server_version": "0.17.5"
          *     }
          */
         PaginatedApiMeta: {
@@ -6423,7 +6514,7 @@ export interface components {
             pagination: components["schemas"]["PaginationMeta"];
             /**
              * @description Server version (semver)
-             * @example 0.17.3
+             * @example 0.17.5
              */
             server_version: string;
         };
@@ -6774,6 +6865,13 @@ export interface components {
             /** Format: int64 */
             seat_limit?: number | null;
         };
+        /** @description One ready-to-paste install command for a platform. */
+        PlatformInstallCommand: {
+            /** @description The full command, including fetching the binary. */
+            command: string;
+            /** @description Platform key matching the UI's OS selector: `linux` | `macos` | `windows` | `freebsd`. */
+            platform: string;
+        };
         PodmanSubnetVirtualization: {
             /**
              * Format: uuid
@@ -6868,19 +6966,50 @@ export interface components {
             job_title?: string | null;
         };
         /**
-         * @description Request to pre-provision a ServerPoll mode daemon.
-         *     This creates the daemon record on the server before the daemon is installed.
+         * @description Request to pre-provision a daemon (either mode) before it is installed.
+         *     This creates the daemon record + its 1:1 API key on the server so the install
+         *     command shrinks to two flags.
          */
         ProvisionDaemonRequest: {
-            /** @description Human-readable name for the daemon. */
-            name: string;
             /**
              * Format: uuid
-             * @description Network this daemon will be associated with.
+             * @description Re-provision this existing daemon instead of creating a new record: mint a fresh
+             *     1:1 key for it and re-issue its install artifacts, keeping its host, discovery jobs
+             *     and history. Used to re-emit artifacts after install config changes, and to give a
+             *     legacy daemon (no bound key) a dedicated one. When set, `name`/`network_id`/`mode`/
+             *     `url` are ignored — those come from the existing record.
+             *
+             *     Only accepted for a daemon that has never checked in or has no bound key; a live
+             *     provisioned daemon is refused, since it has no way to learn the new key.
              */
-            network_id: string;
-            /** @description URL where the server can reach the daemon (required for ServerPoll mode). */
-            url: string;
+            daemon_id?: string | null;
+            install_config?: null | components["schemas"]["DaemonArgs"];
+            /**
+             * @description How the daemon communicates with the server. Defaults to DaemonPoll
+             *     (the daemon dials out) for forward-compat with older clients.
+             */
+            mode?: components["schemas"]["DaemonMode"];
+            /**
+             * @description Human-readable name for the daemon. Required unless `daemon_id` is set, in which case
+             *     the existing record's name is kept.
+             */
+            name?: string | null;
+            /**
+             * Format: uuid
+             * @description Network this daemon will be associated with. Required unless `daemon_id` is set, in
+             *     which case the existing record's network is kept.
+             */
+            network_id?: string | null;
+            /**
+             * @description Credential/integration references to seed onto the daemon's first
+             *     discovery run. References only — never secret material. Empty by default.
+             */
+            seed_credential_refs?: components["schemas"]["IntegrationTarget"][];
+            /**
+             * @description Reachable URL where the *server* can dial the daemon. Required for
+             *     ServerPoll, unused for DaemonPoll (the daemon dials out instead).
+             */
+            url?: string | null;
         };
         /**
          * @description Response from provisioning a daemon.
@@ -6894,6 +7023,8 @@ export interface components {
              *     This is shown only once - store it securely.
              */
             daemon_api_key: string;
+            /** @description Ready-to-run install commands + MSI download link, assembled server-side. */
+            install_artifacts: components["schemas"]["InstallArtifacts"];
         };
         ProxmoxVirtualization: {
             /** Format: uuid */
@@ -7096,6 +7227,7 @@ export interface components {
              */
             is_full_scan?: boolean;
             /**
+             * Format: int32
              * @description Hard ceiling on how long a single discovery run may take, in seconds
              *     (default: 21600 = 6h). When hit, the run force-completes and any hosts
              *     still queued are left un-scanned until the next run. Raise this for very
@@ -7169,19 +7301,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-07-07T19:19:03.639838Z",
+         *           "created_at": "2026-07-20T17:42:27.414577Z",
          *           "first_discovery_id": null,
-         *           "id": "c86db2e2-9c9a-4794-8255-3f972a627adf",
+         *           "id": "f97d9152-c9c5-4988-879b-527af3fa1659",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-07-07T19:19:03.639838Z",
+         *           "last_seen_at": "2026-07-20T17:42:27.414577Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-07-07T19:19:03.639838Z",
-         *           "valid_from": "2026-07-07T19:19:03.639838Z",
+         *           "updated_at": "2026-07-20T17:42:27.414577Z",
+         *           "valid_from": "2026-07-20T17:42:27.414577Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -7195,7 +7327,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "NTP Server",
+         *       "service_definition": "Prowlarr",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -7618,7 +7750,7 @@ export interface components {
              * @default {
              *       "Application": [
              *         {
-             *           "id": "d194d20b-5bdc-4bd4-aab9-db7a5fee16b4",
+             *           "id": "d07e6962-bb43-48b5-92a3-d009516bafca",
              *           "rule": {
              *             "ByApplication": {
              *               "tag_ids": []
@@ -7628,23 +7760,23 @@ export interface components {
              *       ],
              *       "L2Physical": [
              *         {
-             *           "id": "b3a0eb01-6438-40a3-b83e-4eeb0fe4a4d4",
+             *           "id": "c497a6f9-8800-40a1-99f9-c1c2c98e2b23",
              *           "rule": "ByHost"
              *         }
              *       ],
              *       "L3Logical": [
              *         {
-             *           "id": "146fc5ae-fc46-4c3a-a4b5-35a94ecc8504",
+             *           "id": "8fd74342-f74a-437e-8e51-6080eabe05b8",
              *           "rule": "BySubnet"
              *         },
              *         {
-             *           "id": "23c3b514-4a1e-495e-aaf9-9557c855b7f9",
+             *           "id": "48604575-e36a-42fe-a524-e64979be8c16",
              *           "rule": "MergeContainerBridges"
              *         }
              *       ],
              *       "Workloads": [
              *         {
-             *           "id": "b3a0eb01-6438-40a3-b83e-4eeb0fe4a4d4",
+             *           "id": "c497a6f9-8800-40a1-99f9-c1c2c98e2b23",
              *           "rule": "ByHost"
              *         }
              *       ]
@@ -7656,19 +7788,19 @@ export interface components {
             /**
              * @default [
              *       {
-             *         "id": "564342d5-fd33-47d1-9c85-8c6496a9a365",
+             *         "id": "017a9f20-746d-460b-9dbd-a595c5d7ab47",
              *         "rule": "ByTrunkPort"
              *       },
              *       {
-             *         "id": "2762b355-2efa-49fc-9abf-c4d9f88c722a",
+             *         "id": "c6d9037b-9de4-4129-a113-088f301e701a",
              *         "rule": "ByVLAN"
              *       },
              *       {
-             *         "id": "d4d0250a-a672-4787-a929-cfc8ff3c5a8c",
+             *         "id": "4ab49700-bc3f-46d6-b0c8-ce73428007b2",
              *         "rule": "ByPortOpStatus"
              *       },
              *       {
-             *         "id": "d44efc91-33d4-4acd-82d3-c4d146a47786",
+             *         "id": "241e56b3-b763-46b7-8285-004017169407",
              *         "rule": {
              *           "ByServiceCategory": {
              *             "categories": [
@@ -7686,7 +7818,7 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "991dcb08-3f68-4cda-beec-9d61b52a4cb8",
+             *         "id": "3392cf1a-6ba8-490e-a0fb-27a26c6da74f",
              *         "rule": {
              *           "ByTag": {
              *             "tag_ids": [],
@@ -7695,15 +7827,15 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "f4cbb217-290d-4f62-9de1-2cbbe8802eaa",
+             *         "id": "5972c57f-553b-44aa-8879-830280326c33",
              *         "rule": "ByHypervisor"
              *       },
              *       {
-             *         "id": "9e8ce81e-8c32-44c9-b9ef-1e6a9601bcfd",
+             *         "id": "4e65d408-f4d2-41a4-92ae-29cb68a5d2b4",
              *         "rule": "ByContainerRuntime"
              *       },
              *       {
-             *         "id": "7ce4fa9a-eff3-4eba-bbef-da190713270a",
+             *         "id": "ff5f75f3-1448-4928-836c-9dc8b9023037",
              *         "rule": "ByStack"
              *       }
              *     ]
@@ -10526,6 +10658,15 @@ export interface operations {
                     "application/json": components["schemas"]["ApiErrorResponse"];
                 };
             };
+            /** @description Daemon is live and already has a bound key */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
         };
     };
     test_daemon_reachability: {
@@ -10592,6 +10733,51 @@ export interface operations {
                 };
             };
             /** @description Daemon not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    update_daemon: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description daemon ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Daemon"];
+            };
+        };
+        responses: {
+            /** @description daemon updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_Daemon"];
+                };
+            };
+            /** @description Invalid request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description daemon not found */
             404: {
                 headers: {
                     [name: string]: unknown;

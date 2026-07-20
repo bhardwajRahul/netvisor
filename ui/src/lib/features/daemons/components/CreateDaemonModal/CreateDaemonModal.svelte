@@ -36,6 +36,7 @@
 	import { getVisibleFieldIds } from '../../config';
 	import {
 		buildDefaultValues,
+		buildInstallConfig,
 		buildRunCommand,
 		buildDockerCompose,
 		constructDaemonUrl,
@@ -396,7 +397,8 @@
 				name: daemonName,
 				network_id: selectedNetworkId,
 				mode,
-				url: isServerPoll ? constructDaemonUrl(daemonUrlBase, daemonPort) : null
+				url: isServerPoll ? constructDaemonUrl(daemonUrlBase, daemonPort) : null,
+				install_config: buildInstallConfig(formValues)
 			});
 			keyState = result.daemon_api_key;
 			provisionedDaemonId = result.daemon.id;
@@ -404,6 +406,34 @@
 		} catch {
 			pushError(common_failedGenerateApiKey());
 		}
+	}
+
+	/**
+	 * Re-issue the install artifacts after the user changes advanced settings.
+	 *
+	 * The command is assembled server-side and embeds the api key, which the server only
+	 * holds while provisioning — so refreshing it means re-provisioning. Passing `daemon_id`
+	 * reuses the existing record (no duplicate daemon), and the server mints a fresh key.
+	 * That is why this fires once, on leaving the Advanced panel, rather than per keystroke.
+	 */
+	async function refreshInstallArtifacts() {
+		if (!provisionedDaemonId) return;
+		try {
+			const result = await provisionDaemonMutation.mutateAsync({
+				daemon_id: provisionedDaemonId,
+				install_config: buildInstallConfig(formValues)
+			});
+			keyState = result.daemon_api_key;
+			installArtifacts = result.install_artifacts;
+		} catch {
+			pushError(common_failedGenerateApiKey());
+		}
+	}
+
+	/** Leave the Advanced panel, folding any changes into the emitted install artifacts. */
+	async function closeAdvanced() {
+		showAdvanced = false;
+		await refreshInstallArtifacts();
 	}
 
 	// --- Navigation handlers ---
@@ -803,7 +833,7 @@
 						<ArrowRight class="h-4 w-4" />
 					</button>
 				{:else if showAdvanced}
-					<button type="button" class="btn-primary" onclick={() => (showAdvanced = false)}>
+					<button type="button" class="btn-primary" onclick={closeAdvanced}>
 						<ArrowLeft class="h-4 w-4" />
 						{daemons_installBackToInstall()}
 					</button>

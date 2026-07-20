@@ -4,8 +4,8 @@
 	import { useRetryDaemonConnectionMutation } from '$lib/features/daemons/queries';
 	import { entities, subnetTypes } from '$lib/shared/stores/metadata';
 	import { formatTimestamp } from '$lib/shared/utils/formatting';
-	import { ArrowBigUp, KeyRound, RefreshCw, Trash2 } from 'lucide-svelte';
-	import { common_delete, common_tags, daemons_manageKey } from '$lib/paraglide/messages';
+	import { ArrowBigUp, Edit, RefreshCw, Trash2 } from 'lucide-svelte';
+	import { common_delete, common_edit, common_tags } from '$lib/paraglide/messages';
 	import { getDaemonStatusTag } from '$lib/features/daemons/utils';
 	import { useNetworksQuery } from '$lib/features/networks/queries';
 	import { useHostsQuery } from '$lib/features/hosts/queries';
@@ -58,12 +58,14 @@
 	let {
 		daemon,
 		onDelete,
+		onEdit,
 		viewMode,
 		selected,
 		onSelectionChange = () => {}
 	}: {
 		daemon: Daemon;
 		onDelete?: (daemon: Daemon) => void;
+		onEdit?: (daemon: Daemon) => void;
 		viewMode: 'card' | 'list';
 		selected: boolean;
 		onSelectionChange?: (selected: boolean) => void;
@@ -170,17 +172,6 @@
 						}
 					]
 				: []),
-			// Manage the daemon's 1:1 key (view / rotate) via the existing key modal.
-			...(daemon.api_key_id
-				? [
-						{
-							label: daemons_manageKey(),
-							icon: KeyRound,
-							class: 'btn-icon',
-							onClick: () => openModal('daemon-api-key', { id: daemon.api_key_id! })
-						}
-					]
-				: []),
 			...(hasUpdateAvailable && daemon.is_unreachable !== true
 				? [
 						{
@@ -203,6 +194,19 @@
 							onClick: () => retryConnectionMutation.mutate(daemon.id),
 							disabled: retryPending,
 							forceLabel: true
+						}
+					]
+				: []),
+			// Edit sits last (rightmost) per the convention shared by every other entity card.
+			// It opens the daemon management modal, which is also where the daemon's 1:1 key
+			// is managed — and where a legacy daemon can be given one.
+			...(onEdit
+				? [
+						{
+							label: common_edit(),
+							icon: Edit,
+							class: 'btn-icon',
+							onClick: () => onEdit(daemon)
 						}
 					]
 				: [])
