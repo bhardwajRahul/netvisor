@@ -168,9 +168,14 @@ impl Storable for Host {
         let source: EntitySource =
             serde_json::from_value(row.get::<serde_json::Value, _>("source"))
                 .map_err(|e| anyhow::anyhow!("Failed to deserialize source: {}", e))?;
+        // virtualization is a nullable JSONB column, so decode it as Option: a SQL NULL
+        // (as opposed to a JSONB 'null') must map to None rather than panic on a non-Option get.
         let virtualization: Option<HostVirtualization> =
-            serde_json::from_value(row.get::<serde_json::Value, _>("virtualization"))
-                .map_err(|e| anyhow::anyhow!("Failed to deserialize virtualization: {}", e))?;
+            match row.get::<Option<serde_json::Value>, _>("virtualization") {
+                Some(v) => serde_json::from_value(v)
+                    .map_err(|e| anyhow::anyhow!("Failed to deserialize virtualization: {}", e))?,
+                None => None,
+            };
 
         Ok(Host {
             id: row.get("id"),
