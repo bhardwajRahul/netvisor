@@ -17,6 +17,7 @@ import { CredentialDisplay } from '$lib/shared/components/forms/selection/displa
 import { TopologyDisplay } from '$lib/shared/components/forms/selection/display/TopologyDisplay.svelte';
 import { DaemonApiKeyDisplay } from '$lib/shared/components/forms/selection/display/DaemonApiKeyDisplay.svelte';
 import { BindingDisplay } from '$lib/shared/components/forms/selection/display/BindingDisplay.svelte';
+import { UserDisplay } from '$lib/shared/components/forms/selection/display/UserDisplay.svelte';
 
 export interface EntityUIConfig {
 	tabId: string;
@@ -100,7 +101,7 @@ export const entityUIConfig: Record<EntityDiscriminants, EntityUIConfig | null> 
 	Share: { tabId: 'shares', modalName: 'share-editor' },
 	Topology: { tabId: 'topology', modalName: 'topology-editor', displayComponent: TopologyDisplay },
 	Snapshot: { tabId: 'topology' },
-	User: { tabId: 'users', modalName: 'user-editor' },
+	User: { tabId: 'users', modalName: 'user-editor', displayComponent: UserDisplay },
 	UserApiKey: { tabId: 'api-keys', modalName: 'user-api-key' },
 	Organization: null,
 	Invite: null,

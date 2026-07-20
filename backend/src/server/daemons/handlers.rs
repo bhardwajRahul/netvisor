@@ -29,6 +29,7 @@ use crate::server::{
             DaemonStartupRequest, LegacyCapabilities, ServerCapabilities,
         },
         base::{Daemon, DaemonBase, DaemonMode},
+        install_artifacts::ArtifactPurpose,
         version::DaemonVersionPolicy,
     },
     hosts::r#impl::base::{Host, HostBase},
@@ -208,6 +209,78 @@ async fn update_daemon(
     update_handler::<Daemon>(State(state), auth, Path(id), Json(request)).await
 }
 
+/// Query for [`get_install_command`].
+#[derive(Deserialize, Debug, Clone, IntoParams)]
+pub struct InstallCommandQuery {
+    /// Which command to generate. Only credential-free purposes can be served here — see
+    /// [`ArtifactPurpose::embeds_credential`].
+    pub purpose: ArtifactPurpose,
+}
+
+/// Generate a Daemon install command
+///
+/// The single read path for daemon install artifacts, shaped by `purpose`.
+///
+/// `sync` returns an idempotent command that re-asserts the server-held connectivity config on
+/// an already-installed daemon — the port the server dials for ServerPoll, the server url for
+/// DaemonPoll. It is safe to run repeatedly and safe to display persistently, because it
+/// carries no api key and so leaves the daemon's existing credential in place.
+///
+/// Purposes that embed the api key (`initial`, `rekey`) cannot be served here: the plaintext
+/// exists only at the moment it is minted, so those artifacts come back from `POST /provision`.
+#[utoipa::path(
+    get,
+    path = "/{id}/install-command",
+    tag = "daemons",
+    operation_id = "get_daemon_install_command",
+    summary = "Generate daemon install command",
+    params(("id" = Uuid, Path, description = "daemon ID"), InstallCommandQuery),
+    responses(
+        (status = 200, description = "Install command", body = ApiResponse<crate::server::daemons::r#impl::install_artifacts::InstallArtifacts>),
+        (status = 400, description = "Purpose requires a credential", body = ApiErrorResponse),
+        (status = 404, description = "daemon not found", body = ApiErrorResponse),
+    ),
+    security(("user_api_key" = []), ("session" = []))
+)]
+async fn get_install_command(
+    State(state): State<Arc<AppState>>,
+    auth: Authorized<Viewer>,
+    Path(id): Path<Uuid>,
+    Query(query): Query<InstallCommandQuery>,
+) -> ApiResult<Json<ApiResponse<crate::server::daemons::r#impl::install_artifacts::InstallArtifacts>>>
+{
+    let network_ids = auth.network_ids();
+
+    if query.purpose.embeds_credential() {
+        return Err(ApiError::bad_request(
+            "This purpose embeds the daemon's api key, which only exists when it is minted. Provision the daemon to obtain it.",
+        ));
+    }
+
+    let daemon = Daemon::get_service(&state)
+        .get_by_id(&id)
+        .await?
+        .ok_or_else(|| ApiError::entity_not_found::<Daemon>(id))?;
+
+    validate_network_access(
+        Some(daemon.base.network_id),
+        &network_ids,
+        "get install command",
+    )?;
+
+    let artifacts = crate::server::daemons::r#impl::install_artifacts::build_install_artifacts(
+        &state.config.public_url,
+        &daemon,
+        // Guarded above: no credential-embedding purpose reaches here.
+        "",
+        None,
+        &[],
+        query.purpose,
+    );
+
+    Ok(Json(ApiResponse::success(artifacts)))
+}
+
 /// Delete daemon — blocks if daemon has active discovery sessions.
 #[utoipa::path(
     delete,
@@ -322,6 +395,7 @@ pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
     OpenApiRouter::new()
         .routes(routes!(get_all))
         .routes(routes!(get_by_id, update_daemon, delete_daemon))
+        .routes(routes!(get_install_command))
         .routes(routes!(bulk_delete_daemons))
         .routes(routes!(generated::export_csv))
         .routes(routes!(provision_daemon))
@@ -901,6 +975,15 @@ async fn provision_daemon(
         None => None,
     };
 
+    // A daemon that has already checked in is installed, so its command only needs to carry the
+    // new credential — `install` layers CLI over its existing config.json. One that hasn't (a
+    // fresh provision, or the create flow re-issuing artifacts after an advanced-settings
+    // change) still needs a full first-install command.
+    let purpose = match &existing_daemon {
+        Some(daemon) if daemon.base.last_seen.is_some() => ArtifactPurpose::Rekey,
+        _ => ArtifactPurpose::Initial,
+    };
+
     // Identity is server-owned. On the re-provision path it comes from the record — the
     // request's name/network/mode/url are ignored, since those are immutable post-provision
     // and the record already holds whatever the daemon last reported.
@@ -1019,6 +1102,9 @@ async fn provision_daemon(
         // since the record holds what the daemon last reported.
         Some(mut daemon) => {
             daemon.base.api_key_id = Some(created_api_key.id);
+            // Provisioning is what establishes ownership, so the member doing it becomes the
+            // maintainer — the same rule the create path applies.
+            daemon.base.user_id = user_id;
             state
                 .services
                 .daemon_service
@@ -1087,6 +1173,8 @@ async fn provision_daemon(
             &created_daemon,
             &plaintext,
             request.install_config.as_ref(),
+            &request.seed_credential_refs,
+            purpose,
         );
 
     Ok(Json(ApiResponse::success(ProvisionDaemonResponse {

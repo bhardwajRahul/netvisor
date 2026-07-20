@@ -19,6 +19,7 @@
 		required = false,
 		disabled = false,
 		error = null,
+		helpText = '',
 		onSelect,
 		onDisabledClick = null,
 		showSearch = false,
@@ -34,6 +35,8 @@
 		required?: boolean;
 		disabled?: boolean;
 		error?: string | null;
+		/** Guidance rendered below the control, matching FormField's help text. */
+		helpText?: string;
 		onSelect: (value: string) => void;
 		onDisabledClick?: ((value: string) => void) | null;
 		showSearch?: boolean;
@@ -323,6 +326,10 @@
 		<div class="text-danger mt-1 flex items-center gap-2 text-sm">
 			<span>{error}</span>
 		</div>
+	{/if}
+
+	{#if helpText}
+		<p class="text-tertiary mt-1 text-xs">{helpText}</p>
 	{/if}
 </div>
 

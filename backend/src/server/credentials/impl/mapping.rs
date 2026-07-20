@@ -144,6 +144,29 @@ impl IntegrationTarget {
     }
 }
 
+/// The compact token grammar the daemon accepts via `--credential-id` /
+/// `SCANOPY_CREDENTIAL_IDS`. Inverse of `parse_integration_target_tokens` in
+/// `daemon/shared/config.rs`, which is what the daemon parses these back with.
+impl std::fmt::Display for IntegrationTarget {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            // A sole loopback target *is* the daemon-host scope, per the parser.
+            Self::DaemonHost { credential_id } => write!(f, "{credential_id}@127.0.0.1"),
+            Self::Network { credential_id } => write!(f, "{credential_id}"),
+            Self::Hosts { credential_id, ips } => {
+                write!(f, "{credential_id}@")?;
+                for (i, ip) in ips.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, "+")?;
+                    }
+                    write!(f, "{ip}")?;
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
 // ============================================================================
 // Generic Credential Query Types (wire format for unified discovery)
 // ============================================================================

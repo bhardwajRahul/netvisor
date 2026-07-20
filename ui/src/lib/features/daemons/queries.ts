@@ -50,6 +50,31 @@ export function useDaemonQuery(id: () => string | null, options?: { enabled?: ()
 }
 
 /**
+ * Query hook for a daemon's reconfigure command — the idempotent, credential-free command that
+ * re-asserts the server-held connectivity config on an already-installed daemon.
+ */
+export function useDaemonInstallCommandQuery(
+	id: () => string | null,
+	options?: { enabled?: () => boolean }
+) {
+	return createQuery(() => ({
+		queryKey: [...queryKeys.daemons.detail(id() ?? ''), 'install-command', 'sync'],
+		queryFn: async () => {
+			const daemonId = id();
+			if (!daemonId) throw new Error('No daemon ID');
+			const { data } = await apiClient.GET('/api/v1/daemons/{id}/install-command', {
+				params: { path: { id: daemonId }, query: { purpose: 'sync' } }
+			});
+			if (!data?.success || !data.data) {
+				throw new Error(data?.error || 'Failed to fetch install command');
+			}
+			return data.data;
+		},
+		enabled: (options?.enabled?.() ?? true) && !!id()
+	}));
+}
+
+/**
  * Mutation hook for updating a daemon's server-side record (name, maintainer, tags, and
  * the ServerPoll url). Identity and server-managed fields are restored server-side.
  */
