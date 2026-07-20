@@ -1,4 +1,4 @@
-.PHONY: help build test test-unit clean format lint lint-migrations generate-schema generate-messages generate-fixtures refresh-vendored-data seed-dev set-plan-community set-plan-starter set-plan-pro set-plan-team set-plan-business set-plan-enterprise test-plan test-merge test-results install-dev-mac install-dev-linux install-dev-windows snmp-verify snmp-status docker-proxy-up docker-proxy-up-tls docker-proxy-down docker-proxy-status podman-proxy-up podman-proxy-up-tls podman-proxy-down podman-proxy-status podman-workload-up podman-workload-down issue-license
+.PHONY: help build test test-unit clean format lint lint-migrations generate-schema generate-messages generate-fixtures refresh-vendored-data seed-dev set-plan-community set-plan-starter set-plan-pro set-plan-team set-plan-business set-plan-enterprise test-plan test-merge test-results install-dev-mac install-dev-linux install-dev-windows snmp-verify snmp-status docker-proxy-up docker-proxy-up-tls docker-proxy-down docker-proxy-status podman-proxy-up podman-proxy-up-tls podman-proxy-down podman-proxy-status podman-workload-up podman-workload-down issue-license daemon-clean daemon-purge daemon-logs daemon-restart daemon-config
 
 DAYS ?= 365
 
@@ -34,6 +34,13 @@ help:
 	@echo "  make install-dev-mac      - Install development dependencies on macOS"
 	@echo "  make install-dev-linux    - Install development dependencies on Linux"
 	@echo "  make install-dev-windows  - Install development dependencies on Windows"
+	@echo ""
+	@echo "Daemon (local install management, macOS):"
+	@echo "  make daemon-clean    - Uninstall the locally-installed daemon (service + config); [PURGE=--purge]"
+	@echo "  make daemon-purge    - Uninstall with --purge (also removes the binary)"
+	@echo "  make daemon-logs     - Tail the last 40 lines of the daemon log"
+	@echo "  make daemon-restart  - Restart the daemon via launchctl"
+	@echo "  make daemon-config   - Open the daemon config.json in VS Code"
 	@echo ""
 	@echo "Plan Management (sets plan for all organizations):"
 	@echo "  make set-plan-community   - Set to Community (free)"
@@ -93,6 +100,21 @@ seed-dev:
 
 clean-daemon:
 	rm -rf ~/Library/Application\ Support/com.scanopy.daemon
+
+daemon-clean:
+	cd ./backend && sudo /usr/local/bin/scanopy-daemon uninstall $(PURGE)
+
+daemon-purge:
+	$(MAKE) daemon-clean PURGE=--purge
+
+daemon-logs:
+	tail -n 40 /var/log/scanopy/scanopy-daemon.log
+
+daemon-restart:
+	sudo launchctl kickstart -k system/com.scanopy.daemon
+
+daemon-config:
+	open -a "Visual Studio Code" "/Library/Application Support/Scanopy/daemon/scanopy-daemon/config.json"
 
 dump-db:
 	docker exec -t scanopy-postgres pg_dump -U postgres -d scanopy > ~/dev/scanopy/scanopy.sql  
