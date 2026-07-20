@@ -74,7 +74,7 @@
 <div class="space-y-6">
 	<InlineInfo
 		title=""
-		body="Changes you make here will be reflected in the install commands."
+		body="Changes you make here will be reflected in the install command and can be edited in the daemon's config file after installation."
 		dismissableKey="daemon-advanced-hint"
 	/>
 
