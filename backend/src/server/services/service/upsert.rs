@@ -127,6 +127,14 @@ impl ServiceService {
             (existing_source, _) => existing_source,
         };
 
+        // SCD2 freshness: advance last_seen_at to this scan's time on every match, even
+        // when no binding/field changed — otherwise a re-discovered service looks stale
+        // while the FK subscriber still bumps last_discovery_id. Mirrors upsert_host.
+        // The incoming new_service_data was pre-stamped with scan_time by the discovery
+        // handler. The unconditional update below persists it; the Updated event stays
+        // gated on real binding changes, so a pure freshness bump wakes no consumers.
+        existing_service.last_seen_at = new_service_data.last_seen_at;
+
         self.storage.update(&mut existing_service).await?;
 
         // Save bindings to separate table with correct service_id and network_id
