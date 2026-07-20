@@ -103,9 +103,6 @@ impl DiscoveryIntegration for SnmpIntegration {
                 });
             }
 
-            // TEMP instrumentation: per-port SNMP probe timing. Isolates the v3
-            // create_session/engine-discovery cost (161 vs 1161) on non-responders.
-            let port_probe_start = std::time::Instant::now();
             // Cap the whole probe (create-session + GET) so a non-responder — v3's
             // engine-discovery especially — costs ~2s instead of up to 7s.
             let port_outcome = match timeout(
@@ -117,14 +114,6 @@ impl DiscoveryIntegration for SnmpIntegration {
                 Ok(res) => res,
                 Err(_) => Ok(None), // probe timed out → treat as no answer
             };
-            tracing::debug!(
-                ip = %ctx.ip,
-                port = port,
-                version = %snmp_cred.version,
-                snmp_probe_port_ms = port_probe_start.elapsed().as_millis() as u64,
-                answered = matches!(port_outcome, Ok(Some(_))),
-                "PROBE_TIMING snmp_port"
-            );
             match port_outcome {
                 Ok(Some(detected_port)) => {
                     return Ok(ProbeSuccess {
