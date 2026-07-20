@@ -323,17 +323,20 @@ pub struct InstallConfigPair {
     /// Query key for the MSI pre-fill filename. Must match the property map in
     /// `backend/wix/parse-filename.js`.
     pub msi_key: Option<&'static str>,
+    /// Environment variable for the docker-compose install, e.g. `SCANOPY_LOG_LEVEL`. These are
+    /// the names Figment picks up via `Env::prefixed("SCANOPY_")` below.
+    pub env_var: Option<&'static str>,
     /// Rendered value.
     pub value: String,
 }
 
 impl DaemonArgs {
-    /// The set values of this config, rendered once for both install artifacts.
+    /// The set values of this config, rendered once for every install artifact.
     ///
-    /// Having a single table is what keeps the CLI command, the MSI filename hash, and
-    /// `backend/wix/parse-filename.js` from drifting — the two artifacts key the same field
-    /// differently (`--log-level` vs `loglevel`, `--bind-address` vs `addr`), and previously
-    /// only the JS side knew the MSI names.
+    /// Having a single table is what keeps the CLI command, the MSI filename hash, the
+    /// docker-compose env block, and `backend/wix/parse-filename.js` from drifting — the
+    /// artifacts key the same field differently (`--log-level` vs `loglevel` vs
+    /// `SCANOPY_LOG_LEVEL`), and previously only the JS and the frontend knew their own names.
     ///
     /// `None` fields are skipped entirely, which keeps commands terse and keeps the base64 MSI
     /// filename clear of the ~255-character filename limit.
@@ -342,12 +345,14 @@ impl DaemonArgs {
             pairs: &mut Vec<InstallConfigPair>,
             cli_flag: Option<&'static str>,
             msi_key: Option<&'static str>,
+            env_var: Option<&'static str>,
             value: Option<String>,
         ) {
             if let Some(value) = value {
                 pairs.push(InstallConfigPair {
                     cli_flag,
                     msi_key,
+                    env_var,
                     value,
                 });
             }
@@ -386,59 +391,76 @@ impl DaemonArgs {
 
         let mut pairs = Vec::new();
 
-        // The daemon infers ServerPoll from the *absence* of a server url, so the CLI command
-        // needs no `--mode`; the MSI has no such inference and pre-fills MODE explicitly.
-        push(&mut pairs, None, Some("mode"), render_mode(mode.as_ref()));
-        // The daemon learns its name via the handshake, so the CLI command omits it; the MSI
-        // needs it up front because the service id is derived from it at install time.
-        push(&mut pairs, None, Some("name"), name.clone());
+        // The daemon infers ServerPoll from the *absence* of a server url, so neither the CLI
+        // command nor the compose env needs a mode; the MSI has no such inference and pre-fills
+        // MODE explicitly.
+        push(
+            &mut pairs,
+            None,
+            Some("mode"),
+            None,
+            render_mode(mode.as_ref()),
+        );
+        // The daemon learns its name via the handshake, so the CLI command and compose env both
+        // omit it; the MSI needs it up front because the service id is derived from it at
+        // install time.
+        push(&mut pairs, None, Some("name"), None, name.clone());
         push(
             &mut pairs,
             Some("--server-url"),
             Some("url"),
+            Some("SCANOPY_SERVER_URL"),
             server_url.clone(),
         );
-        // A live credential must never sit in a filename.
+        // A live credential must never sit in a filename. A compose file is a local artifact the
+        // operator already holds, so it does carry the key.
         push(
             &mut pairs,
             Some("--daemon-api-key"),
             None,
+            Some("SCANOPY_DAEMON_API_KEY"),
             daemon_api_key.clone(),
         );
         push(
             &mut pairs,
             Some("--daemon-port"),
             Some("port"),
+            Some("SCANOPY_DAEMON_PORT"),
             daemon_port.map(|v| v.to_string()),
         );
         push(
             &mut pairs,
             Some("--bind-address"),
             Some("addr"),
+            Some("SCANOPY_BIND_ADDRESS"),
             bind_address.clone(),
         );
         push(
             &mut pairs,
             Some("--log-level"),
             Some("loglevel"),
+            Some("SCANOPY_LOG_LEVEL"),
             log_level.clone(),
         );
         push(
             &mut pairs,
             Some("--log-file"),
             Some("logfile"),
+            Some("SCANOPY_LOG_FILE"),
             log_file.clone(),
         );
         push(
             &mut pairs,
             Some("--heartbeat-interval"),
             Some("heartbeat"),
+            Some("SCANOPY_HEARTBEAT_INTERVAL"),
             heartbeat_interval.map(|v| v.to_string()),
         );
         push(
             &mut pairs,
             Some("--interfaces"),
             Some("interfaces"),
+            Some("SCANOPY_INTERFACES"),
             interfaces
                 .as_ref()
                 .filter(|v| !v.is_empty())
@@ -448,12 +470,14 @@ impl DaemonArgs {
             &mut pairs,
             Some("--allow-self-signed-certs"),
             Some("allowselfsigned"),
+            Some("SCANOPY_ALLOW_SELF_SIGNED_CERTS"),
             allow_self_signed_certs.map(|v| v.to_string()),
         );
         push(
             &mut pairs,
             Some("--accept-invalid-scan-certs"),
             Some("acceptinvalidscan"),
+            Some("SCANOPY_ACCEPT_INVALID_SCAN_CERTS"),
             accept_invalid_scan_certs.map(|v| v.to_string()),
         );
 
@@ -1592,6 +1616,32 @@ mod tests {
         assert!(
             parse_integration_target_tokens(&[format!("{id}@")]).is_err(),
             "trailing @ with no IPs should error"
+        );
+    }
+
+    /// The server renders these tokens into a docker-compose `SCANOPY_CREDENTIAL_IDS`, and the
+    /// daemon parses them back with the function above. Round-tripping every variant through
+    /// both is what keeps the writer and the reader of that grammar in agreement.
+    #[test]
+    fn integration_target_tokens_round_trip_through_display() {
+        let id = Uuid::new_v4();
+        let targets = vec![
+            IntegrationTarget::Network { credential_id: id },
+            IntegrationTarget::DaemonHost { credential_id: id },
+            IntegrationTarget::Hosts {
+                credential_id: id,
+                ips: vec!["10.0.0.5".parse().unwrap()],
+            },
+            IntegrationTarget::Hosts {
+                credential_id: id,
+                ips: vec!["127.0.0.1".parse().unwrap(), "10.0.0.5".parse().unwrap()],
+            },
+        ];
+
+        let tokens: Vec<String> = targets.iter().map(|t| t.to_string()).collect();
+        assert_eq!(
+            parse_integration_target_tokens(&tokens).expect("rendered tokens parse"),
+            targets
         );
     }
 }

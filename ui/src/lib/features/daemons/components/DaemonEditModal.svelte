@@ -14,14 +14,21 @@
 	import ModalHeaderIcon from '$lib/shared/components/layout/ModalHeaderIcon.svelte';
 	import EntityMetadataSection from '$lib/shared/components/forms/EntityMetadataSection.svelte';
 	import TextInput from '$lib/shared/components/forms/input/TextInput.svelte';
-	import SelectInput from '$lib/shared/components/forms/input/SelectInput.svelte';
+	import RichSelect from '$lib/shared/components/forms/selection/RichSelect.svelte';
+	import { UserDisplay } from '$lib/shared/components/forms/selection/display/UserDisplay.svelte';
 	import TagPicker from '$lib/features/tags/components/TagPicker.svelte';
 	import { entities } from '$lib/shared/stores/metadata';
 	import { pushError } from '$lib/shared/stores/feedback';
 	import { Info, KeyRound } from 'lucide-svelte';
 	import type { Daemon } from '$lib/features/daemons/types/base';
 	import type { ApiKey } from '$lib/features/daemon_api_keys/types/base';
-	import { useUpdateDaemonMutation } from '$lib/features/daemons/queries';
+	import {
+		useUpdateDaemonMutation,
+		useDaemonInstallCommandQuery
+	} from '$lib/features/daemons/queries';
+	import CollapsibleCard from '$lib/shared/components/data/CollapsibleCard.svelte';
+	import CodeContainer from '$lib/shared/components/data/CodeContainer.svelte';
+	import OsSelector from './OsSelector.svelte';
 	import {
 		useApiKeysQuery,
 		useUpdateApiKeyMutation,
@@ -31,7 +38,7 @@
 	import ApiKeyFormFields from '$lib/features/daemon_api_keys/components/ApiKeyFormFields.svelte';
 	import { createApiKeyForm } from '$lib/features/daemon_api_keys/form';
 	import DaemonKeyAssociation from './DaemonKeyAssociation.svelte';
-	import { constructDaemonUrl } from '$lib/features/daemons/utils';
+	import { constructDaemonUrl, type DaemonOS } from '$lib/features/daemons/utils';
 	import {
 		common_apiKey,
 		common_cancel,
@@ -50,6 +57,8 @@
 		daemons_config_modeImmutable,
 		daemons_config_portHelpServerPoll,
 		daemons_legacyNameFromDaemon,
+		daemons_reconfigureSectionHelp,
+		daemons_reconfigureSectionTitle,
 		common_maintainer,
 		common_maintainerHelp
 	} from '$lib/paraglide/messages';
@@ -92,8 +101,17 @@
 			: null
 	);
 
-	let userOptions = $derived(
-		(usersQuery.data ?? []).map((u) => ({ value: u.id, label: u.email ?? u.id }))
+	let usersData = $derived(usersQuery.data ?? []);
+
+	// Reconfigure command for the Details tab. Only fetched while the modal is open, and only
+	// meaningful for an installed daemon — one that has never checked in is still following its
+	// install command.
+	const installCommandQuery = useDaemonInstallCommandQuery(() => daemon?.id ?? null, {
+		enabled: () => isOpen && daemon?.last_seen != null
+	});
+	let syncOs = $state<DaemonOS>('linux');
+	let syncCommand = $derived(
+		installCommandQuery.data?.commands.find((c) => c.platform === syncOs)?.command ?? ''
 	);
 
 	const DEFAULT_DAEMON_PORT = 60073;
@@ -287,11 +305,13 @@
 
 					<detailsForm.Field name="user_id">
 						{#snippet children(field)}
-							<SelectInput
+							<RichSelect
 								label={common_maintainer()}
-								id="daemon-user"
-								{field}
-								options={userOptions}
+								selectedValue={field.state.value}
+								options={usersData}
+								onSelect={(value) => field.handleChange(value)}
+								displayComponent={UserDisplay}
+								showSearch={true}
 								helpText={common_maintainerHelp()}
 							/>
 						{/snippet}
@@ -306,6 +326,30 @@
 							/>
 						{/snippet}
 					</detailsForm.Field>
+
+					<!-- Server-held config the daemon may have drifted from — most usefully the
+					     ServerPoll port, which the server dials but the daemon must bind. The
+					     command carries no credential, so it is safe to show here and to run
+					     repeatedly. -->
+					{#if syncCommand}
+						<CollapsibleCard
+							title={daemons_reconfigureSectionTitle()}
+							description={daemons_reconfigureSectionHelp()}
+							expanded={false}
+						>
+							<div class="space-y-3">
+								<OsSelector selectedOS={syncOs} onOsSelect={(os) => (syncOs = os)}>
+									<CodeContainer
+										language={syncOs === 'windows' ? 'powershell' : 'bash'}
+										expandable={false}
+										maxHeight=""
+										code={syncCommand}
+										preventSelect={true}
+									/>
+								</OsSelector>
+							</div>
+						</CollapsibleCard>
+					{/if}
 				</div>
 
 				<!-- API key -->

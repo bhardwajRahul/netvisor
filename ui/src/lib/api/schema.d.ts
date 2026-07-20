@@ -1249,6 +1249,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/daemons/{id}/install-command": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Generate daemon install command
+         * @description The single read path for daemon install artifacts, shaped by `purpose`.
+         *
+         *     `sync` returns an idempotent command that re-asserts the server-held connectivity config on
+         *     an already-installed daemon — the port the server dials for ServerPoll, the server url for
+         *     DaemonPoll. It is safe to run repeatedly and safe to display persistently, because it
+         *     carries no api key and so leaves the daemon's existing credential in place.
+         *
+         *     Purposes that embed the api key (`initial`, `rekey`) cannot be served here: the plaintext
+         *     exists only at the moment it is minted, so those artifacts come back from `POST /provision`.
+         */
+        get: operations["get_daemon_install_command"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/daemons/{id}/retry-connection": {
         parameters: {
             query?: never;
@@ -3076,19 +3104,19 @@ export interface components {
             /**
              * @description Association between a service and a port / interface that the service is listening on
              * @example {
-             *       "created_at": "2026-07-20T17:42:27.431790Z",
+             *       "created_at": "2026-07-20T19:14:14.117051Z",
              *       "first_discovery_id": null,
-             *       "id": "c3fe346d-1db2-47d9-8a67-f0b1861eb248",
+             *       "id": "bf8c217e-a972-45ed-bf4f-1339c9aad7f9",
              *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *       "last_discovery_id": null,
-             *       "last_seen_at": "2026-07-20T17:42:27.431790Z",
+             *       "last_seen_at": "2026-07-20T19:14:14.117051Z",
              *       "lineage_id": null,
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *       "type": "Port",
-             *       "updated_at": "2026-07-20T17:42:27.431790Z",
-             *       "valid_from": "2026-07-20T17:42:27.431790Z",
+             *       "updated_at": "2026-07-20T19:14:14.117051Z",
+             *       "valid_from": "2026-07-20T19:14:14.117051Z",
              *       "valid_to": null
              *     }
              */
@@ -3453,19 +3481,19 @@ export interface components {
              *         {
              *           "bindings": [
              *             {
-             *               "created_at": "2026-07-20T17:42:27.414292Z",
+             *               "created_at": "2026-07-20T19:14:14.102162Z",
              *               "first_discovery_id": null,
-             *               "id": "ee5b2e69-a61d-4ae5-b2fe-9e176a87b327",
+             *               "id": "e3946374-5e75-46bb-bec5-44ed11e25902",
              *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *               "last_discovery_id": null,
-             *               "last_seen_at": "2026-07-20T17:42:27.414292Z",
+             *               "last_seen_at": "2026-07-20T19:14:14.102162Z",
              *               "lineage_id": null,
              *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *               "type": "Port",
-             *               "updated_at": "2026-07-20T17:42:27.414292Z",
-             *               "valid_from": "2026-07-20T17:42:27.414292Z",
+             *               "updated_at": "2026-07-20T19:14:14.102162Z",
+             *               "valid_from": "2026-07-20T19:14:14.102162Z",
              *               "valid_to": null
              *             }
              *           ],
@@ -3479,7 +3507,7 @@ export interface components {
              *           "name": "nginx",
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "position": 0,
-             *           "service_definition": "Prowlarr",
+             *           "service_definition": "Jitsi Meet",
              *           "source": {
              *             "type": "Manual"
              *           },
@@ -3571,6 +3599,34 @@ export interface components {
                 readonly valid_from?: string;
                 /** Format: date-time */
                 readonly valid_to?: string | null;
+            };
+            error?: string | null;
+            meta: components["schemas"]["ApiMeta"];
+            success: boolean;
+        };
+        ApiResponse_InstallArtifacts: {
+            /** @description Everything the UI needs to install a just-provisioned daemon. */
+            data?: {
+                /** @description Per-platform binary install commands (the api key is embedded — shown once). */
+                commands: components["schemas"]["PlatformInstallCommand"][];
+                /**
+                 * @description A ready-to-run `docker-compose.yml`. Only present for a first install: re-keying or
+                 *     re-syncing a container means editing its existing compose file, not running a new one.
+                 */
+                docker_compose?: string | null;
+                /**
+                 * @description Filename encoding this daemon's non-secret config. Save or rename the downloaded MSI
+                 *     to this name to pre-fill the installer — parse-filename.js decodes it. The api key is
+                 *     never encoded. Renaming a signed MSI doesn't affect its signature.
+                 */
+                msi_filename: string;
+                /**
+                 * @description Config keys that did not fit in `msi_filename` (a filename is capped at 255
+                 *     characters). Empty for any ordinary config. The MSI falls back to its built-in
+                 *     defaults for these, so the UI should tell the user to set them in the installer —
+                 *     the binary install commands are unaffected and carry the full config.
+                 */
+                msi_omitted_config_keys: string[];
             };
             error?: string | null;
             meta: components["schemas"]["ApiMeta"];
@@ -3856,19 +3912,19 @@ export interface components {
              * @example {
              *       "bindings": [
              *         {
-             *           "created_at": "2026-07-20T17:42:27.425969Z",
+             *           "created_at": "2026-07-20T19:14:14.112017Z",
              *           "first_discovery_id": null,
-             *           "id": "19eb1a10-0334-4439-8cb6-9214fa1a2a49",
+             *           "id": "51f0c823-3b9c-4c68-a280-312e10a53e70",
              *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
              *           "last_discovery_id": null,
-             *           "last_seen_at": "2026-07-20T17:42:27.425969Z",
+             *           "last_seen_at": "2026-07-20T19:14:14.112017Z",
              *           "lineage_id": null,
              *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
              *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
              *           "type": "Port",
-             *           "updated_at": "2026-07-20T17:42:27.425969Z",
-             *           "valid_from": "2026-07-20T17:42:27.425969Z",
+             *           "updated_at": "2026-07-20T19:14:14.112017Z",
+             *           "valid_from": "2026-07-20T19:14:14.112017Z",
              *           "valid_to": null
              *         }
              *       ],
@@ -3882,7 +3938,7 @@ export interface components {
              *       "name": "nginx",
              *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
              *       "position": 0,
-             *       "service_definition": "Prowlarr",
+             *       "service_definition": "Jitsi Meet",
              *       "source": {
              *         "type": "Manual"
              *       },
@@ -4347,6 +4403,14 @@ export interface components {
             meta: components["schemas"]["ApiMeta"];
             success: boolean;
         };
+        /**
+         * @description What the emitted artifacts are *for*. A command's correct contents depend on whether the
+         *     daemon is being stood up from nothing or adjusted in place — `scanopy-daemon install` layers
+         *     CLI flags over the existing `config.json`, so anything omitted keeps its current value, and
+         *     an installed daemon should only be told what is actually changing.
+         * @enum {string}
+         */
+        ArtifactPurpose: "initial" | "rekey" | "sync";
         BillingPlan: (components["schemas"]["PlanConfig"] & {
             /** @enum {string} */
             type: "Community";
@@ -4386,19 +4450,19 @@ export interface components {
         /**
          * @description Association between a service and a port / interface that the service is listening on
          * @example {
-         *       "created_at": "2026-07-20T17:42:27.414655Z",
+         *       "created_at": "2026-07-20T19:14:14.102450Z",
          *       "first_discovery_id": null,
-         *       "id": "94394f08-1b1e-4eed-8635-fb9c684b948b",
+         *       "id": "3a8ed39c-753d-4ce4-8ad0-a567a2a77c2c",
          *       "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *       "last_discovery_id": null,
-         *       "last_seen_at": "2026-07-20T17:42:27.414655Z",
+         *       "last_seen_at": "2026-07-20T19:14:14.102450Z",
          *       "lineage_id": null,
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *       "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *       "type": "Port",
-         *       "updated_at": "2026-07-20T17:42:27.414655Z",
-         *       "valid_from": "2026-07-20T17:42:27.414655Z",
+         *       "updated_at": "2026-07-20T19:14:14.102450Z",
+         *       "valid_from": "2026-07-20T19:14:14.102450Z",
          *       "valid_to": null
          *     }
          */
@@ -4613,7 +4677,7 @@ export interface components {
          *           "id": "550e8400-e29b-41d4-a716-446655440007",
          *           "name": "nginx",
          *           "position": 0,
-         *           "service_definition": "Prowlarr",
+         *           "service_definition": "Jitsi Meet",
          *           "tags": [],
          *           "virtualization": null
          *         }
@@ -5708,19 +5772,19 @@ export interface components {
          *         {
          *           "bindings": [
          *             {
-         *               "created_at": "2026-07-20T17:42:27.413852Z",
+         *               "created_at": "2026-07-20T19:14:14.101806Z",
          *               "first_discovery_id": null,
-         *               "id": "75d7cf20-0167-410d-bb03-9ac6ea472d3e",
+         *               "id": "50b66eb9-5c73-41d5-8467-ad7ca04c3853",
          *               "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *               "last_discovery_id": null,
-         *               "last_seen_at": "2026-07-20T17:42:27.413852Z",
+         *               "last_seen_at": "2026-07-20T19:14:14.101806Z",
          *               "lineage_id": null,
          *               "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *               "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *               "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *               "type": "Port",
-         *               "updated_at": "2026-07-20T17:42:27.413852Z",
-         *               "valid_from": "2026-07-20T17:42:27.413852Z",
+         *               "updated_at": "2026-07-20T19:14:14.101806Z",
+         *               "valid_from": "2026-07-20T19:14:14.101806Z",
          *               "valid_to": null
          *             }
          *           ],
@@ -5734,7 +5798,7 @@ export interface components {
          *           "name": "nginx",
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "position": 0,
-         *           "service_definition": "Prowlarr",
+         *           "service_definition": "Jitsi Meet",
          *           "source": {
          *             "type": "Manual"
          *           },
@@ -5950,6 +6014,11 @@ export interface components {
         InstallArtifacts: {
             /** @description Per-platform binary install commands (the api key is embedded — shown once). */
             commands: components["schemas"]["PlatformInstallCommand"][];
+            /**
+             * @description A ready-to-run `docker-compose.yml`. Only present for a first install: re-keying or
+             *     re-syncing a container means editing its existing compose file, not running a new one.
+             */
+            docker_compose?: string | null;
             /**
              * @description Filename encoding this daemon's non-secret config. Save or rename the downloaded MSI
              *     to this name to pre-fill the installer — parse-filename.js decodes it. The api key is
@@ -7301,19 +7370,19 @@ export interface components {
          * @example {
          *       "bindings": [
          *         {
-         *           "created_at": "2026-07-20T17:42:27.414577Z",
+         *           "created_at": "2026-07-20T19:14:14.102387Z",
          *           "first_discovery_id": null,
-         *           "id": "f97d9152-c9c5-4988-879b-527af3fa1659",
+         *           "id": "10f32ebd-430e-4852-a5af-5e6bb5d7acab",
          *           "ip_address_id": "550e8400-e29b-41d4-a716-446655440005",
          *           "last_discovery_id": null,
-         *           "last_seen_at": "2026-07-20T17:42:27.414577Z",
+         *           "last_seen_at": "2026-07-20T19:14:14.102387Z",
          *           "lineage_id": null,
          *           "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *           "port_id": "550e8400-e29b-41d4-a716-446655440006",
          *           "service_id": "550e8400-e29b-41d4-a716-446655440007",
          *           "type": "Port",
-         *           "updated_at": "2026-07-20T17:42:27.414577Z",
-         *           "valid_from": "2026-07-20T17:42:27.414577Z",
+         *           "updated_at": "2026-07-20T19:14:14.102387Z",
+         *           "valid_from": "2026-07-20T19:14:14.102387Z",
          *           "valid_to": null
          *         }
          *       ],
@@ -7327,7 +7396,7 @@ export interface components {
          *       "name": "nginx",
          *       "network_id": "550e8400-e29b-41d4-a716-446655440002",
          *       "position": 0,
-         *       "service_definition": "Prowlarr",
+         *       "service_definition": "Jitsi Meet",
          *       "source": {
          *         "type": "Manual"
          *       },
@@ -7750,7 +7819,7 @@ export interface components {
              * @default {
              *       "Application": [
              *         {
-             *           "id": "d07e6962-bb43-48b5-92a3-d009516bafca",
+             *           "id": "2adf6a79-d92f-4f35-901f-23647e59a46d",
              *           "rule": {
              *             "ByApplication": {
              *               "tag_ids": []
@@ -7760,23 +7829,23 @@ export interface components {
              *       ],
              *       "L2Physical": [
              *         {
-             *           "id": "c497a6f9-8800-40a1-99f9-c1c2c98e2b23",
+             *           "id": "5d4f7fe5-97ce-4a19-abb6-a4dcd661d5f3",
              *           "rule": "ByHost"
              *         }
              *       ],
              *       "L3Logical": [
              *         {
-             *           "id": "8fd74342-f74a-437e-8e51-6080eabe05b8",
+             *           "id": "65c7a885-1a88-40e3-b8e7-b0b1f3a699df",
              *           "rule": "BySubnet"
              *         },
              *         {
-             *           "id": "48604575-e36a-42fe-a524-e64979be8c16",
+             *           "id": "a719841d-7b15-476c-87a8-11fbfbe84347",
              *           "rule": "MergeContainerBridges"
              *         }
              *       ],
              *       "Workloads": [
              *         {
-             *           "id": "c497a6f9-8800-40a1-99f9-c1c2c98e2b23",
+             *           "id": "5d4f7fe5-97ce-4a19-abb6-a4dcd661d5f3",
              *           "rule": "ByHost"
              *         }
              *       ]
@@ -7788,19 +7857,19 @@ export interface components {
             /**
              * @default [
              *       {
-             *         "id": "017a9f20-746d-460b-9dbd-a595c5d7ab47",
+             *         "id": "561cc51c-98fa-474f-bf7e-8896e7a6c8fd",
              *         "rule": "ByTrunkPort"
              *       },
              *       {
-             *         "id": "c6d9037b-9de4-4129-a113-088f301e701a",
+             *         "id": "13d664a8-7310-46f2-91ca-bfd222c54b6f",
              *         "rule": "ByVLAN"
              *       },
              *       {
-             *         "id": "4ab49700-bc3f-46d6-b0c8-ce73428007b2",
+             *         "id": "f8396b12-548e-4395-8d70-bef0e636c689",
              *         "rule": "ByPortOpStatus"
              *       },
              *       {
-             *         "id": "241e56b3-b763-46b7-8285-004017169407",
+             *         "id": "050e9165-9658-411d-a99b-ea12d4d80595",
              *         "rule": {
              *           "ByServiceCategory": {
              *             "categories": [
@@ -7818,7 +7887,7 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "3392cf1a-6ba8-490e-a0fb-27a26c6da74f",
+             *         "id": "acff5273-4a44-476d-9e19-77629033c183",
              *         "rule": {
              *           "ByTag": {
              *             "tag_ids": [],
@@ -7827,15 +7896,15 @@ export interface components {
              *         }
              *       },
              *       {
-             *         "id": "5972c57f-553b-44aa-8879-830280326c33",
+             *         "id": "93f634c4-1923-42c4-926e-d5cc6290c100",
              *         "rule": "ByHypervisor"
              *       },
              *       {
-             *         "id": "4e65d408-f4d2-41a4-92ae-29cb68a5d2b4",
+             *         "id": "3e284090-2c95-40e6-8d39-e1edc30501bd",
              *         "rule": "ByContainerRuntime"
              *       },
              *       {
-             *         "id": "ff5f75f3-1448-4928-836c-9dc8b9023037",
+             *         "id": "a083384b-5872-4269-ba86-faac0add6f48",
              *         "rule": "ByStack"
              *       }
              *     ]
@@ -10820,6 +10889,53 @@ export interface operations {
             };
             /** @description daemon has active sessions */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    get_daemon_install_command: {
+        parameters: {
+            query: {
+                /**
+                 * @description Which command to generate. Only credential-free purposes can be served here — see
+                 *     [`ArtifactPurpose::embeds_credential`].
+                 */
+                purpose: components["schemas"]["ArtifactPurpose"];
+            };
+            header?: never;
+            path: {
+                /** @description daemon ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Install command */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_InstallArtifacts"];
+                };
+            };
+            /** @description Purpose requires a credential */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description daemon not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

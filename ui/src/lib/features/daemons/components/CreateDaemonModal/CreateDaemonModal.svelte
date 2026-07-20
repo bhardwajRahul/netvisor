@@ -38,7 +38,6 @@
 		buildDefaultValues,
 		buildInstallConfig,
 		buildRunCommand,
-		buildDockerCompose,
 		constructDaemonUrl,
 		detectOS,
 		slugifyNetworkName,
@@ -116,7 +115,6 @@
 	const windowsDownloadUrl =
 		'https://github.com/scanopy/scanopy/releases/latest/download/scanopy-daemon-windows-amd64.exe';
 	let currentInstallCommand = $derived.by(() => {
-		// Docker is client-assembled (compose file); the server assembles binary commands.
 		if (selectedOS === 'linux' && linuxMethod === 'docker' && dockerCompose) return dockerCompose;
 		// Prefer the server-assembled command for this platform (single source of truth).
 		const serverCmd = installArtifacts?.commands.find((c) => c.platform === selectedOS)?.command;
@@ -320,18 +318,8 @@
 			integrationTokens
 		)
 	);
-	let dockerCompose = $derived(
-		key
-			? buildDockerCompose(
-					serverUrl,
-					selectedNetworkId,
-					key,
-					formValues,
-					currentUserId,
-					integrationTokens
-				)
-			: ''
-	);
+	// Server-assembled, like the binary commands — one source of truth for install artifacts.
+	let dockerCompose = $derived(installArtifacts?.docker_compose ?? '');
 
 	// Check for form validation errors (only visible fields)
 	let visibleFields = $derived(getVisibleFieldIds(formValues));
