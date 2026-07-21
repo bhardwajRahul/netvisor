@@ -24,7 +24,7 @@ use futures::StreamExt;
 use mac_address::MacAddress;
 use pnet::datalink;
 use std::collections::{HashMap, HashSet};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 use std::{net::IpAddr, sync::Arc};
 use tokio::sync::mpsc as tokio_mpsc;
@@ -163,6 +163,14 @@ impl NetworkScan {
             .unwrap_or(defaults::arp_scan_cutoff());
         let max_arp_targets: usize = 1usize << (32 - arp_cutoff as u32);
 
+        // Work-based ARP progress signal (B): `arp_packets_sent` is incremented per ARP
+        // request across every subnet/round; `arp_packets_total` is the upper bound of
+        // requests this scan will send (targets × rounds). Progress/ETA derive from real
+        // send throughput so a wrong rate estimate can't pin the bar or lie about the ETA.
+        let arp_packets_sent = Arc::new(AtomicU64::new(0));
+        let mut arp_packets_total: u64 = 0;
+        let arp_total_rounds = 1 + arp_retries as u64;
+
         if !interfaced_subnets.is_empty() {
             let mut subnet_to_ips: HashMap<IpCidr, (Subnet, Vec<std::net::Ipv4Addr>)> =
                 HashMap::new();
@@ -259,6 +267,7 @@ impl NetworkScan {
                     arp_rate_pps,
                     "Starting ARP scan"
                 );
+                arp_packets_total += target_count as u64 * arp_total_rounds;
 
                 match arp::scan_subnet(
                     &interface,
@@ -268,6 +277,7 @@ impl NetworkScan {
                     use_npcap,
                     arp_retries,
                     arp_rate_pps,
+                    arp_packets_sent.clone(),
                 ) {
                     Ok(arp_rx) => {
                         // Spawn a task to forward ARP results to the async channel
@@ -434,17 +444,45 @@ impl NetworkScan {
                                   total_cost_val: usize,
                                   completed_cost_val: usize,
                                   hosts_discovered_val: usize,
-                                  hosts_scanned_val: usize|
+                                  hosts_scanned_val: usize,
+                                  arp_packets_sent_val: u64,
+                                  arp_packets_total_val: u64|
          -> u8 {
             if !channel_closed {
-                // ARP phase (0-30%): Based on elapsed time vs estimated duration
-                let arp_elapsed = pipeline_start.elapsed();
-                let arp_progress = if estimated_arp_duration.as_secs() > 0 {
-                    (arp_elapsed.as_secs_f64() / estimated_arp_duration.as_secs_f64()).min(1.0)
+                // ARP + deep scan run concurrently, so blend both so the bar keeps moving
+                // through the ARP tail instead of pinning at 30% then jumping when the
+                // channel closes.
+                //
+                // ARP fraction (0-30%): prefer real packets-sent throughput (self-correcting
+                // when the send rate differs from the estimate); fall back to the time
+                // estimate before any packet is sent, or on paths that can't report sends
+                // (Windows SendARP).
+                let arp_frac = if arp_packets_total_val > 0 && arp_packets_sent_val > 0 {
+                    (arp_packets_sent_val as f64 / arp_packets_total_val as f64).min(1.0)
+                } else if estimated_arp_duration.as_secs() > 0 {
+                    (pipeline_start.elapsed().as_secs_f64() / estimated_arp_duration.as_secs_f64())
+                        .min(1.0)
                 } else {
                     1.0
                 };
-                (arp_progress * PROGRESS_ARP_PHASE as f64) as u8
+                // Deep-scan fraction of the work discovered so far. Its denominator grows
+                // as ARP keeps finding hosts, so a couple of early completions can spike it
+                // (e.g. 2 of an eventual 34 hosts done = 100%). Weighting the deep-scan
+                // contribution by `arp_frac` below discounts that until discovery is
+                // actually complete, so the bar can't jump ahead then stall.
+                let deep_frac = if total_cost_val > 0 {
+                    (completed_cost_val as f64 / total_cost_val as f64).min(1.0)
+                } else if hosts_discovered_val > 0 {
+                    (hosts_scanned_val as f64 / hosts_discovered_val as f64).min(1.0)
+                } else {
+                    0.0
+                };
+                // blended = arp_frac * (30 + deep_frac*65). At arp_frac→1 this converges to
+                // the post-channel-close formula (30 + deep_frac*65), a seamless handoff.
+                let blended = arp_frac
+                    * (PROGRESS_ARP_PHASE as f64 + deep_frac * PROGRESS_DEEP_SCAN_PHASE as f64);
+                // Cap below the grace band — the channel must close before we reach 95%.
+                (blended as u8).min(PROGRESS_ARP_PHASE + PROGRESS_DEEP_SCAN_PHASE - 1)
             } else if total_cost_val > 0
                 && (completed_cost_val < total_cost_val || has_pending_scans)
             {
@@ -744,8 +782,11 @@ impl NetworkScan {
                     let completed_cost_val = completed_cost.load(Ordering::Relaxed);
                     let hosts_discovered_val = hosts_discovered.load(Ordering::Relaxed);
                     let hosts_scanned_val = hosts_scanned.load(Ordering::Relaxed);
+                    let arp_packets_sent_val = arp_packets_sent.load(Ordering::Relaxed);
 
-                    // Calculate and report progress (only if changed)
+                    // Calculate progress. Clamp to be monotonic: the blended ARP+deep-scan
+                    // value can dip when ARP discovers more hosts (growing the deep-scan
+                    // denominator), and a progress bar must never go backwards.
                     let progress = calculate_progress(
                         channel_closed,
                         has_pending,
@@ -754,7 +795,25 @@ impl NetworkScan {
                         completed_cost_val,
                         hosts_discovered_val,
                         hosts_scanned_val,
-                    );
+                        arp_packets_sent_val,
+                        arp_packets_total,
+                    )
+                    .max(last_progress_report);
+
+                    // Remaining ARP send/retry work — dominates a sparse subnet's tail
+                    // (rounds 2-3 re-probe every dead IP). Derived from real send rate so
+                    // the ETA stops claiming "<1 min" while ARP still has minutes to go.
+                    let arp_remaining_secs = if !channel_closed
+                        && arp_packets_total > 0
+                        && arp_packets_sent_val > 0
+                    {
+                        let arp_elapsed = pipeline_start.elapsed().as_secs_f64();
+                        let rate = arp_packets_sent_val as f64 / arp_elapsed.max(0.001);
+                        let remaining = arp_packets_total.saturating_sub(arp_packets_sent_val);
+                        (remaining as f64 / rate.max(0.001)) as u32
+                    } else {
+                        0
+                    };
 
                     // Update estimation atomics on the session
                     if let Ok(session) = ops.get_session().await {
@@ -784,13 +843,21 @@ impl NetworkScan {
                             let remaining_secs = host_based.max(cost_based)
                                 + LATE_ARRIVAL_GRACE_PERIOD.as_secs() as u32;
                             session.estimated_remaining_secs.store(remaining_secs, Ordering::Relaxed);
-                        } else if completed_cost_val > 0 {
-                            // ARP phase still active — fall back to cost-based estimation
-                            let started = deep_scan_started_at.get_or_insert(Instant::now());
-                            let deep_scan_elapsed = started.elapsed();
-                            let time_per_cost_unit = deep_scan_elapsed.as_secs_f64() / completed_cost_val as f64;
-                            let remaining_cost = total_cost_val.saturating_sub(completed_cost_val);
-                            let remaining_secs = (remaining_cost as f64 * time_per_cost_unit * 1.2) as u32
+                        } else {
+                            // ARP phase still active. The ETA must cover BOTH the remaining
+                            // ARP send/retry work and any concurrent deep-scan cost, taking
+                            // whichever dominates — otherwise the near-done deep-scan cost
+                            // alone reports "<1 min" while the ARP tail still runs.
+                            let deep_remaining = if completed_cost_val > 0 {
+                                let started = deep_scan_started_at.get_or_insert(Instant::now());
+                                let deep_scan_elapsed = started.elapsed();
+                                let time_per_cost_unit = deep_scan_elapsed.as_secs_f64() / completed_cost_val as f64;
+                                let remaining_cost = total_cost_val.saturating_sub(completed_cost_val);
+                                (remaining_cost as f64 * time_per_cost_unit * 1.2) as u32
+                            } else {
+                                0
+                            };
+                            let remaining_secs = deep_remaining.max(arp_remaining_secs)
                                 + LATE_ARRIVAL_GRACE_PERIOD.as_secs() as u32;
                             session.estimated_remaining_secs.store(remaining_secs, Ordering::Relaxed);
                         }
